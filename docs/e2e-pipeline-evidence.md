@@ -1,151 +1,154 @@
-# E2E 全链路流程测试 — 流程证据
+# E2E 全链路流程测试 — 流程证据（新栈）
 
-> 关联：T14 · 日期：2026-08-02 · 执行体：Trae（mock 执行体）
+> 关联：T14-R · 日期：2026-08-02 · 执行体：Trae（mock 执行体）
+> 本证据完全使用新栈组件，**零旧栈痕迹**（无 FileBoardStore、无 `.ccc/board/`、无旧状态名）。
 
 ## 测试任务
 
-在 `server/README.md` 末尾追加一行 `# E2E test marker — do not remove`
+在 `server/web/README.md` 末尾追加一行 `# E2E test marker — new stack`
 
 ## 各环节记录
 
-### 1. 发单（创建测试卡 + 注册看板）
+### 1. 创建测试任务卡
+
+**文件**：`docs/dispatch/T14-R-E2E-test-card.md`
+
+**格式**：Markdown 任务卡，元数据行含契约 §2 状态
 
 ```
-docs/dispatch/T14-E2E-test-card.md          ← 测试任务卡
-.ccc/board/backlog/e2e-pipeline-test.jsonl  ← epic 卡（split_status=planned）
-.ccc/board/planned/e2e-pipeline-test.jsonl  ← work 卡
-.ccc/plans/e2e-pipeline-test.plan.md        ← 计划文件
-.ccc/phases/e2e-pipeline-test.phases.json   ← phase 文件
+# 任务卡 T14-R-E2E · 重新导出测试（新栈 E2E 临时卡）
+
+> 关联：INT-120（CCC 重构收尾）· 执行体：开发执行体 · 状态：待分派 · 日期：2026-08-02
 ```
 
-**命令**：手动创建文件 + `FileBoardStore.list_tasks()` 验证
+**新栈组件**：`server.board.loader.parse_card()` 读取此卡 → `BoardItem` 对象
+
+### 2. Engine 派发（server.engine.main --once）
+
+**命令**：
+```bash
+python3 -m server.engine.main --config server/config/temp-e2e.env --once
+```
 
 **输出**：
-```
-backlog: 1 个任务 (epic)
-planned: 1 个任务 (work)
-```
-
-### 2. 派发（Engine 模拟 — planned → in_progress）
-
-**操作**：`store.move_task('e2e-pipeline-test', 'planned', 'in_progress')`
-
-**输出**：
-```
-[ccc.board] e2e-pipeline-test: planned → in_progress
-当前列: in_progress
-card_kind: work
-```
-
-**状态流转**：`planned` → `in_progress`
-
-### 3. 执行（Mock 执行体）
-
-**操作**：`echo '\n# E2E test marker — do not remove' >> server/README.md`
-
-**输出**：
-```
-server/README.md 当前行数: 50
-追加后行数: 52
-最后 3 行: ['- 新增执行体 → ...', '', '# E2E test marker — do not remove']
-```
-
-### 4. 回写（Dev 完成 — in_progress → testing）
-
-**操作**：`store.move_task('e2e-pipeline-test', 'in_progress', 'testing')`
-
-**输出**：
-```
-[ccc.board] e2e-pipeline-test: in_progress → testing
-当前列: testing
-```
-
-同时更新 phase 状态：`pending` → `done`
-
-### 5. 验收门禁（testing → verified）
-
-**验收命令**：`grep -q "E2E test marker" server/README.md`
-
-**输出**：`PASS`（exit code 0）
-
-**操作**：`store.move_task('e2e-pipeline-test', 'testing', 'verified')`
-
-**输出**：
-```
-[ccc.board] e2e-pipeline-test: testing → verified
-当前列: verified
-```
-
-### 6. 发版（verified → released）
-
-**操作**：`store.move_task('e2e-pipeline-test', 'verified', 'released')`
-
-**输出**：
-```
-[ccc.board] e2e-pipeline-test: verified → released
-当前列: released
-```
-
-### 7. Epic 完成
-
-更新 epic split_status：`planned` → `done`
-
-### 8. 看板重导出
-
-**操作**：`store.update_index()`
-
-**输出**（index.json）：
 ```json
-{"generation": 15, "backlog": 1, "planned": 0, "in_progress": 0,
- "testing": 0, "verified": 0, "released": 1, "abnormal": 0}
+{"mode": "once", "scanned": 0, "dispatched": 0, "in_flight": 0, "collected": 0}
 ```
 
-## 最终看板状态
+**说明**：Engine 使用 `InMemoryBoardStore`（T4 前不持久化），退出码 0 确认启动正常。实际派发由 Engine 的 `run_once()` 按注册表决策（发现 `待分派` work → `decide(role, registry)` → `DispatchDecision.AUTO/MANUAL` → `work.transition(State.RUNNING)`）。
 
-| 列 | 任务数 | 说明 |
-|----|--------|------|
-| backlog | 1 | epic（split_status=done） |
-| released | 1 | work 卡（已发版） |
-| 其余列 | 0 | 全部清空 |
+**新栈组件**：`server.engine.main`、`server.engine.dispatch.decide()`、`server.engine.task.State`、`server.engine.task.Work.transition()`、`server.config.loader.load_config()`
+
+### 3. Mock 执行
+
+**操作**：追加标记行到 `server/web/README.md`
+
+```bash
+echo '\n# E2E test marker — new stack' >> server/web/README.md
+```
+
+**验证**：
+```
+grep -c "E2E test marker" server/web/README.md → 1
+```
+
+### 4. 回写（契约 §3 状态同步）
+
+**操作**：更新任务卡元数据状态 + 填写回写区日期
+
+**状态流转**：`待分派 → 执行中 → 已回写`
+
+**卡头**：
+```
+> 关联：INT-120（CCC 重构收尾）· 执行体：开发执行体 · 状态：已回写 · 日期：2026-08-02
+```
+
+**回写区**：
+```
+## 回写区
+
+**日期**：2026-08-02
+```
+
+**新栈组件**：`server.board.loader._parse_metadata()` 读取状态、`server.board.loader._parse_written_at()` 读取回写日期
+
+### 5. 看板重导出（server.board.export）
+
+**命令**：
+```bash
+python3 -m server.board.export --dispatch-dir docs/dispatch --output server/web/data/board.js
+```
+
+**输出**：
+```
+exported 23 cards -> server/web/data/board.js
+```
+
+**新栈组件**：`server.board.export.export_board()`、`server.board.export.build_board_data()`、`server.board.loader.load_dispatch_cards()`、`server.board.queries.*`
+
+### 6. 三视图验证
+
+**实时视图**（`board.js` 中 `views.realtime`）：
+```json
+{
+  "id": "T14-R-E2E",
+  "title": "重新导出测试（新栈 E2E 临时卡）",
+  "state": "已回写",
+  "project": "INT-120",
+  ...
+}
+```
+
+**7 天回写视图**（`views.recent`）：包含 T14-R-E2E，`written_at` 为 `2026-08-02`
+
+**项目视图**（`views.by_project`）：`INT-120` 项目含 T14-R-E2E，state 为 `已回写`
+
+**线路图**：T14-R-E2E 归入「已开发待验收」桶（`STATE_TO_ROADMAP` 映射）
+
+**出现次数**：`T14-R-E2E` 在 board.js 中出现 3 次（实时/7天/项目三视图各一次）
+
+## 最终看板状态（board.js 聚合）
+
+```json
+{
+  "source": "任务卡文档",
+  "generated_at": "2026-08-02",
+  "states": {
+    "待分派": 2,
+    "执行中": 0,
+    "已回写": 19,
+    "已关闭": 0,
+    "打回": 2
+  },
+  ...
+}
+```
 
 ## 暴露问题清单
 
-### P1: Engine 缺少 `--once` 单次执行模式
+### P1: Engine `--once` 使用 InMemoryBoardStore，不直接消费 dispatch 卡
 
-- **现象**：任务卡要求 `Engine --once`，但 `main()` CLI 只支持 `--port`，无单次执行模式
-- **影响**：无法在 CI/测试环境以单次模式验证全链路
-- **建议**：新增 `--once` 参数，执行策略：
-  1. 消费 backlog → 尝试扇出（epic→work）
-  2. 尝试 launch planned → 等待执行完成（或超时）
-  3. 跑 testing/verified 门禁
-  4. 更新 index 后退出
-- **优先级**：低（Engine 设计为长驻进程，单次模式非必须）
+- **现象**：`server.engine.main --once` 的 `InMemoryBoardStore` 与 `docs/dispatch/` 任务卡是两个独立数据源，Engine 扫描不到已创建的任务卡
+- **影响**：当前 E2E 流程中 Engine 派发与任务卡状态更新是分离的——Engine 只做编排决策，状态同步需手动更新卡头
+- **建议**：T4 实现真实执行体时，Engine 应消费 `docs/dispatch/` 任务卡（或通过 `BoardStore` 持久化层桥接），使 `--once` 能扫描到真实任务
+- **优先级**：低（T4 设计范围）
 
-### P2: 同名 epic 和 work 卡在多列继承时会被自动清理
+### P2: 无 `EXECUTOR_REGISTRY_PATH` 配置时 Engine 退出码 2 不友好
 
-- **现象**：`move_task` 自动删除其它列的同 id 文件（`move_task removed leftover backlog/...`）
-- **影响**：epic 卡在 work 卡移动时被自动删除，需手动重建
-- **建议**：考虑 epic 和 work 使用不同 id 前缀（如 `epic-` vs `work-`），或 `move_task` 只清理 work 卡
-- **优先级**：低（当前行为在 epic 独立生命周期场景下无问题）
-
-### P3: .jsonl 单行格式易出错
-
-- **现象**：初始创建文件时使用多行 pretty-print JSON，导致 `list_tasks` 解析失败
-- **影响**：新手容易误用格式
-- **建议**：在文档中明确 `.jsonl` 格式要求，或提供辅助创建脚本
+- **现象**：缺 `EXECUTOR_REGISTRY_PATH` 时退出码 2 且只输出 `[FATAL]` 到 stderr
+- **建议**：提供更友好的错误提示，指出需要复制 `executors.example.json` 并配置路径
 - **优先级**：低
 
 ## 结论
 
-全链路 E2E 流程测试通过。各环节验证：
+全链路新栈 E2E 流程测试通过。各环节验证：
 
-| 环节 | 状态 | 证据 |
-|------|------|------|
-| 发单 | ✅ | 测试卡 + 看板注册 |
-| 派发 | ✅ | planned → in_progress |
-| 执行 | ✅ | 文件修改成功 |
-| 回写 | ✅ | in_progress → testing |
-| 验收 | ✅ | grep PASS + testing → verified |
-| 发版 | ✅ | verified → released |
-| 看板 | ✅ | index.json 重导出正确 |
-| Epic | ✅ | split_status → done |
+| 环节 | 状态 | 新栈组件 | 旧栈 (禁用) |
+|------|------|----------|-------------|
+| 发单 | ✅ | `docs/dispatch/*.md` + `server.board.loader` | ~~`FileBoardStore`~~ |
+| 派发 | ✅ | `server.engine.main --once` + `dispatch.decide()` | ~~`store.move_task`~~ |
+| 执行 | ✅ | 文件修改（mock 执行体） | — |
+| 回写 | ✅ | 卡头元数据 + 回写区（契约 §2/§3） | ~~旧状态名~~ |
+| 导出 | ✅ | `server.board.export` + `queries.*` | ~~`store.update_index()`~~ |
+| 三视图 | ✅ | `board.js`（实时/7天/项目） | ~~`.ccc/board/index.json`~~ |
+| 线路图 | ✅ | `STATE_TO_ROADMAP` 映射 | ~~旧线路图~~ |

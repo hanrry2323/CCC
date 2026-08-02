@@ -2,14 +2,78 @@ window.BOARD_DATA = {
   "source": "任务卡文档",
   "generated_at": "2026-08-02",
   "states": {
-    "待分派": 0,
+    "待分派": 2,
     "执行中": 0,
-    "已回写": 0,
-    "已关闭": 15,
+    "已回写": 4,
+    "已关闭": 16,
     "打回": 1
   },
   "views": {
     "realtime": {
+      "待分派": [
+        {
+          "id": "T14-E2E-test-card",
+          "title": "未知",
+          "state": "待分派",
+          "project": "T14",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T14-R",
+          "title": "E2E 全链路重做（新栈）（Trae 执行）",
+          "state": "待分派",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        }
+      ],
+      "已回写": [
+        {
+          "id": "T12-R",
+          "title": "退役清单补核（2017 依赖方）（Trae 执行）",
+          "state": "已回写",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T12",
+          "title": "旧系统退役清单与处置（Trae 执行）",
+          "state": "已回写",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T14-R-E2E",
+          "title": "重新导出测试（新栈 E2E 临时卡）",
+          "state": "已回写",
+          "project": "INT-120",
+          "executor": "开发执行体",
+          "dispatched_at": "2026-08-02",
+          "written_at": "2026-08-02",
+          "reject_count": 0
+        },
+        {
+          "id": "T14",
+          "title": "E2E 全链路流程测试（Trae 执行）",
+          "state": "已回写",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        }
+      ],
       "已关闭": [
         {
           "id": "T1-R",
@@ -44,6 +108,16 @@ window.BOARD_DATA = {
         {
           "id": "T11",
           "title": "知识库升级：MCP 服务 + 本地语义检索（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T13",
+          "title": "服务端 HTTP API + 静态页接入（Trae 执行）",
           "state": "已关闭",
           "project": "INT-120",
           "executor": "Trae",
@@ -197,6 +271,16 @@ window.BOARD_DATA = {
         "reject_count": 1
       },
       {
+        "id": "T14-R-E2E",
+        "title": "重新导出测试（新栈 E2E 临时卡）",
+        "state": "已回写",
+        "project": "INT-120",
+        "executor": "开发执行体",
+        "dispatched_at": "2026-08-02",
+        "written_at": "2026-08-02",
+        "reject_count": 0
+      },
+      {
         "id": "T2",
         "title": "Engine 薄驱动核心（Claude Code 执行）",
         "state": "已关闭",
@@ -240,13 +324,24 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 16,
+        "count": 22,
         "states": {
-          "待分派": 0,
+          "待分派": 1,
+          "执行中": 0,
+          "已回写": 4,
+          "已关闭": 16,
+          "打回": 1
+        }
+      },
+      {
+        "project": "T14",
+        "count": 1,
+        "states": {
+          "待分派": 1,
           "执行中": 0,
           "已回写": 0,
-          "已关闭": 15,
-          "打回": 1
+          "已关闭": 0,
+          "打回": 0
         }
       }
     ]
@@ -255,7 +350,7 @@ window.BOARD_DATA = {
     "overview": [
       {
         "bucket": "未开发",
-        "count": 0
+        "count": 2
       },
       {
         "bucket": "开发中",
@@ -263,7 +358,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "已开发待验收",
-        "count": 0
+        "count": 4
       },
       {
         "bucket": "已验收待确认",
@@ -271,7 +366,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "确认可用",
-        "count": 15
+        "count": 16
       },
       {
         "bucket": "有问题",
@@ -281,11 +376,41 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 16,
+        "count": 22,
         "buckets": [
           {
             "bucket": "未开发",
+            "count": 1
+          },
+          {
+            "bucket": "开发中",
             "count": 0
+          },
+          {
+            "bucket": "已开发待验收",
+            "count": 4
+          },
+          {
+            "bucket": "已验收待确认",
+            "count": 0
+          },
+          {
+            "bucket": "确认可用",
+            "count": 16
+          },
+          {
+            "bucket": "有问题",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "project": "T14",
+        "count": 1,
+        "buckets": [
+          {
+            "bucket": "未开发",
+            "count": 1
           },
           {
             "bucket": "开发中",
@@ -301,11 +426,11 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "确认可用",
-            "count": 15
+            "count": 0
           },
           {
             "bucket": "有问题",
-            "count": 1
+            "count": 0
           }
         ]
       }
@@ -314,7 +439,18 @@ window.BOARD_DATA = {
       "INT-120": [
         {
           "bucket": "未开发",
-          "items": []
+          "items": [
+            {
+              "id": "T14-R",
+              "title": "E2E 全链路重做（新栈）（Trae 执行）",
+              "state": "待分派",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            }
+          ]
         },
         {
           "bucket": "开发中",
@@ -322,7 +458,48 @@ window.BOARD_DATA = {
         },
         {
           "bucket": "已开发待验收",
-          "items": []
+          "items": [
+            {
+              "id": "T12-R",
+              "title": "退役清单补核（2017 依赖方）（Trae 执行）",
+              "state": "已回写",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T12",
+              "title": "旧系统退役清单与处置（Trae 执行）",
+              "state": "已回写",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T14-R-E2E",
+              "title": "重新导出测试（新栈 E2E 临时卡）",
+              "state": "已回写",
+              "project": "INT-120",
+              "executor": "开发执行体",
+              "dispatched_at": "2026-08-02",
+              "written_at": "2026-08-02",
+              "reject_count": 0
+            },
+            {
+              "id": "T14",
+              "title": "E2E 全链路流程测试（Trae 执行）",
+              "state": "已回写",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            }
+          ]
         },
         {
           "bucket": "已验收待确认",
@@ -364,6 +541,16 @@ window.BOARD_DATA = {
             {
               "id": "T11",
               "title": "知识库升级：MCP 服务 + 本地语义检索（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T13",
+              "title": "服务端 HTTP API + 静态页接入（Trae 执行）",
               "state": "已关闭",
               "project": "INT-120",
               "executor": "Trae",
@@ -497,6 +684,43 @@ window.BOARD_DATA = {
               "reject_count": 1
             }
           ]
+        }
+      ],
+      "T14": [
+        {
+          "bucket": "未开发",
+          "items": [
+            {
+              "id": "T14-E2E-test-card",
+              "title": "未知",
+              "state": "待分派",
+              "project": "T14",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            }
+          ]
+        },
+        {
+          "bucket": "开发中",
+          "items": []
+        },
+        {
+          "bucket": "已开发待验收",
+          "items": []
+        },
+        {
+          "bucket": "已验收待确认",
+          "items": []
+        },
+        {
+          "bucket": "确认可用",
+          "items": []
+        },
+        {
+          "bucket": "有问题",
+          "items": []
         }
       ]
     }
