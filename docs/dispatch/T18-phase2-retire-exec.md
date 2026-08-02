@@ -1,7 +1,7 @@
 # 任务卡 T18 · 退役第二阶段执行（scripts/templates 归档 + 2017 旧引擎停止 + relay/dist 清理）
 
 > 关联：INT-120（CCC 重构收尾）· 依据：`docs/legacy-phase2-plan.md`（放行条件已全部满足）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 放行确认：老板 2026-08-02 明确放行「退役第二阶段」；新栈 `server/` 就绪（T17 验收：171 全绿、三扫描零命中）；qb **活跃产线零引用** `scripts/`（8 个引用文件均为已完结历史计划，保留原文不改写）。
 
 ## 目标
@@ -83,12 +83,45 @@
 
 ### 结果摘要
 
-（执行后填写）
+退役第二阶段全链路执行完成：2017 三个旧引擎 launchd 全部 bootout + 进程清空 + control.json 降 disabled（6100/6102 新中转站存活）；M1 `scripts/`、`templates/` 经 `git mv` 归档至 `docs/archive/legacy-retired-2026-08-02/`（403 文件纯重命名，0 insertions/0 deletions）；`relay/dist/`（188K 未跟踪）已清；退役清单第二阶段标记完成；`server/tests/` 171 全绿、engine --once 冒烟通过、board.export 25 cards、三扫描零命中。
 
 ### 执行明细
 
-（执行后填写：步骤 A–E 各步结果）
+**A. 2017 旧引擎停止**（SSH fan@192.168.3.116）：
+1. 前置确认：qb 板 `inflight`/`in_progress`/`planned` 三目录均空 ✅
+2. 备份：`~/.ccc/control.json.bak-20260802`（664 bytes）已创建
+3. launchd 卸载：`com.ccc.engine` / `com.ccc.board` / `com.ccc.chat-server` 三个 bootout 全部 exit=0
+4. 进程清空：bootout 后进程延迟退出，最终 `ps aux | grep ccc-engine|ccc-board|ccc-chat` = 空；`launchctl list | grep ccc` = 空
+5. control.json：`mode: enabled → disabled`（reason: T18 phase2 retire）
+6. 6100/6102 仍监听：PID 69311（node，新中转站 `ai-loop-router-ccc/dist/proxy.js`）存活 ✅ — 红线 #1 满足
+
+**B. relay/dist 清理**（M1）：
+7. `git ls-files relay/` = 0（未跟踪）→ `rm -rf relay/dist`（188K）→ `git status` 无 relay/ 残留 ✅
+
+**C. 归档 scripts/ + templates/**（M1）：
+8. `mkdir -p docs/archive/legacy-retired-2026-08-02`（已存在，T15 创建）
+9. `git mv scripts/ docs/archive/legacy-retired-2026-08-02/scripts/` — 403 文件纯重命名
+10. `git mv templates/ docs/archive/legacy-retired-2026-08-02/templates/` — 含于 403 重命名
+11. 更新 `docs/legacy-retirement-list.md`：第二阶段 4 项全标 ✅；总览表 scripts/templates 标「已归档」；2017 进程/launchd/control.json 三表标 STOPPED/UNLOADED/disabled；qb 引用注明「8 个历史完结计划保留原文，活跃产线零引用」
+- 附带：3 个旧 dev 产物（`test-task-001.2.tar.gz`、`create_test_phase_lint.py`、`regression_v028.py`）随目录迁移到 archive，原 .gitignore 规则路径失效；更新 .gitignore 增加 archive 路径规则（不删文件，工作树干净）
+
+**D. 验证**（全部必跑）：
+12. `pytest server/tests/ -q` → **171 passed**（72+72+27），exit=0 ✅
+13. `engine.main --config <smoke.env> --once` → `{"mode": "once", "scanned": 0, "dispatched": 0, "in_flight": 0, "collected": 0}`，exit=0 ✅（注：`server/config/config.env` 不存在是部署产物，用临时 smoke 配置验证）
+14. `server.board.export --dispatch-dir docs/dispatch --output server/web/data/board.js` → exported 25 cards，exit=0 ✅
+15. 三扫描（S1-S4 + 明文密钥 + 外脑依赖）：生产代码零命中（命中仅在 tests/ 夹具、example 占位符、docstring「不依赖」声明）✅
+16. `git status` → 403 staged renames + `.gitignore`/`legacy-retirement-list.md`/`board.js` M + 预存 2 项（`.ccc/agent-mind/decided.json`、`_update_handoff.py`）✅
+
+**E. 提交 + 回写**：
+17. 提交：`chore(retire): phase 2 — archive scripts/ and templates/, stop 2017 legacy engines`（commit hash 见 git log）
+18. 回写：卡头 `状态：待分派 → 已回写`，回写区填完，`board.js` 重导出
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+| # | 验收标准 | 状态 |
+|---|----------|------|
+| 1 | 2017 三个旧引擎进程清空、launchd 卸载、control.json disabled（有备份）；6100/6102 仍监听（PID 69311） | ✅ 三进程清空、三 launchd UNLOADED、mode=disabled（bak-20260802）、6100/6102 PID 69311 存活 |
+| 2 | scripts/、templates/ 已 git mv 归档，内容零丢失；relay/dist 已清且无 git 残留 | ✅ 403 文件纯重命名（0 ins/0 del）；relay/dist 删除，git status 无 relay/ 变化 |
+| 3 | 退役清单第二阶段已标记；M1 旧进程未被主动 kill | ✅ 清单 4 项全标 ✅；M1 7777/7775/7788 未 kill（红线 #2） |
+| 4 | server/ 测试全绿、engine/board 冒烟通过、三扫描零命中 | ✅ 171 passed；engine --once exit=0 JSON 正常；board.export 25 cards；S1-S4+密钥+外脑零命中 |
+| 5 | 真实提交；工作树仅剩预存 2 项；卡头状态已同步 | ✅ 真实 commit；预存 `.ccc/agent-mind/decided.json` + `_update_handoff.py`；卡头「已回写」 |

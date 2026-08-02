@@ -9,14 +9,14 @@
 
 | 目录 | 大小 | 文件数 | 分类 | 新栈对应 | 退役条件 |
 |------|------|--------|------|----------|----------|
-| `scripts/` | 12MB | 609 (247 .py, 80 .sh) | **暂留** | `server/engine/` `server/board/` `server/web/`（骨架） | 新栈全部就绪并切换 |
+| `scripts/` | 12MB | 609 (247 .py, 80 .sh) | **已归档** ✅（T18） | `server/engine/` `server/board/` `server/web/`（骨架） | 新栈全部就绪并切换 |
 | `app/` | 24KB | ~5 | **归档候选** | 无直接替代 | 随时可归档 |
 | `desktop/` | 1.3G (源码 824K, .build/ 1.3G) | ~50 | **暂留（源码）/ 清理候选（构建产物）** | 桌面客户端本身 | 源码保留，.build/ 可清理 |
 | `lib/` | 8KB | 2 | **归档候选** | 无直接替代 | 随时可归档 |
 | `db/` | 4KB | 1 | **归档候选** | 无（CCC 独立后不再依赖 HP 数据库） | 随时可归档 |
-| `relay/` | 79MB (78MB node_modules, 188K dist/) | 1933 (JS) | **清理候选** | `server/relay/`（空目录） | 旧 relay 已确认停止 |
+| `relay/` | 0（node_modules T15 删 / dist T18 删） | 0 | **已清理** ✅（T15+T18） | `server/relay/`（空目录） | 旧 relay 已确认停止 |
 | `skills/` | 40KB | 8 SKILL.md | **归档候选** | 无（新栈不再使用 Skill 机制） | 随时可归档 |
-| `templates/` | 88KB | ~10 | **暂留** | 待定 | 确认新栈模板就绪 |
+| `templates/` | 88KB | ~10 | **已归档** ✅（T18） | 待定 | 确认新栈模板就绪 |
 
 ---
 
@@ -207,34 +207,38 @@
 
 ### 1. 旧引擎进程（2017 实测）
 
+> T18（2026-08-02）已停止全部旧引擎进程。下表为停止前快照。
+
 | PID | 进程 | 端口 | 旧代码路径 | 启动方式 | 状态 |
 |-----|------|------|-----------|----------|------|
-| 28004 | ccc-engine.py | 7776 | `scripts/ccc-engine.py` | launchd `com.ccc.engine` | **RUNNING** |
-| 64950 | ccc-board | 7775 | `scripts/ccc-board-server.py` | launchd `com.ccc.board` | **RUNNING** |
-| 89608 | ccc-chat-server | 7777 | `scripts/ccc-chat-server.py` | launchd `com.ccc.chat-server` | **RUNNING** |
-| 69311 | node (planner) | 6100 | `ai-loop-router`（独立项目） | 手动 | RUNNING |
+| 28004 | ccc-engine.py | 7776 | `scripts/ccc-engine.py` | launchd `com.ccc.engine` | **STOPPED**（T18 bootout） |
+| 64950 | ccc-board | 7775 | `scripts/ccc-board-server.py` | launchd `com.ccc.board` | **STOPPED**（T18 bootout） |
+| 89608 | ccc-chat-server | 7777 | `scripts/ccc-chat-server.py` | launchd `com.ccc.chat-server` | **STOPPED**（T18 bootout） |
+| 69311 | node (新中转站) | 6100/6102 | `ai-loop-router-ccc/dist/proxy.js` | 手动 | **RUNNING**（红线 #1 保护，T18 验证存活） |
 
-> 2017 侧的 `scripts/ccc-engine.py` 是 **T12 清单未覆盖的旧引擎运行实例**（M1 侧无此进程）。2017 ccc-engine 监听 7776 端口，board 和 chat-server 分别监听 7775/7777（与 M1 端口一致，但为独立进程）。
+> 2017 侧的 `scripts/ccc-engine.py` 是 **T12 清单未覆盖的旧引擎运行实例**（M1 侧无此进程）。2017 ccc-engine 监听 7776 端口，board 和 chat-server 分别监听 7775/7777（与 M1 端口一致，但为独立进程）。T18 已 bootout 三个 launchd 并确认进程清空。
 
 ### 2. Launchd 服务（2017）
 
 | plist | 指向 | 状态 |
 |-------|------|------|
-| `com.ccc.engine.plist` | `scripts/ccc-engine.py` | LOADED（PID 28004） |
-| `com.ccc.board.plist` | `scripts/ccc-board-server.py` | LOADED（PID 64950） |
-| `com.ccc.chat-server.plist` | `scripts/ccc-chat-server.py` | LOADED（PID 89608） |
+| `com.ccc.engine.plist` | `scripts/ccc-engine.py` | **UNLOADED**（T18 bootout, exit=0） |
+| `com.ccc.board.plist` | `scripts/ccc-board-server.py` | **UNLOADED**（T18 bootout, exit=0） |
+| `com.ccc.chat-server.plist` | `scripts/ccc-chat-server.py` | **UNLOADED**（T18 bootout, exit=0） |
 | `com.ccc.engine.plist.bak-20260801` | 备份 | BACKUP |
 | `com.ccc.engine.plist.bak-before-flash-override` | 备份 | BACKUP |
 
 ### 3. `~/.ccc/` 配置引用（2017）
 
-| 文件 | 引用内容 |
-|------|---------|
-| `control.json` | mode=`enabled`, host_role=`mac2017_orchestration`, `start_paths: [launchd:com.ccc.engine]` |
-| `engine.env` | `AGENT_PLANNER_BASE_URL=http://127.0.0.1:6100`（指向 2017 本地的 node planner） |
-| `engine.env` | `CCC_UPSTREAM_STRICT=0` |
+| 文件 | 引用内容 | T18 后状态 |
+|------|---------|-----------|
+| `control.json` | mode=`enabled`, host_role=`mac2017_orchestration`, `start_paths: [launchd:com.ccc.engine]` | **mode=`disabled`**（备份 `control.json.bak-20260802`） |
+| `engine.env` | `AGENT_PLANNER_BASE_URL=http://127.0.0.1:6100`（指向 2017 本地的 node planner） | 未改动（6100 新中转站仍存活） |
+| `engine.env` | `CCC_UPSTREAM_STRICT=0` | 未改动 |
 
 ### 4. qb 产线引用 `scripts/` 的证据（2017）
+
+> T18 放行核验：qb 板 `inflight`/`in_progress`/`planned` 三目录均空，活跃产线零引用 `scripts/`。下表 8 个引用文件均为**已完结历史计划**，按 T18 红线保留原文不改写（历史记录不改写，活跃产线零引用即满足放行）。
 
 `~/program/apps/qb/.ccc/plans/` 中大量计划文件引用绝对路径 `/Users/fan/program/CCC/scripts/`：
 
@@ -247,16 +251,16 @@
 
 ### 5. 影响总结
 
-| 维度 | 2017 特有 | 与 M1 共享 |
-|------|----------|-----------|
-| Engine 进程 | **有**（PID 28004, 7776） | M1 无 `ccc-engine.py` 进程 |
-| Board 进程 | 有（PID 64950, 7775） | M1 也有（独立实例） |
-| Chat Server | 有（PID 89608, 7777） | M1 也有（独立实例） |
-| Launchd 注册 | 3 个 plist 活跃 | M1 仅 `agent-sidecar` + `hub-tunnel` |
-| `~/.ccc/control.json` | mode=enabled | M1 独立控制面 |
-| qb 产线依赖 | 绝对路径引用 `scripts/` | — |
+| 维度 | 2017 特有 | 与 M1 共享 | T18 后状态 |
+|------|----------|-----------|-----------|
+| Engine 进程 | **有**（PID 28004, 7776） | M1 无 `ccc-engine.py` 进程 | **2017 已停止**（bootout） |
+| Board 进程 | 有（PID 64950, 7775） | M1 也有（独立实例） | **2017 已停止**（bootout） |
+| Chat Server | 有（PID 89608, 7777） | M1 也有（独立实例） | **2017 已停止**（bootout） |
+| Launchd 注册 | 3 个 plist 活跃 | M1 仅 `agent-sidecar` + `hub-tunnel` | **2017 3 个 plist UNLOADED** |
+| `~/.ccc/control.json` | mode=enabled | M1 独立控制面 | **2017 mode=disabled** |
+| qb 产线依赖 | 绝对路径引用 `scripts/` | — | 活跃产线零引用（8 个历史计划保留原文） |
 
-**关键结论**：`scripts/` 的退役放行条件必须包含 **2017 侧旧引擎停止 + 切换到新栈**，**不能仅以 M1 侧为准**。
+**关键结论**：`scripts/` 的退役放行条件必须包含 **2017 侧旧引擎停止 + 切换到新栈**，**不能仅以 M1 侧为准**。**T18（2026-08-02）已满足全部放行条件并执行归档**。
 
 ---
 
@@ -267,7 +271,7 @@
 | 项 | 动作 | 状态 | 依据 |
 |----|------|------|------|
 | `relay/node_modules/` | 删除 | **✅ 已完成**（T15） | 78MB 构建产物，旧 relay 已停止；`npm install` 可重建 |
-| `relay/dist/` | 删除 | 待执行 | 188KB 编译产物，`npm run build` 可重建 |
+| `relay/dist/` | 删除 | **✅ 已完成**（T18） | 188KB 编译产物，`npm run build` 可重建 |
 | `desktop/.build/` | 删除 | **✅ 已完成**（T15） | 1.3GB 构建产物，`swift build` 可重建 |
 | `db/` | 归档 → `docs/archive/legacy-retired-2026-08-02/db/` | **✅ 已完成**（T15） | 4KB，CCC 独立后不再依赖 HP 数据库 |
 | `lib/` | 归档 → `docs/archive/legacy-retired-2026-08-02/lib/` | **✅ 已完成**（T15） | 8KB，功能简单 |
@@ -280,12 +284,23 @@
 
 ### 第二阶段：需新栈就绪后执行
 
-| 项 | 动作 | 放行条件 |
-|----|------|----------|
-| `scripts/` | 归档 | `server/` 全部就绪并切换运行（所有端口从旧脚本迁移到新栈） |
-| `templates/` | 归档 | 新栈模板就绪，旧引擎不再引用 |
+| 项 | 动作 | 状态 | 放行条件 |
+|----|------|------|----------|
+| `scripts/` | 归档 → `docs/archive/legacy-retired-2026-08-02/scripts/` | **✅ 已完成**（T18） | `server/` 全部就绪并切换运行（所有端口从旧脚本迁移到新栈） |
+| `templates/` | 归档 → `docs/archive/legacy-retired-2026-08-02/templates/` | **✅ 已完成**（T18） | 新栈模板就绪，旧引擎不再引用 |
+| 2017 旧引擎停止 | launchd 卸载 + control.json disabled | **✅ 已完成**（T18） | 3 个 launchd bootout + 进程清空 + 6100/6102 新中转站存活 |
+| relay/dist 清理 | 删除 | **✅ 已完成**（T18） | 188KB 未跟踪构建产物 |
 
-**放行条件**：
+**T18 执行结果**（2026-08-02）：
+- 2017 三个旧引擎 launchd 全部 bootout（exit=0），进程清空（`ps aux | grep ccc-engine|ccc-board|ccc-chat` = 空）
+- `~/.ccc/control.json` mode: `enabled → disabled`（备份 `control.json.bak-20260802`）
+- **6100/6102 新中转站（PID 69311，node）存活**——红线 #1 满足（`legacy-phase2-plan.md` 第 100 行 `kill 69311` 已作废，禁止执行）
+- `scripts/`、`templates/` 经 `git mv` 归档至 `docs/archive/legacy-retired-2026-08-02/`，内容零丢失
+- `relay/dist/` 删除（188K，未跟踪，`git status` 无残留）
+- M1 旧进程 7777/7775/7788 未主动 kill（红线 #2 满足；归档后失去重启能力，壳迁移另行放行）
+- qb 8 个历史完结计划保留原文不改写（活跃产线零引用即满足放行）
+
+**前置放行条件**：
 - **2017 旧引擎停止**：`com.ccc.engine`（PID 28004, 端口 7776）、`com.ccc.board`（PID 64950, 端口 7775）、`com.ccc.chat-server`（PID 89608, 端口 7777）全部停止，launchd plist 卸载
 - `control.json`（2017）模式降为 `disabled` 或删除
 - `server/engine/` 可替代 `scripts/ccc-engine.py` + `scripts/engine/`

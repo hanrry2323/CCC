@@ -4,12 +4,24 @@ window.BOARD_DATA = {
   "states": {
     "待分派": 0,
     "执行中": 0,
-    "已回写": 0,
+    "已回写": 1,
     "已关闭": 21,
     "打回": 3
   },
   "views": {
     "realtime": {
+      "已回写": [
+        {
+          "id": "T18",
+          "title": "退役第二阶段执行（scripts/templates 归档 + 2017 旧引擎停止 + relay/dist 清理）",
+          "state": "已回写",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        }
+      ],
       "已关闭": [
         {
           "id": "T1-R",
@@ -330,11 +342,11 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 24,
+        "count": 25,
         "states": {
           "待分派": 0,
           "执行中": 0,
-          "已回写": 0,
+          "已回写": 1,
           "已关闭": 21,
           "打回": 3
         }
@@ -353,7 +365,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "已开发待验收",
-        "count": 0
+        "count": 1
       },
       {
         "bucket": "已验收待确认",
@@ -371,7 +383,7 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 24,
+        "count": 25,
         "buckets": [
           {
             "bucket": "未开发",
@@ -383,7 +395,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "已开发待验收",
-            "count": 0
+            "count": 1
           },
           {
             "bucket": "已验收待确认",
@@ -412,7 +424,18 @@ window.BOARD_DATA = {
         },
         {
           "bucket": "已开发待验收",
-          "items": []
+          "items": [
+            {
+              "id": "T18",
+              "title": "退役第二阶段执行（scripts/templates 归档 + 2017 旧引擎停止 + relay/dist 清理）",
+              "state": "已回写",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            }
+          ]
         },
         {
           "bucket": "已验收待确认",
