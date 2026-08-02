@@ -52,4 +52,91 @@
 
 ## 回写区
 
-（Claude Code 回写）
+**执行体**：Claude Code（CLI）  
+**日期**：2026-08-02  
+**实现 commit**：`84b496b`（`chore(board):` 前缀 · 13 文件 · 1218 insertions）
+
+### 结果摘要
+
+契约 §4 看板落地：board 数据模型（models）+ 任务卡解析（loader）+ 三视图与线路图查询（queries）+ `window.BOARD_DATA` 导出（export）；`web/` 静态零 API 页面（三视图切换 + 线路图占位 + 状态徽章 + 深/浅主题）以 `file://` 可开；前置清理 board/README 旧状态机，67 用例全绿。
+
+### 测试输出
+
+```
+$ python3 -m pytest server/tests/ -v --tb=short
+collected 67 items
+server/tests/test_board_export.py ...                                    [  4%]
+server/tests/test_board_loader.py ......                                [ 14%]
+server/tests/test_board_queries.py .......                              [ 25%]
+server/tests/test_engine_dispatch.py .........                          [ 38%]
+server/tests/test_engine_main.py ......                                 [ 47%]
+server/tests/test_engine_task.py ........                               [ 59%]
+server/tests/test_skeleton.py ...........................                [100%]
+============================== 67 passed in 0.06s ==============================
+```
+
+- TestBoardLoader：6 passed（完整解析 / 显式打回次数 / 打回态隐含 / 缺失标未知 / 无括号执行体 / 目录加载）
+- TestBoardQueries：7 passed（实时分组 / 未知态桶 / **7 天窗口边界**（恰 7 天含、8 天不含）/ 倒序 / 项目分组计数 / 线路图桶映射 / 徽章计数）
+- TestBoardExport：4 passed（导出可解析 / 自动建父目录 / 聚合数据完整）
+- 既有 engine 23 + skeleton 27 不回归；`py_compile server/board/*.py` OK · `bash -n` OK · `node --check js/app.js` OK · `node` 桩加载 `board.js` OK
+
+真实数据导出验证：
+
+```
+$ python3 -m server.board.export
+exported 4 cards -> server/web/data/board.js
+states: 待分派 4 · 执行中 0 · 已回写 0 · 已关闭 0 · 打回 0
+recent: T1-R, T1, T2（2026-08-02 回写，T3 未回写排除）
+projects: INT-120 × 4 · roadmap: 未开发 4
+```
+
+### 硬编码扫描（S1–S4 · 零字面量通过线）
+
+范围同前：`server/` 生产代码/模板（`.py/.sh/.plist/.env`），排除 `tests/` 夹具与 `config/executors.example.json`。
+
+| # | 扫描项 | 命令 | 命中 |
+|---|--------|------|------|
+| S1 | 绝对路径 `/Users` | `rg -n '/Users' server/ -g '!*.md' -g '!server/tests/**' -g '!config/executors.example.json'` | **0** ✅ |
+| S2 | 字面端口 `:[4-9][0-9]{3}` | 同上 | **0** ✅ |
+| S3 | 模型名 `claude\|gpt-\|gemini\|llama` | `rg -ni 'claude\|gpt-\|gemini\|llama' server/ -g '*.py' -g '*.sh' -g '*.plist' -g '*.env' -g '!server/tests/**'` | **0** ✅ |
+| S4 | 工具名 `python3\|opencode\|ollama\|launchd\|codex\|trae` | 同上 | **0** ✅ |
+
+新增 board 模块零字面量；web 静态资源不监听端口、无绝对路径；执行体名只出现在导出的 `board.js`（数据）。
+
+### 目录树（board/web 相关）
+
+```
+server/
+├── board/
+│   ├── README.md          # 状态机已清理 → 契约 §2/§4
+│   ├── models.py          # BoardItem + 状态/线路图常量
+│   ├── loader.py          # parse_card / load_dispatch_cards（容错）
+│   ├── queries.py         # 三视图 + 线路图聚合
+│   └── export.py          # build_board_data / export_board / CLI
+├── web/
+│   ├── README.md          # 已对齐静态零 API 实现
+│   ├── index.html         # 顶栏 + 徽章 + 主题 + 四标签
+│   ├── css/style.css      # 深/浅主题令牌（沿用架构页）
+│   ├── js/app.js          # 渲染 window.BOARD_DATA
+│   └── data/board.js      # 导出产物（4 张真实卡）
+└── tests/
+    ├── test_board_loader.py / test_board_queries.py / test_board_export.py
+```
+
+### 验收自检对照表
+
+| # | 验收标准 | 状态 |
+|---|----------|------|
+| 1 | `board/README.md` 已对齐契约 §2 / §4（无旧状态机残留） | ✅ 已重写；`web/README.md` 同步对齐（原 HTTP 假设已被零 API 取代） |
+| 2 | 三视图查询测试通过（含 7 天窗口边界、项目分组、状态筛选） | ✅ 边界测试：恰 7 天含 / 8 天不含 / 未知回写不含；倒序 |
+| 3 | 任务卡解析容错（字段缺失不崩，标未知） | ✅ `test_missing_fields_unknown` 通过；ID 回退文件名 |
+| 4 | `board.js` 可被页面读取；页面 `file://` 可开，三视图可切换，线路图占位可见 | ✅ node 桩加载验证；相对路径零 fetch；四标签 + 线路图区块 + 徽章 |
+| 5 | 测试全绿（新增 board + 既有 engine 不回归）；py_compile / bash -n 过 | ✅ 67 passed；py_compile / bash -n / node --check 全过 |
+| 6 | 零硬编码；真实提交；工作树仅剩 2 个预存项；未碰旧代码/运行面/外脑 | ✅ S1–S4 零命中；`84b496b`；工作树剩 decided.json(M) + _update_handoff.py(??)；`scripts/` 等零改动；未启动服务；未读外脑 |
+
+### 遗留/不确定项
+
+1. **线路图「已验收待确认」为空桶**：§2 五态映射后无源状态落到该桶（占位预留，P3 定义）；已关闭映射到「确认可用」。
+2. **打回次数源数据缺失**：当前 4 卡无 `打回次数：N` 显式字段且状态非「打回」，均按 0；loader 已支持显式字段与「打回」态隐含。
+3. **`board.js` 为提交产物**：由 `server.board.export` 生成并入库；任务卡变更后需重新导出（命令见 `web/README.md`）。
+4. **当前卡状态字段未更新**（均「待分派」含已执行卡）：board 忠实呈现任务卡事实源，未做推断覆盖。
