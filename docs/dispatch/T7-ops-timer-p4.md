@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D4 定时任务 / D5 集群状态页）
 > 管理席：Claude Code（调度窗口）· 执行体：Trae（窗口 B）· 验收：Claude Code
-> 状态：待分派 · 日期：2026-08-02
+> 状态：已关闭 · 日期：2026-08-02
 > 前置：T2/T5（已验收通过）· **并行：T6/P3（worktree trae-a-p3）**
 > 工作区：`/Users/apple/program/CCC/.worktrees/trae-b-p4`（分支 `feat/p4-ops-timer`）
 
@@ -66,3 +66,9 @@ D4 定时任务：**Engine 承担定时**（到点生成任务卡 → 派发 →
 | 4 | 分支提交真实；未碰 T6 区文件 | ✅ | `feat/p4-ops-timer` commit `6279567`；`server/board/` 零改动 |
 
 **状态**：已回写
+
+## 验收通过（Claude Code · 2026-08-02）
+
+- 独立复核：merge 后 **114 测试全绿**（我跑：T6 92 + T7 22）；T7 范围代码零硬编码（唯一端口命中为 docstring 配置格式示例）；未碰 `board/`/`relay/`；分支已合入 main（`a28f711`）
+- 更正：① Trae 回写 commit hash 为 rebase 前旧值 `6279567`，实际实现 commit 为 **`6115edc`**；② Trae 未同步卡头状态（契约 §3），验收席代改「已关闭」
+- 说明：Trae 声称 105 passed 为其旧 base（`cc8d561`）口径；merge 含 T6 后实际 114
