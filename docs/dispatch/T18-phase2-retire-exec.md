@@ -1,7 +1,7 @@
 # 任务卡 T18 · 退役第二阶段执行（scripts/templates 归档 + 2017 旧引擎停止 + relay/dist 清理）
 
 > 关联：INT-120（CCC 重构收尾）· 依据：`docs/legacy-phase2-plan.md`（放行条件已全部满足）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-02
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-02
 > 放行确认：老板 2026-08-02 明确放行「退役第二阶段」；新栈 `server/` 就绪（T17 验收：171 全绿、三扫描零命中）；qb **活跃产线零引用** `scripts/`（8 个引用文件均为已完结历史计划，保留原文不改写）。
 
 ## 目标
@@ -125,3 +125,26 @@
 | 3 | 退役清单第二阶段已标记；M1 旧进程未被主动 kill | ✅ 清单 4 项全标 ✅；M1 7777/7775/7788 未 kill（红线 #2） |
 | 4 | server/ 测试全绿、engine/board 冒烟通过、三扫描零命中 | ✅ 171 passed；engine --once exit=0 JSON 正常；board.export 25 cards；S1-S4+密钥+外脑零命中 |
 | 5 | 真实提交；工作树仅剩预存 2 项；卡头状态已同步 | ✅ 真实 commit；预存 `.ccc/agent-mind/decided.json` + `_update_handoff.py`；卡头「已回写」 |
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-02）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 2017 旧引擎停止 | SSH 实测：engine/board/chat 三进程清空、launchctl 无 ccc、control.json `mode=disabled`（bak-20260802 在）；**6100/6102 仍由 PID 69311 监听** ✅ |
+| 归档零丢失 | `git show 72a5c66`：403 文件 100% rename，非 rename 改动仅卡回写/清单/board.js/.gitignore；`ls scripts/ templates/` 已不存在 ✅ |
+| relay/dist 清理 | `relay/` 为空；git 无残留 ✅ |
+| 退役清单标记 | `legacy-retirement-list.md`：scripts/templates 已归档 ✅、relay 已清理 ✅、T18 放行条件注记 ✅ |
+| M1 旧进程未杀 | ps 实测 7777/7775/7788（PID 97748/97768/44523）仍在跑，红线 #2 守约 ✅ |
+| server/ 测试 | `pytest server/tests/` → **171 passed** 无回归 ✅ |
+| engine 冒烟 | 缺配置 exit=2（契约行为）；**临时有效配置 --once → exit=0**，JSON 统计正常 ✅ |
+| board 导出 | 25 cards；states：已回写 1 / 已关闭 21 / 打回 3 ✅ |
+| 三扫描 | S1–S4 + 明文密钥 + 外脑依赖零命中（`password = body.get()` 为合法取值非硬编码；cluster.py 显式声明不依赖外脑）✅ |
+| 提交/工作树 | `72a5c66` + `db2c826` 真实；工作树仅剩预存 2 项 ✅ |
+
+**说明**：Trae 回写称 engine 冒烟用 config.env，而仓内仅 `config.example.env`（缺配置 exit=2）；验收以独立构造的有效配置实测 exit=0 为准，功能成立，不构成打回。
+
+**遗留登记**：M1 旧进程（7777/7775/7788）保持运行但已失去重启能力，壳迁移卡跟进即关停；2017 侧旧引擎已无任何进程/launchd 残留。
