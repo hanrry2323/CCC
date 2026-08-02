@@ -5,24 +5,48 @@
   var DATA = window.BOARD_DATA || { states: {}, views: {}, roadmap: [] };
   var CLUSTER = window.CLUSTER_DATA || { nodes: [], services: [], collected_at: "" };
   var API_BASE = window.API_BASE_URL || null;
-  // T16 起 board 接口需 Bearer token：由 URL `?token=` 参数注入，无则 401 回退本地
-  var API_HEADERS = {};
-  if (window.BOARD_TOKEN) {
-    API_HEADERS["Authorization"] = "Bearer " + window.BOARD_TOKEN;
+  // token 统一管理（T23）：localStorage 优先 > URL ?token= 注入
+  function getToken() {
+    try {
+      var t = localStorage.getItem("ccc-chat-token");
+      if (t) return t;
+    } catch (e) { /* file:// 可能禁用 localStorage */ }
+    return window.BOARD_TOKEN || null;
+  }
+  function setToken(t) {
+    try { localStorage.setItem("ccc-chat-token", t); } catch (e) {}
+  }
+  function clearToken() {
+    try { localStorage.removeItem("ccc-chat-token"); } catch (e) {}
+  }
+  // 暴露给 chat.js 共用（chat.js 登录后调用 setToken 并触发刷新）
+  window.cccAuth = { getToken: getToken, setToken: setToken, clearToken: clearToken };
+
+  function buildHeaders() {
+    var h = {};
+    var t = getToken();
+    if (t) h["Authorization"] = "Bearer " + t;
+    return h;
   }
   var TONES = { 待分派: "amber", 执行中: "cyan", 已回写: "violet", 已关闭: "emerald", 打回: "rose" };
   var STATUS_TONES = { 正常: "emerald", 异常: "rose", 未知: "faint" };
 
-  // HTTP API 模式：构造 BOARD_DATA 结构
+  // HTTP API 模式：构造 BOARD_DATA 结构（无 token 则不请求，避免 401 噪音）
   function fetchApiData() {
     if (!API_BASE) return Promise.resolve(null);
+    var token = getToken();
+    if (!token) {
+      console.log("[web] 无 token，跳过 board 请求（请先登录）");
+      return Promise.resolve(null);
+    }
+    var headers = buildHeaders();
     var base = API_BASE.replace(/\/+$/, "");
     return Promise.all([
-      fetch(base + "/board/realtime", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/recent", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/by_project", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/roadmap", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/states", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/realtime", { headers: headers }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/recent", { headers: headers }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/by_project", { headers: headers }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/roadmap", { headers: headers }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/states", { headers: headers }).then(function (r) { return r.ok ? r.json() : null; }),
     ]).then(function (results) {
       return {
         source: "HTTP API",
@@ -40,6 +64,14 @@
     });
   }
 
+  // 登录后刷新 board 数据（chat.js 登录成功后调用）
+  window.cccRefreshBoard = function () {
+    if (!API_BASE) return;
+    fetchApiData().then(function (apiData) {
+      if (apiData) render(apiData);
+    });
+  };
+
   // 数据就绪后渲染
   function render(data) {
     if (!data) return;
@@ -52,13 +84,25 @@
     renderCluster();
   }
 
-  // 入口：API 模式优先，回退本地
+  // 入口：API 模式优先，无 token 显示登录提示，回退本地
   if (API_BASE) {
     var ds = document.getElementById("data-source");
     if (ds) ds.textContent = "HTTP API: " + API_BASE;
-    fetchApiData().then(function (apiData) {
-      render(apiData || DATA);
-    });
+    var token = getToken();
+    if (!token) {
+      // 无 token：显示登录提示（不白屏，不请求 board）
+      var box = document.getElementById("view-realtime");
+      if (box) {
+        var tip = el("div", "card");
+        tip.appendChild(el("h3", null, "请先登录"));
+        tip.appendChild(el("p", "meta", "看板数据需登录后访问（账号密码 → /session → token）。请到「对话」标签登录。"));
+        box.appendChild(tip);
+      }
+    } else {
+      fetchApiData().then(function (apiData) {
+        render(apiData || DATA);
+      });
+    }
   }
 
   function el(tag, cls, text) {

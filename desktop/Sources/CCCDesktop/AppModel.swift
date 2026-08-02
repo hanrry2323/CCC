@@ -35,7 +35,7 @@ final class AppModel: ObservableObject {
     /// T19 壳迁移：新服务端（server/web/server.py）接管 7788 对话口
     /// 默认开启，对话走 /conversation（非流式，接大脑）；关闭则回退旧 sidecar /api/chat（SSE）
     @AppStorage("ccc.useNewServer") var useNewServer: Bool = true
-    @AppStorage("ccc.newServerURL") var newServerURLString: String = "http://127.0.0.1:7788"
+    @AppStorage("ccc.newServerURL") var newServerURLString: String = "http://192.168.3.116:7788"
     @AppStorage("ccc.newServerUser") var newServerUser: String = ""
     @AppStorage("ccc.newServerPass") var newServerPass: String = ""
     /// 全局本机工作区 fallback（sidecar cwd）

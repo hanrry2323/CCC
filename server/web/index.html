@@ -60,18 +60,28 @@
   <footer class="foot">静态看板 · 数据来自任务卡导出 · <span id="data-source">零 API</span></footer>
 
   <script>
-    // 数据源切换：URL 参数 ?api=http://host:port 启用 HTTP API 模式
+    // 数据源推导（T23）：
+    //   1. 显式 ?api= 参数优先（兼容旧用法）；
+    //   2. 无参数且 location.protocol === "http:" → 同源 API（直开 7788 看页面）；
+    //   3. file:// 零 API 模式（仅本地 board.js）。
     (function () {
       var m = location.search.match(/[?&]api=([^&]+)/);
       if (m) {
         window.API_BASE_URL = decodeURIComponent(m[1]);
+      } else if (location.protocol === "http:" || location.protocol === "https:") {
+        window.API_BASE_URL = location.origin;
+      }
+      if (window.API_BASE_URL) {
         console.log('[web] HTTP API 模式:', window.API_BASE_URL);
       }
-      // T16 起 board 接口需鉴权：?token=<token> 注入 Bearer 头（token 由 POST /session 换取）
+      // token 统一管理（T23）：URL ?token= 注入时同步写入 localStorage，
+      // app.js 与 chat.js 共用 ccc-chat-token 键读取
       var t = location.search.match(/[?&]token=([^&]+)/);
       if (t) {
-        window.BOARD_TOKEN = decodeURIComponent(t[1]);
-        console.log('[web] HTTP API 鉴权 token 已注入');
+        var tok = decodeURIComponent(t[1]);
+        try { localStorage.setItem("ccc-chat-token", tok); } catch (e) {}
+        window.BOARD_TOKEN = tok;
+        console.log('[web] token 已注入');
       }
     })();
   </script>

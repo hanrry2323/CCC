@@ -33,6 +33,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import mimetypes
 import os
 import sys
 import time
@@ -178,6 +179,45 @@ def _forward_to_upstream(message: str, history: list[dict[str, Any]]) -> tuple[b
 
 # ── 免鉴权的路径前缀 ──
 _NO_AUTH_PATHS = frozenset({"/health", "/session"})
+
+
+# ── 静态托管（T23：浏览器直开 7788 看页面） ──
+# 白名单：仅这些路径免鉴权返回静态文件（页面本身是登录入口）。
+_STATIC_WEB_ROOT = _PROJECT_ROOT / "server" / "web"
+# 路径 → 磁盘文件相对 web 根的映射（显式白名单，禁止目录穿越）
+_STATIC_WHITELIST: dict[str, str] = {
+    "/": "index.html",
+    "/index.html": "index.html",
+    "/css/style.css": "css/style.css",
+    "/js/app.js": "js/app.js",
+    "/js/chat.js": "js/chat.js",
+    "/data/board.js": "data/board.js",
+    "/data/cluster.js": "data/cluster.js",
+}
+
+
+def _resolve_static_file(path: str) -> tuple[Path, str] | None:
+    """将请求路径解析为磁盘文件 + Content-Type；非白名单或穿越返回 None。
+
+    防穿越策略：
+    1. 仅白名单内的路径允许（显式映射，不接受任意路径）；
+    2. resolve() 后必须仍在 _STATIC_WEB_ROOT 内；
+    3. 必须是普通文件。
+    """
+    # 去 query + fragment，path 已是 do_GET 处理后的纯 path
+    rel = _STATIC_WHITELIST.get(path)
+    if not rel:
+        return None
+    target = (_STATIC_WEB_ROOT / rel).resolve()
+    try:
+        target.relative_to(_STATIC_WEB_ROOT.resolve())
+    except ValueError:
+        # 越界：不在 web 根内
+        return None
+    if not target.is_file():
+        return None
+    ctype, _ = mimetypes.guess_type(target.name)
+    return target, ctype or "application/octet-stream"
 
 
 # ── 看板兼容接口辅助（T20：BoardSnapshot / BoardSummaries / TaskDetail） ──
@@ -471,6 +511,29 @@ class _APIHandler(BaseHTTPRequestHandler):
     def _send_404(self):
         self._send_json({"error": "not found"}, 404)
 
+    def _send_static(self, path: str) -> bool:
+        """处理静态白名单路径（免鉴权）。命中返回 True，未命中返回 False。
+
+        T23：浏览器直开 7788 看页面，静态资源（HTML/CSS/JS/data）放行。
+        非白名单路径不处理，由 do_GET 继续走鉴权 + API 路由。
+        """
+        resolved = _resolve_static_file(path)
+        if resolved is None:
+            return False
+        target, ctype = resolved
+        try:
+            body = target.read_bytes()
+        except OSError:
+            self._send_404()
+            return True
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
     def _check_auth(self) -> bool:
         """鉴权中间件。返回 True 通过，False 已发送 401。"""
         path = self.path.rstrip("/").split("?")[0]
@@ -592,9 +655,13 @@ class _APIHandler(BaseHTTPRequestHandler):
             }, 200)
 
     def do_GET(self):
+        # T23：静态白名单路径免鉴权（页面本身是登录入口）
+        raw_path = self.path.split("?")[0]
+        path = raw_path.rstrip("/") or "/"
+        if self._send_static(path):
+            return
         if not self._check_auth():
             return
-        path = self.path.rstrip("/").split("?")[0]
         if path == "/health":
             self._send_json({"status": "ok"})
             return

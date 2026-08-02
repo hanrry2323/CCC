@@ -112,6 +112,19 @@ def _get(api_server: str, path: str, token: str | None = None) -> tuple[int, dic
         conn.close()
 
 
+def _get_raw(api_server: str, path: str) -> tuple[int, str]:
+    """GET 请求（无鉴权），返回 (status, body_text)；用于静态资源测试。"""
+    parsed = urlparse(api_server)
+    conn = HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    try:
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8", errors="replace")
+        return resp.status, raw
+    finally:
+        conn.close()
+
+
 def _post(api_server: str, path: str, body_dict: dict, token: str | None = None) -> tuple[int, dict]:
     """POST 请求（可选带 Bearer token），返回 (status, body_dict)。"""
     parsed = urlparse(api_server)
@@ -389,6 +402,70 @@ class TestHealth:
         status, data = _get(api_server, "/health")
         assert status == 200
         assert data == {"status": "ok"}
+
+
+# ── 静态托管（T23：浏览器直开 7788 看页面） ──
+
+
+class TestStaticHosting:
+    """静态白名单路径免鉴权返回磁盘文件；目录穿越 404；非白名单 API 无 token 401。"""
+
+    def test_root_returns_html(self, api_server):
+        """GET / 返回 index.html（200 + text/html）。"""
+        status, body_text = _get_raw(api_server, "/")
+        assert status == 200
+        assert "<html" in body_text.lower()
+        assert "<title>CCC 看板</title>" in body_text
+
+    def test_index_html(self, api_server):
+        """GET /index.html 200。"""
+        status, body_text = _get_raw(api_server, "/index.html")
+        assert status == 200
+        assert "<html" in body_text.lower()
+
+    def test_js_app_js(self, api_server):
+        """GET /js/app.js 200 + JavaScript content-type。"""
+        status, body_text = _get_raw(api_server, "/js/app.js")
+        assert status == 200
+        assert "CCC 看板" in body_text or "fetchApiData" in body_text
+
+    def test_css_style_css(self, api_server):
+        """GET /css/style.css 200。"""
+        status, _ = _get_raw(api_server, "/css/style.css")
+        assert status == 200
+
+    def test_data_board_js(self, api_server):
+        """GET /data/board.js 200。"""
+        status, _ = _get_raw(api_server, "/data/board.js")
+        assert status == 200
+
+    def test_static_no_auth_required(self, api_server):
+        """静态路径无 token 仍 200（页面本身是登录入口）。"""
+        status, _ = _get_raw(api_server, "/")
+        assert status == 200
+        status, _ = _get_raw(api_server, "/js/app.js")
+        assert status == 200
+
+    def test_directory_traversal_rejected(self, api_server):
+        """目录穿越路径 404（非白名单）。"""
+        # /../server.py 不在白名单 → _send_static 返回 False → 走鉴权 → 401
+        # 但白名单只接受显式映射，穿越路径不命中白名单
+        for p in ["/../server.py", "/etc/passwd", "/%2e%2e/server.py", "/js/../server.py"]:
+            status, _ = _get_raw(api_server, p)
+            # 穿越路径不在白名单 → 走鉴权 → 无 token 401（不是 200，不是 403 文件）
+            assert status in (401, 404), f"traversal {p} should be 401/404, got {status}"
+
+    def test_non_whitelist_api_no_token_401(self, api_server):
+        """非白名单 API 路径无 token 仍 401（鉴权不放松）。"""
+        status, data = _get(api_server, "/board/states")
+        assert status == 401
+        assert "error" in data
+
+    def test_nonexistent_static_404(self, api_server):
+        """不存在的静态路径走 API 路由 → 404（带 token）。"""
+        token = _get_token(api_server)
+        status, _ = _get(api_server, "/nonexistent.js", token=token)
+        assert status == 404
 
 
 # ── Board 接口（需鉴权） ──

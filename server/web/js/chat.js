@@ -1,11 +1,13 @@
 /* CCC 看板 · 对话视图 —— 登录（账号密码换 token）+ 对话（POST /conversation）。
- * 仅在 HTTP API 模式（?api=...）下生效；file:// 零 API 模式不显示对话。 */
+ * 仅在 HTTP API 模式（?api=... 或同源 http: 直开）下生效；file:// 零 API 模式不显示对话。
+ * T23：token 统一走 app.js 的 window.cccAuth（localStorage 优先 > URL ?token=）。 */
 (function () {
   "use strict";
 
   var API_BASE = window.API_BASE_URL || null;
-  // token 来源优先级：localStorage > URL ?token=
+  // token 统一管理：复用 app.js 的 cccAuth（localStorage 优先 > URL ?token=）
   function getToken() {
+    if (window.cccAuth) return window.cccAuth.getToken();
     try {
       var t = localStorage.getItem("ccc-chat-token");
       if (t) return t;
@@ -13,10 +15,12 @@
     return window.BOARD_TOKEN || null;
   }
   function setToken(t) {
-    try { localStorage.setItem("ccc-chat-token", t); } catch (e) {}
+    if (window.cccAuth) window.cccAuth.setToken(t);
+    else { try { localStorage.setItem("ccc-chat-token", t); } catch (e) {} }
   }
   function clearToken() {
-    try { localStorage.removeItem("ccc-chat-token"); } catch (e) {}
+    if (window.cccAuth) window.cccAuth.clearToken();
+    else { try { localStorage.removeItem("ccc-chat-token"); } catch (e) {} }
   }
 
   function el(tag, cls, text) {
@@ -76,8 +80,9 @@
         setToken(res.data.token);
         showChat();
         setChatMsg("登录成功，token 有效期 " + (res.data.ttl_s || 0) + " 秒");
-        // 刷新看板数据用 token
+        // T23：登录成功后刷新看板数据（app.js 的 cccRefreshBoard 已用新 token）
         window.BOARD_TOKEN = res.data.token;
+        if (window.cccRefreshBoard) window.cccRefreshBoard();
       } else {
         showLogin("登录失败：" + (res.data.error || res.status));
       }
