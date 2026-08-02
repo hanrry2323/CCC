@@ -1,0 +1,99 @@
+{
+  "schema": "ccc-kb-seed-v1",
+  "section": "01-nodes-paths",
+  "updated_at": "2026-08-02",
+  "source": "qx-map cluster/path-authority.md (2026-08-01) + cluster/cluster.json (2026-08-02)",
+  "note": "路径权威表 SSOT。所有机器/项目路径以此为准。状态类信息（磁盘/负载/服务在线）仅作参考，以当日 manifest 为准。",
+  "machines": [
+    {
+      "hostname": "m1",
+      "ip": "192.168.3.140",
+      "os": "macOS 26.5.2 arm64",
+      "ram_gb": 8,
+      "ssh_user": "apple",
+      "ssh_key": "~/.ssh/（本地 shell，无需密钥）",
+      "access": "本地 shell",
+      "role": "开发机 + Codex 驻场·开发期工作站（Trae 开发 CCC）+ 后期壳之一",
+      "services": [
+        "Codex Desktop",
+        "ai-loop-router :4100/:4102 (loop-router)",
+        "ccc-relay-runtime :4000 (CCC relay，与loop-router独立)",
+        "postgres :5432",
+        "ccc-chat-server :7777 (localhost)",
+        "ccc-agent-sidecar :7788"
+      ]
+    },
+    {
+      "hostname": "mac2017",
+      "ip": "192.168.3.116",
+      "os": "macOS 13.7.8 x86_64",
+      "ram_gb": 16,
+      "ssh_user": "fan",
+      "ssh_key": "~/.ssh/id_ed25519_xianyu",
+      "access": "ssh fan@192.168.3.116",
+      "smb_mount": "/Volumes/fan",
+      "role": "重活节点·CCC 唯一服务端 + 大脑宿主 + 执行机·qb 本体所在",
+      "services": [
+        "qx-observer :7777",
+        "xianyu :8080",
+        "redis :6379",
+        "（ollama 11434 已移除 2026-08-02）"
+      ]
+    },
+    {
+      "hostname": "hp",
+      "ip": "192.168.3.131",
+      "os": "Ubuntu 25.10",
+      "ram_gb": 11,
+      "ssh_user": "hp",
+      "ssh_key": "~/.ssh/id_ed25519_hp",
+      "access": "ssh hp@192.168.3.131",
+      "role": "存储 + 知识库服务 + medio-server",
+      "services": [
+        "mcp-server :8083（知识库 MCP 唯一入口）",
+        "memory-store :8082",
+        "postgres :5432",
+        "ollama（4 models，not for prod embedding）",
+        "medio-server"
+      ]
+    },
+    {
+      "hostname": "windows",
+      "ip": "192.168.3.252",
+      "os": "Windows",
+      "ssh_user": "win",
+      "ssh_key": "~/.ssh/id_ed25519",
+      "access": "ssh win@192.168.3.252",
+      "role": "（待定）"
+    }
+  ],
+  "relay_dual": {
+    "loop_router": {
+      "code_repo": "/Users/apple/program/ai-loop-router",
+      "m1_port": 4102,
+      "upstream": "opencode/minimax/zhipu 直连",
+      "codex_usage": "是（model_provider=loop-router）",
+      "responsibility": "Codex 走的智能路由"
+    },
+    "ccc_relay": {
+      "code_repo": "/Users/apple/.ccc/relay-runtime（另有 Mac2017 副本）",
+      "m1_port": 4000,
+      "upstream": "CCC relay（opencode）",
+      "codex_usage": "否",
+      "responsibility": "CCC 产线的中转"
+    }
+  },
+  "hp_knowledge_base": {
+    "mcp_server": "HP 192.168.3.131:8083",
+    "memory_store": "HP 192.168.3.131:8082",
+    "knowledge_data": "HP /data/knowledge/",
+    "note": "权威知识在 HP，M1 仅索引。MCP 是唯一入口。"
+  },
+  "path_hallucination_checks": [
+    "本机路径：ls -d 当场验证，不存在则不写",
+    "集群路径：ssh <host> 'ls -d ...' 当场验证",
+    "SMB 路径：确认 /Volumes/fan 挂载再引用；卸载时改用 ssh",
+    "旧快照：cluster.json 等过 3 天以上先重验再信",
+    "写任何项目文档前对照本表；本表没有的路径 = 先查证再落盘"
+  ]
+}
