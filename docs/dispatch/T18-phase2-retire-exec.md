@@ -113,8 +113,8 @@
 16. `git status` → 403 staged renames + `.gitignore`/`legacy-retirement-list.md`/`board.js` M + 预存 2 项（`.ccc/agent-mind/decided.json`、`_update_handoff.py`）✅
 
 **E. 提交 + 回写**：
-17. 提交：`chore(retire): phase 2 — archive scripts/ and templates/, stop 2017 legacy engines`（commit hash 见 git log）
-18. 回写：卡头 `状态：待分派 → 已回写`，回写区填完，`board.js` 重导出
+17. 提交：`72a5c66` `chore(retire): phase 2 — archive scripts/ and templates/, stop 2017 legacy engines`（407 files changed: 403 renames + 4 edits）
+18. 回写：卡头 `状态：待分派 → 已回写`，回写区填完，`board.js` 重导出（25 cards，T18 state=已回写）
 
 ### 验收自检
 
