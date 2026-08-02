@@ -176,6 +176,10 @@ body {
   border-radius: var(--radius);
   padding: 14px;
   text-align: center;
+  transition: border-color 0.15s;
+}
+.roadmap .step:hover {
+  border-color: var(--violet);
 }
 .roadmap .step .num {
   font-size: 26px;
@@ -183,6 +187,79 @@ body {
   color: var(--violet);
 }
 .roadmap .step .name { margin-top: 6px; font-size: 13px; color: var(--muted); }
+
+/* 线路图三层导航 */
+.roadmap-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 8px 0;
+}
+.roadmap-nav .roadmap-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* 项目卡片 */
+.project-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+.project-card:hover {
+  border-color: var(--violet);
+}
+.project-card .project-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+/* 通用按钮 */
+.hub-btn {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.hub-btn:hover {
+  border-color: var(--violet);
+  color: var(--violet);
+}
+.hub-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--border);
+  color: var(--faint);
+}
+.hub-btn:disabled:hover {
+  border-color: var(--border);
+  color: var(--faint);
+}
+
+/* 确认可用按钮 */
+.confirm-btn {
+  margin-top: 8px;
+  background: var(--emerald-soft);
+  border-color: var(--emerald);
+  color: var(--emerald);
+  font-weight: 600;
+}
+.confirm-btn:disabled {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--faint);
+}
 
 /* 空态 */
 .empty { color: var(--faint); padding: 20px; text-align: center; font-size: 14px; }

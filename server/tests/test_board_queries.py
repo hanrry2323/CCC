@@ -7,6 +7,9 @@ from datetime import date
 from server.board.models import BoardItem
 from server.board.queries import (
     roadmap_aggregate,
+    roadmap_by_project,
+    roadmap_overview,
+    roadmap_project_detail,
     state_counts,
     view_by_project,
     view_realtime,
@@ -114,6 +117,95 @@ class TestRoadmap:
             "确认可用": 1,
             "有问题": 1,
         }
+
+
+class TestRoadmapOverview:
+    """L1 线路图总览。"""
+
+    def test_overview_aggregates_all(self) -> None:
+        items = [
+            _item("a", state="待分派", project="PRJ-X"),
+            _item("b", state="执行中", project="PRJ-Y"),
+            _item("c", state="已关闭", project="PRJ-X"),
+        ]
+        counts = {r["bucket"]: r["count"] for r in roadmap_overview(items)}
+        assert counts["未开发"] == 1
+        assert counts["开发中"] == 1
+        assert counts["确认可用"] == 1
+        assert counts["已验收待确认"] == 0
+
+    def test_overview_empty(self) -> None:
+        counts = {r["bucket"]: r["count"] for r in roadmap_overview([])}
+        assert all(c == 0 for c in counts.values())
+
+    def test_overview_unknown_state(self) -> None:
+        items = [_item("a", state="怪异值")]
+        counts = {r["bucket"]: r["count"] for r in roadmap_overview(items)}
+        assert all(c == 0 for c in counts.values())
+
+
+class TestRoadmapByProject:
+    """L2 单项目线路图。"""
+
+    def test_by_project_groups(self) -> None:
+        items = [
+            _item("a", state="待分派", project="PRJ-X"),
+            _item("b", state="执行中", project="PRJ-X"),
+            _item("c", state="已关闭", project="PRJ-Y"),
+        ]
+        rows = roadmap_by_project(items)
+        assert len(rows) == 2
+        # PRJ-X has 2 items, PRJ-Y has 1
+        assert rows[0]["project"] == "PRJ-X"
+        assert rows[0]["count"] == 2
+        buckets_x = {b["bucket"]: b["count"] for b in rows[0]["buckets"]}
+        assert buckets_x["未开发"] == 1
+        assert buckets_x["开发中"] == 1
+        assert buckets_x["已验收待确认"] == 0
+        assert rows[1]["project"] == "PRJ-Y"
+
+    def test_by_project_empty(self) -> None:
+        assert roadmap_by_project([]) == []
+
+    def test_by_project_variant_state(self) -> None:
+        items = [
+            _item("a", state="待分派（实现）", project="PRJ-X"),
+            _item("b", state="打回（原因）", project="PRJ-X"),
+        ]
+        rows = roadmap_by_project(items)
+        buckets = {b["bucket"]: b["count"] for b in rows[0]["buckets"]}
+        assert buckets["未开发"] == 1
+        assert buckets["有问题"] == 1
+
+
+class TestRoadmapProjectDetail:
+    """L3 项目线路图明细。"""
+
+    def test_detail_by_bucket(self) -> None:
+        items = [
+            _item("a", state="待分派", project="PRJ-X"),
+            _item("b", state="执行中", project="PRJ-X"),
+            _item("c", state="已关闭", project="PRJ-Y"),
+        ]
+        detail = roadmap_project_detail(items, "PRJ-X")
+        buckets = {d["bucket"]: d["items"] for d in detail}
+        assert len(buckets["未开发"]) == 1
+        assert buckets["未开发"][0]["id"] == "a"
+        assert len(buckets["开发中"]) == 1
+        assert buckets["开发中"][0]["id"] == "b"
+        assert len(buckets["已验收待确认"]) == 0
+        assert len(buckets["确认可用"]) == 0
+
+    def test_detail_other_project(self) -> None:
+        items = [_item("a", state="待分派", project="PRJ-X")]
+        detail = roadmap_project_detail(items, "PRJ-Y")
+        buckets = {d["bucket"]: len(d["items"]) for d in detail}
+        assert all(c == 0 for c in buckets.values())
+
+    def test_detail_empty(self) -> None:
+        detail = roadmap_project_detail([], "PRJ-X")
+        buckets = {d["bucket"]: len(d["items"]) for d in detail}
+        assert all(c == 0 for c in buckets.values())
 
 
 class TestStateCounts:

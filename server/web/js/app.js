@@ -108,21 +108,142 @@
     });
   }
 
-  function renderRoadmap() {
-    var box = document.getElementById("view-roadmap");
-    if (!box) return;
-    var steps = DATA.roadmap || [];
+  /* ── 线路图三层派生视图 ── */
+
+  var ROADMAP = DATA.roadmap || { overview: [], by_project: [], project_detail: {} };
+  var BUCKET_TONES = { 未开发: "faint", 开发中: "cyan", 已开发待验收: "violet", 已验收待确认: "faint", 确认可用: "emerald", 有问题: "rose" };
+
+  function renderBucketGrid(buckets, onClick) {
     var grid = el("div", "roadmap");
-    steps.forEach(function (step) {
+    buckets.forEach(function (b) {
       var node = el("div", "step");
-      node.appendChild(el("div", "num", String(step.count)));
-      node.appendChild(el("div", "name", step.bucket));
+      if (onClick) {
+        node.style.cursor = "pointer";
+        node.addEventListener("click", function () { onClick(b); });
+      }
+      node.appendChild(el("div", "num", String(b.count)));
+      node.appendChild(el("div", "name", b.bucket));
       grid.appendChild(node);
     });
+    return grid;
+  }
+
+  function renderRoadmapL1() {
+    var box = document.getElementById("view-roadmap");
+    if (!box) return;
+
+    // 总览桶
+    var overview = ROADMAP.overview || [];
+    var card1 = el("div", "card");
+    card1.appendChild(el("h3", null, "线路图总览"));
+    card1.appendChild(renderBucketGrid(overview));
+    box.appendChild(card1);
+
+    // 项目列表
+    var projects = ROADMAP.by_project || [];
+    if (!projects.length) {
+      box.appendChild(el("div", "empty", "暂无项目数据"));
+      return;
+    }
+    var card2 = el("div", "card");
+    card2.appendChild(el("h3", null, "项目"));
+    projects.forEach(function (row) {
+      var projCard = el("div", "project-card");
+      projCard.style.cursor = "pointer";
+      projCard.addEventListener("click", function () { showRoadmapL2(row.project); });
+      projCard.appendChild(el("div", "project-name", row.project + "（" + row.count + "）"));
+      var chips = el("div", "chip-row");
+      (row.buckets || []).forEach(function (b) {
+        if (b.count > 0) chips.appendChild(chip(b.bucket + " " + b.count, BUCKET_TONES[b.bucket]));
+      });
+      projCard.appendChild(chips);
+      card2.appendChild(projCard);
+    });
+    box.appendChild(card2);
+  }
+
+  function showRoadmapL2(project) {
+    var box = document.getElementById("view-roadmap");
+    if (!box) return;
+    box.innerHTML = "";
+
+    var nav = el("div", "roadmap-nav");
+    var backBtn = el("button", "hub-btn", "← 总览");
+    backBtn.addEventListener("click", function () { box.innerHTML = ""; renderRoadmapL1(); });
+    nav.appendChild(backBtn);
+    nav.appendChild(el("span", "roadmap-title", project));
+    box.appendChild(nav);
+
+    var projData = null;
+    (ROADMAP.by_project || []).forEach(function (r) {
+      if (r.project === project) projData = r;
+    });
+    if (!projData) {
+      box.appendChild(el("div", "empty", "项目数据不存在"));
+      return;
+    }
+
     var card = el("div", "card");
-    card.appendChild(el("h3", null, "线路图状态聚合（P3 占位）"));
-    card.appendChild(grid);
+    card.appendChild(el("h3", null, "线路图 · " + project));
+    card.appendChild(renderBucketGrid(projData.buckets, function (bucket) {
+      showRoadmapL3(project, bucket.bucket);
+    }));
     box.appendChild(card);
+  }
+
+  function showRoadmapL3(project, bucketName) {
+    var box = document.getElementById("view-roadmap");
+    if (!box) return;
+    box.innerHTML = "";
+
+    var nav = el("div", "roadmap-nav");
+    var backBtn = el("button", "hub-btn", "← 项目");
+    backBtn.addEventListener("click", function () { box.innerHTML = ""; showRoadmapL2(project); });
+    nav.appendChild(backBtn);
+    nav.appendChild(el("span", "roadmap-title", project + " · " + bucketName));
+    box.appendChild(nav);
+
+    var detail = (ROADMAP.project_detail || {})[project] || [];
+    var bucketData = null;
+    detail.forEach(function (b) {
+      if (b.bucket === bucketName) bucketData = b;
+    });
+    if (!bucketData || !bucketData.items.length) {
+      box.appendChild(el("div", "empty", bucketName + "桶为空"));
+      return;
+    }
+
+    var card = el("div", "card");
+    card.appendChild(el("h3", null, bucketName + "（" + bucketData.items.length + "）"));
+    var rows = el("div", "grid");
+    bucketData.items.forEach(function (it) {
+      var itemCard = el("div", "card");
+      itemCard.appendChild(el("h3", null, it.id + " · " + (it.title || "—")));
+      var meta = el("p", "meta");
+      meta.appendChild(chip("状态 " + it.state, TONES[it.state]));
+      meta.appendChild(document.createTextNode(" 执行体 " + it.executor));
+      if (it.written_at && it.written_at !== "未知") {
+        meta.appendChild(document.createTextNode(" · 回写 " + it.written_at));
+      }
+      if (it.reject_count > 0) {
+        meta.appendChild(chip("打回 " + it.reject_count, "rose"));
+      }
+      itemCard.appendChild(meta);
+      // 「确认可用」唯一人工动作占位
+      if (bucketName === "确认可用") {
+        var btn = el("button", "hub-btn confirm-btn", "确认可用");
+        btn.disabled = true;
+        btn.title = "预留——确认可用为唯一人工动作";
+        itemCard.appendChild(btn);
+      }
+      rows.appendChild(itemCard);
+    });
+    card.appendChild(rows);
+    box.appendChild(card);
+  }
+
+  function renderRoadmap() {
+    renderRoadmapL1();
   }
 
   function initTabs() {

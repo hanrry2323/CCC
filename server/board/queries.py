@@ -81,13 +81,71 @@ def view_by_project(items: list[BoardItem]) -> list[dict]:
 
 
 def roadmap_aggregate(items: list[BoardItem]) -> list[dict]:
-    """线路图聚合（P3 占位）：§2 状态 → 桶计数。"""
+    """线路图聚合（L1 总览）：§2 状态 → 桶计数（兼容旧名）。"""
+    return roadmap_overview(items)
+
+
+def roadmap_overview(items: list[BoardItem]) -> list[dict]:
+    """L1 线路图总览：全项目桶聚合。
+
+    返回按 ROADMAP_BUCKETS 顺序的 {bucket, count} 列表。
+    「已验收待确认」为预留空桶，当前无状态映射。
+    """
     counts = {bucket: 0 for bucket in ROADMAP_BUCKETS}
     for item in items:
         bucket = STATE_TO_ROADMAP.get(base_state(item.state))
         if bucket is not None:
             counts[bucket] += 1
     return [{"bucket": bucket, "count": counts[bucket]} for bucket in ROADMAP_BUCKETS]
+
+
+def roadmap_by_project(items: list[BoardItem]) -> list[dict]:
+    """L2 单项目线路图：各项目桶聚合。
+
+    返回按项目分组、按任务数倒序的 {project, buckets: [{bucket, count}]} 列表。
+    """
+    groups: dict[str, list[BoardItem]] = {}
+    for item in items:
+        groups.setdefault(item.project, []).append(item)
+
+    rows: list[dict] = []
+    for project, members in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        counts = {bucket: 0 for bucket in ROADMAP_BUCKETS}
+        for item in members:
+            bucket = STATE_TO_ROADMAP.get(base_state(item.state))
+            if bucket is not None:
+                counts[bucket] += 1
+        rows.append(
+            {
+                "project": project,
+                "count": len(members),
+                "buckets": [
+                    {"bucket": bucket, "count": counts[bucket]}
+                    for bucket in ROADMAP_BUCKETS
+                ],
+            }
+        )
+    return rows
+
+
+def roadmap_project_detail(
+    items: list[BoardItem],
+    project: str,
+) -> list[dict]:
+    """L3 项目线路图明细：按桶分组列出项目内全部任务卡。
+
+    返回 [{bucket, items: [...]}]，items 为 BoardItem.to_dict()。
+    """
+    members = [i for i in items if i.project == project]
+    grouped: dict[str, list[dict]] = {bucket: [] for bucket in ROADMAP_BUCKETS}
+    for item in members:
+        bucket = STATE_TO_ROADMAP.get(base_state(item.state))
+        if bucket is not None:
+            grouped[bucket].append(item.to_dict())
+    return [
+        {"bucket": bucket, "items": grouped[bucket]}
+        for bucket in ROADMAP_BUCKETS
+    ]
 
 
 def state_counts(items: list[BoardItem]) -> dict[str, int]:

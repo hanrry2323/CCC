@@ -59,3 +59,7 @@ class TestBuildBoardData:
         assert data["states"]["待分派"] == 1
         assert data["views"]["recent"][0]["id"] == "T1"
         assert data["views"]["by_project"][0]["project"] == "PRJ-X"
+        assert "overview" in data["roadmap"]
+        assert "by_project" in data["roadmap"]
+        assert "project_detail" in data["roadmap"]
+        assert data["roadmap"]["overview"][0]["bucket"] == "未开发"

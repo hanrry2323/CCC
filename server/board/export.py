@@ -22,7 +22,15 @@ from pathlib import Path
 
 from server.board.loader import load_dispatch_cards
 from server.board.models import BoardItem
-from server.board.queries import roadmap_aggregate, state_counts, view_by_project, view_recent, view_realtime
+from server.board.queries import (
+    roadmap_by_project,
+    roadmap_overview,
+    roadmap_project_detail,
+    state_counts,
+    view_by_project,
+    view_recent,
+    view_realtime,
+)
 
 
 def build_board_data(
@@ -30,7 +38,8 @@ def build_board_data(
     now: date | None = None,
     days: int = 7,
 ) -> dict[str, object]:
-    """聚合三视图 + 线路图 + 状态徽章数据。"""
+    """聚合三视图 + 线路图三层（总览/单项目/项目线路图）+ 状态徽章数据。"""
+    projects = sorted({i.project for i in items if i.project != "未知"})
     return {
         "source": "任务卡文档",
         "generated_at": date.today().isoformat(),
@@ -40,7 +49,14 @@ def build_board_data(
             "recent": view_recent(items, now=now, days=days),
             "by_project": view_by_project(items),
         },
-        "roadmap": roadmap_aggregate(items),
+        "roadmap": {
+            "overview": roadmap_overview(items),
+            "by_project": roadmap_by_project(items),
+            "project_detail": {
+                project: roadmap_project_detail(items, project)
+                for project in projects
+            },
+        },
     }
 
 
