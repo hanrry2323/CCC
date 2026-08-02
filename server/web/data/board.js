@@ -2,7 +2,7 @@ window.BOARD_DATA = {
   "source": "任务卡文档",
   "generated_at": "2026-08-02",
   "states": {
-    "待分派": 2,
+    "待分派": 1,
     "执行中": 0,
     "已回写": 0,
     "已关闭": 3,
@@ -14,16 +14,6 @@ window.BOARD_DATA = {
         {
           "id": "T3-R",
           "title": "看板状态归一（Claude Code 执行）",
-          "state": "待分派",
-          "project": "INT-120",
-          "executor": "Claude Code",
-          "dispatched_at": "2026-08-02",
-          "written_at": "未知",
-          "reject_count": 0
-        },
-        {
-          "id": "T4",
-          "title": "CCC 自带中转站部署与调用方切换（Claude Code 执行）",
           "state": "待分派",
           "project": "INT-120",
           "executor": "Claude Code",
@@ -122,9 +112,9 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 6,
+        "count": 5,
         "states": {
-          "待分派": 2,
+          "待分派": 1,
           "执行中": 0,
           "已回写": 0,
           "已关闭": 3,
@@ -136,7 +126,7 @@ window.BOARD_DATA = {
   "roadmap": [
     {
       "bucket": "未开发",
-      "count": 2
+      "count": 1
     },
     {
       "bucket": "开发中",
