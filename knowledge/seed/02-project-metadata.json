@@ -1,0 +1,152 @@
+{
+  "schema": "ccc-kb-seed-v1",
+  "section": "02-project-metadata",
+  "updated_at": "2026-08-02",
+  "source": "qx-map cluster/path-authority.md (2026-08-01) + cluster/cluster.json (2026-08-02) + projects/manifest.md",
+  "note": "所有项目路径以 path-authority.md 为准，过3天先重验再信。",
+  "priority": {
+    "primary": "CCC（底座 · 主体）",
+    "ccc_projects": [
+      {
+        "name": "CCC",
+        "path": "M1 /Users/apple/program/CCC/",
+        "nature": "CCC 底座 · 主仓（git 仓）",
+        "role": "自动化平台底座",
+        "access": "本地直接开发",
+        "last_activity": "ongoing"
+      },
+      {
+        "name": "qb",
+        "path": "Mac2017 /Users/fan/program/apps/qb/（SMB: /Volumes/fan/program/apps/qb/）",
+        "nature": "CCC 自动化开发测试项目（git 仓）",
+        "role": "CCC 自动化开发测试项目",
+        "access": "SMB 挂载或 ssh fan@192.168.3.116",
+        "m1_note": "M1 无本机 qb 代码",
+        "last_activity": "2026-07-29"
+      }
+    ]
+  },
+  "projects": [
+    {
+      "name": "qx-map",
+      "path": "M1 /Users/apple/qx-map/",
+      "nature": "知识地图/权威解析（git 仓，无 remote）",
+      "role": "外脑权威源·CCC 知识种子来源",
+      "access": "本地直接访问",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "QuantHive",
+      "path": "M1 /Users/apple/ZCodeProject/QuantHive/",
+      "nature": "独立轨道，git 仓",
+      "role": "Claude Code 独立开发（Cursor 已停用 2026-08-01）",
+      "access": "本地直接开发",
+      "last_activity": "ongoing"
+    },
+    {
+      "name": "ai-loop-router",
+      "path": "M1 /Users/apple/program/ai-loop-router/",
+      "nature": "loop-router 源码，git 仓",
+      "role": "CCC 基建配属（模型出口路由）",
+      "access": "本地直接开发",
+      "last_activity": "ongoing"
+    },
+    {
+      "name": "ccc-relay-runtime",
+      "path": "M1 /Users/apple/.ccc/relay-runtime/",
+      "nature": "ccc-relay 副本",
+      "role": "CCC 产线中转",
+      "access": "本地直接访问",
+      "last_activity": "ongoing"
+    },
+    {
+      "name": "medio-0",
+      "path": "Mac2017 /Users/fan/program/apps/medio-0/",
+      "nature": "git 仓",
+      "role": "（独立项目）",
+      "access": "SMB /Volumes/fan/program/apps/medio-0/ 或 ssh",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "xianyu",
+      "path": "Mac2017 /Users/fan/program/apps/xianyu/",
+      "nature": "git 仓，origin=hanrry2323/xianyu",
+      "role": "（独立项目）",
+      "access": "SMB 或 ssh",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "qx-observer",
+      "path": "Mac2017 /Users/fan/program/apps/qx-observer/",
+      "nature": "git 仓，origin=hanrry2323/qx-observer（M1 无本体）",
+      "role": "（独立项目）",
+      "access": "ssh",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "hp 服务仓",
+      "path": "Mac2017 /Users/fan/program/apps/hp/",
+      "nature": "git 仓，origin=hanrry2323/hp",
+      "role": "HP 知识库服务端",
+      "access": "ssh",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "ccc-demo",
+      "path": "Mac2017 /Users/fan/program/apps/ccc-demo/",
+      "nature": "git 仓，origin=hanrry2323/ccc-demo",
+      "role": "CCC 演示项目",
+      "access": "ssh",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "clawmed-ccc",
+      "path": "Mac2017 /Users/fan/program/apps/clawmed-ccc/",
+      "nature": "git 仓，origin=hanrry2323/clawmed-ccc",
+      "role": "（独立项目）",
+      "access": "ssh",
+      "last_activity": "2026-08-02"
+    },
+    {
+      "name": "qx（旧项目）",
+      "path": "M1 /Users/apple/program/projects/qx/",
+      "nature": "git 仓，origin=hanrry2323/qx；旧项目，未纳入双轨",
+      "role": "旧项目",
+      "access": "本地直接访问",
+      "last_activity": "unknown"
+    },
+    {
+      "name": "clawmed-ai",
+      "path": "M1 /Users/apple/program/projects/clawmed-ai/",
+      "nature": "git 仓（无 remote）；旧项目，待定去向",
+      "role": "旧项目",
+      "access": "本地直接访问",
+      "last_activity": "unknown"
+    },
+    {
+      "name": "social-auto-upload",
+      "path": "M1 /Users/apple/program/social-auto-upload/",
+      "nature": "git 仓（无 remote）；含 cookies/conf，禁入 git",
+      "role": "多平台自动发布工具（开源参考）",
+      "access": "本地直接访问，禁入 git",
+      "last_activity": "unknown"
+    },
+    {
+      "name": "nexus-core",
+      "path": "M1 /Users/apple/program/nexus-core/",
+      "nature": "git 仓（无 remote）；旧项目，待定去向",
+      "role": "旧项目",
+      "access": "本地直接访问",
+      "last_activity": "unknown"
+    },
+    {
+      "name": "learning",
+      "path": "M1 /Users/apple/program/learning/",
+      "nature": "git 仓，origin=hanrry2323/learning",
+      "role": "学习资料",
+      "access": "本地直接访问",
+      "last_activity": "unknown"
+    }
+  ],
+  "note_projects": "非 git 散装目录（M1）见 path-authority.md 原文，本种子包仅含 git 仓项目。"
+}
