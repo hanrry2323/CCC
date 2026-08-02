@@ -201,6 +201,65 @@
 
 ---
 
+## 2017 依赖方核实（补核）
+
+> 本小节为 T12-R 补核产出。2026-08-02 实测，仅 SSH 只读命令，零修改。
+
+### 1. 旧引擎进程（2017 实测）
+
+| PID | 进程 | 端口 | 旧代码路径 | 启动方式 | 状态 |
+|-----|------|------|-----------|----------|------|
+| 28004 | ccc-engine.py | 7776 | `scripts/ccc-engine.py` | launchd `com.ccc.engine` | **RUNNING** |
+| 64950 | ccc-board | 7775 | `scripts/ccc-board-server.py` | launchd `com.ccc.board` | **RUNNING** |
+| 89608 | ccc-chat-server | 7777 | `scripts/ccc-chat-server.py` | launchd `com.ccc.chat-server` | **RUNNING** |
+| 69311 | node (planner) | 6100 | `ai-loop-router`（独立项目） | 手动 | RUNNING |
+
+> 2017 侧的 `scripts/ccc-engine.py` 是 **T12 清单未覆盖的旧引擎运行实例**（M1 侧无此进程）。2017 ccc-engine 监听 7776 端口，board 和 chat-server 分别监听 7775/7777（与 M1 端口一致，但为独立进程）。
+
+### 2. Launchd 服务（2017）
+
+| plist | 指向 | 状态 |
+|-------|------|------|
+| `com.ccc.engine.plist` | `scripts/ccc-engine.py` | LOADED（PID 28004） |
+| `com.ccc.board.plist` | `scripts/ccc-board-server.py` | LOADED（PID 64950） |
+| `com.ccc.chat-server.plist` | `scripts/ccc-chat-server.py` | LOADED（PID 89608） |
+| `com.ccc.engine.plist.bak-20260801` | 备份 | BACKUP |
+| `com.ccc.engine.plist.bak-before-flash-override` | 备份 | BACKUP |
+
+### 3. `~/.ccc/` 配置引用（2017）
+
+| 文件 | 引用内容 |
+|------|---------|
+| `control.json` | mode=`enabled`, host_role=`mac2017_orchestration`, `start_paths: [launchd:com.ccc.engine]` |
+| `engine.env` | `AGENT_PLANNER_BASE_URL=http://127.0.0.1:6100`（指向 2017 本地的 node planner） |
+| `engine.env` | `CCC_UPSTREAM_STRICT=0` |
+
+### 4. qb 产线引用 `scripts/` 的证据（2017）
+
+`~/program/apps/qb/.ccc/plans/` 中大量计划文件引用绝对路径 `/Users/fan/program/CCC/scripts/`：
+
+| 引用文件 | 引用命令 |
+|---------|---------|
+| `plans/*.plan.md`（多处） | `python3 /Users/fan/program/CCC/scripts/ccc-hub-lens.py board qb` |
+| `plans/*.plan.md`（多处） | `python3 /Users/fan/program/CCC/scripts/ccc-mind-update.py qb --constraint ...` |
+| `plans/*.plan.md`（多处） | `python3 scripts/ccc-board.py index`（本地索引校验） |
+| `_pre_migration_artifacts/reviews/` | 引用 `scripts/ccc-engine.py`、`scripts/ccc-board.py` 为评审范围 |
+
+### 5. 影响总结
+
+| 维度 | 2017 特有 | 与 M1 共享 |
+|------|----------|-----------|
+| Engine 进程 | **有**（PID 28004, 7776） | M1 无 `ccc-engine.py` 进程 |
+| Board 进程 | 有（PID 64950, 7775） | M1 也有（独立实例） |
+| Chat Server | 有（PID 89608, 7777） | M1 也有（独立实例） |
+| Launchd 注册 | 3 个 plist 活跃 | M1 仅 `agent-sidecar` + `hub-tunnel` |
+| `~/.ccc/control.json` | mode=enabled | M1 独立控制面 |
+| qb 产线依赖 | 绝对路径引用 `scripts/` | — |
+
+**关键结论**：`scripts/` 的退役放行条件必须包含 **2017 侧旧引擎停止 + 切换到新栈**，**不能仅以 M1 侧为准**。
+
+---
+
 ## 建议处置顺序
 
 ### 第一阶段：可立即执行（无需准备）
@@ -225,9 +284,12 @@
 | `templates/` | 归档 | 新栈模板就绪，旧引擎不再引用 |
 
 **放行条件**：
+- **2017 旧引擎停止**：`com.ccc.engine`（PID 28004, 端口 7776）、`com.ccc.board`（PID 64950, 端口 7775）、`com.ccc.chat-server`（PID 89608, 端口 7777）全部停止，launchd plist 卸载
+- `control.json`（2017）模式降为 `disabled` 或删除
 - `server/engine/` 可替代 `scripts/ccc-engine.py` + `scripts/engine/`
 - `server/board/` 可替代 `scripts/ccc-board.py` + `scripts/board/` + `scripts/ccc-board-server.py`
 - `server/web/` 可替代 `scripts/chat_server/` + `scripts/ccc-chat-server.py`
+- qb 产线引用路径从 `scripts/` 切换到 `server/` 新栈命令
 - 7788 端口（agent-sidecar）有替代方案或已确认不再需要
 - 旧进程全部停止，新进程全部就绪，验收通过
 
