@@ -60,4 +60,78 @@
 
 ## 回写区
 
-（执行体回写）
+**执行体**：Trae（DeepSeek-V4-Flash）  
+**日期**：2026-08-02  
+**commit**：`e239f6c`（方案文档）；server/ 文件均为 untracked，待合入时 commit
+
+### 测试输出摘要
+
+```
+$ python3 -m pytest server/tests/test_skeleton.py -v --tb=short
+collected 23 items
+server/tests/test_skeleton.py .......................                [100%]
+============================== 23 passed in 0.03s ==============================
+```
+
+- TestDirectoryStructure: 15 passed（7 子目录存在 + 7 README 非空 + 1 server/README）
+- TestConfigLoader: 4 passed（正常加载、缺项报错、空值报错、文件不存在）
+- TestExecutorsExample: 4 passed（JSON 可解析、字段完备、分类合法、角色无重复）
+
+### 硬编码扫描结果
+
+| 扫描项 | 命令 | 结果 |
+|--------|------|------|
+| 绝对路径 `/Users` | `rg '/Users/' server/ --glob '!*.md'` | 0 命中 ✅ |
+| 字面端口 `:4[0-9]{3}`（非 .md） | `rg ':[4-9][0-9]{3}' server/ --glob '!*.md'` | 0 命中 ✅ |
+| 字面端口 `:4[0-9]{3}`（.md） | `rg ':[4-9][0-9]{3}' server/ --glob '*.md'` | 0 命中 ✅ |
+| 模型名（claude/gpt/gemini/llama） | `rg -ni 'claude|gpt-|gemini|llama' server/ --glob '*.py' --glob '*.sh' --glob '*.plist'` | 0 命中 ✅ |
+| 字面端口号 8000-8999 在代码中 | `rg '[78][0-9]{3}' server/ --glob '*.py' --glob '*.sh' --glob '*.plist' --glob '*.json'` | 仅 `test_skeleton.py` 测试数据（8001-8004），属测试用例合法值 ✅ |
+| 工具名在非配置代码中 | `rg 'opencode|python3|ollama|launchd' server/ --glob '*.py' --glob '*.sh' --glob '*.plist'` | `run.example.sh` 中 `python3`（系统解释器，部署模板必要引用）· `health.example.sh` 中 `python3`/`launchd`（注释+时间戳计算）· `com.ccc.engine.plist` 中 `launchd`（注释）⚠️ 可接受 |
+
+**结论**：零硬编码违规。`test_skeleton.py` 中的端口号是测试数据，非生产配置。部署模板中的 `python3` 是系统工具引用，无法避免且无具体路径。
+
+### 目录树（两层）
+
+```
+server/
+├── README.md
+├── board/
+│   └── README.md
+├── config/
+│   ├── README.md
+│   ├── config.example.env
+│   ├── executors.example.json
+│   └── loader.py
+├── deploy/
+│   ├── README.md
+│   ├── com.ccc.engine.plist
+│   ├── health.example.sh
+│   └── run.example.sh
+├── engine/
+│   └── README.md
+├── relay/
+│   └── README.md
+├── tests/
+│   ├── README.md
+│   └── test_skeleton.py
+└── web/
+    └── README.md
+```
+
+### 遗留/不确定项
+
+1. **无遗留项**：所有 T1 步骤已执行完毕，冒烟测试 23/23 通过。
+2. **部署脚本**：`run.example.sh` 和 `health.example.sh` 中的 `python3` 引用是合理的技术选型，非硬编码违规。`com.ccc.engine.plist` 中的 `$PROJECT_ROOT`/`$ENGINE_ENTRY`/`$CONFIG_ENV` 等占位变量需部署前替换。
+3. **旧代码改动**：`git status` 确认 `server/` 为全新 untracked 目录，`scripts/`、`app/`、`desktop/` 等零改动 ✅
+
+### 验收标准对照
+
+| # | 标准 | 状态 |
+|---|------|------|
+| 1 | `server/` 骨架完整，每目录有 README | ✅ 7 子目录 + 8 README |
+| 2 | config 加载测试通过（正常 + 缺项报错） | ✅ 4 用例 |
+| 3 | `executors.example.json` 合法，字段与契约 §7 一致 | ✅ 5 执行体，分类合法 |
+| 4 | 代码与模板零硬编码 | ✅ 扫描通过 |
+| 5 | 旧代码目录零改动 | ✅ `git status` 仅新增 |
+| 6 | 无删除；无密钥明文；无运行面动作 | ✅ |
+| 7 | 测试可跑通：`python3 -m pytest server/tests/ -q` | ✅ 23 passed |
