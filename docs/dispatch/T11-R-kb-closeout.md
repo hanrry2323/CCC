@@ -1,7 +1,7 @@
 # 任务卡 T11-R · T11 收尾：真实提交 + 状态同步（Trae 执行）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§3 状态同步）· 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 前置：T11 验收打回（代码功能独立核验通过：148 测试全绿 / selftest ALL PASSED / 零外脑依赖；纪律未过，见问题清单）
 
 ## 打回问题清单（T11 未通过原因）
@@ -42,4 +42,19 @@
 
 ## 回写区
 
-（Trae 回写）
+## Trae 回写（2026-08-02）
+
+**结果摘要**：T11 收尾完成——真实提交 + 卡头状态同步 + 复验通过。
+
+**commit hash**：`10916ca`（chore(kb): T11 知识库 MCP+本地语义检索）
+
+**复验输出**：
+- pytest server/tests/ -q → 148 passed
+- python3 -m server.kb.mcp_server --selftest → ALL PASSED
+- git status → 仅剩 2 预存项（scripts/.ccc/agent-mind/decided.json、_update_handoff.py）
+
+**验收自检**：
+1. ✅ 存在真实 chore(kb): commit（10916ca），含全部 T11 文件，未夹带预存无关改动
+2. ✅ T11 卡头状态 = 已回写
+3. ✅ 复验输出完整（测试 / selftest / git status）
+4. ✅ 工作树仅剩 2 预存项；未碰旧代码 / 运行面 / 外脑

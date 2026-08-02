@@ -1,7 +1,7 @@
 # 任务卡 T11 · 知识库升级：MCP 服务 + 本地语义检索（Trae 执行）
 
 > 关联：INT-120（CCC 重构，D3 收尾）· 契约：CCC 重构契约 v1 · 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 前置：T10（知识库初始化，`knowledge/` 种子已入库，检索为脚本级）
 > 定位：M4 后第一优先；本卡把 D3「脑接 MCP + 读全库」从脚本级升级为协议级。
 
@@ -54,4 +54,30 @@
 
 ## 回写区
 
-（Trae 回写）
+## Trae 回写（2026-08-02）
+
+**结果摘要**：CCC 知识库升级为 MCP 服务 + BM25 本地语义检索，零外部依赖、零旧代码改动。
+
+**执行产出**：
+- 新增 `server/kb/` 包（indexer.py / search.py / mcp_server.py / __init__.py）
+- 新增 3 个测试文件（test_kb_indexer.py / test_kb_search.py / test_kb_mcp.py），共 36 用例
+- 修改 `knowledge/README.md`、`server/README.md`、`server/config/config.example.env`、`.gitignore`
+
+**复验输出**：
+- pytest server/tests/ -q → 148 passed
+- python3 -m server.kb.mcp_server --selftest → ALL PASSED（62 文档，3 工具全通）
+- 零外脑依赖扫描通过
+
+**commit hash**：`10916ca`（chore(kb): T11 知识库 MCP+本地语义检索）
+
+**验收自检**：
+1. ✅ kb_search 对已知关键词命中对应域（"CCC" → 20 结果）
+2. ✅ 域过滤与空结果正确（测试覆盖）
+3. ✅ MCP server 可启动，--selftest 三工具全通
+4. ✅ tools 清单含 kb_search / kb_read / kb_list
+5. ✅ 零外脑依赖（rg 扫描无 HP/ollama/qx-map 引用）
+6. ✅ 索引可重建（--reindex），knowledge/.index/ 已 gitignore
+7. ✅ 148 测试全绿，新增 kb 测试全绿
+8. ✅ 零硬编码
+9. ✅ 真实提交，工作树仅剩 2 预存项
+10. ✅ 未碰旧代码/运行面/外脑
