@@ -1,7 +1,7 @@
 # 任务卡 T23 · HTTP 直开部署（7788 托管页面 + 同源登录 + 桌面端指 2017）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳，经 HTTP 直连对话；多壳锁门：账号密码 + 会话 token）· 依据：T22（2017 单端已部署）/ 跨机实测（M1→2017:7788 全接口通）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 > 背景：老板反馈 M1 浏览器直接访问 `http://192.168.3.116:7788` 报 `{"error":"missing or invalid Authorization header"}`——根因：7788 当前是纯 API 服务，`/` 未托管页面且先过鉴权 → 401。
 
 ## 目标
@@ -86,12 +86,52 @@
 
 ### 结果摘要
 
-（执行后填写）
+7788 现已托管看板页面，浏览器直接访问 `http://192.168.3.116:7788` 即打开页面（修复老板报错）。服务端 `do_GET` 开头先处理静态白名单路径（`/`、`css/style.css`、`js/app.js`、`js/chat.js`、`data/board.js`、`data/cluster.js`），防目录穿越；非白名单路径照旧鉴权。前端同源 API 推导（`location.origin`）+ token 统一管理（localStorage 优先 > URL `?token=`），无 token 显示登录提示不白屏，登录后自动刷新 board。桌面端默认地址切到 `http://192.168.3.116:7788`。两端（M1 + 2017）已 kickstart 重载新代码。跨机终验全通过（M1→2017:7788，HTML 200、css/js 200、无 token 401、带 token 全接口 200、对话经 6102 flash 回复 "OK"）。
 
 ### 执行明细
 
-（执行后填写：A–F 各步结果）
+**A. 服务端静态托管（server/web/server.py）**
+- A.1 加 `import mimetypes`；定义 `_STATIC_WEB_ROOT` + `_STATIC_WHITELIST`（7 路径显式映射）。
+- A.2 `_resolve_static_file(path)`：白名单查表 → `resolve()` 边界校验（防 `..` 穿越）→ `is_file()` 检查 → `mimetypes.guess_type` 返回 Content-Type。
+- A.3 `_APIHandler._send_static(path)`：命中返回 200 + 文件内容（`Cache-Control: no-cache`）；未命中返回 False。
+- A.4 `do_GET` 开头：`raw_path = self.path.split("?")[0]` → `path = raw_path.rstrip("/") or "/"` → `if self._send_static(path): return`；非白名单继续走鉴权 + API 路由。
+
+**B. 前端同源 API + 登录统一（index.html / js/app.js / js/chat.js）**
+- B.5 `index.html`：数据源推导改为——显式 `?api=` 优先；无参数且 `location.protocol === "http:"` → `API_BASE = location.origin`；`file://` 零 API。URL `?token=` 注入时同步写入 `localStorage("ccc-chat-token")`。
+- B.6 `js/app.js`：新增 `getToken/setToken/clearToken`（localStorage 优先 > URL `?token=`），暴露 `window.cccAuth` 供 chat.js 复用；`fetchApiData` 无 token 时返回 null（不请求 board，避免 401 噪音）；入口无 token 显示"请先登录"提示（不白屏）；暴露 `window.cccRefreshBoard` 供 chat.js 登录后刷新。
+- B.7 `js/chat.js`：token 管理复用 `window.cccAuth`（localStorage 优先 > URL `?token=`）；登录成功后调用 `window.cccRefreshBoard()` 刷新看板数据。
+- B.8 `file://` 零 API 模式保留（chat.js 显示提示）。
+
+**C. 桌面端默认地址（desktop/Sources/CCCDesktop/AppModel.swift）**
+- C.9 `@AppStorage("ccc.newServerURL")` 默认值 `http://127.0.0.1:7788` → `http://192.168.3.116:7788`（保留设置界面可改）。
+- C.10 `swift build` 成功。
+
+**D. 测试 + 构建**
+- D.11 `server/tests/test_http_api.py` 新增 `TestStaticHosting`（9 用例）：`/` 200 HTML、`/index.html` 200、`/js/app.js` 200、`/css/style.css` 200、`/data/board.js` 200、静态无 token 200、目录穿越 401/404、非白名单 API 无 token 401、不存在路径带 token 404。
+- D.12 `pytest server/tests/` 197 passed（原 188 + 新增 9）。
+- D.13 `swift build` 通过。
+
+**E. 部署（双端）**
+- E.14 M1 `git push origin main`（commit `c91944d`）→ 2017 `git pull origin main` 成功（8 files changed, 346 insertions）。
+- E.15 两端 `launchctl kickstart -k gui/$(id -u)/com.ccc.web-server`：
+  - 2017 新 PID 29922（原 12021）
+  - M1 新 PID 77204（原 63928）
+- E.16 2017 本机 `curl http://127.0.0.1:7788/` 返回 HTML 200（非 401）；`/js/app.js` 200；`/board/states` 无 token 401。
+
+**F. 跨机终验（M1 模拟老板访问 2017）**
+- F.17 M1 `curl http://192.168.3.116:7788/` 返回 HTML 200（**修复老板报错**）。
+- F.18 M1 `curl http://192.168.3.116:7788/js/app.js` 200；`/css/style.css` 200。
+- F.19 全接口带 token 复测：`/session` 换 token（`0bada6ce...`）→ `/board/states` 200 `{"待分派":1,"执行中":0,"已回写":0,"已关闭":26,"打回":3}` → `/board/snapshot` 200 → `/ops/summary` 200 → `/conversation` 200 `{"reply":"OK"}`（经 6102 flash）。
+- F.20 无 token `/board/states` 401 `{"error":"missing or invalid Authorization header"}`。
+- F.21 桌面端代码确认：默认 `http://192.168.3.116:7788`；`swift build` 已过。
+- F.22 三扫描（S1 旧状态名 / S2 旧栈名 / S3 密钥 / S4 外脑依赖）本次变更零命中；M1 工作树仅剩预存 2 项（`.ccc/agent-mind/decided.json` + `_update_handoff.py`）。
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+对照验收标准逐条勾选：
+
+1. ✅ `http://192.168.3.116:7788/` 返回 HTML 200（M1 实测，修复老板报错）；`/css/style.css`、`/js/app.js`、`/data/board.js` 200；目录穿越 401/404。
+2. ✅ 页面同源自动 API：无 `?api=` 时 `API_BASE=location.origin`；登录后 localStorage token 自动注入，board/对话/运维全通；无 token 显示登录表单不白屏；`file://` 模式保留。
+3. ✅ 桌面端默认地址 `http://192.168.3.116:7788`；`swift build` 通过。
+4. ✅ 鉴权不放松：API 无 token 仍 401（`/board/states` 实测）；`/health`、`/session` 免鉴权。
+5. ✅ `pytest` 197 passed（188+新增 9）；三扫描零命中；真实提交（`c91944d`）；M1 工作树仅剩预存 2 项；卡头状态已同步（待分派 → 已回写）。
