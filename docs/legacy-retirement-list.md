@@ -264,17 +264,19 @@
 
 ### 第一阶段：可立即执行（无需准备）
 
-| 项 | 动作 | 依据 |
-|----|------|------|
-| `relay/node_modules/` | 删除 | 78MB 构建产物，旧 relay 已停止；`npm install` 可重建 |
-| `relay/dist/` | 删除 | 188KB 编译产物，`npm run build` 可重建 |
-| `desktop/.build/` | 删除 | 1.3GB 构建产物，`swift build` 可重建 |
-| `db/` | 归档 | 4KB，CCC 独立后不再依赖 HP 数据库 |
-| `lib/` | 归档 | 8KB，功能简单 |
-| `app/` | 归档 | 24KB，无运行依赖 |
-| `skills/` | 归档 | 40KB，新栈不再使用 Skill 机制 |
+| 项 | 动作 | 状态 | 依据 |
+|----|------|------|------|
+| `relay/node_modules/` | 删除 | **✅ 已完成**（T15） | 78MB 构建产物，旧 relay 已停止；`npm install` 可重建 |
+| `relay/dist/` | 删除 | 待执行 | 188KB 编译产物，`npm run build` 可重建 |
+| `desktop/.build/` | 删除 | **✅ 已完成**（T15） | 1.3GB 构建产物，`swift build` 可重建 |
+| `db/` | 归档 → `docs/archive/legacy-retired-2026-08-02/db/` | **✅ 已完成**（T15） | 4KB，CCC 独立后不再依赖 HP 数据库 |
+| `lib/` | 归档 → `docs/archive/legacy-retired-2026-08-02/lib/` | **✅ 已完成**（T15） | 8KB，功能简单 |
+| `app/` | 归档 → `docs/archive/legacy-retired-2026-08-02/app/` | **✅ 已完成**（T15） | 24KB，无运行依赖 |
+| `skills/` | 归档 → `docs/archive/legacy-retired-2026-08-02/skills/` | **✅ 已完成**（T15） | 40KB，新栈不再使用 Skill 机制 |
 
 **放行条件**：老板确认上述功能不再需要。
+
+**归档路径**：`docs/archive/legacy-retired-2026-08-02/`（git mv 可追溯，内容零丢失）
 
 ### 第二阶段：需新栈就绪后执行
 

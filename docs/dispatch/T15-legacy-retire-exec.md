@@ -1,7 +1,7 @@
 # 任务卡 T15 · 旧系统退役执行（第一阶段 + 第二阶段清单）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 依据：`docs/legacy-retirement-list.md`（T12-R 版）· 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 运行面提示：本卡执行**第一阶段（安全项）**；第二阶段（`scripts/` 归档 + 2017 旧引擎停止）只产出执行清单与回滚方案，**不执行**——停止 2017 旧引擎会停掉 qb 产线，须新栈接管 qb 确认后另行放行。
 
 ## 目标
@@ -44,4 +44,15 @@
 
 ## 回写区
 
-（Trae 回写）
+**结果摘要**：第一阶段清理/归档完成（构建产物已删除，小模块已 git mv 归档），第二阶段执行清单（含回滚方案）已产出至 `docs/legacy-phase2-plan.md`。
+
+**清理/归档统计**：
+- 删除：`relay/node_modules/`（78MB 构建产物，gitignored）、`desktop/.build/`（1.3GB 构建产物，gitignored）
+- 归档（git mv → `docs/archive/legacy-retired-2026-08-02/`）：`app/`（6 文件）、`lib/`（2 文件）、`db/`（1 文件）、`skills/`（9 文件），合计 18 文件 ~76KB
+- 保留：`relay/dist/`（188KB，待执行）
+
+**git mv 列表**：`app/`、`lib/`、`db/`、`skills/` → `docs/archive/legacy-retired-2026-08-02/`（已提交 `88cf04a`）
+
+**第二阶段清单路径**：`docs/legacy-phase2-plan.md`
+
+**commit hash**：`88cf04a`（git mv 归档）+ `e3d0c36`（本卡回写 + 退役清单 + 第二阶段计划）
