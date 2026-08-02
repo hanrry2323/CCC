@@ -162,3 +162,6 @@ vendor/loop-code/cli-dev
 .ccc/index/
 # worktree 运行时目录（不入库）
 .worktrees/
+# ── 派生产物（scheduler/export 重写，不跟踪） ──
+server/web/data/board.js
+server/web/data/cluster.js
