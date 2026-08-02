@@ -1,7 +1,7 @@
 # 任务卡 T12-R · 退役清单补核（2017 依赖方）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1 · 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 前置：T12 验收打回（清单未覆盖 2017 依赖方）
 
 ## 打回问题清单（T12 未通过原因）
@@ -45,4 +45,40 @@
 
 ## 回写区
 
-（Trae 回写）
+### 结果摘要
+
+SSH 只读实测 Mac2017，确认旧引擎 3 进程运行中（PID 28004/64950/89608），qb 产线依赖 `scripts/` 绝对路径引用，更新退役清单含 2017 依赖方小节 + 放行条件。
+
+### 2017 实测证据
+
+**旧引擎进程**：
+- PID 28004: `ccc-engine.py` → 端口 7776, launchd `com.ccc.engine`, RUNNING
+- PID 64950: `ccc-board` → 端口 7775, launchd `com.ccc.board`, RUNNING
+- PID 89608: `ccc-chat-server` → 端口 7777, launchd `com.ccc.chat-server`, RUNNING
+
+**Launchd plist**：3 个活跃（engine/board/chat-server），2 个备份
+
+**`~/.ccc/` 配置**：
+- `control.json`: mode=enabled, host_role=mac2017_orchestration
+- `engine.env`: AGENT_PLANNER_BASE_URL=http://127.0.0.1:6100
+
+**qb 产线依赖**：`~/program/apps/qb/.ccc/plans/` 中大量引用 `scripts/ccc-hub-lens.py`、`scripts/ccc-board.py`、`scripts/ccc-mind-update.py` 等绝对路径
+
+### 更新后的放行条件
+
+`scripts/` 退役放行条件新增：
+1. **2017 旧引擎停止**：`com.ccc.engine`（PID 28004, 7776）、`com.ccc.board`（PID 64950, 7775）、`com.ccc.chat-server`（PID 89608, 7777）全部停止，launchd plist 卸载
+2. `control.json`（2017）模式降为 `disabled` 或删除
+3. qb 产线引用路径从 `scripts/` 切换到 `server/` 新栈命令
+
+### 已验证红线
+
+- ✅ 只读核验：仅 SSH 执行 ps/lsof/launchctl/list/cat，零修改、未停服务、未部署
+- ✅ 零删除、零移动文件
+- ✅ 工作树仅剩 `_update_handoff.py`（1 个预存项）
+
+### Commit
+
+```
+d67b48b docs(legacy): T12-R 退役清单补核——2017 依赖方
+```
