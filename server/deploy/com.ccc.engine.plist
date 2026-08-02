@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    CCC Engine — 进程编排模板
+    部署前请替换以下占位变量：
+      $PROJECT_ROOT  → CCC 仓库绝对路径
+      $ENGINE_ENTRY  → Engine 入口脚本（相对 $PROJECT_ROOT）
+      $CONFIG_ENV    → config.env 绝对路径
+      $LOG_DIR       → 日志目录绝对路径
+      $USERNAME      → 运行用户
+  -->
+  <key>Label</key>
+  <string>com.ccc.engine</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>$PROJECT_ROOT/$ENGINE_ENTRY</string>
+    <string>--config</string>
+    <string>$CONFIG_ENV</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CCC_CONFIG_ENV</key>
+    <string>$CONFIG_ENV</string>
+    <key>CCC_DATA_DIR</key>
+    <string>$DATA_DIR</string>
+    <key>CCC_LOG_DIR</key>
+    <string>$LOG_DIR</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>$PROJECT_ROOT</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>$LOG_DIR/engine.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>$LOG_DIR/engine.stderr.log</string>
+
+  <key>UserName</key>
+  <string>$USERNAME</string>
+
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
+</dict>
+</plist>
