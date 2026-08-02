@@ -136,6 +136,9 @@ dashboard/
 .ccc/board/backlog/evolve-*.jsonl
 .ccc/board/in_progress/
 
+# 知识库索引产物（可重建，不入库）
+knowledge/.index/
+
 # CCC Engine runtime (do not commit)
 .ccc/engine-heartbeat.json
 .ccc/board/engine-heartbeat.json

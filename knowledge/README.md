@@ -44,6 +44,29 @@ knowledge/
 
 ### 检索方式
 
+#### 方式一：MCP 服务（推荐，v1.0）
+
+```bash
+# 启动 MCP server（AI Agent 通过 stdio 协议调用）
+python3 -m server.kb.mcp_server
+
+# 自测
+python3 -m server.kb.mcp_server --selftest
+
+# 列出工具
+python3 -m server.kb.mcp_server --list-tools
+
+# 重建索引
+python3 -m server.kb.mcp_server --reindex
+```
+
+MCP server 暴露三个工具：
+- **kb_search**(query, domain?) — BM25 检索，返回 `{id, section, snippet, score}`
+- **kb_read**(path) — 读取指定知识条目全文
+- **kb_list**(domain?) — 列出域内条目
+
+#### 方式二：脚本检索（兼容）
+
 ```bash
 # 全文关键词检索
 bash knowledge/ccc-kb-search.sh <关键词>
@@ -57,6 +80,10 @@ bash knowledge/ccc-kb-search.sh <关键词> --domain projects
 # 列出指定域所有条目
 bash knowledge/ccc-kb-search.sh --list --domain nodes-paths
 ```
+
+#### 扩展接口
+
+向量语义检索接口预留：`server/kb/search.py` 的 `Bm25Index` 类可替换为向量检索引擎，只需实现相同的 `search(query, domain, top_k) → list[dict]` 签名。索引格式（`documents.json`）也兼容外部 embedding 的向量存储。
 
 ## 来源
 
