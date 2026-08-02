@@ -5,7 +5,7 @@ window.BOARD_DATA = {
     "待分派": 0,
     "执行中": 0,
     "已回写": 0,
-    "已关闭": 22,
+    "已关闭": 23,
     "打回": 3
   },
   "views": {
@@ -114,6 +114,16 @@ window.BOARD_DATA = {
         {
           "id": "T18",
           "title": "退役第二阶段执行（scripts/templates 归档 + 2017 旧引擎停止 + relay/dist 清理）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T19",
+          "title": "壳迁移执行（7788 对话口 + 桌面端 + HTTP 页面切新服务端，对话接大脑）（Trae 执行）",
           "state": "已关闭",
           "project": "INT-120",
           "executor": "Trae",
@@ -340,12 +350,12 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 25,
+        "count": 26,
         "states": {
           "待分派": 0,
           "执行中": 0,
           "已回写": 0,
-          "已关闭": 22,
+          "已关闭": 23,
           "打回": 3
         }
       }
@@ -371,7 +381,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "确认可用",
-        "count": 22
+        "count": 23
       },
       {
         "bucket": "有问题",
@@ -381,7 +391,7 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 25,
+        "count": 26,
         "buckets": [
           {
             "bucket": "未开发",
@@ -401,7 +411,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "确认可用",
-            "count": 22
+            "count": 23
           },
           {
             "bucket": "有问题",
@@ -534,6 +544,16 @@ window.BOARD_DATA = {
             {
               "id": "T18",
               "title": "退役第二阶段执行（scripts/templates 归档 + 2017 旧引擎停止 + relay/dist 清理）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T19",
+              "title": "壳迁移执行（7788 对话口 + 桌面端 + HTTP 页面切新服务端，对话接大脑）（Trae 执行）",
               "state": "已关闭",
               "project": "INT-120",
               "executor": "Trae",

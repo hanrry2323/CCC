@@ -1,7 +1,7 @@
 # 任务卡 T19 · 壳迁移执行（7788 对话口 + 桌面端 + HTTP 页面切新服务端，对话接大脑）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 拓扑 / §9 红线 / D8 多壳）· 依据：T16（API/鉴权已就绪）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-02
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-02
 > 放行确认：老板 2026-08-02 明确「出壳迁移指令，Trae 执行」；T16 服务端侧已验收通过（`88cf04a`）。
 
 ## 目标
@@ -149,3 +149,28 @@ T19 壳迁移完成。7788 对话口已由旧 sidecar（`ccc-agent-sidecar.py`�
 
 - 恢复旧对话：`launchctl bootout gui/$(id -u)/com.ccc.web-server` → `cp ~/Library/LaunchAgents/com.ccc.agent-sidecar.plist.bak-shell-mig ~/Library/LaunchAgents/com.ccc.agent-sidecar.plist` → `launchctl bootstrap gui/$(id -u)/ ~/Library/LaunchAgents/com.ccc.agent-sidecar.plist` → 桌面端设置关闭「启用新服务端对话」开关。
 - 代码回滚：`git revert 39f1e79`（不影响 4100/4102/7777/7775/2017）。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-02）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 提交/工作树 | `39f1e79`（11 文件 +833/-38）+ `2e9d29e` 真实；`git status` 仅剩预存 2 项 ✅ |
+| 对话接大脑 | 7788 实测 `POST /conversation` → `{"reply":"DeepSeek"}`（真实模型回复，非 echo）；`_forward_to_upstream` 配置化（URL/KEY/模型/路径/timeout 全 env），缺配置 503 / 上游失败 502 / 无回复不落历史 ✅ |
+| 鉴权链路 | `/session`(ccc/ccc) 换 64 字符 token；带 token `/board/states|realtime|roadmap|conversation` 全 200；无 token 401；错密码 401 ✅ |
+| 测试 | 独立跑 `pytest server/tests/` → **174 passed**（171+7 新用例，无回归）✅ |
+| 运行面 | 7788 = 新服务端 PID 46283（`*:7788` 监听）；旧 sidecar 进程清空、plist 有备份；launchd `com.ccc.web-server` active ✅ |
+| 零接触 | 4100/4102（node 63542）未动、7777/7775 仍监听、2017 零接触（6100 仍在，2017 仍无 server/）✅ |
+| 桌面端 | 独立跑 `swift build` → Build complete；`runNewServerChat`/`useNewServer`/`loginToNewServer` 路由 + 401 清 token 重登齐备；ContentView 含 T19 新服务端 Section ✅ |
+| HTTP 页面 | `chat.js` 登录 → `/session` → localStorage token → Bearer 注入；`file://` 本地模式保留 ✅ |
+| 三扫描 | 新增 diff 干净：仅 docstring 模型名示例（文档允许）+ 桌面端 `newServerURLString` 可配置默认值（AppStorage 可改，非硬编码）；明文密钥零、外脑依赖零 ✅ |
+| 密钥 | `CCC_WEB_PASSWORD_HASH`/`RELAY_UPSTREAM_KEY` 只进 `~/Library/LaunchAgents/com.ccc.web-server.plist`，git 内零密钥 ✅ |
+
+**说明两点**：
+1. 对话上游实际配置为 **M1 4102**（`RELAY_UPSTREAM_URL=http://127.0.0.1:4102`，OpenAI chat 出口），非 2017 6100——本机直连延迟最低、4100/4102 红线为「不改动」非「不调用」；符合零硬编码原则，2017 单端落地时只改 env 即可。
+2. 桌面端 GUI 端到端登录往返（填 ccc/ccc → 登录 → 发消息）需老板在桌面端设置 UI 手动确认；代码与构建均已验证。
+
+**遗留登记**：看板壳迁移（7777/7775 下线）为下一张卡；2017 代码流转部署另排；对话为模型直答（非流式），MCP/知识库增强按 D10 后续升级。
