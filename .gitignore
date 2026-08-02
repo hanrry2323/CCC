@@ -150,3 +150,4 @@ vendor/loop-code/cli-dev
 # FlowWeave-borrowed runtime (not in hot path; do not commit)
 .ccc/agent-bridge/
 .ccc/index/
+# worktree 运行时目录（不入库）
