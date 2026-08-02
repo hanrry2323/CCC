@@ -1,7 +1,7 @@
 # 任务卡 T16 · 壳对接（服务端侧）：对话/写 API + 鉴权 + 客户端指向就绪（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 拓扑：壳经 HTTP 直连、多壳锁门）· 依据：T13（只读 API）· 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 运行面提示：本卡只实现 + 测试，**不部署、不迁移**现有 7788 对话口与桌面端；实际切换为后续执行卡，需老板放行 + 回滚方案。
 
 ## 目标
@@ -46,4 +46,32 @@
 
 ## 回写区
 
-（Trae 回写）
+**结果摘要**：服务端补齐鉴权（POST /session + Bearer token 中间件）+ 对话（POST/GET /conversation）回声占位；桌面端 APIClient 新增 `configureNewServer`/`loginToNewServer`/`sendConversation` 方法，base URL 可配置化，保留旧地址兼容。
+
+**测试输出**：
+```
+server/tests/test_http_api.py ................... (19 passed)
+  ✓ 鉴权成功、密码错误 401、用户名错误 401、缺凭证 400
+  ✓ 未鉴权请求 401、无效 token 401、过期 token 401
+  ✓ 对话往返回声、对话历史、未鉴权对话 401、空消息 400
+  ✓ 所有 board 接口 200 + 数据形状断言
+  ✓ /health 无鉴权、未知路径 404
+```
+
+**桌面端改动**：`APIClient.swift` 新增 148 行：
+- `configureNewServer(url:)` — 配置新服务端地址（nil=禁用，走旧地址）
+- `loginToNewServer(username:password:)` — POST /session 换取 Bearer token
+- `sendConversation(message:)` — POST /conversation 回声占位（401 提示重登）
+- `fetchNewServerConversationHistory()` — GET /conversation 历史
+- 内存 token 缓存 + 过期判断 + 自动头注入
+- Swift 构建成功（仅一条 unreachable 警告，不影响运行）
+
+**红线校验**：
+- `scripts/` 零改动 ✓
+- 桌面端只改 `APIClient.swift`（壳代码）✓
+- 不部署不迁移 ✓
+- 鉴权真实实现（HMAC-SHA256 token，内存 store，过期拒绝）✓
+- 零硬编码（端口/账号/密钥走 env）✓
+- 既有测试无回归 ✓
+
+**commit hash**: `88cf04a`
