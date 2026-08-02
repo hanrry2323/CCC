@@ -151,3 +151,4 @@ vendor/loop-code/cli-dev
 .ccc/agent-bridge/
 .ccc/index/
 # worktree 运行时目录（不入库）
+.worktrees/
