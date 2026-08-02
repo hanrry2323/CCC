@@ -5,7 +5,7 @@ window.BOARD_DATA = {
     "待分派": 0,
     "执行中": 0,
     "已回写": 0,
-    "已关闭": 24,
+    "已关闭": 25,
     "打回": 3
   },
   "views": {
@@ -144,6 +144,16 @@ window.BOARD_DATA = {
         {
           "id": "T20",
           "title": "看板壳迁移（桌面端看板读取切新服务端 + 旧 7775 下线；移动任务改文档流转）（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T21",
+          "title": "运维壳迁移（桌面端运维页读取切新服务端 + 写操作改文档流转 + 7777/17777 下线）（Trae 执行）",
           "state": "已关闭",
           "project": "INT-120",
           "executor": "Trae",
@@ -360,12 +370,12 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 27,
+        "count": 28,
         "states": {
           "待分派": 0,
           "执行中": 0,
           "已回写": 0,
-          "已关闭": 24,
+          "已关闭": 25,
           "打回": 3
         }
       }
@@ -391,7 +401,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "确认可用",
-        "count": 24
+        "count": 25
       },
       {
         "bucket": "有问题",
@@ -401,7 +411,7 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 27,
+        "count": 28,
         "buckets": [
           {
             "bucket": "未开发",
@@ -421,7 +431,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "确认可用",
-            "count": 24
+            "count": 25
           },
           {
             "bucket": "有问题",
@@ -584,6 +594,16 @@ window.BOARD_DATA = {
             {
               "id": "T20",
               "title": "看板壳迁移（桌面端看板读取切新服务端 + 旧 7775 下线；移动任务改文档流转）（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T21",
+              "title": "运维壳迁移（桌面端运维页读取切新服务端 + 写操作改文档流转 + 7777/17777 下线）（Trae 执行）",
               "state": "已关闭",
               "project": "INT-120",
               "executor": "Trae",

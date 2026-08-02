@@ -1,7 +1,7 @@
 # 任务卡 T21 · 运维壳迁移（桌面端运维页读取切新服务端 + 写操作改文档流转 + 7777/17777 下线）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§3 状态同步 / §4 任务卡唯一事实源 / §8 壳零业务逻辑 / §9 红线）· 依据：T7（集群采集）/ T13/T19/T20（新服务端与壳迁移基座）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-02
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-02
 > 放行确认：老板 2026-08-02 明确「继续出下一步指令」；T20 遗留（reopen 走旧 Hub 写接口）为**本卡强制前置**，一并收口。
 
 ## 目标
@@ -69,6 +69,25 @@
 - 7777/17777：恢复备份 plist → `launchctl bootstrap`；或重启原进程（代码未删）。
 - 代码回滚：`git revert` 本卡提交。
 - 触发条件：`/ops/summary` 冒烟失败 / 桌面端运维页不可读 / 7788 中断 / 老板或管理席要求。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-02）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 提交/工作树 | `cc96ba4`（4 文件 +309/-1）+ `ad75f4c` 真实；`git status` 仅剩预存 2 项 ✅ |
+| /ops/summary | 7788 实测带 token 200：machines 3 节点全可达（web-server/relay-anthropic/relay-openai）、alert_count=0、down_ports 空、generated_at 有值、severity=green、human_line 含「3 张打回卡」派生；无 token 401 ✅ |
+| 测试 | 独立跑 `pytest server/tests/` → **188 passed**（184+4，无回归）✅ |
+| 桌面端 | 独立跑 `swift build` → Build complete；`refreshOps`/`pollOpsSeverityLight` 走新服务端；**6 个写操作**（日审/采纳×2/意图稳定/reopen×2）全部 useNewServer 提示分支，T20 reopen 遗留收口；`refreshOpsIntentGoals` 置空 ✅ |
+| 运行面 | 7777/17777/7775 lsof 全清空；7788 = 新 PID 63928（plist 补 CLUSTER_TARGETS 后重载）；4100（node 63542）/6100（node 69311）/2017 零接触；hub-tunnel plist 有 `.bak-ops-mig` 备份 ✅ |
+| 三扫描 | 新增 diff 零硬编码/零密钥/零外脑依赖 ✅ |
+
+**登记 P2（服务计数 0/4）**：launchd 环境下 `pgrep` 的 PATH 与交互 shell 不同，`DEFAULT_SERVICES` 进程名匹配不到 → services 计数 0/4。不影响 severity（由节点可达主导，green），不构成打回；修复项登记：plist 补 PATH env 或改 cluster.py 的 pgrep 调用方式。另：`DEFAULT_SERVICES` 硬编码债仍在挂账。
+
+**结论**：M1 旧 Hub（7775/7777/17777）全部退净，桌面端仅剩 7788 新服务端单链路；壳迁移系列（T19/T20/T21）全部闭环。
 
 ## 验收标准（Codex 按此验收）
 
