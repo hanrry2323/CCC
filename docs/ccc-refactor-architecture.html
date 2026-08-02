@@ -268,6 +268,7 @@
       <a href="#decisions">决策 D1–D10</a>
       <a href="#phases">开发阶段</a>
       <a href="#milestones">里程碑</a>
+      <a href="#roadmap">线路图</a>
       <a href="#rules">红线纪律</a>
       <a href="#risk">风险</a>
       <a href="#log">更新</a>
@@ -283,7 +284,7 @@
 
   <!-- ============ HERO ============ -->
   <div class="hero">
-    <span class="kicker">决策方案 · 完善版 v2 · 老板批准</span>
+    <span class="kicker">决策方案 v2 · 全量验收通过 · 2026-08-02</span>
     <h1>把 <span class="grad">CCC</span> 改造成真正的自动化驱动开发体系</h1>
     <p class="desc">
       一个跑在 <b>Mac 2017</b> 上的自给自足体系：大脑（最强 Agent）+ 薄驱动 Engine + 文档流转 + 看板 / HTTP 服务；
@@ -291,9 +292,9 @@
     </p>
     <div class="stats">
       <div class="stat"><div class="num">10</div><div class="lbl">核心决策 D1–D10</div></div>
-      <div class="stat"><div class="num">5</div><div class="lbl">开发阶段 P0–P5</div></div>
-      <div class="stat"><div class="num">4</div><div class="lbl">里程碑 M1–M4</div></div>
-      <div class="stat"><div class="num" style="color:var(--amber)">P0</div><div class="lbl">当前阶段 · 清场进行中</div></div>
+      <div class="stat"><div class="num">24</div><div class="lbl">任务卡全闭环（关闭 21 / 打回 3）</div></div>
+      <div class="stat"><div class="num">171</div><div class="lbl">测试全绿 · 三扫描零命中</div></div>
+      <div class="stat"><div class="num" style="color:var(--amber)">M4</div><div class="lbl">收尾阶段 · 两项待放行</div></div>
     </div>
   </div>
 
@@ -307,7 +308,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2v6M14.5 2v6M6 8h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM6 13v4a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-4"/></svg>
         </div>
         <h3>方案层 · 脑</h3>
-        <p>老板 + 知识库<br>拆方案 · 裁决 · 定任务卡</p>
+        <p>老板 + 自建知识库（MCP + 本地检索）<br>拆方案 · 裁决 · 定任务卡</p>
         <span class="arrow">→</span>
       </div>
       <div class="flow-node fn-driver">
@@ -380,8 +381,9 @@
         <div class="col-title">Mac 2017 · 唯一服务端 + 大脑宿主 + 执行机</div>
         <div class="svc"><b>大脑 Agent</b><span class="badge core">最强脑 · 接 MCP · 读全库</span></div>
         <div class="svc"><b>Engine（薄驱动）</b><span class="badge">发单 / 收单 / 看板更新</span></div>
-        <div class="svc"><b>看板服务端 + HTTP 页面</b><span class="badge">总调度台</span></div>
-        <div class="svc"><b>中转站（模型出口）</b><span class="badge">CCC 基建配属</span></div>
+        <div class="svc"><b>看板服务端 + HTTP API</b><span class="badge">总调度台 · Bearer 鉴权</span></div>
+        <div class="svc"><b>知识库 MCP</b><span class="badge">kb_search / kb_read / kb_list</span></div>
+        <div class="svc"><b>中转站（模型出口）</b><span class="badge">2017 :6100/6102 · M1 :4100/4102 保留</span></div>
         <div class="svc"><b>业务仓真身 + CLI 执行体</b><span class="badge">git 工作副本 · 只 pull</span></div>
       </div>
     </div>
@@ -414,24 +416,32 @@
 
   <!-- ============ 开发阶段 ============ -->
   <section id="phases">
-    <div class="sec-head"><div class="idx" style="color:var(--emerald)">04</div><h2>开发阶段 P0–P5</h2><span class="tag">当前：P0 清场进行中</span></div>
+    <div class="sec-head"><div class="idx" style="color:var(--emerald)">04</div><h2>开发阶段 P0–P5</h2><span class="tag">P0–P5 全部完成 · 收尾阶段</span></div>
     <div class="card"><div class="tl">
-      <div class="tl-item doing"><h3>P0 · 清场 <span class="badge" style="color:var(--amber);border-color:rgba(251,191,36,.35)">进行中</span></h3>
+      <div class="tl-item done"><h3>P0 · 清场 <span class="badge ok">完成</span></h3>
         <p>立保留清单（红线/权威基线保留）→ CCC 仓内旧协议归档 → HP 中 CCC 旧记录标废弃。</p></div>
-      <div class="tl-item"><h3>P1 · 契约</h3>
+      <div class="tl-item done"><h3>P1 · 契约 <span class="badge ok">完成</span></h3>
         <ul>
           <li>任务卡格式、状态模型、回写协议</li>
           <li>看板数据模型、安全三件套、验收 Agent 职责边界</li>
           <li>执行体注册表、运行拓扑规则、硬编码扫描项</li>
         </ul></div>
-      <div class="tl-item"><h3>P2 · 服务端合体 + Engine + 看板</h3>
+      <div class="tl-item done"><h3>P2 · 服务端合体 + Engine + 看板 <span class="badge ok">完成</span></h3>
         <p>Engine 驱动 + 任务看板（实时 / 7 天 / 项目分类）；含 CCC 自带中转站部署，执行体模型出口切换。</p></div>
-      <div class="tl-item"><h3>P3 · 线路图</h3>
+      <div class="tl-item done"><h3>P3 · 线路图 <span class="badge ok">完成</span></h3>
         <p>派生视图三层：CCC 总览 → 单项目 → 项目线路图；状态自动聚合，人只做「确认可用」。</p></div>
-      <div class="tl-item"><h3>P4 · 定时任务 + 集群 / 运维页</h3>
+      <div class="tl-item done"><h3>P4 · 定时任务 + 集群 / 运维页 <span class="badge ok">完成</span></h3>
         <p>定时任务归 Engine；集群状态与运维页采集独立重做。</p></div>
-      <div class="tl-item"><h3>P5 · 知识移植 → 移交</h3>
+      <div class="tl-item done"><h3>P5 · 知识移植 → 移交 <span class="badge ok">完成</span></h3>
         <p>一次性种子移植（节点/路径/项目元数据/决策/教训）→ CCC 独立运行，外脑回归纯顾问。</p></div>
+      <div class="tl-item doing"><h3>收尾 T12–T17 <span class="badge" style="color:var(--amber);border-color:rgba(251,191,36,.35)">收尾中</span></h3>
+        <ul>
+          <li>✅ 退役第一阶段（构建产物清理 + 小模块归档）</li>
+          <li>✅ 壳对接服务端侧（HTTP API + 鉴权 + 桌面端指向就绪）</li>
+          <li>✅ 全量验收（T17：P0=0，P1×3 已修）</li>
+          <li>⏳ 退役第二阶段（scripts/ 归档 + 2017 旧引擎停止）——待放行</li>
+          <li>⏳ 壳迁移（7788 对话口 / 桌面端切换）——待放行</li>
+        </ul></div>
     </div></div>
   </section>
 
@@ -439,16 +449,40 @@
   <section id="milestones">
     <div class="sec-head"><div class="idx" style="color:var(--cyan)">05</div><h2>里程碑</h2></div>
     <div class="grid g4">
-      <div class="card ms"><div class="m">M1</div><p>契约定稿<br>（P0 + P1 完成）</p><span class="badge">未达成</span></div>
-      <div class="card ms"><div class="m">M2</div><p>首个任务经 Engine + 看板 + CCC 中转站全流程跑通</p><span class="badge">未达成</span></div>
-      <div class="card ms"><div class="m">M3</div><p>线路图上线<br>（P3 完成）</p><span class="badge">未达成</span></div>
-      <div class="card ms"><div class="m" style="font-size:22px"><span class="grad">M4</span></div><p>知识移植完成 = CCC 独立移交日；QXMAP 回归纯外脑；M1 旧中转站停用</p><span class="badge">未达成</span></div>
+      <div class="card ms"><div class="m">M1</div><p>契约定稿<br>（P0 + P1 完成）</p><span class="badge ok">达成</span></div>
+      <div class="card ms"><div class="m">M2</div><p>全流程跑通（新栈 E2E）</p><span class="badge ok">达成</span></div>
+      <div class="card ms"><div class="m">M3</div><p>线路图上线<br>（P3 完成）</p><span class="badge ok">达成</span></div>
+      <div class="card ms"><div class="m" style="font-size:22px"><span class="grad">M4</span></div><p>CCC 独立移交日：退役执行 + 壳对接完成 + E2E 跑通</p><span class="badge" style="color:var(--amber);border-color:rgba(251,191,36,.35)">前哨就绪 · 两项待放行</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 线路图 ============ -->
+  <section id="roadmap">
+    <div class="sec-head"><div class="idx" style="color:var(--violet)">06</div><h2>项目线路图（当前状态）</h2><span class="tag">派生视图 · 状态自动聚合</span></div>
+    <div class="card">
+      <div class="chip-row" style="margin-bottom:16px">
+        <span class="chip">未开发 0</span>
+        <span class="chip">开发中 0</span>
+        <span class="chip">已开发待验收 0</span>
+        <span class="chip">已验收待确认 0</span>
+        <span class="chip ok">确认可用 21</span>
+        <span class="chip warn">有问题（打回）3</span>
+      </div>
+      <table>
+        <thead><tr><th style="width:36%">M4 门槛</th><th style="width:28%">状态</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><b>E2E 全链路流程测试</b></td><td><span class="chip ok">✅ 完成</span></td><td>新栈任务卡→Engine→回写→看板→线路图全链路跑通（T14-R）</td></tr>
+          <tr><td><b>旧系统退役</b></td><td><span class="chip ok">✅ 第一阶段</span> <span class="chip" style="color:var(--amber);border-color:rgba(251,191,36,.35)">⏳ 第二阶段待放行</span></td><td>构建产物已清、小模块已归档；scripts/ 归档 + 2017 旧引擎停止待新栈接管 qb 后放行</td></tr>
+          <tr><td><b>壳对接</b></td><td><span class="chip ok">✅ 服务端侧</span> <span class="chip" style="color:var(--amber);border-color:rgba(251,191,36,.35)">⏳ 迁移待放行</span></td><td>HTTP API + Bearer 鉴权 + 桌面端指向就绪；7788/桌面端实际切换待放行</td></tr>
+          <tr><td><b>M1 旧中转站</b></td><td><span class="chip ok">双轨并行中</span></td><td>M1 :4100/4102 保留；2017 :6100/6102 独立实例；停用时机另定</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
   <!-- ============ 红线纪律 ============ -->
   <section id="rules">
-    <div class="sec-head"><div class="idx" style="color:var(--rose)">06</div><h2>红线与纪律</h2><span class="tag">永久生效</span></div>
+    <div class="sec-head"><div class="idx" style="color:var(--rose)">07</div><h2>红线与纪律</h2><span class="tag">永久生效</span></div>
     <div class="grid g2">
       <div class="card rule"><div class="rno">1</div><p><b>不破独立</b>：CCC 运行时不读不写外脑，违反即漂移。</p></div>
       <div class="card rule"><div class="rno">2</div><p><b>最强脑不抢执行</b>：脑负责拆方案/验收/裁决，不自己下场写码。</p></div>
@@ -463,7 +497,7 @@
 
   <!-- ============ 风险 ============ -->
   <section id="risk">
-    <div class="sec-head"><div class="idx" style="color:var(--amber)">07</div><h2>风险与缓解</h2></div>
+    <div class="sec-head"><div class="idx" style="color:var(--amber)">08</div><h2>风险与缓解</h2></div>
     <div class="card" style="padding:0; overflow:hidden">
       <table>
         <thead><tr><th style="width:34%">风险</th><th>缓解</th></tr></thead>
@@ -481,8 +515,9 @@
 
   <!-- ============ 更新日志 ============ -->
   <section id="log">
-    <div class="sec-head"><div class="idx" style="color:var(--violet)">08</div><h2>更新日志</h2><span class="tag">每次讨论收口后更新本页</span></div>
+    <div class="sec-head"><div class="idx" style="color:var(--violet)">09</div><h2>更新日志</h2><span class="tag">每次讨论收口后更新本页</span></div>
     <div class="card"><div class="log">
+      <div class="log-item"><div class="date">2026-08-02 · 深夜</div><p><b>全量验收通过（T17）</b>：P0=0、P1×3 修复（loader base_state 断言 / web 鉴权适配 / README 对齐）；M4 三门槛完成 E2E + 退役第一阶段 + 壳对接服务端侧；24 任务卡全闭环；本页更新至当前状态。</p></div>
       <div class="log-item"><div class="date">2026-08-02 · 晚间</div><p><b>v2 完善版</b>：重排方案，新增 D10 杜绝硬编码、终态拓扑（2017 单端 / 任意设备壳）、契约清单；本页上线。</p></div>
       <div class="log-item"><div class="date">2026-08-02 · 下午</div><p><b>D9 中转站并入</b>：ai-loop-router 作为 CCC 基建配属，随服务端部署 2017；M1 旧实例调用方切换后停用。</p></div>
       <div class="log-item"><div class="date">2026-08-02 · 上午</div><p><b>v1 定稿</b>：讨论收口，确立薄驱动 Engine + 文档流转 + 看板/HTTP 方向；D1–D8 落盘；INT-120 立项；T0 清场开工。</p></div>
