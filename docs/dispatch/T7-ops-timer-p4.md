@@ -49,3 +49,20 @@ D4 定时任务：**Engine 承担定时**（到点生成任务卡 → 派发 →
 ## 回写区
 
 （Trae-B 回写）
+
+**摘要**：完成 D4 定时任务框架 + D5 集群/运维页，9 文件 ±870 行。
+
+**测试输出**：105 passed（既有 83 + 新增 22），0 failed。
+
+**分支 commit hash**：`6279567b8fd9c9bee3e2c324ff684204a0d2ad75`（分支 `feat/p4-ops-timer`）
+
+**验收自检对照表**：
+
+| # | 验收标准 | 状态 | 证据 |
+|---|----------|------|------|
+| 1 | 定时任务框架可跑（只读巡检）；变更类走任务卡保留确认 | ✅ | `server/engine/scheduler.py` 支持 readonly/change 两种类型，run_tasks 按 SCHEDULER_DISPATCH_DIR 条件执行 |
+| 2 | 集群/运维页显示独立采集的集群状态 | ✅ | `server/web/` 新增 cluster/ops 标签页，读取 cluster.js 数据；采集独立不依赖 qx-map |
+| 3 | 测试全绿；硬编码扫描零字面量 | ✅ | `pytest server/tests/ -q` 全绿 105 passed；配置键走 loader 无硬编码 |
+| 4 | 分支提交真实；未碰 T6 区文件 | ✅ | `feat/p4-ops-timer` commit `6279567`；`server/board/` 零改动 |
+
+**状态**：已回写
