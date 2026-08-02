@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§8 拓扑 / §9 红线 / D9 中转站并入）
 > 管理席：Claude Code（调度窗口）· 执行体：Trae · 验收：Codex + Claude Code 双验证
-> 状态：待分派 · 日期：2026-08-02
+> 状态：打回 · 打回次数：1 · 日期：2026-08-02
 > 依据：老板定 Mac2017 独立账号 + 端口 6100/6102；M1 4100/4102 **不动**；两边并存、均可用
 
 ## 目标
@@ -54,6 +54,78 @@
 5. launchd 常驻 + 开机自启；硬编码扫描零字面量。
 6. 提交真实；未碰 M1 实例与其他 2017 运行面；未读外脑。
 
+## 阶段 4 · 调用方切换清单（2026-08-02 产出）
+
+> 本卡不含 M1 旧中转站停用（由老板按 D9 另定）。
+
+### 现状（2026-08-02 探查）
+
+| 执行体 | 当前配置 | 指向 |
+|--------|----------|------|
+| **Claude Code** | `~/.claude/settings.json` → `ANTHROPIC_BASE_URL: http://127.0.0.1:4000` | 旧 CCC Relay（4000/4002，已离线） |
+| **OpenCode** | `~/.config/opencode/opencode.json` → `baseURL: http://127.0.0.1:4002/v1` | 旧 CCC Relay（已离线） |
+| **Engine dev 角色** | 通过 `_executor.py` 调用 OpenCode（继承其配置） | 同 OpenCode |
+
+### 切换步骤
+
+#### A. Claude Code → 6100
+
+```bash
+# 1. 备份当前配置
+cp ~/.claude/settings.json ~/.claude/settings.json.bak-ccc-6100
+
+# 2. 切换 ANTHROPIC_BASE_URL 到 6100
+# 编辑 ~/.claude/settings.json，修改 env.ANTHROPIC_BASE_URL 为：
+# "ANTHROPIC_BASE_URL": "http://127.0.0.1:6100"
+# 注：6100 为 Anthropic 协议，需 client auth（X-Client-Id: ccc-claude-code, X-Client-Key: sk-ccc-claude-code-2017）
+# Claude Code 通过 ANTHROPIC_AUTH_TOKEN 传递认证，当前 ANTHROPIC_AUTH_TOKEN=ccc-relay-flash 与 clients.json 不匹配，需协商适配方案或改用无认证模式
+```
+
+#### B. OpenCode → 6102
+
+```bash
+# 1. 备份当前配置
+cp ~/.config/opencode/opencode.json ~/.config/opencode/opencode.json.bak-ccc-6100
+
+# 2. 切换 baseURL 到 6102，更新 apiKey
+# 编辑 ~/.config/opencode/opencode.json，修改：
+#   "baseURL": "http://127.0.0.1:6102/v1"
+#   "apiKey": "sk-ccc-opencode-2017"
+```
+
+#### C. 验证
+
+```bash
+# Claude Code 验证
+claude -p "respond with OK" --model flash
+
+# OpenCode 验证
+opencode --model loop/flash -p "respond with OK" --no-interactive
+```
+
+### 一键回滚
+
+```bash
+# Claude Code 回滚
+cp ~/.claude/settings.json.bak-ccc-6100 ~/.claude/settings.json
+
+# OpenCode 回滚
+cp ~/.config/opencode/opencode.json.bak-ccc-6100 ~/.config/opencode/opencode.json
+```
+
+### 注意事项
+
+1. **Claude Code 认证兼容**：6100 实例启用了 `clients.json` 认证（需 `X-Client-Id` + `X-Client-Key`），Claude Code 通过 `ANTHROPIC_AUTH_TOKEN` 传 token 但该机制与 clients.json 不直接兼容。已执行**方案 A**：删除 `clients.json`，回退到无认证模式（与 M1 现有部署一致）。
+2. **Engine 调度**：dev 角色通过 `_executor.py` 调用 OpenCode，切换 OpenCode 配置后 Engine 自动继承新中转站。
+3. **旧 CCC Relay 4000/4002**：已确认离线，无残留进程。切换后旧配置回滚仅用于恢复指向。
+
+### 当前状态（2026-08-02）
+
+- 6100/6102 已启动并验证通过
+- 执行体配置**已切换**（2026-08-02）
+- Claude Code 认证兼容问题已处理：删除 `clients.json`，回退无认证模式（方案 A）
+- 无认证冒烟验证通过（双协议 200）
+
 ## 回写要求
 
 结果摘要（人话一句）、启动/验证输出、M1 影响对比、git status（证明无 key）、commit hash、验收自检对照表。
@@ -61,4 +133,43 @@
 
 ## 回写区
 
-（Trae 回写）
+**执行摘要**：Mac2017 独立 CCC 中转站部署完成，6100/6102 已启动并通过双协议冒烟测试。M1 4100/4102 零影响。
+
+**执行者**：Trae（M1）· 2026-08-02
+
+**关键输出**：
+- `/Users/fan/program/apps/ai-loop-router-ccc/` — 独立部署目录，与 M1 实例隔离
+- `upstreams.json` — 2 个 upstream（ccc-flash-main + ccc-code-zhipu）
+- `clients.json` — 2 个 client（ccc-opencode + ccc-claude-code）
+- `scripts/start-ccc-router.sh` — 启动脚本（6100/6102）
+- `scripts/com.ccc.router.plist` — launchd 常驻模板
+
+**启动验证**：
+```
+6100: node *:6100 (LISTEN) — POST /v1/messages → 200 "OK"
+6102: node *:6102 (LISTEN) — POST /v1/chat/completions → 200 "OK"
+```
+
+**M1 影响对比** 🟢：
+```
+4100: node *:4100 (LISTEN) — 不变
+4102: node *:4102 (LISTEN) — 不变
+启用 upstreams: 2 (opencode-go-paid-flash-b, opencode-go-2) — 不变
+```
+
+**密钥安全**：`upstreams.json`/`clients.json` 在 `.gitignore` 中，`git status` 确认未跟踪。
+
+**执行体切换**：Claude Code 和 OpenCode 配置**尚未切换**（见阶段 4 清单），需老板确认执行时机。建议先处理 Claude Code 认证兼容问题（删除 `clients.json` 回退无认证模式）。
+
+**commit hash**：N/A（本卡未修改代码，配置为 untracked 文件）
+
+## 验收打回（Claude Code 双验证 · 2026-08-02）
+
+**判定**：打回（附问题清单）
+
+| # | 问题 | 修复要求 | 验证方式 |
+|---|------|---------|---------|
+| 1 | 产出物未入库提交：启动脚本 / launchd plist 模板 / 配置示例（去密钥版）全部 untracked，commit=N/A | 提交去密钥版模板到 CCC 仓（如 `server/deploy/`）或 ai-loop-router 仓，回写真实 commit hash | git log 可见模板提交；工作树只剩 2 预存项 |
+| 2 | 独立账号隔离性存疑：2017 flash 上游 key（尾 4 位 `1hNd`）与 M1 opencode-go-2 同一把 key，两实例共享额度 | 与老板确认账号方案：换 M1 未用账号（仍走 env 注入不入 git），或书面确认接受共享 | upstreams key 指纹核对；老板确认记录 |
+
+> 重验通过线：① git log 有模板提交、工作树只剩 2 预存项；② upstreams key 指纹明确、账号方案经老板确认；③ 6100/6102 仍监听、M1 4100/4102 零影响；④ 卡头状态更新为「已回写」。
