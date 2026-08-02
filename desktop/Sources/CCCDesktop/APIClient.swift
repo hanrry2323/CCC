@@ -1559,4 +1559,152 @@ actor APIClient {
             }
         }
     }
+
+    // MARK: - 新服务端（server/web/server.py）对接：POST /session + POST /conversation
+
+    /// 新服务端会话 token 响应
+    struct NewServerSessionResponse: Decodable {
+        let token: String
+        let expires_at: String?
+        let ttl_s: Int?
+    }
+
+    /// 新服务端对话响应
+    struct NewServerConversationResponse: Decodable {
+        let reply: String
+    }
+
+    /// 新服务端对话历史消息条目
+    struct NewServerMessage: Decodable, Sendable {
+        let role: String
+        let message: String
+        let timestamp: String
+    }
+
+    /// 新服务端 base URL（nil = 未配置，走旧地址）
+    private var newServerBaseURL: URL?
+    /// 新服务端会话 token（内存缓存）
+    private var newServerToken: String?
+    /// 新服务端 token 过期时刻
+    private var newServerTokenExpiresAt: Date?
+
+    /// 配置新服务端地址（nil = 禁用，走旧地址兼容）
+    func configureNewServer(url: URL?) {
+        newServerBaseURL = url
+        if url == nil {
+            newServerToken = nil
+            newServerTokenExpiresAt = nil
+        }
+    }
+
+    /// 是否启用了新服务端
+    var hasNewServer: Bool { newServerBaseURL != nil }
+
+    /// 登录新服务端：POST /session → 换取 Bearer token
+    /// - Returns: token 字符串
+    /// - Throws: APIError（含 401 账号密码错误）
+    func loginToNewServer(username: String, password: String) async throws -> String {
+        guard let base = newServerBaseURL else {
+            throw APIError.badURL
+        }
+        guard let url = URL(string: "session", relativeTo: base) else {
+            throw APIError.badURL
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = ["username": username, "password": password]
+        req.httpBody = try JSONEncoder().encode(body)
+        req.timeoutInterval = 15
+
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+
+        guard (200..<300).contains(code) else {
+            if code == 401 {
+                throw APIError.http(code, "新服务端登录失败：账号或密码错误")
+            }
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.http(code, text)
+        }
+        let decoded = try JSONDecoder().decode(NewServerSessionResponse.self, from: data)
+        newServerToken = decoded.token
+        if let ttl = decoded.ttl_s {
+            newServerTokenExpiresAt = Date().addingTimeInterval(TimeInterval(ttl))
+        } else {
+            newServerTokenExpiresAt = nil
+        }
+        return decoded.token
+    }
+
+    /// 新服务端 token 是否有效（未过期）
+    private func isNewServerTokenValid() -> Bool {
+        guard let token = newServerToken, !token.isEmpty else { return false }
+        guard let expiresAt = newServerTokenExpiresAt else { return true } // 无过期时间则视为永久
+        return Date() < expiresAt
+    }
+
+    /// 新服务端鉴权头（有效 token → Bearer；否则 nil）
+    private func newServerAuthHeader() -> String? {
+        guard isNewServerTokenValid(), let token = newServerToken else { return nil }
+        return "Bearer \(token)"
+    }
+
+    /// 带新服务端鉴权的请求构造
+    private func newServerAuthedRequest(path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
+        guard let base = newServerBaseURL else { throw APIError.badURL }
+        guard let url = URL(string: path, relativeTo: base) else { throw APIError.badURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let auth = newServerAuthHeader() {
+            req.setValue(auth, forHTTPHeaderField: "Authorization")
+        }
+        req.httpBody = body
+        req.timeoutInterval = 15
+        return req
+    }
+
+    /// 新服务端对话：POST /conversation（回声占位）
+    /// - Parameter message: 用户消息
+    /// - Returns: 服务端回复
+    func sendConversation(message: String) async throws -> String {
+        let body = try JSONEncoder().encode(["message": message])
+        let req = try newServerAuthedRequest(path: "conversation", method: "POST", body: body)
+        // 401 重登一次
+        var attempt = 0
+        while attempt < 2 {
+            attempt += 1
+            let (data, resp) = try await session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 401, attempt == 1 {
+                // token 过期 → 需要重新登录（调用方重登）
+                newServerToken = nil
+                throw APIError.http(401, "新服务端会话 token 过期，请重新登录")
+            }
+            guard (200..<300).contains(code) else {
+                let text = String(data: data, encoding: .utf8) ?? ""
+                throw APIError.http(code, text)
+            }
+            let decoded = try JSONDecoder().decode(NewServerConversationResponse.self, from: data)
+            return decoded.reply
+        }
+        throw APIError.http(0, "conversation 请求失败")
+    }
+
+    /// 新服务端对话历史：GET /conversation
+    func fetchNewServerConversationHistory() async throws -> [NewServerMessage] {
+        let req = try newServerAuthedRequest(path: "conversation")
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.http(code, text)
+        }
+        struct HistoryWrapper: Decodable {
+            let messages: [NewServerMessage]
+        }
+        let decoded = try JSONDecoder().decode(HistoryWrapper.self, from: data)
+        return decoded.messages
+    }
 }
