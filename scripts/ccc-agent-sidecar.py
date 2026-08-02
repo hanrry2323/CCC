@@ -622,7 +622,10 @@ async def session_drop(request: Request):
     denied = _check_agent_auth(request)
     if denied is not None:
         return denied
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "invalid JSON body"}, status_code=400)
     project_path = _normalize_project_path(
         (body.get("project_path") or "").strip() or DEFAULT_CWD
     )
@@ -661,7 +664,10 @@ async def session_compact(request: Request):
     denied = _check_agent_auth(request)
     if denied is not None:
         return denied
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "invalid JSON body"}, status_code=400)
     project_path = _normalize_project_path(
         (body.get("project_path") or "").strip() or DEFAULT_CWD
     )
