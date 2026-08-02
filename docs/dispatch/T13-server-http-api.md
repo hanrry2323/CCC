@@ -1,7 +1,7 @@
 # 任务卡 T13 · 服务端 HTTP API + 静态页接入（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 拓扑：任意设备经 HTTP 直连）· 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 背景：新栈只有静态看板页（board.js 注入），没有服务端 HTTP API——「任意设备=壳，经 HTTP 直连」的终态拓扑还差服务端这一半；旧 7788 对话口与桌面端也未对接新栈（T12 退役联动）。
 
 ## 目标
@@ -45,4 +45,38 @@
 
 ## 回写区
 
-（Trae 回写）
+### 结果摘要
+
+零依赖 HTTP API 服务端实现，5 个 GET 只读接口全绿，静态页支持 `?api=` 参数切换数据源并回退本地数据。
+
+### 测试输出
+
+```
+platform darwin -- Python 3.14.6, pytest-9.0.3, pluggy-1.6.0
+collected 8 items
+
+server/tests/test_http_api.py ........                                   [100%]
+============================== 8 passed in 0.55s ===============================
+```
+
+全量 160 测试全部通过，无回归。
+
+### 硬编码扫描
+
+零硬编码——端口走 `WEB_PORT` 环境变量 / `--port` 参数，路径相对项目根。
+
+### 交付物清单
+
+| 文件 | 操作 |
+|------|------|
+| `server/web/server.py` | 新增 — HTTP API 入口（5 个 GET 路由） |
+| `server/tests/test_http_api.py` | 新增 — 8 项测试 |
+| `server/web/README.md` | 修改 — API 文档 + 鉴权占位标注 |
+| `server/web/index.html` | 修改 — `?api=` URL 参数切换数据源 |
+| `server/web/js/app.js` | 修改 — API 数据源获取 + 回退本地数据 |
+
+### Commit
+
+```
+2c15f13 feat(server): T13 服务端 HTTP API 实现
+```
