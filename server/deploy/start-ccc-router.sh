@@ -1,16 +1,22 @@
 #!/bin/bash
-# CCC 独立中转站启动脚本 — 端口 6100/6102（Mac2017 独立实例）
-# 与 M1 4100/4102 并存、互不冲突
+# CCC 独立中转站启动脚本 — 模板
+# 所有路径/端口从环境变量读取，部署前设置对应变量。
 # 用法: ./scripts/start-ccc-router.sh [start|stop|status|restart]
 
-PROJECT_DIR="/Users/fan/program/apps/ai-loop-router-ccc"
-NODE_BIN="/usr/local/bin/node"
+set -euo pipefail
+
+# ── 必填变量（部署前设置） ──
+: "${PROJECT_DIR:?PROJECT_DIR must be set to ai-loop-router-ccc path}"
+: "${NODE_BIN:?NODE_BIN must be set to node binary path}"
+: "${LOOP_ANTHROPIC_PORT:?}"
+: "${LOOP_OPENAI_PORT:?}"
+
 ENTRY_FILE="$PROJECT_DIR/dist/proxy.js"
 LOG_DIR="$PROJECT_DIR/logs"
 PID_FILE="$PROJECT_DIR/.ccc-router.pid"
 
-export LOOP_ANTHROPIC_PORT=6100
-export LOOP_OPENAI_PORT=6102
+export LOOP_ANTHROPIC_PORT
+export LOOP_OPENAI_PORT
 
 mkdir -p "$LOG_DIR"
 
@@ -26,7 +32,7 @@ start() {
         fi
     fi
 
-    echo "启动 CCC 独立中转站 (6100/6102)..."
+    echo "启动 CCC 独立中转站 (${LOOP_ANTHROPIC_PORT}/${LOOP_OPENAI_PORT})..."
     cd "$PROJECT_DIR"
     nohup "$NODE_BIN" "$ENTRY_FILE" \
         > "$LOG_DIR/stdout.log" 2> "$LOG_DIR/stderr.log" &
@@ -37,8 +43,8 @@ start() {
     if kill -0 "$PID" 2>/dev/null; then
         echo "✅ 启动成功 (PID: $PID)"
         echo "   日志: $LOG_DIR/stdout.log + stderr.log"
-        echo "   端口: 6100 (anthropic) / 6102 (openai-chat)"
-        echo "   Dashboard: http://127.0.0.1:6100/dashboard"
+        echo "   端口: ${LOOP_ANTHROPIC_PORT} (anthropic) / ${LOOP_OPENAI_PORT} (openai-chat)"
+        echo "   Dashboard: http://127.0.0.1:${LOOP_ANTHROPIC_PORT}/dashboard"
         return 0
     else
         echo "❌ 启动失败，查看日志:"
@@ -78,7 +84,7 @@ status() {
         PID=$(cat "$PID_FILE")
         if kill -0 "$PID" 2>/dev/null; then
             echo "✅ 运行中 (PID: $PID)"
-            lsof -i :6100 -i :6102 -P 2>/dev/null | grep LISTEN || echo "   (端口监听检测中...)"
+            lsof -i :"${LOOP_ANTHROPIC_PORT}" -i :"${LOOP_OPENAI_PORT}" -P 2>/dev/null | grep LISTEN || echo "   (端口监听检测中...)"
             return 0
         else
             echo "⚠️  PID 文件存在但进程已不存在"

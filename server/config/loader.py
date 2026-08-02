@@ -35,6 +35,11 @@ OPTIONAL_KEYS: dict[str, str] = {
     "SCHEDULER_DISPATCH_DIR": "",
     # 集群采集
     "CLUSTER_TARGETS": "",
+    # 中转站部署模板占位（T4，部署前手动替换，可选）
+    "CCC_RELAY_PROJECT_ROOT": "",
+    "LOOP_ANTHROPIC_PORT": "",
+    "LOOP_OPENAI_PORT": "",
+    "NODE_BIN": "",
 }
 
 LINE_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*?)\s*$")
