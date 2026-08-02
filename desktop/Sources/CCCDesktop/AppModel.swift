@@ -2993,14 +2993,22 @@ final class AppModel: ObservableObject {
         let workspaces = projects.compactMap { $0.workspace ?? $0.id }
         do {
             try await prepareClient(ensureAgent: false)
-            let resp = try await client.fetchBoardSummaries(workspaces: workspaces)
+            // T20：useNewServer 时走新服务端 /board/summaries（counts 键为契约 §2 中文五态，需映射）
+            let resp: BoardSummariesResp
+            if useNewServer {
+                resp = try await client.fetchBoardSummariesNewServer(workspaces: workspaces)
+            } else {
+                resp = try await client.fetchBoardSummaries(workspaces: workspaces)
+            }
             var newState: [String: String] = [:]
             var newCounts: [String: [String: Int]] = [:]
             var newStats: [String: ProjectStats] = [:]
             for proj in projects {
                 let ws = proj.workspace ?? proj.id
                 if let snap = resp.summaries[ws] {
-                    let counts = snap.counts ?? [:]
+                    let rawCounts = snap.counts ?? [:]
+                    // 新服务端中文五态 → 旧英文名（deriveTaskState/ProjectStats 兼容）
+                    let counts = useNewServer ? Self.mapNewServerCounts(rawCounts) : rawCounts
                     newState[proj.id] = Self.deriveTaskState(from: counts)
                     newCounts[proj.id] = counts
                     var s = ProjectStats()
@@ -3034,6 +3042,18 @@ final class AppModel: ObservableObject {
         // backlog 含 pending/planned/running epic；done 沉底后 ui_hidden，不应再进 counts
         if planned > 0 || backlog > 0 { return "pending" }
         return "idle"
+    }
+
+    /// T20：新服务端契约 §2 中文五态 → 旧 Hub 英文状态名（ProjectStats/deriveTaskState 兼容）。
+    /// 映射：待分派→backlog、执行中→in_progress、已回写→verified、已关闭→released、打回→abnormal。
+    static func mapNewServerCounts(_ counts: [String: Int]) -> [String: Int] {
+        return [
+            "backlog": counts["待分派"] ?? 0,
+            "in_progress": counts["执行中"] ?? 0,
+            "verified": counts["已回写"] ?? 0,
+            "released": counts["已关闭"] ?? 0,
+            "abnormal": counts["打回"] ?? 0,
+        ]
     }
 
     /// 可等待版本：smoke / 自动化必须等整轮 SSE（含 done）结束
@@ -5691,13 +5711,27 @@ final class AppModel: ObservableObject {
         }
         do {
             try await prepareClient(ensureAgent: false)
-            let snap = try await client.fetchBoard(workspace: ws, includeHidden: boardShowHidden)
+            // T20：useNewServer 时看板读取走新服务端 /board/snapshot
+            let snap: BoardSnapshot
+            if useNewServer {
+                snap = try await client.fetchBoardNewServer(workspace: ws, includeHidden: boardShowHidden)
+            } else {
+                snap = try await client.fetchBoard(workspace: ws, includeHidden: boardShowHidden)
+            }
             let cols = snap.columns ?? [:]
             applyBoardSnapshot(columns: cols, error: nil)
             if let pid {
                 LocalSessionStore.saveBoardCache(projectId: pid, workspace: ws, columns: cols)
             }
         } catch {
+            // 401 清 token 提示重登（新服务端）
+            if useNewServer, let apiErr = error as? APIError, case .http(let code, _) = apiErr, code == 401 {
+                newServerLoggedIn = false
+                newServerLoginError = "看板会话已过期，请重新登录"
+                boardError = "看板会话已过期，请在「设置 → 新服务端（T19）」重新登录"
+                applyBoardSnapshot(columns: boardColumns, error: error)
+                return
+            }
             boardError = error.localizedDescription
             applyBoardSnapshot(columns: boardColumns, error: error)
         }
@@ -5709,6 +5743,12 @@ final class AppModel: ObservableObject {
     }
 
     func moveBoardTask(_ task: BoardTask, to: String) async {
+        // T20：契约 §4 任务卡是唯一事实源、看板是派生视图；§8 壳零业务逻辑。
+        // 新服务端模式下移动任务改为文档流转提示，不调任何写接口。
+        if useNewServer {
+            showToast("任务状态由执行体回写流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         do {
             try await prepareClient(ensureAgent: false)
@@ -5720,6 +5760,11 @@ final class AppModel: ObservableObject {
     }
 
     func hideCompletedEpics() async {
+        // T20：新服务端模式下隐藏史诗改为提示（壳不直接改任务状态）
+        if useNewServer {
+            showToast("任务状态由执行体回写流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         do {
             try await prepareClient(ensureAgent: false)
@@ -5769,6 +5814,10 @@ final class AppModel: ObservableObject {
     func fetchTaskDetail(_ task: BoardTask) async throws -> BoardTaskDetail {
         try await prepareClient(ensureAgent: false)
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
+        // T20：useNewServer 时走新服务端 /tasks/{id}
+        if useNewServer {
+            return try await client.fetchTaskDetailNewServer(taskId: task.id, workspace: ws)
+        }
         return try await client.fetchTaskDetail(taskId: task.id, workspace: ws)
     }
 
@@ -6430,10 +6479,17 @@ final class AppModel: ObservableObject {
             try await prepareClient(ensureAgent: false)
             let ws = projects.compactMap { $0.workspace }
             guard !ws.isEmpty else { return }
-            let resp = try await client.fetchBoardSummaries(workspaces: ws)
+            // T20：useNewServer 时走新服务端 /board/summaries
+            let resp: BoardSummariesResp
+            if useNewServer {
+                resp = try await client.fetchBoardSummariesNewServer(workspaces: ws)
+            } else {
+                resp = try await client.fetchBoardSummaries(workspaces: ws)
+            }
             var stats: [String: ProjectStats] = [:]
             for (projectWS, snapshot) in resp.summaries {
-                guard let counts = snapshot.counts else { continue }
+                guard let rawCounts = snapshot.counts else { continue }
+                let counts = useNewServer ? Self.mapNewServerCounts(rawCounts) : rawCounts
                 var s = ProjectStats()
                 s.totalEpics = counts["backlog"] ?? 0
                 s.activeWorks = (counts["in_progress"] ?? 0) + (counts["planned"] ?? 0)

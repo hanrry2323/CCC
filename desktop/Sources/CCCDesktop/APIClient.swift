@@ -1707,4 +1707,33 @@ actor APIClient {
         let decoded = try JSONDecoder().decode(HistoryWrapper.self, from: data)
         return decoded.messages
     }
+
+    // MARK: - T20 看板兼容接口（新服务端只读）
+
+    /// 新服务端看板快照：GET /board/snapshot?workspace=X&include_hidden=0
+    func fetchBoardNewServer(workspace: String, includeHidden: Bool = false) async throws -> BoardSnapshot {
+        let enc = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+        var path = "board/snapshot?workspace=\(enc)"
+        if includeHidden { path += "&include_hidden=1" }
+        var req = try newServerAuthedRequest(path: path)
+        req.timeoutInterval = 12
+        return try await send(req, as: BoardSnapshot.self, maxAttempts: 2)
+    }
+
+    /// 新服务端多项目汇总：GET /board/summaries?workspaces=a,b
+    func fetchBoardSummariesNewServer(workspaces: [String]) async throws -> BoardSummariesResp {
+        let joined = workspaces.joined(separator: ",")
+        let enc = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
+        var req = try newServerAuthedRequest(path: "board/summaries?workspaces=\(enc)")
+        req.timeoutInterval = 12
+        return try await send(req, as: BoardSummariesResp.self, maxAttempts: 2)
+    }
+
+    /// 新服务端任务详情：GET /tasks/{id}?workspace=X
+    func fetchTaskDetailNewServer(taskId: String, workspace: String) async throws -> BoardTaskDetail {
+        let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+        let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+        let req = try newServerAuthedRequest(path: "tasks/\(t)?workspace=\(w)")
+        return try await send(req, as: BoardTaskDetail.self)
+    }
 }

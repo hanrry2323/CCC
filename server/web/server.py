@@ -173,6 +173,85 @@ def _forward_to_upstream(message: str, history: list[dict[str, Any]]) -> tuple[b
 _NO_AUTH_PATHS = frozenset({"/health", "/session"})
 
 
+# ── 看板兼容接口辅助（T20：BoardSnapshot / BoardSummaries / TaskDetail） ──
+
+def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
+    """BoardItem → 桌面端 BoardTask 兼容字典。
+
+    字段映射：state→status；card_kind 统一 "work"（任务卡都是 work 卡）；
+    parent_id/split_status/note 任务卡无结构化对应，留空。
+    """
+    return {
+        "id": item.id,
+        "title": item.title,
+        "card_kind": "work",
+        "parent_id": "",
+        "status": item.state,
+        "note": "",
+        "executor": item.executor,
+        "split_status": "",
+    }
+
+
+def _build_snapshot(items: list[BoardItem], workspace: str = "") -> dict[str, Any]:
+    """构造 BoardSnapshot 兼容结构：columns（状态→BoardTask 列表）+ counts + workspace。
+
+    workspace 非空时按 project 过滤；include_hidden 参数接受但任务卡无 hidden 标记，
+    看板是派生视图（契约 §4），不另行过滤。
+    """
+    from server.board.models import STATES, UNKNOWN, base_state
+    filtered = [i for i in items if not workspace or i.project == workspace]
+    columns: dict[str, list[dict]] = {}
+    for item in filtered:
+        b = base_state(item.state)
+        bucket = b if b in STATES else UNKNOWN
+        columns.setdefault(bucket, []).append(_item_to_board_task(item))
+    counts = {state: len(columns.get(state, [])) for state in STATES}
+    return {
+        "columns": columns,
+        "counts": counts,
+        "workspace": workspace or "all",
+    }
+
+
+def _parse_task_acceptance(card_id: str) -> str:
+    """从任务卡文件解析 `## 验收标准` section 文本（简单文本拼接，未找到返回空串）。"""
+    import re
+    # 任务卡命名：T19-xxx.md；用前缀 glob 定位
+    candidates = sorted(_DISPATCH_DIR.glob(f"{card_id}-*.md"))
+    if not candidates:
+        candidates = sorted(_DISPATCH_DIR.glob(f"*{card_id}*.md"))
+    if not candidates:
+        return ""
+    try:
+        text = candidates[0].read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    # 匹配 `## 验收标准...` 到下一个 `## ` 或文件末
+    m = re.search(r"^##\s*验收标准[^\n]*\n(.*?)(?=^##\s|\Z)", text, re.MULTILINE | re.DOTALL)
+    return m.group(1).strip() if m else ""
+
+
+def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | None:
+    """按 id 查找任务卡详情；未找到返回 None。"""
+    item = next((i for i in items if i.id == task_id), None)
+    if item is None:
+        return None
+    return {
+        "id": item.id,
+        "title": item.title,
+        "card_kind": "work",
+        "parent_id": "",
+        "status": item.state,
+        "note": "",
+        "executor": item.executor,
+        "split_status": "",
+        "acceptance": _parse_task_acceptance(item.id),
+        "phases": [],
+        "events": [],
+    }
+
+
 def _password_hash(password: str) -> str:
     """计算密码的 SHA-256 哈希。"""
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
@@ -318,6 +397,34 @@ class _APIHandler(BaseHTTPRequestHandler):
         """GET /conversation：返回对话历史。"""
         self._send_json({"messages": list(_conversations)})
 
+    def _handle_board_snapshot(self, items: list[BoardItem]):
+        """GET /board/snapshot?workspace=X&include_hidden=0 → BoardSnapshot 兼容结构。"""
+        from urllib.parse import parse_qs
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        workspace = (qs.get("workspace", [""])[0]).strip()
+        # include_hidden 参数接受但任务卡无 hidden 标记（契约 §4 派生视图）
+        self._send_json(_build_snapshot(items, workspace))
+
+    def _handle_board_summaries(self, items: list[BoardItem]):
+        """GET /board/summaries?workspaces=a,b → {summaries: {项目: BoardSnapshot}}。"""
+        from urllib.parse import parse_qs
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        raw = (qs.get("workspaces", [""])[0]).strip()
+        workspaces = [w.strip() for w in raw.split(",") if w.strip()] if raw else []
+        if not workspaces:
+            # 无参数 → 全部项目各自一个 snapshot
+            workspaces = sorted({i.project for i in items})
+        summaries = {ws: _build_snapshot(items, ws) for ws in workspaces}
+        self._send_json({"summaries": summaries})
+
+    def _handle_task_detail(self, items: list[BoardItem], task_id: str):
+        """GET /tasks/{id} → BoardTaskDetail；未找到 404。"""
+        detail = _find_task_detail(items, task_id)
+        if detail is None:
+            self._send_json({"error": f"task not found: {task_id}"}, 404)
+            return
+        self._send_json(detail)
+
     def do_GET(self):
         if not self._check_auth():
             return
@@ -347,6 +454,16 @@ class _APIHandler(BaseHTTPRequestHandler):
             })
         elif path == "/board/states":
             self._send_json(state_counts(items))
+        elif path == "/board/snapshot":
+            self._handle_board_snapshot(items)
+        elif path == "/board/summaries":
+            self._handle_board_summaries(items)
+        elif path.startswith("/tasks/"):
+            task_id = path[len("/tasks/"):].strip("/")
+            if not task_id:
+                self._send_404()
+                return
+            self._handle_task_detail(items, task_id)
         else:
             self._send_404()
 

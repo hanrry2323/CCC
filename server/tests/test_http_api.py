@@ -531,3 +531,130 @@ class DataShape:
         for bucket in data["overview"]:
             assert isinstance(bucket["count"], int)
             assert bucket["count"] >= 0
+
+
+# ── T20 看板兼容接口：/board/snapshot / /board/summaries / /tasks/{id} ──
+
+
+class TestBoardSnapshot:
+    """GET /board/snapshot（BoardSnapshot 兼容结构）"""
+
+    def test_returns_200_with_shape(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/board/snapshot", token=token)
+        assert status == 200
+        # BoardSnapshot: columns / counts / workspace
+        assert "columns" in data
+        assert "counts" in data
+        assert "workspace" in data
+        assert isinstance(data["columns"], dict)
+        assert isinstance(data["counts"], dict)
+        # 无 workspace 参数 → workspace="all"
+        assert data["workspace"] == "all"
+        # columns 键=状态名，值为 BoardTask 列表
+        for state, tasks in data["columns"].items():
+            assert isinstance(state, str)
+            assert isinstance(tasks, list)
+            for t in tasks:
+                assert "id" in t
+                assert "title" in t
+                assert "status" in t
+                assert t["card_kind"] == "work"
+
+    def test_workspace_filter(self, api_server):
+        token = _get_token(api_server)
+        # 用一个存在的 project（从 by_project 拿）
+        status, proj_rows = _get(api_server, "/board/by_project", token=token)
+        assert status == 200
+        assert isinstance(proj_rows, list)
+        if not proj_rows:
+            pytest.skip("无任务卡数据，跳过 workspace 过滤测试")
+        target = proj_rows[0]["project"]
+        status, data = _get(api_server, f"/board/snapshot?workspace={target}", token=token)
+        assert status == 200
+        assert data["workspace"] == target
+        # counts 之和应等于该项目任务数
+        total = sum(data["counts"].values())
+        assert total == proj_rows[0]["count"]
+
+    def test_counts_match_columns(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/board/snapshot", token=token)
+        assert status == 200
+        for state, count in data["counts"].items():
+            assert count == len(data["columns"].get(state, []))
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/board/snapshot")
+        assert status == 401
+        assert "error" in data
+
+
+class TestBoardSummaries:
+    """GET /board/summaries"""
+
+    def test_returns_200_with_summaries(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/board/summaries", token=token)
+        assert status == 200
+        assert "summaries" in data
+        assert isinstance(data["summaries"], dict)
+        # 无参数 → 全部项目各自一个 snapshot
+        for ws, snap in data["summaries"].items():
+            assert isinstance(ws, str)
+            assert "columns" in snap
+            assert "counts" in snap
+            assert "workspace" in snap
+            assert snap["workspace"] == ws
+
+    def test_workspaces_param(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/board/summaries?workspaces=INT-120,CCC", token=token)
+        assert status == 200
+        # 请求的项目都在 summaries 里（即使无数据也应有空 snapshot）
+        for ws in ("INT-120", "CCC"):
+            assert ws in data["summaries"]
+            assert data["summaries"][ws]["workspace"] == ws
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/board/summaries")
+        assert status == 401
+        assert "error" in data
+
+
+class TestTaskDetail:
+    """GET /tasks/{id}"""
+
+    def test_returns_200_for_existing_task(self, api_server):
+        # 先从 snapshot 拿一个真实 task id
+        token = _get_token(api_server)
+        status, snap = _get(api_server, "/board/snapshot", token=token)
+        assert status == 200
+        all_tasks = [t for tasks in snap["columns"].values() for t in tasks]
+        if not all_tasks:
+            pytest.skip("无任务卡数据，跳过任务详情测试")
+        task_id = all_tasks[0]["id"]
+        status, data = _get(api_server, f"/tasks/{task_id}", token=token)
+        assert status == 200
+        # BoardTaskDetail 字段
+        assert data["id"] == task_id
+        assert "title" in data
+        assert "status" in data
+        assert "executor" in data
+        assert "acceptance" in data
+        assert "phases" in data
+        assert isinstance(data["phases"], list)
+        assert "events" in data
+        assert isinstance(data["events"], list)
+        assert data["card_kind"] == "work"
+
+    def test_404_for_missing_task(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/NOPE-9999", token=token)
+        assert status == 404
+        assert "error" in data
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/tasks/T19")
+        assert status == 401
+        assert "error" in data
