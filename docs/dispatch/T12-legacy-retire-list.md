@@ -59,11 +59,11 @@
 - 清理候选：relay/node_modules/ + dist/（79MB）/ desktop/.build/（1.3GB）
 - 暂留：scripts/（12MB，609 文件，仍在运行）/ desktop/ 源码（944KB）/ templates/（88KB）
 
-**commit hash**：待提交后回写
+**commit hash**：`9ca6c5f`（docs(legacy): T12 旧系统退役清单与处置）
 
 **验收自检**：
 1. ✅ 清单覆盖全部旧目录（scripts/app/desktop/lib/db/relay/skills/templates），无遗漏
 2. ✅ 依赖方核实为实测证据（进程 PID / plist 状态 / 端口监听），非猜测
 3. ✅ 零删除、零移动、零运行面动作；未碰新栈/旧代码逻辑/外脑
 4. ✅ 处置顺序建议明确（三阶段，含放行条件）
-5. ⏳ 真实提交（待执行）
+5. ✅ 真实提交（9ca6c5f）
