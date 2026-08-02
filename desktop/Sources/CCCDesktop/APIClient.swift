@@ -745,25 +745,29 @@ actor APIClient {
 
     /// 通用 GET（返回 Data）
     func genericGET(_ path: String) async throws -> Data {
+        if hasNewServer { throw Self.newServerDisabledError }
         let (data, _) = try await sendVoid(authedRequest(path))
         return data
     }
 
     /// 通用 POST（返回 Data + statusCode）
     func genericPOST(_ path: String, body: Data? = nil) async throws -> (Data, Int) {
-        try await sendVoid(authedRequest(path, method: "POST", body: body))
+        if hasNewServer { throw Self.newServerDisabledError }
+        return try await sendVoid(authedRequest(path, method: "POST", body: body))
     }
 
     /// 通用 DELETE（返回 statusCode）
     @discardableResult
     func genericDELETE(_ path: String) async throws -> Int {
+        if hasNewServer { throw Self.newServerDisabledError }
         let (_, code) = try await sendVoid(authedRequest(path, method: "DELETE"))
         return code
     }
 
     /// 通用 PATCH（返回 Data + statusCode）
     func genericPATCH(_ path: String, body: Data? = nil) async throws -> (Data, Int) {
-        try await sendVoid(authedRequest(path, method: "PATCH", body: body))
+        if hasNewServer { throw Self.newServerDisabledError }
+        return try await sendVoid(authedRequest(path, method: "PATCH", body: body))
     }
 
     struct ProjectsResp: Decodable {
@@ -879,6 +883,7 @@ actor APIClient {
     }
 
     func fetchRecentEpicsDetailed(projectId: String, threadId: String? = nil) async throws -> EpicsFetchResult {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
         var path = "api/desktop/flow/epics?project_id=\(enc)"
         if let threadId, !threadId.isEmpty {
@@ -1214,7 +1219,13 @@ actor APIClient {
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
+    /// T24-R：useNewServer=true 时禁用（壳不直接投递，契约 §4/§8）
+    static let newServerDisabledError = APIError.http(
+        0, "由执行体回写/文档流转，壳不直接改（契约 §4/§8）"
+    )
+
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
+        if hasNewServer { throw Self.newServerDisabledError }
         let data = try JSONEncoder().encode(req)
         var urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
         // Hub 抖动时勿用默认 45s×3 把 UI 卡死在「投递中」
@@ -1317,6 +1328,7 @@ actor APIClient {
     }
 
     func moveTask(taskId: String, to: String, workspace: String) async throws {
+        if hasNewServer { throw Self.newServerDisabledError }
         let body = try JSONSerialization.data(withJSONObject: ["id": taskId, "to": to, "workspace": workspace])
         let req = try authedRequest("api/tasks/move", method: "POST", body: body)
         let (_, code) = try await sendVoid(req)
@@ -1326,6 +1338,7 @@ actor APIClient {
     }
 
     func hideCompletedEpics(workspace: String) async throws {
+        if hasNewServer { throw Self.newServerDisabledError }
         let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
         let req = try authedRequest("api/tasks/hide-completed-epics", method: "POST", body: body)
         let (_, code) = try await sendVoid(req)
@@ -1335,6 +1348,7 @@ actor APIClient {
     }
 
     func reopenTask(taskId: String, to: String, workspace: String) async throws {
+        if hasNewServer { throw Self.newServerDisabledError }
         let body = try JSONSerialization.data(withJSONObject: ["id": taskId, "to": to, "workspace": workspace])
         let req = try authedRequest("api/tasks/reopen", method: "POST", body: body)
         let (_, code) = try await sendVoid(req)
@@ -1344,27 +1358,33 @@ actor APIClient {
     }
 
     func fetchOpsOverview() async throws -> OpsOverview {
-        try await send(try authedRequest("api/ops/overview"), as: OpsOverview.self)
+        if hasNewServer { throw Self.newServerDisabledError }
+        return try await send(try authedRequest("api/ops/overview"), as: OpsOverview.self)
     }
 
     func fetchOpsRisks() async throws -> OpsRisksResp {
-        try await send(try authedRequest("api/ops/risks"), as: OpsRisksResp.self)
+        if hasNewServer { throw Self.newServerDisabledError }
+        return try await send(try authedRequest("api/ops/risks"), as: OpsRisksResp.self)
     }
 
     func fetchOpsSummary() async throws -> OpsSummary {
-        try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
+        if hasNewServer { throw Self.newServerDisabledError }
+        return try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
     }
 
     func fetchOpsUpstreamDaily() async throws -> OpsUpstreamDailyResp {
-        try await send(try authedRequest("api/ops/upstream-daily"), as: OpsUpstreamDailyResp.self)
+        if hasNewServer { throw Self.newServerDisabledError }
+        return try await send(try authedRequest("api/ops/upstream-daily"), as: OpsUpstreamDailyResp.self)
     }
 
     func fetchInboxProposals(includeAdopted: Bool = false) async throws -> InboxProposalsResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let q = includeAdopted ? "?include_adopted=1" : ""
         return try await send(try authedRequest("api/desktop/proposals\(q)"), as: InboxProposalsResp.self)
     }
 
     func adoptInboxProposal(id: String) async throws -> TransferResponse {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
         return try await send(
             try authedRequest("api/desktop/proposals/\(enc)/adopt", method: "POST"),
@@ -1373,6 +1393,7 @@ actor APIClient {
     }
 
     func runDailyReview(workspace: String) async throws {
+        if hasNewServer { throw Self.newServerDisabledError }
         // Dry-run all engine-eligible apps (report-only; apply via schedule / Hub)
         let body = try JSONSerialization.data(withJSONObject: [
             "all_apps": true,
@@ -1387,6 +1408,7 @@ actor APIClient {
     }
 
     func adoptSuggestion(workspace: String, title: String, description: String, tags: [String]) async throws {
+        if hasNewServer { throw Self.newServerDisabledError }
         let body = try JSONSerialization.data(withJSONObject: [
             "workspace": workspace,
             "title": title,
@@ -1401,6 +1423,7 @@ actor APIClient {
     }
 
     func fetchProjectBaseline(projectId: String) async throws -> ProjectBaselineResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
         var req = try authedRequest("api/projects/\(enc)/baseline")
         // Hub LAN 偶发抖动：短超时 + 少重试，避免 45s×3 静默挂死
@@ -1409,6 +1432,7 @@ actor APIClient {
     }
 
     func flowSnapshot(projectId: String, epicId: String? = nil) async throws -> FlowSnapshot {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
         var path = "api/desktop/flow/snapshot?project_id=\(enc)"
         if let epicId, !epicId.isEmpty {
@@ -1422,6 +1446,7 @@ actor APIClient {
 
     /// LPSN · T3: load L1 decided goals
     func fetchMindDecided(projectId: String) async throws -> MindDecidedResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
         var req = try authedRequest("api/desktop/mind/\(enc)/decided")
         req.timeoutInterval = 8
@@ -1430,6 +1455,7 @@ actor APIClient {
 
     /// LPSN · T3: human mark goal stable / abandoned / probed
     func markMindGoalStatus(projectId: String, goalId: String, status: String) async throws -> MindGoalStatusResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let penc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
         let genc = goalId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? goalId
         let body = try JSONSerialization.data(withJSONObject: [
@@ -1448,6 +1474,7 @@ actor APIClient {
     /// v0.64: 转意图卡 → 写 L1 planned（不写 backlog）
     @discardableResult
     func upsertIntentCards(projectId: String, cards: [[String: Any]]) async throws -> MindDecidedResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
         let body = try JSONSerialization.data(withJSONObject: [
             "cards": cards,
@@ -1469,6 +1496,7 @@ actor APIClient {
         goalIds: [String]? = nil,
         allPlanned: Bool = false
     ) async throws -> MindDecidedResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
         var payload: [String: Any] = ["updated_by": "desktop-orphan-clean"]
         if let goalIds, !goalIds.isEmpty {
@@ -1489,6 +1517,7 @@ actor APIClient {
 
     /// Dry-run transfer_gate（不写 backlog）
     func validateTransfer(_ payload: [String: Any]) async throws -> TransferValidateResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         let body = try JSONSerialization.data(withJSONObject: payload)
         var req = try authedRequest(
             "api/desktop/transfer/validate",
@@ -1505,6 +1534,7 @@ actor APIClient {
         threadId: String? = nil,
         goalIds: [String]? = nil
     ) async throws -> PromotePlannedResp {
+        if hasNewServer { throw Self.newServerDisabledError }
         var payload: [String: Any] = ["project_id": projectId]
         if let threadId, !threadId.isEmpty {
             payload["thread_id"] = threadId
@@ -1528,6 +1558,7 @@ actor APIClient {
         epicId: String?,
         onEvent: @escaping @Sendable (String, [String: Any]) -> Void
     ) async throws {
+        if hasNewServer { throw Self.newServerDisabledError }
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
         var path = "api/desktop/flow/events?project_id=\(enc)"
         if let epicId, !epicId.isEmpty {
@@ -1746,5 +1777,87 @@ actor APIClient {
         var req = try newServerAuthedRequest(path: "ops/summary")
         req.timeoutInterval = 15  // cluster 采集可能较慢
         return try await send(req, as: OpsSummary.self, maxAttempts: 2)
+    }
+
+    // MARK: - T24-R 壳化收敛：探活/项目/线程走新服务端（免调旧 /api/*）
+
+    /// 探活新服务端：GET /health（免鉴权，无 token 也能探）。
+    /// 用于 useNewServer=true 时替换 probeHubHealth（不再调 /api/desktop/health）。
+    /// 成功返回 true；任何失败（连接/超时/非 200）返回 false。
+    func probeNewServerHealth() async -> Bool {
+        guard let base = newServerBaseURL else { return false }
+        guard let url = URL(string: "health", relativeTo: base) else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 3
+        do {
+            let (_, resp) = try await session.data(for: req)
+            return (resp as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
+    /// 新服务端项目列表：GET /board/summaries → 派生 DesktopProject 列表。
+    /// summaries 键 = workspace 名；映射为 id=name=workspace=键，path 空串，role="app"，engine_eligible=true。
+    /// default_project 取第一个键（确定性：字典序，避免依赖服务端实现顺序）。
+    /// 失败抛错（调用方 try? 容错）。
+    func fetchProjectsNewServer() async throws -> ProjectsResp {
+        var req = try newServerAuthedRequest(path: "board/summaries")
+        req.timeoutInterval = 10
+        // 不带 workspaces 参数 → 服务端返回全部项目各自一个 snapshot
+        // 内联结构：{summaries: {项目: <BoardSnapshot>}}，只需键
+        struct SummariesResp: Decodable {
+            let summaries: [String: DecodableStub]
+        }
+        struct DecodableStub: Decodable {}
+        let resp = try await send(req, as: SummariesResp.self, maxAttempts: 2)
+        let names = resp.summaries.keys.sorted()
+        let projects: [DesktopProject] = names.map { name in
+            DesktopProject(
+                id: name,
+                name: name,
+                path: "",
+                workspace: name,
+                role: "app",
+                engine_eligible: true
+            )
+        }
+        return ProjectsResp(projects: projects, default_project: names.first)
+    }
+
+    /// 新服务端线程列表：单会话壳（GET /conversation 提供历史，无多线程）。
+    /// 返回固定一条 thread（id="main"，title="对话"），project_id=projectId。
+    /// useNewServer=true 时替换 fetchThreads（不调 /api/desktop/threads）。
+    func fetchThreadsNewServer(projectId: String) async throws -> ThreadsResp {
+        // 无需请求：线程是壳层概念，新服务端只有单会话历史
+        return ThreadsResp(
+            threads: [DesktopThread(
+                thread_id: "main",
+                title: "对话",
+                updated_at: nil,
+                project_id: projectId
+            )],
+            project_id: projectId
+        )
+    }
+
+    /// 新服务端线程详情：GET /conversation 历史 → ThreadDetail（messages 转换为 ChatMessage）。
+    /// useNewServer=true 时替换 fetchThread。
+    func fetchThreadNewServer(projectId: String, threadId: String) async throws -> ThreadDetail {
+        // threadId 忽略（新服务端单会话），仅取历史
+        let history = try await fetchNewServerConversationHistory()
+        let messages: [ChatMessage] = history.map { m in
+            ChatMessage(
+                id: UUID(),
+                role: m.role,
+                content: m.message,
+                isStreaming: false
+            )
+        }
+        return ThreadDetail(
+            thread_id: "main",
+            title: "对话",
+            messages: messages
+        )
     }
 }

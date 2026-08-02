@@ -805,15 +805,28 @@ final class AppModel: ObservableObject {
     }
 
     /// 轻量探活：health 3s；成功再补 projects / flush。失败静默（勿 toast 刷屏），但刷新 attempts。
+    /// T24-R：useNewServer=true 时探新服务端 /health + fetchProjectsNewServer（不调旧 /api/desktop/*）。
     @discardableResult
     private func probeAndRecoverHub() async -> Bool {
         do {
             try await prepareClient(ensureAgent: false)
-            _ = try await client.probeHubHealth()
-            // 探活成功：补全项目列表（失败不挡可达态）
-            if let resp = try? await client.fetchProjects() {
-                projects = resp.projects
-                LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
+            if useNewServer {
+                // 壳化收敛：探活走新服务端 /health（免鉴权）
+                guard await client.probeNewServerHealth() else {
+                    throw APIError.http(0, "新服务端 /health 不可达")
+                }
+                // 项目列表从 /board/summaries 派生（失败不挡可达态）
+                if let resp = try? await client.fetchProjectsNewServer() {
+                    projects = resp.projects
+                    LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
+                }
+            } else {
+                _ = try await client.probeHubHealth()
+                // 探活成功：补全项目列表（失败不挡可达态）
+                if let resp = try? await client.fetchProjects() {
+                    projects = resp.projects
+                    LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
+                }
             }
             setHubReachable(true, source: "hub_recover_probe")
             hubRecoverAttempts = 0
@@ -1225,7 +1238,13 @@ final class AppModel: ObservableObject {
 
         do {
             try await prepareClient(ensureAgent: false)
-            let resp = try await client.fetchProjects()
+            // T24-R：useNewServer=true 时项目列表从 /board/summaries 派生（不调旧 /api/desktop/projects）
+            let resp: APIClient.ProjectsResp
+            if useNewServer {
+                resp = try await client.fetchProjectsNewServer()
+            } else {
+                resp = try await client.fetchProjects()
+            }
             projects = resp.projects
             setHubReachable(true, source: "refresh_projects")
             LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
@@ -1985,7 +2004,13 @@ final class AppModel: ObservableObject {
         }
         do {
             try await prepareClient(ensureAgent: false)
-            let detail = try await client.fetchThread(projectId: projectId, threadId: threadId)
+            // T24-R：useNewServer=true 时线程详情走新服务端（GET /conversation 历史）
+            let detail: APIClient.ThreadDetail
+            if useNewServer {
+                detail = try await client.fetchThreadNewServer(projectId: projectId, threadId: threadId)
+            } else {
+                detail = try await client.fetchThread(projectId: projectId, threadId: threadId)
+            }
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
             let loaded = detail.messages ?? []
             guard LocalSessionStore.messageScore(loaded) > 0 else { return }
@@ -2422,7 +2447,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Hub PUT 会话备份（非权威；Engine 不读；失败入重试队列，本机磁盘为准）
+    /// T24-R：useNewServer=true 时新服务端无线程备份端点（单会话历史由 GET /conversation 提供），
+    /// 直接跳过（本机磁盘 SSOT），不调旧 /api/desktop/threads/*/messages。
     private func syncMessagesToHub(projectId: String, threadId: String, messages synced: [ChatMessage]) async {
+        if useNewServer { return }
         do {
             try await prepareClient(ensureAgent: false)
             try await client.syncThreadMessages(
@@ -2438,6 +2466,13 @@ final class AppModel: ObservableObject {
 
     private func flushPendingHubSync() async {
         guard hubReachable else { return }
+        // T24-R：useNewServer=true 时无线程备份端点，pending-sync 无意义，直接清空返回
+        if useNewServer {
+            for item in LocalSessionStore.loadPendingSync() {
+                LocalSessionStore.dequeueSync(projectId: item.project_id, threadId: item.thread_id)
+            }
+            return
+        }
         let pending = LocalSessionStore.loadPendingSync()
         for item in pending {
             if item.attempts >= LocalSessionStore.maxSyncAttempts {
@@ -4809,6 +4844,29 @@ final class AppModel: ObservableObject {
         let isSelected = selectedProjectId == pid
         if isSelected { selectedNodeDetail = nil }
 
+        // T24-R：useNewServer=true 时不调旧 /api/desktop/flow/epics（新服务端无编排端点），
+        // 保留现有 projectFlow/threadFlow 缓存，不报错也不清空。
+        if useNewServer {
+            let tid = resolveFlowThreadId(projectId: pid, preferred: nil)
+            if let cached = projectFlow[pid] ?? threadFlow[tid] {
+                if isSelected {
+                    recentEpics = cached.recentEpics
+                    currentEpicId = cached.epicId
+                    applyFlowSnapshot(cached)
+                }
+            } else {
+                let empty = FlowThreadSnapshot(
+                    epicId: nil, epic: nil, works: [], headline: "",
+                    recentEpics: [], emptyMessage: "编排空闲 · 新服务端只读视图", fanoutHint: nil
+                )
+                writeFlowSnap(projectId: pid, threadId: tid, empty)
+                if isSelected {
+                    applyFlowSnapshot(empty)
+                }
+            }
+            return
+        }
+
         let preexisting = projectFlow[pid]?.epicId ?? (isSelected ? currentEpicId : nil)
         let fastEpic = (preferEpicId?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
             $0.isEmpty ? nil : $0
@@ -6430,6 +6488,11 @@ final class AppModel: ObservableObject {
     func createBoardTask(workspace: String, title: String, description: String,
                          pipeline: String = "dev", executor: String = "opencode",
                          parentId: String? = nil) async {
+        // T24-R：契约 §4/§8 壳不直接改任务，显示文档流转提示
+        if useNewServer {
+            showToast("由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         do {
             try await prepareClient(ensureAgent: false)
             var body: [String: Any] = [
@@ -6458,6 +6521,11 @@ final class AppModel: ObservableObject {
     }
 
     func updateBoardTask(taskId: String, workspace: String, fields: [String: Any]) async {
+        // T24-R：契约 §4/§8 壳不直接改任务，显示文档流转提示
+        if useNewServer {
+            showToast("由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         do {
             try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
@@ -6474,6 +6542,11 @@ final class AppModel: ObservableObject {
     }
 
     func deleteBoardTask(taskId: String, workspace: String) async {
+        // T24-R：契约 §4/§8 壳不直接改任务，显示文档流转提示
+        if useNewServer {
+            showToast("由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         do {
             try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
@@ -6493,6 +6566,8 @@ final class AppModel: ObservableObject {
     @Published var taskArtifacts: [String: TaskArtifacts] = [:]
 
     func loadTaskArtifacts(taskId: String, workspace: String) async {
+        // T24-R：useNewServer=true 时服从壳化收敛，不调旧端点
+        if useNewServer { return }
         do {
             try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
@@ -6510,6 +6585,11 @@ final class AppModel: ObservableObject {
     // MARK: - Phase 3.2: Retry
 
     func retryFailedWork(workId: String, workspace: String) async {
+        // T24-R：契约 §4/§8 壳不直接改任务，显示文档流转提示
+        if useNewServer {
+            showToast("由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         NotificationManager.requestAuthorization()
         do {
             try await prepareClient(ensureAgent: false)
@@ -6531,6 +6611,8 @@ final class AppModel: ObservableObject {
     @Published var workFailures: [String: [FailureRecord]] = [:]
 
     func loadFailureAnalysis(workId: String, workspace: String) async {
+        // T24-R：useNewServer=true 时服从壳化收敛，不调旧端点
+        if useNewServer { return }
         do {
             try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
