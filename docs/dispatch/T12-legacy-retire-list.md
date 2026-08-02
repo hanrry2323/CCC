@@ -1,7 +1,7 @@
 # 任务卡 T12 · 旧系统退役清单与处置（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1 · 管理席：Codex
-> 执行体：Trae（手动）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae（手动）· 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 背景：新栈（server/）组件已落地，但旧系统（scripts/app/desktop/lib/db/relay/skills）原封未动、2017 旧引擎仍在运行——重构完成前必须先出退役清单。
 
 ## 目标
@@ -43,4 +43,27 @@
 
 ## 回写区
 
-（Trae 回写）
+## Trae 回写（2026-08-02）
+
+**结果摘要**：产出旧系统退役清单，覆盖 8 个旧目录，分类为归档候选/暂留/清理候选，含实测依赖方证据。
+
+**清单路径**：`docs/legacy-retirement-list.md`
+
+**依赖方证据**（实测）：
+- 运行中进程：agent-sidecar(7788) / chat-server(7777) / board-server(7775) / CCCDesktop / ssh tunnel(17777) / ai-loop-router(4100/4102)
+- Launchd plists：com.ccc.agent-sidecar (ACTIVE) / com.ccc.hub-tunnel (ACTIVE) / com.ccc.relay.m1 (NOT RUNNING)
+- 端口监听：7 个端口验证
+
+**分类结果**：
+- 归档候选：app/ / lib/ / db/ / skills/（共 76KB，可随时归档）
+- 清理候选：relay/node_modules/ + dist/（79MB）/ desktop/.build/（1.3GB）
+- 暂留：scripts/（12MB，609 文件，仍在运行）/ desktop/ 源码（944KB）/ templates/（88KB）
+
+**commit hash**：待提交后回写
+
+**验收自检**：
+1. ✅ 清单覆盖全部旧目录（scripts/app/desktop/lib/db/relay/skills/templates），无遗漏
+2. ✅ 依赖方核实为实测证据（进程 PID / plist 状态 / 端口监听），非猜测
+3. ✅ 零删除、零移动、零运行面动作；未碰新栈/旧代码逻辑/外脑
+4. ✅ 处置顺序建议明确（三阶段，含放行条件）
+5. ⏳ 真实提交（待执行）
