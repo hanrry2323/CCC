@@ -1,11 +1,60 @@
-/* CCC 看板 —— 静态渲染 window.BOARD_DATA（零 fetch / 零 API）。 */
+/* CCC 看板 —— 渲染数据（支持本地 board.js / HTTP API 两种来源，API 不可用时回退本地数据）。 */
 (function () {
   "use strict";
 
   var DATA = window.BOARD_DATA || { states: {}, views: {}, roadmap: [] };
   var CLUSTER = window.CLUSTER_DATA || { nodes: [], services: [], collected_at: "" };
+  var API_BASE = window.API_BASE_URL || null;
   var TONES = { 待分派: "amber", 执行中: "cyan", 已回写: "violet", 已关闭: "emerald", 打回: "rose" };
   var STATUS_TONES = { 正常: "emerald", 异常: "rose", 未知: "faint" };
+
+  // HTTP API 模式：构造 BOARD_DATA 结构
+  function fetchApiData() {
+    if (!API_BASE) return Promise.resolve(null);
+    var base = API_BASE.replace(/\/+$/, "");
+    return Promise.all([
+      fetch(base + "/board/realtime").then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/recent").then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/by_project").then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/roadmap").then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/states").then(function (r) { return r.ok ? r.json() : null; }),
+    ]).then(function (results) {
+      return {
+        source: "HTTP API",
+        views: {
+          realtime: results[0] || {},
+          recent: results[1] || [],
+          by_project: results[2] || [],
+        },
+        roadmap: results[3] || { overview: [], by_project: [] },
+        states: results[4] || {},
+      };
+    }).catch(function () {
+      console.warn("[web] HTTP API 不可用，回退本地数据");
+      return null;
+    });
+  }
+
+  // 数据就绪后渲染
+  function render(data) {
+    if (!data) return;
+    DATA = data;
+    renderBadge();
+    renderRealtime();
+    renderRecent();
+    renderByProject();
+    renderRoadmap();
+    renderCluster();
+  }
+
+  // 入口：API 模式优先，回退本地
+  if (API_BASE) {
+    var ds = document.getElementById("data-source");
+    if (ds) ds.textContent = "HTTP API: " + API_BASE;
+    fetchApiData().then(function (apiData) {
+      render(apiData || DATA);
+    });
+  }
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -380,13 +429,16 @@
     }
   }
 
-  renderBadge();
-  renderRealtime();
-  renderRecent();
-  renderProject();
-  renderRoadmap();
-  renderCluster();
-  renderOps();
+  // 本地模式（无 API_BASE）：直接渲染 window.BOARD_DATA
+  if (!API_BASE) {
+    renderBadge();
+    renderRealtime();
+    renderRecent();
+    renderProject();
+    renderRoadmap();
+    renderCluster();
+    renderOps();
+  }
   initTabs();
   initTheme();
 })();

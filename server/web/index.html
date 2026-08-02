@@ -33,8 +33,18 @@
     <section id="view-ops" class="view" aria-label="运维视图"></section>
   </main>
 
-  <footer class="foot">静态看板 · 数据来自任务卡导出 · 零 API</footer>
+  <footer class="foot">静态看板 · 数据来自任务卡导出 · <span id="data-source">零 API</span></footer>
 
+  <script>
+    // 数据源切换：URL 参数 ?api=http://host:port 启用 HTTP API 模式
+    (function () {
+      var m = location.search.match(/[?&]api=([^&]+)/);
+      if (m) {
+        window.API_BASE_URL = decodeURIComponent(m[1]);
+        console.log('[web] HTTP API 模式:', window.API_BASE_URL);
+      }
+    })();
+  </script>
   <script src="data/board.js"></script>
   <script src="data/cluster.js"></script>
   <script src="js/app.js"></script>
