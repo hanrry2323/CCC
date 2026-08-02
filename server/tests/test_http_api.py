@@ -658,3 +658,56 @@ class TestTaskDetail:
         status, data = _get(api_server, "/tasks/T19")
         assert status == 401
         assert "error" in data
+
+
+# ── T21 运维兼容接口：/ops/summary ──
+
+
+class TestOpsSummary:
+    """GET /ops/summary（OpsSummary 兼容子集：cluster 采集 + board 派生 severity）"""
+
+    def test_returns_200_with_shape(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/summary", token=token)
+        assert status == 200
+        # OpsSummary 核心字段
+        assert "overview" in data
+        assert "severity" in data
+        assert "human_line" in data
+        # overview 子结构
+        ov = data["overview"]
+        assert "machines" in ov
+        assert "generated_at" in ov
+        assert isinstance(ov["machines"], list)
+        # severity ∈ green|amber|red
+        assert data["severity"] in ("green", "amber", "red")
+        assert isinstance(data["human_line"], str)
+        assert len(data["human_line"]) > 0
+
+    def test_machines_shape(self, api_server, monkeypatch):
+        # 配置一个采集目标，验证 machines 字段结构
+        monkeypatch.setenv("CLUSTER_TARGETS", "127.0.0.1:7788")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/summary", token=token)
+        assert status == 200
+        machines = data["overview"]["machines"]
+        if machines:  # 采集到才有
+            for m in machines:
+                assert "name" in m
+                assert "ip" in m
+                assert "reachable" in m
+                assert isinstance(m["reachable"], bool)
+
+    def test_no_cluster_config_amber(self, api_server, monkeypatch):
+        """无 CLUSTER_TARGETS 配置 → severity=amber（容错，不 500）。"""
+        monkeypatch.delenv("CLUSTER_TARGETS", raising=False)
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/summary", token=token)
+        assert status == 200
+        assert data["severity"] == "amber"
+        assert "未配置" in data["human_line"] or "CLUSTER_TARGETS" in data["human_line"]
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/ops/summary")
+        assert status == 401
+        assert "error" in data

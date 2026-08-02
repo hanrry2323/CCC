@@ -5009,6 +5009,11 @@ final class AppModel: ObservableObject {
 
     @MainActor
     func refreshOpsIntentGoals() async {
+        // T21：useNewServer 时意图收口走文档流转，旧 Hub 已断，清空并提示
+        if useNewServer {
+            opsIntentRows = []
+            return
+        }
         let pids = projects.filter(\.isDispatchable).map(\.id)
         guard !pids.isEmpty else {
             opsIntentRows = []
@@ -5050,6 +5055,11 @@ final class AppModel: ObservableObject {
         let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
         let gid = goalId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty, !gid.isEmpty else { return }
+        // T21：契约 §4/§8 意图稳定走文档流转，壳不直接改
+        if useNewServer {
+            showToast("意图稳定由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         mindGoalBusy = true
         opsIntentBusy = true
         defer {
@@ -5777,6 +5787,11 @@ final class AppModel: ObservableObject {
     }
 
     func reopenBoardTask(_ task: BoardTask, to: String = "planned") async {
+        // T21：契约 §4/§8 任务卡是唯一事实源，壳不直接改任务状态（T20 遗留 reopen 收口）
+        if useNewServer {
+            showToast("任务状态由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         do {
             try await prepareClient(ensureAgent: false)
@@ -5788,6 +5803,11 @@ final class AppModel: ObservableObject {
     }
 
     func reopenOpsTask(taskId: String, workspace: String, to: String = "planned") async {
+        // T21：契约 §4/§8 壳不直接改任务状态
+        if useNewServer {
+            showToast("任务状态由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         opsBusy = true
         opsAdoptError = nil
         defer { opsBusy = false }
@@ -5827,6 +5847,23 @@ final class AppModel: ObservableObject {
         defer { opsBusy = false }
         do {
             try await prepareClient(ensureAgent: false)
+            // T21：useNewServer 时只调新服务端 /ops/summary（cluster 采集 + board 派生），
+            // 旧 Hub 大字段（risks/workspaces/daily/...）置空，桌面端容错降级。
+            if useNewServer {
+                let summary = try await client.fetchOpsSummaryNewServer()
+                opsSummary = summary
+                opsOverview = summary.overview
+                opsRisks = []
+                opsRisksCount = 0
+                opsRisksHigh = 0
+                opsUpstreamDaily = []
+                inboxProposals = []
+                await probeLocalAgentForOps()
+                loadLocalPatrolAlerts()
+                recomputeOpsDisplay()
+                await refreshOpsIntentGoals()
+                return
+            }
             // 优先用聚合端点（一次拉全）；回退到分立端点
             if let summary = try? await client.fetchOpsSummary() {
                 opsSummary = summary
@@ -5859,6 +5896,15 @@ final class AppModel: ObservableObject {
             recomputeOpsDisplay()
             await refreshOpsIntentGoals()
         } catch {
+            // 401 清 token 提示重登（新服务端）
+            if useNewServer, let apiErr = error as? APIError, case .http(let code, _) = apiErr, code == 401 {
+                newServerLoggedIn = false
+                newServerLoginError = "运维会话已过期，请重新登录"
+                opsError = "运维会话已过期，请在「设置 → 新服务端（T19）」重新登录"
+                loadLocalPatrolAlerts()
+                recomputeOpsDisplay()
+                return
+            }
             opsError = error.localizedDescription
             loadLocalPatrolAlerts()
             recomputeOpsDisplay()
@@ -5959,6 +6005,20 @@ final class AppModel: ObservableObject {
     private func pollOpsSeverityLight() async {
         do {
             try await prepareClient(ensureAgent: false)
+            // T21：useNewServer 时走新服务端 /ops/summary
+            if useNewServer {
+                if let summary = try? await client.fetchOpsSummaryNewServer() {
+                    opsSummary = summary
+                    if let ov = summary.overview { opsOverview = ov }
+                    opsRisks = []
+                    opsRisksCount = 0
+                    opsRisksHigh = 0
+                }
+                await probeLocalAgentForOps()
+                loadLocalPatrolAlerts()
+                recomputeOpsDisplay()
+                return
+            }
             if let summary = try? await client.fetchOpsSummary() {
                 opsSummary = summary
                 if let ov = summary.overview { opsOverview = ov }
@@ -5980,6 +6040,11 @@ final class AppModel: ObservableObject {
     }
 
     func adoptInboxProposal(_ id: String) async {
+        // T21：契约 §4/§8 采纳走文档流转，壳不直接改
+        if useNewServer {
+            showToast("采纳由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         inboxAdoptBusy = true
         opsAdoptError = nil
         defer { inboxAdoptBusy = false }
@@ -5998,6 +6063,11 @@ final class AppModel: ObservableObject {
     }
 
     func runDailyReview(workspace: String) async {
+        // T21：契约 §4/§8 日审走文档流转，壳不直接改
+        if useNewServer {
+            showToast("日审由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         opsAdoptBusy = true
         opsAdoptError = nil
         defer { opsAdoptBusy = false }
@@ -6011,6 +6081,11 @@ final class AppModel: ObservableObject {
     }
 
     func adoptSuggestion(workspace: String, title: String, description: String, tags: [String] = ["ops-auto"]) async {
+        // T21：契约 §4/§8 采纳走文档流转，壳不直接改
+        if useNewServer {
+            showToast("采纳由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
+            return
+        }
         opsAdoptBusy = true
         opsAdoptError = nil
         defer { opsAdoptBusy = false }

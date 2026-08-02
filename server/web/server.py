@@ -58,6 +58,13 @@ from server.board.queries import (
     view_recent,
     view_realtime,
 )
+from server.board.models import STATES, UNKNOWN, base_state
+from server.engine.cluster import (
+    DEFAULT_SERVICES,
+    check_service_status,
+    check_tcp_reachable,
+    parse_cluster_targets,
+)
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
@@ -199,7 +206,6 @@ def _build_snapshot(items: list[BoardItem], workspace: str = "") -> dict[str, An
     workspace 非空时按 project 过滤；include_hidden 参数接受但任务卡无 hidden 标记，
     看板是派生视图（契约 §4），不另行过滤。
     """
-    from server.board.models import STATES, UNKNOWN, base_state
     filtered = [i for i in items if not workspace or i.project == workspace]
     columns: dict[str, list[dict]] = {}
     for item in filtered:
@@ -249,6 +255,149 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
         "acceptance": _parse_task_acceptance(item.id),
         "phases": [],
         "events": [],
+    }
+
+
+# ── 运维接口辅助（T21：/ops/summary，cluster 采集 + board 派生 severity） ──
+
+def _collect_ops_nodes() -> list[dict[str, Any]]:
+    """采集集群节点状态（TCP 可达性），返回 OpsMachine 兼容字典列表。
+
+    目标来自 CLUSTER_TARGETS env（逗号分隔 host:port）；空则返回空列表。
+    """
+    cfg = {"CLUSTER_TARGETS": os.environ.get("CLUSTER_TARGETS", "")}
+    targets = parse_cluster_targets(cfg)
+    machines: list[dict[str, Any]] = []
+    for host, port in targets:
+        ns = check_tcp_reachable(host, port)
+        # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server,4100:relay-anthropic），
+        # 无配置则用通用名 port-{port}，避免硬编码端口到名称的映射
+        port_names_env = os.environ.get("CLUSTER_PORT_NAMES", "")
+        port_names: dict[int, str] = {}
+        for pair in port_names_env.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                k, v = pair.split(":", 1)
+                try:
+                    port_names[int(k.strip())] = v.strip()
+                except ValueError:
+                    continue
+        port_name = port_names.get(port, f"port-{port}")
+        machines.append({
+            "name": port_name,
+            "ip": host,
+            "role": port_name,
+            "reachable": ns.reachable,
+            "alive_ports": 1 if ns.reachable else 0,
+            "port_count": 1,
+        })
+    return machines
+
+
+def _collect_ops_services() -> list[dict[str, Any]]:
+    """采集本机服务进程状态（pgrep），返回服务状态字典列表。
+
+    服务清单来自 cluster.DEFAULT_SERVICES（名称→进程关键词）；不依赖外脑。
+    """
+    services: list[dict[str, Any]] = []
+    for name, keyword in DEFAULT_SERVICES.items():
+        ss = check_service_status(keyword)
+        services.append({
+            "name": name,
+            "running": ss.running,
+            "pid": ss.pid,
+        })
+    return services
+
+
+def _build_ops_summary() -> dict[str, Any]:
+    """构造 OpsSummary 兼容子集（对齐桌面端可消费字段）。
+
+    数据源：cluster 采集（nodes/services/collected_at）+ board 派生（severity/human_line）。
+    字段缺失容错：旧 Hub 大字段（risks/workspaces/daily/...）一律置空/省略，桌面端容错。
+
+    severity 派生规则：
+    - 全部节点可达 + 关键服务运行 → green
+    - 部分可达或部分服务运行 → amber
+    - 全断或采集失败 → red
+    """
+    import datetime
+
+    machines = _collect_ops_nodes()
+    services = _collect_ops_services()
+    collected_at = datetime.datetime.now().isoformat(timespec="seconds")
+
+    # down_ports：不可达节点
+    down_ports: list[dict[str, Any]] = []
+    for m in machines:
+        if not m.get("reachable"):
+            down_ports.append({
+                "port": 0,  # 节点级，无具体端口
+                "name": m.get("name", ""),
+                "host": m.get("ip", ""),
+            })
+
+    # severity 派生
+    total = len(machines)
+    reachable = sum(1 for m in machines if m.get("reachable"))
+    if total == 0:
+        # 无采集配置 → amber（需配置，非故障）
+        severity = "amber"
+        human_line = "运维采集未配置（CLUSTER_TARGETS 为空），请配置后重启服务"
+    elif reachable == total:
+        severity = "green"
+        human_line = f"集群全活（{reachable}/{total} 节点可达）"
+    elif reachable == 0:
+        severity = "red"
+        human_line = f"集群全断（0/{total} 节点可达），请检查"
+    else:
+        severity = "amber"
+        human_line = f"集群部分可达（{reachable}/{total} 节点可达）"
+
+    # 服务运行情况补充到 human_line
+    svc_running = sum(1 for s in services if s.get("running"))
+    if services:
+        human_line += f" · 服务 {svc_running}/{len(services)} 运行"
+
+    # 派生看板计数（abnormal 卡数 → risk 提示）
+    try:
+        items = _load_board_items()
+        abnormal = sum(1 for i in items if base_state(i.state) == "打回")
+        if abnormal > 0:
+            human_line += f" · {abnormal} 张打回卡"
+    except OSError:
+        pass
+
+    return {
+        "overview": {
+            "machines": machines,
+            "alert_count": len(down_ports),
+            "down_ports": down_ports,
+            "generated_at": collected_at,
+        },
+        "severity": severity,
+        "human_line": human_line,
+        # 旧 Hub 大字段置空，桌面端容错（OpsView 只读区降级显示）
+        "risks": None,
+        "workspaces": None,
+        "daily": None,
+        "quality": None,
+        "docs": None,
+        "kb": None,
+        "deploy": None,
+        "ports": None,
+        "auto": None,
+        "resources": None,
+        "resources_history": None,
+        "logistics": None,
+        "control": None,
+        "ready_to_dispatch": None,
+        "recent_failures": None,
+        "abnormal_cards": None,
+        "alerts": None,
+        "amber_notes": None,
+        "domains": None,
+        "agent_minds": None,
     }
 
 
@@ -425,6 +574,23 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         self._send_json(detail)
 
+    def _handle_ops_summary(self):
+        """GET /ops/summary → OpsSummary 兼容子集（cluster 采集 + board 派生 severity）。
+
+        缺采集配置或采集失败：返回 200 + 空结构 + error 字段（容错，不 500）。
+        """
+        try:
+            summary = _build_ops_summary()
+            self._send_json(summary)
+        except OSError as exc:
+            # subprocess.TimeoutExpired 是 OSError 子类；采集失败不 500
+            self._send_json({
+                "overview": {"machines": [], "alert_count": 0, "down_ports": [], "generated_at": ""},
+                "severity": "red",
+                "human_line": f"运维采集失败: {exc}",
+                "error": str(exc),
+            }, 200)
+
     def do_GET(self):
         if not self._check_auth():
             return
@@ -434,6 +600,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/conversation":
             self._handle_conversation_get()
+            return
+        if path == "/ops/summary":
+            self._handle_ops_summary()
             return
         try:
             items = _load_board_items()

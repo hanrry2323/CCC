@@ -1736,4 +1736,15 @@ actor APIClient {
         let req = try newServerAuthedRequest(path: "tasks/\(t)?workspace=\(w)")
         return try await send(req, as: BoardTaskDetail.self)
     }
+
+    // MARK: - T21 运维兼容接口（新服务端只读）
+
+    /// 新服务端运维汇总：GET /ops/summary
+    /// 数据来自 cluster 采集 + board 派生 severity/human_line；
+    /// 旧 Hub 大字段（risks/workspaces/daily/...）置空，桌面端容错降级。
+    func fetchOpsSummaryNewServer() async throws -> OpsSummary {
+        var req = try newServerAuthedRequest(path: "ops/summary")
+        req.timeoutInterval = 15  // cluster 采集可能较慢
+        return try await send(req, as: OpsSummary.self, maxAttempts: 2)
+    }
 }
