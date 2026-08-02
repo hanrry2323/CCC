@@ -1,7 +1,7 @@
 # 任务卡 T24 · 桌面端重打包对接 2017 + 网页对话页重设计（延续桌面端 Claude 风格）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 多壳=同一 API 契约的不同客户端；多壳锁门账号密码+token）· 依据：T19–T23（新服务端/壳迁移/2017 部署/HTTP 直开全完成）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 > 背景：老板实测——网页可访问可对话 ✅；**桌面端完全断**（根因已定位：`/Applications/CCCDesktop.app` 是 7-30 构建的 v0.65.2 旧包，T19–T23 的新服务端代码未打包安装，App 仍在找已停用的旧 sidecar）；网页对话页需按桌面端 Claude 风格重设计。
 
 ## 目标
@@ -100,3 +100,24 @@
 ### 验收自检
 
 （执行后填写：对照验收标准逐条勾选）
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**结论：通过 ✅**（T24 + T24-R 合并验收，不看回写全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 桌面端新包 | `/Applications/CCCDesktop.app` = v0.66.1、二进制 8-03 02:01 构建（9.97MB）；`defaults` 实测 `useNewServer=1`、`newServerURL=http://192.168.3.116:7788` ✅ |
+| 协议对齐（T24-R） | 独立 `swift build` → Build complete；`APIClient.swift` 31 处 `hasNewServer` 守卫 + `newServerDisabledError`；新增 `probeNewServerHealth`/`fetchProjectsNewServer`/`fetchThreadsNewServer`/`fetchThreadNewServer` 4 方法；AppModel 探活/项目/线程/写操作全收敛 ✅ |
+| 旧端点清零 | useNewServer 路径不再调 `/api/desktop/*`、`/api/tasks/*` 写、`/api/ops/*` 扩展（代码核验 + 差分支点全在）✅ |
+| 网页重设计 | 2017 实测 `/css/style.css` 含 Claude 色板 `#f2ede8`/`#d97a55`；index.html 含登录卡片/空态欢迎/composer（模型+附件+发送）；chat.js 含思考占位/Enter 发送/附件预览 ✅ |
+| 功能链路 | 跨机实测：登录→`/board/states`（待分派1/已关闭27/打回3）→`/ops/summary`（green）→`/conversation`（`{"reply":"OK"}` 经 6102）全 200 ✅ |
+| 服务端零改动 | `git show b4959a3` 仅改 desktop 2 文件；`pytest server/tests/` → **197 passed** 无回归 ✅ |
+| 双端同步 | M1 HEAD=de22eff 已 push；2017 pull 后 HEAD=de22eff、工作树干净；2017 web-server（PID 29922）运行中 ✅ |
+| 三扫描/工作树 | 本次变更零硬编码/零密钥/零外脑；M1 工作树仅剩预存 2 项 ✅ |
+
+**说明**：桌面端 GUI 端到端（登录→对话→看板渲染）需老板界面实测——App 已启动（PID 21017）无报错、adhoc 签名无沙盒限制、代码/构建/配置全就绪。
+
+**结论**：桌面端协议对齐 + 网页 Claude 风格重设计完成；桌面端成为契约 §8 纯壳（对话+看板+运维只读，旧编排走文档流转）。
