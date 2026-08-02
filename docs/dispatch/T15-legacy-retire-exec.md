@@ -55,4 +55,4 @@
 
 **第二阶段清单路径**：`docs/legacy-phase2-plan.md`
 
-**commit hash**：`88cf04a`（git mv 归档）+ `e3d0c36`（本卡回写 + 退役清单 + 第二阶段计划）
+**commit hash**：`88cf04a`（git mv 归档）+ `65c4640`（本卡回写 + 退役清单 + 第二阶段计划）
