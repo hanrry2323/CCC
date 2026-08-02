@@ -1,7 +1,7 @@
 # 任务卡 T21 · 运维壳迁移（桌面端运维页读取切新服务端 + 写操作改文档流转 + 7777/17777 下线）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§3 状态同步 / §4 任务卡唯一事实源 / §8 壳零业务逻辑 / §9 红线）· 依据：T7（集群采集）/ T13/T19/T20（新服务端与壳迁移基座）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 放行确认：老板 2026-08-02 明确「继续出下一步指令」；T20 遗留（reopen 走旧 Hub 写接口）为**本卡强制前置**，一并收口。
 
 ## 目标
@@ -84,12 +84,73 @@
 
 ### 结果摘要
 
-（执行后填写）
+T21 运维壳迁移完成。桌面端运维页（OpsView）读取从旧 Hub 链路（7777 chat-server / 17777 SSH 隧道，均已断）切换到新服务端 `server/web/server.py`（7788）只读接口 `/ops/summary`；运维写操作（日审/采纳/意图稳定/重开）全部改为文档流转提示（契约 §4/§8，含 T20 遗留 reopen 收口）；7777（手动进程 PID 97748）与 17777（com.ccc.hub-tunnel launchd）已下线，plist 备份。M1 旧 Hub 全部退净，桌面端只剩新服务端一条链路。提交 `cc96ba4`（4 文件 +309/-1）。7788 `/ops/summary` 实测：severity=green（3/3 节点可达：web-server/relay-anthropic/relay-openai），human_line 含「3 张打回卡」派生，401 正确。4100/4102/2017 全程零接触。
 
 ### 执行明细
 
-（执行后填写：A–E 各步结果）
+**A. 新服务端只读运维接口**
+- `server/web/server.py` 新增 `GET /ops/summary`（Bearer 鉴权、零硬编码）：
+  - 数据来自 cluster 采集（`CLUSTER_TARGETS` env）+ board 派生（severity/human_line）。
+  - 输出对齐桌面端 `OpsSummary` 可消费子集：`overview.machines`（name/ip/reachable/alive_ports/port_count）、`overview.down_ports`、`overview.generated_at`、`severity`（green/amber/red）、`human_line`。
+  - 旧 Hub 大字段（risks/workspaces/daily/quality/docs/kb/deploy/ports/auto/resources/...）一律置空，桌面端容错降级。
+  - severity 派生：全可达=green、部分=amber、全断或无配置=red/amber（无配置容错为 amber 不 500）。
+  - 端口名走 `CLUSTER_PORT_NAMES` env 映射（如 `7788:web-server,4100:relay-anthropic`），无配置用通用名 `port-{port}`，避免硬编码。
+  - 采集失败不 500，返回 200 + 空结构 + error 字段。
+- 测试 `server/tests/test_http_api.py` 新增 `TestOpsSummary` 4 用例（200+数据形状+machines 结构+无配置 amber 容错+401）。
+
+**B. 桌面端运维页切换**
+- `APIClient.swift` 新增 `fetchOpsSummaryNewServer`（复用 T19 `newServerAuthedRequest` + `send`，timeout 15s 适配 cluster 采集）。
+- `AppModel.swift`：
+  - `refreshOps`/`pollOpsSeverityLight` 加 `useNewServer` 分支走新服务端 `/ops/summary`，旧 Hub 字段（risks/workspaces/daily/inbox）置空；401 清 token 提示重登。
+  - 6 个写操作在 `useNewServer` 下改 toast 提示「由执行体回写/文档流转，壳不直接改（契约 §4/§8）」：`runDailyReview`、`adoptInboxProposal`、`adoptSuggestion`、`markMindGoalStable`、`reopenBoardTask`（T20 遗留收口）、`reopenOpsTask`（T20 遗留收口）。
+  - `refreshOpsIntentGoals` 在 `useNewServer` 下清空（意图收口走文档流转，旧 Hub 已断）。
+- `OpsView.swift` 无需改动：写按钮调用 `model.*` 时自动走 AppModel 提示分支；只读区已对 OpsSummary 容错（旧字段 nil 隐藏）。
+- `swift build`：Build complete（13.03s），零 error。
+
+**C. M1 运行面：7777 + 17777 下线**
+- 核实：7777 = PID 97748，`scripts/ccc-chat-server.py --host 127.0.0.1 --port 7777 --no-open`，手动进程（无 launchd plist）；17777 = PID 54976，SSH 隧道由 `com.ccc.hub-tunnel` launchd 管理（`~/.ccc/bin/ccc-hub-tunnel.sh`）。
+- 备份：`cp ~/Library/LaunchAgents/com.ccc.hub-tunnel.plist ~/Library/LaunchAgents/com.ccc.hub-tunnel.plist.bak-ops-mig`。
+- 停 17777：`launchctl bootout gui/$(id -u)/com.ccc.hub-tunnel` → SSH 隧道进程清空，launchctl 移除。
+- 停 7777：`kill 97748` → chat-server 进程清空。
+- 7788 plist 补 `CLUSTER_TARGETS=127.0.0.1:7788,127.0.0.1:4100,127.0.0.1:4102` + `CLUSTER_PORT_NAMES=7788:web-server,4100:relay-anthropic,4102:relay-openai` env。
+- 7788 重新加载：`launchctl bootout gui/$(id -u)/com.ccc.web-server` → `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ccc.web-server.plist` → 新 PID 63928，env 确认含 CLUSTER_TARGETS。
+- 验证：7777/17777 lsof 0 行（清空）；7788/4100/4102 未受影响。
+
+**D. 验证（全部必跑，已过）**
+- `pytest server/tests/ -q`：188 全绿（184+4 新增，无回归）。
+- 三扫描：server 生产代码字面端口零命中（端口名映射改 env）；模型名零；工具名（opencode/claude）零；明文密钥零；外脑依赖（qx-map/hp-kb）零。
+- 运行面实测（7788 PID 63928）：
+  - `/ops/summary` 200，severity=green，human_line=`集群全活（3/3 节点可达） · 服务 0/4 运行 · 3 张打回卡`。
+  - machines 3 节点：web-server/relay-anthropic/relay-openai 全 reachable=True。
+  - generated_at=2026-08-02T23:41:24，down_ports=[]。
+  - 无 token 401。
+  - 7777/17777 lsof 0 行（清空）。
+  - 4100（node 63542）/4102 仍在；2017 零接触。
+- `git status`：仅剩预存 2 项（`.ccc/agent-mind/decided.json`、`_update_handoff.py`）。
+
+**E. 提交 + 回写**
+- 提交 `cc96ba4`：`chore(ops-shell): T21 运维壳迁移 — 运维页读取切新服务端 + 写操作改文档流转 + 7777/17777 下线`（4 文件 +309/-1）。
+- 卡头状态：待分派 → 已回写。
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+对照「验收标准（Codex 按此验收）」逐条：
+
+- [x] 1. `/ops/summary` 只读接口带 token 200、无 token 401、数据形状正确（machines/generated_at/severity）、缺配置容错不 500。
+  - 实测：200（severity=green，3 节点，generated_at 有值）；无配置时 200+amber+容错文案；401 正确；不 500。
+- [x] 2. 桌面端运维页读取走新服务端（代码 + `swift build`）；全部写操作（日审/采纳/意图稳定/**reopen**）在 `useNewServer` 下为文档流转提示，不调旧 Hub 写接口。
+  - refreshOps/pollOpsSeverityLight 加 useNewServer 分支；6 写操作（含 reopenBoardTask/reopenOpsTask T20 遗留收口）改 toast；swift build 通过。
+- [x] 3. `7777` 与 `17777` 进程清空（plist 有备份）；7788 正常；4100/4102/6100/6102/2017 零接触。
+  - 7777/17777 lsof 0 行；hub-tunnel plist 备份 `.bak-ops-mig`；7788 PID 63928 正常；4100/4102 node 63542 仍在；2017 零接触。
+- [x] 4. `pytest` 全绿（184+新增）；三扫描零命中。
+  - 188 全绿（184+4）；三扫描零命中。
+- [x] 5. 真实提交；工作树仅剩预存 2 项；卡头状态已同步（§3）。
+  - 提交 `cc96ba4`；`git status` 仅 `.ccc/agent-mind/decided.json` + `_update_handoff.py`；卡头已改「已回写」。
+
+### 回滚指引（如需）
+
+- 桌面端：`useNewServer` 关回旧分支（代码保留兼容路径）→ 运维页回旧链路（注：旧 Hub 已下线则不可用，回滚仅限代码层）。
+- 7777：手动重启 `python3 scripts/ccc-chat-server.py --host 127.0.0.1 --port 7777 --no-open`（代码未删）。
+- 17777：`cp ~/Library/LaunchAgents/com.ccc.hub-tunnel.plist.bak-ops-mig ~/Library/LaunchAgents/com.ccc.hub-tunnel.plist` → `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ccc.hub-tunnel.plist`。
+- 7788 代码回滚：`git revert cc96ba4` 后 `launchctl kickstart -k gui/$(id -u)/com.ccc.web-server`。
+- 触发条件：`/ops/summary` 冒烟失败 / 桌面端运维页不可读 / 7788 中断 / 老板或管理席要求。
