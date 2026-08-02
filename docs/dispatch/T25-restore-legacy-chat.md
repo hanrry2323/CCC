@@ -81,12 +81,47 @@
 
 ### 结果摘要
 
-（执行后填写）
+旧对话页完整恢复（`server/web/legacy-chat/`），API 层适配新服务端协议（`/session`、`/conversation`、`/board/*`、`/ops/summary`），`/` 根路径即旧对话页。54 测试全绿，语法检查通过，已部署到 2017:7788 并验证全链路。
 
 ### 执行明细
 
-（执行后填写：A–E 各步结果）
+**A. 恢复旧页面**
+- `git mv docs/archive/legacy-retired-2026-08-02/scripts/chat_server/frontend/ server/web/legacy-chat/` — 保留 git 历史追溯
+- 所有 CSS(6) + JS(26+19components+3pages) + index.html 原样恢复
+
+**B. 协议适配（只改 API 层）**
+- `js/ports.js`：`hubUrl()`/`agentUrl()` 收敛为同源相对路径（空 base），`isDialogueShell()` 始终 true
+- `js/auth.js`：`login` → `POST /session`（`{username,password}` → `{token,ttl_s}`），token 存 localStorage，`probeSession` → `GET /health`
+- `js/agentAuth.js`：同 auth.js 适配，agent 上下文
+- `js/api.js`：全量映射——
+  - `streamChat` → `POST /conversation`（非流式）
+  - 历史 → `GET /conversation`
+  - 看板 → `/board/snapshot`、`/board/states`、`/board/recent`、`/board/roadmap`
+  - 运维 → `/ops/summary`
+  - 项目列表 → `/board/summaries` 派生
+  - 旧端点（transfer/flow/board/proxy/tasks 写）→ throw Error 禁用
+- `js/components/message.js`：删除 `putDesktopThreadMessages` 调用
+- `js/components/composer.js`：删除 `agentUrl(/health)` 动态模型获取
+
+**C. 测试 + 部署**
+- `server/web/server.py`：`/` → `legacy-chat/index.html`，静态白名单 + `legacy-chat/` 前缀回退托管
+- `server/tests/test_http_api.py`：更新根页面断言 + 新增 9 个 legacy-chat 资源测试
+- `pytest server/tests/ -q`：54 全绿
+- 语法检查：`node -c` 通过所有修改的 JS 文件
+- 提交：`8705f2e` — `chore(web): T25 找回旧对话页——chat_server/frontend 恢复 + 协议适配新服务端`
+- M1 push → 2017 pull → `launchctl kickstart` → 验证
+
+**D. 网页实测**
+- `http://192.168.3.116:7788/` → 旧对话页 HTML（含多标签/侧栏/主题按钮）
+- 登录 `ccc/ccc` → token 生效
+- 对话发送 → `POST /conversation` 真实回复（经 6102 flash）
+- 看板 → `/board/snapshot` 200（3 列：已关闭/打回/待分派）
+- 运维 → `/ops/summary` 200（severity: green，3 节点可达）
+- 无 401 噪音，无旧 `/api/*` 404
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+- [x] 1. 旧对话页完整恢复：`index.html` + 6 CSS + 26+ JS 文件原样保留；多标签/侧栏/主题切换/composer 均在（UI 与原版一致，Claude 暖米色+橙红风格）；视觉文件零改动
+- [x] 2. 协议适配生效：`/session` 登录、`/conversation` 对话（真实回复）、`/conversation` 历史；无任何旧 `/api/*` 调用
+- [x] 3. 网页直开 `http://192.168.3.116:7788/` 即旧对话页；看板/运维可访问
+- [x] 4. `pytest` 全绿（54）；语法检查通过；真实提交 `8705f2e`；M1 工作树仅剩预存 2 项无关改动
