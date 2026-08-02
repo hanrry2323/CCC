@@ -3,7 +3,9 @@
   "use strict";
 
   var DATA = window.BOARD_DATA || { states: {}, views: {}, roadmap: [] };
+  var CLUSTER = window.CLUSTER_DATA || { nodes: [], services: [], collected_at: "" };
   var TONES = { 待分派: "amber", 执行中: "cyan", 已回写: "violet", 已关闭: "emerald", 打回: "rose" };
+  var STATUS_TONES = { 正常: "emerald", 异常: "rose", 未知: "faint" };
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -246,6 +248,110 @@
     renderRoadmapL1();
   }
 
+  function renderCluster() {
+    var box = document.getElementById("view-cluster");
+    if (!box) return;
+    var data = CLUSTER;
+    if (!data.nodes || !data.services) {
+      box.appendChild(el("div", "empty", "暂无集群数据（运行 scheduler 采集后生成）"));
+      return;
+    }
+    // 采集时间
+    var info = el("div", "card");
+    info.appendChild(el("h3", null, "集群状态概览"));
+    var meta = el("p", "meta");
+    meta.appendChild(document.createTextNode("采集时间: " + (data.collected_at || "—")));
+    meta.appendChild(document.createTextNode(" · 节点 " + (data.nodes.length || 0) + " · 服务 " + (data.services.length || 0)));
+    info.appendChild(meta);
+    box.appendChild(info);
+
+    // 节点状态
+    if (data.nodes.length) {
+      var nodeCard = el("div", "card");
+      nodeCard.appendChild(el("h3", null, "节点可达性"));
+      var grid = el("div", "grid-3");
+      data.nodes.forEach(function (n) {
+        var item = el("div", "step");
+        var status = n.reachable ? "正常" : "异常";
+        var tone = STATUS_TONES[status] || "faint";
+        item.appendChild(el("div", "chip " + tone, status));
+        item.appendChild(el("div", "name", n.host + ":" + n.port));
+        if (n.latency_ms !== null && n.latency_ms !== undefined) {
+          item.appendChild(el("div", "meta", n.latency_ms + "ms"));
+        }
+        if (n.error) {
+          item.appendChild(el("div", "meta", n.error));
+        }
+        grid.appendChild(item);
+      });
+      nodeCard.appendChild(grid);
+      box.appendChild(nodeCard);
+    }
+
+    // 服务状态
+    if (data.services.length) {
+      var svcCard = el("div", "card");
+      svcCard.appendChild(el("h3", null, "服务进程状态"));
+      var svg = el("div", "grid-3");
+      data.services.forEach(function (s) {
+        var item = el("div", "step");
+        var status = s.running ? "正常" : "异常";
+        var tone = STATUS_TONES[status] || "faint";
+        item.appendChild(el("div", "chip " + tone, status));
+        item.appendChild(el("div", "name", s.name));
+        if (s.pid) {
+          item.appendChild(el("div", "meta", "PID " + s.pid));
+        }
+        if (s.error) {
+          item.appendChild(el("div", "meta", s.error));
+        }
+        svg.appendChild(item);
+      });
+      svcCard.appendChild(svg);
+      box.appendChild(svcCard);
+    }
+  }
+
+  function renderOps() {
+    var box = document.getElementById("view-ops");
+    if (!box) return;
+    var data = CLUSTER;
+
+    // 运维概览
+    var card = el("div", "card");
+    card.appendChild(el("h3", null, "运维概览"));
+    var meta = el("p", "meta");
+    var reachable = 0;
+    if (data.nodes) {
+      data.nodes.forEach(function (n) { if (n.reachable) reachable++; });
+    }
+    var running = 0;
+    if (data.services) {
+      data.services.forEach(function (s) { if (s.running) running++; });
+    }
+    meta.appendChild(document.createTextNode("节点可达: " + reachable + "/" + (data.nodes ? data.nodes.length : 0)));
+    meta.appendChild(document.createTextNode(" · 服务运行: " + running + "/" + (data.services ? data.services.length : 0)));
+    meta.appendChild(document.createTextNode(" · 采集: " + (data.collected_at || "—")));
+    card.appendChild(meta);
+    box.appendChild(card);
+
+    // 定时任务状态
+    var cfg = data.config || {};
+    var taskCard = el("div", "card");
+    taskCard.appendChild(el("h3", null, "定时任务"));
+    taskCard.appendChild(el("p", "meta", "集群采集（readonly）: 每 " + (cfg.scheduler_interval || "60") + " 秒执行一次"));
+    taskCard.appendChild(el("p", "meta", "变更类: " + (cfg.scheduler_dispatch_dir ? "已启用" : "未配置（SCHEDULER_DISPATCH_DIR 为空）")));
+    box.appendChild(taskCard);
+
+    // 系统信息
+    var sysCard = el("div", "card");
+    sysCard.appendChild(el("h3", null, "系统信息"));
+    sysCard.appendChild(el("p", "meta", "数据目录: " + (cfg.data_dir || "—")));
+    sysCard.appendChild(el("p", "meta", "看板服务端口: " + (cfg.board_port || "—")));
+    sysCard.appendChild(el("p", "meta", "Web 服务端口: " + (cfg.web_port || "—")));
+    box.appendChild(sysCard);
+  }
+
   function initTabs() {
     document.querySelectorAll(".tab").forEach(function (tab) {
       tab.addEventListener("click", function () {
@@ -279,6 +385,8 @@
   renderRecent();
   renderProject();
   renderRoadmap();
+  renderCluster();
+  renderOps();
   initTabs();
   initTheme();
 })();

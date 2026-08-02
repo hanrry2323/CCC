@@ -30,6 +30,11 @@ REQUIRED_KEYS: frozenset[str] = frozenset({
 OPTIONAL_KEYS: dict[str, str] = {
     "RELAY_UPSTREAM_KEY": "",
     "PYTHON_BIN": "",
+    # 定时任务框架
+    "SCHEDULER_INTERVAL": "60",
+    "SCHEDULER_DISPATCH_DIR": "",
+    # 集群采集
+    "CLUSTER_TARGETS": "",
 }
 
 LINE_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*?)\s*$")

@@ -127,13 +127,16 @@ class TestConfigLoader:
             Path(env_path).unlink(missing_ok=True)
 
     def test_load_optional_default(self, loader) -> None:
-        """可选键缺省：RELAY_UPSTREAM_KEY / PYTHON_BIN 缺省为空字符串。"""
+        """可选键缺省：RELAY_UPSTREAM_KEY / PYTHON_BIN / SCHEDULER_* / CLUSTER_TARGETS 缺省。"""
         load_config, _ = loader
         env_path = _write_env(self.REQUIRED_FIXTURE)  # 不含可选键
         try:
             cfg = load_config(env_path)
             assert cfg["RELAY_UPSTREAM_KEY"] == ""
             assert cfg["PYTHON_BIN"] == ""
+            assert cfg["SCHEDULER_INTERVAL"] == "60"
+            assert cfg["SCHEDULER_DISPATCH_DIR"] == ""
+            assert cfg["CLUSTER_TARGETS"] == ""
         finally:
             Path(env_path).unlink(missing_ok=True)
 
