@@ -4,24 +4,12 @@ window.BOARD_DATA = {
   "states": {
     "待分派": 0,
     "执行中": 0,
-    "已回写": 1,
-    "已关闭": 3,
+    "已回写": 0,
+    "已关闭": 4,
     "打回": 1
   },
   "views": {
     "realtime": {
-      "已回写": [
-        {
-          "id": "T3-R",
-          "title": "看板状态归一（Claude Code 执行）",
-          "state": "已回写",
-          "project": "INT-120",
-          "executor": "Claude Code",
-          "dispatched_at": "2026-08-02",
-          "written_at": "2026-08-02",
-          "reject_count": 0
-        }
-      ],
       "已关闭": [
         {
           "id": "T1-R",
@@ -36,6 +24,16 @@ window.BOARD_DATA = {
         {
           "id": "T2",
           "title": "Engine 薄驱动核心（Claude Code 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Claude Code",
+          "dispatched_at": "2026-08-02",
+          "written_at": "2026-08-02",
+          "reject_count": 0
+        },
+        {
+          "id": "T3-R",
+          "title": "看板状态归一（Claude Code 执行）",
           "state": "已关闭",
           "project": "INT-120",
           "executor": "Claude Code",
@@ -101,7 +99,7 @@ window.BOARD_DATA = {
       {
         "id": "T3-R",
         "title": "看板状态归一（Claude Code 执行）",
-        "state": "已回写",
+        "state": "已关闭",
         "project": "INT-120",
         "executor": "Claude Code",
         "dispatched_at": "2026-08-02",
@@ -126,8 +124,8 @@ window.BOARD_DATA = {
         "states": {
           "待分派": 0,
           "执行中": 0,
-          "已回写": 1,
-          "已关闭": 3,
+          "已回写": 0,
+          "已关闭": 4,
           "打回": 1
         }
       }
@@ -144,7 +142,7 @@ window.BOARD_DATA = {
     },
     {
       "bucket": "已开发待验收",
-      "count": 1
+      "count": 0
     },
     {
       "bucket": "已验收待确认",
@@ -152,7 +150,7 @@ window.BOARD_DATA = {
     },
     {
       "bucket": "确认可用",
-      "count": 3
+      "count": 4
     },
     {
       "bucket": "有问题",
