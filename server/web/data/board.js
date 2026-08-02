@@ -2,36 +2,14 @@ window.BOARD_DATA = {
   "source": "任务卡文档",
   "generated_at": "2026-08-02",
   "states": {
-    "待分派": 2,
+    "待分派": 0,
     "执行中": 0,
     "已回写": 0,
-    "已关闭": 6,
+    "已关闭": 15,
     "打回": 1
   },
   "views": {
     "realtime": {
-      "待分派": [
-        {
-          "id": "T6",
-          "title": "线路图三层派生视图（P3 · Trae 窗口 A）",
-          "state": "待分派",
-          "project": "INT-120",
-          "executor": "Trae",
-          "dispatched_at": "2026-08-02",
-          "written_at": "未知",
-          "reject_count": 0
-        },
-        {
-          "id": "T7",
-          "title": "定时任务 + 集群/运维页（P4 · Trae 窗口 B）",
-          "state": "待分派",
-          "project": "INT-120",
-          "executor": "Trae",
-          "dispatched_at": "2026-08-02",
-          "written_at": "未知",
-          "reject_count": 0
-        }
-      ],
       "已关闭": [
         {
           "id": "T1-R",
@@ -41,6 +19,36 @@ window.BOARD_DATA = {
           "executor": "Claude Code",
           "dispatched_at": "2026-08-02",
           "written_at": "2026-08-02",
+          "reject_count": 0
+        },
+        {
+          "id": "T10",
+          "title": "CCC 知识库初始化 + 种子入库（依赖 T9 · M4 前哨）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T11-R",
+          "title": "T11 收尾：真实提交 + 状态同步（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T11",
+          "title": "知识库升级：MCP 服务 + 本地语义检索（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
           "reject_count": 0
         },
         {
@@ -74,6 +82,16 @@ window.BOARD_DATA = {
           "reject_count": 0
         },
         {
+          "id": "T4-R",
+          "title": "T4 部署模板硬编码补丁（Trae 窗口 A）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
           "id": "T4",
           "title": "CCC 自带中转站部署（Mac2017 独立实例 · 6100/6102）",
           "state": "已关闭",
@@ -92,6 +110,56 @@ window.BOARD_DATA = {
           "dispatched_at": "2026-08-02",
           "written_at": "2026-08-02",
           "reject_count": 1
+        },
+        {
+          "id": "T6",
+          "title": "线路图三层派生视图（P3 · Trae 窗口 A）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T7",
+          "title": "定时任务 + 集群/运维页（P4 · Trae 窗口 B）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T8-X",
+          "title": "调用方切换执行（T4 阶段 4 放行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "未知",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T8",
+          "title": "调用方切换清单准备（T4 阶段 4 · Trae 窗口 B）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T9",
+          "title": "P5 知识移植种子准备（Trae 窗口 C）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
         }
       ],
       "打回": [
@@ -172,12 +240,12 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 9,
+        "count": 16,
         "states": {
-          "待分派": 2,
+          "待分派": 0,
           "执行中": 0,
           "已回写": 0,
-          "已关闭": 6,
+          "已关闭": 15,
           "打回": 1
         }
       }
@@ -187,7 +255,7 @@ window.BOARD_DATA = {
     "overview": [
       {
         "bucket": "未开发",
-        "count": 2
+        "count": 0
       },
       {
         "bucket": "开发中",
@@ -203,7 +271,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "确认可用",
-        "count": 6
+        "count": 15
       },
       {
         "bucket": "有问题",
@@ -213,11 +281,11 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 9,
+        "count": 16,
         "buckets": [
           {
             "bucket": "未开发",
-            "count": 2
+            "count": 0
           },
           {
             "bucket": "开发中",
@@ -233,7 +301,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "确认可用",
-            "count": 6
+            "count": 15
           },
           {
             "bucket": "有问题",
@@ -246,28 +314,7 @@ window.BOARD_DATA = {
       "INT-120": [
         {
           "bucket": "未开发",
-          "items": [
-            {
-              "id": "T6",
-              "title": "线路图三层派生视图（P3 · Trae 窗口 A）",
-              "state": "待分派",
-              "project": "INT-120",
-              "executor": "Trae",
-              "dispatched_at": "2026-08-02",
-              "written_at": "未知",
-              "reject_count": 0
-            },
-            {
-              "id": "T7",
-              "title": "定时任务 + 集群/运维页（P4 · Trae 窗口 B）",
-              "state": "待分派",
-              "project": "INT-120",
-              "executor": "Trae",
-              "dispatched_at": "2026-08-02",
-              "written_at": "未知",
-              "reject_count": 0
-            }
-          ]
+          "items": []
         },
         {
           "bucket": "开发中",
@@ -292,6 +339,36 @@ window.BOARD_DATA = {
               "executor": "Claude Code",
               "dispatched_at": "2026-08-02",
               "written_at": "2026-08-02",
+              "reject_count": 0
+            },
+            {
+              "id": "T10",
+              "title": "CCC 知识库初始化 + 种子入库（依赖 T9 · M4 前哨）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T11-R",
+              "title": "T11 收尾：真实提交 + 状态同步（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T11",
+              "title": "知识库升级：MCP 服务 + 本地语义检索（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
               "reject_count": 0
             },
             {
@@ -325,6 +402,16 @@ window.BOARD_DATA = {
               "reject_count": 0
             },
             {
+              "id": "T4-R",
+              "title": "T4 部署模板硬编码补丁（Trae 窗口 A）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
               "id": "T4",
               "title": "CCC 自带中转站部署（Mac2017 独立实例 · 6100/6102）",
               "state": "已关闭",
@@ -343,6 +430,56 @@ window.BOARD_DATA = {
               "dispatched_at": "2026-08-02",
               "written_at": "2026-08-02",
               "reject_count": 1
+            },
+            {
+              "id": "T6",
+              "title": "线路图三层派生视图（P3 · Trae 窗口 A）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T7",
+              "title": "定时任务 + 集群/运维页（P4 · Trae 窗口 B）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T8-X",
+              "title": "调用方切换执行（T4 阶段 4 放行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "未知",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T8",
+              "title": "调用方切换清单准备（T4 阶段 4 · Trae 窗口 B）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T9",
+              "title": "P5 知识移植种子准备（Trae 窗口 C）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
             }
           ]
         },
