@@ -63,6 +63,10 @@
           }
           if (!data.token) throw new Error('登录成功但未返回 token');
           setToken(data.token);
+          // T44：登录后直达对话视图（不再停留看板）
+          if ((location.hash || '').indexOf('#/chat') !== 0) {
+            location.hash = '#/chat';
+          }
           hideLoginView();
           location.reload();
         });

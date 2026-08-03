@@ -32,6 +32,12 @@ API:
       同锁并 ``notify_all()``，保证「看到 seq 必见消息」。服务端为
       ``ThreadingHTTPServer``（并发），长轮询挂起不再阻塞 /health、/board/* 等。
 
+会话维度（T44）: ``POST /conversation`` body 与 ``GET /conversation`` query 均可带
+      ``thread_id``：历史按会话分桶（``_thread_conversations``），大脑按会话分锁
+      （同会话串行、跨会话可并发，上限 ``CCC_BRAIN_MAX_CONCURRENCY``）；缺省走
+      全局历史与全局锁（向后兼容）。body 可带 ``model`` 做档位覆盖（缺省走
+      ``CCC_BRAIN_MODEL``）。
+
 鉴权: Bearer token 鉴权，token 通过 POST /session 获取。
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
       长轮询超时默认值: CCC_WEB_LONGPOLL_TIMEOUT（秒，见 server/config/config.example.env）。
@@ -110,10 +116,25 @@ def _get_longpoll_timeout() -> int:
         return 30
 
 
+def _conv_list_for(thread_id: str) -> list[dict[str, Any]]:
+    """取会话维度对话历史（T44）：thread_id 为空 → 全局列表（向后兼容）。"""
+    if thread_id:
+        return _thread_conversations.setdefault(thread_id, [])
+    return _conversations
+
+
+def _get_model_tiers() -> list[str]:
+    """模型档位列表（CCC_MODEL_TIERS，逗号分隔，默认 flash,code）。"""
+    raw = os.environ.get("CCC_MODEL_TIERS", "flash,code")
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
 # 内存 token 存储: {token: {"username": str, "expires_at": float}}
 _tokens: dict[str, dict[str, Any]] = {}
 # 对话历史（内存列表，append-only；len 即单调 seq 光标，T43）
 _conversations: list[dict[str, Any]] = []
+# 会话维度对话历史（T44：thread_id 分桶；缺省走全局 _conversations）
+_thread_conversations: dict[str, list[dict[str, Any]]] = {}
 # 长轮询唤醒条件（T43：与历史写入同锁，保证「看到 seq 必见消息」）
 _conv_cond = threading.Condition()
 
@@ -133,6 +154,9 @@ _STATIC_WHITELIST: dict[str, str] = {
     "/js/app.js": "legacy-chat/js/app.js",
     "/data/board.js": "data/board.js",
     "/data/cluster.js": "data/cluster.js",
+    # T44：favicon 免鉴权返回（否则浏览器自动请求触发 401 噪音）
+    "/favicon.ico": "favicon.svg",
+    "/favicon.svg": "favicon.svg",
 }
 
 
@@ -254,6 +278,8 @@ def _build_public_config() -> dict[str, Any]:
         },
         # workspace_map 留空：业务仓路径由用户在设置页填，服务端不臆造
         "workspace_map": {},
+        # 模型档位（T44：CCC_MODEL_TIERS，非敏感；档位选择器数据源）
+        "models": _get_model_tiers(),
         "version": "v0.70.0",
     }
 
@@ -577,6 +603,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         """POST /conversation：调用 2017 Claude Code 大脑 Agent 并返回回复。
 
         body.stream=true → SSE 流式输出（text/event-stream）；否则同步 JSON（向后兼容）。
+        T44：body 可带 ``thread_id``（会话维度历史/分锁）与 ``model``（档位覆盖），
+        缺省保持全局行为。
         """
         body = self._read_body()
         if not body:
@@ -586,27 +614,32 @@ class _APIHandler(BaseHTTPRequestHandler):
         if not message:
             self._send_json({"error": "message required"}, 400)
             return
+        thread_id = str(body.get("thread_id") or "").strip()
+        model = str(body.get("model") or "").strip()
         if body.get("stream"):
-            self._handle_conversation_stream(message)
+            self._handle_conversation_stream(message, thread_id, model)
             return
-        success, reply, status = call_brain(message, list(_conversations))
+        history = list(_conv_list_for(thread_id))
+        success, reply, status = call_brain(message, history, session_key=thread_id or None, model=model or None)
         if not success:
             # 未配置(503)/忙(503)/失败(502)/超时(504)：不落历史
             self._send_json({"error": reply}, status)
             return
         now = datetime.now(timezone.utc).isoformat()
         with _conv_cond:
-            _conversations.append({"role": "user", "message": message, "timestamp": now})
-            _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
+            conv = _conv_list_for(thread_id)
+            conv.append({"role": "user", "message": message, "timestamp": now})
+            conv.append({"role": "assistant", "message": reply, "timestamp": now})
             _conv_cond.notify_all()
         self._send_json({"reply": reply})
 
-    def _handle_conversation_stream(self, message: str):
+    def _handle_conversation_stream(self, message: str, thread_id: str = "", model: str = ""):
         """POST /conversation {stream:true}：SSE 逐事件转发大脑流式输出。
 
         错误（未配置/忙/超时/失败）也以 ``event: error`` 流式返回（HTTP 200），
         客户端统一按事件消费；仅 ``done{is_error:false}`` 时回写历史（与同步一致）。
         客户端断开（BrokenPipe/Reset）时关闭 generator 以释放大脑锁。
+        T44：``thread_id`` 会话维度历史/分锁；``model`` 档位覆盖。
         """
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -614,7 +647,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        gen = stream_brain_events(message, list(_conversations))
+        gen = stream_brain_events(
+            message,
+            list(_conv_list_for(thread_id)),
+            session_key=thread_id or None,
+            model=model or None,
+        )
         text_parts: list[str] = []
         done_text = ""
         finished_error: bool | None = None
@@ -637,8 +675,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             if reply:
                 now = datetime.now(timezone.utc).isoformat()
                 with _conv_cond:
-                    _conversations.append({"role": "user", "message": message, "timestamp": now})
-                    _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
+                    conv = _conv_list_for(thread_id)
+                    conv.append({"role": "user", "message": message, "timestamp": now})
+                    conv.append({"role": "assistant", "message": reply, "timestamp": now})
                     _conv_cond.notify_all()
 
     def _client_gone(self) -> bool:
@@ -649,24 +688,28 @@ class _APIHandler(BaseHTTPRequestHandler):
             return True
         return bool(r)
 
-    def _wait_conversation_increment(self, after: int, timeout: int) -> tuple[bool, list[dict[str, Any]], int]:
-        """长轮询等待历史增量（T43）。
+    def _wait_conversation_increment(
+        self, after: int, timeout: int, thread_id: str = ""
+    ) -> tuple[bool, list[dict[str, Any]], int]:
+        """长轮询等待历史增量（T43/T44）。
 
         在 ``_conv_cond`` 上挂起等待，返回 ``(has_increment, messages, latest_seq)``：
 
-        - 有新消息（seq > after）→ ``(True, _conversations[after:], latest_seq)``
+        - 有新消息（seq > after）→ ``(True, conv[after:], latest_seq)``
         - 超时 → ``(False, [], latest_seq)``
         - 客户端断开 → 抛 ``ConnectionResetError``（调用方捕获，释放线程）
 
+        ``thread_id`` 为空 → 全局历史（向后兼容）；否则会话维度列表。
         等待期间周期性检测连接 readable（客户端 reset/EOF）以提前退出，
         不依赖写入时才能发现的 BrokenPipe。
         """
+        conv = _conv_list_for(thread_id)
         deadline = time.monotonic() + timeout
         with _conv_cond:
             while True:
-                current = len(_conversations)
+                current = len(conv)
                 if after < current:
-                    return True, list(_conversations[after:]), current
+                    return True, list(conv[after:]), current
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return False, [], current
@@ -675,19 +718,22 @@ class _APIHandler(BaseHTTPRequestHandler):
                 _conv_cond.wait(timeout=min(remaining, 0.5))
 
     def _handle_conversation_get(self):
-        """GET /conversation：对话历史（T43 支持长轮询增量同步）。
+        """GET /conversation：对话历史（T43 长轮询 + T44 会话维度）。
 
         无 ``after`` → 返回全量 ``{messages, seq}``（向后兼容）；
         带 ``after=<seq>&timeout=<s>`` → 挂起等待增量，超时返回空增量，
         seq 不变；``after``/``timeout`` 非法 → 400。
+        ``thread_id=<id>`` → 会话维度历史（缺省全局）。
         """
         from urllib.parse import parse_qs
 
         qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        thread_id = (qs.get("thread_id", [""])[0] or "").strip()
         after_raw = (qs.get("after", [""])[0] or "").strip()
         if not after_raw:
             # 向后兼容：全量返回（含 seq 光标）
-            self._send_json({"messages": list(_conversations), "seq": len(_conversations)})
+            conv = _conv_list_for(thread_id)
+            self._send_json({"messages": list(conv), "seq": len(conv)})
             return
         try:
             after = int(after_raw)
@@ -706,7 +752,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "invalid timeout"}, 400)
                 return
         try:
-            has_increment, messages, seq = self._wait_conversation_increment(after, timeout)
+            has_increment, messages, seq = self._wait_conversation_increment(after, timeout, thread_id)
         except (BrokenPipeError, ConnectionResetError):
             # 客户端断开：退出等待，释放线程（服务不崩溃）
             return

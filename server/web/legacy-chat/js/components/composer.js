@@ -54,22 +54,28 @@ export function initComposer() {
 
   const modelSelect = document.getElementById('model-select');
   if (modelSelect) {
-    modelSelect.value = state.get('model') || 'flash';
+    // T44：模型档位从 /config 动态获取（服务端 CCC_MODEL_TIERS，实际可用 flash/code）；
+    // 拉取失败回退默认档位（不再显示「模型档位不可用」）。
+    const _applyModels = (models) => {
+      const list = models && models.length ? models : ['flash', 'code'];
+      modelSelect.innerHTML = '';
+      for (const m of list) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        modelSelect.appendChild(opt);
+      }
+      const cur = state.get('model') || 'flash';
+      modelSelect.value = list.includes(cur) ? cur : list[0];
+      state.set('model', modelSelect.value);
+    };
+    fetch('/config')
+      .then((r) => r.json().catch(() => null))
+      .then((cfg) => _applyModels(cfg && cfg.models))
+      .catch(() => _applyModels(null));
     modelSelect.addEventListener('change', () => {
       state.set('model', modelSelect.value);
     });
-    // 静态模型选项：不再从 /health 动态获取
-    const staticModels = ['flash', 'Pro', 'code', 'sonnet', 'haiku'];
-    modelSelect.innerHTML = '';
-    for (const m of staticModels) {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      modelSelect.appendChild(opt);
-    }
-    const cur = state.get('model');
-    modelSelect.value = staticModels.includes(cur) ? cur : 'flash';
-    state.set('model', modelSelect.value);
   }
 
   const toolModeSelect = document.getElementById('tool-mode-select');

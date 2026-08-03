@@ -13,8 +13,9 @@
 `stream_brain_events()` 归一化为 (meta / thinking / tool_use / text /
 tool_result / done / error) 事件序列，供 HTTP SSE 转发。
 
-并发保护：模块级锁，同一时刻仅处理一个对话请求（单会话串行）；
-失败/超时不落历史，返回明确错误码（503 未配置/忙 · 504 超时 · 502 失败）。
+并发保护：会话维度分锁（T44）——同会话串行、跨会话可并发，总并发上限
+    ``CCC_BRAIN_MAX_CONCURRENCY``（默认 2，可配置）；失败/超时不落历史，
+    返回明确错误码（503 未配置/忙 · 504 超时 · 502 失败）。
 
 环境变量（零硬编码，2017 config.env 实际填写）::
 
@@ -79,8 +80,65 @@ BRAIN_SYSTEM_PROMPT = (
 # 对话历史拼入 prompt 的最大轮数（user+assistant 算一轮）
 _BRAIN_HISTORY_TURNS = 10
 
-# 模块级锁：单会话串行，避免多壳同时打爆 Claude Code
+# 会话维度分锁（T44）：默认键 "" 复用 _brain_lock（向后兼容既有测试）；
+# 同会话串行、跨会话可并发，总并发上限 CCC_BRAIN_MAX_CONCURRENCY（默认 2）。
 _brain_lock = threading.Lock()
+_session_locks: dict[str, threading.Lock] = {}
+_slot_guard = threading.Lock()
+_active_slots = 0
+
+# 会话级模型覆盖（T44：thread-local，避免跨请求串扰）
+_model_override = threading.local()
+
+
+def _get_brain_max_concurrency() -> int:
+    """跨会话总并发上限（CCC_BRAIN_MAX_CONCURRENCY，默认 2）。"""
+    try:
+        return max(1, int(os.environ.get("CCC_BRAIN_MAX_CONCURRENCY", "2")))
+    except ValueError:
+        return 2
+
+
+def _get_brain_model_tiers() -> list[str]:
+    """模型档位列表（CCC_MODEL_TIERS，逗号分隔，默认 flash,code）。"""
+    raw = os.environ.get("CCC_MODEL_TIERS", "flash,code")
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
+def _session_lock(key: str) -> threading.Lock:
+    """会话 → 锁映射：默认键 "" 用全局 _brain_lock（向后兼容）。"""
+    if not key:
+        return _brain_lock
+    with _slot_guard:
+        return _session_locks.setdefault(key, threading.Lock())
+
+
+def _acquire_brain_slot(key: str) -> bool:
+    """尝试获取会话槽位：总并发未超限 + 该会话锁空闲（同会话串行，跨会话可并发）。"""
+    global _active_slots
+    with _slot_guard:
+        if _active_slots >= _get_brain_max_concurrency():
+            return False
+        _active_slots += 1
+    lock = _session_lock(key)
+    if not lock.acquire(blocking=False):
+        with _slot_guard:
+            _active_slots -= 1
+        return False
+    return True
+
+
+def _release_brain_slot(key: str) -> None:
+    global _active_slots
+    _session_lock(key).release()
+    with _slot_guard:
+        _active_slots -= 1
+
+
+def _effective_model() -> str:
+    """当前请求生效模型：会话覆盖优先，否则环境变量。"""
+    override = getattr(_model_override, "model", None) or ""
+    return (override or "").strip() or _get_brain_model()
 
 
 # ── 配置读取（运行时可刷新，测试可覆盖） ──
@@ -251,16 +309,24 @@ def _run_claude(prompt: str, timeout: int) -> tuple[bool, str, str | None]:
     return (True, reply, None)
 
 
-def call_brain(message: str, history: list[dict[str, Any]]) -> tuple[bool, str, int]:
+def call_brain(
+    message: str,
+    history: list[dict[str, Any]],
+    session_key: str | None = None,
+    model: str | None = None,
+) -> tuple[bool, str, int]:
     """大脑 Agent 对话入口（供 ``/conversation`` 调用）。
 
     返回 ``(success, reply_or_error, status_code)``：
 
     - 未配置 → ``(False, "brain not configured ...", 503)``
-    - 忙（另一会话进行中） → ``(False, "brain busy, try later", 503)``
+    - 忙（总并发超限 / 同会话进行中） → ``(False, "brain busy, try later", 503)``
     - 超时 → ``(False, "brain timeout", 504)``
     - 失败 → ``(False, error_msg, 502)``
     - 成功 → ``(True, reply, 200)``
+
+    T44：``session_key`` 按会话分锁（同会话串行、跨会话可并发，上限见
+    CCC_BRAIN_MAX_CONCURRENCY）；``model`` 为会话级模型覆盖（缺省走环境变量）。
     """
     if not _is_brain_configured():
         return (
@@ -269,13 +335,16 @@ def call_brain(message: str, history: list[dict[str, Any]]) -> tuple[bool, str, 
             503,
         )
     prompt = _build_prompt(message, history)
-    # 单会话串行：非阻塞获取锁，忙则立即拒绝（不排队等待，避免长阻塞）
-    if not _brain_lock.acquire(blocking=False):
+    # 非阻塞获取会话槽位，忙则立即拒绝（不排队等待，避免长阻塞）
+    key = session_key or ""
+    if not _acquire_brain_slot(key):
         return (False, "brain busy, try later", 503)
     try:
+        _model_override.model = (model or "").strip()
         ok, out, kind = _run_claude(prompt, _get_brain_timeout())
     finally:
-        _brain_lock.release()
+        _model_override.model = ""
+        _release_brain_slot(key)
     if ok:
         return (True, out, 200)
     if kind == "timeout":
@@ -386,7 +455,7 @@ def _stream_claude(prompt: str, timeout: int | None = None):
     env = os.environ.copy()
     env["ANTHROPIC_BASE_URL"] = _get_brain_base_url()
     env["ANTHROPIC_AUTH_TOKEN"] = _get_brain_auth_token()
-    env["ANTHROPIC_MODEL"] = _get_brain_model()
+    env["ANTHROPIC_MODEL"] = _effective_model()
     try:
         proc = subprocess.Popen(
             [bin_path, "-p", prompt, "--output-format", "stream-json", "--verbose"],
@@ -446,7 +515,12 @@ def _stream_claude(prompt: str, timeout: int | None = None):
         _terminate_proc(proc)
 
 
-def stream_brain_events(message: str, history: list[dict[str, Any]]):
+def stream_brain_events(
+    message: str,
+    history: list[dict[str, Any]],
+    session_key: str | None = None,
+    model: str | None = None,
+):
     """流式大脑对话入口（供 ``/conversation`` stream 分支调用）。
 
     以 generator 逐事件产出 ``(event, payload)``（meta / thinking / tool_use /
@@ -455,6 +529,8 @@ def stream_brain_events(message: str, history: list[dict[str, Any]]):
     与 ``call_brain`` 一致：未配置 → ``error(503)``；忙 → ``error(503)``；
     超时 → ``error(504)``；失败 → ``error(502)``。锁在消费期间持有，
     generator 关闭（客户端断开/异常）时释放。
+
+    T44：``session_key`` 按会话分锁；``model`` 为会话级模型覆盖。
     """
     if not _is_brain_configured():
         yield (
@@ -466,10 +542,13 @@ def stream_brain_events(message: str, history: list[dict[str, Any]]):
         )
         return
     prompt = _build_prompt(message, history)
-    if not _brain_lock.acquire(blocking=False):
+    key = session_key or ""
+    if not _acquire_brain_slot(key):
         yield ("error", {"status": 503, "message": "brain busy, try later"})
         return
     try:
+        _model_override.model = (model or "").strip()
         yield from _stream_claude(prompt)
     finally:
-        _brain_lock.release()
+        _model_override.model = ""
+        _release_brain_slot(key)

@@ -1512,3 +1512,117 @@ body.ro-viewer [data-write] {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ── Roadmap page（T44：线路图五视图） ── */
+.roadmap-page.hub-page {
+  padding: 0;
+  max-width: none;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ccc-bg-base);
+  color: var(--ccc-text-base);
+}
+
+.roadmap-page .board-toolbar {
+  flex-shrink: 0;
+}
+
+.roadmap-overview {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.roadmap-bucket {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.roadmap-bucket-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.roadmap-bucket-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roadmap-bucket-count {
+  font-weight: 600;
+  color: var(--ccc-text-muted);
+}
+
+.roadmap-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--ccc-bg-hover);
+  overflow: hidden;
+}
+
+.roadmap-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s;
+}
+
+.roadmap-by-project {
+  padding: 6px 18px 24px;
+}
+
+.roadmap-proj-h {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 8px;
+}
+
+.roadmap-proj-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.roadmap-proj-table th,
+.roadmap-proj-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+  text-align: left;
+}
+
+.roadmap-proj-table th {
+  color: var(--ccc-text-faint);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.roadmap-proj-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roadmap-proj-total {
+  margin-left: 6px;
+  color: var(--ccc-text-faint);
+  font-weight: 400;
+}
+
+.roadmap-proj-cell {
+  min-width: 84px;
+}
+
+.roadmap-proj-cell .roadmap-bar {
+  height: 7px;
+  margin-bottom: 2px;
+}
+
+.roadmap-proj-n {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}

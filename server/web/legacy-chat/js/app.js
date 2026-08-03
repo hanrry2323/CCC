@@ -13,10 +13,11 @@ import {
 import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
 import { initRuntimeStatus } from './components/runtimeStatus.js';
 import { initEngineControl } from './components/engineControl.js';
-import { initRouter } from './router.js';
+import { initRouter, navigate } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
+import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js';
 import {
   initDualPaneControls,
   isEnabled as dualPaneEnabled,
@@ -187,31 +188,42 @@ async function onHubRoute(route) {
   document.title =
     route === 'chat' ? 'CCC · 对话' :
       route === 'board' ? 'CCC · 看板' :
-      route === 'console' ? 'CCC · 控制台' :
-      route === 'ops' ? 'CCC · 运维' :
-      'CCC';
+        route === 'roadmap' ? 'CCC · 线路图' :
+          route === 'console' ? 'CCC · 控制台' :
+            route === 'ops' ? 'CCC · 运维' :
+              'CCC';
   if (route === 'chat') {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    unmountRoadmap();
     // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
     import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
   } else if (route === 'board') {
     unmountConsole();
     unmountOps();
+    unmountRoadmap();
     await mountBoard(document.getElementById('view-board'));
+  } else if (route === 'roadmap') {
+    unmountBoard();
+    unmountConsole();
+    unmountOps();
+    await mountRoadmap(document.getElementById('view-roadmap'));
   } else if (route === 'console') {
     unmountBoard();
     unmountOps();
+    unmountRoadmap();
     await mountConsole(document.getElementById('view-console'));
   } else if (route === 'ops') {
     unmountBoard();
     unmountConsole();
+    unmountRoadmap();
     await mountOps(document.getElementById('view-ops'));
   } else {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    unmountRoadmap();
   }
 }
 
@@ -238,7 +250,8 @@ async function init() {
   // 登录门：T40 — 无条件绑定（不再依赖 isDialogueShell 分支）
   // 2017 单端 :7788 唯一入口；旧 Hub/双壳分支已退役。
   const agentAuth = await import('./agentAuth.js');
-  agentAuth.initAgentAuth();
+  // T44：登录成功后直达对话视图（默认路由已固定 #/chat）
+  await agentAuth.initAgentAuth({ onAuthenticated: () => navigate('chat') });
   const authed = await agentAuth.ensureAgentAuthenticated();
   if (!authed) await agentAuth.waitForAgentAuth();
   initRouter(onHubRoute);

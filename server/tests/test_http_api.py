@@ -279,9 +279,11 @@ class TestConversation:
         from server.web import server as srv_mod
 
         srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
         _clear_brain_env()
         yield
         srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
         _clear_brain_env()
 
     def test_conversation_no_auth(self, api_server):
@@ -515,9 +517,11 @@ class TestConversationLongPoll:
         from server.web import server as srv_mod
 
         srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
         _clear_brain_env()
         yield
         srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
         _clear_brain_env()
 
     def test_no_after_returns_full(self, api_server, monkeypatch):
@@ -698,6 +702,139 @@ class TestConversationLongPoll:
             brain_mod._brain_lock.release()
 
 
+# ── T44 会话维度：thread_id 历史隔离 / 模型覆盖 / 跨会话并发 ──
+
+
+class TestConversationThreads:
+    """T44：thread_id 分桶历史互不污染、model 档位覆盖、跨会话并发不全局拒绝。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_conversation_state(self):
+        """每个测试前清空对话历史（含会话桶）与大脑 env，避免跨用例污染。"""
+        from server.web import server as srv_mod
+        from server.web import brain as brain_mod
+
+        srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
+        brain_mod._session_locks.clear()
+        _clear_brain_env()
+        yield
+        srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
+        brain_mod._session_locks.clear()
+        _clear_brain_env()
+
+    def test_thread_id_history_isolated(self, api_server, monkeypatch):
+        """thread_id 分桶：各会话历史独立，缺省全局不受影响（向后兼容）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "ta-1"}, token=token)
+        _post(api_server, "/conversation", {"message": "tb-1", "thread_id": "thread-b"}, token=token)
+        _post(api_server, "/conversation", {"message": "tb-2", "thread_id": "thread-b"}, token=token)
+        # 全局（缺省）
+        status, data = _get(api_server, "/conversation", token=token)
+        assert status == 200
+        assert len(data["messages"]) == 2
+        assert data["messages"][0]["message"] == "ta-1"
+        # 会话 B 独立
+        status, data = _get(api_server, "/conversation?thread_id=thread-b", token=token)
+        assert status == 200
+        assert len(data["messages"]) == 4
+        user_msgs = [m["message"] for m in data["messages"] if m["role"] == "user"]
+        assert user_msgs == ["tb-1", "tb-2"]
+        # 会话 C 为空
+        status, data = _get(api_server, "/conversation?thread_id=thread-c", token=token)
+        assert status == 200
+        assert data["messages"] == []
+        assert data["seq"] == 0
+
+    def test_thread_history_in_prompt(self, api_server, monkeypatch):
+        """prompt 应包含该会话自身历史，不混入其他会话。"""
+        _set_brain_env()
+        captured: dict = {}
+
+        def fake(prompt, timeout):
+            captured["prompt"] = prompt
+            return (True, "ok", None)
+
+        monkeypatch.setattr("server.web.brain._run_claude", fake)
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "secret-a", "thread_id": "thread-a"}, token=token)
+        _post(api_server, "/conversation", {"message": "secret-b", "thread_id": "thread-b"}, token=token)
+        _post(api_server, "/conversation", {"message": "hello-a", "thread_id": "thread-a"}, token=token)
+        prompt = captured["prompt"]
+        assert "hello-a" in prompt
+        assert "secret-a" in prompt
+        assert "secret-b" not in prompt
+
+    def test_model_override_passthrough(self, api_server, monkeypatch):
+        """body.model 覆盖传入大脑；缺省为空（走环境变量）。"""
+        _set_brain_env()
+        from server.web import brain as brain_mod
+
+        captured: dict = {}
+
+        def fake(prompt, timeout):
+            captured["model"] = brain_mod._model_override.model
+            return (True, "ok", None)
+
+        monkeypatch.setattr("server.web.brain._run_claude", fake)
+        token = _get_token(api_server)
+        status, data = _post(api_server, "/conversation", {"message": "hi", "model": "code"}, token=token)
+        assert status == 200
+        assert captured["model"] == "code"
+        status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
+        assert status == 200
+        assert captured["model"] == ""
+
+    def test_cross_session_concurrent_not_globally_busy(self, api_server, monkeypatch):
+        """跨会话并发：会话 A 在途时会话 B 正常对话，同会话 A 返回 503 busy。"""
+        _set_brain_env()
+        from server.web import brain as brain_mod
+
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        a_lock = brain_mod._session_lock("thread-a")
+        assert a_lock.acquire(blocking=False)
+        try:
+            # 会话 B：跨会话并发，正常返回（不再全局 503 拒绝）
+            status, data = _post(api_server, "/conversation", {"message": "hi", "thread_id": "thread-b"}, token=token)
+            assert status == 200
+            assert data["reply"] == "ok"
+            # 同会话 A：串行 → 503 busy
+            status, data = _post(api_server, "/conversation", {"message": "hi", "thread_id": "thread-a"}, token=token)
+            assert status == 503
+            assert "busy" in data["error"]
+        finally:
+            a_lock.release()
+
+    def test_concurrency_cap_busy(self, api_server, monkeypatch):
+        """总并发超限（默认 2）时第三会话 503 busy。"""
+        _set_brain_env()
+        from server.web import brain as brain_mod
+
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        # 模拟 2 个在途会话（达到默认上限 2）
+        brain_mod._active_slots = 2
+        try:
+            status, data = _post(api_server, "/conversation", {"message": "hi", "thread_id": "cap-c"}, token=token)
+            assert status == 503
+            assert "busy" in data["error"]
+        finally:
+            brain_mod._active_slots = 0
+
+
 # ── 健康检查 ──
 
 
@@ -831,6 +968,13 @@ class TestStaticHosting:
         token = _get_token(api_server)
         status, _ = _get(api_server, "/nonexistent.js", token=token)
         assert status == 404
+
+    def test_favicon_no_auth_200(self, api_server):
+        """favicon 免鉴权返回 200（T44：消除浏览器自动请求的 401 噪音）。"""
+        status, _ = _get_raw(api_server, "/favicon.ico")
+        assert status == 200
+        status, _ = _get_raw(api_server, "/favicon.svg")
+        assert status == 200
 
 
 # ── Board 接口（需鉴权） ──
@@ -1176,6 +1320,18 @@ class TestConfigEndpoint:
         status, data = _get(api_server, "/config")
         assert status == 200
         assert data["workspace_map"] == {}
+
+    def test_returns_models_tiers(self, api_server, monkeypatch):
+        """T44：/config 返回模型档位列表（CCC_MODEL_TIERS，档位选择器数据源）。"""
+        monkeypatch.setenv("CCC_MODEL_TIERS", "flash,code")
+        status, data = _get(api_server, "/config")
+        assert status == 200
+        assert "models" in data
+        assert data["models"] == ["flash", "code"]
+        # 未配置 → 默认 flash,code
+        monkeypatch.delenv("CCC_MODEL_TIERS", raising=False)
+        status, data = _get(api_server, "/config")
+        assert data["models"] == ["flash", "code"]
 
     def test_does_not_leak_sensitive_keys(self, api_server, monkeypatch):
         """敏感字段（密钥/密码/上游地址/路径）不出现在响应中。"""

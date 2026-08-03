@@ -1,16 +1,14 @@
-/** CCC hash router — #/board | #/ops | #/console | #/chat
+/** CCC hash router — #/board | #/ops | #/console | #/roadmap | #/chat
  *
- * 2017 单端 :7788 四视图统一入口（对话/看板/运维/控制台）。
+ * 2017 单端 :7788 五视图统一入口（对话/看板/线路图/运维/控制台）。
  * 见 docs/architecture.md
  */
 
 import { dialogueEntryUrl, isDialogueShell } from './ports.js';
 
-const ROUTES = ['chat', 'board', 'console', 'ops'];
-const DEFAULT_ROUTE =
-  typeof location !== 'undefined' && String(location.port || '') === '7788'
-    ? 'chat'
-    : 'board';
+const ROUTES = ['chat', 'board', 'console', 'ops', 'roadmap'];
+// T44：首要场景是对话，默认路由固定 #/chat（登录后直达对话视图）。
+const DEFAULT_ROUTE = 'chat';
 
 export function currentRoute() {
   const raw = (location.hash || '#/' + DEFAULT_ROUTE).replace(/^#\/?/, '');

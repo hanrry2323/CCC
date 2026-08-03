@@ -11,15 +11,24 @@ function _headers(json = true) {
   return h;
 }
 
-/** 带认证的 fetch（同源相对路径）。401 → 清 token + 登录引导。 */
+/** 带认证的 fetch（同源相对路径）。
+ * T44：仅当曾带 token 且被拒（token 失效）时派发 ccc-auth-required（且每页只弹一次）；
+ * 未登录态（无 token）的 401 静默降级，不刷错误、不刷登录门。
+ */
+let _loginPrompted = false;
+
 async function _fetchWithAuth(path, options = {}, json = true) {
+  const tok = getToken();
   const resp = await fetch(path, {
     ...options,
     headers: { ...(options.headers || {}), ..._headers(json) },
   });
   if (resp.status === 401) {
-    clearToken();
-    window.dispatchEvent(new CustomEvent('ccc-auth-required'));
+    if (tok && !_loginPrompted) {
+      _loginPrompted = true;
+      clearToken();
+      window.dispatchEvent(new CustomEvent('ccc-auth-required'));
+    }
   }
   return resp;
 }
@@ -54,47 +63,59 @@ export async function apiDelete(path) {
 
 export async function loadProjects() {
   const data = await apiGet('/board/summaries');
-  const summaries = data.summaries || [];
-  if (summaries.length > 0) {
-    state.set('defaultProject', summaries[0]);
+  // /board/summaries 返回 {summaries: {项目: snapshot}}（对象，非数组）
+  const summaries = data.summaries || {};
+  const keys = Object.keys(summaries).sort();
+  if (keys.length > 0) {
+    state.set('defaultProject', keys[0]);
   }
-  return summaries.map((ws) => ({ id: ws, name: ws, role: 'app' }));
+  return keys.map((ws) => ({ id: ws, name: ws, role: 'app' }));
 }
 
-// T43：对话历史长轮询增量同步（GET /conversation?after=<seq>&timeout=<s>）。
-// 模块级光标：首拉无 after 全量，之后带 after=seq 增量；seq 回退（服务端重置）→ 以本次为准。
-let _historySeq = 0;
-let _historyMsgs = [];
+// T43/T44：对话历史长轮询增量同步（GET /conversation?after=<seq>&timeout=<s>）。
+// T44：按 thread_id 分桶（每个会话独立光标 + 缓存），缺省走全局。
+// 首拉无 after 全量，之后带 after=seq 增量；seq 回退（服务端重置）→ 以本次为准。
+let _historyCursors = {};
 // 长轮询默认超时（秒；与服务端 CCC_WEB_LONGPOLL_TIMEOUT 默认一致）
 const LONGPOLL_TIMEOUT = 30;
 
-async function _fetchHistory() {
-  const incremental = _historySeq > 0;
+function _historyKey(threadId) {
+  return threadId || 'global';
+}
+
+async function _fetchHistory(threadId) {
+  const key = _historyKey(threadId);
+  const cur = _historyCursors[key] || { seq: 0, msgs: [] };
+  const incremental = cur.seq > 0;
+  const tid = threadId ? ('&thread_id=' + encodeURIComponent(threadId)) : '';
   const qs = incremental
-    ? `?after=${_historySeq}&timeout=${LONGPOLL_TIMEOUT}`
-    : '';
+    ? `?after=${cur.seq}&timeout=${LONGPOLL_TIMEOUT}${tid}`
+    : (threadId ? ('?thread_id=' + encodeURIComponent(threadId)) : '');
   const data = await apiGet('/conversation' + qs);
   const msgs = data.messages || [];
   const seq = data.seq || 0;
-  if (!incremental || seq < _historySeq) {
+  if (!incremental || seq < cur.seq) {
     // 首拉全量 / 服务端 seq 重置 → 以本次返回为准（含 seq 回退清空）
-    _historySeq = seq;
-    _historyMsgs = msgs;
+    cur.seq = seq;
+    cur.msgs = msgs;
   } else if (msgs.length) {
-    _historySeq = seq;
-    _historyMsgs = _historyMsgs.concat(msgs);
+    cur.seq = seq;
+    cur.msgs = cur.msgs.concat(msgs);
   }
+  _historyCursors[key] = cur;
   return data;
 }
 
 export async function loadHistory(project, source = 'all') {
-  const data = await _fetchHistory();
-  return { sessions: _historyMsgs.slice() };
+  await _fetchHistory(project || '');
+  const key = _historyKey(project || '');
+  return { sessions: (_historyCursors[key]?.msgs || []).slice() };
 }
 
 export async function loadSession(id, project) {
-  const data = await _fetchHistory();
-  return { messages: _historyMsgs.slice() };
+  await _fetchHistory(id || '');
+  const key = _historyKey(id || '');
+  return { messages: (_historyCursors[key]?.msgs || []).slice() };
 }
 
 export async function deleteSession(id, project) {
@@ -105,19 +126,22 @@ export async function cleanupTestSessions(project) {
   return {};
 }
 
+function _workspaceQs(workspace) {
+  return workspace && workspace !== 'all'
+    ? ('?workspace=' + encodeURIComponent(workspace))
+    : '';
+}
+
 export async function loadBoard(workspace) {
-  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
-  return apiGet('/board/snapshot' + qs);
+  return apiGet('/board/snapshot' + _workspaceQs(workspace));
 }
 
 export async function loadBoardDashboard(workspace) {
-  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
-  return apiGet('/board/snapshot' + qs);
+  return apiGet('/board/snapshot' + _workspaceQs(workspace));
 }
 
 export async function loadBoardTimeline(workspace) {
-  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
-  return apiGet('/board/roadmap' + qs);
+  return apiGet('/board/roadmap' + _workspaceQs(workspace));
 }
 
 export async function getBoardTask(taskId, workspace) {
@@ -210,7 +234,13 @@ export async function streamChat(
       '/conversation',
       {
         method: 'POST',
-        body: JSON.stringify({ message: prompt, stream: true }),
+        body: JSON.stringify({
+          message: prompt,
+          stream: true,
+          // T44：按会话分桶历史/分锁；模型档位覆盖
+          thread_id: sessionId || null,
+          model: state.get('model') || null,
+        }),
         signal,
       },
       true

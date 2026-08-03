@@ -141,14 +141,25 @@ export function applyAgentRoleUI() {
 /**
  * 初始化：改登录视图文案 + 绑表单/登出/401 事件。
  * T40：检测 data-early-bound 标记；内联脚本已绑表单时跳过重复绑定（仅补文案 + 401 + 登出）。
+ * T44：登录文案按 /health 实际状态（auth_configured）显示，不再引用旧 sidecar 配置名；
+ *      onAuthenticated 回调在登录成功后调用（app.js 用于导航到 #/chat）。
  */
-export function initAgentAuth({ onAuthenticated } = {}) {
+export async function initAgentAuth({ onAuthenticated } = {}) {
   const title = document.getElementById('login-title');
   if (title) title.textContent = 'CCC 对话口登录';
   const hint = document.getElementById('login-hint');
   if (hint) {
-    hint.textContent =
-      '账号密码由服务端配置（CCC_AGENT_AUTH_USER/PASS 或 ~/.ccc/agent-auth.json 0600）；未配置则无法登录。';
+    const notConfigured =
+      '服务端未配置登录凭证（CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH），请联系管理员。';
+    const normal =
+      '账号密码由服务端配置（CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH）。';
+    try {
+      const r = await fetch('/health');
+      const h = r.ok ? await r.json().catch(() => null) : null;
+      hint.textContent = h && h.auth_configured === false ? notConfigured : normal;
+    } catch (_) {
+      hint.textContent = normal;
+    }
   }
   const userInput = document.getElementById('login-user');
   if (userInput) userInput.placeholder = '账号';

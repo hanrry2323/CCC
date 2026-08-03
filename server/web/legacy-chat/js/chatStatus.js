@@ -27,23 +27,18 @@ export function nextConnStatus(status, event) {
   return CONN_OK;
 }
 
-/** 健康判定：fetch 失败 → unreachable；payload 无非空 models → empty-models；否则 ok。 */
+/** 健康判定：fetch 失败 → unreachable；否则 ok。
+ * T44：/health 不返回 models（模型档位由 /config 提供），不再据此报「列表为空」。 */
 export function classifyHealth(outcome) {
   if (!outcome) return HEALTH_UNREACHABLE;
   if (outcome.fetchFailed) return HEALTH_UNREACHABLE;
-  const h = outcome.payload;
-  const models = h && Array.isArray(h.models) ? h.models : [];
-  if (!h || models.length === 0) return HEALTH_EMPTY_MODELS;
   return HEALTH_OK;
 }
 
-/** 模型档位警告文案：ok → ''；两种异常态 → 非空。 */
+/** 模型档位警告文案：ok → ''；不可达 → 提示。 */
 export function healthWarnText(cls) {
   if (cls === HEALTH_UNREACHABLE) {
     return '模型档位不可用：对话服务未响应，恢复后自动消除';
-  }
-  if (cls === HEALTH_EMPTY_MODELS) {
-    return '模型档位不可用：模型列表为空，恢复后自动消除';
   }
   return '';
 }

@@ -32,7 +32,8 @@ export function workspaceOf() {
   const map = state.get('projectWorkspaceMap') || {};
   const p = state.get('currentProject') || 'ccc';
   if (map[p]) return map[p];
-  if (p === 'ccc') return 'CCC';
+  // T44：默认「CCC 平台」无真实任务卡 → 卡流按全部工作区拉取（与看板页一致）
+  if (p === 'ccc') return 'all';
   return p;
 }
 
