@@ -103,6 +103,10 @@ final class AppModel: ObservableObject {
     private var threadMessages: [String: [ChatMessage]] = [:]
     @Published private(set) var threadRevision: [String: UInt64] = [:]
     private var diskSaveTasks: [String: Task<Void, Never>] = [:]
+    /// 流式对话任务（threadId → 会话任务；cancelChat 据此取消网络）
+    private var streamChatTasks: [String: Task<Void, Never>] = [:]
+    /// 流式状态文案（threadId → 展示文案）
+    private var threadStreamStatus: [String: String] = [:]
 
     // MARK: - Computed
     var selectedProject: DesktopProject? {
@@ -760,6 +764,10 @@ final class AppModel: ObservableObject {
     func cancelChat(threadId: String? = nil, silent: Bool = false, dropSlot: Bool = false) {
         let tid = threadId ?? selectedThreadId
         guard let tid else { return }
+        if let t = streamChatTasks[tid] {
+            t.cancel()
+            streamChatTasks.removeValue(forKey: tid)
+        }
         mutateThreadMessages(threadId: tid) { msgs in
             if let idx = msgs.lastIndex(where: { $0.isStreaming }) {
                 msgs[idx].isStreaming = false
@@ -771,6 +779,7 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+        setStreamStatus(threadId: tid, nil)
         flushDiskSave(threadId: tid)
         if !silent { showToast("已取消生成") }
     }
@@ -783,8 +792,7 @@ final class AppModel: ObservableObject {
             msgs.append(userMsg)
             msgs.append(ChatMessage(id: assistantId, role: "assistant", content: "", isStreaming: true))
         }
-        chat.streamStatus = "新服务端生成中…"
-        statusText = "新服务端生成中…"
+        setStreamStatus(threadId: threadId, "生成中…")
 
         if !serverLoggedIn {
             mutateThreadMessages(threadId: threadId) { msgs in
@@ -792,8 +800,8 @@ final class AppModel: ObservableObject {
                 msgs[idx].content = "请先在「设置 → 新服务端（T19）」登录后再对话。"
                 msgs[idx].isStreaming = false
             }
-            chat.streamStatus = ""
-            statusText = "已连接"
+            setStreamStatus(threadId: threadId, nil)
+            chat.messages = threadMessages[threadId] ?? []
             return
         }
 
@@ -802,17 +810,122 @@ final class AppModel: ObservableObject {
             if let url = APIClient.makeBaseURL(from: serverURLString) {
                 await client.configureNewServer(url: url)
             }
-            let reply = try await client.sendConversation(message: text)
-            mutateThreadMessages(threadId: threadId) { msgs in
-                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
-                msgs[idx].content = reply
-                msgs[idx].isStreaming = false
+            let task = Task { [weak self] in
+                guard let self else { return }
+                await self.consumeStream(
+                    projectId: projectId, threadId: threadId,
+                    assistantId: assistantId, message: text
+                )
             }
+            streamChatTasks[threadId] = task
+            await task.value
+            streamChatTasks.removeValue(forKey: threadId)
         } catch is CancellationError {
-            mutateThreadMessages(threadId: threadId) { msgs in
-                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
-                msgs[idx].content = "（已停止）"
-                msgs[idx].isStreaming = false
+            streamChatTasks.removeValue(forKey: threadId)
+        } catch {
+            streamChatTasks.removeValue(forKey: threadId)
+        }
+        chat.messages = threadMessages[threadId] ?? []
+    }
+
+    /// 流式消费：打字机增量落 content；thinking 提示；tool_use → ToolStep；done/error 终结
+    private func consumeStream(projectId: String, threadId: String, assistantId: UUID, message: String) async {
+        let stream = await client.streamConversation(message: message)
+        var pending = ""
+        var consumed = false
+        var failure: String?
+        var doneText = ""
+        var sawText = false
+        var haveThinking = false
+
+        let revealTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                if !pending.isEmpty {
+                    let (reveal, rest) = Self.takeStreamFragment(pending)
+                    pending = rest
+                    if !reveal.isEmpty {
+                        self.mutateThreadMessages(threadId: threadId) { msgs in
+                            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                            msgs[idx].content += reveal
+                        }
+                    }
+                } else if consumed {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 40_000_000)
+            }
+        }
+
+        do {
+            for try await event in stream {
+                switch event {
+                case .meta(let info):
+                    let model = (info["model"] as? String) ?? ""
+                    setStreamStatus(threadId: threadId, model.isEmpty ? "生成中…" : "已接入 \(model)")
+                case .thinking:
+                    if !haveThinking {
+                        haveThinking = true
+                        mutateThreadMessages(threadId: threadId) { msgs in
+                            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                            msgs[idx].transientNote = "正在思考…"
+                        }
+                    }
+                case .text(let delta):
+                    sawText = true
+                    if haveThinking {
+                        haveThinking = false
+                        mutateThreadMessages(threadId: threadId) { msgs in
+                            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                            msgs[idx].transientNote = nil
+                        }
+                    }
+                    pending += delta
+                case .toolUse(_, let name, let input):
+                    if haveThinking {
+                        haveThinking = false
+                        mutateThreadMessages(threadId: threadId) { msgs in
+                            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                            msgs[idx].transientNote = nil
+                        }
+                    }
+                    if !pending.isEmpty {
+                        mutateThreadMessages(threadId: threadId) { msgs in
+                            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                            msgs[idx].content += pending
+                        }
+                        pending = ""
+                    }
+                    let step = ToolStep(
+                        name: name,
+                        label: ToolProgressHelper.labelForToolUse(name: name, input: input),
+                        icon: ToolProgressHelper.icon(for: name)
+                    )
+                    mutateThreadMessages(threadId: threadId) { msgs in
+                        guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                        msgs[idx].toolSteps.append(step)
+                    }
+                case .toolResult:
+                    mutateThreadMessages(threadId: threadId) { msgs in
+                        guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                        guard let sIdx = msgs[idx].toolSteps.lastIndex(where: { $0.status == .running })
+                        else { return }
+                        let step = msgs[idx].toolSteps[sIdx]
+                        msgs[idx].toolSteps[sIdx].status = .done
+                        msgs[idx].toolSteps[sIdx].resultHint = ToolProgressHelper.resultHint(
+                            name: step.name, ok: true, label: step.label
+                        )
+                    }
+                case .done(let isError, let text, let error):
+                    doneText = text
+                    if isError {
+                        failure = error.isEmpty ? (text.isEmpty ? "生成失败" : text) : error
+                    }
+                    consumed = true
+                case .error(let status, let message):
+                    failure = message.isEmpty ? "生成失败（HTTP \(status)）" : message
+                    consumed = true
+                }
             }
         } catch let apiErr as APIError {
             var is401 = false
@@ -820,26 +933,90 @@ final class AppModel: ObservableObject {
             if is401 {
                 serverLoggedIn = false
                 serverLoginError = "会话已过期，请重新登录"
+                failure = "会话已过期（401），请在「设置 → 新服务端（T19）」重新登录。"
+            } else {
+                failure = "对话失败：\(apiErr.localizedDescription)"
             }
-            let errText = is401
-                ? "会话已过期（401），请在「设置 → 新服务端（T19）」重新登录。"
-                : "对话失败：\(apiErr.localizedDescription)"
-            mutateThreadMessages(threadId: threadId) { msgs in
-                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
-                msgs[idx].content = errText
-                msgs[idx].isStreaming = false
-            }
+        } catch is CancellationError {
+            failure = nil
         } catch {
+            failure = "对话失败：\(error.localizedDescription)"
+        }
+
+        revealTask.cancel()
+        if !pending.isEmpty {
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
-                msgs[idx].content = "对话失败：\(error.localizedDescription)"
-                msgs[idx].isStreaming = false
+                msgs[idx].content += pending
+            }
+            pending = ""
+        }
+        if !sawText, failure == nil, doneText.isEmpty {
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                if msgs[idx].content.isEmpty { msgs[idx].content = "（无回复）" }
             }
         }
-        chat.streamStatus = ""
-        statusText = "已连接"
+        finalizeStreamAssistant(threadId: threadId, assistantId: assistantId, failure: failure)
+    }
+
+    /// 流式终结：置非流式 + toolsFinished；失败附原因；status 清空并落盘
+    private func finalizeStreamAssistant(threadId: String, assistantId: UUID, failure: String?) {
+        mutateThreadMessages(threadId: threadId) { msgs in
+            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+            guard msgs[idx].isStreaming else { return } // cancelChat 已处理
+            msgs[idx].isStreaming = false
+            msgs[idx].toolsFinished = true
+            if let failure, !failure.isEmpty {
+                if msgs[idx].content.isEmpty {
+                    msgs[idx].content = failure
+                } else if !msgs[idx].content.contains(failure) {
+                    msgs[idx].content += "\n\n（\(failure)）"
+                }
+            }
+        }
+        setStreamStatus(threadId: threadId, nil)
         flushDiskSave(threadId: threadId)
-        chat.messages = threadMessages[threadId] ?? []
+    }
+
+    /// 句读分片（打字机）：优先标点断句；长无标点串按空格/固定窗口切。
+    /// 返回 (本次渲染片段, 剩余串)。
+    static func takeStreamFragment(_ s: String) -> (reveal: String, rest: String) {
+        if s.isEmpty { return ("", "") }
+        if s.count <= 12 { return (s, "") }
+        let punct: [Character] = ["。", "！", "？", "；", "，", "、", ".", "!", "?", ";", ",", ":", "）", ")", "}", "]", "」", "】", "\n"]
+        var earliest: String.Index?
+        let window = s.prefix(64)
+        for p in punct {
+            if let i = window.firstIndex(of: p) {
+                if let e = earliest {
+                    if i < e { earliest = i }
+                } else {
+                    earliest = i
+                }
+            }
+        }
+        if let e = earliest {
+            let after = s.index(after: e)
+            return (String(s[..<after]), String(s[after...]))
+        }
+        if let sp = window.lastIndex(of: " "), s.distance(from: s.startIndex, to: sp) > 14 {
+            let after = s.index(after: sp)
+            return (String(s[..<after]), String(s[after...]))
+        }
+        return (String(s.prefix(28)), String(s.dropFirst(28)))
+    }
+
+    /// 单线程流式状态文案；nil → 清空（回落 statusText）
+    private func setStreamStatus(threadId: String?, _ text: String?) {
+        guard let threadId, !threadId.isEmpty else { return }
+        if let text, !text.isEmpty {
+            threadStreamStatus[threadId] = text
+        } else {
+            threadStreamStatus.removeValue(forKey: threadId)
+        }
+        chat.streamStatus = text ?? ""
+        statusText = text ?? "已连接"
     }
 
     // MARK: - Message Editing

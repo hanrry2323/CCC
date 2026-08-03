@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { getToken, clearToken } from './auth.js';
+import { cancelStream as registryCancelStream } from './streamRegistry.js';
 
 /** 请求头：从 localStorage 读 ccc_chat_token，返回 Bearer 头。 */
 function _headers(json = true) {
@@ -157,19 +158,131 @@ export async function streamChat(
   opts = {}
 ) {
   const projectId = project || state.get('currentProject') || 'ccc';
+  const signal =
+    (opts && opts.abortController && opts.abortController.signal) || null;
+
+  const userMsgs = (messages || []).filter((m) => m.role === 'user');
+  const prompt =
+    (userMsgs.length ? userMsgs[userMsgs.length - 1].content : '') || '';
+
+  // 单次流只允许一次终结（done/error/abort/EOF 先到者生效），避免重复回写
+  let settled = false;
+  const settleDone = () => {
+    if (settled) return;
+    settled = true;
+    onDone(sessionId);
+  };
+  const settleError = (msg) => {
+    if (settled) return;
+    settled = true;
+    onError(msg || '生成失败');
+  };
+
+  let resp;
+  try {
+    resp = await _fetchWithAuth(
+      '/conversation',
+      {
+        method: 'POST',
+        body: JSON.stringify({ message: prompt, stream: true }),
+        signal,
+      },
+      true
+    );
+  } catch (e) {
+    if (e && e.name === 'AbortError') settleDone();
+    else settleError('网络错误: ' + e.message);
+    return;
+  }
+  if (resp.status === 401) {
+    settleError('认证失败 (401)：密码错误，请刷新后重试');
+    return;
+  }
+  if (!resp.ok || !resp.body) {
+    const data = await resp.json().catch(() => ({}));
+    settleError(data.message || data.error || 'POST /conversation ' + resp.status);
+    return;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let eventName = null;
+  let dataLines = [];
+
+  // SSE 块解析：块以空行（\n\n）分隔；event:/data: 行累积到块结束再派发，
+  // 天然兼容 fetch 流式分块边界（半个 JSON 不会被解析）。
+  function flushBlock() {
+    if (eventName === null && dataLines.length === 0) return;
+    const raw = dataLines.join('\n');
+    dataLines = [];
+    const ev = eventName;
+    eventName = null;
+    if (!raw) return;
+    let payload = null;
+    try {
+      payload = JSON.parse(raw);
+    } catch (_) {
+      return;
+    }
+    routeEvent(ev, payload);
+  }
+
+  function routeEvent(ev, payload) {
+    if (ev === 'text') {
+      onEvent('delta', (payload && payload.text) || '');
+    } else if (
+      ev === 'meta' ||
+      ev === 'thinking' ||
+      ev === 'tool_use' ||
+      ev === 'tool_result' ||
+      ev === 'cost'
+    ) {
+      onEvent(ev, payload || {});
+    } else if (ev === 'done') {
+      if (payload && payload.is_error) {
+        settleError((payload && (payload.error || payload.text)) || '生成失败');
+      } else {
+        settleDone();
+      }
+    } else if (ev === 'error') {
+      settleError((payload && payload.message) || '生成失败');
+    }
+  }
+
+  function consumeBlock(block) {
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).replace(/^ /, ''));
+      }
+    }
+    flushBlock();
+  }
+
+  function feed(chunk) {
+    buffer += chunk;
+    let idx;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      consumeBlock(block);
+    }
+  }
 
   try {
-    const userMsgs = (messages || []).filter((m) => m.role === 'user');
-    const prompt =
-      (userMsgs.length ? userMsgs[userMsgs.length - 1].content : '') || '';
-
-    const data = await apiPost('/conversation', { message: prompt });
-
-    const reply = data.reply || data.message || data.response || JSON.stringify(data);
-    onEvent('delta', reply);
-    onDone(sessionId);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      feed(decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n'));
+    }
+    feed(decoder.decode().replace(/\r\n/g, '\n'));
+    if (buffer.trim()) consumeBlock(buffer);
+    settleDone();
   } catch (e) {
-    onError('网络错误: ' + e.message);
+    if (e && e.name === 'AbortError') settleDone();
+    else settleError('网络错误: ' + e.message);
   }
 }
 
@@ -182,5 +295,5 @@ export async function loadDesktopThread(threadId) {
 }
 
 export function cancelStream(tabId) {
-  // 无操作
+  registryCancelStream(tabId);
 }

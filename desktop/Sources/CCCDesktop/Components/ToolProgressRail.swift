@@ -123,6 +123,22 @@ enum ToolProgressHelper {
         symbols[step.name] ?? "wrench.and.screwdriver"
     }
 
+    /// tool_use 事件 → 一步简介（label）：取常用参数做一句话摘要（截断 40 字）
+    static func labelForToolUse(name: String, input: [String: Any]) -> String {
+        let n = name.isEmpty ? "tool" : name
+        let detail: String? = {
+            if let v = input["command"] as? String, !v.isEmpty { return short(v, 40) }
+            if let v = input["file_path"] as? String, !v.isEmpty { return short(v, 40) }
+            if let v = input["path"] as? String, !v.isEmpty { return short(v, 40) }
+            if let v = input["pattern"] as? String, !v.isEmpty { return short(v, 40) }
+            if let v = input["query"] as? String, !v.isEmpty { return short(v, 40) }
+            if let v = input["description"] as? String, !v.isEmpty { return short(v, 40) }
+            return nil
+        }()
+        if let detail, !detail.isEmpty { return "\(n) · \(detail)" }
+        return n
+    }
+
     private static func short(_ s: String, _ n: Int) -> String {
         let t = s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)

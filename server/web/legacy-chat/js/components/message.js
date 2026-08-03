@@ -405,6 +405,12 @@ export async function sendMessage(text, attachments = [], opts = {}) {
   let toolsHost = null;
   let cursorEl = null;
   let rafPending = false;
+  let metaInfo = null;
+  let thinkingBuf = '';
+  let thinkingEl = null;
+  let pendingText = '';
+  let twTimer = null;
+  let twActive = false;
 
   syncStreamingFlagForActiveTab();
   setStreamingIndicator();
@@ -475,22 +481,136 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     }
   }
 
+  /** 首个事件（text/thinking/tool_use/meta 任一）到达 → 取消首包等待提示。 */
+  function markFirstPacket() {
+    if (firstPacketAt === 0) firstPacketAt = Date.now();
+    if (waitTimer) {
+      clearTimeout(waitTimer);
+      waitTimer = null;
+    }
+  }
+
+  /** meta 信息条：模型 / 工具 / MCP / skills 可见（T41 心智可见性）。 */
+  function paintMetaInfo() {
+    if (!metaInfo || !msgDiv) return;
+    const bubble = msgDiv.querySelector('.bubble');
+    if (!bubble) return;
+    let chip = msgDiv.querySelector('.stream-meta');
+    if (!chip) {
+      chip = document.createElement('div');
+      chip.className = 'stream-meta';
+      bubble.insertBefore(chip, bubble.firstChild);
+    }
+    const parts = [];
+    if (metaInfo.model) parts.push('模型 ' + metaInfo.model);
+    const tools = (metaInfo.tools || []).length;
+    const mcp = (metaInfo.mcp_servers || []).length;
+    const skills = (metaInfo.skills || []).length;
+    if (tools) parts.push('工具 ' + tools);
+    if (mcp) parts.push('MCP ' + mcp);
+    if (skills) parts.push('skills ' + skills);
+    chip.textContent = parts.join(' · ');
+    chip.title = JSON.stringify(metaInfo);
+  }
+
+  /** 思考折叠块：默认收起，展开看灰色斜体思考全文（T41 思考可见）。 */
+  function ensureThinkingHost() {
+    if (thinkingEl && msgDiv && msgDiv.contains(thinkingEl)) return thinkingEl;
+    if (!msgDiv) return null;
+    const bubble = msgDiv.querySelector('.bubble');
+    if (!bubble) return null;
+    thinkingEl = document.createElement('details');
+    thinkingEl.className = 'thinking-fold';
+    thinkingEl.innerHTML =
+      '<summary><span class="thinking-summary">思考中…</span></summary>' +
+      '<div class="thinking-body"></div>';
+    const md = bubble.querySelector('.md-stream');
+    if (md) bubble.insertBefore(thinkingEl, md);
+    else bubble.prepend(thinkingEl);
+    return thinkingEl;
+  }
+
+  function appendThinking(text) {
+    if (!text) return;
+    const host = ensureThinkingHost();
+    if (!host) return;
+    thinkingBuf += text;
+    const body = host.querySelector('.thinking-body');
+    if (body) body.textContent = thinkingBuf;
+  }
+
+  /** 句读分片：优先在标点处断句，避免逐字闪烁；长无标点串按单词/固定窗口切。 */
+  function takeSentenceFragment(s) {
+    const m = s.match(/^.*?[，。！？；、,.!?;:）)\]}】」]/);
+    if (m && m[0]) return m[0];
+    if (s.length >= 28) {
+      const sp = s.lastIndexOf(' ', 28);
+      return sp > 14 ? s.slice(0, sp) : s.slice(0, 28);
+    }
+    return s;
+  }
+
+  const TYPEWRITER_MS = 18;
+
+  function typewriterTick() {
+    twTimer = null;
+    if (!pendingText) {
+      twActive = false;
+      return;
+    }
+    const frag = takeSentenceFragment(pendingText);
+    pendingText = pendingText.slice(frag.length);
+    fullContent += frag;
+    scheduleMarkdownPaint();
+    if (!pendingText) bumpPartialAssistant();
+    if (pendingText) twTimer = setTimeout(typewriterTick, TYPEWRITER_MS);
+    else twActive = false;
+  }
+
+  function enqueueText(text) {
+    if (!text) return;
+    pendingText += text;
+    if (twActive) return;
+    twActive = true;
+    twTimer = setTimeout(typewriterTick, TYPEWRITER_MS);
+  }
+
+  /** 结束/取消前清空打字机缓冲，保证全量文本落盘。 */
+  function flushTypewriter() {
+    if (twTimer) {
+      clearTimeout(twTimer);
+      twTimer = null;
+    }
+    twActive = false;
+    if (!pendingText) return;
+    fullContent += pendingText;
+    pendingText = '';
+    if (mdEl && canPaint(ownerTabId, ownerProject)) {
+      mdEl.innerHTML = renderMarkdown(fullContent);
+    }
+    bumpPartialAssistant();
+  }
+
   await streamChat(
     msgs.filter((m) => !(m.role === 'assistant' && m.partial)),
     sid,
     project,
     (type, data) => {
       if (type === 'delta') {
-        if (firstPacketAt === 0) firstPacketAt = Date.now();
-        if (waitTimer) {
-          clearTimeout(waitTimer);
-          waitTimer = null;
-        }
+        markFirstPacket();
         ensureAssistantShell();
-        fullContent += data;
-        scheduleMarkdownPaint();
-        bumpPartialAssistant();
+        enqueueText(data);
+      } else if (type === 'meta') {
+        markFirstPacket();
+        metaInfo = data;
+        ensureAssistantShell();
+        paintMetaInfo();
+      } else if (type === 'thinking') {
+        markFirstPacket();
+        ensureAssistantShell();
+        appendThinking((data && data.data) || '');
       } else if (type === 'tool_use') {
+        markFirstPacket();
         ensureAssistantShell();
         if (canPaint(ownerTabId, ownerProject)) {
           if (!progressRail && toolsHost) {
@@ -518,10 +638,15 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         clearTimeout(waitTimer);
         waitTimer = null;
       }
+      flushTypewriter();
       if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentSessionId', sid);
         ensureAssistantShell();
         if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
+        if (thinkingEl) {
+          const s = thinkingEl.querySelector('.thinking-summary');
+          if (s) s.textContent = '思考';
+        }
         if (cursorEl) cursorEl.remove();
         if (progressRail) finishProgressRail(progressRail, { hide: true });
         if (costInfo && msgDiv) {

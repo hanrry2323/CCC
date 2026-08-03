@@ -143,6 +143,24 @@ def _post(api_server: str, path: str, body_dict: dict, token: str | None = None)
         conn.close()
 
 
+def _post_stream_raw(api_server: str, path: str, body_dict: dict, token: str | None = None) -> tuple[int, str, str]:
+    """POST 请求返回原始响应 (status, content_type, body_text)；用于 SSE 流式断言。"""
+    parsed = urlparse(api_server)
+    conn = HTTPConnection(parsed.hostname, parsed.port, timeout=15)
+    try:
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        body = json.dumps(body_dict).encode("utf-8")
+        conn.request("POST", path, body=body, headers=headers)
+        resp = conn.getresponse()
+        ctype = resp.getheader("Content-Type", "")
+        raw = resp.read().decode("utf-8", errors="replace")
+        return resp.status, ctype, raw
+    finally:
+        conn.close()
+
+
 # ── 鉴权测试 ──
 
 
@@ -237,6 +255,7 @@ class TestConversation:
     def _clear_conversation_state(self):
         """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
         from server.web import server as srv_mod
+
         srv_mod._conversations.clear()
         _clear_brain_env()
         yield
@@ -364,6 +383,102 @@ class TestConversation:
         # 历史与当前消息
         assert "first" in prompt
         assert "second" in prompt
+
+    # ── T41 流式（body.stream=true → SSE） ──
+
+    def test_conversation_stream_not_configured_sse_error(self, api_server):
+        """流式请求：大脑未配置 → SSE `event: error`(503)（HTTP 200）。"""
+        _clear_brain_env()
+        token = _get_token(api_server)
+        status, ctype, body = _post_stream_raw(
+            api_server, "/conversation", {"message": "hi", "stream": True}, token=token
+        )
+        assert status == 200
+        assert ctype.startswith("text/event-stream")
+        assert "event: error" in body
+        assert '"status": 503' in body
+        assert "not configured" in body
+
+    def test_conversation_stream_success(self, api_server, monkeypatch):
+        """流式请求：成功时逐事件输出 meta/text/done 并落历史。"""
+        _set_brain_env()
+
+        def fake_stream(prompt):
+            yield ("meta", {"model": "flash"})
+            yield ("text", {"text": "你好"})
+            yield ("done", {"is_error": False, "text": "你好"})
+
+        monkeypatch.setattr("server.web.brain._stream_claude", fake_stream)
+        token = _get_token(api_server)
+        status, ctype, body = _post_stream_raw(
+            api_server, "/conversation", {"message": "hi", "stream": True}, token=token
+        )
+        assert status == 200
+        assert ctype.startswith("text/event-stream")
+        assert "event: meta" in body
+        assert '"model": "flash"' in body
+        assert "event: text" in body
+        assert '"text": "你好"' in body
+        assert "event: done" in body
+        # 流式成功应回写历史（与同步一致）
+        status, data = _get(api_server, "/conversation", token=token)
+        assert len(data["messages"]) == 2
+        assert data["messages"][-1]["role"] == "assistant"
+        assert data["messages"][-1]["message"] == "你好"
+
+    def test_conversation_stream_error_not_recorded(self, api_server, monkeypatch):
+        """流式请求：大脑失败（error 事件）不落历史。"""
+        _set_brain_env()
+
+        def fake_stream(prompt):
+            yield ("error", {"status": 504, "message": "brain timeout"})
+
+        monkeypatch.setattr("server.web.brain._stream_claude", fake_stream)
+        token = _get_token(api_server)
+        status, ctype, body = _post_stream_raw(
+            api_server, "/conversation", {"message": "slow", "stream": True}, token=token
+        )
+        assert status == 200
+        assert "event: error" in body
+        assert '"status": 504' in body
+        status, data = _get(api_server, "/conversation", token=token)
+        assert len(data["messages"]) == 0
+
+    def test_conversation_stream_busy(self, api_server, monkeypatch):
+        """流式请求：大脑忙 → SSE `event: error`(503)。"""
+        _set_brain_env()
+        from server.web import brain as brain_mod
+
+        acquired = brain_mod._brain_lock.acquire(blocking=False)
+        assert acquired
+        try:
+            token = _get_token(api_server)
+            status, ctype, body = _post_stream_raw(
+                api_server, "/conversation", {"message": "hi", "stream": True}, token=token
+            )
+        finally:
+            brain_mod._brain_lock.release()
+        assert status == 200
+        assert "event: error" in body
+        assert '"status": 503' in body
+        assert "busy" in body
+
+    def test_conversation_sync_not_regressed(self, api_server, monkeypatch):
+        """不带 stream 标志：仍走同步 JSON（向后兼容）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "sync-reply", None),
+        )
+        token = _get_token(api_server)
+        status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
+        assert status == 200
+        assert "reply" in data
+        assert data["reply"] == "sync-reply"
+        # 不带 stream 不应返回 SSE
+        status, ctype, body = _post_stream_raw(api_server, "/conversation", {"message": "hi"}, token=token)
+        assert not ctype.startswith("text/event-stream")
+        assert "event:" not in body
 
 
 # ── 健康检查 ──
@@ -620,9 +735,7 @@ class DataShape:
         # 验证回写时间倒序
         written_dates = [item["written_at"] for item in data if item.get("written_at") != "未知"]
         for i in range(1, len(written_dates)):
-            assert written_dates[i - 1] >= written_dates[i], (
-                f"7 天视图未按回写时间倒序: {written_dates}"
-            )
+            assert written_dates[i - 1] >= written_dates[i], f"7 天视图未按回写时间倒序: {written_dates}"
 
     def test_by_project_counts_sum(self, api_server):
         token = _get_token(api_server)
@@ -630,9 +743,7 @@ class DataShape:
         assert status == 200
         for row in data:
             states_sum = sum(row["states"].values())
-            assert row["count"] == states_sum, (
-                f"项目 {row['project']} 计数不一致: {row['count']} != {states_sum}"
-            )
+            assert row["count"] == states_sum, f"项目 {row['project']} 计数不一致: {row['count']} != {states_sum}"
 
     def test_roadmap_overview_is_list_of_buckets(self, api_server):
         token = _get_token(api_server)

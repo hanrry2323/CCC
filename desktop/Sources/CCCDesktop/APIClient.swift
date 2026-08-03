@@ -21,12 +21,42 @@ enum APIError: LocalizedError {
     }
 }
 
+/// 流式大脑事件（/conversation stream SSE 归一化），对齐 server/web/brain.py 协议：
+/// meta / thinking / text / tool_use / tool_result / done / error。
+enum BrainStreamEvent: Equatable {
+    case meta([String: Any])
+    case thinking(String)
+    case text(String)
+    case toolUse(id: String, name: String, input: [String: Any])
+    case toolResult(toolUseID: String, content: String)
+    case done(isError: Bool, text: String, error: String)
+    case error(status: Int, message: String)
+
+    static func == (lhs: BrainStreamEvent, rhs: BrainStreamEvent) -> Bool {
+        switch (lhs, rhs) {
+        case (.meta(let a), .meta(let b)):
+            return NSDictionary(dictionary: a).isEqual(to: b)
+        case (.thinking(let a), .thinking(let b)): return a == b
+        case (.text(let a), .text(let b)): return a == b
+        case (.toolUse(let ai, let an, let aIn), .toolUse(let bi, let bn, let bIn)):
+            return ai == bi && an == bn && NSDictionary(dictionary: aIn).isEqual(to: bIn)
+        case (.toolResult(let a, let b), .toolResult(let c, let d)): return a == c && b == d
+        case (.done(let a1, let a2, let a3), .done(let b1, let b2, let b3)):
+            return a1 == b1 && a2 == b2 && a3 == b3
+        case (.error(let a, let b), .error(let c, let d)): return a == c && b == d
+        default: return false
+        }
+    }
+}
+
 actor APIClient {
     private(set) var baseURL: URL
     private(set) var user: String
     private(set) var password: String
     /// 短请求
     private let session: URLSession
+    /// 流式请求（长尾）：资源超时放大到 10 分钟（> 大脑 120s 超时），空闲读超时 60s
+    private let streamSession: URLSession
 
     /// 新服务端 base URL
     private var newServerBaseURL: URL?
@@ -54,6 +84,15 @@ actor APIClient {
             cfg.protocolClasses = urlProtocolClasses + (cfg.protocolClasses ?? [])
         }
         self.session = URLSession(configuration: cfg)
+        let scfg = URLSessionConfiguration.default
+        scfg.timeoutIntervalForRequest = 60
+        scfg.timeoutIntervalForResource = 600
+        scfg.waitsForConnectivity = false
+        scfg.httpMaximumConnectionsPerHost = 4
+        if !urlProtocolClasses.isEmpty {
+            scfg.protocolClasses = urlProtocolClasses + (scfg.protocolClasses ?? [])
+        }
+        self.streamSession = URLSession(configuration: scfg)
     }
 
     static func makeBaseURL(from raw: String) -> URL? {
@@ -76,6 +115,12 @@ actor APIClient {
     /// 新服务端对话响应
     struct NewServerConversationResponse: Decodable {
         let reply: String
+    }
+
+    /// 流式对话请求体（stream:true）
+    struct StreamBody: Encodable {
+        let message: String
+        let stream: Bool
     }
 
     /// 配置新服务端地址（nil = 禁用）
@@ -153,6 +198,21 @@ actor APIClient {
         return req
     }
 
+    /// 流式请求构造：走 streamSession 长尾超时（不放宽 15s 短请求）
+    private func newServerStreamingRequest(path: String, body: Data?) throws -> URLRequest {
+        guard let base = newServerBaseURL else { throw APIError.badURL }
+        guard let url = URL(string: path, relativeTo: base) else { throw APIError.badURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let auth = newServerAuthHeader() {
+            req.setValue(auth, forHTTPHeaderField: "Authorization")
+        }
+        req.httpBody = body
+        req.timeoutInterval = 60
+        return req
+    }
+
     /// 新服务端对话：POST /conversation
     func sendConversation(message: String) async throws -> String {
         let body = try JSONEncoder().encode(["message": message])
@@ -169,6 +229,126 @@ actor APIClient {
         }
         let decoded = try JSONDecoder().decode(NewServerConversationResponse.self, from: data)
         return decoded.reply
+    }
+
+    /// 新服务端流式对话：POST /conversation {stream:true} → SSE 逐事件产出
+    ///
+    /// 事件归一化为 BrainStreamEvent（meta / thinking / text / tool_use /
+    /// tool_result / done / error）。401 → 抛 APIError 并清除 token；
+    /// 客户端断连/取消 → 正常 finish（不抛错）。与 server/web/brain.py 协议对齐。
+    func streamConversation(message: String) -> AsyncThrowingStream<BrainStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                await self.runStreamConversation(message: message, continuation: continuation)
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
+    private func runStreamConversation(
+        message: String,
+        continuation: AsyncThrowingStream<BrainStreamEvent, Error>.Continuation
+    ) async {
+        do {
+            let body = try JSONEncoder().encode(StreamBody(message: message, stream: true))
+            let req = try newServerStreamingRequest(path: "conversation", body: body)
+            let (bytes, resp) = try await streamSession.bytes(for: req)
+            guard let http = resp as? HTTPURLResponse else {
+                continuation.finish(throwing: APIError.http(0, "非 HTTP 响应"))
+                return
+            }
+            let code = http.statusCode
+            if code == 401 {
+                newServerToken = nil
+                continuation.finish(throwing: APIError.http(401, "新服务端会话 token 过期，请重新登录"))
+                return
+            }
+            guard (200..<300).contains(code) else {
+                var text = ""
+                for try await line in bytes.lines { text += line + "\n" }
+                continuation.finish(
+                    throwing: APIError.http(code, text.trimmingCharacters(in: .whitespacesAndNewlines))
+                )
+                return
+            }
+
+            // SSE 块解析：每事件 = 一条 `event:` 行 + 一条 `data:` 行。
+            // 逐行累积，遇新 `event:` 行、空行或 EOF 时派发前一事件。注意
+            // bytes.lines 会丢弃空行（omittingEmptySubsequences），不能依赖
+            // \n\n 做分隔 → 以 `event:` 行为块边界，天然兼容网络分块边界
+            // （半个 JSON 不会被解析）。
+            var eventName = ""
+            var dataLines: [String] = []
+            func flushBlock() {
+                guard !eventName.isEmpty || !dataLines.isEmpty else { return }
+                let raw = dataLines.joined(separator: "\n")
+                let name = eventName
+                eventName = ""
+                dataLines = []
+                guard !raw.isEmpty,
+                      let obj = try? JSONSerialization.jsonObject(with: Data(raw.utf8))
+                            as? [String: Any] else { return }
+                if let event = Self.parseStreamEvent(name: name, payload: obj) {
+                    continuation.yield(event)
+                }
+            }
+            for try await rawLine in bytes.lines {
+                let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
+                if line.isEmpty {
+                    flushBlock()
+                } else if line.hasPrefix("event:") {
+                    flushBlock()
+                    eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                } else if line.hasPrefix("data:") {
+                    let d = String(line.dropFirst(5))
+                    dataLines.append(d.hasPrefix(" ") ? String(d.dropFirst()) : d)
+                }
+            }
+            flushBlock()
+            continuation.finish()
+        } catch is CancellationError {
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
+        }
+    }
+
+    /// SSE data payload → BrainStreamEvent（未知事件跳过）
+    private static func parseStreamEvent(name: String, payload: [String: Any]) -> BrainStreamEvent? {
+        switch name {
+        case "meta":
+            return .meta(payload)
+        case "thinking":
+            return .thinking(payload["data"] as? String ?? "")
+        case "text":
+            return .text(payload["text"] as? String ?? "")
+        case "tool_use":
+            return .toolUse(
+                id: payload["id"] as? String ?? "",
+                name: payload["name"] as? String ?? "",
+                input: payload["input"] as? [String: Any] ?? [:]
+            )
+        case "tool_result":
+            return .toolResult(
+                toolUseID: payload["tool_use_id"] as? String ?? "",
+                content: payload["content"] as? String ?? ""
+            )
+        case "done":
+            return .done(
+                isError: payload["is_error"] as? Bool ?? false,
+                text: payload["text"] as? String ?? "",
+                error: payload["error"] as? String ?? ""
+            )
+        case "error":
+            return .error(
+                status: payload["status"] as? Int ?? 0,
+                message: payload["message"] as? String ?? ""
+            )
+        default:
+            return nil
+        }
     }
 
     /// 通用发送 + 解码（带重试）

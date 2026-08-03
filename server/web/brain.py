@@ -9,6 +9,10 @@
     subprocess.run([claude, "-p", prompt, "--output-format", "text"],
                    env={...6100...}, timeout=CCC_BRAIN_TIMEOUT)
 
+流式（T41）：`--output-format stream-json --verbose` 逐事件读取，经
+`stream_brain_events()` 归一化为 (meta / thinking / tool_use / text /
+tool_result / done / error) 事件序列，供 HTTP SSE 转发。
+
 并发保护：模块级锁，同一时刻仅处理一个对话请求（单会话串行）；
 失败/超时不落历史，返回明确错误码（503 未配置/忙 · 504 超时 · 502 失败）。
 
@@ -33,17 +37,43 @@
 
 from __future__ import annotations
 
+import json
 import os
+import queue
 import subprocess
 import threading
+import time
 from typing import Any
 
-# ── CCC 大脑人格（系统提示词，注入 prompt 头部） ──
+# ── CCC 大脑人格（系统提示词，注入 prompt 头部；T41 心智升级：全能智能体四职责） ──
 BRAIN_SYSTEM_PROMPT = (
-    "你是 CCC 的大脑 Agent，负责方案讨论、知识核查、任务拆解、多壳对话。"
-    "你可以读取项目文档与知识库，按需调用工具。"
-    "回答用中文，结论先行，条理清晰；禁止把问题抛回给用户做选择题。"
-    "若信息不足，给出你最合理的判断与依据，而非反问。"
+    "你是 CCC 的大脑 Agent（全能智能体），负责规划、写任务卡、验收、看板维护四类职责，"
+    "并作为多壳对话的大脑。所有输出：结论先行、条理清晰、中文作答；"
+    "禁止把问题抛回给用户做选择题——信息不足时给出最合理判断与依据，而非反问。\n\n"
+    "【职责一：规划】\n"
+    "理解目标 → 拆解为可执行步骤 → 产出任务卡草案。拆解粒度以一次性执行体可完成为准，"
+    "避免过粗（无法执行）或过碎（无意义小卡）。\n\n"
+    "【职责二：写任务卡】\n"
+    "任务卡写入 docs/dispatch/，格式遵守 references/board-task-schema.md（契约 §1/§2）：\n"
+    "- 标题：`# 任务卡 Txx · 标题`；`>` 元数据行 `关联：project` · `执行体：executor` · "
+    "`状态：待分派` · `日期：YYYY-MM-DD`；\n"
+    "- 正文：目标 / 范围 / 验收标准（可执行，含验证命令）/ 步骤 / 红线；\n"
+    "- 状态机五态：待分派 → 执行中 → 已回写 → 已关闭（打回 → 待分派）；\n"
+    "- 写卡前先读 docs/dispatch/ 现有卡编号，避免撞号。\n\n"
+    "【职责三：验收】\n"
+    "对照任务卡「验收标准」逐项判定：全部满足 → 通过；有缺失 → 打回并附问题清单"
+    "（每项说明差距与补救方向），不口头放水、不凭印象 PASS。\n\n"
+    "【职责四：看板维护】\n"
+    "按状态机流转任务卡状态；打回时必须附原因；只在任务卡范围内修改，"
+    "不越范围改其他卡、文档或系统文件（红线见 references/red-lines.md）。\n\n"
+    "【工具契约】\n"
+    "- 优先知识库检索：先查 CCC 自建知识库（BM25），命中片段已含条目 id，引用时显式标注 id；"
+    "避免自行翻阅文件导致延迟（知识题实测 120s 超时 → 加引导后 14s）。\n"
+    "- 再按需调用 Claude Code 内置工具：Read / Write / Bash / WebFetch，"
+    "以及 MCP 工具（memory / fetch 等）。\n\n"
+    "【输出规范】\n"
+    "结论先行、条理清晰、给可执行结果（步骤 / 命令 / 任务卡草案），不给开放选择题。"
+    "若知识库与文档均未覆盖，明确说明「信息不足」并给出最合理假设与依据。"
 )
 
 # 对话历史拼入 prompt 的最大轮数（user+assistant 算一轮）
@@ -94,6 +124,7 @@ def _is_brain_configured() -> bool:
 
 
 # ── 知识库检索配置（T37） ──
+
 
 def _get_brain_kb_enabled() -> bool:
     """大脑知识库检索开关（CCC_BRAIN_KB=1/true/yes/on 启用，默认关闭）。"""
@@ -167,7 +198,7 @@ def _build_prompt(message: str, history: list[dict[str, Any]]) -> str:
     if kb_context:
         parts.append(kb_context)
         parts.append("")
-    recent = history[-(2 * _BRAIN_HISTORY_TURNS):] if history else []
+    recent = history[-(2 * _BRAIN_HISTORY_TURNS) :] if history else []
     if recent:
         parts.append("【历史对话】")
         for entry in recent:
@@ -250,3 +281,195 @@ def call_brain(message: str, history: list[dict[str, Any]]) -> tuple[bool, str, 
     if kind == "timeout":
         return (False, out, 504)
     return (False, out, 502)
+
+
+# ── 流式输出（T41：SSE 逐事件转发） ──
+
+
+def _normalize_stream_event(event: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """claude stream-json 单行事件 → 归一化 ``(event, payload)`` 或 None（跳过）。
+
+    映射：
+    - ``system/init``      → ``meta``（模型 / 工具 / MCP / skills 可见）
+    - ``assistant`` 块     → ``thinking`` / ``tool_use`` / ``text``
+    - ``user`` 块          → ``tool_result``（工具结果回显，截断至 2000 字符）
+    - ``stream_event``     → ``text``（兼容分片流，未启用时不出现）
+    - ``result``           → ``done``（is_error 终结，附最终文本）
+    - 其他（system/status 等）→ None 跳过
+    """
+    etype = event.get("type")
+    if etype == "system" and event.get("subtype") == "init":
+        return (
+            "meta",
+            {
+                "model": event.get("model", "") or "",
+                "tools": event.get("tools", []) or [],
+                "mcp_servers": event.get("mcp_servers", []) or [],
+                "skills": event.get("skills", []) or [],
+            },
+        )
+    if etype == "assistant":
+        msg = event.get("message", {}) or {}
+        for block in msg.get("content", []) or []:
+            btype = block.get("type")
+            if btype in ("thinking", "redacted_thinking"):
+                return ("thinking", {"data": block.get("data", "") or ""})
+            if btype == "tool_use":
+                return (
+                    "tool_use",
+                    {
+                        "id": block.get("id", "") or "",
+                        "name": block.get("name", "") or "",
+                        "input": block.get("input", {}) or {},
+                    },
+                )
+            if btype == "text":
+                return ("text", {"text": block.get("text", "") or ""})
+        return None
+    if etype == "user":
+        msg = event.get("message", {}) or {}
+        for block in msg.get("content", []) or []:
+            if block.get("type") == "tool_result":
+                content = block.get("content", "")
+                if isinstance(content, list):
+                    content = " ".join(c if isinstance(c, str) else (c.get("text", "") or "") for c in content)
+                return (
+                    "tool_result",
+                    {
+                        "tool_use_id": block.get("tool_use_id", "") or "",
+                        "content": str(content)[:2000],
+                    },
+                )
+        return None
+    if etype == "result":
+        is_error = bool(event.get("is_error"))
+        return (
+            "done",
+            {
+                "is_error": is_error,
+                "text": event.get("result", "") or "",
+                "error": event.get("api_error_status") or ("" if not is_error else "brain failed"),
+            },
+        )
+    if etype == "stream_event":
+        ev = event.get("event") or {}
+        if ev.get("type") == "content_block_delta":
+            delta = ev.get("delta") or {}
+            if delta.get("type") == "text_delta":
+                return ("text", {"text": delta.get("text", "") or ""})
+        return None
+    return None
+
+
+def _terminate_proc(proc: subprocess.Popen) -> None:
+    """确保子进程结束：运行中则 kill + wait（超时/断连兜底）。"""
+    if proc.poll() is None:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.wait()
+    except OSError:
+        pass
+
+
+def _stream_claude(prompt: str, timeout: int | None = None):
+    """以 stream-json 调用 Claude Code CLI，逐事件 yield 归一化 ``(event, payload)``。
+
+    与 ``_run_claude`` 共用环境变量注入（6100 出口）。stdout 由守护线程逐行读取，
+    主循环按剩余超时等待：超时 → kill 并 yield ``error(504)``；
+    spawn 失败 → ``error(502)``；正常结束 → 末尾 ``done`` 事件（result 行）。
+    """
+    timeout = _get_brain_timeout() if timeout is None else timeout
+    bin_path = _get_brain_claude_bin()
+    env = os.environ.copy()
+    env["ANTHROPIC_BASE_URL"] = _get_brain_base_url()
+    env["ANTHROPIC_AUTH_TOKEN"] = _get_brain_auth_token()
+    env["ANTHROPIC_MODEL"] = _get_brain_model()
+    try:
+        proc = subprocess.Popen(
+            [bin_path, "-p", prompt, "--output-format", "stream-json", "--verbose"],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, FileNotFoundError) as exc:
+        yield ("error", {"status": 502, "message": f"brain failed: {exc}"})
+        return
+
+    lines_q: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def _read_lines():
+        try:
+            for line in proc.stdout or []:
+                lines_q.put(("line", line))
+        except Exception as exc:  # pragma: no cover - 读线程异常兜底
+            lines_q.put(("exc", exc))
+        finally:
+            lines_q.put(("eof", None))
+
+    threading.Thread(target=_read_lines, daemon=True).start()
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _terminate_proc(proc)
+                yield ("error", {"status": 504, "message": "brain timeout"})
+                return
+            try:
+                kind, payload = lines_q.get(timeout=min(remaining, 0.5))
+            except queue.Empty:
+                continue
+            if kind == "exc":
+                _terminate_proc(proc)
+                yield ("error", {"status": 502, "message": f"brain failed: {payload}"})
+                return
+            if kind == "eof":
+                break
+            line = (payload or "").strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            normalized = _normalize_stream_event(event)
+            if normalized is None:
+                continue
+            yield normalized
+            if normalized[0] == "done":
+                return
+    finally:
+        _terminate_proc(proc)
+
+
+def stream_brain_events(message: str, history: list[dict[str, Any]]):
+    """流式大脑对话入口（供 ``/conversation`` stream 分支调用）。
+
+    以 generator 逐事件产出 ``(event, payload)``（meta / thinking / tool_use /
+    text / tool_result / done / error），SSE 格式由 HTTP 层负责。
+
+    与 ``call_brain`` 一致：未配置 → ``error(503)``；忙 → ``error(503)``；
+    超时 → ``error(504)``；失败 → ``error(502)``。锁在消费期间持有，
+    generator 关闭（客户端断开/异常）时释放。
+    """
+    if not _is_brain_configured():
+        yield (
+            "error",
+            {
+                "status": 503,
+                "message": "brain not configured (CCC_BRAIN_MODEL / CCC_BRAIN_BASE_URL / CCC_BRAIN_AUTH_TOKEN)",
+            },
+        )
+        return
+    prompt = _build_prompt(message, history)
+    if not _brain_lock.acquire(blocking=False):
+        yield ("error", {"status": 503, "message": "brain busy, try later"})
+        return
+    try:
+        yield from _stream_claude(prompt)
+    finally:
+        _brain_lock.release()
