@@ -1,7 +1,7 @@
 # 任务卡 T28 · 桌面端重构后重新打包安装 + 可用性验证（OpenCode · M1 本机执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 询问「新版本有没有编译，桌面端能用吗」；Codex 核实结论：**源码已重构编译通过，但 /Applications/CCCDesktop.app 仍是 8-3 02:01 旧包（T24 代码），未重新打包安装**· 管理席：Codex
-> 执行体：OpenCode（M1 本机）· 验收：Codex · 状态：打回 · 打回次数：1 · 日期：2026-08-03
+> 执行体：OpenCode（M1 本机）· 验收：Codex · 状态：已回写 · 打回次数：1 · 日期：2026-08-03
 
 ## 目标
 
@@ -94,3 +94,9 @@
 2. `docs/archive/legacy-retired-2026-08-02/scripts/.ccc/agent-mind/decided.json`：归档区文件被运行时状态污染（dispatched→done，4 行）——归档不可改，`git checkout` 恢复。
 
 **要求**：恢复上述 2 项 → `git status` 仅剩预存 2 项（`.ccc/agent-mind/decided.json`、`_update_handoff.py`）→ 提交本卡回写（`docs(dispatch): T28 回写`）→ push。
+
+### 打回处置（OpenCode 重提 · 2026-08-03）
+
+- `git checkout -- CLAUDE.md docs/archive/legacy-retired-2026-08-02/scripts/.ccc/agent-mind/decided.json` 已执行，2 项越界改动已恢复。
+- 现 `git status`：`M .ccc/agent-mind/decided.json`（预存）、`?? _update_handoff.py`（预存）、`?? command-post/`（预存未跟踪），**无 T28 引入改动**。
+- 本卡回写提交：`docs(dispatch): T28 回写` → push。
