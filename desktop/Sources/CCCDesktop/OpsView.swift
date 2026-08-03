@@ -8,33 +8,13 @@ enum DomainChipTone { case green, amber, red, gray }
 struct OpsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
-    @State private var showAdoptSheet = false
-    @State private var adoptTitle = ""
-    @State private var adoptDesc = ""
-    @State private var adoptWorkspace = ""
     @State private var showFleet = false
     @State private var showReports = false
-    @State private var showActions = false
     @State private var showFailures = false
     @State private var showChannelDetail = false
     @State private var showUpstreamDaily = false
     @State private var showAgentMinds = false
     @State private var showIntentClosure = true
-
-    private var preferredAmmoWorkspace: String {
-        if let p = model.selectedProject, p.isDispatchable {
-            return p.workspace ?? p.id
-        }
-        if let p = model.projects.first(where: \.isDispatchable) {
-            return p.workspace ?? p.id
-        }
-        return ""
-    }
-
-    private var canAdoptAmmo: Bool {
-        let ws = adoptWorkspace.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !ws.isEmpty && ws.uppercased() != "CCC"
-    }
 
     private let machineColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 12),
@@ -66,11 +46,8 @@ struct OpsView: View {
                     redAlertsSection
 
                     DisclosureGroup("失败与提案", isExpanded: $showFailures) {
-                        VStack(alignment: .leading, spacing: 22) {
-                            failuresSection
-                            inboxProposalsSection
-                        }
-                        .padding(.top, 8)
+                        failuresSection
+                            .padding(.top, 8)
                     }
                     .font(.system(size: 15, weight: .semibold))
 
@@ -118,23 +95,6 @@ struct OpsView: View {
                         agentMindsSection
                     }
                     .font(.system(size: 15, weight: .semibold))
-                    DisclosureGroup("例外动作", isExpanded: $showActions) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("日审默认 dry-run；采纳须业务仓（禁 CCC）。日常不必点。")
-                                .font(CCCTheme.caption)
-                                .foregroundStyle(CCCTheme.faint)
-                            Button {
-                                Task { await model.runDailyReview(workspace: "") }
-                            } label: {
-                                Label("跑日审（dry-run）", systemImage: "play.fill")
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(model.opsAdoptBusy)
-                        }
-                        .padding(.top, 8)
-                    }
-                    .font(.system(size: 15, weight: .semibold))
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
@@ -142,18 +102,7 @@ struct OpsView: View {
         }
         .background(CCCTheme.chatBg)
         .task {
-            if adoptWorkspace.isEmpty {
-                adoptWorkspace = preferredAmmoWorkspace
-            }
             await model.refreshOps()
-        }
-        .sheet(isPresented: $showAdoptSheet) {
-            adoptSheet
-                .onAppear {
-                    if adoptWorkspace.isEmpty || adoptWorkspace.uppercased() == "CCC" {
-                        adoptWorkspace = preferredAmmoWorkspace
-                    }
-                }
         }
     }
 
@@ -180,11 +129,6 @@ struct OpsView: View {
                 ProgressView().controlSize(.small)
             }
             Menu {
-                Button("采纳建议…", systemImage: "plus.circle") {
-                    adoptWorkspace = preferredAmmoWorkspace
-                    showAdoptSheet = true
-                }
-                .disabled(preferredAmmoWorkspace.isEmpty)
                 Button("刷新", systemImage: "arrow.clockwise") {
                     Task { await model.refreshOps() }
                 }
@@ -739,17 +683,6 @@ struct OpsView: View {
                                 .lineLimit(2)
                         }
                         Spacer(minLength: 8)
-                        Button("重开") {
-                            Task {
-                                await model.reopenOpsTask(
-                                    taskId: card.task_id ?? card.id,
-                                    workspace: card.workspace
-                                )
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .disabled(model.opsBusy || model.opsAdoptBusy)
                         Button("看板") {
                             model.openBoardFromOps(workspace: card.workspace)
                             window.destination = .board
@@ -847,39 +780,6 @@ struct OpsView: View {
                 )
             } else {
                 emptyHint("后勤心跳未返回（刷新或升级 Hub）")
-            }
-        }
-    }
-
-    // MARK: - Inbox proposals (Hub-Shell P2)
-
-    private var inboxProposalsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("待采纳提案", systemImage: "tray.and.arrow.down")
-            if model.inboxProposals.isEmpty {
-                emptyHint("inbox/ 无 pending 提案")
-            } else {
-                ForEach(model.inboxProposals) { p in
-                    HStack(alignment: .top, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(p.title ?? p.id)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(CCCTheme.ink)
-                            Text("\(p.project_id ?? "—") · \(p.complexity ?? "small")")
-                                .font(CCCTheme.caption)
-                                .foregroundStyle(CCCTheme.secondary)
-                        }
-                        Spacer()
-                        Button("采纳") {
-                            Task { await model.adoptInboxProposal(p.id) }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(model.inboxAdoptBusy)
-                    }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(CCCTheme.surface.opacity(0.9)))
-                }
             }
         }
     }
@@ -1295,67 +1195,6 @@ struct OpsView: View {
                 }
             }
         }
-    }
-
-    private var adoptSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("采纳建议 → 业务仓 backlog")
-                .font(.system(size: 16, weight: .semibold))
-            LabeledContent("工作区") {
-                TextField("ccc-demo（禁 CCC）", text: $adoptWorkspace)
-                    .textFieldStyle(.roundedBorder)
-            }
-            if preferredAmmoWorkspace.isEmpty {
-                Text("无 engine-eligible 业务仓，无法采纳")
-                    .font(CCCTheme.caption)
-                    .foregroundStyle(CCCTheme.nodeFail)
-            } else if adoptWorkspace.uppercased() == "CCC" {
-                Text("禁止对 CCC orch 供弹")
-                    .font(CCCTheme.caption)
-                    .foregroundStyle(CCCTheme.nodeFail)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("标题").font(CCCTheme.callout).foregroundStyle(CCCTheme.faint)
-                TextField("一句话建议", text: $adoptTitle)
-                    .textFieldStyle(.roundedBorder)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("描述").font(CCCTheme.callout).foregroundStyle(CCCTheme.faint)
-                TextEditor(text: $adoptDesc)
-                    .font(CCCTheme.callout)
-                    .frame(height: 80)
-                    .border(CCCTheme.border)
-            }
-            HStack {
-                Spacer()
-                Button("取消") { showAdoptSheet = false }
-                    .buttonStyle(.bordered)
-                Button("采纳") {
-                    Task {
-                        guard canAdoptAmmo else {
-                            model.opsAdoptError = "须指定业务仓（禁 CCC orch）"
-                            return
-                        }
-                        await model.adoptSuggestion(
-                            workspace: adoptWorkspace.trimmingCharacters(in: .whitespacesAndNewlines),
-                            title: adoptTitle,
-                            description: adoptDesc
-                        )
-                        if model.opsAdoptError == nil {
-                            showAdoptSheet = false
-                            adoptTitle = ""
-                            adoptDesc = ""
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(CCCTheme.accent)
-                .disabled(adoptTitle.isEmpty || model.opsAdoptBusy || !canAdoptAmmo)
-            }
-        }
-        .padding(20)
-        .frame(width: 440, height: 340, alignment: .topLeading)
-        .background(CCCTheme.chatBg)
     }
 
     private func sectionTitle(_ title: String, systemImage: String) -> some View {

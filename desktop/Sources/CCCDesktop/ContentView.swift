@@ -50,14 +50,6 @@ struct ContentView: View {
             MessagePreviewSheet(markdown: model.previewMarkdown ?? "")
                 .environmentObject(model)
         }
-        .sheet(isPresented: $model.isManualEpicPresented) {
-            ManualEpicSheet()
-                .environmentObject(model)
-        }
-        .sheet(isPresented: $model.isTemplatePickerPresented) {
-            TemplatePickerSheet()
-                .environmentObject(model)
-        }
         .animation(.easeOut(duration: 0.18), value: model.toast)
         .alert("重命名会话", isPresented: Binding(
             get: { model.renameThreadId != nil },
@@ -1251,15 +1243,6 @@ struct CodexChatPaneBody: View {
         .padding(.top, 6)
         .padding(.bottom, 36)
         .background(CCCTheme.chatBg)
-        .onChange(of: model.composerBounce) { bounce in
-            // 仅失败回填一次，且必须是本窗线程
-            guard let bounce, !bounce.isEmpty else { return }
-            guard model.composerBounceThreadId == nil
-                    || model.composerBounceThreadId == paneThreadId else { return }
-            composerText = bounce
-            model.composerBounce = nil
-            model.composerBounceThreadId = nil
-        }
     }
 
     private func pickComposerAttachment() {
@@ -1830,153 +1813,5 @@ struct DesktopHelpSheet: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(n). \(title)。\(detail)")
-    }
-}
-
-// MARK: - Manual Epic Creation Sheet (Phase 2.1)
-
-struct ManualEpicSheet: View {
-    @EnvironmentObject var model: AppModel
-    @EnvironmentObject var window: WindowChatState
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("创建新任务")
-                .font(.headline)
-            TextField("标题", text: $model.manualEpicForm.title)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13))
-            TextEditor(text: $model.manualEpicForm.goal)
-                .font(.system(size: 13))
-                .frame(height: 60)
-                .scrollContentBackground(.hidden)
-                .overlay(
-                    Group {
-                        if model.manualEpicForm.goal.isEmpty {
-                            Text("目标")
-                                .foregroundStyle(CCCTheme.faint)
-                                .padding(6)
-                                .allowsHitTesting(false)
-                        }
-                    },
-                    alignment: .topLeading
-                )
-            TextEditor(text: $model.manualEpicForm.acceptance)
-                .font(.system(size: 13))
-                .frame(height: 80)
-                .scrollContentBackground(.hidden)
-                .overlay(
-                    Group {
-                        if model.manualEpicForm.acceptance.isEmpty {
-                            Text("验收条件（每行一条）")
-                                .foregroundStyle(CCCTheme.faint)
-                                .padding(6)
-                                .allowsHitTesting(false)
-                        }
-                    },
-                    alignment: .topLeading
-                )
-            HStack(spacing: 12) {
-                Picker("产线", selection: $model.manualEpicForm.pipeline) {
-                    Text("dev").tag("dev")
-                    Text("product").tag("product")
-                    Text("ops").tag("ops")
-                }
-                .labelsHidden()
-                Picker("复杂度", selection: $model.manualEpicForm.complexity) {
-                    Text("低").tag("low")
-                    Text("中").tag("medium")
-                    Text("高").tag("high")
-                }
-                .labelsHidden()
-            }
-            HStack(spacing: 12) {
-                Button("取消") {
-                    model.isManualEpicPresented = false
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(CCCTheme.faint)
-                Button("从模板…") {
-                    model.loadTemplates()
-                    model.isTemplatePickerPresented = true
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(CCCTheme.accent)
-                Button("创建") {
-                    guard let pid = window.projectId else { return }
-                    Task { await model.createManualEpic(projectId: pid, form: model.manualEpicForm) }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(CCCTheme.accent)
-                .disabled(model.busy)
-            }
-        }
-        .padding(24)
-        .frame(width: 460)
-    }
-}
-
-// MARK: - Template Picker Sheet (Phase 2.2)
-
-struct TemplatePickerSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("任务模板")
-                .font(.headline)
-            if model.templates.isEmpty {
-                Text("暂无模板。可在转任务表单中保存当前方案为模板。")
-                    .font(.system(size: 12))
-                    .foregroundStyle(CCCTheme.faint)
-                    .padding()
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 6) {
-                        ForEach(model.templates) { template in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(template.title)
-                                        .font(.system(size: 12, weight: .medium))
-                                    Text(template.goal.prefix(60))
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(CCCTheme.faint)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                Button("应用") {
-                                    model.applyTemplate(template)
-                                    dismiss()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(CCCTheme.accent)
-                                .controlSize(.small)
-                                Button {
-                                    model.deleteTemplate(title: template.title)
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 11))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(CCCTheme.nodeFail)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(CCCTheme.hover.opacity(0.5))
-                            .cornerRadius(8)
-                        }
-                    }
-                    .padding(8)
-                }
-            }
-            Button("关闭") {
-                dismiss()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(CCCTheme.faint)
-        }
-        .padding(20)
-        .frame(width: 400, height: 360)
     }
 }

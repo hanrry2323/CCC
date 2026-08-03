@@ -187,61 +187,14 @@ struct ProjectCard: View {
     }
 
     private var primaryKind: PrimaryKind {
-        if isChatting { return .chatting }
-        if model.projectHasUnread(project.id) { return .unread }
-        switch boardState {
-        case .failed: return .boardFail
-        case .running, .testing, .pending: return .boardBusy
-        default: return .idle
-        }
-    }
-
-    private var isChatting: Bool {
-        switch model.projectConvState[project.id] ?? "idle" {
-        case "tool", "text": return true
-        default: return false
-        }
-    }
-
-    private enum BoardState {
-        case idle, pending, running, testing, failed
-    }
-
-    private var boardState: BoardState {
-        switch model.projectTaskState[project.id] ?? "idle" {
-        case "pending": return .pending
-        case "in_progress": return .running
-        case "testing": return .testing
-        case "failed": return .failed
-        default: return .idle
-        }
+        .idle
     }
 
     private var statusLine: String {
-        var parts: [String] = []
-        if isChatting {
-            if (model.projectConvState[project.id] ?? "") == "tool" {
-                parts.append("调工具")
-            } else {
-                parts.append("对话中")
-            }
-        } else if model.projectHasUnread(project.id) {
-            parts.append("未读")
-        }
-        switch boardState {
-        case .pending: parts.append("待拆解")
-        case .running: parts.append("执行中")
-        case .testing: parts.append("验收中")
-        case .failed: parts.append("异常")
-        case .idle: break
-        }
-        return parts.joined(separator: " · ")
+        ""
     }
 
     private var statusLineColor: Color {
-        if boardState == .failed { return CCCTheme.nodeFail }
-        if isChatting { return CCCTheme.secondary }
-        if model.projectHasUnread(project.id) { return CCCTheme.unread }
-        return CCCTheme.faint
+        CCCTheme.faint
     }
 }

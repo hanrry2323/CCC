@@ -85,10 +85,6 @@ final class AppModel: ObservableObject {
     @Published var localPatrolAlerts: [OpsHealthAlert] = []
     @Published private(set) var opsDisplaySeverity: String = "amber"
     @Published private(set) var opsDisplayAlertCount: Int = 0
-    @Published var inboxProposals: [InboxProposal] = []
-    @Published var inboxAdoptBusy = false
-
-    
 
     // MARK: - Published: Search / UI State
     @Published var searchQuery: String = ""
@@ -108,14 +104,6 @@ final class AppModel: ObservableObject {
     // MARK: - Published: Token tracking
     @Published var perMessageTokens: [UUID: Int] = [:]
     @Published var totalSessionCost: Double = 0
-
-    // MARK: - Published: Manual epic
-    @Published var isManualEpicPresented: Bool = false
-    @Published var manualEpicForm: ManualEpicForm = ManualEpicForm()  // keep for UI
-
-    // MARK: - Published: Templates
-    @Published var templates: [TaskTemplate] = []
-    @Published var isTemplatePickerPresented: Bool = false
 
     // MARK: - Published: Custom prompts
     @Published var customPrompts: [QuickPromptItem] = []
@@ -456,9 +444,6 @@ final class AppModel: ObservableObject {
             connected = !projects.isEmpty
             lastError = nil
             statusText = "已连接"
-            if selectedProjectId != nil {
-                await refreshProjectStats()
-            }
         } catch {
             lastError = error.localizedDescription
             if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
@@ -610,8 +595,6 @@ final class AppModel: ObservableObject {
     }
 
     func clearThreadUnread(_ threadId: String) {}
-
-    func projectHasUnread(_ projectId: String) -> Bool { false }
 
     @discardableResult
     func createNewThread(projectId: String) async -> String {
@@ -1281,7 +1264,6 @@ final class AppModel: ObservableObject {
             opsRisksCount = 0
             opsRisksHigh = 0
             opsUpstreamDaily = []
-            inboxProposals = []
             loadLocalPatrolAlerts()
             recomputeOpsDisplay()
         } catch {
@@ -1390,40 +1372,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: - Templates
-    func loadTemplates() {
-        guard let data = UserDefaults.standard.data(forKey: "ccc.taskTemplates"),
-              let items = try? JSONDecoder().decode([TaskTemplate].self, from: data)
-        else { templates = []; return }
-        templates = items
-    }
-
-    func saveTemplate(_ template: TaskTemplate) {
-        loadTemplates()
-        templates.append(template)
-        guard let data = try? JSONEncoder().encode(templates) else { return }
-        UserDefaults.standard.set(data, forKey: "ccc.taskTemplates")
-    }
-
-    func deleteTemplate(title: String) {
-        loadTemplates()
-        templates.removeAll { $0.title == title }
-        guard let data = try? JSONEncoder().encode(templates) else { return }
-        UserDefaults.standard.set(data, forKey: "ccc.taskTemplates")
-    }
-
-    func applyTemplate(_ template: TaskTemplate) {
-        manualEpicForm = ManualEpicForm(
-            title: template.title,
-            goal: template.goal,
-            acceptance: template.acceptance,
-            pipeline: template.pipeline,
-            executor: template.executor,
-            complexity: template.complexity,
-            priority: template.priority
-        )
-    }
-
     // MARK: - Custom Prompts
     func loadCustomPrompts() {
         customPrompts = QuickPrompts.loadCustomPrompts()
@@ -1459,70 +1407,14 @@ final class AppModel: ObservableObject {
         threadSessionTokens[threadId] ?? (selectedThreadId == threadId ? sessionTokens : 0)
     }
 
-    // MARK: - Project Stats
-    @Published var projectStats: [String: ProjectStats] = [:]
-
-    private func refreshProjectStats() async {
-        do {
-            try await prepareClient()
-            let ws = projects.compactMap { $0.workspace }
-            guard !ws.isEmpty else { return }
-            let resp = try await client.fetchBoardSummariesNewServer(workspaces: ws)
-            var stats: [String: ProjectStats] = [:]
-            for (projectWS, snapshot) in resp.summaries {
-                guard let rawCounts = snapshot.counts else { continue }
-                let counts = Self.mapNewServerCounts(rawCounts)
-                var s = ProjectStats()
-                s.totalEpics = counts["backlog"] ?? 0
-                s.activeWorks = (counts["in_progress"] ?? 0) + (counts["planned"] ?? 0)
-                s.failedWorks = counts["abnormal"] ?? 0
-                s.completedToday = counts["released"] ?? 0
-                stats[projectWS] = s
-            }
-            projectStats = stats
-        } catch {}
-    }
-
-    static func mapNewServerCounts(_ counts: [String: Int]) -> [String: Int] {
-        return [
-            "backlog": counts["待分派"] ?? 0,
-            "in_progress": counts["执行中"] ?? 0,
-            "verified": counts["已回写"] ?? 0,
-            "released": counts["已关闭"] ?? 0,
-            "abnormal": counts["打回"] ?? 0,
-        ]
-    }
-
     // MARK: - Stubs (合约兼容壳)
 
     /// 兼容旧调用
     var canChat: Bool { serverLoggedIn }
 
-    var projectConvState: [String: String] = [:]
-    var projectTaskState: [String: String] = [:]
-    var threadUnread: Set<String> = []
-    var composerBounce: String?
-    var composerBounceThreadId: String?
-
     func isThreadStreaming(_ threadId: String) -> Bool { false }
-    func isThreadUnread(_ threadId: String) -> Bool { threadUnread.contains(threadId) }
+    func isThreadUnread(_ threadId: String) -> Bool { false }
     func streamStatus(for threadId: String?) -> String { "" }
-
-    func moveBoardTask(_ task: BoardTask, to: String) async {
-        showToast("任务状态由执行体回写流转，壳不直接改（契约 §4/§8）")
-    }
-
-    func hideCompletedEpics() async {
-        showToast("任务状态由执行体回写流转，壳不直接改（契约 §4/§8）")
-    }
-
-    func reopenBoardTask(_ task: BoardTask, to: String = "planned") async {
-        showToast("任务状态由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
-    }
-
-    func reopenOpsTask(taskId: String, workspace: String, to: String = "planned") async {
-        showToast("任务状态由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
-    }
 
     func openBoardFromOps(workspace: String) {
         let ws = workspace.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1533,22 +1425,6 @@ final class AppModel: ObservableObject {
         } else {
             selectDestination(.board, projectId: selectedProjectId)
         }
-    }
-
-    func adoptInboxProposal(_ id: String) async {
-        showToast("采纳由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
-    }
-
-    func runDailyReview(workspace: String) async {
-        showToast("日审由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
-    }
-
-    func adoptSuggestion(workspace: String, title: String, description: String, tags: [String] = ["ops-auto"]) async {
-        showToast("采纳由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
-    }
-
-    func createManualEpic(projectId: String, form: ManualEpicForm) async {
-        showToast("由执行体回写/文档流转，壳不直接改（契约 §4/§8）")
     }
 
     func onForegroundResume() {}

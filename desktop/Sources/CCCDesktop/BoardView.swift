@@ -1,7 +1,6 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// 原生看板：多 workspace + 拖拽移动 + 任务详情 + 隐藏/重开
+/// 原生看板：多 workspace + 任务详情
 struct BoardView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
@@ -9,7 +8,6 @@ struct BoardView: View {
     @State private var detail: BoardTaskDetail?
     @State private var detailBusy = false
     @State private var detailError: String?
-    @State private var dragTask: BoardTask?
     @State private var pollTimer: Timer?
     @State private var autoRefresh = true
 
@@ -117,7 +115,6 @@ struct BoardView: View {
                 ProgressView().controlSize(.mini)
             }
             Menu {
-                Button("隐藏已完成大卡") { Task { await model.hideCompletedEpics() } }
                 Button("刷新") { Task { await model.refreshBoard() } }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -198,10 +195,6 @@ struct BoardView: View {
                     }
                     ForEach(tasks) { task in
                         boardCard(task, col: col)
-                            .onDrag {
-                                dragTask = task
-                                return NSItemProvider(object: NSString(string: task.id))
-                            }
                             .onTapGesture { openDetail(task) }
                     }
                 }
@@ -216,12 +209,10 @@ struct BoardView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(CCCTheme.border, lineWidth: 1)
             )
-            .onDrop(of: [.text], delegate: BoardDropDelegate(col: col, model: model, dragTask: $dragTask))
         }
     }
 
     private func boardCard(_ task: BoardTask, col: String) -> some View {
-        let highlight = false
         let isAbnormal = (task.status == "abnormal") || (task.split_status == "failed")
         let locator = CardLocator.line(
             project: model.selectedProjectId,
@@ -279,11 +270,11 @@ struct BoardView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(highlight ? CCCTheme.accent.opacity(0.12) : CCCTheme.chatBg)
+                .fill(CCCTheme.chatBg)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(highlight ? CCCTheme.accent.opacity(0.55) : Color.clear, lineWidth: 1.5)
+                .stroke(Color.clear, lineWidth: 1.5)
         )
     }
 
@@ -373,16 +364,6 @@ struct BoardView: View {
                 }
             }
             Spacer()
-            HStack {
-                if task.status == "abnormal" || task.split_status == "failed" {
-                    Button("重开 → planned") {
-                        Task { await model.reopenBoardTask(task, to: "planned"); selectedTask = nil }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                }
-                Spacer()
-            }
         }
         .padding(20)
         .frame(width: 480, height: 560, alignment: .topLeading)
@@ -401,23 +382,5 @@ struct BoardView: View {
     private func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
-    }
-}
-
-/// 拖拽落点：把拖动的任务移到目标列
-struct BoardDropDelegate: DropDelegate {
-    let col: String
-    let model: AppModel
-    @Binding var dragTask: BoardTask?
-
-    func performDrop(info: DropInfo) -> Bool {
-        guard let task = dragTask else { return false }
-        if task.status == col {
-            dragTask = nil
-            return false
-        }
-        Task { await model.moveBoardTask(task, to: col) }
-        dragTask = nil
-        return true
     }
 }

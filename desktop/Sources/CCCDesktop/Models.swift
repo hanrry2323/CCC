@@ -163,25 +163,6 @@ extension ChatMessage: Codable {
     }
 }
 
-enum ChatStreamEvent: Sendable {
-    /// 心跳（connect / idle）
-    case ping(turnId: String?)
-    case delta(String, turnId: String?)
-    /// 工具运行期间的阶段性短句（区别于主通道 delta）
-    case status(String, turnId: String?)
-    case toolUse(name: String, input: [String: String], turnId: String?)
-    case toolResult(ok: Bool, turnId: String?)
-    case cost(tokens: Int?, usd: Double?, turnId: String?)
-    /// partial=true：服务端标明半截（断连/超时/异常），UI 必须标「回复中断」
-    /// claudeSessionId：服务端会话 id，下轮 resume 用（持续对话）
-    case done(partial: Bool, claudeSessionId: String?, turnId: String?, metrics: ChatTurnMetrics?)
-}
-
-struct ChatTurnMetrics: Sendable {
-    let durationMs: Int?
-    let eventCounts: [String: Int]
-}
-
 enum SidebarDestination: String, CaseIterable, Identifiable {
     case chat, board, ops
     var id: String { rawValue }
@@ -334,77 +315,11 @@ struct ComposerAttachment: Identifiable, Hashable, Equatable {
     }
 }
 
-// MARK: - Inbox Proposal
-
-struct InboxProposalsResp: Decodable {
-    let ok: Bool?
-    let proposals: [InboxProposal]?
-}
-
-struct InboxProposal: Identifiable, Decodable, Hashable {
-    let id: String
-    let project_id: String?
-    let title: String?
-    let status: String?
-    let complexity: String?
-    let path: String?
-}
-
 // MARK: - Custom Quick Prompt
 
 struct QuickPromptItem: Identifiable, Codable, Hashable {
     var id: String { title }
     var title: String
     var prompt: String
-}
-
-// MARK: - Manual Epic Form
-
-struct ManualEpicForm: Equatable {
-    var title: String = ""
-    var goal: String = ""
-    var acceptance: String = ""
-    var pipeline: String = "dev"
-    var executor: String = "opencode"
-    var complexity: String = "medium"
-    var priority: String = "p2"
-}
-
-// MARK: - Task Template
-
-struct TaskTemplate: Identifiable, Codable, Hashable {
-    var id: String { title + pipeline }
-    var title: String
-    var goal: String
-    var acceptance: String
-    var pipeline: String
-    var executor: String
-    var complexity: String
-    var priority: String
-    var tags: [String]
-}
-
-// MARK: - Phase model
-
-struct Phase: Identifiable, Codable, Hashable {
-    var id: String { name }
-    let name: String
-    let status: String
-    let executor: String
-    let dependsOn: [String]
-
-    enum CodingKeys: String, CodingKey {
-        case name, status, executor
-        case dependsOn = "depends_on"
-    }
-}
-
-// MARK: - Project Stats
-
-struct ProjectStats: Equatable {
-    var totalEpics: Int = 0
-    var activeWorks: Int = 0
-    var failedWorks: Int = 0
-    var completedToday: Int = 0
 }
 
