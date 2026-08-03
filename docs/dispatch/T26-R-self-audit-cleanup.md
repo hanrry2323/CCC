@@ -1,7 +1,7 @@
 # 任务卡 T26-R · 桌面端自查清理（老板要求：清理干净不留冗余，由执行体大模型自主深度检查）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 指示「这次要清理就清理干净，不要留什么冗余；提宽泛检查要求，让那边的大模型自己去检查问题」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 打回次数：2 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 > 前置：T26 主体重构已在工作树（未提交）；本卡为**自主自查清理**——不提供逐条清单，由执行体大模型按下列检查维度自行通读、发现问题、自主决策清理范围并完整落地。
 
 ## 目标
@@ -358,3 +358,22 @@ bc27322 chore(desktop): T26-R LocalSessionStore 死方法清零
 | 2 | 连带清理因此无引用的私有常量/类型 | ✅ 删 `loadPendingSync`/`writePendingSync`/`pendingSyncURL`/`PendingSyncItem`/`maxSyncAttempts`/`compactMessageThreshold`/`compactTokenThreshold`/`compactKeepRecent` |
 | 3 | `swift build` 0 warnings + `swift test` 全绿 | ✅ 0 warnings、25/25 passed |
 | 4 | 真实提交 + push；工作树仅剩预存 2 项 | ✅ bc27322 已 push；工作树仅剩 `.ccc/agent-mind/decided.json` + `_update_handoff.py` |
+
+---
+
+## 验收区（Codex 终验 · 2026-08-03）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 提交 | `bc27322`（3 文件 -181 行）+ `1eb61ca` 回写真实 ✅ |
+| 构建/测试 | 独立复验 `swift build` 0 errors/0 warnings；`swift test` 25/25 passed（删 6 个对应测试用例后）✅ |
+| 死方法清零 | 全量 def≥1&&calls=0 扫描仅剩 4 个 NSViewRepresentable 协议方法（makeNSView/makeCoordinator/insertNewlineIgnoringFieldEditor），非死代码 ✅ |
+| 旧符号 | 全仓 grep 零命中（仅 MARK 文档注释 2 处）✅ |
+| 保留项合理 | `estimateTokens` 有生产调用（ContentView:1702）；`needs_hub_sync` 为 Record Codable 兼容字段，保留正确 ✅ |
+| UI 完整 | 对话/composer/看板/运维/登录/发送入口全在 ✅ |
+| 规模 | 核心 5 文件 4276 行（原 17820 → 收敛 76%）✅ |
+| 工作树 | 仅剩预存 2 项 ✅ |
+
+**结论**：T26 桌面端后端层重构 + T26-R 自查清理全部闭环——纯壳（对话+看板+运维只读），无旧 Hub/Agent/编排/死代码/冗余残留。2017 代码流转同步待 push 后执行。
