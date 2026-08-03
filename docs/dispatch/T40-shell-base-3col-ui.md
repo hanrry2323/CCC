@@ -1,7 +1,7 @@
 # 任务卡 T40 · 壳基座修复 + 三栏 UI（HTTP + 桌面）（Trae GLM5.2 执行）
 
 > 关联：新阶段「双壳可用 + 心智升级」（老板 2026-08-03 指示）· 依据：Codex 实地取证——① HTTP 登录门存在但需真浏览器复现死页（API/资源均 200，疑似前端运行时错误或缓存）；② 桌面 bootstrap 不自动登录（loginToServer 仅按钮触发）+ Hub 词汇残留（「Hub 暂不可达」toast / needsHubSync / hub_port_7777 / 右栏旧转任务）；③ 双壳均无三栏布局
-> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
 
 ## 目标
 
@@ -48,4 +48,53 @@ server/web/legacy-chat/（index.html、app.js、agentAuth.js、ports.js、css/�
 
 ## 回写区
 
-**执行体**：Trae（GLM5.2）· 日期：
+**执行体**：Trae（GLM5.2）· 日期：2026-08-03 · commit：`f24972b`（已 push origin/main）
+
+### 1. 登录死页根因与修复
+- 根因：① CSS `display:flex` 覆盖 `hidden` 属性（login-view 仍可见但表单不可点）；
+  ② app.js 作为 ES Module 在 login-gate 之前加载，绑定时序竞态导致表单 submit 无监听。
+- 修复：新增 `server/web/legacy-chat/js/login-gate.js`（经典脚本，非模块），
+  在 index.html 中于 app.js 之前 `<script src>` 加载；表单 `submit` 早期绑定，
+  成功后 `location.reload()` 让 app.js 接管；CSS 改用 `.login-view.open` 控制可见性。
+- 401 重登由 agentAuth.js 处理（检测 `data-early-bound` 跳过重复绑定）。
+
+### 2. 桌面自动登录
+- AppModel.bootstrap 末尾读 AppStorage 凭据（ccc/ccc）→ loginToServer；
+  401 才显示登录门；连接失败文案「服务端不可达（2017 :7788）」+ 重试。
+- 「Hub」词汇在 desktop 源码 grep 零残留（保留 2 条历史注释，逐条说明）：
+  - BoardOpsModels.swift:414 — `// T40: 服务端 severity（Hub 旧名仅作历史注释，字段名 summary.severity 不变）`
+  - OpsView.swift:337 — `// Hub :7777 已退役（T21，历史命名）；隧道状态已退役`
+- needsHubSync 死字段清理：参数链从 LocalSessionStore.saveMessages /
+  ConversationStore.save / AppModel.writeDiskSave 移除（字段从未被读取）；
+  保留 Record.needs_hub_sync 兼容旧盘 JSON 解码。
+
+### 3. 三栏布局说明
+- HTTP（server/web/legacy-chat/）：左栏 = 项目/会话导航（侧栏）；中栏 = 对话流
+  （保留 T25 气泡/流式/composer）；右栏 = 任务卡流（boardPanel.js 重写为
+  Linear 风格卡片：ID + 标题 + 状态徽章 + 执行体 + 打回次数 + 更新时间，
+  点击展开详情；五态色板 .state-pending/running/written/closed/returned）。
+- 桌面（desktop/Sources/CCCDesktop/）：左栏 CodexSidebar（260）；中栏
+  CodexChatPane；右栏 TaskCardPanel（300 宽，可收起）。
+  - ContentView chat 模式挂 HStack{ ChatPane; Divider; TaskCardPanel }；
+    isTaskPanelCollapsed（@AppStorage 持久化）控制右栏显隐；
+    状态栏「收起/展开卡流」按钮切换。
+  - TaskCardPanel：StateTone 五态色板（与 HTTP 端 CSS 变量对齐）；
+    卡片展开详情（note/acceptance/phases/events 时间线）；12s 轮询。
+- 参考案例：Linear（紧凑卡片 + 状态色条左 3px + 徽章胶囊）。
+
+### 4. 真浏览器实测记录
+- 2017 生产端（192.168.3.116:7788）：/health 200（auth_required=true）；
+  浏览器加载资源出现 net::ERR_CONNECTION_RESET（2017 仍跑旧代码，未部署本卡变更）。
+- M1 本地端（127.0.0.1:7788）：登录 ccc/ccc → 进入对话视图 →
+  看板视图（#/board）可访问 → 运维视图（#/ops）可访问；无死页无 401 循环。
+  （红线「不动 2017 运行面；本卡 M1 实现 + 本地验证；2017 部署由 Codex 放行」满足）
+
+### 5. pytest / build 结果
+- `swift build`：0 错误 0 警告
+- `swift test`：25/25 通过
+- `pytest server/tests/ -q`：306 全绿
+- 三扫描：desktop Sources Hub 仅 2 条历史注释（见 §2）；M1 :7788 零命中
+
+### 6. push 证据
+- commit `f24972b`：16 files changed, +1099/-159
+- push：`ba93fd6..f24972b  main -> main`（origin/github.com:hanrry2323/CCC.git）
