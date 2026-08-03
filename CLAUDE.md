@@ -47,7 +47,7 @@ pytest server/tests/test_engine_main.py -v --tb=short
 pytest server/tests/test_http_api.py -v -k test_conversation
 
 # Ruff lint（CI 级，覆盖 server/）
-ruff check server/ tests/
+ruff check server/
 
 # 看板导出（从 docs/dispatch/ 解析任务卡 → web/data/board.js）
 python3 -m server.board.export

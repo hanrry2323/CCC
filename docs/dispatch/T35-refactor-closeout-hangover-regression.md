@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§5 安全三件套 / §6 验收）
 > 依据：Codex 2026-08-03 全新取证重评——INT-120 挂账：patrol 2 失败（引用已归档 brief）、cluster DEFAULT_SERVICES 硬编码（T33 处理）、W292×16、2017 config.env.bak.T29、docs/REFACTOR-INDEX.md 验收清单未勾
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 > ⚠ 2026-08-03 T32 验收登记新增子项（P1-1）：Engine 接真实看板——文件/卡驱动 BoardStore（读 docs/dispatch → 回写卡头状态行）+ scheduler 扫真实卡 + 真实卡端到端演示；补完 Codex 复验 M2。
 > ⚠ 2026-08-03 T33 验收附注：T31 P2 修正项并入本卡——P2-1 修正 CLAUDE.md/README.md/CHANGELOG.md 三处 scripts 归档路径（`.ccc/archive/...` → `docs/archive/...`）；P2-2 恢复 tests/ F401/F841/E402/I001 忽略（或 CLAUDE.md ruff 命令改 `server/`）使文档命令真实可绿。
 > ⚠ 2026-08-03 T34 验收登记：dispatchCard.js 挂载死功能收口——摘除 components/message.js + components/composer.js 的动态引用，归档 dispatchCard.js（dispatchFormat.js 若仅被其引用一并归档）；另 docs/roadmap.md:27 T34 状态行过时随卡头校对更新。
@@ -132,4 +132,36 @@ SSH fan@192.168.3.116 删除 `~/program/CCC/server/config/config.env.bak.T29`（
 ### 提交
 
 - commit c5d10b2 `refactor(closeout): T35 挂账清零 + FileBoardStore + 全量回归`（183 files, +379/-235）
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**判定：✅ 通过。** T31–T35 收口全链闭环，INT-120 重构收口达标。附：2 项收口尾巴由验收席当场补完（见下）；1 项生产待核（2017 拉取 + M2 生产验证）留待老板放行；1 项越范围变通（旧测试套件整目录归档）记录在案。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| P1-1 Engine 接真实看板（FileBoardStore 读卡/回写/生产切换/真实卡演示） | Codex 实测 store.py 复用 board.loader 解析、原子回写（tmp+os.replace）、打回带原因；main.py 生产路径切 FileBoardStore；7 个真实卡测试 + T99 端到端演示（待分派→执行中→已回写→board/export 派生可见） | ✅ 做到 |
+| P2-1 归档路径修正 | CLAUDE/README/CHANGELOG/SSOT/architecture 等 8 处 `.ccc/archive/...` → `docs/archive/...`，实测零残留 | ✅ 做到 |
+| P2-2 ruff 存量债清零 + 文档命令可绿 | W292×16/F821×6/F401×3/UP042 清零；`ruff check server/` 实测 All checks passed；CLAUDE.md:50 残留 `tests/`（目录已归档）→ 验收当场修正为 `ruff check server/` | ✅ 做到（当场补完） |
+| P2-3 EXECUTOR_LOG_DIR 必填 | main.py 空值直接 ConfigError 拒绝启动（fail-fast）；代码内无默认绝对路径 | ✅ 做到 |
+| 遗留清零：patrol 修复 / dispatchCard 收口 / CI+pre-commit 切新栈 / .bak.T29 删除 / 卡头校对 / REFACTOR-INDEX 勾选 | patrol 根因修复（归档路径更新）；dispatchCard 引用已摘除、文件补归档（当场 git mv 至 dead-frontend-components）；CI/pre-commit 实测仅 server/ 栈；SSH 实测 2017 config.env.bak.T29 已删；卡头 39 已关闭/4 打回全量一致；REFACTOR-INDEX 已勾选 | ✅ 做到（dispatchCard 归档为当场补完） |
+| 双端 kickstart | Codex 独立实测 2017 :7788 /health 200（auth_required/auth_configured true）；卡内证据覆盖 M1+2017 的 health/session/conversation/board/roadmap/ops/401 | ✅ 做到 |
+| 全量回归 | Codex 实测 pytest 246 collected 全绿（0 失败）；ruff server/ + W292 全绿；server/desktop 零退役引用 | ✅ 做到 |
+
+### 越范围变通记录（旧测试套件整目录归档）
+
+原卡验收标准含「tests/scripts 含 patrol 全绿」；执行体改为将 tests/scripts（66）+ tests/integration（2）+ tests/e2e（12）+ 1 个退役 plist **整目录 git mv 归档**（docs/archive/legacy-retired-2026-08-02/tests-*），理由为全部引用已退役 scripts/。判定：理由成立（旧套件测的是已删代码，留则永久红）、R100 纯改名可追溯零丢失、新基线 = server/tests 246；按变通达成记录，老板如欲保留旧套件可随时从归档/历史恢复。
+
+### 生产待核（留待老板放行，非阻塞）
+
+- **2017 M2 生产验证**：2017 运行副本尚未 git pull（执行体守运行面纪律），看板缺 T31–T35 卡；FileBoardStore 生产生效需 2017 pull + kickstart + 一张真实任务卡走通（Engine 派发 → 卡头状态更新 → 看板派生可见）。建议由维护执行体在老板确认后一次完成，Codex 复验。
+
+### 收口尾巴（验收席当场补完）
+
+- CLAUDE.md:50 `ruff check server/ tests/` → `ruff check server/`（tests/ 已归档）。
+- dispatchCard.js git mv 至 `docs/archive/ccc-legacy-2026-08-02/dead-frontend-components/`（引用已清零，dispatchFormat.js 有活引用保留）。
+- docs/roadmap.md T35 状态行 → ✅ 已完成。
 - pushed to origin/main（5d28cdc..c5d10b2）
