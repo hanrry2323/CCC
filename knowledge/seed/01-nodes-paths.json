@@ -1,9 +1,9 @@
 {
   "schema": "ccc-kb-seed-v1",
   "section": "01-nodes-paths",
-  "updated_at": "2026-08-02",
-  "source": "qx-map cluster/path-authority.md (2026-08-01) + cluster/cluster.json (2026-08-02)",
-  "note": "路径权威表 SSOT。所有机器/项目路径以此为准。状态类信息（磁盘/负载/服务在线）仅作参考，以当日 manifest 为准。",
+  "updated_at": "2026-08-03",
+  "source": "qx-map cluster/path-authority.md (2026-08-01) + docs/architecture.md (v0.70.0, 2026-08-02 重构定稿) + ccc-relay-双轨决议-2026-08-02.md + ccc-refactor-M2-生产验证-2026-08-03.md",
+  "note": "路径权威表 SSOT。所有机器/项目路径以此为准。状态类信息（磁盘/负载/服务在线）仅作参考，以当日 manifest 为准。2026-08-03 按 2017 单端终态更新：移除已退役端口 7777/7775/17777/7778，2017 :7788 三服务常驻，6100/6102 CCC 专用中转站，M1 4100/4102 保留。",
   "machines": [
     {
       "hostname": "m1",
@@ -13,14 +13,16 @@
       "ssh_user": "apple",
       "ssh_key": "~/.ssh/（本地 shell，无需密钥）",
       "access": "本地 shell",
-      "role": "开发机 + Codex 驻场·开发期工作站（Trae 开发 CCC）+ 后期壳之一",
+      "role": "开发机 + Codex 驻场·开发期工作站（Trae 开发 CCC）+ 后期壳之一（HTTP 直连 2017）",
       "services": [
         "Codex Desktop",
-        "ai-loop-router :4100/:4102 (loop-router)",
-        "ccc-relay-runtime :4000 (CCC relay，与loop-router独立)",
-        "postgres :5432",
-        "ccc-chat-server :7777 (localhost)",
-        "ccc-agent-sidecar :7788"
+        "ai-loop-router :4100/:4102（loop-router，Codex 智能路由；双轨决议保留，不停用）",
+        "ccc-relay-runtime :4000（CCC relay，与 loop-router 独立）",
+        "postgres :5432"
+      ],
+      "retired_services": [
+        "ccc-chat-server :7777（已退役，T34 归档）",
+        "ccc-agent-sidecar :7788（已退役，T34 归档）"
       ]
     },
     {
@@ -34,10 +36,16 @@
       "smb_mount": "/Volumes/fan",
       "role": "重活节点·CCC 唯一服务端 + 大脑宿主 + 执行机·qb 本体所在",
       "services": [
+        "com.ccc.web-server :7788（HTTP API + 静态页，launchd 常驻）",
+        "com.ccc.engine（薄驱动 Engine，launchd 常驻）",
+        "com.ccc.board-scheduler（只读巡检 + 导出，launchd 常驻）",
+        "com.ccc.ai-loop-router :6100/:6102（CCC 专用中转站，launchd 常驻；6100=Anthropic 出口，6102=Relay flash 出口）",
         "qx-observer :7777",
         "xianyu :8080",
-        "redis :6379",
-        "（ollama 11434 已移除 2026-08-02）"
+        "redis :6379"
+      ],
+      "retired_services": [
+        "ollama :11434（2026-08-02 已移除）"
       ]
     },
     {
@@ -67,33 +75,70 @@
       "role": "（待定）"
     }
   ],
-  "relay_dual": {
-    "loop_router": {
+  "ccc_topology_2017": {
+    "summary": "2017 单端 :7788 = CCC 唯一服务端 + 大脑宿主 + 执行机。任意设备壳经 HTTP 直连 2017。",
+    "endpoints": {
+      "/conversation": "→ brain.py（大脑 Agent，Claude Code CLI via 6100）",
+      "/board/*": "→ 看板视图（snapshot/states/recent/roadmap/summaries）",
+      "/ops/summary": "→ 运维聚合（节点/红灯/概览）",
+      "/session": "→ 账号密码换 token",
+      "/config": "→ 前端配置注入（不含敏感字段）"
+    },
+    "three_services_launchd": [
+      "com.ccc.web-server → server/web/server.py :7788（HTTP API + 静态页）",
+      "com.ccc.engine → server/engine/main.py（薄驱动主循环）",
+      "com.ccc.board-scheduler → server/board/scheduler.py（只读巡检 + 导出）"
+    ],
+    "auth": "对话口账号密码 + 会话 token（沿用 7788 鉴权地基，多壳必须锁门）"
+  },
+  "relay_dual_track": {
+    "decision": "ccc-relay-双轨决议-2026-08-02.md（D11 补充，永久生效）",
+    "summary": "M1 中转站（4100/4102）不停用继续使用；CCC 系统中转站部署在 Mac2017（6100/6102），CCC 体系专用。6100/6102 仅限 Mac2017 侧 Claude Code 与 OpenCode 使用，统一 flash 档位。",
+    "m1_loop_router": {
       "code_repo": "/Users/apple/program/ai-loop-router",
-      "m1_port": 4102,
+      "ports": "4100/4102",
       "upstream": "opencode/minimax/zhipu 直连",
       "codex_usage": "是（model_provider=loop-router）",
-      "responsibility": "Codex 走的智能路由"
+      "responsibility": "M1 侧 Codex/Claude Code/OpenCode 智能路由",
+      "status": "保留（双轨并行）"
     },
-    "ccc_relay": {
-      "code_repo": "/Users/apple/.ccc/relay-runtime（另有 Mac2017 副本）",
-      "m1_port": 4000,
-      "upstream": "CCC relay（opencode）",
-      "codex_usage": "否",
-      "responsibility": "CCC 产线的中转"
+    "mac2017_ccc_relay": {
+      "code_repo": "ai-loop-router-ccc（Mac2017 本地实例）",
+      "ports": "6100/6102",
+      "usage": [
+        "6100 = Anthropic 出口（大脑 Agent Claude Code CLI 走此）",
+        "6102 = Relay flash 出口（OpenCode 写码槽走此）"
+      ],
+      "users": "仅 Mac2017 侧 Claude Code + OpenCode + Engine env，不接纳外部工具",
+      "model_tier": "统一 flash",
+      "responsibility": "CCC 体系专用中转站",
+      "status": "常驻（launchd com.ccc.ai-loop-router）"
+    },
+    "retired_relay": {
+      "ccc-relay-runtime_4000": "M1 :4000（ccc-relay-runtime）早已离线，与双轨决议无关"
     }
   },
   "hp_knowledge_base": {
     "mcp_server": "HP 192.168.3.131:8083",
     "memory_store": "HP 192.168.3.131:8082",
     "knowledge_data": "HP /data/knowledge/",
-    "note": "权威知识在 HP，M1 仅索引。MCP 是唯一入口。"
+    "note": "外脑权威知识在 HP，M1 仅索引。MCP 是唯一入口。CCC 自建知识库（knowledge/）独立运行后不再读写 HP（D2/D3 独立红线）。"
   },
+  "retired_ports_authoritative": [
+    "7777 — 旧 ccc-chat-server（M1）/ qx-observer（Mac2017 仍运行）；CCC 体系内已退役，T34 归档",
+    "7775 — 旧 Board API（已退役，T34 归档）",
+    "17777 — 旧 Hub 端口（已退役，T31 文档基线切新架构时清零）",
+    "7778 — 旧 Cockpit（src-tauri 旧桌面壳，T34 归档到 docs/archive/ccc-legacy-2026-08-02/tauri-desktop-legacy/）",
+    "7788 sidecar（旧 ccc-agent-sidecar）— 已退役，T34 归档；7788 现由 2017 web-server 接管",
+    "11434 — Mac2017 ollama（2026-08-02 已移除）",
+    "4000 — ccc-relay-runtime（早已离线）"
+  ],
   "path_hallucination_checks": [
     "本机路径：ls -d 当场验证，不存在则不写",
     "集群路径：ssh <host> 'ls -d ...' 当场验证",
     "SMB 路径：确认 /Volumes/fan 挂载再引用；卸载时改用 ssh",
     "旧快照：cluster.json 等过 3 天以上先重验再信",
-    "写任何项目文档前对照本表；本表没有的路径 = 先查证再落盘"
+    "写任何项目文档前对照本表；本表没有的路径 = 先查证再落盘",
+    "退役端口（7777/7775/17777/7778/4000/11434）禁止在现行文档出现，仅历史归档区可保留"
   ]
 }

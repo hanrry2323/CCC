@@ -1,7 +1,7 @@
 # CCC 知识库
 
 > CCC 自建知识库。M4 移交后，CCC 所有决策/教训只写本库，不写外脑（qx-map / hp-kb）。
-> 初始化日期：2026-08-02 · 关联：INT-120（CCC 重构）· P5 知识移植
+> 初始化日期：2026-08-02 · M4 刷新：2026-08-03 · 关联：INT-120（CCC 重构）· 任务卡：T36
 
 ## 结构
 
@@ -17,7 +17,7 @@ knowledge/
 │   │   └── seed.md                  #     关键决策摘要
 │   └── lessons/                     #   教训域
 │       └── seed.md                  #     教训 + 红线
-├── seed/                            # T9 原始种子包（参考快照）
+├── seed/                            # 种子包（结构化数据源，indexer.py 解析）
 │   ├── 00-README.md
 │   ├── 01-nodes-paths.json
 │   ├── 02-project-metadata.json
@@ -87,4 +87,6 @@ bash knowledge/ccc-kb-search.sh --list --domain nodes-paths
 
 ## 来源
 
-T9 种子包来自外脑权威源（qx-map），一次性导入，之后独立维护。
+- 初始种子（2026-08-02）：外脑权威源 qx-map 一次性导入。
+- M4 刷新（2026-08-03）：qx-map `__archive__/decisions/` + CCC 仓内 `docs/architecture.md` v0.70.0 + T31–T35 任务卡 + M2 生产验证记录。
+- 之后独立维护，新决策/教训只写本库（D3 红线）。

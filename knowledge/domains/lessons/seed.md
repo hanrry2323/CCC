@@ -1,7 +1,7 @@
 # 教训域
 
-> 来源：T9 种子包 `04-lessons.json`（`docs/lessons.md` + `__archive__/lessons/` + `references/red-lines.md`）
-> 导入日期：2026-08-02 · 新教训写入本文件（追加），标注编号和日期
+> 来源：种子包 `04-lessons.json`（`docs/lessons.md` + qx-map `__archive__/lessons/` + `references/red-lines.md` + `ccc-refactor-收口重评-2026-08-03.md`）
+> 初始化：2026-08-02 · M4 刷新：2026-08-03（补 4 条收口期新教训 LC1–LC4） · 新教训写入本文件（追加），标注编号和日期
 
 ## CCC 核心教训
 
@@ -29,6 +29,40 @@
 
 ### L28-L32: CCC 工程化教训系列
 - **涉及**: verdict 文件必须写、agent 自主启用 CCC 红线、卡死立即止损、每步必 commit 等工程纪律
+
+## CCC 收口期新教训（2026-08-03）
+
+### LC1: 文档口径分裂导致执行漂移
+- **日期**: 2026-08-03
+- **来源**: `ccc-refactor-收口重评-2026-08-03.md` §三.2 + T28 越界改 CLAUDE.md 事件
+- **现象**: T0–T30 账面全部闭环，但仓内权威文档（CLAUDE.md / STARTUP-BRIEF / docs/INDEX.md / roadmap / server README / pyproject）仍描述旧架构（Hub :7777、scripts/ 热路径、能力包、M1 Desktop+sidecar）。执行体按这些文档进场必然漂移——T28 越界改 CLAUDE.md 即证据。
+- **根因**: 文档基线未纳入验收硬项；「代码改了」≠「文档同步了」；旧口径只标废弃不物理删除的纪律没贯彻，导致新旧口径并存
+- **修复**: T31 收口卡：11 份在范围文档全修订 + 3 份关键入口文档重写 + 14 份超范围文档标「待核/历史归档」；旧口径 grep 零命中；文档基线纳入每次执行体进场验收硬项
+- **应用**: 每次执行体进场先对文档口径（T31 模板），旧口径只存归档区；文档与代码同次验收，缺一即打回
+
+### LC2: 验收判定放宽导致 Engine 壳层
+- **日期**: 2026-08-03
+- **来源**: `ccc-refactor-收口重评-2026-08-03.md` §三.1 + §四.1
+- **现象**: Engine 从未真实派发——run_once 只写「模拟拉起」日志，注册表无启动命令字段，无收单实现。但 M2「首个任务经 Engine 全流程」却被宣称达成。不是方案错，是「完成」的判定标准被放宽了：把「壳层就绪」当成「闭环达成」。
+- **根因**: M2 判定标准未明确收紧到「真实派发闭环」；占位代码（「T4 前不真拉」「模拟拉起」）被当成已完成功能验收通过
+- **修复**: T32 收口卡：M2 判定标准收紧为「Engine 真实派发闭环完成才算 P2 收口」；注册表加启动命令字段；dispatch.py build_command 真实 Popen + 收单 + 状态流转；删全部占位；M2 由 Codex 在 2017 SSH 独立端到端实测验证（T99-M2-demo）
+- **应用**: 里程碑判定必须由独立验收席端到端实测（非自报）；占位代码必须标注并禁止进入验收；「壳层就绪」≠「闭环达成」
+
+### LC3: 生产配置与代码 schema 脱节
+- **日期**: 2026-08-03
+- **来源**: `ccc-refactor-M2-生产验证-2026-08-03.md` §一.2 + T32/T33 任务卡
+- **现象**: T32 给注册表加了 command/参数模板/工作目录字段，但 2017 生产 executors.json 没同步——直到 M2 实测前才补：OpenCode/Claude Code 两行补命令绝对路径 + 参数模板（含 {work_id}/{card_path}/{role} 占位符）。T33 给 cluster.py 加了 CLUSTER_SERVICES 环境变量，但 2017 config.env 没补——直到 M2 实测前才补 EXECUTOR_LOG_DIR/DISPATCH_DIR/EXECUTOR_TIMEOUT_SECONDS/CLUSTER_SERVICES 四键。
+- **根因**: 代码 schema 扩展与生产配置变更未同次推进；本地通过 ≠ 生产就绪；example 文件改了但实际 config.env/executors.json（gitignored）未同步
+- **修复**: M2 实测前由 Codex 在 2017 SSH 同步生产配置（先备份 .bak.M2 再改）；executors.json 补命令+参数模板；config.env 补四键
+- **应用**: 代码 schema 扩展时，example + 生产配置同步清单必须写进任务卡验收项；生产配置变更必须先备份再改；M2 类端到端实测前必须由独立验收席核对配置同步
+
+### LC4: 挂载死功能残留
+- **日期**: 2026-08-03
+- **来源**: `ccc-refactor-收口重评-2026-08-03.md` §三.4 + §三.5 + T34 任务卡
+- **现象**: T0–T30 闭环后仓内残留四类死功能：①双壳并存（desktop/ SwiftUI 现行 + src-tauri/ Tauri 旧 Cockpit）；②孤儿页面（server/web/index.html 看板壳未被静态白名单挂载，整组 js/css 成孤儿）；③旧 Hub 文案残留（legacy-chat 「对话在 M1 :7788」）；④跨项目遗留物（QuantHive _update_handoff.py 丢在 CCC 仓根未跟踪）。
+- **根因**: 新功能上线后旧实现未归档（双壳）；静态资源挂载白名单未与文件实际存在对齐（孤儿页面）；文案未跟随架构变更同步（旧 Hub 文案）；跨项目工作树污染未清理（QuantHive 脚本）
+- **修复**: T34 收口卡：src-tauri/ 27 文件归档到 `docs/archive/ccc-legacy-2026-08-02/tauri-desktop-legacy/`；server/web/index.html 等 4 文件归档到 orphan-shell-web/；legacy-chat 文案改「2017 单端 :7788 四视图」；QuantHive _update_handoff.py 移到 /tmp；11 份项目文件更新引用
+- **应用**: 新功能上线时旧实现必须同卡归档（git mv，禁物理删除）；静态资源挂载白名单定期与文件实际存在对账；文案跟随架构变更同步；跨项目工作树污染每日清理
 
 ## 外脑教训
 
