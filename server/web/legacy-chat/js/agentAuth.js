@@ -2,12 +2,15 @@
  * agentAuth.js — 7788 对话口账号密码登录门（窗口 K）。
  *
  * 对话壳（:7788）登录门：POST /session 换 token（JSON body {username, password}），
- * 返回 {token, ttl_s, expires_at}；token 落 localStorage（键 ccc_agent_token）；
+ * 返回 {token, ttl_s, expires_at}；token 落 localStorage（键 ccc_chat_token）；
  * 401 → 清 token + 弹登录门引导重登。
  * 服务端未配置凭证 → 登录 503「未配置登录凭证」，前端据此给出明确提示（无默认弱口令）。
+ *
+ * T30：token 键统一为 `ccc_chat_token`，与 auth.js / api.js 共用同一键，
+ * 保证登录后所有请求（对话/看板/运维）都带 Bearer。
  */
 
-const AGENT_TOKEN_KEY = 'ccc_agent_token';
+const AGENT_TOKEN_KEY = 'ccc_chat_token';
 
 let _authResolvers = [];
 
@@ -79,11 +82,15 @@ export async function agentLogout() {
   applyAgentRoleUI();
 }
 
-/** 探活：GET /health（带 Bearer token）；200 → true，否则清 token 返回 false。 */
+/**
+ * 探活：GET /board/states（带 Bearer token）。
+ * T30：/health 是免鉴权端点，无法验证 token；改打最轻的鉴权端点 /board/states。
+ * 200 → token 有效；401 → 清 token 返回 false（让登录门触发）。
+ */
 export async function probeAgentSession() {
   if (!hasAgentToken()) return false;
   try {
-    const resp = await fetch('/health', {
+    const resp = await fetch('/board/states', {
       headers: agentHeaders(),
     });
     if (!resp.ok) {
@@ -170,6 +177,8 @@ export function initAgentAuth({ onAuthenticated } = {}) {
       showLogin();
     });
   }
+  // T30：监听 api.js 401 派发的 ccc-auth-required（旧 ccc-agent-auth-required 保留兼容）
+  document.addEventListener('ccc-auth-required', () => showLogin('会话已失效，请重新登录'));
   document.addEventListener('ccc-agent-auth-required', () => showLogin('会话已失效，请重新登录'));
   applyAgentRoleUI();
 }

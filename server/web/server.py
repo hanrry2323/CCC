@@ -581,10 +581,17 @@ class _APIHandler(BaseHTTPRequestHandler):
         path = raw_path.rstrip("/") or "/"
         if self._send_static(path):
             return
-        if not self._check_auth():
-            return
         if path == "/health":
-            self._send_json({"status": "ok"})
+            # T30：/health 返回鉴权配置，供前端登录门判断
+            # auth_required：受保护端点是否需 Bearer token（始终 true）
+            # auth_configured：服务端是否已配置登录凭证（账号 + 密码哈希）
+            self._send_json({
+                "status": "ok",
+                "auth_required": True,
+                "auth_configured": bool(_AUTH_USERNAME and _AUTH_PASSWORD_HASH),
+            })
+            return
+        if not self._check_auth():
             return
         if path == "/conversation":
             self._handle_conversation_get()

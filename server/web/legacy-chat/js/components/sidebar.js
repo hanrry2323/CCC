@@ -210,32 +210,10 @@ function closeMobileSidebar() {
   document.body.style.overflow = '';
 }
 
-async function dropSidecarSessions(pid, sessionIds) {
-  const path = resolveProjectPath(pid);
-  if (!path) return;
-  const mode = state.get('toolMode') || 'engineer';
-  for (const sid of sessionIds) {
-    try {
-      const { agentUrl } = await import('../ports.js');
-      const tok =
-        sessionStorage.getItem('ccc_agent_token') ||
-        localStorage.getItem('ccc_agent_token') ||
-        '';
-      await fetch(agentUrl('/api/session/drop'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + tok,
-        },
-        body: JSON.stringify({
-          project_path: path,
-          session_id: sid,
-          reason: 'user-reset',
-          tool_mode: mode,
-        }),
-      });
-    } catch (_) {}
-  }
+async function dropSidecarSessions(_pid, _sessionIds) {
+  // T30：旧 sidecar /api/session/drop 端点在新服务端不存在；no-op。
+  // 重置对话仅清前端 in-memory 状态即可，不需要后端配合。
+  return;
 }
 
 async function resetConversation() {

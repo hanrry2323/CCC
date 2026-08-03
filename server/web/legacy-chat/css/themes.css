@@ -1,2 +1,92 @@
-/* 暗色模式已取消 — 仅保留 light 主题，删除此文件可安全移除 */
-/* 原有 [data-theme="dark"] 块已于 2026-08-01 移除 */
+/**
+ * themes.css — 深/浅主题切换（T30 恢复）
+ *
+ * 浅色（默认）：见 variables.css（暖米色 + 橙红 accent）
+ * 深色：本文件 [data-theme="dark"] 覆盖 CSS 变量（保持暖色调，仅反相）
+ */
+
+[data-theme="dark"] {
+  /* 深色背景（暖灰，不是纯黑） */
+  --ccc-bg-deep: #1c1a17;
+  --ccc-bg-base: #232120;
+  --ccc-bg-surface: #2a2724;
+  --ccc-bg-layer: #1c1a17;
+  --ccc-bg-hover: rgba(220, 210, 195, 0.06);
+  --ccc-bg-active: rgba(220, 210, 195, 0.1);
+  --ccc-bg-accent: #d97a55;
+  --ccc-bg-accent-soft: rgba(217, 122, 85, 0.18);
+  --ccc-bg-user: #2e2b28;
+  --ccc-bg-code: #1c1a17;
+  --ccc-bg-glass: rgba(35, 33, 32, 0.85);
+  --ccc-bg-sidebar: #1a1816;
+
+  /* 深色文字 */
+  --ccc-text-base: #f5f2eb;
+  --ccc-text-secondary: #d8d3c8;
+  --ccc-text-muted: #9d968a;
+  --ccc-text-faint: #6b655c;
+  --ccc-text-inverse: #1c1a17;
+  --ccc-text-accent: #e08a65;
+
+  --ccc-icon-base: #c8c2b6;
+  --ccc-icon-muted: #6b655c;
+
+  /* 深色边框 */
+  --ccc-border-subtle: rgba(220, 210, 195, 0.08);
+  --ccc-border-base: rgba(220, 210, 195, 0.14);
+  --ccc-border-accent: #d97a55;
+
+  /* 深色阴影（更柔和） */
+  --ccc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ccc-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --ccc-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --ccc-shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --ccc-shadow-floating: 0 20px 50px rgba(0, 0, 0, 0.6);
+
+  --ccc-overlay-scrim: rgba(0, 0, 0, 0.55);
+
+  /* 状态色（深色背景下稍亮以保持对比度） */
+  --ccc-success: #4fa377;
+  --ccc-danger: #d65c4a;
+  --ccc-warn: #d9941a;
+  --ops-amber: #d9941a;
+}
+
+/* 系统偏好：未显式设置主题时跟随系统 */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --ccc-bg-deep: #1c1a17;
+    --ccc-bg-base: #232120;
+    --ccc-bg-surface: #2a2724;
+    --ccc-bg-layer: #1c1a17;
+    --ccc-bg-hover: rgba(220, 210, 195, 0.06);
+    --ccc-bg-active: rgba(220, 210, 195, 0.1);
+    --ccc-bg-accent: #d97a55;
+    --ccc-bg-accent-soft: rgba(217, 122, 85, 0.18);
+    --ccc-bg-user: #2e2b28;
+    --ccc-bg-code: #1c1a17;
+    --ccc-bg-glass: rgba(35, 33, 32, 0.85);
+    --ccc-bg-sidebar: #1a1816;
+    --ccc-text-base: #f5f2eb;
+    --ccc-text-secondary: #d8d3c8;
+    --ccc-text-muted: #9d968a;
+    --ccc-text-faint: #6b655c;
+    --ccc-text-inverse: #1c1a17;
+    --ccc-text-accent: #e08a65;
+    --ccc-icon-base: #c8c2b6;
+    --ccc-icon-muted: #6b655c;
+    --ccc-border-subtle: rgba(220, 210, 195, 0.08);
+    --ccc-border-base: rgba(220, 210, 195, 0.14);
+    --ccc-border-accent: #d97a55;
+    --ccc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --ccc-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --ccc-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --ccc-shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.55);
+    --ccc-shadow-floating: 0 20px 50px rgba(0, 0, 0, 0.6);
+    --ccc-overlay-scrim: rgba(0, 0, 0, 0.55);
+    --ccc-success: #4fa377;
+    --ccc-danger: #d65c4a;
+    --ccc-warn: #d9941a;
+    --ops-amber: #d9941a;
+  }
+}

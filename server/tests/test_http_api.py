@@ -373,9 +373,20 @@ class TestHealth:
     """GET /health（无鉴权）"""
 
     def test_health_ok(self, api_server):
+        """T30：/health 返回 status + 鉴权配置（供前端登录门判断）。"""
         status, data = _get(api_server, "/health")
         assert status == 200
-        assert data == {"status": "ok"}
+        assert data["status"] == "ok"
+        # T30 新增字段：受保护端点需 Bearer token、服务端是否已配凭证
+        assert data["auth_required"] is True
+        assert data["auth_configured"] is True  # 测试环境已配 CCC_WEB_USERNAME/PASSWORD_HASH
+
+    def test_health_no_auth_required(self, api_server):
+        """/health 本身免鉴权（不带 token 也 200）。"""
+        status, data = _get(api_server, "/health", token=None)
+        assert status == 200
+        assert "auth_required" in data
+        assert "auth_configured" in data
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面） ──

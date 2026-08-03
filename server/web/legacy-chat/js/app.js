@@ -266,38 +266,12 @@ async function init() {
   });
 
   try {
-    const { isDialogueShell, isRemoteBrowser, isLoopbackUrl, DEFAULT_HUB_LAN } =
-      await import('./ports.js');
-    // 对话壳（M1 :7788）：先读 sidecar shell-config
+    // T30：旧 sidecar /api/shell-config 端点在新服务端不存在；不再 fetch。
+    // 仅保留对话壳标记 + 默认 hubConfig。
+    const { isDialogueShell } = await import('./ports.js');
     if (isDialogueShell()) {
       window.__CCC_SHELL__ = 'dialogue';
       window.__CCC_AGENT_BASE__ = window.__CCC_AGENT_BASE__ ?? '';
-      const sc = await fetch('/api/shell-config').then((r) => r.json()).catch(() => null);
-      if (sc?.hub_base_lan) {
-        window.__CCC_HUB_BASE_LAN__ = sc.hub_base_lan;
-      }
-      if (sc?.hub_base) {
-        const remote = isRemoteBrowser();
-        const pick =
-          remote && isLoopbackUrl(sc.hub_base)
-            ? sc.hub_base_lan || DEFAULT_HUB_LAN
-            : remote
-              ? sc.hub_base_lan || sc.hub_base
-              : sc.hub_base;
-        window.__CCC_HUB_BASE__ = pick;
-        try {
-          const prev = localStorage.getItem('ccc_hub_base');
-          if (!prev || (remote && isLoopbackUrl(prev))) {
-            localStorage.setItem('ccc_hub_base', pick);
-          }
-        } catch (_) {}
-      }
-      if (sc?.workspace_map && typeof sc.workspace_map === 'object') {
-        window.__CCC_WORKSPACE_MAP__ = {
-          ...(window.__CCC_WORKSPACE_MAP__ || {}),
-          ...sc.workspace_map,
-        };
-      }
     }
     const cfg = await loadHubConfig();
     if (cfg?.chat_session_max_live) {
@@ -308,31 +282,6 @@ async function init() {
     }
     if (cfg?.dialogue_url) {
       window.__CCC_DIALOGUE_URL__ = cfg.dialogue_url;
-    }
-    if (cfg?.workspace_map && typeof cfg.workspace_map === 'object') {
-      window.__CCC_WORKSPACE_MAP__ = {
-        ...(window.__CCC_WORKSPACE_MAP__ || {}),
-        ...cfg.workspace_map,
-      };
-      try {
-        const prev = JSON.parse(
-          localStorage.getItem('ccc_local_workspace_map') || '{}'
-        );
-        localStorage.setItem(
-          'ccc_local_workspace_map',
-          JSON.stringify({ ...prev, ...cfg.workspace_map })
-        );
-      } catch (_) {}
-    }
-    const banner = document.querySelector('.hub-remote-banner');
-    if (banner && !isDialogueShell()) {
-      const { dialogueEntryUrl } = await import('./ports.js');
-      banner.innerHTML =
-        '编排口：看板 / 运维。聊天请开 <a href="' +
-        dialogueEntryUrl() +
-        '">' +
-        dialogueEntryUrl() +
-        '</a>';
     }
   } catch (_) {
     /* keep default */

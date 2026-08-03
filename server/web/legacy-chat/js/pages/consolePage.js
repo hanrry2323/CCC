@@ -1,6 +1,19 @@
-/** Warm-style console (KPI) for CCC Hub (#/console) */
+/**
+ * consolePage.js — 控制台（T30：新协议版）
+ *
+ * 数据源（全部走新服务端）：
+ *   - 状态计数 KPI：GET /board/states → {状态: count}
+ *   - 活动/异常任务：GET /board/snapshot?workspace=X → {columns: {状态: [tasks]}}
+ *   - 运维告警数：GET /ops/summary → overview.alert_count
+ *   - 项目列表：GET /board/summaries → {summaries: {项目: snapshot}}
+ *
+ * 旧字段（today_events / failures / risks / dashboard）服务端不暴露；
+ *   对应区块改为占位提示「需 SSH / 桌面端查看」。
+ *
+ * 写操作（reopen / move / create）已禁用：服务端不暴露。
+ */
 
-import { apiGet, apiPost } from '../api.js';
+import { apiGet } from '../api.js';
 
 let _root = null;
 let _timer = null;
@@ -17,7 +30,7 @@ function html() {
   return `
 <div class="console-page hub-page">
   <div class="console-banner">
-    控制台为 SSH/应急兜底；日常看板与运维请用 <strong>CCC Desktop</strong>。
+    控制台为简化看板；详细运维请用 <strong>桌面端</strong> 或 <a href="#/ops">运维页</a>。
   </div>
   <div class="console-bar">
     <h2>控制台</h2>
@@ -30,168 +43,94 @@ function html() {
     <div class="console-kw"><div class="label">加载中…</div></div>
   </div>
   <div class="console-section">
-    <h3>进行中 <span class="badge" id="console-active-n">0</span></h3>
+    <h3>执行中 <span class="badge" id="console-active-n">0</span></h3>
     <div class="console-tasks" id="console-active"></div>
   </div>
   <div class="console-section">
-    <h3>需关注 <span class="badge" id="console-abn-n">0</span></h3>
+    <h3>打回 <span class="badge" id="console-abn-n">0</span></h3>
     <div class="console-tasks" id="console-abn"></div>
   </div>
   <div class="console-section">
-    <h3>最近失败 <span class="badge" id="console-fail-n">0</span></h3>
-    <div class="console-feed" id="console-fail"></div>
-  </div>
-  <div class="console-section">
-    <h3>今日动态 <span class="badge" id="console-ev-n">0</span></h3>
-    <div class="console-feed" id="console-feed"></div>
+    <h3>最近失败 / 今日动态</h3>
+    <div class="console-feed">
+      <p class="ops-hint">旧 <code>/api/failures</code> / <code>/api/dashboard</code> 端点已下线。请用桌面端失败账本（<code>ccc-failure-report.py</code>）或 SSH 查 <code>~/.ccc/stats/failures.jsonl</code>。</p>
+    </div>
   </div>
 </div>`;
 }
 
-function renderKPI(d) {
-  const kpi = d.kpi || {};
-  const today = kpi.today || {};
-  // Board dashboard: in_progress / testing / abnormal / released_today
-  // 兼容旧字段：ready_to_release、today.released
-  const values = {
-    in_progress: kpi.in_progress ?? d.counts?.in_progress ?? 0,
-    testing: kpi.testing ?? d.counts?.testing ?? 0,
-    abnormal: kpi.abnormal ?? d.counts?.abnormal ?? 0,
-    released_today:
-      kpi.released_today ?? today.released ?? kpi.today_released ?? 0,
-  };
-  const keys = [
-    { k: 'in_progress', label: '开发中', desc: '正在跑的任务' },
-    { k: 'testing', label: '测试/验收', desc: '等待审查/验收' },
-    { k: 'abnormal', label: '异常', desc: '卡住需介入' },
-    { k: 'released_today', label: '今日发布', desc: '已归档' },
+function renderKPI(counts) {
+  const c = counts || {};
+  const values = [
+    { k: '待分派', label: '待分派', desc: '尚未执行' },
+    { k: '执行中', label: '执行中', desc: '正在跑' },
+    { k: '已回写', label: '已回写', desc: '待验收' },
+    { k: '已关闭', label: '已关闭', desc: '已归档' },
+    { k: '打回', label: '打回', desc: '需介入' },
   ];
   const box = _root.querySelector('#console-kpi');
-  box.innerHTML = keys
+  if (!box) return;
+  box.innerHTML = values
     .map((item) => {
-      const v = values[item.k] ?? 0;
-      return `<div class="console-kw"><div class="label">${item.label}</div><div class="big">${esc(v)}</div><div class="desc">${item.desc}</div></div>`;
+      const v = Number(c[item.k] || 0);
+      return `<div class="console-kw"><div class="label">${esc(item.label)}</div><div class="big">${v}</div><div class="desc">${esc(item.desc)}</div></div>`;
     })
     .join('');
 }
 
-function renderActive(tasks) {
-  const el = _root.querySelector('#console-active');
-  _root.querySelector('#console-active-n').textContent = String(tasks.length);
+function renderTasks(elId, badgeId, tasks, opts = {}) {
+  const el = _root.querySelector(elId);
+  const nEl = _root.querySelector(badgeId);
+  if (nEl) nEl.textContent = String(tasks.length);
+  if (!el) return;
   if (!tasks.length) {
-    el.innerHTML = '<div class="console-empty">当前没有进行中的任务</div>';
+    el.innerHTML = '<div class="console-empty">' + (opts.empty || '无') + '</div>';
     return;
   }
   el.innerHTML = tasks
     .map(
-      (t) => `<div class="console-tc">
-      <div class="title">${esc(t.title || t.id)}</div>
-      <div class="id">${esc(t.id)} · ${esc(t.workspace || '')} · ${esc(t.status || t.column || '')}</div>
-    </div>`
+      (t) => `<div class="console-tc" style="${opts.border ? 'border-left-color:' + opts.border : ''}">
+        <div class="title">${opts.prefix || ''}${esc(t.title || t.id)}</div>
+        <div class="id">${esc(t.id)} · ${esc(t.executor || '')} · ${esc(t.status || '')}</div>
+      </div>`
     )
     .join('');
-}
-
-function renderAbn(tasks) {
-  const el = _root.querySelector('#console-abn');
-  _root.querySelector('#console-abn-n').textContent = String(tasks.length);
-  if (!tasks.length) {
-    el.innerHTML = '<div class="console-empty">没有异常任务</div>';
-    return;
-  }
-  el.innerHTML = tasks
-    .map(
-      (t) => `<div class="console-tc" style="border-left-color:#c44">
-      <div class="title">⚠ ${esc(t.title || t.id)}</div>
-      <div class="id">${esc(t.id)}</div>
-      <div style="font-size:12px;margin-top:8px;color:var(--ccc-text-secondary)">${esc(t.human_reason || t.reason || '卡住')}</div>
-    </div>`
-    )
-    .join('');
-}
-
-function renderEvents(events) {
-  const el = _root.querySelector('#console-feed');
-  _root.querySelector('#console-ev-n').textContent = String(events.length);
-  if (!events.length) {
-    el.innerHTML = '<div class="console-empty">今天还没有动态</div>';
-    return;
-  }
-  el.innerHTML = events
-    .slice(0, 30)
-    .map(
-      (e) => `<div class="row">
-      <span class="time">${esc(e.time || '')}</span>
-      <span><b>${esc(e.task_title || e.task_id || '')}</b> ${esc(e.action_cn || e.to_column || '')}</span>
-    </div>`
-    )
-    .join('');
-}
-
-function renderFailures(rows) {
-  const el = _root.querySelector('#console-fail');
-  const n = _root.querySelector('#console-fail-n');
-  if (!el || !n) return;
-  n.textContent = String(rows.length);
-  if (!rows.length) {
-    el.innerHTML = '<div class="console-empty">暂无失败账本记录</div>';
-    return;
-  }
-  el.innerHTML = rows
-    .slice()
-    .reverse()
-    .slice(0, 15)
-    .map(
-      (f) => `<div class="row console-fail-row" data-tid="${esc(f.task_id || '')}">
-      <span class="time">${esc((f.ts || '').replace('T', ' ').slice(0, 16))}</span>
-      <span><b>${esc(f.task_id || '')}</b> · ${esc(f.role || '')} · ${esc(f.reason || '')}</span>
-      ${f.task_id ? '<button type="button" class="console-reopen-btn" data-tid="' + esc(f.task_id) + '" data-write>重开</button>' : ''}
-    </div>`
-    )
-    .join('');
-  el.querySelectorAll('.console-reopen-btn').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const tid = btn.getAttribute('data-tid');
-      if (!tid) return;
-      btn.disabled = true;
-      try {
-        const wsFail = _ws === 'all' ? 'CCC' : _ws;
-        await apiPost('/api/tasks/reopen', { id: tid, workspace: wsFail, to: 'planned' });
-        window.showToast?.('已重开 ' + tid + ' → planned', 'success');
-        await poll();
-      } catch (err) {
-        window.showToast?.(err.message || '重开失败', 'error');
-        btn.disabled = false;
-      }
-    });
-  });
 }
 
 async function poll() {
-  const r = await apiGet('/api/dashboard?workspace=' + encodeURIComponent(_ws));
-  renderKPI(r);
-  renderActive(r.active_tasks || []);
-  renderAbn(r.abnormal_tasks || []);
-  renderEvents(r.today_events || []);
   try {
-    const wsFail = _ws === 'all' ? 'CCC' : _ws;
-    const fr = await apiGet(
-      '/api/failures?last=15&workspace=' + encodeURIComponent(wsFail)
-    );
-    renderFailures(fr.failures || []);
-  } catch (_) {
-    renderFailures([]);
+    const wsQs = _ws === 'all' ? '' : ('?workspace=' + encodeURIComponent(_ws));
+    const snap = await apiGet('/board/snapshot' + wsQs);
+    const counts = snap.counts || {};
+    const columns = snap.columns || {};
+    renderKPI(counts);
+    renderTasks('#console-active', '#console-active-n', columns['执行中'] || [], { empty: '当前无执行中任务' });
+    renderTasks('#console-abn', '#console-abn-n', columns['打回'] || [], { border: '#c44', prefix: '⚠ ', empty: '无打回任务' });
+  } catch (err) {
+    const box = _root.querySelector('#console-kpi');
+    if (box) box.innerHTML = `<div class="console-empty">加载失败: ${esc(err?.message || String(err))}</div>`;
   }
+  // 运维告警数（来自 /ops/summary）
   try {
-    const risks = await apiGet('/api/ops/risks');
+    const agg = await apiGet('/ops/summary');
     const badge = _root.querySelector('#console-ops-n');
-    if (badge) badge.textContent = String(risks.high ?? risks.count ?? 0);
-  } catch (_) {
-    /* ops optional */
-  }
+    if (badge) {
+      const alertCount = (agg.overview && agg.overview.alert_count) || 0;
+      badge.textContent = String(alertCount);
+    }
+  } catch (_) { /* ops optional */ }
   const label = _root.querySelector('#console-ws-label');
   if (label) label.textContent = _ws === 'all' ? '全部' : _ws;
+}
+
+async function loadWorkspaceList() {
+  try {
+    const data = await apiGet('/board/summaries');
+    const summaries = (data && data.summaries) || {};
+    return ['all', ...Object.keys(summaries).sort()];
+  } catch (_) {
+    return ['all'];
+  }
 }
 
 export async function mountConsole(el) {
@@ -203,18 +142,15 @@ export async function mountConsole(el) {
     });
     _root.querySelector('#console-ws').addEventListener('click', async () => {
       try {
-        const c = await apiGet('/api/config');
-        const keys = ['all', ...Object.keys(c.workspaces || {})];
+        const keys = await loadWorkspaceList();
         const idx = keys.indexOf(_ws);
         _ws = keys[(idx + 1) % keys.length];
         await poll();
-      } catch (_) {
-        /* ignore */
-      }
+      } catch (_) { /* ignore */ }
     });
   }
   await poll();
-  if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 5000);
+  if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 15000);
 }
 
 export function unmountConsole() {

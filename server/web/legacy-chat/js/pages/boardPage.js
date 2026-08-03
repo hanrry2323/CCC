@@ -1,163 +1,67 @@
-/** Warm-style kanban — epic 待办 sticky 左列 + 流转列；无活动/日志侧栏 */
+/**
+ * boardPage.js — 看板页（T30：新协议版）
+ *
+ * 数据源（全部走新服务端）：
+ *   - 项目列表：GET /board/summaries（无参 → 全部项目各自一个 snapshot）
+ *   - 单项目看板：GET /board/snapshot?workspace=X
+ *     返回 {columns: {状态: [BoardTask]}, counts: {...}, workspace}
+ *   - 多项目指标：GET /board/summaries?workspaces=a,b,c
+ *   - 卡详情：GET /tasks/{id}（不含 events；events 字段为 []）
+ *
+ * 写操作（移卡/建卡/清理）已禁用：服务端不暴露；请在桌面端或编排口操作。
+ *
+ * 状态命名：契约 §2 五态（中文）：待分派 / 执行中 / 已回写 / 已关闭 / 打回。
+ */
 
-import { apiGet, apiPost } from '../api.js';
-import { epicLifecycleLabel, normalizeEpicSplitStatus } from '../epicLifecycle.js';
-import { workspaceOf } from '../components/boardPanel.js';
+import { apiGet } from '../api.js';
 import { dialogueEntryUrl } from '../ports.js';
-import { epicColumnSig } from '../boardSigs.js';
-import { createLoadGate } from '../boardLoadGate.js';
-import { filterEpicsBySplit, matchesKeyword, sortTasks } from '../boardFilter.js';
 
-export { epicLifecycleLabel, normalizeEpicSplitStatus };
-
-/** #/board?ws=qb → 与侧栏当前项目对齐，避免默认 CCC 空板 */
-function wsFromHash() {
-  const raw = (location.hash || '').replace(/^#\/?/, '');
-  const qi = raw.indexOf('?');
-  if (qi < 0) return '';
-  try {
-    return (new URLSearchParams(raw.slice(qi + 1)).get('ws') || '').trim();
-  } catch (_) {
-    return '';
-  }
-}
-
-function preferredWorkspace() {
-  const fromHash = wsFromHash();
-  if (fromHash) return fromHash;
-  try {
-    return workspaceOf();
-  } catch (_) {
-    return _ws || 'CCC';
-  }
-}
-
-const LABELS = {
-  backlog: '待办',
-  planned: '已计划',
-  in_progress: '开发中',
-  testing: '测试/验收',
-  verified: '已验证',
-  released: '已发布',
-  abnormal: '异常',
-};
-const FLOW_COLS = [
-  'planned',
-  'in_progress',
-  'testing',
-  'verified',
-  'released',
-  'abnormal',
-];
+/** 契约 §2 五态（与 server/board/models.py STATES 对齐）。 */
+const FLOW_COLS = ['待分派', '执行中', '已回写', '已关闭', '打回'];
 const COLORS = {
-  backlog: '#a39e93',
-  planned: '#c96442',
-  in_progress: '#c47a2c',
-  testing: '#b86b3a',
-  verified: '#3d9a5f',
-  released: '#5a7a9a',
-  abnormal: '#c44',
-};
-const NEXT = {
-  planned: 'in_progress',
-  in_progress: 'testing',
-  testing: 'verified',
-  verified: 'released',
-};
-const PREV = {
-  planned: '',
-  in_progress: 'planned',
-  testing: 'in_progress',
-  verified: 'testing',
-  released: 'verified',
+  待分派: '#a39e93',
+  执行中: '#c47a2c',
+  已回写: '#3d9a5f',
+  已关闭: '#5a7a9a',
+  打回: '#c44',
 };
 
 let _root = null;
 let _timer = null;
 let _state = { columns: {}, counts: {} };
-let _ws = 'CCC';
-let _showHidden = false;
-let _moving = new Set(); // in-flight 守卫：同一卡移动中忽略重击
+let _ws = 'all';
 let _wsNames = [];
 let _indicatorBusy = false;
-// 窗口 J: client-side 筛选/排序（后端无 q/status/sort 参数）
 let _filterQ = '';
-let _filterStatus = '';
-let _sortKey = 'default';
 let _filterDebounce = null;
-// 窗口 J: 轮询与移卡竞态门（suppress 挂起重绘 + latest-wins 丢旧响应）
-const _gate = createLoadGate();
 
 function esc(s) {
-  if (!s) return '';
+  if (s == null) return '';
   const d = document.createElement('div');
-  d.textContent = s;
+  d.textContent = String(s);
   return d.innerHTML;
 }
 
-function taskHue(group, depth) {
-  if (!group || group.length !== 1) return null;
-  const code = group.charCodeAt(0);
-  if (code < 65 || code > 90) return null;
-  const hue = ((code - 65) * 360) / 26;
-  const lightness = (depth || 0) <= 0 ? 48 : 62;
-  return `hsl(${hue.toFixed(1)}, 58%, ${lightness}%)`;
+function matchesKeyword(t, q) {
+  if (!q) return true;
+  const hay = [t.id, t.title, t.executor, t.status, t.note].filter(Boolean).join(' ');
+  return hay.toLowerCase().indexOf(q.toLowerCase()) >= 0;
 }
 
-/** Epic 五态中文标签 — 实现见 epicLifecycle.js */
-
-function epicChip(ss) {
-  const st = normalizeEpicSplitStatus(ss);
-  return `<span class="epic-chip epic-chip-${st}">${epicLifecycleLabel(st)}</span>`;
-}
-
-function epicGroupBadge(group) {
-  if (!group) return '';
-  return `<span class="epic-group-badge" title="批次 ${esc(group)}">${esc(group)}</span>`;
-}
-
-function epicProgress(t) {
-  const kids = t.child_ids || [];
-  if (!kids.length) return '';
-  const relSet = new Set((_state.columns.released || []).map((x) => x.id));
-  const n = kids.filter((id) => relSet.has(id)).length;
-  const pct = Math.round((n / kids.length) * 100);
-  return `<div class="epic-prog">
-    <div class="epic-prog-bar"><i style="width:${pct}%"></i></div>
-    <span>${n}/${kids.length} 已发布</span>
-  </div>`;
-}
-
-function borderFor(t, col) {
-  const ss = t.split_status || 'pending';
-  if (col === 'backlog') {
-    if (ss === 'pending' || !t.color_group) return '#9a958c';
-    if (ss === 'failed' || ss === 'blocked') return '#c45c4a';
-  }
-  const depth = t.color_depth != null ? t.color_depth : col === 'backlog' ? 0 : 1;
-  const hsl = taskHue(t.color_group, depth);
-  return hsl || COLORS[col] || '#a39e93';
-}
-
-function formatTaskCopy(t, col) {
-  const kind = t.card_kind || (col === 'backlog' ? 'epic' : 'work');
+function fmtTaskCopy(t, col) {
   const lines = [
     '<<<CCC_TASK>>>',
     'id: ' + (t.id || ''),
     'workspace: ' + _ws,
     'column: ' + (col || t.status || ''),
-    'kind: ' + kind,
+    'kind: ' + (t.card_kind || 'work'),
     'title: ' + (t.title || ''),
   ];
   if (t.parent_id) lines.push('parent: ' + t.parent_id);
   if (t.split_status) lines.push('split_status: ' + t.split_status);
-  if (Array.isArray(t.child_ids) && t.child_ids.length) {
-    lines.push('children: ' + t.child_ids.join(', '));
-  }
-  const desc = (t.description || t.summary || '').trim();
-  if (desc) {
-    lines.push('---');
-    lines.push(desc.slice(0, 1200));
+  if (t.note) lines.push('note: ' + t.note);
+  if (Array.isArray(t.phases) && t.phases.length) {
+    lines.push('phases: ' + t.phases.join(', '));
   }
   lines.push('<<<END_CCC_TASK>>>');
   lines.push('（请围绕上述任务与我讨论：现状、风险、下一步）');
@@ -173,7 +77,6 @@ function copyBtnHtml() {
   );
 }
 
-/** 兼容 localhost / 局域网 HTTP：clipboard API 不可用时走 execCommand */
 async function copyTextToClipboard(text) {
   const payload = String(text || '');
   if (!payload) return false;
@@ -182,9 +85,7 @@ async function copyTextToClipboard(text) {
       await navigator.clipboard.writeText(payload);
       return true;
     }
-  } catch (_) {
-    /* fall through */
-  }
+  } catch (_) { /* fall through */ }
   try {
     const ta = document.createElement('textarea');
     ta.value = payload;
@@ -205,17 +106,10 @@ async function copyTextToClipboard(text) {
 
 async function copyCardTask(card) {
   if (!card) return;
-  const found = findTask(card.dataset.id);
-  const text = found
-    ? formatTaskCopy(found.task, found.col)
-    : formatTaskCopy(
-        {
-          id: card.dataset.id,
-          title: card.querySelector('.ti')?.textContent || '',
-        },
-        card.dataset.col
-      );
-  const ok = await copyTextToClipboard(text);
+  const id = card.dataset.id;
+  const col = card.dataset.col;
+  const t = (_state.columns[col] || []).find((x) => x.id === id) || { id, title: '' };
+  const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
   if (ok) {
     window.showToast?.('已复制任务块，可粘贴到对话', 'success');
     card.classList.add('just-copied');
@@ -225,173 +119,46 @@ async function copyCardTask(card) {
   }
 }
 
-function renderEpicCol() {
-  const host = _root.querySelector('#board-epic');
-  const cols = _state.columns || {}; // B3 防御：columns 缺失不白屏
-  let tasks = cols.backlog || [];
-  if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
-  // 窗口 J: client-side 筛选 — 大卡 split_status + 关键词；released 集保持完整，进度条刷新不受筛选影响
-  tasks = filterEpicsBySplit(tasks, _filterStatus).filter((t) => matchesKeyword(t, _filterQ));
-  // Phase 3.1 + A2: diff 重绘 — 签名含 released 子卡计数，子卡发布即刷新进度条
-  const releasedIds = new Set((cols.released || []).map((x) => x.id));
-  const sig = epicColumnSig(tasks, releasedIds);
-  if (host.dataset.sig === sig) return;
-  host.dataset.sig = sig;
-  const epicScroll = (host.querySelector('.board-col-body') || {}).scrollTop || 0;
-  const cards = tasks.length
-    ? tasks
-        .map((t) => {
-          const ss = normalizeEpicSplitStatus(t.split_status || 'pending');
-          const border = borderFor({ ...t, split_status: ss }, 'backlog');
-          const done = ss === 'done' ? ' epic-done' : '';
-          return `<div class="board-card board-card-epic epic-st-${esc(ss)}${done}" data-id="${esc(t.id)}" data-col="backlog" style="border-left-color:${border}">
-            <div class="epic-card-top">
-              <div class="id">${esc(t.id)}</div>
-              ${epicGroupBadge(t.color_group)}
-            </div>
-            <div class="ti">${esc(t.title)}</div>
-            <div class="epic-meta">${epicChip(ss)}</div>
-            ${epicProgress(t)}
-            ${copyBtnHtml()}
-          </div>`;
-        })
-        .join('')
-    : '<div class="board-empty">暂无大卡</div>';
-  host.innerHTML = `<div class="board-col board-col-epic"><div class="board-col-h"><span><span class="board-dot" style="background:${COLORS.backlog}"></span>待办 · 大卡</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div></div>`;
-  // B4: 重绘后保留滚动位置
-  const nb = host.querySelector('.board-col-body');
-  if (nb && epicScroll) nb.scrollTop = epicScroll;
+function wsFromHash() {
+  const raw = (location.hash || '').replace(/^#\/?/, '');
+  const qi = raw.indexOf('?');
+  if (qi < 0) return '';
+  try {
+    return (new URLSearchParams(raw.slice(qi + 1)).get('ws') || '').trim();
+  } catch (_) {
+    return '';
+  }
 }
 
-/** 窗口 J: 流列视图 — 关键词过滤 + 排序（渲染与 diff 签名共用同一列表）。 */
-function _viewWork(col) {
-  let tasks = (_state.columns[col] || []).filter(
-    (t) => (t.card_kind || 'work') !== 'epic'
-  );
-  if (_filterQ) tasks = tasks.filter((t) => matchesKeyword(t, _filterQ));
-  return sortTasks(tasks, _sortKey);
-}
-
-function renderFlowCols() {
-  const host = _root.querySelector('#board-flow');
-  // Phase 3.1: diff 重绘 — 只重建变化的列
-  const newSigs = {};
-  for (const col of FLOW_COLS) {
-    const tasks = _viewWork(col);
-    newSigs[col] = tasks.map((t) => t.id + ':' + (t.updated_at || '')).join('|');
-  }
-  // 首次或列数不匹配 → 全重建
-  const existingCols = host.querySelectorAll('.board-col');
-  if (existingCols.length !== FLOW_COLS.length) {
-    host.innerHTML = '';
-    for (const col of FLOW_COLS) {
-      host.appendChild(_buildFlowCol(col, newSigs[col]));
-    }
-    host.dataset.sigs = JSON.stringify(newSigs);
-    return;
-  }
-  // 逐列 diff
-  let prevSigs = {};
-  try { prevSigs = JSON.parse(host.dataset.sigs || '{}'); } catch (_) {}
-  for (let i = 0; i < FLOW_COLS.length; i++) {
-    const col = FLOW_COLS[i];
-    if (prevSigs[col] !== newSigs[col]) {
-      const oldEl = existingCols[i];
-      // B4: 重绘前存滚动位置，替换后还原（列内容变化不再跳到顶部）
-      const oldBody = oldEl.querySelector('.board-col-body');
-      const scrollTop = oldBody ? oldBody.scrollTop : 0;
-      const newEl = _buildFlowCol(col, newSigs[col]);
-      oldEl.replaceWith(newEl);
-      const newBody = newEl.querySelector('.board-col-body');
-      if (newBody && scrollTop) newBody.scrollTop = scrollTop;
-    }
-  }
-  host.dataset.sigs = JSON.stringify(newSigs);
-}
-
-function _buildFlowCol(col, _sig) {
-  const tasks = _viewWork(col);
-  const d = document.createElement('div');
-  d.className = 'board-col';
-  const cards = tasks.length
-    ? tasks
-        .map((t) => {
-          const pv = PREV[col] || '';
-          const nx = NEXT[col] || '';
-          const rn = col === 'in_progress' ? ' running' : '';
-          const border = borderFor(t, col);
-          const hue = taskHue(t.color_group, 1);
-          const dot = hue
-            ? `<span class="work-group-dot" style="background:${hue}"></span>`
-            : '';
-          const parent = t.parent_id
-            ? `<div class="parent-tag">${dot}↩ ${esc(t.parent_id)}</div>`
-            : '';
-          return `<div class="board-card board-card-work${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${border}">
-              <div class="id">${esc(t.id)}</div>
-              <div class="ti">${esc(t.title)}</div>
-              ${parent}
-              <div class="ac">
-                ${pv ? '<button type="button" class="mv-prev" data-write>←</button>' : ''}
-                ${nx ? '<button type="button" class="mv-next" data-write>→</button>' : ''}
-              </div>
-              ${copyBtnHtml()}
-            </div>`;
-        })
-        .join('')
-      : '<div class="board-empty">—</div>';
-  d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${LABELS[col]}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
-  return d;
+function preferredWorkspace() {
+  const fromHash = wsFromHash();
+  if (fromHash) return fromHash;
+  try {
+    const cur = localStorage.getItem('ccc_hub_last_project');
+    if (cur) return cur;
+  } catch (_) {}
+  return 'all';
 }
 
 function html() {
   return `
 <div class="board-page hub-page">
-  <div class="orch-hint">编排口 · 看板。对话请开 <a href="${dialogueEntryUrl()}">M1 :7788</a></div>
+  <div class="orch-hint">看板 · 走新服务端协议（/board/snapshot）。对话请开 <a href="${dialogueEntryUrl()}">M1 :7788</a></div>
   <div class="board-toolbar">
     <h2>看板</h2>
     <div class="board-toolbar-actions">
-      <button type="button" class="hub-btn primary" id="board-new" data-write>+ 新建大卡</button>
-      <button type="button" class="hub-btn" id="board-clean-done" title="隐藏已完成大卡" data-write>清理已完成</button>
-      <button type="button" class="hub-btn board-epic-toggle" id="board-epic-toggle" title="收起/展开待办大卡">大卡</button>
-      <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
+      <button type="button" class="hub-btn" id="board-refresh" title="刷新">刷新</button>
+      <span class="board-write-hint" title="写操作请用桌面端">读视图 · 写操作请用桌面端</span>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
     <span class="st" id="board-st">·</span>
   </div>
   <div class="board-toolbar-filters">
-    <input type="search" id="board-filter-q" class="board-filter-input" placeholder="筛选关键词（标题/ID/描述）" aria-label="筛选关键词">
-    <select id="board-filter-status" aria-label="大卡状态筛选" title="按待办大卡拆分状态筛选">
-      <option value="">全部状态</option>
-      <option value="pending">未规划</option>
-      <option value="planned">已规划</option>
-      <option value="running">开发中</option>
-      <option value="done">已完成</option>
-      <option value="failed">失败</option>
-    </select>
-    <select id="board-sort" aria-label="排序" title="流转列排序">
-      <option value="default">默认顺序</option>
-      <option value="updated">最近更新</option>
-      <option value="title">按标题</option>
-    </select>
+    <input type="search" id="board-filter-q" class="board-filter-input" placeholder="筛选关键词（标题/ID/执行体）" aria-label="筛选关键词">
   </div>
   <div class="board-main">
     <div class="board-layout" id="board-layout">
-      <div class="board-epic-col" id="board-epic"></div>
       <div class="board-flow-cols" id="board-flow"></div>
-    </div>
-  </div>
-</div>
-<div class="board-modal" id="board-mo">
-  <div class="box">
-    <h2>新建大卡（待办）</h2>
-    <label>ID</label><input id="board-fid" placeholder="epic-id">
-    <label>标题</label><input id="board-fti" placeholder="一句话意图">
-    <label>描述</label><textarea id="board-fde" placeholder="方案要点 / 给 Claude 拆分的上下文"></textarea>
-    <label>看板</label><select id="board-fws"></select>
-    <div class="btns">
-      <button type="button" class="hub-btn" id="board-cancel">取消</button>
-      <button type="button" class="hub-btn primary" id="board-mk">创建</button>
     </div>
   </div>
 </div>
@@ -401,81 +168,101 @@ function html() {
     <div style="font-size:12px;line-height:1.6;max-height:60vh;overflow:auto">
       <div id="board-did" style="font-family:var(--ccc-font-mono);font-size:11px;color:var(--ccc-text-muted)"></div>
       <div id="board-dtt" style="font-weight:500;padding:6px 0"></div>
-      <div id="board-dde" style="white-space:pre-wrap;border-top:1px solid var(--ccc-border-subtle);padding-top:6px"></div>
       <div id="board-dmt" style="padding:6px 0;border-top:1px solid var(--ccc-border-subtle);font-size:11px"></div>
-      <div id="board-devs"><h3 style="font-size:11px;color:var(--ccc-text-muted)">活动流</h3></div>
+      <div id="board-dde" style="white-space:pre-wrap;border-top:1px solid var(--ccc-border-subtle);padding-top:6px"></div>
+      <div id="board-dacc" style="border-top:1px solid var(--ccc-border-subtle);padding-top:6px;margin-top:6px"></div>
     </div>
-    <div class="btns" style="margin-top:10px"><button type="button" class="hub-btn" id="board-dclose">关闭</button></div>
+    <div class="btns" style="margin-top:10px">
+      <button type="button" class="hub-btn" id="board-dclose">关闭</button>
+    </div>
   </div>
 </div>`;
 }
 
-async function loadConfig() {
-  const c = await apiGet('/api/config');
-  const btns = _root.querySelector('#board-ws-btns');
-  const fs = _root.querySelector('#board-fws');
-  btns.innerHTML = '';
-  fs.innerHTML = '';
-  const spaces = c.workspaces || { CCC: '.' };
-  _wsNames = Object.keys(spaces);
-  const want = preferredWorkspace();
-  if (want && spaces[want]) _ws = want;
-  else if (!spaces[_ws] && _wsNames.length) _ws = _wsNames[0];
-  for (const n of _wsNames) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'board-ws-btn' + (n === _ws ? ' active' : '');
-    b.dataset.ws = n;
-    b.textContent = n;
-    b.setAttribute('aria-pressed', n === _ws ? 'true' : 'false');
-    btns.appendChild(b);
-    const o2 = document.createElement('option');
-    o2.value = n;
-    o2.textContent = n;
-    fs.appendChild(o2);
+function _viewTasks(col) {
+  let tasks = _state.columns[col] || [];
+  if (_filterQ) tasks = tasks.filter((t) => matchesKeyword(t, _filterQ));
+  return tasks;
+}
+
+function _buildFlowCol(col) {
+  const tasks = _viewTasks(col);
+  const d = document.createElement('div');
+  d.className = 'board-col';
+  const cards = tasks.length
+    ? tasks
+        .map((t) => {
+          const border = COLORS[col] || '#a39e93';
+          const exec = t.executor ? `<div class="parent-tag">执行体: ${esc(t.executor)}</div>` : '';
+          const idLine = `<div class="id">${esc(t.id)}</div>`;
+          const ti = `<div class="ti">${esc(t.title)}</div>`;
+          return `<div class="board-card board-card-work" data-id="${esc(t.id)}" data-col="${esc(col)}" style="border-left-color:${border}">
+            ${idLine}
+            ${ti}
+            ${exec}
+            ${copyBtnHtml()}
+          </div>`;
+        })
+        .join('')
+    : '<div class="board-empty">—</div>';
+  d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
+  return d;
+}
+
+function renderFlowCols() {
+  const host = _root.querySelector('#board-flow');
+  if (!host) return;
+  const newSigs = {};
+  for (const col of FLOW_COLS) {
+    const tasks = _viewTasks(col);
+    newSigs[col] = tasks.map((t) => t.id + ':' + (t.updated_at || '')).join('|');
   }
+  const existingCols = host.querySelectorAll('.board-col');
+  if (existingCols.length !== FLOW_COLS.length) {
+    host.innerHTML = '';
+    for (const col of FLOW_COLS) host.appendChild(_buildFlowCol(col));
+    host.dataset.sigs = JSON.stringify(newSigs);
+    return;
+  }
+  let prevSigs = {};
+  try { prevSigs = JSON.parse(host.dataset.sigs || '{}'); } catch (_) {}
+  for (let i = 0; i < FLOW_COLS.length; i++) {
+    const col = FLOW_COLS[i];
+    if (prevSigs[col] !== newSigs[col]) {
+      const oldEl = existingCols[i];
+      const oldBody = oldEl.querySelector('.board-col-body');
+      const scrollTop = oldBody ? oldBody.scrollTop : 0;
+      const newEl = _buildFlowCol(col);
+      oldEl.replaceWith(newEl);
+      const newBody = newEl.querySelector('.board-col-body');
+      if (newBody && scrollTop) newBody.scrollTop = scrollTop;
+    }
+  }
+  host.dataset.sigs = JSON.stringify(newSigs);
 }
 
-function syncWsButtons() {
-  if (!_root) return;
-  _root.querySelectorAll('.board-ws-btn').forEach((b) => {
-    const on = b.dataset.ws === _ws;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-pressed', on ? 'true' : 'false');
-  });
+function updateSummary() {
+  const el = _root.querySelector('#board-st');
+  if (!el) return;
+  const counts = _state.counts || {};
+  const total = FLOW_COLS.reduce((s, c) => s + Number(counts[c] || 0), 0);
+  el.textContent = _ws + ` · 共 ${total} 张`;
 }
 
-function setActiveWorkspace(name) {
-  if (!name || name === _ws) return;
-  _ws = name;
-  syncWsButtons();
-  // 保持 hash 与所选工作区一致，便于从摘要链回同一板
-  try {
-    const next = '#/board?ws=' + encodeURIComponent(_ws);
-    if (location.hash !== next) location.hash = next;
-  } catch (_) {}
-  loadBoard();
+function renderCols() {
+  renderFlowCols();
+  updateSummary();
 }
 
-/** 看板指示态：alert（需人工）> running（开发中）> idle */
 function classifyWsStatus(payload) {
   const counts = payload.counts || {};
-  const abnormal = Number(counts.abnormal || 0);
-  const inProg = Number(counts.in_progress || 0);
-  const backlog = (payload.columns && payload.columns.backlog) || [];
-  const epicFailed = backlog.some((t) => {
-    const kind = t.card_kind || 'epic';
-    const ss = normalizeEpicSplitStatus(t.split_status || 'pending');
-    return kind === 'epic' && ss === 'failed';
-  });
-  if (abnormal > 0 || epicFailed) {
-    const bits = [];
-    if (abnormal > 0) bits.push(`异常 ${abnormal}`);
-    if (epicFailed) bits.push('大卡失败');
-    return { mode: 'alert', title: '需人工介入 · ' + bits.join(' · ') };
+  const reject = Number(counts['打回'] || 0);
+  const doing = Number(counts['执行中'] || 0);
+  if (reject > 0) {
+    return { mode: 'alert', title: `需人工介入 · 异常 ${reject} 张` };
   }
-  if (inProg > 0) {
-    return { mode: 'running', title: `开发中 · ${inProg} 个任务` };
+  if (doing > 0) {
+    return { mode: 'running', title: `执行中 · ${doing} 张` };
   }
   return { mode: 'idle', title: '' };
 }
@@ -493,9 +280,8 @@ async function refreshAllWsIndicators() {
   if (!_root || _indicatorBusy || !_wsNames.length) return;
   _indicatorBusy = true;
   try {
-    // Phase 3.1: N 次 GET → 单次聚合端点
     const agg = await apiGet(
-      '/api/board/summaries?workspaces=' +
+      '/board/summaries?workspaces=' +
         encodeURIComponent(_wsNames.join(','))
     ).catch(() => null);
     const summaries = (agg && agg.summaries) || {};
@@ -517,135 +303,93 @@ async function refreshAllWsIndicators() {
   }
 }
 
-function updateSummary() {
-  // 窗口 J: 计数跟随筛选视图（关键词/大卡状态过滤后）
-  const epics = filterEpicsBySplit(
-    (_state.columns.backlog || []).filter((t) => !t.ui_hidden),
-    _filterStatus
-  ).filter((t) => matchesKeyword(t, _filterQ));
-  let flow = 0;
-  for (const c of ['planned', 'in_progress', 'testing', 'verified']) {
-    flow += _viewWork(c).length;
-  }
-  _root.querySelector('#board-st').textContent =
-    _ws + ` · 待办 ${epics.length} · 流转中 ${flow}`;
+function syncWsButtons() {
+  if (!_root) return;
+  _root.querySelectorAll('.board-ws-btn').forEach((b) => {
+    const on = b.dataset.ws === _ws;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 
-function renderCols() {
-  renderEpicCol();
-  renderFlowCols();
-  updateSummary();
+function setActiveWorkspace(name) {
+  if (!name || name === _ws) return;
+  _ws = name;
+  syncWsButtons();
+  try {
+    const next = '#/board?ws=' + encodeURIComponent(_ws);
+    if (location.hash !== next) location.hash = next;
+    localStorage.setItem('ccc_hub_last_project', _ws);
+  } catch (_) {}
+  loadBoard();
+}
+
+async function loadConfig() {
+  // T30：项目列表来自 /board/summaries（无参 → 全部项目各自一个 snapshot）
+  const data = await apiGet('/board/summaries');
+  const summaries = (data && data.summaries) || {};
+  const btns = _root.querySelector('#board-ws-btns');
+  btns.innerHTML = '';
+  _wsNames = Object.keys(summaries).sort();
+  const want = preferredWorkspace();
+  if (want && summaries[want]) _ws = want;
+  else if (_wsNames.length) _ws = _wsNames[0];
+  else _ws = 'all';
+  // 全部项目按钮
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.className = 'board-ws-btn' + (_ws === 'all' ? ' active' : '');
+  allBtn.dataset.ws = 'all';
+  allBtn.textContent = '全部';
+  allBtn.setAttribute('aria-pressed', _ws === 'all' ? 'true' : 'false');
+  btns.appendChild(allBtn);
+  for (const n of _wsNames) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'board-ws-btn' + (n === _ws ? ' active' : '');
+    b.dataset.ws = n;
+    b.textContent = n;
+    b.setAttribute('aria-pressed', n === _ws ? 'true' : 'false');
+    btns.appendChild(b);
+  }
 }
 
 async function loadBoard() {
-  // 窗口 J: 移卡 in-flight 期间轮询挂起（不发请求）；晚到的旧响应按 seq 丢弃（消闪回）
-  const seq = _gate.begin();
-  if (seq === null) return;
-  const q =
-    '/api/board?workspace=' +
-    encodeURIComponent(_ws) +
-    (_showHidden ? '&include_hidden=1' : '');
+  const qs = _ws === 'all' ? '' : ('?workspace=' + encodeURIComponent(_ws));
   try {
-    const r = await apiGet(q);
-    if (!_gate.isLatest(seq)) return;
-    _state = r;
+    const r = await apiGet('/board/snapshot' + qs);
+    _state = r || { columns: {}, counts: {} };
     renderCols();
     refreshAllWsIndicators().catch(() => {});
   } catch (err) {
-    // 仅最新请求的错误向上抛（轮询 catch 吞 / 移卡后重载可见）
-    if (_gate.isLatest(seq)) throw err;
+    window.showToast?.(err && err.message ? err.message : '加载看板失败', 'error');
   }
-}
-
-async function moveTask(id, from, to) {
-  if (from === 'backlog') {
-    window.showToast?.('待办大卡不可移入流转列', 'error');
-    return;
-  }
-  // B1: in-flight 守卫 — 双击/连点第二击直接忽略，避免旧 from 404 静默失败
-  if (_moving.has(id)) return;
-  _moving.add(id);
-  // 窗口 J: 移卡写操作期间挂起轮询；resume 后重载为最新 seq，移卡结果必为新渲染
-  _gate.suppress();
-  try {
-    await apiPost('/api/tasks/move', { id, from, to, workspace: _ws });
-  } catch (err) {
-    window.showToast?.(err && err.message ? err.message : '移卡失败', 'error');
-  } finally {
-    _moving.delete(id);
-    _gate.resume();
-  }
-  await loadBoard();
 }
 
 async function showDetail(id) {
-  const r = await apiGet(
-    `/api/tasks/${encodeURIComponent(id)}/events?workspace=${encodeURIComponent(_ws)}`
-  );
-  _root.querySelector('#board-dti').textContent = '任务: ' + r.id;
-  _root.querySelector('#board-did').textContent = r.id;
-  _root.querySelector('#board-dtt').textContent = r.title || '(无标题)';
-  _root.querySelector('#board-dde').textContent = r.description || '(无描述)';
-  const st = LABELS[r._column] || r._column || '?';
-  const meta = [
-    `状态: ${esc(st)}`,
-    r.card_kind ? `类型: ${esc(r.card_kind)}` : '',
-    r.split_status ? `拆分: ${esc(r.split_status)}` : '',
-    r.parent_id ? `父卡: ${esc(r.parent_id)}` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  _root.querySelector('#board-dmt').innerHTML = meta;
-  const evBox = _root.querySelector('#board-devs');
-  if (r.events && r.events.length) {
-    evBox.innerHTML =
-      '<h3 style="font-size:11px;color:var(--ccc-text-muted)">活动流</h3>' +
-      r.events
-        .map(
-          (e) =>
-            `<div class="board-ev"><span class="t">${(e.timestamp || '').slice(11, 19)}</span><span>${esc(e.from || '?')} → ${esc(e.to || '?')}</span></div>`
-        )
-        .join('');
-  } else {
-    evBox.innerHTML =
-      '<h3 style="font-size:11px;color:var(--ccc-text-muted)">活动流</h3><div style="color:var(--ccc-text-faint);font-size:11px">无记录</div>';
-  }
-  _root.querySelector('#board-dm').classList.add('open');
-}
-
-function findTask(id) {
-  for (const col of ['backlog', ...FLOW_COLS]) {
-    const t = (_state.columns[col] || []).find((x) => x.id === id);
-    if (t) return { task: t, col };
-  }
-  return null;
-}
-
-function applyEpicCollapsed(collapsed) {
-  const layout = _root?.querySelector('#board-layout');
-  const btn = _root?.querySelector('#board-epic-toggle');
-  if (!layout) return;
-  layout.classList.toggle('epic-collapsed', !!collapsed);
-  if (btn) {
-    btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-    btn.textContent = collapsed ? '大卡 ▸' : '大卡 ▾';
-    btn.title = collapsed ? '展开待办大卡' : '收起待办大卡';
-  }
   try {
-    localStorage.setItem('ccc_board_epic_collapsed', collapsed ? '1' : '0');
-  } catch (_) {}
-}
-
-function initEpicCollapsedDefault() {
-  let collapsed = false;
-  try {
-    const saved = localStorage.getItem('ccc_board_epic_collapsed');
-    if (saved === '1' || saved === '0') collapsed = saved === '1';
-    else collapsed = window.matchMedia('(max-width: 768px)').matches;
-  } catch (_) {
-    collapsed = window.matchMedia('(max-width: 768px)').matches;
+    const r = await apiGet('/tasks/' + encodeURIComponent(id));
+    _root.querySelector('#board-dti').textContent = '任务: ' + (r.id || id);
+    _root.querySelector('#board-did').textContent = r.id || id;
+    _root.querySelector('#board-dtt').textContent = r.title || '(无标题)';
+    const meta = [
+      `状态: ${esc(r.status || '—')}`,
+      r.executor ? `执行体: ${esc(r.executor)}` : '',
+      r.card_kind ? `类型: ${esc(r.card_kind)}` : '',
+      r.parent_id ? `父卡: ${esc(r.parent_id)}` : '',
+    ].filter(Boolean).join(' · ');
+    _root.querySelector('#board-dmt').innerHTML = meta;
+    _root.querySelector('#board-dde').textContent = r.note || '(无描述)';
+    const accEl = _root.querySelector('#board-dacc');
+    if (r.acceptance) {
+      accEl.innerHTML = '<h3 style="font-size:11px;color:var(--ccc-text-muted)">验收标准</h3><div style="white-space:pre-wrap;font-size:12px">' + esc(r.acceptance) + '</div>';
+    } else {
+      accEl.innerHTML = '';
+    }
+    _root.querySelector('#board-dm').classList.add('open');
+  } catch (err) {
+    window.showToast?.(err && err.message ? err.message : '加载详情失败', 'error');
   }
-  applyEpicCollapsed(collapsed);
 }
 
 function bind() {
@@ -654,24 +398,15 @@ function bind() {
     if (!btn) return;
     setActiveWorkspace(btn.dataset.ws);
   });
-  _root.querySelector('#board-new').addEventListener('click', () => {
-    _root.querySelector('#board-fid').value = 'epic-' + Math.floor(Date.now() / 1000);
-    _root.querySelector('#board-fti').value = '';
-    _root.querySelector('#board-fde').value = '';
-    _root.querySelector('#board-fws').value = _ws;
-    _root.querySelector('#board-mo').classList.add('open');
-  });
-  _root.querySelector('#board-cancel').addEventListener('click', () => {
-    _root.querySelector('#board-mo').classList.remove('open');
+  _root.querySelector('#board-refresh').addEventListener('click', async () => {
+    const btn = _root.querySelector('#board-refresh');
+    if (btn) btn.disabled = true;
+    await loadBoard();
+    if (btn) btn.disabled = false;
   });
   _root.querySelector('#board-dclose').addEventListener('click', () => {
     _root.querySelector('#board-dm').classList.remove('open');
   });
-  _root.querySelector('#board-show-hidden').addEventListener('change', (e) => {
-    _showHidden = !!e.target.checked;
-    loadBoard();
-  });
-  // 窗口 J: 筛选/排序纯本地视图 — 变更只重绘，不重新请求
   const qInput = _root.querySelector('#board-filter-q');
   if (qInput) {
     qInput.addEventListener('input', () => {
@@ -682,48 +417,6 @@ function bind() {
       }, 150);
     });
   }
-  _root.querySelector('#board-filter-status')?.addEventListener('change', (e) => {
-    _filterStatus = e.target.value;
-    renderCols();
-  });
-  _root.querySelector('#board-sort')?.addEventListener('change', (e) => {
-    _sortKey = e.target.value;
-    renderCols();
-  });
-  _root.querySelector('#board-epic-toggle')?.addEventListener('click', () => {
-    const layout = _root.querySelector('#board-layout');
-    applyEpicCollapsed(!layout?.classList.contains('epic-collapsed'));
-  });
-  _root.querySelector('#board-clean-done').addEventListener('click', async () => {
-    try {
-      await apiPost('/api/tasks/hide-completed-epics', { workspace: _ws });
-      window.showToast?.('已隐藏完成大卡', 'ok');
-      await loadBoard();
-    } catch (err) {
-      window.showToast?.('清理失败', 'error');
-    }
-  });
-  _root.querySelector('#board-mk').addEventListener('click', async () => {
-    const id = _root.querySelector('#board-fid').value.trim();
-    const title = _root.querySelector('#board-fti').value.trim();
-    const description = _root.querySelector('#board-fde').value.trim();
-    const workspace = _root.querySelector('#board-fws').value;
-    if (!id || !title) {
-      window.showToast?.('ID 和标题必填', 'error');
-      return;
-    }
-    await apiPost('/api/tasks', {
-      id,
-      title,
-      description,
-      workspace,
-      status: 'backlog',
-      card_kind: 'epic',
-      split_status: 'pending',
-    });
-    _root.querySelector('#board-mo').classList.remove('open');
-    await loadBoard();
-  });
   _root.querySelector('#board-layout').addEventListener('click', (e) => {
     const copyBtn = e.target.closest('.card-copy-btn');
     if (copyBtn) {
@@ -733,21 +426,11 @@ function bind() {
       copyCardTask(card);
       return;
     }
-    const btn = e.target.closest('.mv-prev, .mv-next');
     const card = e.target.closest('.board-card');
-    if (!card) return;
-    if (btn) {
-      e.stopPropagation();
-      const target = btn.classList.contains('mv-prev')
-        ? card.dataset.prev
-        : card.dataset.next;
-      if (target) moveTask(card.dataset.id, card.dataset.col, target);
-    } else {
+    if (card) {
       showDetail(card.dataset.id);
     }
   });
-
-  // 捕获阶段拦截，避免冒泡进详情；兼容部分移动端点按
   _root.querySelector('#board-layout').addEventListener(
     'pointerdown',
     (e) => {
@@ -760,7 +443,6 @@ function bind() {
 }
 
 export async function mountBoard(el) {
-  // 每次进入看板：跟当前项目 / hash ?ws=，勿死钉 CCC
   const want = preferredWorkspace();
   if (_root) {
     if (want && want !== _ws) {
@@ -775,18 +457,8 @@ export async function mountBoard(el) {
   if (want) _ws = want;
   el.innerHTML = html();
   bind();
-  initEpicCollapsedDefault();
-  try {
-    const { mountEngineControlInBoard, refreshEngineControl } = await import(
-      '../components/engineControl.js'
-    );
-    const actions = el.querySelector('.board-toolbar-actions');
-    mountEngineControlInBoard(actions);
-    refreshEngineControl().catch(() => {});
-  } catch (_) {}
   await loadConfig();
   await loadBoard();
-  // Phase 3.1: polling 5s → 15s（diff 重绘 + 聚合端点已大幅降负载）
   _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
 }
 
