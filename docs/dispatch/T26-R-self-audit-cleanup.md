@@ -1,7 +1,7 @@
 # 任务卡 T26-R · 桌面端自查清理（老板要求：清理干净不留冗余，由执行体大模型自主深度检查）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 指示「这次要清理就清理干净，不要留什么冗余；提宽泛检查要求，让那边的大模型自己去检查问题」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：1 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 打回次数：1 · 日期：2026-08-03
 > 前置：T26 主体重构已在工作树（未提交）；本卡为**自主自查清理**——不提供逐条清单，由执行体大模型按下列检查维度自行通读、发现问题、自主决策清理范围并完整落地。
 
 ## 目标
@@ -197,3 +197,69 @@ grep 删除类型/stub → 零命中
 6 files changed, 9 insertions(+), 628 deletions(-)
 → git push → main
 ```
+
+---
+
+## 二次回写（2026-08-03 · commit 556cf9b）
+
+> Codex 打回（983f7dd）要求清零 2 个死方法（`sendMessageCancellable(stopAndSend:)` / `sendMessage()`）并做一轮全量 `def≥1 && calls=0` 自查。本次按「定义 vs 引用计数」逐文件通读，共清理 11 文件、净 -518 行（+1/-519），死方法清零。
+
+### 二次发现清单（逐项：文件 / 问题 / 处置）
+
+| 文件 | 问题 | 处置 |
+|------|------|------|
+| AppModel.swift | `sendMessageCancellable(stopAndSend:)` def=1 calls=0（Codex 打回 #1） | 删除 |
+| AppModel.swift | `sendMessage()` async def=1 calls=0（Codex 打回 #2） | 删除 |
+| AppModel.swift | `newThread`/`deleteThread`/`commitRenameThread`/`beginRenameThread`/`ensureWindowFocus`/`loadCustomPrompts`/`addCustomPrompt`/`removeCustomPrompt`/`trackTokenUsage`/`toggleProjectExpanded` 10 个 def≥1 calls=0 死方法 | 删除 |
+| AppModel.swift | `expandedProjectIds`/`perMessageTokens`/`totalSessionCost`/`customPrompts` 4 个只写不读死属性 | 删除 |
+| APIClient.swift | `probeNewServerHealth`/`fetchThreadsNewServer`/`fetchThreadNewServer`/`fetchBoardSummariesNewServer`/`fetchNewServerConversationHistory`/`update` 6 个 def≥1 calls=0 死方法 | 删除 |
+| APIClient.swift | `ThreadsResp`/`ThreadDetail`/`NewServerMessage`/`BoardSummariesResp` 4 个仅被已删方法引用的死类型 | 删除 |
+| ToolProgressRail.swift | `humanLabel`/`isWrite`/`writeTools`/`labels`/`leaf` 5 个 def≥1 calls=0 死 helper | 删除 |
+| LocalSessionStore.swift | `enqueueRepair`/`loadRepairPending`/`markRepairDone` 3 个 def≥1 calls=0 死方法 + `RepairQueueItem` 死结构体 | 删除 |
+| ConversationStore.swift | `hasLocalAuthority` def=1 calls=0 死方法 | 删除 |
+| QuickPrompts.swift | `builtinPrompts`/`loadCustomPrompts`/`saveCustomPrompts`/`customKey` 4 个 def≥1 calls=0 死方法/常量 | 删除 |
+| Models.swift | `QuickPromptItem` 仅被已删 `loadCustomPrompts`/`saveCustomPrompts` 引用的死结构体 | 删除 |
+| NotificationManager.swift | 整文件 76 行均为死代码（无调用方） | 删除文件 |
+| ContentView.swift | `customPrompts` UI 引用（已删属性） | 清理 |
+| OpsView.swift | `copyOpsAlertToPasteboard` 返回值未消费，产生 unused 警告 | 加 `_ =` 抑制 |
+| BoardOpsModels.swift | 4 行死注释 | 顺手清理 |
+
+### 动态调用复核
+
+- `grep -rn "#selector|NotificationCenter|performSelector"` → 上述死方法均无动态调用，可安全删除。
+- 框架协议方法（`makeNSView`/`updateNSView`/`body` 等）作为 false positive 排除，未误删。
+
+### 验证输出
+
+```
+swift build → Build complete! 0 errors, 0 warnings
+swift test  → 31/31 passed, 0 failures (0.034s)
+
+grep 旧符号（17777/sidecar/outbox/hubTunnel/useNewServer/agentURL/
+            newServerURL/opsAgent/agentLLM/TaskArtifacts/FailureRecord/
+            sendMessageCancellable/sendMessage）→ 零命中
+```
+
+**工作树状态（M1）：**
+```
+预存 2 项（与本卡无关，未提交）：
+  - .ccc/agent-mind/decided.json（modified）
+  - _update_handoff.py（untracked）
+```
+
+### 二次提交
+
+```
+556cf9b chore(desktop): T26-R 死方法清零
+11 files changed, 1 insertion(+), 519 deletions(-)
+delete mode 100644 desktop/Sources/CCCDesktop/NotificationManager.swift
+→ git push origin main → 4000756..556cf9b
+```
+
+### 二次验收自检
+
+| # | Codex 打回要求 | 状态 |
+|---|---------------|------|
+| 1 | 删除 `sendMessageCancellable(stopAndSend:)` + `sendMessage()` 2 个死方法（确认无 #selector/NotificationCenter 动态调用） | ✅ 已删，动态调用复核零命中 |
+| 2 | 全量 `def≥1 && calls=0` 自查清零；`swift build` 零警告 + `swift test` 全绿 | ✅ 11 文件 -519 行；0 warnings、31/31 passed |
+| 3 | 真实提交 `chore(desktop): T26-R 死方法清零` + push；工作树仅剩预存 2 项 | ✅ 556cf9b 已 push；工作树仅剩 `.ccc/agent-mind/decided.json` + `_update_handoff.py` |
