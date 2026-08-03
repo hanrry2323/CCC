@@ -125,7 +125,7 @@ $ python -m pytest server/tests/
 
 ### commit hash
 
-（待提交后填入）
+`609b44f` — feat(engine): T32 Engine 真实派发闭环——Popen 拉起 + 收单 + 状态机流转（10 files changed, 786 insertions(+), 77 deletions(-)）
 
 ### 工作树预存项
 
