@@ -1,7 +1,7 @@
 # 任务卡 T30 · HTTP 页面重构（修复登录 bug + 页面功能/UI 按新栈方案重做）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳，HTTP 直连 2017 对话/看板/运维；多壳锁门账号密码+token）· 依据：老板 2026-08-03 指示「HTTP 页面还没重构，看清单页功能、UI 然后出方案；特别是账号密码登录不了」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 
 ## 根因（Codex 已实锤）
 
@@ -73,12 +73,56 @@
 
 ### 结果摘要
 
-（执行后填写）
+T30 HTTP 页面重构完成：登录 bug 根因（token 键不统一 + /health 无鉴权字段）已修复；board/ops/console 三页面全部切新服务端协议；UI 延续桌面端 Claude 风格（暖米色 + 橙红 accent + serif + 气泡 + composer）并恢复深/浅主题切换。提交 `dc57178`（13 文件 +581/-1897），双端部署实测 11 项全过，pytest 209 绿，三扫描零命中。
 
 ### 执行明细
 
-（执行后填写：A–E 各步结果）
+**A. 登录修复（P0）**
+- `agentAuth.js` / `auth.js` / `api.js` 统一 token 键为 `ccc_chat_token`（旧 `ccc_agent_token` 已清理）。
+- `server.py` `/health` 增加 `auth_required: true` + `auth_configured: bool(...)` 字段，供前端登录门判断。
+- `probeAgentSession` 改打 `/board/states`（鉴权端点）验证 token；`/health` 免鉴权无法验 token，旧逻辑导致登录门不触发。
+
+**B. 页面功能新协议化**
+- `boardPage.js`：`/board/snapshot` + `/board/summaries`；移除写操作（移动/创建/隐藏 epic）。
+- `opsPage.js`：`/ops/summary`；移除 risks/workspaces/daily-reviews。
+- `consolePage.js`：`/board/snapshot` + `/ops/summary`；移除旧 failures/events。
+- `components`（engineControl/runtimeStatus/sidebar）：旧 `/api/*` 调用 no-op（新服务端不提供这些端点）。
+- 全页零旧 `/api/*` fetch 调用（grep 验证）。
+
+**C. UI Claude 风格收口**
+- `themes.css`：深色主题 CSS 变量 + 系统偏好 `@media (prefers-color-scheme: dark)`。
+- `theme.js`：三态循环 light → dark → system → light；系统主题变化实时跟随。
+- `theme-init.js`：启动前从 localStorage 读 saved scheme 并应用，避免 FOUC。
+- 延续桌面端 CCCTheme（暖米色 `#f2ede8` + 橙红 `#d97a55` + serif 标题 + 气泡 + composer）。
+
+**D. 测试**
+- `test_http_api.py`：新增 `/health` 新字段用例（`auth_required` / `auth_configured`）+ 免鉴权用例。
+- `pytest` 全绿：209 passed（含新 2 例）。
+- 三扫描零命中：① 旧 `fetch('/api/...')` 调用 0；② 旧 token 键 `ccc_agent_token` 0；③ 新键 `ccc_chat_token` 三处统一（agentAuth.js / api.js / auth.js）。
+
+**E. 双端部署 + 实测**
+- M1 `git push` → 2017 `git pull`（13 文件 +581/-1897）→ 双端 `launchctl kickstart -k gui/501/com.ccc.web-server`。
+- 实测 11 项全过（2017 `192.168.3.116:7788`）：
+  1. `/health` → 200 `{"status":"ok","auth_required":true,"auth_configured":true}` ✓
+  2. 登录 ccc/ccc → token ✓
+  3. `/board/snapshot` → 200（五态：待分派 1/执行中 0/已回写 1/已关闭 33/打回 4）✓
+  4. `/board/states` → 200 ✓
+  5. `/ops/summary` → 200 severity=green（3/3 节点可达）✓
+  6. `/conversation` POST → 200 reply "pong..."（大脑 Agent 活）✓
+  7. 错误密码 → 401 ✓
+  8. 静态页 `/` → 200（登录入口免鉴权）✓
+  9. `agentAuth.js` token 键统一 `ccc_chat_token` ✓
+  10. 旧 `/api/runtime-status` → 401（不作为有效端点服务）✓
+  11. 无 token `/board/snapshot` → 401 ✓
+
+**F. 提交**
+- `dc57178` chore(web): T30 HTTP 页面重构——登录修复 + 功能新协议化 + UI Claude 风格收口（13 文件 +581/-1897）。
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+| # | 验收标准 | 结果 |
+|---|---------|------|
+| 1 | 登录真实可用：直开页面弹登录门 → ccc/ccc → 对话/看板/运维全 200；错误密码 401；token 键统一 | ✅ 实测 11 项全过；token 键 `ccc_chat_token` 三处统一 |
+| 2 | 页面功能全走新协议：对话 /conversation、看板 /board/*、运维 /ops/summary、项目 /board/summaries；零旧 /api/* 调用 | ✅ grep 零旧 fetch('/api/...')；旧组件 no-op |
+| 3 | UI 为桌面端 Claude 风格（暖米色/橙红/serif/气泡/composer/主题切换），四视图视觉一致 | ✅ themes.css + theme.js + theme-init.js 恢复深/浅切换 |
+| 4 | pytest 全绿；三扫描零命中；真实提交；M1 工作树仅剩预存 2 项；卡头状态已同步 | ✅ 209 passed；三扫描 0；commit dc57178；工作树剩 .ccc/agent-mind/decided.json + _update_handoff.py；卡头→已回写 |
