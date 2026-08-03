@@ -136,3 +136,42 @@ f33f65d chore(desktop): T26-R 桌面端自查清理——去冗余/死代码/旧
 | 3 | 无冗余：服务端地址键唯一、无重复 URL 构造、无只写不读状态 | ✅ 通过 |
 | 4 | UI 无旧功能入口；对话/看板/运维/项目/线程可用 | ✅ 通过 |
 | 5 | 真实提交 + push；M1 工作树仅剩预存 2 项；卡头状态已同步 | ✅ 通过（f33f65d） |
+
+---
+
+## 补充清理（2026-08-03 · commit 0849dce）
+
+> f33f65d 后 Models.swift 删除 8 个死类型但未清理引用方，导致构建断裂（T27 验收时登记为连带问题）。本次补充清理修复构建并完成 T26-R 遗留的死 stub/UI 残留。
+
+### 补充发现清单
+
+| 文件 | 问题 | 处置 |
+|------|------|------|
+| Models.swift | ChatStreamEvent/ChatTurnMetrics/InboxProposalsResp/InboxProposal/ManualEpicForm/TaskTemplate/Phase/ProjectStats 8 个死类型（f33f65d 未删，工作树残留） | 删除并提交落盘 |
+| AppModel.swift | inboxProposals/inboxAdoptBusy/manualEpicForm/isManualEpicPresented/templates/isTemplatePickerPresented/projectStats 等死属性（引用已删类型） | 删除 |
+| AppModel.swift | loadTemplates/saveTemplate/deleteTemplate/applyTemplate/refreshProjectStats/mapNewServerCounts/adoptInboxProposal/createManualEpic 等死方法 | 删除 |
+| AppModel.swift | moveBoardTask/hideCompletedEpics/reopenBoardTask/reopenOpsTask/adoptInboxProposal/createManualEpic/runDailyReview/adoptSuggestion 等 toast stub（壳零业务逻辑，不留兼容壳） | 删除 |
+| AppModel.swift | projectConvState/projectTaskState/threadUnread/composerBounce/composerBounceThreadId/projectHasUnread 等死属性 | 删除 |
+| OpsView.swift | inboxProposalsSection（引用 InboxProposal） | 删除 |
+| OpsView.swift | 重开按钮（reopenOpsTask stub）+ 例外动作段（runDailyReview stub）+ 采纳 sheet（adoptSuggestion stub） | 删除 |
+| ContentView.swift | ManualEpicSheet/TemplatePickerSheet + .sheet presenter（引用 ManualEpicForm/TaskTemplate） | 删除 |
+| ContentView.swift | composerBounce onChange（引用已删 composerBounce） | 删除 |
+| BoardView.swift | 隐藏已完成大卡按钮（hideCompletedEpics stub）+ 重开按钮（reopenBoardTask stub）+ BoardDropDelegate/dragTask/onDrag/onDrop（moveBoardTask stub） | 删除 |
+| BoardView.swift | highlight 死常量（恒 false，产生 unused 警告） | 删除 |
+| ProjectCard.swift | projectConvState/projectTaskState/projectHasUnread 引用（已删属性） | 简化为常量 |
+
+### 补充验证
+
+```
+swift build → 零错误零警告（0 errors, 0 warnings）
+swift test  → 31/31 passed, 0 failures
+grep 旧符号 → 零命中（/api/ 仅 MARK 文档注释 2 处）
+grep 删除类型/stub → 零命中
+```
+
+**补充提交：**
+```
+0849dce chore(desktop): T26-R 补充清理——删死类型/stubs/UI残留，修复构建
+6 files changed, 9 insertions(+), 628 deletions(-)
+→ git push → main
+```
