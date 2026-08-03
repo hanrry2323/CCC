@@ -323,12 +323,10 @@ struct CodexSidebar: View {
 
     private var offlineBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Desktop 已连接新服务端")
+            Text("连接失败")
                 .font(.system(size: 13, weight: .medium))
             Text(
-                model.canChat
-                    ? "可继续聊；转任务可确认排队。服务端恢复后后台自动投递（每 4s 探活）。"
-                    : "对话走新服务端协议（非流式 POST /conversation）"
+                "无法连接服务端（2017 :7788）。请确认服务端已启动，然后点「重试」重新连接。"
             )
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
@@ -826,12 +824,13 @@ struct CodexChatPaneBody: View {
     }
 
     /// Agent 短暂未就绪：顶条提示，禁止卸掉已有消息（H1）
+    /// T45：文案改为「连接失败 + 一键重试」（免登录直连 2017 失败时不静默）。
     private var offlineBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.nodeFail)
-            Text("本机 Agent 暂未就绪 · 历史仍在，恢复后可继续发")
+            Text("连接失败 · 无法连接服务端（2017 :7788），历史仍在，点「重试」重连")
                 .font(.system(size: 11.5))
                 .foregroundStyle(CCCTheme.secondary)
                 .lineLimit(2)
@@ -843,7 +842,7 @@ struct CodexChatPaneBody: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(CCCTheme.nodeFail.opacity(0.08))
-        .accessibilityLabel("本机 Agent 未就绪")
+        .accessibilityLabel("连接失败，点击重试")
     }
 
     private var messageArea: some View {
@@ -867,11 +866,11 @@ struct CodexChatPaneBody: View {
                             } else {
                             VStack(alignment: .leading, spacing: 14) {
                                 Spacer().frame(height: 48)
-                                Text("有什么可以帮忙的？")
+                                Text("直接输入你的目标")
                                     .font(CCCTheme.title)
                                     .foregroundStyle(CCCTheme.ink)
                                     .frame(maxWidth: .infinity, alignment: .center)
-                                Text("按主路径推进，不必选角色：")
+                                Text("我会帮你规划、写任务卡、验收和维护看板：")
                                     .font(.system(size: 13))
                                     .foregroundStyle(CCCTheme.faint)
                                     .frame(maxWidth: .infinity, alignment: .center)
@@ -1655,26 +1654,34 @@ struct SettingsView: View {
                 Text("本机工作区")
             }
 
-            // 服务端连接
+            // 服务端连接（T45 免登录：默认无需账号密码；服务端要求登录时保留入口）
             Section {
                 TextField("服务端地址", text: $model.serverURLString)
-                TextField("账号", text: $model.authUser)
-                SecureField("密码", text: $model.authPass)
-                HStack {
-                    if model.serverLoggedIn {
-                        Button("登出") { model.logoutFromServer() }
-                    } else {
-                        Button("登录") { Task { await model.loginToServer() } }
+                if model.authRequired {
+                    TextField("账号", text: $model.authUser)
+                    SecureField("密码", text: $model.authPass)
+                    HStack {
+                        if model.serverLoggedIn {
+                            Button("登出") { model.logoutFromServer() }
+                        } else {
+                            Button("登录") { Task { await model.loginToServer() } }
+                        }
+                        Spacer()
+                        Text(model.serverLoggedIn ? "已登录" : (model.serverLoginError ?? "未登录"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(model.serverLoggedIn ? .green : .secondary)
                     }
-                    Spacer()
-                    Text(model.serverLoggedIn ? "已登录" : (model.serverLoginError ?? "未登录"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(model.serverLoggedIn ? .green : .secondary)
+                } else {
+                    Label("已连接（免登录）", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.green)
                 }
             } header: {
                 Text("服务端连接")
             } footer: {
-                Text("对话走 /conversation（非流式，账号密码换 Bearer token）。")
+                Text(model.authRequired
+                    ? "服务端要求账号密码登录（CCC_WEB_AUTH_REQUIRED=1）。"
+                    : "免登录模式：直连 2017 :7788 即聊；连接失败可点下方「重新连接」。")
             }
 
             Section {

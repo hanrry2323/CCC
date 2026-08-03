@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { getToken, clearToken } from './auth.js';
 import { cancelStream as registryCancelStream } from './streamRegistry.js';
+import { friendlyChatError, humanizeBrainError } from './chatErrors.js';
 
 /** 请求头：从 localStorage 读 ccc_chat_token，返回 Bearer 头。 */
 function _headers(json = true) {
@@ -36,7 +37,7 @@ async function _fetchWithAuth(path, options = {}, json = true) {
 export async function apiGet(path) {
   const resp = await _fetchWithAuth(path, { method: 'GET' }, false);
   if (!resp.ok) {
-    if (resp.status === 401) throw new Error('认证失败 (401)：密码错误，请刷新后重试');
+    if (resp.status === 401) throw new Error('登录状态已失效，请刷新页面重新连接');
     throw new Error('GET ' + path + ' ' + resp.status);
   }
   return resp.json();
@@ -49,8 +50,8 @@ export async function apiPost(path, body) {
   }, true);
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    if (resp.status === 401) throw new Error('认证失败 (401)：密码错误，请刷新后重试');
-    const msg = data.message || data.error || ('POST ' + path + ' ' + resp.status);
+    if (resp.status === 401) throw new Error('登录状态已失效，请刷新页面重新连接');
+    const msg = friendlyChatError(resp.status, data.message || data.error);
     throw new Error(msg);
   }
   return data;
@@ -247,16 +248,16 @@ export async function streamChat(
     );
   } catch (e) {
     if (e && e.name === 'AbortError') settleDone();
-    else settleError('网络错误: ' + e.message);
+    else settleError('网络连接中断，请检查网络后重试');
     return;
   }
   if (resp.status === 401) {
-    settleError('认证失败 (401)：密码错误，请刷新后重试');
+    settleError('登录状态已失效，请刷新页面重新连接');
     return;
   }
   if (!resp.ok || !resp.body) {
     const data = await resp.json().catch(() => ({}));
-    settleError(data.message || data.error || 'POST /conversation ' + resp.status);
+    settleError(friendlyChatError(resp.status, data.message || data.error));
     return;
   }
 
@@ -297,12 +298,12 @@ export async function streamChat(
       onEvent(ev, payload || {});
     } else if (ev === 'done') {
       if (payload && payload.is_error) {
-        settleError((payload && (payload.error || payload.text)) || '生成失败');
+        settleError(humanizeBrainError((payload && (payload.error || payload.text)) || '生成失败'));
       } else {
         settleDone();
       }
     } else if (ev === 'error') {
-      settleError((payload && payload.message) || '生成失败');
+      settleError(humanizeBrainError((payload && payload.message) || '生成失败'));
     }
   }
 
@@ -335,10 +336,11 @@ export async function streamChat(
     }
     feed(decoder.decode().replace(/\r\n/g, '\n'));
     if (buffer.trim()) consumeBlock(buffer);
+    // T45：EOF 且未收到 done/error → 流中断，统一按结束处理（UI 复位，避免假流式）
     settleDone();
   } catch (e) {
     if (e && e.name === 'AbortError') settleDone();
-    else settleError('网络错误: ' + e.message);
+    else settleError('网络连接中断，请检查网络后重试');
   }
 }
 

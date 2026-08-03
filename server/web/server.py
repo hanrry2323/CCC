@@ -38,7 +38,8 @@ API:
       全局历史与全局锁（向后兼容）。body 可带 ``model`` 做档位覆盖（缺省走
       ``CCC_BRAIN_MODEL``）。
 
-鉴权: Bearer token 鉴权，token 通过 POST /session 获取。
+鉴权: 默认免登录（T45，``CCC_WEB_AUTH_REQUIRED=0``，单用户局域网直连即用）；
+      设置 ``CCC_WEB_AUTH_REQUIRED=1`` 恢复账号密码鉴权（Bearer token 经 POST /session 获取）。
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
       长轮询超时默认值: CCC_WEB_LONGPOLL_TIMEOUT（秒，见 server/config/config.example.env）。
 
@@ -101,6 +102,20 @@ _DISPATCH_DIR = _PROJECT_ROOT / "docs" / "dispatch"
 _AUTH_USERNAME = os.environ.get("CCC_WEB_USERNAME", "")
 _AUTH_PASSWORD_HASH = os.environ.get("CCC_WEB_PASSWORD_HASH", "")
 _SERVER_SECRET = os.urandom(32).hex()
+
+
+def _auth_required() -> bool:
+    """免登录开关（T45）：``CCC_WEB_AUTH_REQUIRED=1`` 启用账号密码鉴权，默认 0 免登录。
+
+    单用户局域网默认直连即用；恢复登录只改配置（``CCC_WEB_AUTH_REQUIRED=1``），
+    不物理删除鉴权代码（安全可回退）。运行时读取，测试可覆盖。
+    """
+    return os.environ.get("CCC_WEB_AUTH_REQUIRED", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _get_token_ttl() -> int:
@@ -551,7 +566,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         return True
 
     def _check_auth(self) -> bool:
-        """鉴权中间件。返回 True 通过，False 已发送 401。"""
+        """鉴权中间件。返回 True 通过，False 已发送 401。
+
+        T45 免登录模式（``CCC_WEB_AUTH_REQUIRED=0`` 默认）：全部端点放行（仅局域网）。
+        """
+        if not _auth_required():
+            return True
         path = self.path.rstrip("/").split("?")[0]
         if path in _NO_AUTH_PATHS:
             return True
@@ -817,13 +837,13 @@ class _APIHandler(BaseHTTPRequestHandler):
         if self._send_static(path):
             return
         if path == "/health":
-            # T30：/health 返回鉴权配置，供前端登录门判断
-            # auth_required：受保护端点是否需 Bearer token（始终 true）
+            # T30/T45：/health 返回鉴权配置，供前端登录门判断
+            # auth_required：是否需 Bearer token（CCC_WEB_AUTH_REQUIRED，默认 0 免登录）
             # auth_configured：服务端是否已配置登录凭证（账号 + 密码哈希）
             self._send_json(
                 {
                     "status": "ok",
-                    "auth_required": True,
+                    "auth_required": _auth_required(),
                     "auth_configured": bool(_AUTH_USERNAME and _AUTH_PASSWORD_HASH),
                 }
             )
@@ -903,7 +923,10 @@ def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
     addr = server.server_address
     print(f"[web] HTTP API 启动于 http://{addr[0]}:{addr[1]}", file=sys.stderr)
     print(f"[web] 数据源: {_DISPATCH_DIR}", file=sys.stderr)
-    print("[web] 提示: 本服务 board 接口已启用 Bearer token 鉴权（/health 与 /session 免鉴权）", file=sys.stderr)
+    if _auth_required():
+        print("[web] 提示: 已启用 Bearer token 鉴权（CCC_WEB_AUTH_REQUIRED=1）", file=sys.stderr)
+    else:
+        print("[web] 提示: 免登录模式（CCC_WEB_AUTH_REQUIRED=0，单用户局域网直连即用）", file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

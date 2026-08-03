@@ -387,11 +387,14 @@ final class AppModel: ObservableObject {
         } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             serverURLString = "http://192.168.3.116:7788"
         }
+        // T45：首启即连——无条件把 client 指向服务端（不再依赖登录先配地址）
+        if let url = APIClient.makeBaseURL(from: serverURLString) {
+            await client.configureNewServer(url: url)
+        }
         if projects.isEmpty {
             hydrateFromDiskSync()
         }
-        // T40：自动登录（读 AppStorage 凭据 ccc/ccc → loginToServer）
-        // 401 → 凭据失效提示；连接失败 → 「服务端不可达（2017 :7788）」
+        // T45 免登录：服务端 auth_required=false → 无需账号密码；配置了凭据仍尝试登录（兼容恢复登录）
         if !authUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            !authPass.isEmpty {
             await loginToServer(silent: true)
@@ -437,6 +440,19 @@ final class AppModel: ObservableObject {
             connected = !projects.isEmpty
             lastError = nil
             statusText = "已连接"
+            // T45 免登录：服务端 auth_required=false → 直连即聊（无需账号密码）
+            if let url = APIClient.makeBaseURL(from: serverURLString) {
+                await client.configureNewServer(url: url)
+            }
+            do {
+                authRequired = try await client.fetchServerAuthStatus()
+            } catch {
+                authRequired = true
+            }
+            if !authRequired {
+                serverLoggedIn = true
+                serverLoginError = nil
+            }
         } catch {
             lastError = error.localizedDescription
             if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
@@ -712,6 +728,8 @@ final class AppModel: ObservableObject {
 
     @Published var serverLoggedIn: Bool = false
     @Published var serverLoginError: String?
+    /// T45：服务端是否要求账号密码登录（/health auth_required；false=免登录直连）
+    @Published var authRequired: Bool = true
 
     // MARK: - Chat
     func sendUserMessage(_ text: String, projectId: String? = nil, threadId: String? = nil,

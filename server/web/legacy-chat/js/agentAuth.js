@@ -16,6 +16,8 @@
 const AGENT_TOKEN_KEY = 'ccc_chat_token';
 
 let _authResolvers = [];
+// T45：免登录模式标记（/health auth_required=false 时置 true；仅影响 chip 文案）
+let _noAuthMode = false;
 
 function _resolvePending() {
   const pending = _authResolvers;
@@ -131,6 +133,14 @@ function hideLogin() {
 /** 对话壳登录态：nav 角色 chip + 登出按钮。 */
 export function applyAgentRoleUI() {
   if (typeof document === 'undefined') return;
+  // T45：免登录模式（CCC_WEB_AUTH_REQUIRED=0）→ 显示「已连接」，不显示登录/登出
+  if (_noAuthMode) {
+    const chip = document.getElementById('auth-role');
+    if (chip) chip.textContent = '已连接';
+    const logoutBtn = document.getElementById('auth-logout');
+    if (logoutBtn) logoutBtn.style.display = 'none';
+    return;
+  }
   const logged = hasAgentToken();
   const chip = document.getElementById('auth-role');
   if (chip) chip.textContent = logged ? '已登录' : '未登录';
@@ -230,6 +240,8 @@ export async function ensureAgentAuthenticated() {
   }
   if (!health || !health.auth_required) {
     // 未开鉴权 / 拉不到：不挡启动，连接层负责断连提示
+    // T45：免登录模式 → chip 显示「已连接」；拉不到 /health 保守按鉴权未开放行
+    _noAuthMode = true;
     applyAgentRoleUI();
     return true;
   }

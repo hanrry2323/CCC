@@ -414,3 +414,72 @@ final class StreamConversationTests: XCTestCase {
         ]))
     }
 }
+
+// MARK: - T45 免登录（auth_required=false 直连即聊，无 token 也能流式）
+
+final class NoAuthModeTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.handler = nil
+        MockURLProtocol.requestLog = []
+        MockURLProtocol.chunkSizes = []
+        MockURLProtocol.hangAfterBytes = -1
+    }
+
+    private func healthHandler(_ body: String) -> (URLRequest) throws -> (Int, Data, [String: String]) {
+        { req in
+            let path = req.url?.path ?? ""
+            if path.contains("health") {
+                return (200, Data(body.utf8), ["Content-Type": "application/json"])
+            }
+            return (404, Data(), ["Content-Type": "application/json"])
+        }
+    }
+
+    func testFetchAuthStatusFalseWhenNoAuthRequired() async throws {
+        MockURLProtocol.handler = healthHandler(#"{"status":"ok","auth_required":false}"#)
+        let client = makeClient()
+        await client.configureNewServer(url: URL(string: "http://localhost:7788/"))
+        let required = try await client.fetchServerAuthStatus()
+        XCTAssertFalse(required, "auth_required=false → 免登录")
+    }
+
+    func testFetchAuthStatusTrueWhenAuthRequired() async throws {
+        MockURLProtocol.handler = healthHandler(#"{"status":"ok","auth_required":true}"#)
+        let client = makeClient()
+        await client.configureNewServer(url: URL(string: "http://localhost:7788/"))
+        let required = try await client.fetchServerAuthStatus()
+        XCTAssertTrue(required, "auth_required=true → 需登录")
+    }
+
+    func testStreamConversationWithoutLoginNoAuthHeader() async throws {
+        // T45：免登录模式下不调用 loginToNewServer 也能流式；请求不带 Authorization
+        MockURLProtocol.handler = defaultHandler {
+            (200, Data(self.fullSSE.utf8))
+        }
+        let client = makeClient()
+        await client.configureNewServer(url: URL(string: "http://localhost:7788/"))
+        let events = try await collectEvents(client)
+        XCTAssertEqual(events.count, 3)
+        XCTAssertEqual(events.last, .done(isError: false, text: "免登录回复", error: ""))
+        guard let req = MockURLProtocol.requestLog.last(where: { $0.url?.path.contains("conversation") == true }) else {
+            return XCTFail("无 /conversation 请求")
+        }
+        XCTAssertNil(req.value(forHTTPHeaderField: "Authorization"), "免登录请求不应带 Bearer")
+    }
+
+    private var fullSSE: String {
+        sse("meta", #"{"model":"flash","tools":[],"mcp_servers":[],"skills":[]}"#)
+            + sse("text", #"{"text":"免登录回复"}"#)
+            + sse("done", #"{"is_error":false,"text":"免登录回复","error":""}"#)
+    }
+
+    private func collectEvents(_ client: APIClient) async throws -> [BrainStreamEvent] {
+        var events: [BrainStreamEvent] = []
+        for try await e in await client.streamConversation(message: "hi") {
+            events.append(e)
+        }
+        return events
+    }
+}

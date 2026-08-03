@@ -1,31 +1,6 @@
 import { state } from '../state.js';
-import { createBoardTask, loadProjects } from '../api.js';
+import { loadProjects } from '../api.js';
 import { escapeHtml } from '../utils.js';
-
-function nowIso() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const offset = -d.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const oh = pad(Math.floor(Math.abs(offset) / 60));
-  const om = pad(Math.abs(offset) % 60);
-  return (
-    d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
-    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) +
-    sign + oh + ':' + om
-  );
-}
-
-function slugify(title) {
-  const base = String(title || 'task')
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40) || 'task';
-  // Board Protocol: id must be [a-zA-Z0-9_-] — strip CJK for id
-  const ascii = base.replace(/[^a-z0-9_-]+/g, '').replace(/^-+|-+$/g, '') || 'task';
-  return ascii + '-' + Date.now().toString(36).slice(-4);
-}
 
 function projectToWorkspace(projectId) {
   const map = state.get('projectWorkspaceMap') || {};
@@ -86,7 +61,7 @@ export async function openTaskDialog(prefill = {}) {
         '<button class="settings-close" id="task-close">×</button>' +
       '</div>' +
       '<div class="settings-body">' +
-        '<p class="task-help">写入看板 <code>backlog</code> 并<strong>立即唤醒 Engine</strong>（自动 enabled）。流程：拆分→开发→pytest→验收→发布。CCC 编排仓不可下达。</p>' +
+        '<p class="task-help">任务会交给<strong>大脑 Agent 写成任务卡</strong>（docs/dispatch/），看板自动刷新出现；Engine 随后派发执行。CCC 编排仓不可下达。</p>' +
         '<div class="settings-group">' +
           '<div class="settings-row"><span class="settings-label">项目</span>' +
             '<select class="settings-select" id="task-project">' + projectOpts + '</select></div>' +
@@ -96,16 +71,10 @@ export async function openTaskDialog(prefill = {}) {
           '<div class="settings-row settings-row-col"><span class="settings-label">描述</span>' +
             '<textarea class="settings-textarea" id="task-desc" rows="6" maxlength="10000" placeholder="背景、验收意图、参考命令…">' +
               escapeHtml(defaultDesc) + '</textarea></div>' +
-          '<div class="settings-row"><span class="settings-label">复杂度</span>' +
-            '<select class="settings-select" id="task-complexity">' +
-              '<option value="small">small</option>' +
-              '<option value="medium" selected>medium</option>' +
-              '<option value="large">large</option>' +
-            '</select></div>' +
         '</div>' +
         '<div class="task-actions">' +
           '<button type="button" class="btn-secondary" id="task-cancel">取消</button>' +
-          '<button type="button" class="btn-primary" id="task-submit">下达并开工</button>' +
+          '<button type="button" class="btn-primary" id="task-submit">下达（大脑写卡）</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -119,7 +88,6 @@ export async function openTaskDialog(prefill = {}) {
   async function submit() {
     const title = document.getElementById('task-title')?.value.trim();
     const description = document.getElementById('task-desc')?.value.trim() || '';
-    const complexity = document.getElementById('task-complexity')?.value || 'medium';
     const projectId = document.getElementById('task-project')?.value || state.get('currentProject');
     if (!title) {
       window.showToast?.('请填写标题', 'error');
@@ -133,45 +101,29 @@ export async function openTaskDialog(prefill = {}) {
       );
       return;
     }
-    const ts = nowIso();
-    const id = slugify(title);
     const workspace = projectToWorkspace(projectId);
     const btn = document.getElementById('task-submit');
     if (btn) btn.disabled = true;
+    // T45：HTTP 壳写操作闭环——任务交给大脑 Agent 写成任务卡（docs/dispatch/），
+    // 看板自动刷新出现；不再调禁用的创建 API。
+    const prompt =
+      '请帮我写一张任务卡并投递到 docs/dispatch/（按 references/board-task-schema.md ' +
+      '契约格式；标题与编号先读现有卡避免撞号，状态：待分派）：\n' +
+      '【标题】' + title + '\n' +
+      '【关联项目】' + workspace + '\n' +
+      '【目标】\n' + (description || '（请补全为可执行的目标、范围与验收标准）');
+    close();
     try {
-      const res = await createBoardTask({
-        id,
-        title,
-        description,
-        status: 'backlog',
-        created_at: ts,
-        updated_at: ts,
-        schema_version: '1.2',
-        complexity,
-        tags: ['from-chat'],
-        workspace,
-        ...(prefill.plan_md ? { plan_md: prefill.plan_md } : {}),
-        ...(prefill.phases_jsonl ? { phases_jsonl: prefill.phases_jsonl } : {}),
-      });
-      const tid = res.task_id || id;
-      const skip = res.skip_product ? '（已预置 plan，跳过 product）' : '';
-      const wake = res.engine_wake;
-      const wakeHint = wake && wake.ok !== false
-        ? ' · Engine 已唤醒'
-        : (wake && wake.error ? ' · Engine 唤醒失败' : ' · Engine 已唤醒');
-      window.showToast?.('已下达 ' + tid + skip + wakeHint, 'success');
-      document.dispatchEvent(
-        new CustomEvent('ccc-task-dispatched', { detail: { id: tid, workspace } })
-      );
-      close();
-      import('./boardPanel.js').then(m => {
-        m.openBoardPanel?.();
-        m.trackDispatchedTask?.(tid, workspace);
-        m.refreshBoardPanel?.();
-      });
+      const { isCurrentTabStreaming } = await import('../streamRegistry.js');
+      if (isCurrentTabStreaming()) {
+        window.showToast?.('当前对话仍在生成，请等待完成后再下达', 'error');
+        return;
+      }
+      const { sendMessage } = await import('./message.js');
+      sendMessage(prompt);
+      window.showToast?.('任务已交给大脑写卡，完成后自动出现在看板', 'success');
     } catch (err) {
-      window.showToast?.(err.message || '创建失败', 'error');
-      if (btn) btn.disabled = false;
+      window.showToast?.(err.message || '下达失败', 'error');
     }
   }
 

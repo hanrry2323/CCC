@@ -62,7 +62,7 @@ cd CCC
 # - com.ccc.engine           → server/engine/main.py
 # - com.ccc.board-scheduler  → server/board/scheduler.py
 
-# 任意设备壳直连（账密 ccc/ccc → 换 token）
+# 任意设备壳直连（默认免登录即用；服务端可配置恢复账号密码登录）
 curl -s http://192.168.3.116:7788/health
 ```
 

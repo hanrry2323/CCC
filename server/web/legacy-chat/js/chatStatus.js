@@ -43,9 +43,9 @@ export function healthWarnText(cls) {
   return '';
 }
 
-/** 断连横幅文案。 */
+/** 断连横幅文案（T45：点击重试）。 */
 export function connBannerText() {
-  return '连接中断，正在重连…';
+  return '连接中断，点击重试';
 }
 
 /** 首包等待提示：超时（elapsed >= timeout）且无首包 → 文案；否则 ''。 */
@@ -77,11 +77,16 @@ function _ensureEls() {
     const host = document.getElementById('view-chat') || document.getElementById('app');
     if (!host) return null;
     if (!_connEl) {
-      _connEl = document.createElement('div');
+      // T45：断连横幅做成可点击（点击立即重试连接）
+      _connEl = document.createElement('button');
       _connEl.id = CONN_BANNER_ID;
       _connEl.className = 'chat-conn-banner';
+      _connEl.type = 'button';
       _connEl.setAttribute('role', 'status');
       _connEl.hidden = true;
+      _connEl.addEventListener('click', () => {
+        retryConnection();
+      });
       host.insertBefore(_connEl, host.firstChild);
     }
     if (!_warnEl) {
@@ -121,6 +126,27 @@ export function reportConnectionFailure() {
 export function reportConnectionRecovery() {
   _connStatus = nextConnStatus(_connStatus, 'recovery');
   setConnBanner(false);
+}
+
+/** T45：断连横幅点击 → 立即重试连接。可达 → 恢复；仍不可达 → 保留横幅 + 提示。 */
+export async function retryConnection() {
+  let ok = false;
+  try {
+    const r = await fetch(agentUrl('/health'));
+    if (r.ok) {
+      const payload = await r.json().catch(() => null);
+      updateHealthFromPing({ fetchFailed: false, payload });
+      ok = true;
+    } else {
+      updateHealthFromPing({ fetchFailed: true, payload: null });
+    }
+  } catch (_) {
+    updateHealthFromPing({ fetchFailed: true, payload: null });
+  }
+  if (!ok && typeof window !== 'undefined' && window.showToast) {
+    window.showToast('仍无法连接，请检查 2017 服务端是否运行', 'error');
+  }
+  return ok;
 }
 
 /** 健康轮询结果 → 横幅 + 模型警告联动；返回判定分类。 */

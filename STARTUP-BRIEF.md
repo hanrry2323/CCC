@@ -26,7 +26,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 | | |
 |--|--|
-| **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（账号密码 + token） |
+| **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（**默认免登录**，`CCC_WEB_AUTH_REQUIRED=1` 可恢复账号密码） |
 | **大脑 Agent `:6100`** | /conversation 调 2017 Claude Code CLI（Anthropic 出口，带心智/工具/知识库） |
 | **Relay flash `:6102`** | 模型出口上游路由（中转站，OpenCode 写码槽走此） |
 | **3 个 launchd 服务** | `com.ccc.web-server` + `com.ccc.engine` + `com.ccc.board-scheduler`（2017 常驻） |
@@ -37,7 +37,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 ```text
 任意设备壳（Desktop / 网页 / 手机）
-  → HTTP 直连 2017:7788（账号密码 ccc/ccc → 换 token）
+  → HTTP 直连 2017:7788（默认免登录，直连即聊）
   → /conversation 聊意图（大脑 Agent 带心智/工具/知识库）
   → 写任务卡到 docs/dispatch/T<n>-*.md
   → Engine 派发执行体（可后台 CLI 自动拉起 / 手动 GUI 挂起等人）

@@ -621,13 +621,19 @@ export async function sendMessage(text, attachments = [], opts = {}) {
             name: data.name,
             input: data.input,
           });
+          // T45：记录 tool_use_id，tool_result 按 id 精确配对（多步工具不串）
+          if (step) step.dataset.toolUseId = (data && data.id) || '';
           toolSteps.push(step);
           smartScroll(paintContainer(ownerTabId));
         }
       } else if (type === 'tool_result') {
-        if (toolSteps.length) {
-          completeProgressStep(toolSteps[toolSteps.length - 1], true);
+        const targetId = data && data.tool_use_id;
+        let step = null;
+        if (targetId) {
+          step = toolSteps.find((s) => s && s.dataset && s.dataset.toolUseId === targetId);
         }
+        if (!step) step = toolSteps[toolSteps.length - 1];
+        completeProgressStep(step, true);
       } else if (type === 'cost') {
         costInfo = data;
       }
@@ -647,7 +653,6 @@ export async function sendMessage(text, attachments = [], opts = {}) {
           const s = thinkingEl.querySelector('.thinking-summary');
           if (s) s.textContent = '思考';
         }
-        if (cursorEl) cursorEl.remove();
         if (progressRail) finishProgressRail(progressRail, { hide: true });
         if (costInfo && msgDiv) {
           const costEl = document.createElement('div');
@@ -684,6 +689,9 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentMessages', finalMsgs);
       }
+      // T45：done 路径统一清残留光标（ensureAssistantShell 之后执行，
+      // 避免新建 msgDiv 又留 cursor；同时覆盖后台 tab 容器）
+      removeStreamingCursors(ownerTabId);
       endStream(ownerTabId);
       syncStreamingFlagForActiveTab();
       setStreamingIndicator();
@@ -700,6 +708,8 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         clearTimeout(waitTimer);
         waitTimer = null;
       }
+      // T45：error 路径统一清残留光标（含切 tab 后归来的容器）
+      removeStreamingCursors(ownerTabId);
       if (canPaint(ownerTabId, ownerProject)) {
         removeTyping(ownerTabId);
         // C2: 清掉残留 partial 气泡（含闪烁光标），DOM 与 state 一致
@@ -815,8 +825,8 @@ export function createEmptyState() {
   el.className = 'empty-state';
   el.innerHTML =
     '<div class="empty-brand">CCC</div>' +
-    '<div class="empty-state-title">今天想做什么？</div>' +
-    '<div class="empty-state-hint">聊方案 → 定稿 → 转任务。点下方快捷动作开始。</div>';
+    '<div class="empty-state-title">直接输入你的目标</div>' +
+    '<div class="empty-state-hint">我会帮你规划、写任务卡、验收和维护看板。无需登录，直连即聊。</div>';
   return el;
 }
 

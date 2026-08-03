@@ -403,6 +403,42 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* T45：会话行操作（重命名/清空，悬停显示） */
+.sidebar-thread-actions {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
+  gap: 2px;
+}
+.sidebar-thread-row:hover .sidebar-thread-actions,
+.sidebar-thread-row:focus-within .sidebar-thread-actions {
+  display: inline-flex;
+}
+.sidebar-thread-act {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--ccc-text-faint);
+  cursor: pointer;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-family: inherit;
+}
+.sidebar-thread-act:hover {
+  background: var(--ccc-bg-hover);
+  color: var(--ccc-text-base);
+}
+.sidebar-thread-rename {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--ccc-text-base);
+  background: var(--ccc-bg-surface, #fff);
+  border: 1px solid var(--ccc-text-accent, #c96442);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
 .sidebar-thread-empty {
   font-size: 11px;
   color: var(--ccc-text-faint);
@@ -2975,12 +3011,21 @@
 
 /* ── chat 感知层（窗口 1 任务 I）：断连横幅 + 模型档位警告 ──────────── */
 .chat-conn-banner {
-  background: var(--ccc-bg-layer);
+  /* T45：断连横幅做成可点击按钮（重置 button 默认样式） */
+  display: block;
+  width: 100%;
+  border: none;
   border-bottom: 1px solid var(--ccc-danger);
+  background: var(--ccc-bg-layer);
   color: var(--ccc-danger);
   padding: 6px var(--ccc-space-lg);
   font-size: var(--ccc-font-size-sm, 13px);
+  font-family: inherit;
   text-align: center;
+  cursor: pointer;
+}
+.chat-conn-banner:hover {
+  background: var(--ccc-bg-hover);
 }
 .chat-conn-banner[hidden] {
   display: none;

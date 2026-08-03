@@ -1,6 +1,11 @@
 # CCC 部署拓扑 — Server / Client
 
-> SSOT：服务端与客户端职责。更新日期：2026-08-01（Relay 清理：单 ai-loop-router 实例）。  
+> **⚠ 更新（T45，2026-08-04）**：本文件主体描述 **2026-08-02 重构定稿前** 的旧双机架构
+> （M1 sidecar `:7788` 对话口 / Hub `:7777` 编排）。**现行权威**：`docs/INDEX.md` §0 ——
+> **2017 单端 `:7788` 唯一入口**（对话/看板/运维/线路图），M1 7788 实例已退役停用
+> （launchd `com.ccc.web-server` 仅 2017 部署）。下方旧口径仅作历史参考，勿据此再起 M1 7788 实例。
+
+> SSOT：服务端与客户端职责。更新日期：2026-08-04（T45 统一 2017:7788 唯一入口）。  
 > 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md) · [`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md) · [`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)
 
 ---
@@ -68,7 +73,7 @@ Mac2017 **不再运行 relay 实例**。所有模型请求通过 `http://192.168
 
 M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）  
 2017 本机 Hub：`http://127.0.0.1:7777`  
-对话口：`http://192.168.3.140:7788`（M1；勿把对话 SPA 挂到 2017）
+对话口：**`http://192.168.3.116:7788`**（2017 单端唯一入口；T45：M1 7788 已退役，勿再起）
 
 ---
 

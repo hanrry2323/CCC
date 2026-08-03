@@ -135,6 +135,20 @@ actor APIClient {
     /// 是否启用了新服务端
     var hasNewServer: Bool { newServerBaseURL != nil }
 
+    /// 新服务端鉴权状态：GET /health → auth_required（T45 免登录探测）。
+    /// 返回 true = 需账号密码登录；false = 免登录（直连即聊）。
+    func fetchServerAuthStatus() async throws -> Bool {
+        let req = try newServerAuthedRequest(path: "health", method: "GET")
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            throw APIError.http(code, "health failed")
+        }
+        struct Health: Decodable { let auth_required: Bool? }
+        let health = try? JSONDecoder().decode(Health.self, from: data)
+        return health?.auth_required ?? true
+    }
+
     /// 登录新服务端：POST /session → 换取 Bearer token
     func loginToNewServer(username: String, password: String) async throws -> String {
         guard let base = newServerBaseURL else {

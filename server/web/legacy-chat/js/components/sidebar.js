@@ -100,18 +100,22 @@ export function renderAppSidebar(projects) {
                 ? '对话'
                 : String(sid).split('::').pop()?.slice(0, 12) || '会话';
           html +=
-            '<button type="button" class="sidebar-thread-row' +
+            '<div class="sidebar-thread-row' +
             (on ? ' selected' : '') +
-            '" data-act="thread" data-tab-id="' +
+            '" data-tab-id="' +
             escapeHtml(t.id) +
             '" data-sid="' +
             escapeHtml(sid) +
-            '">' +
+            '" title="单击打开 · 双击重命名">' +
             '<span class="sidebar-thread-icon" aria-hidden="true">○</span>' +
             '<span class="sidebar-thread-title">' +
             escapeHtml(title) +
             '</span>' +
-            '</button>';
+            '<span class="sidebar-thread-actions">' +
+            '<button type="button" class="sidebar-thread-act" data-act2="rename" title="重命名">✎</button>' +
+            '<button type="button" class="sidebar-thread-act" data-act2="clear" title="清空本会话">⌫</button>' +
+            '</span>' +
+            '</div>';
         }
       }
       html += '</div>';
@@ -131,9 +135,27 @@ export function renderAppSidebar(projects) {
         openProject(pid);
       } else if (act === 'new') {
         createThreadForProject(pid);
-      } else if (act === 'thread') {
-        openThreadTab(el.dataset.tabId, pid);
       }
+    });
+  });
+
+  // T45：会话行——单击打开、双击重命名、悬停操作（重命名/清空本会话）
+  host.querySelectorAll('.sidebar-thread-row').forEach((row) => {
+    const pid = row.closest('.project-card-wrap')?.dataset?.projectId;
+    const tabId = row.dataset.tabId;
+    row.addEventListener('click', (e) => {
+      const act = e.target.closest('.sidebar-thread-act');
+      if (act) {
+        e.stopPropagation();
+        if (act.dataset.act2 === 'rename') renameThreadRow(row, tabId, pid);
+        else if (act.dataset.act2 === 'clear') clearThread(tabId, pid);
+        return;
+      }
+      openThreadTab(tabId, pid);
+    });
+    row.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.sidebar-thread-act')) return;
+      renameThreadRow(row, tabId, pid);
     });
   });
 
@@ -202,6 +224,66 @@ function openThreadTab(tabId, pid) {
   document.dispatchEvent(new CustomEvent('switch-tab', { detail: { id: tabId } }));
   refreshSidebar();
   closeMobileSidebar();
+}
+
+/** T45：会话重命名（本地）。双击会话行或点 ✎ → 行内输入，回车/失焦保存。 */
+function renameThreadRow(row, tabId, pid) {
+  if (!row || !tabId) return;
+  const tabs = state.get('tabs') || [];
+  const tab = tabs.find((t) => t.id === tabId);
+  const titleEl = row.querySelector('.sidebar-thread-title');
+  if (!titleEl) return;
+  const orig = (tab && tab.title) || '对话';
+  const input = document.createElement('input');
+  input.className = 'sidebar-thread-rename';
+  input.value = orig;
+  input.maxLength = 40;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const val = input.value.trim();
+    if (tab && val && val !== tab.title) {
+      tab.title = val;
+      state.set('tabs', tabs);
+      import('./titlebar.js').then((m) => m.renderTabs(tabs, state.get('activeTabId')));
+    }
+    refreshSidebar();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    } else if (e.key === 'Escape') {
+      done = true;
+      refreshSidebar();
+    }
+  });
+}
+
+/** T45：清空本会话（本地，仅清该 tab 消息，不删其他会话/看板）。 */
+function clearThread(tabId, pid) {
+  if (!tabId) return;
+  if (!confirm('清空本会话？本机会话记录会被清空，无法撤销。看板与编排任务不受影响。')) return;
+  const tabs = state.get('tabs') || [];
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  tab.messages = [];
+  state.set('tabs', tabs);
+  if (state.get('activeTabId') === tabId) {
+    state.set('currentMessages', []);
+    const container = document.getElementById('messages');
+    if (container) {
+      container.innerHTML = '';
+      import('./message.js').then((m) => container.appendChild(m.createEmptyState()));
+    }
+  }
+  refreshSidebar();
+  showToast('本会话已清空', 'success');
 }
 
 function closeMobileSidebar() {

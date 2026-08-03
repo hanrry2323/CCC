@@ -286,6 +286,10 @@ async function toggleCardDetail(card, taskId) {
 function renderDetail(t) {
   const phases = Array.isArray(t.phases) ? t.phases : [];
   const events = Array.isArray(t.events) ? t.events : [];
+  // T45：状态流转说明（契约 §2 五态），让卡片点击不只展示静态详情
+  const flowHtml =
+    '<div class="board-detail-section"><div class="board-detail-h">状态流转</div>' +
+    '<div class="board-detail-flow">待分派 → 执行中 → 已回写 → 已关闭；打回 → 待分派（附问题清单）</div></div>';
   const phasesHtml = phases.length
     ? '<div class="board-detail-section"><div class="board-detail-h">阶段</div>' +
       phases.map(p =>
@@ -309,6 +313,7 @@ function renderDetail(t) {
   const note = t.note ? '<div class="board-detail-note">' + escapeHtml(t.note) + '</div>' : '';
   const acceptance = t.acceptance ? '<div class="board-detail-section"><div class="board-detail-h">验收</div><div class="board-detail-acc">' + escapeHtml(t.acceptance) + '</div></div>' : '';
   return (
+    flowHtml +
     note +
     acceptance +
     phasesHtml +

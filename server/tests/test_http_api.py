@@ -3,6 +3,7 @@
 覆盖：
 - 鉴权三态（成功/失败/过期）
 - 未鉴权请求 401
+- T45 免登录模式（CCC_WEB_AUTH_REQUIRED=0 → 全部端点免鉴权；改配置即恢复登录）
 - 对话往返（回声占位）
 - 5 个 board 接口各自 200 + 数据形状断言
 - /health 返回正确结构
@@ -24,6 +25,8 @@ os.environ.setdefault("CCC_WEB_USERNAME", TEST_USER)
 os.environ.setdefault("CCC_WEB_PASSWORD_HASH", TEST_PASS_HASH)
 # 默认 TTL 足够长，所有常规测试在过期前完成
 os.environ.setdefault("CCC_WEB_TOKEN_TTL", "3600")
+# T45 免登录开关：既有用例覆盖鉴权行为 → 显式开启（CCC_WEB_AUTH_REQUIRED=1）
+os.environ.setdefault("CCC_WEB_AUTH_REQUIRED", "1")
 
 import json
 import socket
@@ -846,7 +849,7 @@ class TestHealth:
         status, data = _get(api_server, "/health")
         assert status == 200
         assert data["status"] == "ok"
-        # T30 新增字段：受保护端点需 Bearer token、服务端是否已配凭证
+        # 测试环境显式开启鉴权（CCC_WEB_AUTH_REQUIRED=1）→ auth_required=True
         assert data["auth_required"] is True
         assert data["auth_configured"] is True  # 测试环境已配 CCC_WEB_USERNAME/PASSWORD_HASH
 
@@ -856,6 +859,94 @@ class TestHealth:
         assert status == 200
         assert "auth_required" in data
         assert "auth_configured" in data
+
+    def test_health_auth_required_false_when_disabled(self, api_server, monkeypatch):
+        """T45：CCC_WEB_AUTH_REQUIRED=0 → /health 返回 auth_required:false（免登录）。"""
+        monkeypatch.setenv("CCC_WEB_AUTH_REQUIRED", "0")
+        status, data = _get(api_server, "/health")
+        assert status == 200
+        assert data["auth_required"] is False
+
+    def test_health_auth_required_true_when_enabled(self, api_server, monkeypatch):
+        """T45：CCC_WEB_AUTH_REQUIRED=1 → /health 返回 auth_required:true（恢复登录）。"""
+        monkeypatch.setenv("CCC_WEB_AUTH_REQUIRED", "1")
+        status, data = _get(api_server, "/health")
+        assert status == 200
+        assert data["auth_required"] is True
+
+
+# ── T45 免登录模式（CCC_WEB_AUTH_REQUIRED=0，默认） ──
+
+
+class TestNoAuthMode:
+    """T45：免登录开关开启时全部端点免鉴权（单用户局域网直连即用）。"""
+
+    @pytest.fixture(autouse=True)
+    def _disable_auth(self, monkeypatch):
+        """本类用例统一走免登录模式；结束后恢复。"""
+        monkeypatch.setenv("CCC_WEB_AUTH_REQUIRED", "0")
+        from server.web import server as srv_mod
+
+        srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
+        _clear_brain_env()
+        yield
+        srv_mod._conversations.clear()
+        srv_mod._thread_conversations.clear()
+        _clear_brain_env()
+
+    def test_board_endpoints_no_token(self, api_server):
+        """免登录：/board/* 无 token 直接 200（不再 401）。"""
+        for path in ("/board/states", "/board/realtime", "/board/recent", "/board/by_project"):
+            status, data = _get(api_server, path)
+            assert status == 200, f"{path} 免登录应 200，got {status}"
+            assert isinstance(data, (dict, list))
+
+    def test_board_snapshot_no_token(self, api_server):
+        """免登录：/board/snapshot 无 token 200。"""
+        status, data = _get(api_server, "/board/snapshot")
+        assert status == 200
+        assert "columns" in data
+        assert "counts" in data
+
+    def test_conversation_get_no_token(self, api_server):
+        """免登录：GET /conversation 无 token 200（历史可读）。"""
+        status, data = _get(api_server, "/conversation")
+        assert status == 200
+        assert "messages" in data
+        assert "seq" in data
+
+    def test_ops_summary_no_token(self, api_server, monkeypatch):
+        """免登录：/ops/summary 无 token 200。"""
+        monkeypatch.delenv("CLUSTER_TARGETS", raising=False)
+        status, data = _get(api_server, "/ops/summary")
+        assert status == 200
+        assert "severity" in data
+
+    def test_conversation_post_no_token_not_configured(self, api_server):
+        """免登录：POST /conversation 无 token 可触达大脑（未配置 → 503，而非 401）。"""
+        _clear_brain_env()
+        status, data = _post(api_server, "/conversation", {"message": "hi"})
+        assert status == 503  # 未配置大脑（不是鉴权 401）
+        assert "not configured" in data["error"]
+
+    def test_conversation_post_no_token_success(self, api_server, monkeypatch):
+        """免登录：POST /conversation 无 token 成功走通（不再要求 Bearer）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "no-auth-reply", None),
+        )
+        status, data = _post(api_server, "/conversation", {"message": "hi"})
+        assert status == 200
+        assert data["reply"] == "no-auth-reply"
+
+    def test_restore_auth_by_config_only(self, api_server, monkeypatch):
+        """T45：改配置即恢复登录——CCC_WEB_AUTH_REQUIRED=1 后同端点重新要求 401。"""
+        monkeypatch.setenv("CCC_WEB_AUTH_REQUIRED", "1")
+        status, data = _get(api_server, "/board/states")
+        assert status == 401
+        assert "error" in data
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面） ──
