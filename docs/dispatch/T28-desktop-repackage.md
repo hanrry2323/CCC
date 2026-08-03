@@ -1,7 +1,7 @@
 # 任务卡 T28 · 桌面端重构后重新打包安装 + 可用性验证（OpenCode · M1 本机执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 询问「新版本有没有编译，桌面端能用吗」；Codex 核实结论：**源码已重构编译通过，但 /Applications/CCCDesktop.app 仍是 8-3 02:01 旧包（T24 代码），未重新打包安装**· 管理席：Codex
-> 执行体：OpenCode（M1 本机）· 验收：Codex · 状态：已回写 · 打回次数：1 · 日期：2026-08-03
+> 执行体：OpenCode（M1 本机）· 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
 
@@ -100,3 +100,21 @@
 - `git checkout -- CLAUDE.md docs/archive/legacy-retired-2026-08-02/scripts/.ccc/agent-mind/decided.json` 已执行，2 项越界改动已恢复。
 - 现 `git status`：`M .ccc/agent-mind/decided.json`（预存）、`?? _update_handoff.py`（预存）、`?? command-post/`（预存未跟踪），**无 T28 引入改动**。
 - 本卡回写提交：`docs(dispatch): T28 回写` → push。
+
+---
+
+## 验收区（Codex 终验 · 2026-08-03）
+
+**结论：通过 ✅**（打回处置完整，打包安装全过）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 越界恢复 | `git diff CLAUDE.md`、归档 `decided.json` 均为空（已 checkout 还原）✅ |
+| 提交 | `6b1651d` 回写真实并已 push ✅ |
+| 安装包 | `/Applications/CCCDesktop.app` v0.66.1、13:15 构建仍在；旧包备份在 ✅ |
+| 功能 | 启动/登录/项目/对话/看板/运维实测通过（打回前 Codex 已复核安装包时间与 defaults）✅ |
+| 工作树 | 仅剩预存：`.ccc/agent-mind/decided.json`、`_update_handoff.py`（T28 无新增）✅ |
+
+**遗留登记（非 T28 引入）**：CCC 仓根目录存在 `command-post/` 未跟踪目录（`dispatch-2026-08-03-claude-code-mind-cleanup.md`，12:55 创建，早于 T28）——系 Claude Code 心智清理任务误放，属 qx-map 中枢内容，建议移至 qx-map 或清理，另卡处理。
+
+**结论**：桌面端重构后新包已安装可用（纯壳），T28 闭环。
