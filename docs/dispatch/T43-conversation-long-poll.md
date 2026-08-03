@@ -117,3 +117,10 @@
 
 - seq 光标 = `len(_conversations)`（append-only），内存历史重启即失属已知边界（持久化不在本卡范围，与 T41 对话持久记忆观察项同源）。
 - 2017 部署（pull + 三服务重启）由 Codex 放行，随 T42 关闭后一并执行（老板实测前置）。
+
+### 2017 部署记录（Codex 放行执行 · 2026-08-04）
+
+- pull → `cdee446`（T43 代码 + 卡关闭）；config.env 补 `CCC_WEB_LONGPOLL_TIMEOUT=30`。
+- 三服务重启（web-server 22666 / engine 22668 / board-scheduler 22670），relay 6100/6102 健康。
+- 生产实测：同步对话通；长轮询 `after=2` → 新对话落 2 条 → 返回 `{messages, seq:4}`；挂起期间 `/health` 200 @0.002s。
+- 看板 48 已关闭/4 打回/0 在飞。老板可双壳实测。
