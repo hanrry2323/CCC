@@ -143,7 +143,13 @@ def _retrieve_kb_context(message: str) -> str:
         return ""
     if not results:
         return ""
-    lines = ["【知识库参考】"]
+    # 引导语（T38）：明确告知优先用参考段落，避免 Claude Code 自行翻文件导致超时
+    # （T37 验收观察：未加引导语时首次实测 120s 超时；引导后 14s 正常返回）
+    # 引导语合并到标题行，保持 _build_prompt 注入段落结构与测试断言不变
+    lines = [
+        "【知识库参考】（以下为 BM25 检索命中片段，请优先据此回答；片段已含条目 id，"
+        "引用时显式标注。如片段未覆盖问题，再说明信息不足——避免自行翻阅文件以控制延迟。）"
+    ]
     for r in results:
         section = r.get("section", "") or "?"
         doc_id = r.get("id", "") or "?"
