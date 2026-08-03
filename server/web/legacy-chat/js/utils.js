@@ -32,12 +32,12 @@ export function desktopThreadId(projectId, suffix) {
   return `${pid}::${s}`;
 }
 
-/** M1 本机 project_path（对话口 → sidecar）
- * 对齐 Desktop：业务仓无本机第二树时回落平台仓；勿臆造 apps/<id>。
+/** 项目 workspace 路径解析（T33：移除本机路径硬编码）。
+ * 服务端 /config 端点注入 workspace_map（默认空）；用户可在设置页填业务仓路径。
+ * 无配置时返回空串（前端不再臆造本机路径）。
  */
 export function resolveProjectPath(projectId) {
   const pid = projectId || 'ccc';
-  const cccHome = '/Users/apple/program/CCC';
   const map =
     (typeof window !== 'undefined' && window.__CCC_WORKSPACE_MAP__) ||
     {};
@@ -48,7 +48,7 @@ export function resolveProjectPath(projectId) {
     );
     if (local[pid]) return local[pid];
   } catch (_) {}
-  return cccHome;
+  return '';
 }
 
 export function relativeTime(iso) {

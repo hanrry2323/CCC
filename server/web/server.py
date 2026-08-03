@@ -60,9 +60,9 @@ from server.board.queries import (
 )
 from server.board.models import STATES, UNKNOWN, base_state
 from server.engine.cluster import (
-    DEFAULT_SERVICES,
     check_service_status,
     check_tcp_reachable,
+    parse_cluster_services,
     parse_cluster_targets,
 )
 from server.web.brain import call_brain
@@ -88,7 +88,7 @@ _tokens: dict[str, dict[str, Any]] = {}
 _conversations: list[dict[str, Any]] = []
 
 # ── 免鉴权的路径前缀 ──
-_NO_AUTH_PATHS = frozenset({"/health", "/session"})
+_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config"})
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面；T25：旧对话页 legacy-chat/） ──
@@ -199,6 +199,35 @@ def _parse_task_acceptance(card_id: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+# ── 前端只读配置注入（T33：替代前端硬编码 IP/路径） ──
+# 白名单字段：仅这些非敏感字段可经 /config 免鉴权返回给前端。
+_PUBLIC_CONFIG_KEYS: tuple[str, ...] = (
+    "WEB_PORT",
+    "BOARD_PORT",
+    "ENGINE_PORT",
+    "RELAY_PORT",
+)
+
+
+def _build_public_config() -> dict[str, Any]:
+    """构造前端可读的非敏感配置子集（替代前端硬编码 IP/路径/端口）。
+
+    仅返回 _PUBLIC_CONFIG_KEYS 白名单字段；密钥/路径/上游地址等敏感字段一律不返回。
+    workspace_map 默认空对象（前端不再硬编码本机路径，由用户在设置页填）。
+    """
+    return {
+        "ports": {
+            "web": os.environ.get("WEB_PORT", ""),
+            "board": os.environ.get("BOARD_PORT", ""),
+            "engine": os.environ.get("ENGINE_PORT", ""),
+            "relay": os.environ.get("RELAY_PORT", ""),
+        },
+        # workspace_map 留空：业务仓路径由用户在设置页填，服务端不臆造
+        "workspace_map": {},
+        "version": "v0.70.0",
+    }
+
+
 def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | None:
     """按 id 查找任务卡详情；未找到返回 None。"""
     item = next((i for i in items if i.id == task_id), None)
@@ -258,11 +287,14 @@ def _collect_ops_nodes() -> list[dict[str, Any]]:
 def _collect_ops_services() -> list[dict[str, Any]]:
     """采集本机服务进程状态（pgrep），返回服务状态字典列表。
 
-    服务清单来自 cluster.DEFAULT_SERVICES（名称→进程关键词）；不依赖外脑。
+    服务清单来自 CLUSTER_SERVICES env（逗号分隔 name:keyword）；零硬编码。
+    未配置则返回空列表（运维页显示「服务清单未配置」）。
     """
+    cfg = {"CLUSTER_SERVICES": os.environ.get("CLUSTER_SERVICES", "")}
+    services_cfg = parse_cluster_services(cfg)
     services: list[dict[str, Any]] = []
-    for name, keyword in DEFAULT_SERVICES.items():
-        ss = check_service_status(keyword)
+    for name, keyword in services_cfg:
+        ss = check_service_status(name, keyword)
         services.append({
             "name": name,
             "running": ss.running,
@@ -590,6 +622,10 @@ class _APIHandler(BaseHTTPRequestHandler):
                 "auth_required": True,
                 "auth_configured": bool(_AUTH_USERNAME and _AUTH_PASSWORD_HASH),
             })
+            return
+        if path == "/config":
+            # T33：前端只读配置注入（免鉴权白名单，仅非敏感字段）
+            self._send_json(_build_public_config())
             return
         if not self._check_auth():
             return

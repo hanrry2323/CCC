@@ -821,3 +821,51 @@ class TestOpsSummary:
         status, data = _get(api_server, "/ops/summary")
         assert status == 401
         assert "error" in data
+
+
+# ── T33 前端只读配置注入：/config ──
+
+
+class TestConfigEndpoint:
+    """GET /config（免鉴权白名单 + 仅非敏感字段）。"""
+
+    def test_no_auth_returns_200(self, api_server):
+        """无 token 访问 /config → 200（免鉴权白名单）。"""
+        status, data = _get(api_server, "/config")
+        assert status == 200
+
+    def test_returns_ports_shape(self, api_server):
+        """返回 ports 子结构（web/board/engine/relay）。"""
+        status, data = _get(api_server, "/config")
+        assert status == 200
+        assert "ports" in data
+        ports = data["ports"]
+        for key in ("web", "board", "engine", "relay"):
+            assert key in ports
+
+    def test_returns_workspace_map_empty(self, api_server):
+        """workspace_map 默认空对象（服务端不臆造业务仓路径）。"""
+        status, data = _get(api_server, "/config")
+        assert status == 200
+        assert data["workspace_map"] == {}
+
+    def test_does_not_leak_sensitive_keys(self, api_server, monkeypatch):
+        """敏感字段（密钥/密码/上游地址/路径）不出现在响应中。"""
+        monkeypatch.setenv("CCC_WEB_PASSWORD_HASH", "sensitive_hash_value")
+        monkeypatch.setenv("RELAY_UPSTREAM_KEY", "sk-sensitive-key-1234567890")
+        monkeypatch.setenv("RELAY_UPSTREAM_URL", "http://secret-upstream.example.com/v1")
+        monkeypatch.setenv("DATA_DIR", "/secret/data/path")
+        monkeypatch.setenv("EXECUTOR_REGISTRY_PATH", "/secret/registry.json")
+        status, data = _get(api_server, "/config")
+        assert status == 200
+        body_str = json.dumps(data, ensure_ascii=False)
+        # 敏感值不得出现在响应正文
+        assert "sensitive_hash_value" not in body_str
+        assert "sk-sensitive-key-1234567890" not in body_str
+        assert "secret-upstream.example.com" not in body_str
+        assert "/secret/data/path" not in body_str
+        assert "/secret/registry.json" not in body_str
+        # 敏感键名不得出现
+        lower = body_str.lower()
+        for forbidden in ("password", "key", "upstream_url", "data_dir", "registry", "token", "auth"):
+            assert forbidden not in lower, f"敏感字段 '{forbidden}' 泄露在 /config 响应: {body_str}"

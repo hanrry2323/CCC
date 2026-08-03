@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { loadProjects } from '../api.js';
 import { getThemeScheme, setThemeScheme } from '../theme.js';
-import { hubBase, agentBase, isDialogueShell, DEFAULT_HUB_LOCAL, DEFAULT_AGENT } from '../ports.js';
+import { hubBase, agentBase, isDialogueShell } from '../ports.js';
 
 function _esc(s) {
   return String(s || '')
@@ -32,8 +32,8 @@ export async function openSettings() {
     projects = [];
   }
 
-  const hub = localStorage.getItem('ccc_hub_base') || hubBase() || DEFAULT_HUB_LOCAL;
-  const agent = localStorage.getItem('ccc_agent_base') || agentBase() || DEFAULT_AGENT;
+  const hub = localStorage.getItem('ccc_hub_base') || hubBase() || '';
+  const agent = localStorage.getItem('ccc_agent_base') || agentBase() || '';
   let mapText = '';
   try {
     mapText = localStorage.getItem('ccc_local_workspace_map') || '{}';
@@ -73,38 +73,38 @@ export async function openSettings() {
     '</div>' +
     '</div>' +
     '<div class="settings-group">' +
-    '<div class="settings-group-title">双口连接</div>' +
+    '<div class="settings-group-title">连接</div>' +
     '<div class="settings-row settings-row-col">' +
-    '<span class="settings-label">Hub 编排口（本机默认隧道；手机可填 LAN 排障）</span>' +
-    '<input class="settings-input" id="settings-hub-base" placeholder="http://127.0.0.1:17777" value="' +
+    '<span class="settings-label">服务端地址（2017 单端 :7788；同源留空走相对路径）</span>' +
+    '<input class="settings-input" id="settings-hub-base" placeholder="http://192.168.3.116:7788" value="' +
     _esc(hub) +
     '"/>' +
     '</div>' +
     '<div class="settings-row settings-row-col">' +
-    '<span class="settings-label">Agent 对话口</span>' +
-    '<input class="settings-input" id="settings-agent-base" placeholder="http://127.0.0.1:7788" value="' +
+    '<span class="settings-label">对话 Agent 地址（同源留空；跨机填 2017 :7788）</span>' +
+    '<input class="settings-input" id="settings-agent-base" placeholder="http://192.168.3.116:7788" value="' +
     _esc(agent) +
     '"/>' +
     '</div>' +
     '<div class="settings-row settings-row-col">' +
-    '<span class="settings-label">本机路径 map（JSON：仅可选平台仓 ccc → M1 CCC；禁止业务第二树）</span>' +
-    '<textarea class="settings-textarea" id="settings-workspace-map" rows="4" placeholder=\'{"ccc":"/Users/apple/program/CCC"}\'>' +
+    '<span class="settings-label">workspace 路径映射（JSON：项目 id → 本机路径；由用户填写，服务端不臆造）</span>' +
+    '<textarea class="settings-textarea" id="settings-workspace-map" rows="4" placeholder=\'{"ccc":"/path/to/CCC"}\'>' +
     _esc(mapText) +
     '</textarea>' +
     '</div>' +
     '<div class="settings-row">' +
-    '<button type="button" class="btn-primary" id="settings-ports-save">保存双口设置</button>' +
+    '<button type="button" class="btn-primary" id="settings-ports-save">保存连接设置</button>' +
     '<span class="settings-row-value" id="settings-ports-hint" style="margin-left:8px"></span>' +
     '</div>' +
     (isDialogueShell()
-      ? '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为 M1 对话壳；聊走本机 sidecar，下达走 Hub（本机默认隧道；手机自动用 LAN 排障口）。</p>'
-      : '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为 Hub 编排壳；聊天请开 M1 :7788。</p>') +
+      ? '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为对话壳；HTTP 直连 2017 单端 :7788（对话/看板/运维/线路图四视图统一入口）。</p>'
+      : '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为编排壳；聊天请开 2017 :7788。</p>') +
     '</div>' +
     '<div class="settings-group">' +
     '<div class="settings-group-title">关于</div>' +
     '<div class="settings-row">' +
     '<span class="settings-label">版本</span>' +
-    '<span class="settings-row-value">CCC 双口壳</span>' +
+    '<span class="settings-row-value">CCC v0.70.0（2017 单端 :7788）</span>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -179,7 +179,7 @@ export async function openSettings() {
       window.__CCC_AGENT_BASE__ = agentVal.replace(/\/$/, '');
     }
     if (hint) hint.textContent = '已保存';
-    window.showToast?.('双口设置已保存', 'ok');
+    window.showToast?.('连接设置已保存', 'ok');
   });
 
   document

@@ -8,10 +8,12 @@
 输出：写入 web/data/cluster.js（window.CLUSTER_DATA = {...}），供前端集群/运维页读取。
 
 用法：
-    from server.engine.cluster import collect_cluster_status, parse_cluster_targets
+    from server.engine.cluster import collect_cluster_status, parse_cluster_targets, parse_cluster_services
 
     ok, summary = collect_cluster_status(cfg)
     # ok=True, summary={"nodes": [...], "services": [...], "output": "..."}
+
+服务清单来自配置 CLUSTER_SERVICES（逗号分隔 name:keyword），零硬编码。
 """
 
 from __future__ import annotations
@@ -29,14 +31,6 @@ logger = logging.getLogger("ccc.engine.cluster")
 
 # 默认输出路径（相对于项目根）
 DEFAULT_OUTPUT = "server/web/data/cluster.js"
-
-# 默认服务清单（名称 → 进程名关键词，不依赖外部 manifest）
-DEFAULT_SERVICES: dict[str, str] = {
-    "ccc-engine": "ccc-engine",
-    "ccc-board-scheduler": "ccc-board-scheduler",
-    "ccc-hub": "ccc-chat-server",
-    "ccc-board-api": "ccc-board-server",
-}
 
 
 @dataclass
@@ -93,6 +87,37 @@ def parse_cluster_targets(cfg: dict[str, Any]) -> list[tuple[str, int]]:
     return targets
 
 
+def parse_cluster_services(cfg: dict[str, Any]) -> list[tuple[str, str]]:
+    """从配置解析服务清单（名称 → 进程关键词）。
+
+    CLUSTER_SERVICES 格式：逗号分隔 `name:keyword`，如
+    "web-server:server.web.server,engine:server.engine.main"
+
+    - 空字符串 / 缺键 → 返回空列表（运维页显示「未配置」）。
+    - 坏格式（无冒号、空 name/keyword）→ 跳过并 warning，不抛错。
+    - name 或 keyword 含冒号时按首个冒号拆分（keyword 允许含冒号）。
+    """
+    raw = cfg.get("CLUSTER_SERVICES", "").strip()
+    if not raw:
+        return []
+    services: list[tuple[str, str]] = []
+    for segment in raw.split(","):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if ":" not in segment:
+            logger.warning("无效服务清单格式（跳过，应为 name:keyword）: %s", segment)
+            continue
+        name, keyword = segment.split(":", 1)
+        name = name.strip()
+        keyword = keyword.strip()
+        if not name or not keyword:
+            logger.warning("服务清单 name/keyword 为空（跳过）: %s", segment)
+            continue
+        services.append((name, keyword))
+    return services
+
+
 def check_tcp_reachable(host: str, port: int, timeout: float = 3.0) -> NodeStatus:
     """TCP 连接检测节点可达性。"""
     import time
@@ -110,8 +135,13 @@ def check_tcp_reachable(host: str, port: int, timeout: float = 3.0) -> NodeStatu
         )
 
 
-def check_service_status(process_keyword: str) -> ServiceStatus:
-    """通过 pgrep 检查服务进程状态。"""
+def check_service_status(name: str, process_keyword: str) -> ServiceStatus:
+    """通过 pgrep 检查服务进程状态。
+
+    Args:
+        name: 服务显示名（来自配置 CLUSTER_SERVICES 的 name 部分）。
+        process_keyword: pgrep -f 匹配关键词（来自配置 keyword 部分）。
+    """
     try:
         result = subprocess.run(
             ["pgrep", "-f", process_keyword],
@@ -120,18 +150,20 @@ def check_service_status(process_keyword: str) -> ServiceStatus:
         if result.returncode == 0 and result.stdout.strip():
             pids = result.stdout.strip().splitlines()
             return ServiceStatus(
-                name=process_keyword, running=True,
+                name=name, running=True,
                 pid=int(pids[0]),
             )
-        return ServiceStatus(name=process_keyword, running=False)
+        return ServiceStatus(name=name, running=False)
     except (subprocess.TimeoutExpired, OSError) as exc:
         return ServiceStatus(
-            name=process_keyword, running=False, error=str(exc),
+            name=name, running=False, error=str(exc),
         )
 
 
 def collect_cluster_status(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     """采集集群状态并写入输出文件。
+
+    服务清单来自 CLUSTER_SERVICES 配置（零硬编码）；空则 services 为空列表。
 
     返回 (ok, summary_dict)。
     """
@@ -142,9 +174,10 @@ def collect_cluster_status(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     for host, port in targets:
         nodes.append(check_tcp_reachable(host, port))
 
+    services_cfg = parse_cluster_services(cfg)
     services: list[ServiceStatus] = []
-    for name, keyword in DEFAULT_SERVICES.items():
-        services.append(check_service_status(keyword))
+    for name, keyword in services_cfg:
+        services.append(check_service_status(name, keyword))
 
     snapshot = ClusterSnapshot(
         nodes=nodes,
