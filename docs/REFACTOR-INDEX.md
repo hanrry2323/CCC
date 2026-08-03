@@ -30,15 +30,15 @@
 
 ## 统计
 
-- 归档文件总数：125
+- 归档文件总数：156（含 T34 追加 31：orphan-shell-web 4 + tauri-desktop-legacy 27）
 - 保留文件总数：约 180+（含 references/ skills/ templates/ 等）
 - 不确定项：无
 - 删除文件：0（仅 git mv，无删除）
 
 ## 验收标准
 
-- [ ] 保留清单齐全且红线/权威基线全覆盖（无遗漏）
-- [ ] 旧协议全部归档、无任何删除（git status 无未解释的 deleted）
-- [ ] 不确定项有清单可裁决
-- [ ] git 工作树干净，commit 只含文档移动与新增
-- [ ] 全程未触碰控制面/运行服务/外脑
+- [x] 保留清单齐全且红线/权威基线全覆盖（无遗漏）— RETENTION-LIST 17 类全覆盖
+- [x] 旧协议全部归档、无任何删除（git status 无未解释的 deleted）— 125 文件 git mv 归档
+- [x] 不确定项有清单可裁决 — RETENTION-LIST §三「不确定项：无」
+- [x] git 工作树干净，commit 只含文档移动与新增 — T34 追加 src-tauri 归档
+- [x] 全程未触碰控制面/运行服务/外脑 — 三服务常驻 2017，M1 仅开发

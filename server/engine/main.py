@@ -35,14 +35,13 @@ from server.engine.dispatch import (
     decide,
     load_registry,
 )
-from server.engine.store import BoardStore, InMemoryBoardStore
+from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 
 logger = logging.getLogger("ccc.engine")
 
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
-DEFAULT_LOG_DIR = "/tmp/ccc-exec-logs"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -132,7 +131,9 @@ def run_once(
     """
     cfg = cfg or {}
     timeout = int(cfg.get("EXECUTOR_TIMEOUT_SECONDS") or DEFAULT_EXECUTOR_TIMEOUT)
-    log_dir_str = cfg.get("EXECUTOR_LOG_DIR") or DEFAULT_LOG_DIR
+    log_dir_str = cfg.get("EXECUTOR_LOG_DIR", "").strip()
+    if not log_dir_str:
+        raise ConfigError("EXECUTOR_LOG_DIR 未配置（必填，执行体日志目录）")
     log_dir = Path(log_dir_str)
     default_workdir = cfg.get("DATA_DIR", "")
 
@@ -208,7 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FATAL] {exc}", file=sys.stderr)
         return 2
 
-    store: BoardStore = InMemoryBoardStore()
+    dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
+    store: BoardStore = FileBoardStore(dispatch_dir, registry)
     if args.once:
         summary = run_once(registry, store, cfg)
         print(json.dumps(summary, ensure_ascii=False))

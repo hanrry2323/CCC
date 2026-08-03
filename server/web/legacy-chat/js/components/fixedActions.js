@@ -59,17 +59,11 @@ export const FIXED_ACTIONS = [
     prompt: EXPLAIN_DIFF_PROMPT,
   },
   {
-    id: 'transfer-task',
-    label: '转意图卡(编辑)',
-    kind: 'transfer',
-    title: '打开契约编辑（deprecated SPA）；主路径=转意图卡自动过门',
-  },
-  {
     id: 'task',
     label: '下达任务',
     kind: 'slash',
     slash: '/task',
-    title: '随手建卡（仅 description，会走 product）；方案已对齐请用转任务',
+    title: '随手建卡（仅 description，会走 product）',
   },
   {
     id: 'board',
@@ -96,7 +90,6 @@ export const PRIMARY_CANDIDATES = [
   'baseline',
   'next',
   'finalize-plan',
-  'transfer-task',
   'risks',
   'map-review',
   'explain-diff',
@@ -296,7 +289,7 @@ function promptAddCustom() {
   });
 }
 
-export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon, onTransfer }) {
+export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon }) {
   if (!root) return;
   root.querySelectorAll('[data-fixed]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -307,7 +300,6 @@ export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon, 
       else if (act.kind === 'prompt' && act.prompt) {
         onPrompt?.(act.prompt, { uiLabel: act.uiLabel || act.label });
       } else if (act.kind === 'slash' && act.slash) onSlash?.(act.slash);
-      else if (act.kind === 'transfer') onTransfer?.();
       else if (act.kind === 'soon') onSoon?.(act);
     });
   });

@@ -38,7 +38,6 @@ import mimetypes
 import os
 import sys
 import time
-from collections import OrderedDict
 from datetime import date, datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -58,7 +57,7 @@ from server.board.queries import (
     view_recent,
     view_realtime,
 )
-from server.board.models import STATES, UNKNOWN, base_state
+from server.board.models import STATES, UNKNOWN, BoardItem, base_state
 from server.engine.cluster import (
     check_service_status,
     check_tcp_reachable,
@@ -689,7 +688,7 @@ def serve_forever(host: str = "127.0.0.1", port: int = 0) -> HTTPServer:
     addr = server.server_address
     print(f"[web] HTTP API 启动于 http://{addr[0]}:{addr[1]}", file=sys.stderr)
     print(f"[web] 数据源: {_DISPATCH_DIR}", file=sys.stderr)
-    print(f"[web] 提示: 本服务 board 接口已启用 Bearer token 鉴权（/health 与 /session 免鉴权）", file=sys.stderr)
+    print("[web] 提示: 本服务 board 接口已启用 Bearer token 鉴权（/health 与 /session 免鉴权）", file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

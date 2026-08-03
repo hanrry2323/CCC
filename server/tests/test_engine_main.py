@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from server.config.loader import ConfigError
 from server.engine.dispatch import load_registry
 from server.engine.main import main, run_once
-from server.engine.store import InMemoryBoardStore
+from server.engine.store import FileBoardStore, InMemoryBoardStore
 from server.engine.task import State, Work
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +30,7 @@ def _write_env(tmp_path: Path, registry_path: Path | str, **overrides: str) -> s
         f"EXECUTOR_REGISTRY_PATH={registry_path}",
         f"EXECUTOR_TIMEOUT_SECONDS={overrides.get('EXECUTOR_TIMEOUT_SECONDS', '300')}",
         f"EXECUTOR_LOG_DIR={overrides.get('EXECUTOR_LOG_DIR', str(tmp_path / 'exec-logs'))}",
+        f"DISPATCH_DIR={overrides.get('DISPATCH_DIR', str(tmp_path / 'dispatch'))}",
     ]
     env = tmp_path / "config.env"
     env.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -107,6 +109,16 @@ class TestMainCli:
 
 class TestRunOnceRealDispatch:
     """真实派发 + 收单闭环（用 echo / 临时注册表）。"""
+
+    def test_executor_log_dir_required(self, tmp_path: Path) -> None:
+        """P2-3：EXECUTOR_LOG_DIR 未配置 → 抛 ConfigError（无默认值，零硬编码）。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="w0", role="开发执行体", card_path=str(tmp_path / "card.md")))
+        cfg = {"DATA_DIR": str(tmp_path)}  # 故意不传 EXECUTOR_LOG_DIR
+        with pytest.raises(ConfigError, match="EXECUTOR_LOG_DIR"):
+            run_once(reg, store, cfg)
 
     def test_exit_zero_collected_as_done(self, tmp_path: Path) -> None:
         """echo 退出码 0 → work 收单为「已回写」。"""
@@ -254,3 +266,118 @@ class TestRunOnceManualGui:
         assert summary["in_flight"] == 1
         running = store.list_work(state=State.RUNNING)
         assert [w.id for w in running] == ["m1"]
+
+
+class TestFileBoardStore:
+    """P1-1 文件/卡驱动 BoardStore：读 docs/dispatch → 构造 Work → 回写卡头状态。"""
+
+    @staticmethod
+    def _write_card(path: Path, card_id: str, executor: str, state: str) -> None:
+        """写一张真实格式任务卡到 path。"""
+        path.write_text(
+            f"# 任务卡 {card_id} · 测试任务\n"
+            f"> 关联：TEST\n"
+            f"> 执行体：{executor} · 验收：Codex · 状态：{state} · 日期：2026-08-03\n"
+            f"\n"
+            f"## 目标\n测试用\n",
+            encoding="utf-8",
+        )
+
+    def test_list_work_reads_card_headers(self, tmp_path: Path) -> None:
+        """list_work 扫卡目录 → 解析卡头 → 构造 Work（含 role 反查）。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        # 注册表里「当前绑定」=demo，卡头执行体也写 demo → role=开发执行体
+        self._write_card(tmp_path / "T99-test.md", "T99", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        works = store.list_work()
+        assert len(works) == 1
+        w = works[0]
+        assert w.id == "T99"
+        assert w.role == "开发执行体"
+        assert w.state is State.TODO
+        assert w.card_path.endswith("T99-test.md")
+
+    def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
+        """list_work(state=X) 只返回匹配状态的卡。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T1.md", "T1", "demo", "待分派")
+        self._write_card(tmp_path / "T2.md", "T2", "demo", "已关闭")
+        store = FileBoardStore(tmp_path, reg)
+        todo = store.list_work(state=State.TODO)
+        assert [w.id for w in todo] == ["T1"]
+        closed = store.list_work(state=State.CLOSED)
+        assert [w.id for w in closed] == ["T2"]
+
+    def test_save_work_writes_back_status(self, tmp_path: Path) -> None:
+        """save_work 回写卡头「状态」行（原子替换）。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        card = tmp_path / "T50.md"
+        self._write_card(card, "T50", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        works = store.list_work(state=State.TODO)
+        w = works[0]
+        w.transition(State.RUNNING)
+        store.save_work(w)
+        # 重新读卡验证
+        text = card.read_text(encoding="utf-8")
+        assert "状态：执行中" in text
+        assert "状态：待分派" not in text
+
+    def test_save_work_preserves_other_metadata(self, tmp_path: Path) -> None:
+        """回写状态不破坏卡头其他段（执行体/验收/日期）。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        card = tmp_path / "T51.md"
+        self._write_card(card, "T51", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        w = store.list_work(state=State.TODO)[0]
+        w.transition(State.RUNNING)
+        store.save_work(w)
+        text = card.read_text(encoding="utf-8")
+        # 其他段仍在
+        assert "执行体：demo" in text
+        assert "验收：Codex" in text
+        assert "日期：2026-08-03" in text
+
+    def test_save_work_rejected_with_reason(self, tmp_path: Path) -> None:
+        """打回时卡头状态含首个问题摘要。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        card = tmp_path / "T52.md"
+        self._write_card(card, "T52", "demo", "执行中")
+        store = FileBoardStore(tmp_path, reg)
+        w = store.list_work(state=State.RUNNING)[0]
+        w.transition(State.REJECTED, problems=["退出码非 0: 1（日志: /tmp/x.log）"])
+        store.save_work(w)
+        text = card.read_text(encoding="utf-8")
+        assert "状态：打回（退出码非 0: 1（日志: /tmp/x.log））" in text
+
+    def test_end_to_end_dispatch_writes_back(self, tmp_path: Path) -> None:
+        """端到端：真实卡 → Engine run_once → 卡头状态更新为「已回写」。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        card = tmp_path / "T60.md"
+        self._write_card(card, "T60", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["scanned"] == 1
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 1
+        # 卡头已回写
+        text = card.read_text(encoding="utf-8")
+        assert "状态：已回写" in text
+
+    def test_nonexistent_dir_returns_empty(self, tmp_path: Path) -> None:
+        """目录不存在 → list_work 返回空列表。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        store = FileBoardStore(tmp_path / "nonexistent", reg)
+        assert store.list_work() == []

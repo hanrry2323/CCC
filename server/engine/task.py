@@ -16,10 +16,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class State(str, Enum):
+class State(StrEnum):
     """契约 §2 五态。"""
 
     TODO = "待分派"

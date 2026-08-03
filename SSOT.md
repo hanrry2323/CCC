@@ -25,6 +25,6 @@
 | `server/config/` | 配置系统（env 加载器 + 执行体注册表，契约 §7） |
 | `desktop/` | Desktop 壳源码（任意设备壳之一，构建产物 `.build/` 勿提交） |
 | `docs/dispatch/` | ★ 任务卡文档（唯一事实源） |
-| `.ccc/archive/legacy-retired-2026-08-02/` | 旧栈归档（scripts/ 等，已退役，勿引用） |
+| `docs/archive/legacy-retired-2026-08-02/` | 旧栈归档（scripts/ 等，已退役，勿引用） |
 
 新增编排逻辑改 `server/`，不要平行第二条流水线。

@@ -44,6 +44,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     # 执行体派发运行参数（T32 真实派发闭环）
     "EXECUTOR_TIMEOUT_SECONDS": "300",
     "EXECUTOR_LOG_DIR": "",
+    # 任务卡目录（P1-1 FileBoardStore 读写；默认 docs/dispatch）
+    "DISPATCH_DIR": "docs/dispatch",
 }
 
 LINE_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*?)\s*$")

@@ -19,7 +19,7 @@ Guidance for agents editing CCC in **开发工具（Claude/OpenCode）**. You ar
 
 ## 平台开发硬规则（对齐基线 / 定方案时强制）
 
-1. **新栈在 `server/`**：薄驱动 Engine + 看板服务端 + HTTP API + 中转站 + 知识库 + 配置化 + 部署模板；旧 `scripts/` 已退役（归档于 `.ccc/archive/legacy-retired-2026-08-02/scripts/`），**禁止**在新代码引用旧 `scripts/`。
+1. **新栈在 `server/`**：薄驱动 Engine + 看板服务端 + HTTP API + 中转站 + 知识库 + 配置化 + 部署模板；旧 `scripts/` 已退役（归档于 `docs/archive/legacy-retired-2026-08-02/scripts/`），**禁止**在新代码引用旧 `scripts/`。
 2. **2017 单端 :7788**：HTTP 直连，账号密码 + token；对话口接大脑 Agent（Claude Code CLI via 6100）；看板/运维/线路图视图经 HTTP API 提供。任意设备壳（Desktop/网页/手机）指向 2017。
 3. **任务卡 = 唯一事实源**：`docs/dispatch/*.md` 是任务流转的根；`server/board/loader.py` 从任务卡解析派生看板数据，不另建数据源。
 4. **版本 SSOT**：`VERSION` > `CHANGELOG` 最新节 > README badge；不一致只报「对齐版本」类小任务。

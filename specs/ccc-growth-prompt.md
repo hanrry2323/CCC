@@ -1,7 +1,7 @@
 # CCC Auto-Growth v1 — Cursor 执行提示词
 
 > **历史归档（待核）** — 本提示词基于旧 `scripts/` 架构（v0.30 时期），描述的文件路径与模块均已退役。
-> 2026-08-02 架构重构定稿后，旧 `scripts/` 已归档至 `.ccc/archive/legacy-retired-2026-08-02/`；
+> 2026-08-02 架构重构定稿后，旧 `scripts/` 已归档至 `docs/archive/legacy-retired-2026-08-02/`；
 > 现行架构以 `server/` 新栈为准（详见 [`docs/INDEX.md`](../docs/INDEX.md) §0、[`docs/architecture.md`](../docs/architecture.md)）。
 > 本文件仅供历史追溯，清理归档在 T34 范围。
 

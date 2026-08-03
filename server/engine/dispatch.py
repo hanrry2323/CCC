@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import shlex
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from string import Formatter
 
@@ -33,7 +33,7 @@ CLI_REQUIRED_FIELDS: frozenset[str] = frozenset({"命令", "参数模板"})
 ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role", "workdir"})
 
 
-class DispatchDecision(str, Enum):
+class DispatchDecision(StrEnum):
     """派发决策。"""
 
     AUTO = "auto"      # 可后台 CLI → Engine 自动拉起
@@ -79,6 +79,20 @@ class ExecutorRegistry:
         for e in self.entries:
             if e.role == role and e.category == "可后台 CLI":
                 return e
+        return None
+
+    def role_for_binding(self, tool_name: str) -> str | None:
+        """反向查找：工具名 → 角色（优先可后台 CLI 行）。
+
+        用于 FileBoardStore 从卡头「执行体：X」反查注册表角色。
+        如 tool_name="OpenCode" → "开发执行体"。
+        """
+        for e in self.entries:
+            if e.binding == tool_name and e.category == "可后台 CLI":
+                return e.role
+        for e in self.entries:
+            if e.binding == tool_name:
+                return e.role
         return None
 
 

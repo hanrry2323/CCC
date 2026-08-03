@@ -235,6 +235,21 @@ stage5/stage6 烟测方案，全部已完成闭环。
 | `CCC-项目深度评估报告-2026-07-24.md` | 旧评估，已过时 |
 | `CCC-代码质量下一步修复方案-2026-07-24.md` | 旧方案，被本方案取代 |
 
+### 9. T34 追加归档（2026-08-03）
+
+| 路径 | 文件数 | 理由 |
+|------|--------|------|
+| `archive/ccc-legacy-2026-08-02/orphan-shell-web/` | 4 | 旧 web shell 孤儿文件（index.html/app.js/chat.js/style.css），T34 从 server/web 白名单摘除 |
+| `archive/ccc-legacy-2026-08-02/tauri-desktop-legacy/src-tauri/` | 27 | 旧 Tauri 桌面后端（Rust），T34 归档（Desktop 已迁 Swift） |
+
+### 10. T35 追加归档（2026-08-03）
+
+| 路径 | 文件数 | 理由 |
+|------|--------|------|
+| `archive/legacy-retired-2026-08-02/tests-scripts/` | 100+ | 旧 `tests/scripts/` 全部测试已退役 `scripts/` 系统，conftest 把 scripts/ 加 sys.path 导致 66 个 collection error；随 scripts/ 退役一并归档 |
+| `archive/legacy-retired-2026-08-02/tests-integration/` | 2 | 旧 `tests/integration/` 引用已退役 scripts/ccc-board.py；归档 |
+| `archive/legacy-retired-2026-08-02/tests-e2e/` | 12 | 旧 `tests/e2e/*.sh` 引用已退役 scripts/；归档（CI e2e job 一并移除） |
+
 ---
 
 ## 三、不确定项
@@ -255,4 +270,9 @@ stage5/stage6 烟测方案，全部已完成闭环。
 | product/ | 25 |
 | relay/ | 1 |
 | docs-root/ | 3 |
-| **合计** | **125** |
+| orphan-shell-web/（T34 追加） | 4 |
+| tauri-desktop-legacy/（T34 追加） | 27 |
+| tests-scripts/（T35 追加） | 100+ |
+| tests-integration/（T35 追加） | 2 |
+| tests-e2e/（T35 追加） | 12 |
+| **合计** | **274+** |

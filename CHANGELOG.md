@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — 架构重构定稿（薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳）
 
-- **新栈 `server/` 取代旧 `scripts/`**：薄驱动 Engine（`server/engine/`）+ 看板服务端（`server/board/`）+ HTTP API（`server/web/`）+ 中转站（`server/relay/`）+ 知识库（`server/kb/`）+ 配置化（`server/config/`）+ 部署模板（`server/deploy/`）。旧 `scripts/` 已退役归档至 `.ccc/archive/legacy-retired-2026-08-02/scripts/`。
+- **新栈 `server/` 取代旧 `scripts/`**：薄驱动 Engine（`server/engine/`）+ 看板服务端（`server/board/`）+ HTTP API（`server/web/`）+ 中转站（`server/relay/`）+ 知识库（`server/kb/`）+ 配置化（`server/config/`）+ 部署模板（`server/deploy/`）。旧 `scripts/` 已退役归档至 `docs/archive/legacy-retired-2026-08-02/scripts/`。
 - **2017 单端 :7788**：HTTP 直连，账号密码 + token；对话/看板/运维/线路图四视图统一入口。旧端口（7777 Hub / 7775 Board API / 7788 sidecar / 7778 Cockpit）已退役。
 - **大脑 Agent**：`/conversation` 调用 2017 Claude Code CLI（via 6100 Anthropic 出口），带心智/工具/知识库；替代旧裸模型直答。
 - **文档流转**：任务卡 `docs/dispatch/T<n>-*.md` 为唯一事实源；`server/board/loader.py` 从任务卡解析派生看板数据。

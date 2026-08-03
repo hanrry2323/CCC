@@ -1,72 +1,17 @@
 # CCC pre-commit hooks
-# v0.51.0 P2-5: 扩充至 5 hooks 强制红线 + 工程纪律:
-#   - ruff (Python lint, optional)
-#   - bash -n + v3 portability (red line 20)
-#   - verdict length >= 50 (red line 11)
-#   - version-sync (P0-1: VERSION 在 7 处一致)
-#   - mypy type check (optional, 仅 scripts/ + board/)
+# 2026-08-03 重构收口：旧 scripts/ 已退役归档，pre-commit 切到新 server/ 栈。
+#   - ruff (Python lint, server/)
 #
 # Install: pip install pre-commit && pre-commit install
 # Run: pre-commit run --all-files
-#
-# Each bash hook uses an external script in scripts/ instead of inline YAML
-# (avoids YAML escape hell).
 repos:
   - repo: local
     hooks:
       # Python lint (if ruff installed — graceful skip if absent)
       - id: ruff
-        name: ruff check (Python lint)
-        entry: ruff check scripts/ tests/ examples/
+        name: ruff check (server/ lint)
+        entry: ruff check server/
         language: system
         pass_filenames: false
         files: \.(py|pyi)$
-        types: [file]
-
-      # Bash script: syntax + v3 portability
-      # runs scripts/precommit-bash-quality.sh (avoid YAML escape)
-      - id: bash-quality
-        name: bash -n + v3 portability (red line 20)
-        entry: bash scripts/precommit-bash-quality.sh
-        language: system
-        pass_filenames: false
-        files: \.sh$
-        types: [file]
-
-      # Verdict file >= 50 lines (red line 11)
-      # runs scripts/precommit-verdict-length.sh
-      - id: verdict-length
-        name: verdict file >= 50 lines (red line 11)
-        entry: bash scripts/precommit-verdict-length.sh
-        language: system
-        pass_filenames: false
-        files: \.verdict\.md$
-        stages: [pre-commit]
-
-      # v0.51.0 P2-5: VERSION 在 7 处一致（check-version-sync.py）
-      - id: version-sync
-        name: VERSION sync across 7 files (P0-1)
-        entry: python3 scripts/check-version-sync.py
-        language: system
-        pass_filenames: false
-        files: ^(VERSION|package\.json|README\.md|SKILL\.md|CLAUDE\.md|scripts/check-version-sync\.py)$
-        types: [file]
-
-      # v0.51.0 P2-5: mypy 类型检查（若 mypy 未装则自动跳过）
-      - id: mypy
-        name: mypy type check (scripts/ + board/)
-        entry: bash -c 'command -v mypy >/dev/null 2>&1 && mypy scripts/ scripts/board/ scripts/engine/ || echo "[pre-commit] mypy not installed, skipping"'
-        language: system
-        pass_filenames: false
-        files: \.(py|pyi)$
-        types: [file]
-
-      # 2026-07-24 方案 3.2：R-16 新代码三件套（type hints + smoke test + docstring）
-      # 仅检查 git diff --cached --diff-filter=A 新增 .py 文件
-      - id: new-code-quality
-        name: R-16 new code quality (type hints + docstring)
-        entry: bash scripts/precommit-new-code-quality.sh
-        language: system
-        pass_filenames: false
-        files: \.py$
         types: [file]

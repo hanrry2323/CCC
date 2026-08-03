@@ -106,7 +106,7 @@ python3 -m server.web.server --port 7788
 | `docs/architecture.md` | 架构概览 |
 | `references/red-lines.md` | 红线 + X/R 系列 |
 | `references/board-task-schema.md` | 任务卡文档契约 |
-| `.ccc/archive/legacy-retired-2026-08-02/` | 旧栈归档（scripts/ 等，已退役，勿引用） |
+| `docs/archive/legacy-retired-2026-08-02/` | 旧栈归档（scripts/ 等，已退役，勿引用） |
 
 ---
 

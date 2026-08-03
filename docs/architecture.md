@@ -114,7 +114,7 @@
 │
 ├── templates/                                  # plan/phases/report/verdict/AGENTS 模板
 │
-└── .ccc/archive/legacy-retired-2026-08-02/     # 旧栈归档（scripts/ 等，已退役）
+└── docs/archive/legacy-retired-2026-08-02/     # 旧栈归档（scripts/ 等，已退役）
     └── scripts/                                #   旧 scripts/*.py（勿引用）
 ```
 

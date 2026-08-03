@@ -34,8 +34,7 @@ function attachMessageActions(msgEl, role, content) {
     actions.innerHTML =
       '<button type="button" class="msg-action-btn" data-act="copy">复制</button>' +
       '<button type="button" class="msg-action-btn" data-act="regen">重新生成</button>' +
-      '<button type="button" class="msg-action-btn" data-act="preview">预览</button>' +
-      '<button type="button" class="msg-action-btn" data-act="task">转任务</button>';
+      '<button type="button" class="msg-action-btn" data-act="preview">预览</button>';
   } else {
     actions.innerHTML =
       '<button type="button" class="msg-action-btn" data-act="copy">复制</button>' +
@@ -56,8 +55,6 @@ function attachMessageActions(msgEl, role, content) {
       regenerateLast();
     } else if (act === 'preview') {
       maybeShowArtifacts(content || '');
-    } else if (act === 'task') {
-      import('./dispatchCard.js').then((m) => m.openTransferFromMessage(content || ''));
     }
   });
 }

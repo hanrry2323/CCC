@@ -17,8 +17,7 @@ export function initComposer() {
     onBaseline: () => runBaselineAlign(),
     onPrompt: (prompt, opts) => sendMessage(prompt, [], opts || {}),
     onSlash: (slash) => import('./slash.js').then((m) => m.tryExecuteSlash(slash)),
-    onTransfer: () =>
-      import('./dispatchCard.js').then((m) => m.openTransferFromLatest()),
+    onTransfer: null,
   });
 
   input.addEventListener('input', () => {

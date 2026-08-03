@@ -1,8 +1,7 @@
 # CCC CI — GitHub Actions
-# Jobs: version-sync, pytest, ruff, shellcheck, precommit, e2e, selfcheck, scripts-tests, swift-test
+# 2026-08-03 重构收口：旧 scripts/ 已退役归档，CI 切到新 server/ 栈。
+# Jobs: pytest (server/), ruff (server/), shellcheck (server/deploy), swift-test (desktop)
 # Triggers: push, PR
-# NOTE: CCC is a SKILL not a Python project — most jobs run on `push` only,
-# PRs are documented but optional (because main branch is the source of truth).
 
 name: ci
 
@@ -13,20 +12,9 @@ on:
     branches: [main]
 
 jobs:
-  version-sync:
-    name: version-sync (VERSION consistency)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Run check-version-sync
-        run: python scripts/check-version-sync.py
-
   pytest:
-    name: pytest (scripts)
-    runs-on: macos-latest  # Bash scripts need macOS for `stat -f`
+    name: pytest (server/tests)
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,29 +23,22 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
-      - name: Run smoke tests
-        run: |
-          echo "=== Smoke: scripts/*.py syntax ==="
-          for f in scripts/*.py; do python -m py_compile "$f" || exit 1; done
-          echo "=== Smoke: scripts/*.sh syntax ==="
-          shopt -s nullglob
-          for f in scripts/*.sh; do bash -n "$f" || exit 1; done
-          echo "=== pytest tests/scripts ==="
-          pytest tests/scripts/ -v --tb=short
+          pip install pytest pytest-asyncio httpx requests
+      - name: Run server tests
+        run: pytest server/tests/ -v --tb=short
 
   ruff:
-    name: ruff (Python lint)
+    name: ruff (server/ lint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v1
         with:
           version: "0.8.6"
-          args: "check scripts/ tests/ examples/"
+          args: "check server/"
 
   shellcheck:
-    name: shellcheck (bash lint)
+    name: shellcheck (server/deploy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,75 +47,8 @@ jobs:
       - name: Run shellcheck
         run: |
           shopt -s nullglob
-          files=(scripts/*.sh)
-          shellcheck "${files[@]}"
-
-  precommit:
-    name: pre-commit (强制执行 hooks)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install pre-commit + ruff
-        run: |
-          pip install pre-commit ruff==0.8.6
-      - name: Verify config exists
-        run: |
-          test -f .pre-commit-config.yaml || { echo "ERROR: .pre-commit-config.yaml missing"; exit 1; }
-      - name: Run pre-commit (all files, all hooks)
-        run: pre-commit run --all-files --show-diff-on-failure
-
-  e2e:
-    name: e2e (pipeline smoke + green + f1)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
-      - name: Pipeline smoke
-        run: bash tests/e2e/test_pipeline_smoke.sh
-      - name: Green pipeline e2e
-        run: bash tests/e2e/test_green_pipeline_e2e.sh
-      - name: F1 backlog failover
-        run: bash tests/e2e/test_f1_backlog_failover.sh
-
-  selfcheck:
-    name: self-check (syntax + security scan)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
-      - name: Run self-check
-        # CI 无 Hub 隧道：--preflight 跳过端口预检 + dual-host
-        run: bash scripts/ccc-self-check.sh --preflight
-
-  scripts-tests:
-    name: scripts/tests (hub_voice + transfer_gate)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
-      - name: Run scripts/tests
-        run: pytest scripts/tests/ -v --tb=short
+          files=(server/deploy/*.sh)
+          if [ ${#files[@]} -gt 0 ]; then shellcheck "${files[@]}"; else echo "no shell files"; fi
 
   swift-test:
     name: swift-test (desktop)

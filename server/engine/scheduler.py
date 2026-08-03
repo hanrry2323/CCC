@@ -20,7 +20,6 @@ import logging
 import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 from server.config.loader import ConfigError, load_config

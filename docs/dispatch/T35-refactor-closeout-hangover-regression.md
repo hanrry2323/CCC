@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§5 安全三件套 / §6 验收）
 > 依据：Codex 2026-08-03 全新取证重评——INT-120 挂账：patrol 2 失败（引用已归档 brief）、cluster DEFAULT_SERVICES 硬编码（T33 处理）、W292×16、2017 config.env.bak.T29、docs/REFACTOR-INDEX.md 验收清单未勾
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：执行中 · 日期：2026-08-03
 > ⚠ 2026-08-03 T32 验收登记新增子项（P1-1）：Engine 接真实看板——文件/卡驱动 BoardStore（读 docs/dispatch → 回写卡头状态行）+ scheduler 扫真实卡 + 真实卡端到端演示；补完 Codex 复验 M2。
 > ⚠ 2026-08-03 T33 验收附注：T31 P2 修正项并入本卡——P2-1 修正 CLAUDE.md/README.md/CHANGELOG.md 三处 scripts 归档路径（`.ccc/archive/...` → `docs/archive/...`）；P2-2 恢复 tests/ F401/F841/E402/I001 忽略（或 CLAUDE.md ruff 命令改 `server/`）使文档命令真实可绿。
 > ⚠ 2026-08-03 T34 验收登记：dispatchCard.js 挂载死功能收口——摘除 components/message.js + components/composer.js 的动态引用，归档 dispatchCard.js（dispatchFormat.js 若仅被其引用一并归档）；另 docs/roadmap.md:27 T34 状态行过时随卡头校对更新。
