@@ -40,6 +40,9 @@ OPTIONAL_KEYS: dict[str, str] = {
     "LOOP_ANTHROPIC_PORT": "",
     "LOOP_OPENAI_PORT": "",
     "NODE_BIN": "",
+    # 执行体派发运行参数（T32 真实派发闭环）
+    "EXECUTOR_TIMEOUT_SECONDS": "300",
+    "EXECUTOR_LOG_DIR": "",
 }
 
 LINE_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*?)\s*$")

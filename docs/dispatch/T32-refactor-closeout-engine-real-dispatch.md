@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§2 状态模型 / §7 执行体注册表 / §8 中转站）
 > 依据：Codex 2026-08-03 全新取证重评——engine/main.py 仍为「T4 前不真拉执行体」占位（模拟拉起 + 不收单），未达 D1「Engine 定时/实时发单、派发、收单、更新看板」与 M2「首个任务经 Engine 全流程跑通」；注册表 schema 无启动命令字段
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 
 ## 目标
 
@@ -42,5 +42,93 @@ server/engine/（dispatch.py、main.py、scheduler.py、store.py、task.py）、
 
 ## 回写区
 
-**执行体**：Trae · 日期：
+**执行体**：Trae · 日期：2026-08-03
+
+### schema 变更说明
+
+**executors.example.json**（契约 §7 + T32 扩展）：每条「可后台 CLI」行新增三个配置化字段：
+- `命令`：启动命令（可后台 CLI 必填，如 `opencode` / `claude`；手动 GUI/管理席留空合法）
+- `参数模板`：可选，含 `{work_id}` / `{card_path}` / `{role}` / `{workdir}` 占位符；留空表示无参数（如 `false` 命令）
+- `工作目录`：可选，留空则用 config.env 的 `DATA_DIR`
+
+**config.example.env** 新增两个键：
+- `EXECUTOR_TIMEOUT_SECONDS=300`：单个执行体执行超时（秒），超时则 kill 并按「打回」收单
+- `EXECUTOR_LOG_DIR=`：执行体 stdout/stderr 日志目录（每 work 一份 `{work_id}.log`）
+
+**loader.py**：`OPTIONAL_KEYS` 加入上述两键；`load_config` 自动解析。
+
+**task.py**：`Work` dataclass 新增 `card_path: str = ""` 字段（派发时注入参数模板的 `{card_path}` 占位符）。
+
+### 派发/收单逻辑要点
+
+**dispatch.py**：
+- `ExecutorEntry` 加 `command` / `args_template` / `workdir` 字段（frozen dataclass）
+- `load_registry` 校验：可后台 CLI 行必须有 `命令`（参数模板允许空）；参数模板占位符合法性校验（`{work_id}/{card_path}/{role}/{workdir}`，未知占位符报错）
+- 新增 `build_command(entry, work_id, role, card_path, default_workdir) -> list[str]`：用 `str.format_map` + `_SafeFormatDict`（未知占位符保留原样不抛 KeyError）替换占位符，`shlex.split` 拆 argv
+- 新增 `ExecutorRegistry.cli_entry_for_role(role)`：返回首个可后台 CLI 行
+- `DispatchDecision.AUTO` 注释删「T4 前模拟」
+
+**main.py**：
+- 新增 `_dispatch_and_collect(work, registry, cfg, log_dir, timeout)`：真实派发 + 同步收单核心
+  - `build_command` 生成 argv → `subprocess.Popen`（stdout/stderr 重定向到 `{log_dir}/{work_id}.log`）→ `proc.wait(timeout)`
+  - 退出码 0 → `(True, [])`；非 0 → `(False, [退出码非 0...])`；TimeoutExpired → kill + `(False, [超时...])`；FileNotFoundError/OSError → `(False, [启动失败...])`
+- `run_once(registry, store, cfg=None)`：AUTO 决策后 transition(执行中) → `_dispatch_and_collect` → 收单 transition(已回写/打回)；MANUAL 挂起等人；NONE 跳过
+- 统计新增 `collected` / `timed_out` 字段
+- `run_loop`：持续模式加催单日志（`timed_out > 0` 时 warning）
+- 删除全部「T4 前不真拉」「模拟拉起」「collected = 0  # 无真实执行结果」占位
+
+**scheduler.py**：未改（只读巡检保持只读；变更类走卡流程不变，不绕过 Engine）。
+
+### 端到端演示日志关键段
+
+M1 本地临时目录 + 临时 executors.json（echo 占位命令）+ 临时测试卡 → run_once：
+
+```
+[demo] === run_once 开始 ===
+[demo] summary={"mode": "once", "scanned": 2, "dispatched": 1, "in_flight": 0, "collected": 1, "timed_out": 0}
+
+[demo] === 日志 w-demo-1.log ===
+执行 work w-demo-1（角色 开发执行体）按任务卡 /tmp/.../T99-demo.md
+
+[demo] === 最终状态 ===
+  w-demo-1 role=开发执行体 state=已回写 problems=[]
+  w-demo-2 role=管理席 state=待分派 problems=[]
+
+[demo] === 全链验证 ===
+  w-demo-1: 待分派 → 执行中 → 已回写（退出码 0）  实际: 已回写
+  ✅ 真实拉起 → 执行完成 → 收单 → 状态流转 全链通过
+```
+
+演示覆盖：
+- 真实 `subprocess.Popen` 拉起 echo（非模拟）
+- 占位符替换（`{work_id}` / `{role}` / `{card_path}`）
+- 日志重定向到文件
+- 退出码 0 → 已回写
+- 管理席（分类「—」）不派发，留待分派
+
+### pytest 结果
+
+```
+$ python -m pytest server/tests/
+225 passed in 4.90s
+```
+
+新增用例（16 个）：
+- `test_engine_dispatch.py`：`test_cli_row_requires_command` / `test_cli_row_empty_template_allowed` / `test_cli_row_unknown_placeholder_rejected` / `test_manual_gui_row_does_not_require_command` / `TestBuildCommand`（7 个：占位符替换 / workdir 优先级 / 未知占位符保留 / 非 CLI 行拒绝 / 空命令拒绝 / 引号拆分）
+- `test_engine_main.py`：`test_exit_zero_collected_as_done` / `test_exit_nonzero_collected_as_rejected` / `test_launch_failure_collected_as_rejected` / `test_timeout_collected_as_rejected` / `test_staff_work_not_dispatched` / `test_done_work_not_rescanned` / `test_log_file_written` / `test_manual_gui_hangs_in_running` / `test_once_smoke`（统计含 timed_out）
+
+### grep 自检
+
+- `rg -n '模拟拉起|T4 前不真拉' server/` → **零命中**（含 README/docstring）
+- 密钥扫描 `rg -n 'sk-[a-zA-Z0-9]{20,}|ghp_...' server/` → 零命中
+- 零硬编码：执行体命令/参数模板/工作目录全部走注册表；超时/日志目录走 config.env
+
+### commit hash
+
+（待提交后填入）
+
+### 工作树预存项
+
+- `.ccc/agent-mind/decided.json`（运行态，非本次改动）
+- `_update_handoff.py`（预存脚本，非本次改动）
 

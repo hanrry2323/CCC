@@ -53,6 +53,7 @@ class Work:
         title: 任务标题。
         state: 当前状态（契约 §2，默认待分派）。
         problems: 问题清单，进入「打回」时由 transition 填写。
+        card_path: 任务卡文件路径（派发时注入执行体参数模板的 {card_path} 占位符）。
     """
 
     id: str
@@ -60,6 +61,7 @@ class Work:
     title: str = ""
     state: State = State.TODO
     problems: list[str] = field(default_factory=list)
+    card_path: str = ""
 
     def transition(self, new_state: State, problems: list[str] | None = None) -> None:
         """按契约 §2 转移状态；非法跳转抛 `IllegalTransitionError`。
