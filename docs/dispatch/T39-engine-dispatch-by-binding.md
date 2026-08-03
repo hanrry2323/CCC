@@ -2,7 +2,7 @@
 
 > 关联：INT-120 关闭后新阶段 · M4 主档 `__archive__/decisions/ccc-refactor-M4-移交-2026-08-03.md` §三 观察项
 > 依据：T38 插曲——`状态：待分派` 管理卡被 2017 生产 Engine 自动派发（卡头执行体 Trae=手动 GUI，但角色「开发执行体」注册表含 OpenCode CLI 行 → `decide()` 返回 AUTO → 错误拉起并打回）
-> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
 
@@ -104,3 +104,24 @@ server/engine/task.py（Work.executor 字段）、server/engine/dispatch.py（de
 ### 2017 部署（待 Codex 放行）
 
 红线 #5：本卡 M1 实现 + 单测；2017 部署（pull → engine 重启 → 一张 Trae 卡验证「挂起不拉起」）由 Codex 验收放行后执行。
+
+---
+
+## 验收区（Codex 独立取证 · 严格 · 2026-08-03）
+
+**判定：✅ 通过（含 2017 生产验证）。** T38 插曲根因修复闭环。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 6 类用例单测全绿；pytest 全绿；ruff 零告警 | 实测 306 collected 0 失败（含 7 个 dispatch 决策用例 + 4 个 main 端到端用例）；ruff server/ All checks passed | ✅ 做到 |
+| 2. 本地端到端：Trae 卡挂起无拉起；CLI 卡真实拉起收单 | 执行体演示记录 + 测试 `test_trae_card_manual_even_if_role_has_cli` / `test_opencode_card_auto_real_dispatch` 覆盖；Codex 抽查断言（Trae+角色含 CLI → MANUAL）真实有效 | ✅ 做到 |
+| 3. 回退路径与 T32 现状一致（无执行体/未知执行体不回归） | `decide_work` 无 executor / binding 未命中 → 回退 `decide(role)`；测试含未知执行体回退、无执行体回退、一致性断言 | ✅ 做到 |
+| 4. 三扫描零命中；工作树干净；真实提交 + push 证据 | 改动 8 文件无硬编码/密钥/外脑；工作树干净；6c185e6+0a93644 已 push（origin 实测 = 0a93644） | ✅ 做到 |
+| 5. 2017 部署验证（Codex 放行后） | Codex 独立执行：2017 pull → engine 重启（PID 89733）→ T99-Trae-test 卡实测：待分派→执行中（挂起）约 75s，exec 日志目录零新增（未拉起）；清理测试卡 + 看板重导出 48 卡 + health ok | ✅ 做到 |
+
+### 备注
+
+- MANUAL 路径语义保持「挂起等人」：Engine 将卡置为执行中并回写卡头，不拉起任何执行体（T39 目标）。
+- 生产验证卡为临时 untracked 文件，已移出 `/tmp/T99-Trae-test.md`，看板无残留。
