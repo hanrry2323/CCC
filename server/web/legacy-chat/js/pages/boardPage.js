@@ -14,7 +14,6 @@
  */
 
 import { apiGet } from '../api.js';
-import { dialogueEntryUrl } from '../ports.js';
 
 /** 契约 §2 五态（与 server/board/models.py STATES 对齐）。 */
 const FLOW_COLS = ['待分派', '执行中', '已回写', '已关闭', '打回'];
@@ -143,7 +142,7 @@ function preferredWorkspace() {
 function html() {
   return `
 <div class="board-page hub-page">
-  <div class="orch-hint">看板 · 走新服务端协议（/board/snapshot）。对话请开 <a href="${dialogueEntryUrl()}">M1 :7788</a></div>
+  <div class="orch-hint">看板 · 走新服务端协议（/board/snapshot）。2017 单端 :7788 四视图。</div>
   <div class="board-toolbar">
     <h2>看板</h2>
     <div class="board-toolbar-actions">

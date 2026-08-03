@@ -100,9 +100,7 @@ _STATIC_LEGACY_CHAT_ROOT = _STATIC_WEB_ROOT / "legacy-chat"
 _STATIC_WHITELIST: dict[str, str] = {
     "/": "legacy-chat/index.html",
     "/index.html": "legacy-chat/index.html",
-    "/css/style.css": "css/style.css",
     "/js/app.js": "legacy-chat/js/app.js",
-    "/js/chat.js": "js/chat.js",
     "/data/board.js": "data/board.js",
     "/data/cluster.js": "data/cluster.js",
 }

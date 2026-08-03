@@ -69,9 +69,6 @@ scripts/tests/create_test_phase_lint.py
 scripts/tests/regression_v028.py
 docs/archive/legacy-retired-2026-08-02/scripts/tests/create_test_phase_lint.py
 docs/archive/legacy-retired-2026-08-02/scripts/tests/regression_v028.py
-# v0.31.0: Tauri 桌面端构建产物
-src-tauri/target/
-src-tauri/gen/
 .workbuddy/
 
 # 聊天会话日志（运行时数据，不提交）

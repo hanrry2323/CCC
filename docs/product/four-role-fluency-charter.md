@@ -24,7 +24,7 @@
 | 角色 | 负责面 | 开窗策略 | 目录白名单 |
 |------|--------|----------|------------|
 | **架构** | 意图门、契约、验收 | **常开** | brief / docs 契约 / 打回清单 |
-| **壳** | 对话面 UI | 有 brief 才开 | `desktop/` · `src-tauri/` |
+| **壳** | 对话面 UI | 有 brief 才开 | `desktop/` |
 | **过桥** | Hub API / 信息流 | 有 brief 才开 | `scripts/chat_server/` |
 | **编排** | Engine / Board | 有 brief 才开 | `scripts/engine/` · `scripts/board/roles/` |
 

@@ -20,7 +20,6 @@
 /scripts/check-version-sync.py  @loop-engineer
 /VERSION                        @loop-engineer
 /package.json                   @loop-engineer
-/src-tauri/Cargo.toml           @loop-engineer
 
 # 文档红线
 /CLAUDE.md                      @loop-engineer

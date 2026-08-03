@@ -52,7 +52,7 @@ qx-observer 是 CCC 框架的主要消费方。2026-07-01 任务：
 
 1. **Planner**: 读 `~/program/CCC/CLAUDE.md` + `qx-observer/.ccc/profile.md`
    写 plan 到 `.ccc/plans/audit-frontend-and-locate-loopcode.plan.md`
-   含 6 phases、文件白名单（`app/ frontend/ src-tauri/`）、执行方式 `auto`、预算 200 USD
+   含 6 phases、文件白名单（`app/ frontend/ desktop/`）、执行方式 `auto`、预算 200 USD
 
 2. **Executor**: `claude -p "$(cat /tmp/audit-executor.txt)" --permission-mode bypassPermissions --max-budget-usd 200`
    按 plan 逐 phase 执行、逐 phase commit、更新 phases.json

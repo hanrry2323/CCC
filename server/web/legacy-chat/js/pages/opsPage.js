@@ -14,7 +14,6 @@
  */
 
 import { apiGet } from '../api.js';
-import { dialogueEntryUrl } from '../ports.js';
 
 let _root = null;
 let _timer = null;
@@ -34,7 +33,7 @@ function pill(ok, label) {
 function html() {
   return `
 <div class="ops-page hub-page">
-  <div class="orch-hint">运维 · 走新服务端协议（/ops/summary）。对话请开 <a href="${dialogueEntryUrl()}">M1 :7788</a></div>
+  <div class="orch-hint">运维 · 走新服务端协议（/ops/summary）。2017 单端 :7788 四视图。</div>
   <div class="ops-bar">
     <h2>运维</h2>
     <span class="ops-sub">集群节点 + 服务概览</span>

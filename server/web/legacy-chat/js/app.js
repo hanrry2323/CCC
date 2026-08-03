@@ -189,11 +189,11 @@ async function onHubRoute(route) {
   document.title =
     dialogue
       ? 'CCC'
-      : route === 'chat' ? 'CCC Hub · 远程对话' :
-        route === 'board' ? 'CCC Hub · 看板' :
-        route === 'console' ? 'CCC Hub · 控制台' :
-        route === 'ops' ? 'CCC Hub · 运维' :
-        'CCC Hub';
+      : route === 'chat' ? 'CCC · 对话' :
+        route === 'board' ? 'CCC · 看板' :
+        route === 'console' ? 'CCC · 控制台' :
+        route === 'ops' ? 'CCC · 运维' :
+        'CCC';
   if (route === 'chat') {
     unmountBoard();
     unmountConsole();

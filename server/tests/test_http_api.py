@@ -466,8 +466,8 @@ class TestStaticHosting:
         assert status == 200
 
     def test_board_page_still_accessible(self, api_server):
-        """原有看板页静态文件仍可访问。"""
-        status, _ = _get_raw(api_server, "/css/style.css")
+        """看板数据静态文件仍可访问（T34：孤儿 css/style.css 已归档，改测 legacy-chat css）。"""
+        status, _ = _get_raw(api_server, "/css/base.css")
         assert status == 200
         status, _ = _get_raw(api_server, "/data/board.js")
         assert status == 200

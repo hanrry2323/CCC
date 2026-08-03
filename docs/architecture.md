@@ -112,9 +112,6 @@
 │   ├── Sources/CCCDesktop/                     #   Swift 源码
 │   └── Package.swift                           #   Swift Package
 │
-├── src-tauri/                                  # ⚠ 历史遗留（待 T34 归档）
-│                                               #   旧 Tauri 桌面端，已被 desktop/ 取代
-│
 ├── templates/                                  # plan/phases/report/verdict/AGENTS 模板
 │
 └── .ccc/archive/legacy-retired-2026-08-02/     # 旧栈归档（scripts/ 等，已退役）

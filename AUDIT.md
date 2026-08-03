@@ -10,7 +10,7 @@
 | 项 | 值 |
 |----|-----|
 | 日期 | 2026-07-15 |
-| 范围 | `scripts/`、`app/`、`lib/`、`src/`、`docs/`、`specs/`、`references/`、`skills/`、`CLAUDE.md`、`README.md`、`STARTUP-BRIEF.md`、`SKILL.md`、`src-tauri/tauri.conf.json`；排除编译产物/node_modules/__pycache__ |
+| 范围 | `scripts/`、`app/`、`lib/`、`src/`、`docs/`、`specs/`、`references/`、`skills/`、`CLAUDE.md`、`README.md`、`STARTUP-BRIEF.md`、`SKILL.md`；排除编译产物/node_modules/__pycache__ |
 | 方法 | 已知疑点优先 grep → 定点 Read 证据行 → 五维交叉；**只读**（仅创建 `.cursorignore` + 本报告） |
 | 覆盖维度 | 架构 / 代码 / 业务流程 / 角色·智能体 / 提示词 |
 | 权威版本 | `VERSION` = **v0.30.0**（与部分文档漂移，见 F-VER-*） |
@@ -26,7 +26,7 @@
 | 3 | High | `_GLOBAL_OPENCODE_COUNT` 无锁自增/自减，且经 `ThreadPoolExecutor` 并发读写 | `ccc-engine.py:95-96,1167-1174,1272-1284` |
 | 4 | High | stale/hang 隔离不释放 opencode 全局槽位 → 计数泄漏直至进程重启 | `ccc-engine.py:2080-2105` vs 递减仅 `1752-1758`/`1581-1584` |
 | 5 | High | 多 workspace 靠猴子补丁 `ccc_board.ROOT/BOARD` 切换，并发路径存在跨 workspace 污染面 | `ccc-engine.py:345-353` |
-| 6 | High | Tauri `distDir` 指向 `.py`、`beforeDevCommand` 递归调用 `tauri dev` → 桌面端接线错误 | `src-tauri/tauri.conf.json:3-6` |
+| 6 | High | Tauri `distDir` 指向 `.py`、`beforeDevCommand` 递归调用 `tauri dev` → 桌面端接线错误 | `src-tauri/tauri.conf.json:3-6`（已归档至 `docs/archive/ccc-legacy-2026-08-02/tauri-desktop-legacy/`） |
 | 7 | High | 危险命令黑名单仅正则匹配用户末条 prompt，易绕过；CORS `*`+credentials | `config.py:18-20`；`chat.py:38-39`；`app.py:16-17` |
 | 8 | High | Dev/并行 phase prompt 未限定「只做当前 phase」，要求「实现所有需求」→ 并行互踩 | `ccc-engine.py:1124-1135`；`ccc-board.py:4535-4544` |
 | 9 | Medium | 文档/版本三方漂移：权威 v0.30.0 vs SKILL/BRIEF v0.28.1 vs README 仍写 7 角色定时轮询 | `VERSION`；`SKILL.md:6,205`；`README.md:24-57` |

@@ -28,8 +28,8 @@
 </script>
 </head>
 <body class="hub-mode">
-<nav id="hub-nav" aria-label="CCC Hub">
-  <div class="hub-brand" title="编排口；对话在 M1 :7788">CCC<em>Hub</em></div>
+<nav id="hub-nav" aria-label="CCC 控制台">
+  <div class="hub-brand" title="2017 单端 :7788 · 对话/看板/运维/控制台四视图">CCC</div>
   <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
   <a class="hub-nav-link" data-route="ops" href="#/ops">运维</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
@@ -44,7 +44,7 @@
   <div class="hub-view" id="view-chat">
 <div id="app">
   <div class="hub-remote-banner hub-shell-only" role="status">
-    编排口：看板 / 运维。聊天请开对话口（M1 :7788）。
+    2017 单端 :7788 · 对话/看板/运维/控制台四视图统一入口。
   </div>
 
   <div id="titlebar">
@@ -186,13 +186,13 @@
 <script src="/js/shell-ui.js?v=20260724boardws1"></script>
 <div id="login-view" class="login-view" hidden>
   <div class="login-card">
-    <div class="login-title" id="login-title">CCC Hub 登录</div>
+    <div class="login-title" id="login-title">CCC 登录</div>
     <form class="login-form" autocomplete="off">
-      <label>用户名<input id="login-user" name="user" placeholder="operator 或 viewer" autocomplete="username"></label>
+      <label>用户名<input id="login-user" name="user" placeholder="ccc" autocomplete="username"></label>
       <label>密码<input id="login-pass" name="pass" type="password" placeholder="••••••••" autocomplete="current-password"></label>
       <div class="login-error" id="login-error"></div>
       <button type="submit" id="login-btn" class="hub-btn primary">登录</button>
-      <p class="login-hint" id="login-hint">operator = 编排账密（写权限）；viewer = 只读（需服务端配置 CCC_HUB_VIEWER_PASS）。</p>
+      <p class="login-hint" id="login-hint">账号密码登录（CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH 配置）。</p>
     </form>
   </div>
 </div>

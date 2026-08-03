@@ -39,7 +39,7 @@
 
 | 面 | 是否参与 | 允许改动的路径 | 禁止 |
 |----|----------|----------------|------|
-| 壳 | | `desktop/` · `src-tauri/`（按需收窄） | |
+| 壳 | | `desktop/`（按需收窄） | |
 | 过桥 | | `scripts/chat_server/`（按需收窄） | |
 | 编排 | | `scripts/engine/` · `scripts/board/roles/`（按需收窄） | |
 | 架构 | | 本 brief · 相关 docs | 代写实现（除非试点例外） |

@@ -1,8 +1,7 @@
-/** CCC Hub hash router — #/board | #/ops | #/console | #/chat
+/** CCC hash router — #/board | #/ops | #/console | #/chat
  *
- * Hub = 编排口（看板/运维）；对话口在 M1 :7788。
- * 在 Hub(:7777) 打开 #/chat → 显示内联跳转提示（不再强制跳转）。
- * 见 docs/product/hub-remote-management.md
+ * 2017 单端 :7788 四视图统一入口（对话/看板/运维/控制台）。
+ * 见 docs/architecture.md
  */
 
 import { dialogueEntryUrl, isDialogueShell } from './ports.js';
@@ -47,8 +46,8 @@ function showHubChatNotice() {
   if (view) {
     view.innerHTML =
       '<div style="padding:48px 24px;max-width:420px;margin:0 auto;text-align:center;font-family:system-ui,sans-serif">' +
-      '<p style="font-size:15px;line-height:1.5;margin:0 0 16px">对话口在 <strong>M1 :7788</strong>，与 Desktop 同热路径。</p>' +
-      '<p style="font-size:13px;opacity:.75;margin:0 0 20px">Hub 只做看板 / 运维 / 下达。</p>' +
+      '<p style="font-size:15px;line-height:1.5;margin:0 0 16px">对话口在 <strong>2017 :7788</strong>，HTTP 直连单端服务。</p>' +
+      '<p style="font-size:13px;opacity:.75;margin:0 0 20px">当前为编排视图；对话请开 2017 :7788。</p>' +
       '<a href="' +
       url +
       '" style="display:inline-block;padding:10px 18px;background:#0c4a6e;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">打开对话口</a>' +
