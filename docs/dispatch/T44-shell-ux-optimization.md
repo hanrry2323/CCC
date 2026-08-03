@@ -1,7 +1,7 @@
 # 任务卡 T44 · 双壳体验优化：10 项问题修复（OpenCode 执行）
 
 > 关联：老板实测反馈「问题太多」· 依据：Codex 无头 Chrome 真机实测 + 代码取证（2026-08-04）——10 项问题全部有证据，见下
-> 执行体：OpenCode · 验收：Codex（严格，逐项复验）· 状态：已回写 · 日期：2026-08-04
+> 执行体：OpenCode · 验收：Codex（严格，逐项复验）· 状态：已关闭 · 日期：2026-08-04
 > 变更记录：2026-08-04 执行完成回写（代码 commit ddd1472，代码+文档 push 后置已回写）。
 
 ## 目标
@@ -113,3 +113,33 @@ server/web/legacy-chat/（api.js、app.js、router.js、login-gate.js、agentAut
 ### push 证据
 
 代码 commit：`ddd1472 feat(shell): T44 双壳体验 10 项修复（...）`（本回写 commit 推送后一并 push）。
+
+---
+
+## 验收区（Codex 独立取证 · 严格 · 2026-08-04）
+
+**判定：✅ 通过。** 10 项逐条复验达标；桌面安装与 2017 部署按红线留待 Codex 放行。
+
+### 逐项复验结果
+
+| # | 问题 | Codex 复验 |
+|---|------|-----------|
+| 1 | 桌面旧包 | `.build/release/CCCDesktop` 新二进制已构建（01:34，晚于本卡源码）；安装到 /Applications 待放行 ✅（构建级） |
+| 2 | 登录后直达对话 | 无头 Chrome 实测登录后 `#/chat` ✅ |
+| 3 | 左栏项目坏 | 实测侧栏真实渲染 6 个项目（INT-120/新阶段系列…），无「暂无项目」✅ |
+| 4 | 右栏卡流全 0 | 实测「工作区: all」+ 待分派0/执行中1/已回写48/已关闭/打回4 + 真实卡片列表（T1/T12/T14/T26/T44…）✅ |
+| 5 | 模型档位空 | 「模型档位不可用」警告消除；/config 提供 models（flash/code），档位选择器就位 ✅ |
+| 6 | 线程隔离 | server.py `_thread_conversations` 按 thread_id 分桶 + 7 新增测试覆盖；缺省兼容全局 ✅ |
+| 7 | 全局锁 503 | brain.py 会话分锁（`_session_locks`）+ `CCC_BRAIN_MAX_CONCURRENCY` 默认 2（同会话串行、跨会话并发）✅ |
+| 8 | 无线路图 | 五视图标签（对话/看板/线路图/运维/控制台）；实测 `#/roadmap` 渲染 ✅ |
+| 9 | 登录文案旧配置名 | 文案改 `CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH` 并按 /health auth_configured 提示 ✅ |
+| 10 | 401 噪音 | 无头 Chrome 全流程实测 0 个 401、0 console error；favicon 免鉴权白名单 ✅ |
+
+### 回归
+
+- Codex 独立复跑：pytest 346 collected 0 失败、py_compile OK、ruff All checks passed；无头 Chrome 7 项断言 PASS（含零 401/零 JS 错误）。
+
+### 备注（小项，不阻塞）
+
+- 页面标头副文案仍写「对话/看板/运维/控制台四视图」，实际已五视图（线路图）——后续随手改一处文案即可。
+- 桌面安装（/Applications）与 2017 部署（pull + 三服务重启）由 Codex 放行后执行，作为 T44 收尾。
