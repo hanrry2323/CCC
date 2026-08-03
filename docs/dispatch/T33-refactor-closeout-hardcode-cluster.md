@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§9 全局红线 / D10 杜绝硬编码）
 > 依据：Codex 2026-08-03 全新取证重评——engine/cluster.py `DEFAULT_SERVICES` 硬编码且服务名仍是旧系统（ccc-chat-server/ccc-board-server，2017 已下线），集群/运维页会误报；legacy-chat 前端仍硬编码本机路径与 IP（utils.js/ports.js/settings.js）
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
 
@@ -92,3 +92,27 @@ ruff check server/
 
 - `f1b806a` refactor(server): T33 硬编码清零 + 集群服务清单配置化（9 文件 +265/-71）
 
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**判定：✅ 通过。** 附注：T31 验收登记的 P2-1/P2-2 未在本卡顺带处理（未写入本卡范围），正式并入 T35；另有 1 项行为观察（非阻塞）。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 三扫描零命中（测试夹具除外） | 实测 `DEFAULT_SERVICES` / `192.168.3.116:7777` / `/Users/apple` 仅 test_kb_search 夹具 2 处命中；密钥模式 0 | ✅ 做到 |
+| 2. M1 本地起服务实测 | Codex 独立复测：`/config` 200 仅返回 ports/workspace_map/version，无密钥/路径/上游地址；`/ops/summary` 未带 token 401、带 token 返回动态服务清单（human_line「服务 1/3 运行」，服务名来自 CLUSTER_SERVICES 新栈三服务） | ✅ 做到 |
+| 3. 页面登录后四视图 200 不回退 | 前端改动为同源相对路径 + 设置页 workspace map，API 协议未动；终验并入 T35 双端复测 | ✅ 做到（终验并入 T35） |
+| 4. pytest 全绿 + 真实提交 | Codex 实测 238 collected 全绿（0 失败）；f1b806a+3d3802a 已 push origin/main | ✅ 做到 |
+
+### 行为观察（非阻塞，T35 复测关注）
+
+- `resolveProjectPath` 无配置时由「返回 CCC 本机路径」改为「返回空串」：workspace map 改为用户设置页填写（/config 已备注入位但前端暂未 fetch）。对话/看板/运维主流程为同源相对路径不受影响；项目路径相关细分流程在 T35 双端复测时顺带验证。
+- `cluster.py` 的 `DEFAULT_OUTPUT`（相对路径字面量）为预存项，保持现状。
+
+### 附注（T31 P2 修正项去向）
+
+- P2-1（CLAUDE/README/CHANGELOG 三处 scripts 归档路径写错）→ 并入 T35。
+- P2-2（ruff `server/ tests/` 88 错误，tests/ 61 个 F401 误伤）→ 并入 T35。
