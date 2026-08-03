@@ -2,7 +2,7 @@
 
 > 关联：INT-120 关闭后新阶段 · M4 主档 `__archive__/decisions/ccc-refactor-M4-移交-2026-08-03.md` §三 观察项
 > 依据：T38 插曲——`状态：待分派` 管理卡被 2017 生产 Engine 自动派发（卡头执行体 Trae=手动 GUI，但角色「开发执行体」注册表含 OpenCode CLI 行 → `decide()` 返回 AUTO → 错误拉起并打回）
-> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
 
 ## 目标
 
@@ -48,4 +48,59 @@ server/engine/task.py（Work.executor 字段）、server/engine/dispatch.py（de
 
 ## 回写区
 
-**执行体**：Trae（GLM5.2）· 日期：
+**执行体**：Trae（GLM5.2）· 日期：2026-08-03
+
+### 实现要点
+
+1. `server/engine/task.py`：`Work` dataclass 新增 `executor: str = ""` 字段（卡头「执行体」绑定名，去括号后；空串表示卡未指定，回退 role-based 决策）。
+2. `server/engine/dispatch.py`：
+   - `ExecutorRegistry` 新增 `rows_for_binding(tool_name)`（按 binding 名返回全部注册行）+ `cli_entry_for_binding(tool_name)`（首个 CLI 行）。
+   - 新增 `decide_work(work, registry)`：有 `work.executor` 时按 binding 找注册表行 → CLI→AUTO / 手动 GUI→MANUAL / 「—」→NONE / 未命中→回退 `decide(role)`；无 executor → 回退 `decide(role)`。`decide()` 原语义不变（兼容既有调用）。
+3. `server/engine/store.py`：`FileBoardStore._parse_card_to_work` 填充 `work.executor`（复用已解析的 `executor_name`；`UNKNOWN` → 空串以触发回退）。
+4. `server/engine/main.py`：`run_once` 决策改用 `decide_work(work, registry)`；MANUAL/NONE 日志补 `executor=` 字段；AUTO 路径不变（entry 仍经 `cli_entry_for_role`，因 role 已由 store 从 executor 反查）。
+5. `server/config/executors.example.json`：Trae 行备注改为「Engine 按卡头绑定识别为手动，挂起等人，不自动拉起（T39）」。
+6. `server/engine/README.md`：派发管道图/约定/实现表同步 T39 绑定优先。
+
+### 6 类单测结果（server/tests/test_engine_dispatch.py::TestDecideWork + test_engine_main.py::TestRunOnceDispatchByBinding）
+
+| # | 用例 | 期望 | 结果 |
+|---|------|------|------|
+| ① | 卡头 Trae（手动 GUI）但角色含 OpenCode CLI 行 | MANUAL、无拉起日志 | PASS（`test_trae_manual_gui_even_if_role_has_cli` + `test_trae_card_manual_even_if_role_has_cli` 端到端：dispatched=1/collected=0/in_flight=1，无 T90.log）|
+| ② | 卡头 OpenCode（CLI） | AUTO 真实拉起收单 | PASS（`test_opencode_binding_auto` + `test_opencode_card_auto_real_dispatch` 端到端：collected=1，T91.log 存在）|
+| ③ | 卡头 Codex（分类「—」） | NONE 不派发 | PASS（`test_codex_staff_binding_none` + `test_codex_card_none_not_dispatched` 端到端：dispatched=0，留待分派）|
+| ④ | 无 executor（空串） | 回退角色 AUTO | PASS（`test_no_executor_falls_back_to_role_auto` + `test_no_executor_unknown_role_none`）|
+| ⑤ | 未知 executor（不在注册表） | 回退角色决策 | PASS（`test_unknown_executor_falls_back_to_role`：role=开发执行体→AUTO / role=管理席→NONE / role=空→NONE）|
+| ⑥ | 现有派发/收单/超时用例不回归 | 全绿 | PASS（`test_decide_work_consistent_with_decide_when_no_executor` 五角色一致 + 全套 306 passed）|
+
+补充：`TestFileBoardStore` 新增 `test_list_work_fills_executor_empty_for_unknown`（未知执行体 → role 空、executor 保留卡头名供回退）+ 原 `test_list_work_reads_card_headers` 补 `w.executor == "demo"` 断言。
+
+### 本地端到端演示（/tmp/t39-demo，已清理）
+
+注册表：开发执行体含 Trae(手动 GUI) + OpenCode(CLI) + 管理席 Codex(—)。两张卡同放 `dispatch/`：
+
+- T90 `执行体：Trae` → `挂起等人接单: work=T90 role=开发执行体 executor=Trae` → 状态：执行中（挂起），**无 T90.log**。
+- T91 `执行体：OpenCode` → `拉起执行体: work=T91 cmd=['echo','work=T91',...]` → 状态：已回写，**T91.log 存在**（真实收单）。
+
+`run_once` 统计：`{"scanned":2, "dispatched":2, "in_flight":1, "collected":1, "timed_out":0}`。
+
+### pytest / ruff 结果
+
+- `pytest server/tests/ --tb=short` → **306 passed in 4.59s**（含 11 个 T39 新增用例：7 决策 + 3 端到端 + 1 store 填充）。
+- `ruff check server/` → **All checks passed!**（零告警）。
+- `python -m py_compile server/engine/{task,dispatch,store,main}.py` → OK。
+
+### 三扫描零命中（仅本次改动 8 文件）
+
+- 硬编码 IP/端口/路径（`192\.168\.|127\.0\.0\.1|:7788|:6100|:6102|/Users/apple`）：零命中。
+- 密钥/token 字面量：零命中。
+- 外脑引用（`qx-map|hp-kb|hp_kb`）：零命中（`cluster.py:1` 旧注释「不依赖 qx-map」非本次改动，不在范围）。
+
+### push 证据
+
+- commit：`6c185e6 feat(engine): T39 Engine 派发按卡头执行体绑定优先——修复 T38 插曲`（8 files, +286/-22）。
+- push：`539cbb7..6c185e6 main -> main`（origin/main = `6c185e652316fff146773de8dff7c82082f3ad38`）。
+- 工作树：仅余 `.ccc/agent-mind/decided.json` 预存项（非本次改动）。
+
+### 2017 部署（待 Codex 放行）
+
+红线 #5：本卡 M1 实现 + 单测；2017 部署（pull → engine 重启 → 一张 Trae 卡验证「挂起不拉起」）由 Codex 验收放行后执行。
