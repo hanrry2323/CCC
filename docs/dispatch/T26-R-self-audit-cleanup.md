@@ -1,7 +1,7 @@
 # 任务卡 T26-R · 桌面端自查清理（老板要求：清理干净不留冗余，由执行体大模型自主深度检查）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 指示「这次要清理就清理干净，不要留什么冗余；提宽泛检查要求，让那边的大模型自己去检查问题」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：2 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 打回次数：2 · 日期：2026-08-03
 > 前置：T26 主体重构已在工作树（未提交）；本卡为**自主自查清理**——不提供逐条清单，由执行体大模型按下列检查维度自行通读、发现问题、自主决策清理范围并完整落地。
 
 ## 目标
@@ -282,3 +282,79 @@ delete mode 100644 desktop/Sources/CCCDesktop/NotificationManager.swift
 **说明**：`ComposerTextView.swift`/`Vibrancy.swift` 的 `makeNSView`/`makeCoordinator` 等为 NSViewRepresentable 协议必需方法，非死代码，不删。
 
 **要求**：删除上述 5 个方法（连同因此无引用的私有常量/类型一并清）；`swift build` 0 warnings + `swift test` 全绿；真实提交 + push；工作树仅剩预存 2 项。
+
+---
+
+## 三次回写（2026-08-03 · commit bc27322）
+
+> Codex 打回区 2 要求删除 `LocalSessionStore.swift` 的 5 个死方法（`enqueueSync`/`dequeueSync`/`bumpAttempt`/`compactIfNeeded`/`isExhaustRepairHint`）及连带私有常量/类型。本次 3 文件 -181 行，死方法清零 + 连带死代码清理 + 对应测试用例清理。
+
+### 三次发现清单（逐项：文件 / 问题 / 处置）
+
+| 文件 | 问题 | 处置 |
+|------|------|------|
+| LocalSessionStore.swift | `enqueueSync(projectId:threadId:)` def=1 calls=0（Codex 打回区 2 #1） | 删除 |
+| LocalSessionStore.swift | `dequeueSync(projectId:threadId:)` def=1 calls=0（Codex 打回区 2 #2） | 删除 |
+| LocalSessionStore.swift | `bumpAttempt(projectId:threadId:) -> Int` def=1 calls=0（Codex 打回区 2 #3） | 删除 |
+| LocalSessionStore.swift | `compactIfNeeded(_:) -> (messages:didCompact:rounds:)` def=1 calls=0（Codex 打回区 2 #4） | 删除 |
+| LocalSessionStore.swift | `isExhaustRepairHint(_:) -> Bool` def=1 calls=0（Codex 打回区 2 #5） | 删除 |
+| LocalSessionStore.swift | `loadPendingSync`/`writePendingSync` 私有 helper（仅被已删 enqueueSync/dequeueSync/bumpAttempt 调用） | 连带删除 |
+| LocalSessionStore.swift | `pendingSyncURL` 属性（仅被已删 helper 引用） | 连带删除 |
+| LocalSessionStore.swift | `PendingSyncItem` 结构体（仅被已删方法引用） | 连带删除 |
+| LocalSessionStore.swift | `maxSyncAttempts` 常量（def=1 calls=0） | 连带删除 |
+| LocalSessionStore.swift | `compactMessageThreshold`/`compactTokenThreshold`/`compactKeepRecent` 常量（仅被已删 compactIfNeeded 引用） | 连带删除 |
+| LocalSessionStorePersistenceTests.swift | `testSyncQueueEnqueueDedupBumpDequeue`（测已删方法） | 删除 |
+| LocalSessionStoreCodecTests.swift | `testCompactBelowThresholdUnchanged`/`testCompactMessageCountThreshold`/`testCompactTokenThreshold`/`testCompactKeepsExistingSummaryCards`（测已删方法）+ `makeMessages` helper（仅被 compact 测试用） | 删除 |
+| LocalSessionStoreCodecTests.swift | `testIsExhaustRepairHint`（测已删方法） | 删除 |
+
+### 保留项说明（避免过度删除）
+
+| 保留项 | 理由 |
+|--------|------|
+| `estimateTokens(_:)` | `ContentView.swift:1702` 生产代码调用，非死代码 |
+| `needs_hub_sync` 字段（Record） | `saveMessages` 仍写入（基于 `needsHubSync` 参数）；保留以维持 Codable 兼容，避免破坏旧数据格式 |
+| `makeCoordinator`（ComposerTextView） | NSViewRepresentable 协议必需方法（Codex 打回区 2 已认可） |
+| `insertNewlineIgnoringFieldEditor`（ComposerTextView） | NSTextView override，AppKit responder chain 动态调用（与 makeNSView/updateNSView 同类 framework 调用） |
+
+### 验证输出
+
+```
+swift build → Build complete! 0 errors, 0 warnings (5.65s)
+swift test  → 25/25 passed, 0 failures (0.029s)
+             （原 31 - 6 删除测试用例 = 25）
+
+全量 def>=1 && calls=0 自查（Python 脚本扫描 Sources + Tests）：
+  候选 2 项，均为 framework 方法，非死代码：
+    - ComposerTextView.swift:14  makeCoordinator（NSViewRepresentable 协议）
+    - ComposerTextView.swift:174 insertNewlineIgnoringFieldEditor（NSTextView override）
+  → 死代码清零 ✅
+
+grep 旧符号（17777/sidecar/outbox/hubTunnel/useNewServer/agentURL/
+            newServerURL/opsAgent/agentLLM/TaskArtifacts/FailureRecord/
+            sendMessageCancellable/sendMessage/enqueueSync/dequeueSync/
+            bumpAttempt/compactIfNeeded/isExhaustRepairHint）→ 零命中
+```
+
+**工作树状态（M1）：**
+```
+预存 2 项（与本卡无关，未提交）：
+  - .ccc/agent-mind/decided.json（modified）
+  - _update_handoff.py（untracked）
+```
+
+### 三次提交
+
+```
+bc27322 chore(desktop): T26-R LocalSessionStore 死方法清零
+3 files changed, 181 deletions(-)
+→ git push origin main → aedc8f4..bc27322
+```
+
+### 三次验收自检
+
+| # | Codex 打回区 2 要求 | 状态 |
+|---|---------------------|------|
+| 1 | 删除 `enqueueSync`/`dequeueSync`/`bumpAttempt`/`compactIfNeeded`/`isExhaustRepairHint` 5 个死方法 | ✅ 已删 |
+| 2 | 连带清理因此无引用的私有常量/类型 | ✅ 删 `loadPendingSync`/`writePendingSync`/`pendingSyncURL`/`PendingSyncItem`/`maxSyncAttempts`/`compactMessageThreshold`/`compactTokenThreshold`/`compactKeepRecent` |
+| 3 | `swift build` 0 warnings + `swift test` 全绿 | ✅ 0 warnings、25/25 passed |
+| 4 | 真实提交 + push；工作树仅剩预存 2 项 | ✅ bc27322 已 push；工作树仅剩 `.ccc/agent-mind/decided.json` + `_update_handoff.py` |
