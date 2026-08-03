@@ -1,7 +1,7 @@
 # 任务卡 T43 · 对话历史 HTTP 长轮询增量同步（OpenCode 执行）
 
 > 关联：新阶段「对话壳感知 + 增量同步」 · 依据：T29（对话大脑 /conversation）与 T41（SSE 流式）已落地，前端仍整表轮询 /conversation
-> 执行体：OpenCode · 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
+> 执行体：OpenCode · 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-04
 > 变更记录：2026-08-03 老板放行；Codex 决定执行体 OpenCode（工程类任务）；状态置「执行中」防 2017 Engine 抢跑；T42 查验确认单线程阻塞为本卡步骤 1 的必要修复。2026-08-04 执行完成回写（commit 6ad7f8f）。
 
 ## 目标
@@ -94,3 +94,26 @@
 ### 6. push 证据
 
 代码 commit：`6ad7f8f feat(web): T43 对话历史长轮询增量同步 + ThreadingHTTPServer 并发化（...）`（本回写 commit 推送后一并 push）。
+
+---
+
+## 验收区（Codex 独立取证 · 严格 · 2026-08-04）
+
+**判定：✅ 通过。** P1 单线程阻塞修复 + 长轮询增量同步达标；T42 关闭条件独立复验满足。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 无参 GET /conversation 返回全量（向后兼容） | 实测无参返回 `{messages:[], seq:0}`；现有 history 测试原样通过 | ✅ 做到 |
+| 2. after 光标：新消息返回增量 + seq 推进；超时返回空 | Codex 独立实测：`after=0&timeout=60` 挂起 → 同步对话落 2 条 → 返回 `{messages:[user+assistant], seq:2}`；超时/非法参数由 8 用例覆盖 | ✅ 做到 |
+| 3. 挂起期间 /health、/board/* 正常（ThreadingHTTPServer） | Codex 独立实测：长轮询 + 对话进行中 `/health` 200 @0.002s（修复前同场景 3s 超时 000） | ✅ 做到 |
+| 4. 客户端断开无线程泄漏/崩溃 | BrokenPipe/ConnectionResetError 捕获 + select 探测提前退出；测试覆盖断连用例 | ✅ 做到 |
+| 5. 前端首次全量 + 之后增量（无整表重拉） | api.js 模块级 seq 光标：首拉无 after，之后 `after=seq` 增量合并，seq 回退自动重置；代码已核 | ✅ 做到 |
+| 6. 验证命令全绿 | Codex 独立复跑：pytest 339 collected 0 失败、py_compile OK、ruff All checks passed | ✅ 做到 |
+| 7. T42 关闭条件（503 busy 而非网络阻塞） | Codex 独立实测：对话 A 进行中，对话 B → `{"error":"brain busy, try later"}`（503 语义）；/health 正常 | ✅ 做到 |
+
+### 备注
+
+- seq 光标 = `len(_conversations)`（append-only），内存历史重启即失属已知边界（持久化不在本卡范围，与 T41 对话持久记忆观察项同源）。
+- 2017 部署（pull + 三服务重启）由 Codex 放行，随 T42 关闭后一并执行（老板实测前置）。
