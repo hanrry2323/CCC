@@ -20,6 +20,15 @@
     CCC_BRAIN_AUTH_TOKEN    出口 Bearer token
     CCC_BRAIN_TIMEOUT       调用超时秒（默认 120；知识题需读文档+推理，
                             实测 ~74s，60s 过紧故默认上调）
+
+知识库检索注入（T37：回答前检索 CCC 自建知识库，命中才注入）::
+
+    CCC_BRAIN_KB            知识库检索开关（1/true/yes/on 启用，默认关闭）
+    CCC_KB_INDEX_DIR        BM25 索引目录（默认 knowledge/.index/）
+    CCC_BRAIN_KB_TOP_K      检索返回条数（默认 3）
+
+    红线：只读 knowledge/（server/kb BM25 索引），禁止读 qx-map / hp-kb；
+    未配置/未命中/检索异常 → 静默降级走裸大脑逻辑，对话不报错中断。
 """
 
 from __future__ import annotations
@@ -84,9 +93,74 @@ def _is_brain_configured() -> bool:
     return bool(_get_brain_model() and _get_brain_base_url() and _get_brain_auth_token())
 
 
+# ── 知识库检索配置（T37） ──
+
+def _get_brain_kb_enabled() -> bool:
+    """大脑知识库检索开关（CCC_BRAIN_KB=1/true/yes/on 启用，默认关闭）。"""
+    return os.environ.get("CCC_BRAIN_KB", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _get_brain_kb_index_dir() -> str:
+    """BM25 索引目录（CCC_KB_INDEX_DIR；空则交由 server.kb.search 走默认 knowledge/.index/）。"""
+    return os.environ.get("CCC_KB_INDEX_DIR", "").strip()
+
+
+def _get_brain_kb_top_k() -> int:
+    """知识库检索 top-k（默认 3，最小 1）。"""
+    try:
+        return max(1, int(os.environ.get("CCC_BRAIN_KB_TOP_K", "3")))
+    except ValueError:
+        return 3
+
+
+def _retrieve_kb_context(message: str) -> str:
+    """检索 CCC 自建知识库，返回注入 prompt 的参考段落。
+
+    红线：只读 ``knowledge/``（server/kb BM25 索引），禁止读 qx-map / hp-kb。
+    降级策略：未配置开关 / 未命中 / 检索异常 → 一律返回空串，对话照常走裸大脑。
+
+    命中时返回形如::
+
+        【知识库参考】
+        {section}：{title}：{snippet}
+        ...
+
+    其中 title 取 doc_id 中 ``::`` 之后的部分（无 ``::`` 则用完整 doc_id）。
+    """
+    if not _get_brain_kb_enabled():
+        return ""
+    try:
+        from server.kb.search import search as kb_search
+
+        index_dir = _get_brain_kb_index_dir()
+        results = kb_search(
+            query=message,
+            top_k=_get_brain_kb_top_k(),
+            index_dir=index_dir or None,
+        )
+    except Exception:
+        # 检索异常静默降级：不中断对话（红线 #3）
+        return ""
+    if not results:
+        return ""
+    lines = ["【知识库参考】"]
+    for r in results:
+        section = r.get("section", "") or "?"
+        doc_id = r.get("id", "") or "?"
+        title = doc_id.split("::", 1)[1] if "::" in doc_id else doc_id
+        snippet = r.get("snippet", "")
+        lines.append(f"{section}：{title}：{snippet}")
+    return "\n".join(lines)
+
+
 def _build_prompt(message: str, history: list[dict[str, Any]]) -> str:
-    """组装单次 Claude Code 调用 prompt：系统人格 + 最近 N 轮历史 + 当前消息。"""
+    """组装单次 Claude Code 调用 prompt：系统人格 + 知识库参考 + 最近 N 轮历史 + 当前消息。"""
     parts: list[str] = [BRAIN_SYSTEM_PROMPT, ""]
+    # T37：知识库检索注入（命中才注入，置于系统人格与历史之间）
+    kb_context = _retrieve_kb_context(message)
+    if kb_context:
+        parts.append(kb_context)
+        parts.append("")
     recent = history[-(2 * _BRAIN_HISTORY_TURNS):] if history else []
     if recent:
         parts.append("【历史对话】")
