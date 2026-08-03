@@ -1,7 +1,7 @@
 # 任务卡 T29 · 对话接大脑 Agent（/conversation 从裸模型直答改为调用 2017 Claude Code，带心智/工具/知识库）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳，经 HTTP 直连 2017 大脑对话）· 依据：老板 2026-08-03 反馈「桌面端对话和弱智一样」；Codex 实锤根因：**/conversation 只做裸模型转发（6102 → deepseek-v4-flash），无 Agent 心智/工具/知识库**· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：执行中 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 
 ## 根因（Codex 已实锤）
 
@@ -99,17 +99,27 @@
 - ruff：`brain.py` 零告警；`server.py`/`test_http_api.py` 11 处告警**全部 HEAD 已存在**（F821 `BoardItem` 未导入 ×6、F401 `OrderedDict`/`Path` 未用、F541 f-string、W292 缺尾换行），T29 未引入新告警。
 
 **D. 部署 + 验证（2017）**
-- （部署后填写：M1 push → 2017 pull → config.env 补 CCC_BRAIN_* → web-server kickstart → 本机 POST /conversation 实测 → 桌面端/网页跨机实测）
+- M1 push `0c2734e` → 2017 `git pull --ff-only`：HEAD `0ccd0119 → 0c2734ed`（同步）。
+- 2017 `server/config/config.env`：移除 `CCC_CONV_*`，追加 `CCC_BRAIN_CLAUDE_BIN=/Users/fan/.npm-global/bin/claude` / `CCC_BRAIN_MODEL=flash` / `CCC_BRAIN_BASE_URL=http://127.0.0.1:6100` / `CCC_BRAIN_AUTH_TOKEN=ccc-relay-flash` / `CCC_BRAIN_TIMEOUT=120`；`RELAY_UPSTREAM_*` 保留（relay 仍用）。备份 `config.env.bak.T29`。
+- **关键发现**：2017 web-server 进程 env 来自 launchd plist 的 `EnvironmentVariables`（非运行时读 config.env），故同步用 `plistlib` 改 `~/Library/LaunchAgents/com.ccc.web-server.plist`（移除 `CCC_CONV_*`、加 `CCC_BRAIN_*`），`plutil -lint` OK，备份 `plist.bak.T29`。`launchctl bootout gui/501/com.ccc.web-server && bootstrap` 重载，新 PID 35142，`/health` → `{"status":"ok"}`。
+- 基建核验：`claude` 2.1.220 在 `/Users/fan/.npm-global/bin/claude`；6100 → HTTP 200。
+- 本机实测（2017 localhost:7788，ccc/ccc 换 token）：
+  - Q1「1+1=？只答数字」→ `2`（真实 Agent 回复，~15s，CLI 启动地板）。
+  - Q2「CCC 重构的目标是什么？结论先行」→ 首次 60s 超时 504（知识题读 CLAUDE.md/docs+推理 ~74s）；调 `CCC_BRAIN_TIMEOUT=120` 复测 → 成功，回复正确引用 INT-120/T29/T30/重构契约 v1 §8，指出「对话口接 2017 最强大脑 Agent…修复裸模型直答无心智」（证明读项目文档+有心智）。
+- 跨机实测（M1 → `http://192.168.3.116:7788`，模拟桌面/网页路径）：
+  - `/health` 200；无 token POST `/conversation` → 401（鉴权不回归）。
+  - 多轮上下文：T1「我叫小明」→「已记下：小明」；T2「我刚才告诉你我叫什么？只答名字」→「小明」（历史上下文经 `_build_prompt` 注入生效）。
+- 超时调参提交 `3d4919e`：brain.py 默认 + config.example.env `CCC_BRAIN_TIMEOUT` 60→120（数据驱动；2017 已设 120）。
 
 **E. 提交 + 回写**
-- 提交：`chore(server): T29 对话接大脑 Agent——/conversation 调用 2017 Claude Code（带心智/工具/知识库）`（真实 commit）。
-- 回写：本卡头 `状态：待分派 → 执行中 → 已回写`，回写区填实现说明/配置/测试输出/双端实测/验收自检。
+- 提交 1：`0c2734e chore(server): T29 对话接大脑 Agent——/conversation 调用 2017 Claude Code（带心智/工具/知识库）`（5 代码文件 + 本卡）。
+- 提交 2：`3d4919e chore(server): T29 大脑超时默认 60→120s（实测知识题~74s，60s 过紧）`。
+- 均已 push origin/main。回写：卡头 `状态：待分派 → 执行中 → 已回写`。
 
 ### 验收自检
 
-（对照验收标准逐条勾选；D 步实测后定稿）
-- [ ] 1. `/conversation` 回复来自 2017 Claude Code Agent（代码已核验：`call_brain` → `claude -p` via 6100；实测待 D 步）。
-- [x] 2. 走 6100（`CCC_BRAIN_BASE_URL=http://127.0.0.1:6100`），不再直连 6102（`_forward_to_upstream` 已删）；env 配置化零硬编码。
-- [x] 3. 鉴权（Bearer 中间件不变）/历史（`_conversations` 最近 10 轮）/超时（`CCC_BRAIN_TIMEOUT`，504）/并发（`_brain_lock` 单会话串行，忙 503）齐全；`pytest` 208 全绿。
-- [ ] 4. 桌面端与网页对话实测可用且智能度明显提升（待 D 步）。
-- [ ] 5. 真实提交；M1 工作树仅剩预存项；卡头状态已同步（D 步定稿为已回写）。
+- [x] 1. `/conversation` 回复来自 2017 Claude Code Agent：代码核验 `call_brain → _run_claude`（`claude -p` via 6100）；实测 Q2 知识题回复引用项目文档（INT-120/T29/T30/契约§8），多轮上下文生效——明显区别于裸 flash 直答。
+- [x] 2. 走 6100（`CCC_BRAIN_BASE_URL=http://127.0.0.1:6100`），不再直连 6102（`_forward_to_upstream` + `CCC_CONV_*` 已删，2017 plist/config.env 同步移除）；env 配置化零硬编码。
+- [x] 3. 鉴权（Bearer 中间件不变，跨机 401 实测）/历史（最近 10 轮，多轮实测）/超时（120s，504 实测后调参）/并发（`_brain_lock` 单会话串行，忙 503 单测）齐全；`pytest server/tests/` 在 `0c2734e` 为 **208 passed**。
+- [x] 4. 桌面端与网页对话实测可用且智能度明显提升：跨机 M1→2017:7788 多轮 + 知识题均可用；智能度从「裸模型弱智直答」升级为「带心智/工具/知识库的 Agent 回答」。
+- [x] 5. 真实提交（`0c2734e` + `3d4919e`，已 push）；T29 自身改动全部落盘，M1 工作树剩余项均为非 T29：预存 3 项（`decided.json`/`_update_handoff.py`/`command-post/`）+ T30 WIP（`server.py`/`test_http_api.py`/`legacy-chat/*`，管理席 Codex 在做，非本卡范围）；卡头状态已同步为「已回写」。
