@@ -315,11 +315,3 @@ struct ComposerAttachment: Identifiable, Hashable, Equatable {
     }
 }
 
-// MARK: - Custom Quick Prompt
-
-struct QuickPromptItem: Identifiable, Codable, Hashable {
-    var id: String { title }
-    var title: String
-    var prompt: String
-}
-

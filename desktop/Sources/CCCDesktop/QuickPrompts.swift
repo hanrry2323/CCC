@@ -33,25 +33,6 @@ enum QuickPrompts {
         "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n" +
         "禁止向用户输出 Hub CLI / Terminal 教程。\n"
 
-    /// UI 内置快捷：仅对齐基线 + 扫风险
-    static let builtinPrompts: [(title: String, prompt: String)] = [
-        ("扫风险", scanRisks),
-    ]
-
-    private static let customKey = "ccc.customPrompts"
-
-    static func loadCustomPrompts() -> [QuickPromptItem] {
-        guard let data = UserDefaults.standard.data(forKey: customKey),
-              let items = try? JSONDecoder().decode([QuickPromptItem].self, from: data)
-        else { return [] }
-        return items
-    }
-
-    static func saveCustomPrompts(_ items: [QuickPromptItem]) {
-        guard let data = try? JSONEncoder().encode(items) else { return }
-        UserDefaults.standard.set(data, forKey: customKey)
-    }
-
     /// 内部保留：自动投链 / 用户口述「开发/下达」时注入用（无 UI 按钮）
     static let nextStep =
         "请帮我看一下当前仓况（可选，非主路径）。\n" +

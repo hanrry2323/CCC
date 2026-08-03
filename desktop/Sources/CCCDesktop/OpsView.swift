@@ -299,7 +299,7 @@ struct OpsView: View {
     }
 
     private func handoffOpsAlert(_ alert: OpsHealthAlert) async {
-        copyOpsAlertToPasteboard(alert)
+        _ = copyOpsAlertToPasteboard(alert)
         window.destination = .chat
         model.selectDestination(.chat, projectId: window.projectId ?? model.selectedProjectId ?? "ccc")
         model.showToast("告警信息已复制到剪贴板，粘贴到对话中处理")

@@ -56,12 +56,6 @@ actor APIClient {
         self.session = URLSession(configuration: cfg)
     }
 
-    func update(baseURL: URL, user: String, password: String) {
-        self.baseURL = baseURL
-        self.user = user
-        self.password = password
-    }
-
     static func makeBaseURL(from raw: String) -> URL? {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
@@ -82,13 +76,6 @@ actor APIClient {
     /// 新服务端对话响应
     struct NewServerConversationResponse: Decodable {
         let reply: String
-    }
-
-    /// 新服务端对话历史消息条目
-    struct NewServerMessage: Decodable, Sendable {
-        let role: String
-        let message: String
-        let timestamp: String
     }
 
     /// 配置新服务端地址（nil = 禁用）
@@ -184,22 +171,6 @@ actor APIClient {
         return decoded.reply
     }
 
-    /// 新服务端对话历史：GET /conversation
-    func fetchNewServerConversationHistory() async throws -> [NewServerMessage] {
-        let req = try newServerAuthedRequest(path: "conversation")
-        let (data, resp) = try await session.data(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(code) else {
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.http(code, text)
-        }
-        struct HistoryWrapper: Decodable {
-            let messages: [NewServerMessage]
-        }
-        let decoded = try JSONDecoder().decode(HistoryWrapper.self, from: data)
-        return decoded.messages
-    }
-
     /// 通用发送 + 解码（带重试）
     private func send<T: Decodable>(
         _ req: URLRequest,
@@ -247,31 +218,6 @@ actor APIClient {
         let default_project: String?
     }
 
-    struct ThreadsResp: Decodable {
-        let threads: [DesktopThread]
-        let project_id: String?
-    }
-
-    struct ThreadDetail: Decodable {
-        let thread_id: String?
-        let title: String?
-        let messages: [ChatMessage]?
-    }
-
-    /// 探活新服务端：GET /health（免鉴权）
-    func probeNewServerHealth() async -> Bool {
-        guard let base = newServerBaseURL else { return false }
-        guard let url = URL(string: "health", relativeTo: base) else { return false }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 3
-        do {
-            let (_, resp) = try await session.data(for: req)
-            return (resp as? HTTPURLResponse)?.statusCode == 200
-        } catch {
-            return false
-        }
-    }
-
     /// 新服务端项目列表：GET /board/summaries → 派生 DesktopProject 列表
     func fetchProjectsNewServer() async throws -> ProjectsResp {
         var req = try newServerAuthedRequest(path: "board/summaries")
@@ -295,37 +241,6 @@ actor APIClient {
         return ProjectsResp(projects: projects, default_project: names.first)
     }
 
-    /// 新服务端线程列表：单会话壳，返回固定一条 thread
-    func fetchThreadsNewServer(projectId: String) async throws -> ThreadsResp {
-        return ThreadsResp(
-            threads: [DesktopThread(
-                thread_id: "main",
-                title: "对话",
-                updated_at: nil,
-                project_id: projectId
-            )],
-            project_id: projectId
-        )
-    }
-
-    /// 新服务端线程详情：GET /conversation 历史 → ThreadDetail
-    func fetchThreadNewServer(projectId: String, threadId: String) async throws -> ThreadDetail {
-        let history = try await fetchNewServerConversationHistory()
-        let messages: [ChatMessage] = history.map { m in
-            ChatMessage(
-                id: UUID(),
-                role: m.role,
-                content: m.message,
-                isStreaming: false
-            )
-        }
-        return ThreadDetail(
-            thread_id: "main",
-            title: "对话",
-            messages: messages
-        )
-    }
-
     /// 新服务端看板快照：GET /board/snapshot?workspace=X
     func fetchBoardNewServer(workspace: String, includeHidden: Bool = false) async throws -> BoardSnapshot {
         let enc = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
@@ -334,15 +249,6 @@ actor APIClient {
         var req = try newServerAuthedRequest(path: path)
         req.timeoutInterval = 12
         return try await send(req, as: BoardSnapshot.self, maxAttempts: 2)
-    }
-
-    /// 新服务端多项目汇总：GET /board/summaries?workspaces=a,b
-    func fetchBoardSummariesNewServer(workspaces: [String]) async throws -> BoardSummariesResp {
-        let joined = workspaces.joined(separator: ",")
-        let enc = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
-        var req = try newServerAuthedRequest(path: "board/summaries?workspaces=\(enc)")
-        req.timeoutInterval = 12
-        return try await send(req, as: BoardSummariesResp.self, maxAttempts: 2)
     }
 
     /// 新服务端任务详情：GET /tasks/{id}?workspace=X

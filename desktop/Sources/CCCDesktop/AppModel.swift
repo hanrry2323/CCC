@@ -8,13 +8,6 @@ final class ChatState: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var draft: String = ""
     @Published var streamStatus: String = ""
-
-    func replaceMessage(id: UUID, _ update: (inout ChatMessage) -> Void) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        var copy = messages
-        update(&copy[idx])
-        messages = copy
-    }
 }
 
 @MainActor
@@ -49,7 +42,6 @@ final class AppModel: ObservableObject {
     @Published var toast: String?
     @Published var activeQuickAction: String? = nil
     @Published var showSettingsHint = false
-    @Published var expandedProjectIds: Set<String> = []
     @Published var renameThreadId: String?
     @Published var renameDraft: String = ""
     @Published var previewMarkdown: String?
@@ -100,13 +92,6 @@ final class AppModel: ObservableObject {
 
     // MARK: - Published: Stack status
     @Published private(set) var stackStatus: String = "等待探测…"
-
-    // MARK: - Published: Token tracking
-    @Published var perMessageTokens: [UUID: Int] = [:]
-    @Published var totalSessionCost: Double = 0
-
-    // MARK: - Published: Custom prompts
-    @Published var customPrompts: [QuickPromptItem] = []
 
     // MARK: - Private
     private var client: APIClient
@@ -180,7 +165,6 @@ final class AppModel: ObservableObject {
             }
             return
         }
-        expandedProjectIds.insert(pid)
         let recent = LocalSessionStore.threadsAsDesktop(projectId: pid).first?.thread_id
         let tid = recent ?? threadIdForProject(pid)
         var local = LocalSessionStore.threadsAsDesktop(projectId: pid)
@@ -438,7 +422,6 @@ final class AppModel: ObservableObject {
             }
             if let pid = selectedProjectId {
                 persistedProjectId = pid
-                expandedProjectIds.insert(pid)
                 await refreshThreads(projectId: pid)
             }
             connected = !projects.isEmpty
@@ -474,7 +457,6 @@ final class AppModel: ObservableObject {
         let eagerTid = preferred ?? localRecent ?? threadIdForProject(id)
         selectedProjectId = id
         persistedProjectId = id
-        expandedProjectIds.insert(id)
         preferredToolMode = "engineer"
         ensureThreadHydrated(threadId: eagerTid)
         selectedThreadId = eagerTid
@@ -618,10 +600,6 @@ final class AppModel: ObservableObject {
         return newId
     }
 
-    func newThread() async {
-        await resetConversation()
-    }
-
     func resetConversation(projectId: String? = nil) async {
         guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
@@ -675,19 +653,6 @@ final class AppModel: ObservableObject {
         let pid = LocalSessionStore.projectId(fromThreadId: threadId)
         LocalSessionStore.rename(projectId: pid, threadId: threadId, title: title)
         threads = ConversationStore.listThreads(projectId: pid)
-    }
-
-    func deleteThread(_ threadId: String) async {
-        _ = threadId
-        await resetConversation()
-    }
-
-    func beginRenameThread(_ thread: DesktopThread) {
-        _ = thread
-    }
-
-    func commitRenameThread() async {
-        renameThreadId = nil
     }
 
     private func persistCurrentThreadSnapshot(threadId: String) {
@@ -780,20 +745,6 @@ final class AppModel: ObservableObject {
         }
         await task.value
         return true
-    }
-
-    func sendMessageCancellable(stopAndSend: Bool = true) {
-        let text = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        chat.draft = ""
-        sendUserMessage(text, stopAndSend: stopAndSend)
-    }
-
-    func sendMessage() async {
-        let text = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        chat.draft = ""
-        _ = await sendUserMessageAndWait(text, stopAndSend: true)
     }
 
     func cancelChat(threadId: String? = nil, silent: Bool = false, dropSlot: Bool = false) {
@@ -938,11 +889,6 @@ final class AppModel: ObservableObject {
             clearThreadUnread(n)
             ensureThreadHydrated(threadId: n)
         }
-    }
-
-    func ensureWindowFocus(projectId: String?) {
-        guard let projectId, !projectId.isEmpty else { return }
-        setWindowFocus(from: nil, to: projectId)
     }
 
     // MARK: - UI State
@@ -1372,35 +1318,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: - Custom Prompts
-    func loadCustomPrompts() {
-        customPrompts = QuickPrompts.loadCustomPrompts()
-    }
-
-    func addCustomPrompt(title: String, prompt: String) {
-        let item = QuickPromptItem(title: title, prompt: prompt)
-        customPrompts.append(item)
-        QuickPrompts.saveCustomPrompts(customPrompts)
-    }
-
-    func removeCustomPrompt(id: String) {
-        customPrompts.removeAll { $0.title == id }
-        QuickPrompts.saveCustomPrompts(customPrompts)
-    }
-
     // MARK: - Token Tracking
-    private func trackTokenUsage(threadId: String, msgId: UUID, content: String) {
-        let tokens = content.count / 4
-        threadSessionTokens[threadId, default: 0] += tokens
-        if selectedThreadId == threadId {
-            sessionTokens = threadSessionTokens[threadId] ?? 0
-        }
-        totalSessionCost += Double(tokens) * 0.000003
-        var copy = perMessageTokens
-        copy[msgId] = tokens
-        perMessageTokens = copy
-    }
-
     private var threadSessionTokens: [String: Int] = [:]
 
     func sessionTokenCount(for threadId: String) -> Int {
@@ -1430,9 +1348,5 @@ final class AppModel: ObservableObject {
     func onForegroundResume() {}
     func manualCompact(threadId: String) async {
         showToast("已压缩上下文")
-    }
-    func toggleProjectExpanded(_ id: String) {
-        if expandedProjectIds.contains(id) { expandedProjectIds.remove(id) }
-        else { expandedProjectIds.insert(id) }
     }
 }

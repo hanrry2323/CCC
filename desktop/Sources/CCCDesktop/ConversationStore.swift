@@ -84,12 +84,6 @@ enum ConversationStore {
         )
     }
 
-    /// 是否视为「本机已有权威消息」（有则禁止 Hub GET 回写）
-    static func hasLocalAuthority(projectId: String) -> Bool {
-        let s = load(projectId: projectId)
-        return LocalSessionStore.messageScore(s.messages) > 0
-    }
-
     /// 列出项目的所有会话
     static func listThreads(projectId: String) -> [DesktopThread] {
         LocalSessionStore.threadsAsDesktop(projectId: projectId)

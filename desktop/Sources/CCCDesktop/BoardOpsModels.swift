@@ -8,10 +8,6 @@ struct BoardSnapshot: Codable {
     let counts: [String: Int]?
 }
 
-struct BoardSummariesResp: Decodable {
-    let summaries: [String: BoardSnapshot]
-}
-
 struct BoardTaskDetail: Identifiable, Decodable, Hashable {
     let id: String
     let title: String?

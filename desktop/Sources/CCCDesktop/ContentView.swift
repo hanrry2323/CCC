@@ -1287,18 +1287,6 @@ struct CodexChatPaneBody: View {
                             threadId: paneThreadId
                         )
                     }
-                    if !model.customPrompts.isEmpty {
-                        ForEach(model.customPrompts, id: \.title) { item in
-                            quickChip(item.title, help: "自定义快捷提示：\(item.title)") {
-                                model.applyQuickPrompt(
-                                    item.prompt,
-                                    uiLabel: item.title,
-                                    projectId: paneProjectId,
-                                    threadId: paneThreadId
-                                )
-                            }
-                        }
-                    }
                 }
             }
             if let action = model.activeQuickAction, !action.isEmpty {

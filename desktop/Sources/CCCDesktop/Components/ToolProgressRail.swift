@@ -60,24 +60,6 @@ struct ToolStep: Identifiable, Hashable, Codable {
 }
 
 enum ToolProgressHelper {
-    static let labels: [String: String] = [
-        "Read": "查阅文件",
-        "Glob": "查找文件",
-        "Grep": "搜索代码",
-        "Write": "写入文件",
-        "Edit": "修改文件",
-        "StrReplace": "修改文件",
-        "Bash": "运行命令",
-        "Shell": "运行命令",
-        "Task": "子任务",
-        "WebFetch": "读取网页",
-        "WebSearch": "检索资料",
-        "NotebookEdit": "编辑笔记",
-        "TodoWrite": "更新待办",
-        "MultiEdit": "批量修改",
-        "LS": "列出目录",
-    ]
-
     static let symbols: [String: String] = [
         "Read": "doc.text",
         "Glob": "magnifyingglass",
@@ -95,44 +77,6 @@ enum ToolProgressHelper {
         "TodoWrite": "checklist",
         "NotebookEdit": "book",
     ]
-
-    static let writeTools: Set<String> = ["Write", "Edit", "StrReplace", "NotebookEdit", "MultiEdit"]
-
-    static func humanLabel(name: String, input: [String: Any]?) -> String {
-        let base = labels[name] ?? name
-        guard let inp = input else { return base }
-        let file = (inp["file_path"] as? String)
-            ?? (inp["path"] as? String)
-            ?? (inp["target_file"] as? String)
-            ?? (inp["file"] as? String)
-        if let file, !file.isEmpty {
-            return base + " · " + leaf(file)
-        }
-        if name == "Bash" || name == "Shell" {
-            if let d = inp["description"] as? String, !d.isEmpty {
-                return base + " · " + short(d, 48)
-            }
-            if let cmd = (inp["command"] as? String) ?? (inp["cmd"] as? String), !cmd.isEmpty {
-                return base + " · " + short(cmd, 48)
-            }
-        }
-        if name == "Grep", let p = (inp["pattern"] as? String) ?? (inp["query"] as? String) {
-            return "搜索 · " + short(p, 36)
-        }
-        if name == "Glob", let g = inp["glob_pattern"] as? String {
-            return base + " · " + short(g, 36)
-        }
-        if name == "WebSearch", let q = (inp["search_term"] as? String) ?? (inp["query"] as? String) {
-            return base + " · " + short(q, 36)
-        }
-        if name == "WebFetch", let url = inp["url"] as? String {
-            if let host = URL(string: url)?.host { return base + " · " + short(host, 28) }
-        }
-        if name == "Task", let d = (inp["description"] as? String) ?? (inp["prompt"] as? String) {
-            return base + " · " + short(d, 36)
-        }
-        return base
-    }
 
     /// toolResult 后一句摘要（展开列表副行；轮播主文用 label）
     static func resultHint(name: String, ok: Bool, label: String) -> String {
@@ -175,14 +119,8 @@ enum ToolProgressHelper {
 
     static func icon(for name: String) -> String { symbols[name] ?? "wrench.and.screwdriver" }
 
-    static func isWrite(_ name: String) -> Bool { writeTools.contains(name) }
-
     static func sfSymbol(for step: ToolStep) -> String {
         symbols[step.name] ?? "wrench.and.screwdriver"
-    }
-
-    private static func leaf(_ p: String) -> String {
-        (p as NSString).lastPathComponent
     }
 
     private static func short(_ s: String, _ n: Int) -> String {
