@@ -5,6 +5,7 @@
 > 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
 > ⚠ 2026-08-03 T32 验收登记新增子项（P1-1）：Engine 接真实看板——文件/卡驱动 BoardStore（读 docs/dispatch → 回写卡头状态行）+ scheduler 扫真实卡 + 真实卡端到端演示；补完 Codex 复验 M2。
 > ⚠ 2026-08-03 T33 验收附注：T31 P2 修正项并入本卡——P2-1 修正 CLAUDE.md/README.md/CHANGELOG.md 三处 scripts 归档路径（`.ccc/archive/...` → `docs/archive/...`）；P2-2 恢复 tests/ F401/F841/E402/I001 忽略（或 CLAUDE.md ruff 命令改 `server/`）使文档命令真实可绿。
+> ⚠ 2026-08-03 T34 验收登记：dispatchCard.js 挂载死功能收口——摘除 components/message.js + components/composer.js 的动态引用，归档 dispatchCard.js（dispatchFormat.js 若仅被其引用一并归档）；另 docs/roadmap.md:27 T34 状态行过时随卡头校对更新。
 
 ## 目标
 
@@ -25,6 +26,7 @@ tests/scripts/test_authority_patrol.py、server/（W292×16 尾换行）、docs/
 0. **P1-1 Engine 接真实看板**：实现文件/卡驱动 BoardStore（读 `docs/dispatch/*.md` 卡头元数据 → 构造 Work → 状态流转后回写卡头「状态」行）；main.py 生产路径改用该实现；scheduler 定时扫真实卡；用一张真实格式任务卡做端到端演示（派发 → 执行体 → 卡头状态更新 → board/export 派生可见）。同时处理 P2-3（EXECUTOR_LOG_DIR 改必填或删代码默认路径）。
 0.1. **P2-1**：CLAUDE.md:22 / README.md:109 / CHANGELOG.md:14 的 scripts 归档路径 `.ccc/archive/legacy-retired-2026-08-02/` → 改为 `docs/archive/legacy-retired-2026-08-02/`（3 处）。
 0.2. **P2-2**：pyproject.toml 恢复 tests/scripts+tests/integration 的 F401/F841/E402/I001 忽略（或 CLAUDE.md ruff 命令收窄为 `ruff check server/`），使文档命令真实可绿；server/ 存量债（W292×16 + F821×6 + F401×3 等）清零。
+0.3. **dispatchCard.js 收口**：摘除 `legacy-chat/js/components/message.js` + `components/composer.js` 对 `dispatchCard.js` 的动态引用，归档 dispatchCard.js（dispatchFormat.js 若仅被其引用一并归档）；同步更新 docs/roadmap.md:27 状态行。
 1. patrol 2 失败：定位引用 `docs/briefs/2026-07-22-opencode-lifecycle-stall.md` 的用例，路径更新到归档区（docs/archive/ccc-legacy-2026-08-02/briefs/…）或按新目录结构调整断言，跑绿。
 2. server/ 16 处 W292 补尾换行；`ruff check server/` 全绿。
 3. 卡头状态校对：全量 docs/dispatch/*.md 卡头「状态」与回写区/实际一致（T18–T22、T29 等逐卡核对），不一致修正。

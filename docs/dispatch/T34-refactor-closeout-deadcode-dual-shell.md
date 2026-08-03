@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§5 不越范围 / 提交卫生）
 > 依据：Codex 2026-08-03 全新取证重评——孤儿看板壳 server/web/index.html 未被静态白名单挂载（"/" 走 legacy-chat）；legacy-chat 存在未挂载死代码（dispatchCard.js）与旧 Hub 文案（M1 :7788 / CCC Hub 编排口）；src-tauri 为 Tauri 旧 Cockpit 遗留、现行系统只用 desktop/（Swift）；根目录 _update_handoff.py 为 QuantHive 会话遗留物混入 CCC 仓
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
 
@@ -129,3 +129,25 @@ pytest server/tests/ --tb=short
 
 - `ddaa60d` refactor(closeout): T34 死码/孤儿页/双壳/遗留物清理（47 文件 +29/-45）
 
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**判定：✅ 通过。** 附 1 项收口登记（dispatchCard.js 挂载死功能，并入 T35）与 1 项小观察。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 全仓 grep（排除归档区）零命中 CCC Hub / M1 :7788 / src-tauri（引用文档已更新）；孤儿 index.html 零引用且已归档 | Codex 实测：legacy-chat/index.html 旧文案零命中；src-tauri 剩余提及均为「已归档」标注与任务卡记录，无现行引用；孤儿壳 4 文件已 git mv 至归档区 | ✅ 做到 |
+| 2. 唯一 HTTP 入口 = legacy-chat 四视图；唯一桌面壳 = desktop/（Swift） | 白名单只剩 5 项且全部指向现存文件；src-tauri 全树归档；实测 / 200、legacy 资源 200、已归档 css/js 返回 401（不再服务） | ✅ 做到 |
+| 3. 页面实测登录后四视图 200 无断链 | Codex 独立起服务实测：未登录 401 门、ccc/ccc 登录后 /board/snapshot /board/realtime /ops/summary /board/states 全 200 | ✅ 做到 |
+| 4. pytest 全绿；工作树仅剩许可预存项（_update_handoff.py 已清出）；真实提交 | 实测 238 collected 全绿（0 失败）；工作树全干净（含 decided.json 已按卡还原）；_update_handoff.py 已移出至 /tmp/_update_handoff.py.quanthive-legacy；ddaa60d+8e06299 已 push | ✅ 做到 |
+
+### 收口登记（并入 T35）
+
+- **dispatchCard.js「挂载死功能」**：动态引用真实存在（`components/message.js:60` + `components/composer.js:21`），保留有据；但组件调用的 `desktopTransfer` 已抛「文档流转已禁用」，`loadSkills` 返回空——聊天页「转任务」卡片是旧 Hub 流程遗留 UI（T25 起即挂账「dispatchCard.js 死代码待清理」）。收口动作：摘除两处动态引用 + 归档 dispatchCard.js（dispatchFormat.js 若仅被其引用一并归档），或按新流转重做该入口；默认摘除（新架构流转 = 任务卡文档，聊天内转 Hub 任务已死）。
+
+### 小观察
+
+- `docs/roadmap.md:27` 仍列「T34 死码双壳清理 | 待分派」——状态行过时，T35 卡头状态校对时一并更新。
