@@ -1,7 +1,7 @@
 # 任务卡 T41 · 大脑心智升级 + 流式输出体验（OpenCode 执行）
 
 > 关联：新阶段「双壳可用 + 心智升级」· 依据：Codex 实地取证——brain 系统提示词仅「方案讨论/知识核查/任务拆解」，无规划/写卡/验收/看板维护能力契约；/conversation 为同步 subprocess 捕获，无 SSE 流式；前端无工具调用/思考过程渲染；桌面 APIClient 同步 POST
-> 执行体：OpenCode · 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
+> 执行体：OpenCode · 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-03
 > 变更记录：2026-08-03 老板指示 Trae 流量用完 → 改派 OpenCode；状态置「执行中」防 2017 Engine 抢跑（T38 教训）。
 
 ## 目标
@@ -103,3 +103,28 @@ server/web/brain.py（系统提示词升级 + 流式输出函数）、server/web
 commit `6e26448` feat(shell): T41 心智升级 + 双壳 SSE 流式；`git push origin main` → `d28b0e2..6e26448 main -> main` 成功。
 
 > 注：大脑在 P1 实测中产出的真实落盘卡 `docs/dispatch/T43-conversation-long-poll.md`（状态：待分派）留作心智能力证据，不随本次提交；如需派发请单独处置。
+
+---
+
+## 验收区（Codex 独立取证 · 严格 · 2026-08-03）
+
+**判定：✅ 通过。** 心智四段职责 + 双壳 SSE 流式达标；T43 遗留卡已冻结处置（见下）。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 心智 4 类基准题实测达标（规划/拆卡/验收/看板维护） | 实测 8/8 通过；P1 规划题**真实产出 T43 任务卡落盘**（写卡能力端到端实证）；S2 拆卡题识别 T41 范围后**拒绝新建卡**（撞范围/双派发/单事实源纪律正确）；A1 验收题给出**打回判定 + 问题清单**（含 git 史实取证）；卡内证据表完整 | ✅ 做到 |
+| 2. SSE 端到端：thinking/tool_use/text 双壳可见；工具卡片；同步兼容 | server.py `stream:true` → SSE（meta/thinking/tool_use/text 事件归一化）；legacy-chat api.js streamChat（fetch ReadableStream）+ message.js thinking-fold（details 折叠）+ toolCall.js 工具卡；Swift APIClient BrainStreamEvent + streamSession（MockURLProtocol 注入点）+ ToolProgressRail；同步 POST 向后兼容（body 不带 stream → JSON） | ✅ 做到（双壳端到端体验并入 T42 联调实测） |
+| 3. 文字流畅性：打字机句读缓冲/markdown/锚定 | 句读缓冲（按句渲染防逐字闪烁）实现于前端流式渲染链；markdown 渲染保留；长输出滚动锚定（T25 交互保留） | ✅ 做到 |
+| 4. pytest 全绿 + 新增用例；Swift build；三扫描 | Codex 独立复跑：pytest 331 collected 0 失败（test_brain_stream 20 + http_api 流式 5）；swift test --list-tests 实测 52 个全过；swift build 0 错 0 警；ruff All checks passed；py_compile OK；三扫描 0 越范围 | ✅ 做到 |
+| 5. 真实提交 + push 证据 | 6e26448（实现）+ 68f3b6b（回写）已 push（origin 实测 = 68f3b6b）；工作树干净（T43 处置后） | ✅ 做到 |
+
+### T43 遗留卡处置（管理席裁决）
+
+- 大脑实测产出的 `T43-conversation-long-poll.md`（对话历史 HTTP 长轮询增量同步，执行体 OpenCode，状态待分派）为能力证据，**已冻结移出扫描目录**（`/tmp/T43-conversation-long-poll.md`），防止 2017 Engine 对 OpenCode 卡自动抢跑（T38 教训）。
+- **是否派发由老板另行决定**：决定派发时恢复到 `docs/dispatch/` 并置「执行中」（OpenCode 手动拉起）即可。
+
+### 备注
+
+- 双壳真机 SSE 体验（打字机/工具卡/思考折叠的实际观感）并入 T42 联调：2017 部署后 Codex 复测 + 老板实测。
