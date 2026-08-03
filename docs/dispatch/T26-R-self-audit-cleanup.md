@@ -1,7 +1,7 @@
 # 任务卡 T26-R · 桌面端自查清理（老板要求：清理干净不留冗余，由执行体大模型自主深度检查）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 指示「这次要清理就清理干净，不要留什么冗余；提宽泛检查要求，让那边的大模型自己去检查问题」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 打回次数：1 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：2 · 日期：2026-08-03
 > 前置：T26 主体重构已在工作树（未提交）；本卡为**自主自查清理**——不提供逐条清单，由执行体大模型按下列检查维度自行通读、发现问题、自主决策清理范围并完整落地。
 
 ## 目标
@@ -263,3 +263,22 @@ delete mode 100644 desktop/Sources/CCCDesktop/NotificationManager.swift
 | 1 | 删除 `sendMessageCancellable(stopAndSend:)` + `sendMessage()` 2 个死方法（确认无 #selector/NotificationCenter 动态调用） | ✅ 已删，动态调用复核零命中 |
 | 2 | 全量 `def≥1 && calls=0` 自查清零；`swift build` 零警告 + `swift test` 全绿 | ✅ 11 文件 -519 行；0 warnings、31/31 passed |
 | 3 | 真实提交 `chore(desktop): T26-R 死方法清零` + push；工作树仅剩预存 2 项 | ✅ 556cf9b 已 push；工作树仅剩 `.ccc/agent-mind/decided.json` + `_update_handoff.py` |
+
+---
+
+## 打回区 2（Codex 终验扫描 · 2026-08-03）
+
+**结论：仍打回 ❌**（提交真实、构建测试绿，但死方法未清零——自查扩展漏了 LocalSessionStore）
+
+**已确认 ✅**：`556cf9b`（11 文件 +1/-519）真实；`swift build` 0 errors/0 warnings；`swift test` 31/31；旧符号 grep 零命中（仅 MARK 注释 2 处）；工作树仅剩预存 2 项。
+
+**残留死方法（全仓零调用，删完重提）**——`LocalSessionStore.swift`：
+1. `enqueueSync(projectId:threadId:)`（行 515）
+2. `dequeueSync(projectId:threadId:)`（行 529）
+3. `bumpAttempt(projectId:threadId:) -> Int`（行 546）
+4. `compactIfNeeded(_:) -> (messages:didCompact:rounds:)`（行 606）
+5. `isExhaustRepairHint(_:) -> Bool`（行 633）
+
+**说明**：`ComposerTextView.swift`/`Vibrancy.swift` 的 `makeNSView`/`makeCoordinator` 等为 NSViewRepresentable 协议必需方法，非死代码，不删。
+
+**要求**：删除上述 5 个方法（连同因此无引用的私有常量/类型一并清）；`swift build` 0 warnings + `swift test` 全绿；真实提交 + push；工作树仅剩预存 2 项。
