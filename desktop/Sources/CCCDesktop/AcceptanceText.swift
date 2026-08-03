@@ -1,8 +1,8 @@
 import Foundation
 
-/// 验收行规范化（纯函数）。行为 = 原三处内联实现原样搬迁：
-/// - `plainLines`：纯 trim + 过滤空行（TransferDraft.acceptanceLines / AppModel.submitTransfer 的 accLines）
-/// - `bulletStrippedJoined`：额外去 `-`/`*` 列表前缀，换行连接（AppModel.normalizeAcceptance）
+/// 验收行规范化（纯函数）。
+/// - `plainLines`：纯 trim + 过滤空行
+/// - `bulletStrippedJoined`：额外去 `-`/`*` 列表前缀，换行连接
 enum AcceptanceText {
     /// 纯 trim + 过滤空行 → 行数组
     static func plainLines(_ text: String) -> [String] {

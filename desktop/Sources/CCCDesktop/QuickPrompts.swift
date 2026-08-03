@@ -8,7 +8,7 @@ enum QuickPrompts {
         "不要复述工具过程、不要大段代码、不要裸 JSON（意图卡契约块除外）。" +
         "不要编造未核实的事实。工具跑完后必须写出完整可见答复，" +
         "禁止只回 No response requested 或空内容。" +
-        "禁止出现 transfer-outbox、Terminal、cat >、script_seed、opencode、A/B 菜单。"
+        "禁止出现 Terminal、cat >、script_seed、opencode、A/B 菜单。"
 
     static let investigatePref =
         "你是 Desktop **高级智能开发伙伴 · 架构师**（分析→架构→理解意图→**自动投意图链**→读测纠偏→连续优化；可查 HP/社区；板务仅挡事时；不是 Engine 本身）。" +
@@ -31,11 +31,10 @@ enum QuickPrompts {
         "ready_for_task=false 或 inflight>0（非纯业务脏）：hub_repair(clear_blockers)，" +
         "再谈产品意图；仅业务脏/真在飞冲突时禁新产品（人可显式 override）。\n" +
         "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n" +
-        "禁止向用户输出 Hub CLI / transfer-outbox / Terminal 教程。\n"
+        "禁止向用户输出 Hub CLI / Terminal 教程。\n"
 
     /// UI 内置快捷：仅对齐基线 + 扫风险
     static let builtinPrompts: [(title: String, prompt: String)] = [
-        ("对齐基线", alignBaseline),
         ("扫风险", scanRisks),
     ]
 
@@ -53,7 +52,7 @@ enum QuickPrompts {
         UserDefaults.standard.set(data, forKey: customKey)
     }
 
-    /// 内部保留：Agent 自动投链 / 用户口述「开发/下达」时 sidecar 注入用（无 UI 按钮）
+    /// 内部保留：自动投链 / 用户口述「开发/下达」时注入用（无 UI 按钮）
     static let nextStep =
         "请帮我看一下当前仓况（可选，非主路径）。\n" +
         replyCompact + "\n" + investigatePref +

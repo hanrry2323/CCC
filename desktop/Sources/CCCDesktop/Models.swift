@@ -164,7 +164,7 @@ extension ChatMessage: Codable {
 }
 
 enum ChatStreamEvent: Sendable {
-    /// sidecar 心跳（connect / idle）；UI 显示「连接本机 Agent…」
+    /// 心跳（connect / idle）
     case ping(turnId: String?)
     case delta(String, turnId: String?)
     /// 工具运行期间的阶段性短句（区别于主通道 delta）
@@ -173,7 +173,7 @@ enum ChatStreamEvent: Sendable {
     case toolResult(ok: Bool, turnId: String?)
     case cost(tokens: Int?, usd: Double?, turnId: String?)
     /// partial=true：服务端标明半截（断连/超时/异常），UI 必须标「回复中断」
-    /// claudeSessionId：sidecar/loop-code 会话 id，下轮 resume 用（持续对话）
+    /// claudeSessionId：服务端会话 id，下轮 resume 用（持续对话）
     case done(partial: Bool, claudeSessionId: String?, turnId: String?, metrics: ChatTurnMetrics?)
 }
 
@@ -181,6 +181,35 @@ struct ChatTurnMetrics: Sendable {
     let durationMs: Int?
     let eventCounts: [String: Int]
 }
+
+enum SidebarDestination: String, CaseIterable, Identifiable {
+    case chat, board, ops
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chat: return "对话"
+        case .board: return "看板"
+        case .ops: return "运维"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .chat: return "bubble.left.and.bubble.right.fill"
+        case .board: return "square.grid.2x2.fill"
+        case .ops: return "wrench.and.screwdriver.fill"
+        }
+    }
+}
+
+// MARK: - Phase 1.3: Token usage
+
+extension ChatMessage {
+    var tokens: Int { content.count / 4 }
+}
+
+// MARK: - Flow persistence types (kept for FlowThreadSnapshot compatibility)
 
 struct FlowWork: Identifiable, Codable, Hashable {
     var id: String { workId }
@@ -252,61 +281,60 @@ struct FlowEpicRef: Identifiable, Codable, Hashable {
     let title: String?
     let updated_at: String?
     let thread_id: String?
-    /// 可选；Hub 历史可能没有，客户端乐观写入 / snapshot 可补
     var user_stage: String?
 }
 
-struct FlowSnapshot: Codable {
-    let ok: Bool?
-    let empty: Bool?
-    let message: String?
-    let project_id: String?
-    let epic_id: String?
-    let epic: FlowEpic?
-    let works: [FlowWork]?
-    let headline: String?
-    let user_stage: String?
-    let board_status: String?
-    let board_message: String?
-    /// Hub：ui_hidden 终态沉底，右栏应清轨
-    let sunk: Bool?
-    /// Hub：默认板上找不到该 epic（常与 sunk 同现）
-    let missing_on_board: Bool?
+// MARK: - Flow persistence model
+
+struct FlowThreadSnapshot: Codable, Hashable {
+    var epicId: String?
+    var epic: FlowEpic?
+    var works: [FlowWork]
+    var headline: String
+    var recentEpics: [FlowEpicRef]
+    var emptyMessage: String
+    var fanoutHint: String?
+
+    init(
+        epicId: String? = nil,
+        epic: FlowEpic? = nil,
+        works: [FlowWork] = [],
+        headline: String = "",
+        recentEpics: [FlowEpicRef] = [],
+        emptyMessage: String = "编排空闲·等定稿下达（与对话故障无关）",
+        fanoutHint: String? = nil
+    ) {
+        self.epicId = epicId
+        self.epic = epic
+        self.works = works
+        self.headline = headline
+        self.recentEpics = recentEpics
+        self.emptyMessage = emptyMessage
+        self.fanoutHint = fanoutHint
+    }
 }
 
-struct TransferRequest: Encodable {
-    let project_id: String
-    let thread_id: String?
-    let title: String
-    let goal: String
-    let acceptance: [String]
-    let pipeline: String
-    let feasibility: String
-    let feasibility_reason: String?
-    let executor_intent: String
-    let skills_hint: [String]
-    /// stage5 硬切换：transfer-gate 必填（missing → 400）。库路径引用，如 skills/write-code。
-    let skill_ref: String
-    let prompt_ref: String
-    let plan_md: String
-    let complexity: String
-    /// Hub API v1 幂等键；重复提交返回已有 epic
-    let client_request_id: String?
+// MARK: - Composer Attachment
+
+struct ComposerAttachment: Identifiable, Hashable, Equatable {
+    let id: UUID
+    var path: String
+    var isImage: Bool
+
+    init(id: UUID = UUID(), path: String, isImage: Bool = false) {
+        self.id = id
+        self.path = path
+        let lower = path.lowercased()
+        self.isImage = isImage
+            || lower.hasSuffix(".png")
+            || lower.hasSuffix(".jpg")
+            || lower.hasSuffix(".jpeg")
+            || lower.hasSuffix(".gif")
+            || lower.hasSuffix(".webp")
+    }
 }
 
-struct TransferResponse: Decodable {
-    let ok: Bool?
-    let epic_id: String?
-    let workspace: String?
-    let column: String?
-    let error: String?
-    let errors: [GateError]?
-    let executor_intent: String?
-    let engine_wake: EngineWakeInfo?
-    let idempotent_replay: Bool?
-    let adopted: Bool?
-    let proposal_id: String?
-}
+// MARK: - Inbox Proposal
 
 struct InboxProposalsResp: Decodable {
     let ok: Bool?
@@ -322,132 +350,7 @@ struct InboxProposal: Identifiable, Decodable, Hashable {
     let path: String?
 }
 
-/// 投递态（对齐 hub-api-v1 §1；queued/delivering/failed 为机状态）
-/// - draft：本机定稿未过桥
-/// - queued：Hub 不可达，outbox 待投
-/// - delivering：正在 POST /transfer
-/// - delivered：HTTP 成功且 epic_id 非空（≠ 编排已看见）
-/// - accepted：编排面已看见（engine_wake 或 flow/snapshot）
-/// - failed：不可重试失败（须可见短因）
-enum TransferDeliveryPhase: String, Codable, Equatable {
-    case draft
-    case queued
-    case delivering
-    case delivered
-    case accepted
-    case failed
-
-    var label: String {
-        switch self {
-        case .draft: return "本机草稿"
-        case .queued: return "待投递"
-        case .delivering: return "投递中"
-        case .delivered: return "已投递"
-        case .accepted: return "编排已受理"
-        case .failed: return "投递失败"
-        }
-    }
-}
-
-struct EngineWakeInfo: Decodable, Hashable {
-    let ok: Bool?
-    let mode: String?
-    let message: String?
-    let engine_running: Bool?
-    let launch_note: String?
-    let mode_after: String?
-    let workspace_eligible: Bool?
-    let block_reason: String?
-}
-
-struct GateError: Decodable, Hashable {
-    let code: String?
-    let message: String?
-
-    /// 门禁错误码中文
-    var localized: String {
-        let c = code ?? ""
-        switch c {
-        case "missing_title": return "缺少标题"
-        case "missing_goal": return "缺少目标"
-        case "missing_acceptance": return "缺少验收"
-        case "missing_pipeline": return "缺少产线"
-        case "feasibility_blocked": return "可行性未通过：\(message ?? "")"
-        case "project_not_dispatchable": return "当前项目不可下达"
-        case "invalid_executor_intent": return "未知执行面"
-        case "invalid_epic_id": return "任务 ID 非法"
-        default:
-            if let message, !message.isEmpty { return message }
-            return c.isEmpty ? "门禁未通过" : c
-        }
-    }
-}
-
-struct APIErrorBody: Decodable {
-    let ok: Bool?
-    let error: String?
-    let errors: [GateError]?
-    let detail: String?
-}
-
-enum SidebarDestination: String, CaseIterable, Identifiable {
-    case chat, board, ops
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .chat: return "对话"
-        case .board: return "看板"
-        case .ops: return "运维"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .chat: return "bubble.left.and.bubble.right.fill"
-        case .board: return "square.grid.2x2.fill"
-        case .ops: return "wrench.and.screwdriver.fill"
-        }
-    }
-}
-
-/// 流程图布局节点
-struct FlowGraphNode: Identifiable, Hashable {
-    enum Kind: Hashable { case epic, work }
-    let id: String
-    let kind: Kind
-    let title: String
-    let subtitle: String
-    let statusKey: String
-    let badge: String
-    let detail: String?
-    var x: CGFloat = 0
-    var y: CGFloat = 0
-}
-
-struct FlowGraphEdge: Identifiable, Hashable {
-    var id: String { "\(from)-\(to)" }
-    let from: String
-    let to: String
-    let active: Bool
-}
-
-/// 节点详情（点击右栏节点）
-struct FlowNodeDetail: Identifiable, Hashable {
-    let id: String
-    let kind: String
-    let title: String
-    let status: String
-    let body: String
-}
-
-// MARK: - Phase 1.3: Token usage
-
-extension ChatMessage {
-    var tokens: Int { content.count / 4 }
-}
-
-// MARK: - Phase 1.4: Custom Quick Prompt
+// MARK: - Custom Quick Prompt
 
 struct QuickPromptItem: Identifiable, Codable, Hashable {
     var id: String { title }
@@ -455,7 +358,7 @@ struct QuickPromptItem: Identifiable, Codable, Hashable {
     var prompt: String
 }
 
-// MARK: - Phase 2.1: Manual Epic Form
+// MARK: - Manual Epic Form
 
 struct ManualEpicForm: Equatable {
     var title: String = ""
@@ -467,7 +370,7 @@ struct ManualEpicForm: Equatable {
     var priority: String = "p2"
 }
 
-// MARK: - Phase 2.2: Task Template
+// MARK: - Task Template
 
 struct TaskTemplate: Identifiable, Codable, Hashable {
     var id: String { title + pipeline }
@@ -481,17 +384,7 @@ struct TaskTemplate: Identifiable, Codable, Hashable {
     var tags: [String]
 }
 
-// MARK: - Phase 2.4: Task Artifacts
-
-struct TaskArtifacts: Codable, Hashable {
-    var planMd: String = ""
-    var phasesJsonl: String = ""
-    var reportMd: String = ""
-    var reviewMd: String = ""
-    var verdictMd: String = ""
-}
-
-// MARK: - Phase 2.5: Phase model
+// MARK: - Phase model
 
 struct Phase: Identifiable, Codable, Hashable {
     var id: String { name }
@@ -506,20 +399,7 @@ struct Phase: Identifiable, Codable, Hashable {
     }
 }
 
-// MARK: - Phase 3.3: Failure Record
-
-struct FailureRecord: Identifiable, Codable, Hashable {
-    var id: String { "\(ts)-\(task_id)" }
-    let ts: String
-    let task_id: String
-    let role: String
-    let reason: String
-    let exit_code: Int?
-    let stderr_tail: String?
-    let workspace: String?
-}
-
-// MARK: - Phase 3.4: Project Stats
+// MARK: - Project Stats
 
 struct ProjectStats: Equatable {
     var totalEpics: Int = 0
@@ -528,124 +408,3 @@ struct ProjectStats: Equatable {
     var completedToday: Int = 0
 }
 
-// MARK: - Phase 4.1: Priority
-
-enum TaskPriority: String, CaseIterable, Codable {
-    case p0 = "p0"
-    case p1 = "p1"
-    case p2 = "p2"
-    case p3 = "p3"
-
-    var label: String {
-        switch self {
-        case .p0: return "P0 🔴"
-        case .p1: return "P1 🟡"
-        case .p2: return "P2 🟢"
-        case .p3: return "P3 ⚪"
-        }
-    }
-
-    var color: String {
-        switch self {
-        case .p0: return "critical"
-        case .p1: return "warning"
-        case .p2: return "ok"
-        case .p3: return "muted"
-        }
-    }
-}
-
-// MARK: - LPSN mind goals (T3)
-
-struct MindGoal: Codable, Identifiable, Equatable, Hashable {
-    var id: String
-    var text: String?
-    var exit_condition: String?
-    var status: String?
-    var linked_epic_id: String?
-
-    var displayStatus: String {
-        switch (status ?? "planned").lowercased() {
-        case "probed": return "探针已过 · 可收口"
-        case "dispatched": return "编排中"
-        case "planned": return "待转"
-        case "intent_stable", "stable": return "已稳定"
-        case "abandoned": return "已归档"
-        default: return (status ?? "planned").lowercased()
-        }
-    }
-
-    /// 仅 regress 探针绿（probed）才允许人点标记稳定（运维页）
-    var isMarkableStable: Bool {
-        (status ?? "").lowercased() == "probed"
-    }
-
-    /// 右栏仅展示尚未进代办的 planned（无讨论按钮）
-    var isRailVisible: Bool {
-        (status ?? "planned").lowercased() == "planned"
-    }
-}
-
-/// 运维意图收口行
-struct OpsIntentRow: Identifiable, Equatable {
-    var projectId: String
-    var goal: MindGoal
-    var id: String { "\(projectId)|\(goal.id)" }
-}
-
-/// 右栏短暂「已进代办」角标
-struct RailDispatchFlash: Identifiable, Equatable {
-    var id: String
-    var projectId: String
-    var title: String
-    var until: Date
-}
-
-struct MindDecidedPayload: Codable, Equatable {
-    var goals: [MindGoal]?
-}
-
-struct MindDecidedResp: Codable, Equatable {
-    var ok: Bool?
-    var project_id: String?
-    var decided: MindDecidedPayload?
-}
-
-struct MindGoalStatusResp: Codable, Equatable {
-    var ok: Bool?
-    var project_id: String?
-    var decided: MindDecidedPayload?
-}
-
-/// Dry-run transfer_gate 响应
-struct TransferValidateResp: Codable, Equatable {
-    var ok: Bool?
-    var dry_run: Bool?
-    var errors: [TransferValidateError]?
-}
-
-struct TransferValidateError: Codable, Equatable {
-    var code: String?
-    var message: String?
-    var fix_hint: String?
-}
-
-/// L1 planned → gate → backlog + wake Engine
-struct PromotePlannedResp: Codable, Equatable {
-    var ok: Bool?
-    var project_id: String?
-    var delivered_count: Int?
-    var rejected_count: Int?
-    var engine_woken: Bool?
-    var delivered: [PromotePlannedItem]?
-    var rejected: [PromotePlannedItem]?
-}
-
-struct PromotePlannedItem: Codable, Equatable {
-    var goal_id: String?
-    var title: String?
-    var epic_id: String?
-    var ok: Bool?
-    var fix_hint: String?
-    var errors: [TransferValidateError]?
-}

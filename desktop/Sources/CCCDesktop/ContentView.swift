@@ -27,11 +27,6 @@ struct ContentView: View {
                     }
                 }
 
-                if window.destination == .chat {
-                    FlowRail()
-                        .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
-                        .cccHairline(.leading)
-                }
             }
 
             if let toast = model.toast {
@@ -48,13 +43,6 @@ struct ContentView: View {
         .animation(nil, value: window.projectId)
         .animation(nil, value: window.threadId)
         // bootstrap 在 WindowRootView，避免多窗重复打 Hub
-        .sheet(isPresented: Binding(
-            get: { model.isTransferSheetPresented(for: window.threadId) },
-            set: { if !$0 { model.dismissTransferSheet(threadId: window.threadId) } }
-        )) {
-            TransferSheet(threadId: window.threadId ?? model.transferSheetThreadId ?? "")
-                .environmentObject(model)
-        }
         .sheet(isPresented: Binding(
             get: { model.previewMarkdown != nil },
             set: { if !$0 { model.previewMarkdown = nil } }
@@ -104,7 +92,7 @@ struct ContentView: View {
         }
         .onChange(of: model.commandTransferTick) { _ in
             window.destination = .chat
-            model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
+            model.showToast("转任务由文档流转承担，壳不直接操作（契约 §4/§8）")
         }
         .onChange(of: model.commandDestination) { dest in
             guard let dest else { return }
@@ -112,11 +100,6 @@ struct ContentView: View {
             model.selectDestination(dest, projectId: window.projectId)
             model.commandDestination = nil
         }
-        // 顶栏用量：accessory 自带 1s timer，勿用 .id(tick) 拖整窗重挂
-        .background(
-            TitlebarUsageAccessory(model: model)
-                .frame(width: 0, height: 0)
-        )
         .toolbarBackground(CCCTheme.sidebar, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
         .toolbarColorScheme(.light, for: .windowToolbar)
@@ -342,12 +325,12 @@ struct CodexSidebar: View {
 
     private var offlineBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(model.canChat ? model.hubRetryStatusPhrase : "本机 Agent 未就绪")
+            Text("Desktop 已连接新服务端")
                 .font(.system(size: 13, weight: .medium))
             Text(
                 model.canChat
                     ? "可继续聊；转任务可确认排队。Hub 恢复后后台自动投递（每 4s 探活）。"
-                    : "对话只走本机 sidecar。设置中确认 Agent 地址，或执行 install-agent-sidecar-plist.sh --start。"
+                    : "对话走新服务端协议（非流式 POST /conversation）"
             )
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
@@ -573,25 +556,6 @@ struct CodexChatPaneBody: View {
         return model.statusText
     }
 
-    /// 投递态前景色：failed 醒目；queued/delivering 中性；accepted 成功感；delivered 不伪装受理
-    private func deliveryPhaseForeground(_ phase: TransferDeliveryPhase) -> Color {
-        switch phase {
-        case .failed: return CCCTheme.nodeFail
-        case .accepted: return CCCTheme.nodeDone
-        case .queued, .delivering: return CCCTheme.secondary
-        case .delivered, .draft: return CCCTheme.secondary
-        }
-    }
-
-    private func deliveryPhaseBackground(_ phase: TransferDeliveryPhase) -> Color {
-        switch phase {
-        case .failed: return CCCTheme.nodeFail.opacity(0.12)
-        case .accepted: return CCCTheme.nodeDone.opacity(0.14)
-        case .queued, .delivering: return CCCTheme.secondary.opacity(0.12)
-        case .delivered, .draft: return CCCTheme.secondary.opacity(0.12)
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if !model.dismissedFirstRunTip {
@@ -648,10 +612,6 @@ struct CodexChatPaneBody: View {
                             .allowsHitTesting(false)
                         }
                     }
-                    if model.transferDraft(for: paneThreadId) != nil {
-                        transferConfirmBar
-                            .opacity(paneContentOpacity)
-                    }
                     composerDock
                 }
             }
@@ -686,8 +646,7 @@ struct CodexChatPaneBody: View {
             // 消息源只跟 thread；以 thread 切换驱动过渡，避免与 project 双触发叠闪
             beginPaneSwitchTransition()
         }
-        .onChange(of: model.agentMode) { mode in
-        }
+        // 对话模式：非流式 POST /conversation
         .onChange(of: displayMessages.count) { newCount in
             let tid = paneThreadId ?? ""
             lastDisplayMsgCount = newCount
@@ -785,58 +744,6 @@ struct CodexChatPaneBody: View {
         }
     }
 
-    /// 意图卡契约就绪后的确认条（自动 promotion 失败时仍可手动进代办）
-    private var transferConfirmBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("意图卡就绪")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(CCCTheme.ink)
-                    Text(model.transferDraft(for: paneThreadId)?.previewLine ?? "")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(CCCTheme.secondary)
-                        .lineLimit(2)
-                    if let d = model.transferDraft(for: paneThreadId) {
-                        Text("产线 \(d.pipeline) · 验收 \(d.acceptanceLines.count) 条 · gate 绿后自动进代办")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(CCCTheme.faint)
-                    }
-                }
-                Spacer(minLength: 0)
-                Button("展开编辑") {
-                    model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
-                }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.secondary)
-                Button("忽略") { model.dismissPendingTransfer(threadId: paneThreadId) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.faint)
-                Button("进代办") { model.confirmPendingTransfer(threadId: paneThreadId) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CCCTheme.accent)
-                    .controlSize(.small)
-                    .disabled(
-                        model.busy
-                            || !model.canTransfer
-                            || !(model.transferDraft(for: paneThreadId)?.isGateReady ?? false)
-                    )
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: CCCTheme.chatMaxWidth)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CCCTheme.accent.opacity(0.08))
-        )
-        .padding(.horizontal, 28)
-        .padding(.bottom, 4)
-    }
-
     private var statusBar: some View {
         HStack(spacing: 8) {
             Circle()
@@ -845,49 +752,7 @@ struct CodexChatPaneBody: View {
             Text(paneStatusText)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-            if model.hubSyncing {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Hub 同步")
-                    .font(.system(size: 10))
-                    .foregroundStyle(CCCTheme.faint)
-            } else if !model.hubReachable {
-                Text(model.hubRetryStatusPhrase)
-                    .font(.system(size: 10))
-                    .foregroundStyle(CCCTheme.secondary)
-            }
-            if let phase = model.transferDelivery(for: paneThreadId),
-               phase != .draft {
-                Text(phase.label)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(deliveryPhaseForeground(phase))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(
-                        Capsule().fill(deliveryPhaseBackground(phase))
-                    )
-                    .accessibilityLabel("投递态 \(phase.label)")
-                    .accessibilityValue(phase.rawValue)
-                if phase == .failed {
-                    Button("后台再试") {
-                        model.retryFailedTransfersInBackground()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(CCCTheme.accent)
-                    .accessibilityLabel("投递失败后台再试")
-                }
-            }
-            if model.agentWarming {
-                Text("预热中")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(CCCTheme.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(CCCTheme.hover, in: Capsule())
-                    .accessibilityLabel("本机 Agent 预热中")
-            }
-            Text(model.agentBadge)
+            Text("已连接")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(
                     model.canChat
@@ -903,22 +768,7 @@ struct CodexChatPaneBody: View {
                     in: Capsule()
                 )
             Spacer(minLength: 0)
-            if let fail = model.lastTurnFailure,
-               fail.threadId == paneThreadId,
-               !paneStreaming {
-                Button("重试") { model.retryLastFailedTurn(threadId: paneThreadId) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(CCCTheme.accent)
-                    .help(fail.message)
-                    .accessibilityLabel("重试本条失败对话")
-                Button("清槽") { model.healThreadSlot(threadId: paneThreadId) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(CCCTheme.secondary)
-                    .help("回收本会话 Agent live 槽后重发")
-                    .accessibilityLabel("清理本会话 Agent 槽")
-            }
+            // lastTurnFailure 已移除，壳不再显示重试/清槽按钮
             if model.busy && !paneStreaming {
                 ProgressView().controlSize(.mini)
             }
@@ -939,7 +789,7 @@ struct CodexChatPaneBody: View {
                             .font(.system(size: 10))
                     }
                     .foregroundStyle(CCCTheme.faint)
-                    .help("本会话 token（sidecar cost）；顶栏「今日/5s」是 Agent 调用次数")
+                    .help("本会话 token 消耗")
                 }
             }
             Button("上下文") { model.isContextPanelPresented = true }
@@ -1049,10 +899,8 @@ struct CodexChatPaneBody: View {
                             .accessibilityLabel("空对话引导：聊透目标，自动意图链，自动进代办")
                             }
                         }
-                        ForEach(displayMessages) { msg in
+                        ForEach(Array(displayMessages.enumerated()), id: \.element.id) { _, msg in
                             CodexMessageRow(message: msg)
-                                // 固定 id：toolSteps 变化靠 Hashable diff 刷新轨，勿重建整行 Markdown
-                                .id("\(paneThreadId ?? "")-\(msg.id)")
                                 .environmentObject(model)
                                 .contextMenu {
                                     Button("复制") { model.copyMessage(msg.content) }
@@ -1074,53 +922,8 @@ struct CodexChatPaneBody: View {
                                             )
                                         }
                                         Button("预览") { model.previewMessage(msg.content) }
-                                        if model.canTransfer {
-                                            Button("转任务") {
-                                                model.openTransfer(
-                                                    fromAssistantContent: msg.content,
-                                                    projectId: paneProjectId,
-                                                    threadId: paneThreadId
-                                                )
-                                            }
-                                        }
                                     }
                                 }
-                        }
-                        // 失败提示：在消息流末尾显式给「重试 / 清槽」按钮，避免状态栏太隐蔽
-                        if let fail = model.lastTurnFailure,
-                           fail.threadId == paneThreadId,
-                           !paneStreaming {
-                            HStack(spacing: 10) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(CCCTheme.nodeFail)
-                                Text("本条失败：\(fail.shortLabel)")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(CCCTheme.nodeFail)
-                                Spacer(minLength: 0)
-                                Button("重试") { model.retryLastFailedTurn(threadId: paneThreadId) }
-                                    .buttonStyle(.plain)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(CCCTheme.accent)
-                                    .help(fail.message)
-                                Button("清槽") { model.healThreadSlot(threadId: paneThreadId) }
-                                    .buttonStyle(.plain)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(CCCTheme.secondary)
-                                    .help("回收本会话 Agent live 槽后重发")
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(CCCTheme.nodeFail.opacity(0.08))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(CCCTheme.nodeFail.opacity(0.25), lineWidth: 1)
-                            )
-                            .cornerRadius(10)
-                            .padding(.top, 8)
-                            .frame(maxWidth: CCCTheme.chatMaxWidth)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("本条失败：\(fail.shortLabel)，可重试或清槽")
                         }
                         // tip：钉在视口 y=2/3；下方 Spacer(≈1/3 高) 正好留白
                         Color.clear
@@ -1293,16 +1096,15 @@ struct CodexChatPaneBody: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Picker("", selection: $model.preferredModel) {
-                    ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
-                        Text(opt.label).tag(opt.id)
-                    }
+                    Text("Flash").tag("flash")
+                    Text("Pro").tag("Pro")
+                    Text("Code").tag("code")
                 }
                 .labelsHidden()
                 .frame(width: 118)
                 .help("对话模型（请求级）。三档契约 flash/Pro/code 逻辑名；上游由 relay upstreams.json 路由。不改 shell / 个人 Claude。")
                 .onChange(of: model.preferredModel) { newValue in
-                    let name = StreamSessionController.modelDisplayName(newValue)
-                    model.showToast("对话模型：\(name)")
+                    model.showToast("对话模型：\(newValue)")
                 }
 
                 Button {
@@ -1329,12 +1131,7 @@ struct CodexChatPaneBody: View {
                 .buttonStyle(.plain)
                 .help("附加本地文件路径到本条消息")
 
-                if let hint = model.transferGateHint(projectId: window.projectId, threadId: paneThreadId) {
-                    Text(hint)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(CCCTheme.faint)
-                        .lineLimit(2)
-                } else if model.transferDraft(for: paneThreadId) == nil, !displayMessages.isEmpty {
+                if !displayMessages.isEmpty {
                     Text("谈妥后 Agent 自动投意图链")
                         .font(.system(size: 10.5))
                         .foregroundStyle(CCCTheme.faint)
@@ -1496,17 +1293,6 @@ struct CodexChatPaneBody: View {
         VStack(alignment: .leading, spacing: 6) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    quickChip(
-                        "对齐基线",
-                        help: "深对齐：Hub 快照+透镜；可选，不是投链硬门槛；残卡优先板务修复"
-                    ) {
-                        Task {
-                            await model.alignBaseline(
-                                projectId: paneProjectId,
-                                threadId: paneThreadId
-                            )
-                        }
-                    }
                     quickChip(
                         "扫风险",
                         help: "按严重度列出场景/发布/意图链风险，并判断能否自动投链"
@@ -1733,20 +1519,11 @@ struct CodexMessageRow: View {
 
     private var assistantBlock: some View {
         let raw = message.content
-        let transferJSON = message.isStreaming ? nil : TransferDraftParser.transferFenceJSON(from: raw)
         let body: String = {
             if message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty {
                 return "…"
             }
-            if message.isStreaming {
-                // 流式禁止正则剥 fence：半截 JSON + 每帧 layout 会把主线程打满卡死
-                if raw.contains("```ccc-transfer") {
-                    return "正在生成定稿结论…"
-                }
-                return raw
-            }
-            let human = TransferDraftParser.humanVisibleMarkdown(from: raw)
-            return human.isEmpty && transferJSON != nil ? "已定稿（见下方确认转任务）" : human
+            return raw
         }()
         let showActions = !message.isStreaming && !raw.isEmpty && body != "…"
         return VStack(alignment: .leading, spacing: 8) {
@@ -1782,19 +1559,6 @@ struct CodexMessageRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(nil, value: message.isStreaming)
-            }
-            if let json = transferJSON, !message.isStreaming {
-                DisclosureGroup("转任务契约（给 Engine）") {
-                    Text(json)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(CCCTheme.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 4)
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(CCCTheme.faint)
-                .padding(.horizontal, 2)
             }
             if showActions {
                 MessageActionBar(role: "assistant", content: raw, message: message)
@@ -1887,650 +1651,13 @@ struct MessagePreviewSheet: View {
     }
 }
 
-// MARK: - Flow rail（跟左侧项目绑定）
-
-struct FlowRail: View {
-    @EnvironmentObject var model: AppModel
-    @EnvironmentObject var window: WindowChatState
-    /// 排队/历史默认折叠
-    /// 右栏跟本窗项目，不跟单个会话
-    private var paneProjectId: String? {
-        if let pid = window.projectId, !pid.isEmpty { return pid }
-        return model.selectedProjectId
-    }
-
-    private var snap: FlowThreadSnapshot? {
-        if let pid = paneProjectId {
-            _ = model.projectFlowRevision[pid]
-        }
-        return model.flowSnapshot(forProject: paneProjectId)
-    }
-
-    /// Scroll content identity — must change when projectFlowRevision bumps so cards rebuild without leave/return.
-    private var flowRailContentId: String {
-        let pid = paneProjectId ?? ""
-        let rev = model.projectFlowRevision[pid] ?? 0
-        let s = model.flowSnapshot(forProject: pid)
-        return "\(pid)|\(rev)|\(s?.epicId ?? "")|\(s?.recentEpics.count ?? 0)|\(s?.works.count ?? 0)"
-    }
-
-    private static let boardChipCols: [(key: String, label: String)] = [
-        ("backlog", "待办"),
-        ("planned", "规划"),
-        ("in_progress", "进行"),
-        ("testing", "验收"),
-        ("abnormal", "异常"),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: 8)
-
-            // 顶栏固定；下方统一滚动（避免 Canvas 内嵌 ScrollView 高度无限 → 滑不动）
-            railHeader
-                .padding(.horizontal, 14)
-                .padding(.top, 4)
-                .padding(.bottom, 8)
-
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 0) {
-                    boardStrip
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 10)
-
-                    mindGoalsStrip
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 10)
-
-                    // v0.64：取消大卡栈 + work 拆解竖轨；老板用看板计数 + 意图卡链判断状态
-                    if (snap?.recentEpics ?? []).isEmpty,
-                       (model.mindGoalsProjectId == paneProjectId ? model.mindGoals : []).isEmpty {
-                        Text(snap?.emptyMessage
-                            ?? "编排空闲 · 谈妥后 Agent 自动投意图链")
-                            .font(.system(size: 11))
-                            .foregroundStyle(CCCTheme.faint)
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 12)
-                    }
-
-                    if let hint = snap?.fanoutHint {
-                        agentHintCard(
-                            text: hint,
-                            prompt: agentPromptFanout(hint: hint),
-                            onDismiss: {
-                                model.clearFanoutHint(projectId: paneProjectId, threadId: nil)
-                            }
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                    }
-
-                    if let stop = snap?.stopLossHint {
-                        agentHintCard(
-                            text: stop,
-                            prompt: agentPromptStopLoss(hint: stop),
-                            prominentFail: true,
-                            onDismiss: {
-                                model.clearStopLossHint(projectId: paneProjectId, threadId: nil)
-                            },
-                            primaryTitle: "再交 Agent"
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                    }
-
-                    Color.clear.frame(height: 12)
-                }
-                // Force rebuild when projectFlow bumps (SSE/snapshot); leave/return remount was masking stale rail.
-                .id(flowRailContentId)
-            }
-        }
-        .background(CCCTheme.sidebar)
-        .task(id: paneProjectId) {
-            guard let pid = paneProjectId else { return }
-            await model.bindFlowToProject(projectId: pid)
-        }
-        .sheet(item: $model.selectedNodeDetail) { detail in
-            nodeDetailSheet(detail)
-        }
-    }
-
-    private var railHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("本项目态势")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(CCCTheme.ink)
-                Spacer(minLength: 0)
-                Button("看板") {
-                    window.destination = .board
-                    model.selectDestination(.board, projectId: paneProjectId)
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(CCCTheme.accent)
-            }
-            Text(model.orchestrationSyncLabel(forProject: paneProjectId))
-                .font(.system(size: 10))
-                .foregroundStyle(CCCTheme.faint)
-                .accessibilityLabel("编排同步态")
-            if let title = boundEpicTitle {
-                Text(title)
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.secondary)
-                    .lineLimit(2)
-            } else if paneProjectId == nil {
-                Text("先选左侧项目")
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.faint)
-            } else {
-                Text("谈妥后显示意图卡 · 进代办看看板条")
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.faint)
-            }
-        }
-    }
-
-    private func nodeDetailSheet(_ detail: FlowNodeDetail) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(detail.kind == "epic" ? "任务" : "步骤")
-                    .font(CCCTheme.caption)
-                    .foregroundStyle(CCCTheme.faint)
-                Spacer()
-                Button("关闭") { model.dismissNodeDetail() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(CCCTheme.secondary)
-            }
-            Text(detail.title)
-                .font(.system(size: 16, weight: .semibold))
-            if !detail.status.isEmpty {
-                Text(detail.status)
-                    .font(.system(size: 12))
-                    .foregroundStyle(CCCTheme.secondary)
-            }
-            ScrollView {
-                Text(detail.body)
-                    .font(.system(size: 13))
-                    .foregroundStyle(CCCTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-            if detail.kind == "work",
-               (snap?.works ?? []).contains(where: { $0.workId == detail.id && $0.isFailed }) {
-                Button("复制给对话") {
-                    copyToComposer(
-                        """
-                        项目 \(paneProjectId ?? "") 的步骤「\(detail.title)」异常（\(detail.status)）。
-                        请根据看板/失败原因排查并给出可执行的修复或 reopen 建议。
-                        \(detail.body.prefix(800))
-                        """
-                    )
-                    model.dismissNodeDetail()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(CCCTheme.accent)
-            }
-        }
-        .padding(22)
-        .frame(width: 420, height: 360)
-    }
-
-    @ViewBuilder
-    private func agentHintCard(
-        text: String,
-        prompt: String,
-        prominentFail: Bool = false,
-        onDismiss: @escaping () -> Void,
-        primaryTitle: String = "复制给对话"
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(text)
-                .font(.system(size: 11.5, weight: prominentFail ? .semibold : .regular))
-                .foregroundStyle(CCCTheme.nodeFail)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Button(primaryTitle) {
-                    if primaryTitle == "再交 Agent", let pid = paneProjectId {
-                        model.sendUserMessage(
-                            prompt,
-                            projectId: pid,
-                            threadId: window.threadId,
-                            displayText: "编排自愈 · 再交 Agent"
-                        )
-                    } else {
-                        copyToComposer(prompt)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(prominentFail ? CCCTheme.nodeFail : CCCTheme.accent)
-                .controlSize(.small)
-                Button("忽略") { onDismiss() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.faint)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(CCCTheme.nodeFail.opacity(prominentFail ? 0.12 : 0.08))
-        )
-    }
-
-    private func copyToComposer(_ prompt: String) {
-        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        model.fillComposer(text: text, threadId: window.threadId)
-        model.showToast("已复制并填入输入框")
-    }
-
-    private func agentPromptStopLoss(hint: String) -> String {
-        let pid = paneProjectId ?? "?"
-        let eid = snap?.epicId ?? ""
-        let failed = (snap?.works ?? []).filter(\.isFailed)
-        let names = failed.map { "· \($0.title)（\($0.displayStatus)）" }.joined(separator: "\n")
-        return """
-        【编排自愈 · 自动 SOP · 勿问老板】
-        项目：\(pid)
-        大卡：\(snap?.epic?.title ?? eid)
-        提示：\(hint)
-        \(names.isEmpty ? "" : "失败步骤：\n\(names)\n")
-        请严格按 references/board-auto-repair-sop.md：
-        hub_repair(status) → 可恢复先 reopen → clear_blockers（只归档不可恢复）→ 回报板面数字。
-        禁止先藏还可重试的 abnormal；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
-        """
-    }
-
-    private func agentPromptFanout(hint: String) -> String {
-        let pid = paneProjectId ?? "?"
-        return """
-        【扇出超时 · 请帮我查】
-        项目：\(pid)
-        大卡：\(snap?.epic?.title ?? snap?.epicId ?? "")
-        提示：\(hint)
-        请检查 Engine 是否在跑、product 扇出是否卡住，并告诉我下一步怎么做。
-        """
-    }
-
-    private func agentPromptFailedWorks() -> String {
-        agentPromptStopLoss(hint: snap?.stopLossHint ?? "有步骤失败")
-    }
-
-    private var boardStrip: some View {
-        let counts = model.boardCounts(forProject: paneProjectId)
-        let deltas = model.boardCountsDelta(forProject: paneProjectId)
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("看板")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(CCCTheme.faint)
-            HStack(spacing: 6) {
-                ForEach(Self.boardChipCols, id: \.key) { col in
-                    let n = counts[col.key] ?? 0
-                    let d = deltas[col.key] ?? 0
-                    VStack(spacing: 2) {
-                        HStack(spacing: 2) {
-                            Text("\(n)")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundStyle(col.key == "abnormal" && n > 0 ? CCCTheme.nodeFail : CCCTheme.ink)
-                            if d != 0 {
-                                Text(d > 0 ? "↑\(d)" : "↓\(-d)")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundStyle(d > 0 ? CCCTheme.accent : CCCTheme.faint)
-                            }
-                        }
-                        Text(col.label)
-                            .font(.system(size: 9))
-                            .foregroundStyle(CCCTheme.faint)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(CCCTheme.chatBg)
-                    )
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var mindGoalsStrip: some View {
-        let pid = paneProjectId
-        let goals = (model.mindGoalsProjectId == pid) ? model.mindGoals : []
-        let flashes = pid.map { model.railDispatchedFlashes(forProject: $0) } ?? []
-        if let pid, !goals.isEmpty || !flashes.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("意图卡")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(CCCTheme.faint)
-                ForEach(Array(goals.enumerated()), id: \.element.id) { idx, goal in
-                    let n = goals.count
-                    let gateFail = model.mindGateFailHint(projectId: pid, goal: goal)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("[\(idx + 1)/\(n)] \(goal.text ?? goal.id)")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(CCCTheme.ink)
-                            .lineLimit(2)
-                        Text(gateFail != nil ? "未过门" : "待转")
-                            .font(.system(size: 9))
-                            .foregroundStyle(gateFail != nil ? CCCTheme.nodeFail : CCCTheme.faint)
-                        if let gateFail, !gateFail.isEmpty {
-                            Text(gateFail)
-                                .font(.system(size: 9))
-                                .foregroundStyle(CCCTheme.faint)
-                                .lineLimit(2)
-                        }
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(CCCTheme.chatBg)
-                    )
-                }
-                ForEach(flashes, id: \.id) { flash in
-                    Text("已进代办 · \(flash.title)")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(CCCTheme.accent)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(CCCTheme.chatBg)
-                        )
-                }
-            }
-        }
-    }
-
-    private var boundEpicTitle: String? {
-        let epics = snap?.recentEpics ?? []
-        let eid = snap?.epicId
-        if let cur = epics.first(where: { $0.epic_id == eid }) {
-            return cur.title ?? cur.epic_id
-        }
-        return snap?.epic?.title ?? eid
-    }
-}
-
 // MARK: - Sheets
-
-struct TransferSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let threadId: String
-    /// 本地草稿：打字不碰 AppModel @Published，避免背后聊天全树重绘卡顿
-    @State private var draft = TransferFormState()
-    @State private var planExpanded = false
-    @State private var rejectNote: String = ""
-    @State private var showRejectNote: Bool = false
-    @State private var didLoad = false
-
-    /// 正式定稿契约：方案锁死，仅标题/备注可改
-    private var planLocked: Bool { draft.source == "ccc-transfer" }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("意图卡")
-                    .font(.system(size: 20, weight: .semibold))
-                    .tracking(-0.4)
-                Spacer()
-                if !draft.source.isEmpty {
-                    Text(draft.source == "ccc-transfer" ? "来源契约" : "启发式预填")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(CCCTheme.faint)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(CCCTheme.faint.opacity(0.12), in: Capsule())
-                }
-            }
-            Text(
-                planLocked
-                    ? "契约已锁；仅可改标题与备注。改方案请退回对话让 Agent 重投。"
-                    : "启发式预填可改意图；主路径由 Agent 自动投链。纠错：退回对话重投。"
-            )
-                .font(CCCTheme.callout)
-                .foregroundStyle(CCCTheme.faint)
-
-            Form {
-                Section(planLocked ? "意图（标题可改 · 方案已锁）" : "意图（可改）") {
-                    TextField("标题", text: $draft.title)
-                    if planLocked {
-                        LabeledContent("目标") {
-                            Text(draft.goal.isEmpty ? "—" : draft.goal)
-                                .font(.system(size: 13))
-                                .foregroundStyle(CCCTheme.secondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .textSelection(.enabled)
-                        }
-                        LabeledContent("验收") {
-                            Text(draft.acceptance.isEmpty ? "—" : draft.acceptance)
-                                .font(.system(size: 12))
-                                .foregroundStyle(CCCTheme.secondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .textSelection(.enabled)
-                        }
-                        DisclosureGroup(isExpanded: $planExpanded) {
-                            if planExpanded {
-                                Text(draft.planMd.isEmpty ? "（无方案正文）" : draft.planMd)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(CCCTheme.secondary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } label: {
-                            Text(planExpanded ? "方案正文（只读）" : planMdSummaryLocked)
-                                .font(.system(size: 13))
-                                .foregroundStyle(CCCTheme.secondary)
-                        }
-                    } else {
-                        TextField("目标", text: $draft.goal, axis: .vertical)
-                            .lineLimit(3...6)
-                        TextField("验收（每行一条）", text: $draft.acceptance, axis: .vertical)
-                            .lineLimit(3...8)
-                        DisclosureGroup(isExpanded: $planExpanded) {
-                            if planExpanded {
-                                TextField("方案正文", text: $draft.planMd, axis: .vertical)
-                                    .lineLimit(4...12)
-                            }
-                        } label: {
-                            Text(planExpanded ? "方案正文" : planMdSummary)
-                                .font(.system(size: 13))
-                                .foregroundStyle(CCCTheme.secondary)
-                        }
-                    }
-                }
-                Section(planLocked ? "执行偏好（已锁）" : "执行偏好（可改）") {
-                    if planLocked {
-                        LabeledContent("产线", value: draft.pipeline.isEmpty ? "—" : draft.pipeline)
-                        LabeledContent("执行面", value: executorLabel(draft.executor))
-                        LabeledContent("复杂度", value: draft.complexity)
-                        LabeledContent("升 VERSION", value: draft.bumpVersion ? "是" : "否")
-                    } else {
-                        TextField("产线", text: $draft.pipeline)
-                        Picker("执行面", selection: $draft.executor) {
-                            Text("写码").tag("opencode")
-                            Text("脚本/board").tag("python")
-                            Text("ollama").tag("ollama")
-                            Text("cli").tag("cli")
-                            Text("auto").tag("auto")
-                        }
-                        Picker("复杂度", selection: $draft.complexity) {
-                            Text("small").tag("small")
-                            Text("medium").tag("medium")
-                            Text("large").tag("large")
-                        }
-                        Toggle("发布时升 VERSION", isOn: $draft.bumpVersion)
-                    }
-                    TextField(
-                        planLocked ? "备注（可选：定时说明等，随卡投递）" : "备注（可选，随卡投递）",
-                        text: $draft.humanNote,
-                        axis: .vertical
-                    )
-                    .lineLimit(2...4)
-                }
-                Section("门禁（只读）") {
-                    if draft.feasibility == "ok" || planLocked {
-                        LabeledContent(
-                            "可行性",
-                            value: draft.feasibility == "ok"
-                                ? "可执行（锁死）"
-                                : "阻塞：\(draft.feasibilityReason.isEmpty ? "—" : draft.feasibilityReason)"
-                        )
-                    } else {
-                        Picker("可行性", selection: $draft.feasibility) {
-                            Text("可执行").tag("ok")
-                            Text("阻塞").tag("blocked")
-                        }
-                        TextField("阻塞原因", text: $draft.feasibilityReason, axis: .vertical)
-                            .lineLimit(2...4)
-                    }
-                    LabeledContent("会话", value: threadId)
-                }
-            }
-            .formStyle(.grouped)
-
-            if let err = draft.error {
-                Text(err)
-                    .font(CCCTheme.callout)
-                    .foregroundStyle(CCCTheme.nodeFail)
-            }
-
-            if showRejectNote {
-                TextField("退回备注", text: $rejectNote, axis: .vertical)
-                    .lineLimit(2...4)
-            }
-
-            HStack(spacing: 10) {
-                Button("退回对话") {
-                    if showRejectNote {
-                        model.commitTransferForm(threadId, draft)
-                        model.rejectTransferBackToChat(threadId: threadId, note: rejectNote)
-                        dismiss()
-                    } else {
-                        showRejectNote = true
-                    }
-                }
-                .foregroundStyle(CCCTheme.secondary)
-                Spacer()
-                Button("重新预填") {
-                    model.prefillTransferFromChat(threadId: threadId)
-                    loadDraftFromModel()
-                }
-                .foregroundStyle(CCCTheme.secondary)
-                Button("确认投链") {
-                    model.commitTransferForm(threadId, draft)
-                    model.beginIntentCardDispatch(threadId: threadId)
-                    model.dismissTransferSheet(threadId: threadId)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(CCCTheme.accent)
-                .disabled(model.busy)
-            }
-        }
-        .padding(24)
-        .frame(width: 560, height: 720)
-        .onAppear {
-            guard !didLoad else { return }
-            didLoad = true
-            loadDraftFromModel()
-        }
-    }
-
-    private var planMdSummary: String {
-        let t = draft.planMd.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { return "方案正文（可展开编辑）" }
-        let preview = String(t.prefix(48)).replacingOccurrences(of: "\n", with: " ")
-        return "方案正文 · \(preview)…"
-    }
-
-    private var planMdSummaryLocked: String {
-        let t = draft.planMd.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { return "方案正文（只读）" }
-        let preview = String(t.prefix(48)).replacingOccurrences(of: "\n", with: " ")
-        return "方案正文（只读）· \(preview)…"
-    }
-
-    private func executorLabel(_ raw: String) -> String {
-        switch raw.lowercased() {
-        case "python": return "脚本/board"
-        case "opencode": return "写码"
-        case "ollama": return "ollama"
-        case "cli": return "cli"
-        case "auto": return "auto"
-        default: return raw.isEmpty ? "—" : raw
-        }
-    }
-
-    private func loadDraftFromModel() {
-        draft = model.transferForm(for: threadId)
-        planExpanded = false
-    }
-}
 
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
         Form {
-            Section {
-                TextField("Hub 地址", text: $model.serverURLString)
-                TextField("用户", text: $model.authUser)
-                SecureField("密码", text: $model.authPass)
-            } header: {
-                Text("中心 Hub（转任务 / 看板 / 编排）")
-            } footer: {
-                Text("对话不经 Hub。Hub 只负责转任务、右栏流程与运维数据。")
-            }
-
-            Section {
-                TextField("本机 Agent", text: $model.agentURLString)
-                TextField("登录账号", text: $model.agentUser)
-                SecureField("登录密码", text: $model.agentPass)
-                TextField("CCC 仓根（拉起 sidecar）", text: $model.cccHomePath)
-                Picker("对话模型", selection: $model.preferredModel) {
-                    ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
-                        Text(opt.label).tag(opt.id)
-                    }
-                }
-                .onChange(of: model.preferredModel) { newValue in
-                    let name = StreamSessionController.modelDisplayName(newValue)
-                    model.showToast("对话模型：\(name)")
-                }
-                Picker("默认工具模式", selection: $model.preferredToolMode) {
-                    Text("规划（可选只读）").tag("discuss")
-                    Text("全功能（默认）").tag("engineer")
-                }
-                if !model.sidecarReportedModel.isEmpty {
-                    Text("Sidecar 报告：\(model.sidecarReportedModel)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                if !model.sidecarRuntimeLabel.isEmpty || !model.sidecarLoopCodeVersion.isEmpty {
-                    Text(
-                        [
-                            model.sidecarRuntimeLabel.isEmpty ? nil : "运行时 \(model.sidecarRuntimeLabel)",
-                            model.sidecarLoopCodeVersion.isEmpty ? nil : "version \(model.sidecarLoopCodeVersion)",
-                            model.sidecarConfigDir.isEmpty ? nil : model.sidecarConfigDir,
-                        ]
-                        .compactMap { $0 }
-                        .joined(separator: " · ")
-                    )
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                }
-            } header: {
-                Text("本机对话 Agent")
-            } footer: {
-                Text("登录账号/密码：对话口走账号密码换取会话 token（无默认口令）。未填写时对话会提示配置，不静默。模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游由 relay upstreams.json 路由（三档契约：flash/Pro/code）。不改 shell / 个人 Claude。")
-            }
-
             Section {
                 TextField(
                     "当前项目本机路径",
@@ -2544,31 +1671,26 @@ struct SettingsView: View {
                 Text("本机工作区")
             }
 
-            // T19 壳迁移：新服务端（server/web/server.py）对话接入
+            // 服务端连接
             Section {
-                Toggle("启用新服务端对话（T19）", isOn: $model.useNewServer)
-                TextField("新服务端地址", text: $model.newServerURLString)
-                    .disabled(!model.useNewServer)
-                TextField("账号", text: $model.newServerUser)
-                    .disabled(!model.useNewServer)
-                SecureField("密码", text: $model.newServerPass)
-                    .disabled(!model.useNewServer)
+                TextField("服务端地址", text: $model.serverURLString)
+                TextField("账号", text: $model.authUser)
+                SecureField("密码", text: $model.authPass)
                 HStack {
-                    if model.newServerLoggedIn {
-                        Button("登出") { model.logoutNewServer() }
+                    if model.serverLoggedIn {
+                        Button("登出") { model.logoutFromServer() }
                     } else {
-                        Button("登录") { Task { await model.loginNewServer() } }
-                            .disabled(!model.useNewServer)
+                        Button("登录") { Task { await model.loginToServer() } }
                     }
                     Spacer()
-                    Text(model.newServerLoggedIn ? "已登录" : (model.newServerLoginError ?? "未登录"))
+                    Text(model.serverLoggedIn ? "已登录" : (model.serverLoginError ?? "未登录"))
                         .font(.system(size: 11))
-                        .foregroundStyle(model.newServerLoggedIn ? .green : .secondary)
+                        .foregroundStyle(model.serverLoggedIn ? .green : .secondary)
                 }
             } header: {
-                Text("新服务端（T19 壳迁移）")
+                Text("服务端连接")
             } footer: {
-                Text("启用后对话走 /conversation（非流式，接大脑，账号密码换 Bearer token）。关闭则回退旧 sidecar 流式。默认地址指向本机新服务端。")
+                Text("对话走 /conversation（非流式，账号密码换 Bearer token）。")
             }
 
             Section {
@@ -2607,20 +1729,16 @@ struct ContextPanelSheet: View {
             let msgs = model.messagesForThread(threadId)
             let tok = model.sessionTokenCount(for: threadId)
             let est = LocalSessionStore.estimateTokens(msgs)
-            Group {
+            VStack(alignment: .leading, spacing: 4) {
                 LabeledContent("消息数", value: "\(msgs.count)")
                 LabeledContent("本会话 token", value: "\(tok)")
                 LabeledContent("估算字符 token", value: "\(est)")
-                LabeledContent("模型偏好", value: StreamSessionController.modelDisplayName(model.preferredModel))
+                LabeledContent("模型偏好", value: model.preferredModel)
                 LabeledContent("工具模式", value: model.preferredToolMode)
-                LabeledContent(
-                    "Resume",
-                    value: model.hasResume(for: threadId) ? "有" : "无"
-                )
             }
             .font(.system(size: 12))
 
-            Text("本会话 token 来自 sidecar cost；顶栏「今日 / 5s」是本机 Agent 大模型调用次数（每轮对话计 1）。")
+            Text("本会话 token 由服务端统计。")
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)

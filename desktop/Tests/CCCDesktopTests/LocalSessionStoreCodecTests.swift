@@ -2,7 +2,7 @@ import XCTest
 @testable import CCCDesktop
 
 /// 行为锁 · 持久化层（编解码 + 纯函数）：LocalSessionStore
-/// 锁定 Record / ChatMessage / TransferOutboxItem 等旧盘兼容编解码与纯逻辑
+/// 锁定 Record / ChatMessage 等旧盘兼容编解码与纯逻辑
 final class LocalSessionStoreCodecTests: XCTestCase {
 
     // MARK: - ChatMessage 编解码
@@ -110,7 +110,7 @@ final class LocalSessionStoreCodecTests: XCTestCase {
             ],
             flow: FlowThreadSnapshot(
                 epicId: "e1", epic: nil, works: [], headline: "h",
-                recentEpics: [], emptyMessage: "", fanoutHint: "hint", stopLossHint: nil
+                recentEpics: [], emptyMessage: "", fanoutHint: "hint"
             ),
             needs_hub_sync: true,
             revision: 3,
@@ -142,91 +142,6 @@ final class LocalSessionStoreCodecTests: XCTestCase {
         XCTAssertNil(back.revision)
         XCTAssertNil(back.claude_session_id)
         XCTAssertEqual(back.messages.count, 1)
-    }
-
-    // MARK: - TransferOutboxItem 编解码（含旧盘兜底）
-
-    private func outboxItemFixture() -> LocalSessionStore.TransferOutboxItem {
-        LocalSessionStore.TransferOutboxItem(
-            client_request_id: "c1",
-            project_id: "proj",
-            thread_id: "proj::t",
-            title: "T",
-            goal: "G",
-            acceptance: ["A"],
-            pipeline: "dev",
-            feasibility: "ok",
-            feasibility_reason: nil,
-            executor_intent: "opencode",
-            plan_md: "plan",
-            complexity: "medium",
-            bump_version: true,
-            human_note: "note",
-            attempts: 2,
-            saved_at: "2026-08-01T00:00:00Z",
-            skill_ref: "skills/x",
-            prompt_ref: "prompts/x"
-        )
-    }
-
-    func testTransferOutboxItemRoundTrip() throws {
-        let item = outboxItemFixture()
-        let data = try JSONEncoder().encode(item)
-        let back = try JSONDecoder().decode(LocalSessionStore.TransferOutboxItem.self, from: data)
-        XCTAssertEqual(back, item) // Hashable 全字段
-    }
-
-    func testTransferOutboxItemOldDiskFallbackDefaults() throws {
-        // 旧盘项（stage5 硬切换前 queued）：无 skill_ref/prompt_ref/complexity/bump_version/human_note
-        let json = #"{"client_request_id":"c1","project_id":"proj","thread_id":"proj::t","title":"T","goal":"G","acceptance":["A"],"pipeline":"dev","feasibility":"ok","feasibility_reason":null,"executor_intent":"opencode","plan_md":"plan","attempts":0,"saved_at":"2026-01-01T00:00:00Z"}"#
-        let back = try JSONDecoder().decode(LocalSessionStore.TransferOutboxItem.self, from: Data(json.utf8))
-        XCTAssertEqual(back.skill_ref, SkillRefResolver.defaultSkillRef) // 兜底 write-code
-        XCTAssertEqual(back.prompt_ref, SkillRefResolver.defaultPromptRef)
-        XCTAssertEqual(back.complexity, "medium")
-        XCTAssertFalse(back.bump_version)
-        XCTAssertEqual(back.human_note, "")
-    }
-
-    func testTransferOutboxItemOldDiskExplicitValuesKept() throws {
-        let json = #"{"client_request_id":"c1","project_id":"proj","thread_id":"proj::t","title":"T","goal":"G","acceptance":["A"],"pipeline":"dev","feasibility":"ok","feasibility_reason":null,"executor_intent":"opencode","skill_ref":"skills/custom","prompt_ref":"prompts/custom","plan_md":"plan","complexity":"small","bump_version":true,"human_note":"keep","attempts":0,"saved_at":"2026-01-01T00:00:00Z"}"#
-        let back = try JSONDecoder().decode(LocalSessionStore.TransferOutboxItem.self, from: Data(json.utf8))
-        XCTAssertEqual(back.skill_ref, "skills/custom")
-        XCTAssertEqual(back.prompt_ref, "prompts/custom")
-        XCTAssertEqual(back.complexity, "small")
-        XCTAssertTrue(back.bump_version)
-        XCTAssertEqual(back.human_note, "keep")
-    }
-
-    func testTransferOutboxItemRequiredFieldMissingThrows() {
-        let json = #"{"project_id":"proj","title":"T","goal":"G","acceptance":[],"pipeline":"dev","feasibility":"ok","executor_intent":"opencode","plan_md":"","attempts":0,"saved_at":"x"}"#
-        XCTAssertThrowsError(try JSONDecoder().decode(LocalSessionStore.TransferOutboxItem.self, from: Data(json.utf8)))
-    }
-
-    // MARK: - TransferReceipt
-
-    func testReceiptIsRejected() {
-        var r = LocalSessionStore.TransferReceipt(
-            client_request_id: "c", epic_id: "e", project_id: "p", thread_id: "p::t",
-            delivered_at: "d", status: nil, reason: nil, fix_hint: nil, card_title: nil
-        )
-        XCTAssertFalse(r.isRejected) // 缺省 delivered
-        r.status = "rejected"
-        XCTAssertTrue(r.isRejected)
-        r.status = "REJECTED"
-        XCTAssertTrue(r.isRejected) // 大小写不敏感
-        r.status = "delivered"
-        XCTAssertFalse(r.isRejected)
-    }
-
-    func testTransferReceiptRoundTrip() throws {
-        let src = LocalSessionStore.TransferReceipt(
-            client_request_id: "c1", epic_id: "e1", project_id: "p", thread_id: "p::t",
-            delivered_at: "d", status: "rejected", reason: "gate", fix_hint: "fix", card_title: "T"
-        )
-        let data = try JSONEncoder().encode(src)
-        let back = try JSONDecoder().decode(LocalSessionStore.TransferReceipt.self, from: data)
-        XCTAssertEqual(back, src)
-        XCTAssertTrue(back.isRejected)
     }
 
     // MARK: - ExportV1 / ProjectsCache / BoardCacheFile

@@ -146,7 +146,6 @@ struct OpsView: View {
                 adoptWorkspace = preferredAmmoWorkspace
             }
             await model.refreshOps()
-            await model.refreshOpsIntentGoals()
         }
         .sheet(isPresented: $showAdoptSheet) {
             adoptSheet
@@ -213,7 +212,6 @@ struct OpsView: View {
     private var displaySeverity: String {
         OpsHealthDisplay.severity(
             summary: model.opsSummary,
-            agentOk: model.opsAgentOk,
             localPatrol: model.localPatrolAlerts
         )
     }
@@ -221,13 +219,12 @@ struct OpsView: View {
     private var displayHumanLine: String {
         OpsHealthDisplay.humanLine(
             summary: model.opsSummary,
-            agentOk: model.opsAgentOk,
             severity: displaySeverity
         )
     }
 
     private var displayAlerts: [OpsHealthAlert] {
-        OpsHealthDisplay.alerts(summary: model.opsSummary, agentOk: model.opsAgentOk, localPatrol: model.localPatrolAlerts)
+        OpsHealthDisplay.alerts(summary: model.opsSummary, localPatrol: model.localPatrolAlerts)
     }
 
     private var healthLampSection: some View {
@@ -358,18 +355,10 @@ struct OpsView: View {
     }
 
     private func handoffOpsAlert(_ alert: OpsHealthAlert) async {
-        let text = copyOpsAlertToPasteboard(alert)
-        await model.handoffToOpsAgent(
-            payload: text,
-            sourceProjectId: window.projectId ?? model.selectedProjectId
-        )
+        copyOpsAlertToPasteboard(alert)
         window.destination = .chat
         model.selectDestination(.chat, projectId: window.projectId ?? model.selectedProjectId ?? "ccc")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            if model.opsCopiedHint == "已交对话 Agent" {
-                model.opsCopiedHint = nil
-            }
-        }
+        model.showToast("告警信息已复制到剪贴板，粘贴到对话中处理")
     }
 
     private var clusterSummarySection: some View {
@@ -378,7 +367,6 @@ struct OpsView: View {
         let engRunning = cluster?.engine_running
         let mode = cluster?.mode ?? "—"
         let hubOk = cluster?.hub_port_7777 != false
-        let tunnelOk = model.serverURLString.contains(":17777")
         return VStack(alignment: .leading, spacing: 10) {
             sectionTitle("集群与服务", systemImage: "server.rack")
             HStack(spacing: 10) {
@@ -408,24 +396,7 @@ struct OpsView: View {
                     subtitle: downN == 0 ? "全部正常" : "\(downN) 个异常"
                 )
             }
-            // 隧道状态行 — 与 chip 同级
-            HStack(spacing: 6) {
-                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                    .foregroundStyle(tunnelOk ? CCCTheme.nodeDone : CCCTheme.nodeFail)
-                    .font(.system(size: 14))
-                Text("com.ccc.hub-tunnel")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(CCCTheme.ink)
-                Text(tunnelOk ? "127.0.0.1:17777" : "未连")
-                    .font(CCCTheme.caption)
-                    .foregroundStyle(tunnelOk ? CCCTheme.nodeDone : CCCTheme.secondary)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill((tunnelOk ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.1))
-            )
+            // 隧道状态已退役（T21），不再显示 com.ccc.hub-tunnel
             if let ports = cluster?.ports, !ports.isEmpty {
                 Text(
                     "端口 "
@@ -444,24 +415,10 @@ struct OpsView: View {
     private var agentMcpRelaySection: some View {
         let mcp = model.opsSummary?.domains?.agent_mcp
         let relay = model.opsSummary?.domains?.relay
-        let agentOk = model.opsAgentOk
         let cap = model.opsSummary?.domains?.capacity
         return VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Agent · MCP · Relay", systemImage: "cpu")
             HStack(spacing: 10) {
-                domainChip(
-                    title: "Agent",
-                    tone: agentOk == true ? .green : (agentOk == false ? .red : .gray),
-                    subtitle: {
-                        if agentOk == true {
-                            let rt = model.opsAgentRuntime ?? "sidecar"
-                            let m = model.opsAgentModel ?? ""
-                            return m.isEmpty ? rt : "\(rt) · \(m)"
-                        }
-                        if agentOk == false { return "本机未就绪" }
-                        return "探测中"
-                    }()
-                )
                 domainChip(
                     title: "MCP",
                     tone: mcpChipTone(mcp),
@@ -657,60 +614,10 @@ struct OpsView: View {
     }
 
     private var intentClosureSection: some View {
-        let rows = model.opsIntentRows
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("探针已过可标稳定；编排中只读。右栏只留待讨论意图。")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("意图收口由文档流转承担，壳不直接操作（契约 §4/§8）")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
-            if rows.isEmpty {
-                emptyHint("暂无待收口 / 编排中意图")
-            } else {
-                ForEach(rows) { row in
-                    HStack(alignment: .top, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(row.projectId)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(CCCTheme.faint)
-                                Text(row.goal.displayStatus)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(
-                                        row.goal.isMarkableStable ? CCCTheme.nodeDone : CCCTheme.secondary
-                                    )
-                            }
-                            Text(row.goal.text ?? row.goal.id)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(CCCTheme.ink)
-                                .lineLimit(3)
-                        }
-                        Spacer(minLength: 0)
-                        if row.goal.isMarkableStable {
-                            Button("标记稳定") {
-                                Task {
-                                    await model.markMindGoalStable(
-                                        projectId: row.projectId,
-                                        goalId: row.goal.id
-                                    )
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(CCCTheme.accent)
-                            .controlSize(.small)
-                            .disabled(model.opsIntentBusy || model.mindGoalBusy)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    Divider()
-                }
-            }
-            Button {
-                Task { await model.refreshOpsIntentGoals() }
-            } label: {
-                Label("刷新意图", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(model.opsIntentBusy)
         }
     }
 

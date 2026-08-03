@@ -10,7 +10,7 @@ struct ConversationState: Equatable {
     var flow: FlowThreadSnapshot?
     /// 单调修订；拒绝更旧写入（预留；落盘时递增）
     var revision: UInt64
-    /// sidecar/loop-code resume id
+    /// 服务端会话 resume id
     var claudeSessionId: String?
 
     static func empty(projectId: String, threadId: String) -> ConversationState {

@@ -221,8 +221,7 @@ struct BoardView: View {
     }
 
     private func boardCard(_ task: BoardTask, col: String) -> some View {
-        let highlight = model.currentEpicId == task.id
-            || (model.flowEpic?.id == task.id)
+        let highlight = false
         let isAbnormal = (task.status == "abnormal") || (task.split_status == "failed")
         let locator = CardLocator.line(
             project: model.selectedProjectId,

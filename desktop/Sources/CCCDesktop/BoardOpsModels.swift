@@ -355,34 +355,12 @@ struct OpsDomainMcpServer: Identifiable, Decodable, Hashable {
     }
 }
 
-// MARK: - Ops display merge (Hub severity + sidecar + MCP)
+// MARK: - Ops display merge (Hub severity + MCP)
 
 enum OpsHealthDisplay {
-    /// Hub alerts + 本机 sidecar-down + domains.agent_mcp + 本地 ~/.ccc/alerts/ 巡查告警（去重）
-    static func alerts(summary: OpsSummary?, agentOk: Bool?, localPatrol: [OpsHealthAlert] = []) -> [OpsHealthAlert] {
+    /// Hub alerts + domains.agent_mcp + 本地 ~/.ccc/alerts/ 巡查告警（去重）
+    static func alerts(summary: OpsSummary?, localPatrol: [OpsHealthAlert] = []) -> [OpsHealthAlert] {
         var list = summary?.alerts ?? []
-        if agentOk == false {
-            let payload = """
-            【CCC 运维红灯】请排查并修复（系统/配置问题，不是业务意图）
-            标题：本机 Agent Sidecar 未就绪
-            影响：无法对话 / 无法承接红灯修复
-            来源：sidecar
-            详情：GET http://127.0.0.1:7788/health 失败或 ok≠true
-            建议：查 com.ccc.agent-sidecar / 本机 :7788
-            机器字段：{"id":"sidecar-down","source":"sidecar","port":7788}
-            """
-            let local = OpsHealthAlert(
-                id: "sidecar-down",
-                title: "本机 Agent Sidecar 未就绪",
-                detail: "对话面 :7788 不可用",
-                source: "sidecar",
-                severity: "red",
-                copy_payload: payload
-            )
-            if !list.contains(where: { $0.id == "sidecar-down" }) {
-                list.insert(local, at: 0)
-            }
-        }
         if let mcp = summary?.domains?.agent_mcp, mcp.isRedFailure {
             let already = list.contains {
                 let id = $0.id.lowercased()
@@ -410,7 +388,7 @@ enum OpsHealthDisplay {
                 影响：对话 Agent 工具链可能不可用
                 来源：agent_mcp
                 详情：\(detail)
-                建议：查 sidecar MCP 配置 / Hub domains.agent_mcp
+                建议：查 MCP 配置 / Hub domains.agent_mcp
                 机器字段：{"id":"mcp-probe-failed","source":"mcp","mcp_probed":true}
                 """ : trimmed
                 list.append(
@@ -434,8 +412,7 @@ enum OpsHealthDisplay {
         return list
     }
 
-    static func severity(summary: OpsSummary?, agentOk: Bool?, localPatrol: [OpsHealthAlert] = []) -> String {
-        if agentOk == false { return "red" }
+    static func severity(summary: OpsSummary?, localPatrol: [OpsHealthAlert] = []) -> String {
         if summary?.domains?.agent_mcp?.isRedFailure == true { return "red" }
         if !localPatrol.isEmpty { return "red" }
         let hub = (summary?.severity ?? "").lowercased()
@@ -447,10 +424,7 @@ enum OpsHealthDisplay {
         return "amber"
     }
 
-    static func humanLine(summary: OpsSummary?, agentOk: Bool?, severity: String) -> String {
-        if agentOk == false {
-            return "本机对话 Agent 未就绪 · 请交给 Agent（或先启动 sidecar）"
-        }
+    static func humanLine(summary: OpsSummary?, severity: String) -> String {
         if let mcp = summary?.domains?.agent_mcp, mcp.isRedFailure {
             return "MCP 异常 · 请交给 Agent"
         }
