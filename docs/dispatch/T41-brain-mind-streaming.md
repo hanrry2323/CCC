@@ -1,7 +1,7 @@
 # 任务卡 T41 · 大脑心智升级 + 流式输出体验（OpenCode 执行）
 
 > 关联：新阶段「双壳可用 + 心智升级」· 依据：Codex 实地取证——brain 系统提示词仅「方案讨论/知识核查/任务拆解」，无规划/写卡/验收/看板维护能力契约；/conversation 为同步 subprocess 捕获，无 SSE 流式；前端无工具调用/思考过程渲染；桌面 APIClient 同步 POST
-> 执行体：OpenCode · 验收：Codex（严格）· 状态：执行中 · 日期：2026-08-03
+> 执行体：OpenCode · 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
 > 变更记录：2026-08-03 老板指示 Trae 流量用完 → 改派 OpenCode；状态置「执行中」防 2017 Engine 抢跑（T38 教训）。
 
 ## 目标
@@ -49,4 +49,57 @@ server/web/brain.py（系统提示词升级 + 流式输出函数）、server/web
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-03
+
+### 1. 心智升级（BRAIN_SYSTEM_PROMPT，`server/web/brain.py:49-77`）
+
+四段职责契约注入：
+- **规划**：理解目标 → 拆可执行步骤 → 产出任务卡草案（粒度防过粗/过碎）。
+- **写任务卡**：卡头字段/状态机/红线/验收标准，格式引用 `references/board-task-schema.md` 契约 §1/§2；五态机 待分派→执行中→已回写→已关闭（打回→待分派）；元数据行 `关联/执行体/状态/日期`；写卡前先读 `docs/dispatch/` 现有卡防撞号。
+- **验收**：对照验收标准逐项判定 → 通过或打回+问题清单；不凭回写自述。
+- **看板维护**：按状态机流转、打回附原因、不越范围（脑不抢执行）。
+- **工具契约**：BM25 知识库检索优先，命中显式标条目 id；再按需 Claude Code 内置工具（Read/Write/Bash/WebFetch）+ MCP（memory/fetch）。
+- **输出规范**：结论先行、中文、不给选择题、信息不足给假设+依据。
+- **零外脑红线**：只读 knowledge/，禁止 qx-map/hp-kb。
+
+### 2. SSE 实现与协议（`server/web/brain.py` + `server/web/server.py`）
+
+- `stream_brain_events()`（brain.py:449）：`claude --output-format stream-json` 逐事件归一化 yield（`_normalize_stream_event` brain.py:289），事件：meta{model,tools,mcp_servers,skills} / thinking{data} / tool_use{id,name,input} / text{text} / tool_result{tool_use_id,content 截断 2000} / done{is_error,text,error} / error{status,message}。
+- `/conversation?stream=1`（server.py:576 `_handle_conversation_stream`）：SSE `event: X\ndata: JSON\n\n`（server.py:601）；未配置→503、忙→503、超时→504、失败→502；断线/取消即释放单会话锁。
+- **兼容**：不带 stream → 原同步 POST 全保留（鉴权/Bearer/锁不变）；仅 `done{is_error:false}` 写回历史。
+- 服务端测试：`test_brain_stream.py`（20 用例）+ test_http_api.py 流式 5 用例。
+
+### 3. 前端渲染实现
+
+**legacy-chat（HTTP 壳）**：`api.js` streamChat/cancelStream（fetch ReadableStream 解析 SSE）；`message.js` 句读打字机缓冲（takeSentenceFragment/typewriterTick，按句渲染防逐字闪烁）、thinking 折叠（`<details>` 默认收起灰色斜体）、tool_use/tool_result 工具卡片（toolCall.js 进度轨）；`components.css` 对应样式。
+
+**桌面 Swift 壳**：`APIClient.swift`（+180 行）BrainStreamEvent 枚举 + streamSession（request 60s/resource 600s，MockURLProtocol 注入点）+ `streamConversation`（401 清 token / 非 2xx 读 body 抛错 / bytes.lines 消费 / 取消→finish）+ parseStreamEvent；SSE 解析按 `event:` 行边界 flush（修复 `bytes.lines` 丢弃空行致事件合并 bug）。`AppModel.swift`（+225 行）consumeStream/finalizeStreamAssistant/takeStreamFragment/流式状态 + cancelChat 取消网络。`ToolProgressRail.swift` labelForToolUse（参数优先级 command>file_path>path>pattern>query>description，40 字截断）。
+
+### 4. 心智 8 题实测（经 2017:6100 真实大脑，flash）
+
+| 类 | 题 | 判定 | 耗时 |
+|----|----|----|----|
+| 规划 P1 | 长轮询历史增量 → 任务卡草案 | **通过**：核实单线程 HTTPServer 阻塞约束；编号取 T43 避开 T42 撞号；卡头/红线/可执行验收齐全；**实际落盘 `docs/dispatch/T43-conversation-long-poll.md`** | 148.7s |
+| 规划 P2 | 桌面深色模式 → 规划+卡草案 | **通过**：核实 385 处颜色引用集中于 CCCTheme 静态常量、SettingsView/UserDefaults 可扩展；四步技术路线 + 风险（静态引用不自动刷新）+ T44 卡草案 | 109.1s |
+| 拆卡 S1 | board loader 重构拆卡 | **通过**：拆 3 张（T44 配置基座→T45 导出/调度→T46 Web 读链路），依赖序 + 文件零重叠 + 粒度依据明确 | 171.4s |
+| 拆卡 S2 | legacy-chat 流式前端拆卡 | **通过**：识别出即为 T41 范围、**拒绝新建卡**（撞范围/双派发/单事实源纪律），给 T41 细化验收清单 + 附条件 T44 草案 | 157.7s |
+| 验收 A1 | T90 workspace 过滤验收 | **通过（打回判定）**：git 史实查明逻辑与测试由 T20 commit 96ff0de 引入，账实不符；docs/dispatch 无 T90 卡；问题清单 P1-P3 附补救 | 231.1s |
+| 验收 A2 | T91 /health version 验收 | **通过（打回判定）**：产线 curl 实测 /health 无 version 字段、v0.71.0 全仓零命中、T91 卡不存在；还揪出 server.py:231 现存版本字面量欠账 | 117.4s |
+| 看板 B1 | T92 回写后流转 | **通过**：验收席 verdict 文件（红线11）→ 已关闭/打回→待分派；执行体不自验收不自关闭；IllegalTransitionError；board.export 同步 | 147.3s |
+| 看板 B2 | T93 打回后能否改 T94 | **通过**：不可并行；契约§2 人工重派闭环 + 红线 3 越范围 + 红线 10 跨会话隐式记忆，3 条依据 | 269.4s |
+
+工具调用统计：每题 7-15 次 tool_use（Bash/Read/mcp__memory），全为知识库与仓内文档实读，无 qx-map/hp-kb。
+
+### 5. pytest / build 结果
+
+- `pytest server/tests/ -q --tb=short` → **331 passed**（含新增 test_brain_stream.py 20 + test_http_api.py 流式 5）
+- `ruff check server/` → All checks passed
+- `python -m py_compile server/engine/main.py` → OK
+- `swift build` → Build complete；`swift test` → **52 tests, 0 failures**（含新增 StreamTests.swift 27 项）
+- 三扫描：qx-map/hp-kb 仅存在于 brain.py 禁止读取红线文案；越范围扫描 0 命中（改动全在卡范围）
+
+### 6. push 证据
+
+commit `6e26448` feat(shell): T41 心智升级 + 双壳 SSE 流式；`git push origin main` → `d28b0e2..6e26448 main -> main` 成功。
+
+> 注：大脑在 P1 实测中产出的真实落盘卡 `docs/dispatch/T43-conversation-long-poll.md`（状态：待分派）留作心智能力证据，不随本次提交；如需派发请单独处置。
