@@ -17,10 +17,24 @@ API:
     GET  /board/roadmap       → 线路图聚合（需 Bearer token）
     GET  /board/states        → 状态统计（需 Bearer token）
     POST /conversation        → 对话（调用 2017 Claude Code 大脑 Agent，需 Bearer token）
-    GET  /conversation        → 对话历史（需 Bearer token）
+    GET  /conversation        → 对话历史（需 Bearer token；T43 支持长轮询增量同步）
+
+流式对话（T41）: POST /conversation 请求体带 ``"stream": true`` → 返回 SSE
+      （text/event-stream），逐事件转发 meta / thinking / tool_use / text /
+      tool_result / done / error；错误以 ``event: error`` 流式返回（HTTP 200）。
+      body 不带 stream 或为 false → 同步 JSON（向后兼容）。
+
+长轮询增量同步（T43）: ``GET /conversation`` 以 ``len(_conversations)`` 作为单调
+      seq 光标（append-only 列表）。不带 ``after`` → 返回全量 ``{messages, seq}``
+      （向后兼容）；带 ``after=<seq>&timeout=<s>`` → 挂起等待：新消息到达立即返回
+      增量 ``{messages:[...新消息], seq:<最新>}``；超时返回 ``{messages:[], seq:<不变>}``；
+      客户端断开（连接 readable/EOF）退出等待释放线程。历史写入处与 ``_conv_cond``
+      同锁并 ``notify_all()``，保证「看到 seq 必见消息」。服务端为
+      ``ThreadingHTTPServer``（并发），长轮询挂起不再阻塞 /health、/board/* 等。
 
 鉴权: Bearer token 鉴权，token 通过 POST /session 获取。
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
+      长轮询超时默认值: CCC_WEB_LONGPOLL_TIMEOUT（秒，见 server/config/config.example.env）。
 
 对话大脑（T29）: /conversation 调用本机 Claude Code CLI（走 6100 Anthropic 出口），
       携带 CCC 大脑人格 + 历史上下文，返回真实 Agent 输出。配置见 server/web/brain.py：
@@ -41,10 +55,12 @@ import hmac
 import json
 import mimetypes
 import os
+import select
 import sys
+import threading
 import time
 from datetime import date, datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -86,10 +102,20 @@ def _get_token_ttl() -> int:
     return int(os.environ.get("CCC_WEB_TOKEN_TTL", "3600"))
 
 
+def _get_longpoll_timeout() -> int:
+    """长轮询默认超时（秒，CCC_WEB_LONGPOLL_TIMEOUT，默认 30）。"""
+    try:
+        return max(0, int(os.environ.get("CCC_WEB_LONGPOLL_TIMEOUT", "30")))
+    except ValueError:
+        return 30
+
+
 # 内存 token 存储: {token: {"username": str, "expires_at": float}}
 _tokens: dict[str, dict[str, Any]] = {}
-# 对话历史（内存列表）
+# 对话历史（内存列表，append-only；len 即单调 seq 光标，T43）
 _conversations: list[dict[str, Any]] = []
+# 长轮询唤醒条件（T43：与历史写入同锁，保证「看到 seq 必见消息」）
+_conv_cond = threading.Condition()
 
 # ── 免鉴权的路径前缀 ──
 _NO_AUTH_PATHS = frozenset({"/health", "/session", "/config"})
@@ -569,8 +595,10 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": reply}, status)
             return
         now = datetime.now(timezone.utc).isoformat()
-        _conversations.append({"role": "user", "message": message, "timestamp": now})
-        _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
+        with _conv_cond:
+            _conversations.append({"role": "user", "message": message, "timestamp": now})
+            _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
+            _conv_cond.notify_all()
         self._send_json({"reply": reply})
 
     def _handle_conversation_stream(self, message: str):
@@ -608,12 +636,83 @@ class _APIHandler(BaseHTTPRequestHandler):
             reply = "".join(text_parts).strip() or done_text.strip()
             if reply:
                 now = datetime.now(timezone.utc).isoformat()
-                _conversations.append({"role": "user", "message": message, "timestamp": now})
-                _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
+                with _conv_cond:
+                    _conversations.append({"role": "user", "message": message, "timestamp": now})
+                    _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
+                    _conv_cond.notify_all()
+
+    def _client_gone(self) -> bool:
+        """长轮询等待期间检测客户端是否断开（连接变为 readable/EOF）。"""
+        try:
+            r, _, _ = select.select([self.connection], [], [], 0)
+        except (OSError, ValueError):
+            return True
+        return bool(r)
+
+    def _wait_conversation_increment(self, after: int, timeout: int) -> tuple[bool, list[dict[str, Any]], int]:
+        """长轮询等待历史增量（T43）。
+
+        在 ``_conv_cond`` 上挂起等待，返回 ``(has_increment, messages, latest_seq)``：
+
+        - 有新消息（seq > after）→ ``(True, _conversations[after:], latest_seq)``
+        - 超时 → ``(False, [], latest_seq)``
+        - 客户端断开 → 抛 ``ConnectionResetError``（调用方捕获，释放线程）
+
+        等待期间周期性检测连接 readable（客户端 reset/EOF）以提前退出，
+        不依赖写入时才能发现的 BrokenPipe。
+        """
+        deadline = time.monotonic() + timeout
+        with _conv_cond:
+            while True:
+                current = len(_conversations)
+                if after < current:
+                    return True, list(_conversations[after:]), current
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False, [], current
+                if self._client_gone():
+                    raise ConnectionResetError("client disconnected during long poll")
+                _conv_cond.wait(timeout=min(remaining, 0.5))
 
     def _handle_conversation_get(self):
-        """GET /conversation：返回对话历史。"""
-        self._send_json({"messages": list(_conversations)})
+        """GET /conversation：对话历史（T43 支持长轮询增量同步）。
+
+        无 ``after`` → 返回全量 ``{messages, seq}``（向后兼容）；
+        带 ``after=<seq>&timeout=<s>`` → 挂起等待增量，超时返回空增量，
+        seq 不变；``after``/``timeout`` 非法 → 400。
+        """
+        from urllib.parse import parse_qs
+
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        after_raw = (qs.get("after", [""])[0] or "").strip()
+        if not after_raw:
+            # 向后兼容：全量返回（含 seq 光标）
+            self._send_json({"messages": list(_conversations), "seq": len(_conversations)})
+            return
+        try:
+            after = int(after_raw)
+        except ValueError:
+            self._send_json({"error": "invalid after cursor"}, 400)
+            return
+        if after < 0:
+            self._send_json({"error": "invalid after cursor"}, 400)
+            return
+        timeout = _get_longpoll_timeout()
+        t_raw = (qs.get("timeout", [""])[0] or "").strip()
+        if t_raw:
+            try:
+                timeout = max(0, int(t_raw))
+            except ValueError:
+                self._send_json({"error": "invalid timeout"}, 400)
+                return
+        try:
+            has_increment, messages, seq = self._wait_conversation_increment(after, timeout)
+        except (BrokenPipeError, ConnectionResetError):
+            # 客户端断开：退出等待，释放线程（服务不崩溃）
+            return
+        self._send_json(
+            {"messages": messages if has_increment else [], "seq": seq},
+        )
 
     def _handle_board_snapshot(self, items: list[BoardItem]):
         """GET /board/snapshot?workspace=X&include_hidden=0 → BoardSnapshot 兼容结构。"""
@@ -741,13 +840,18 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_404()
 
 
-def create_server(host: str = "127.0.0.1", port: int = 0) -> HTTPServer:
-    """创建 HTTP 服务实例（不启动）。"""
-    server = HTTPServer((host, port), _APIHandler)
+def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+    """创建 HTTP 服务实例（不启动）。
+
+    T43：单线程 HTTPServer → ThreadingHTTPServer（并发），解除 SSE/长轮询
+    挂起期间 /health、/board/*、第二路 /conversation 被网络层阻塞的 P1 问题
+    （T42 独立复现实锤）。
+    """
+    server = ThreadingHTTPServer((host, port), _APIHandler)
     return server
 
 
-def serve_forever(host: str = "127.0.0.1", port: int = 0) -> HTTPServer:
+def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建并启动 HTTP 服务（阻塞）。"""
     server = create_server(host, port)
     addr = server.server_address

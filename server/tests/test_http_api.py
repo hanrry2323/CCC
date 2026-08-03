@@ -8,6 +8,7 @@
 - /health 返回正确结构
 - 未知路径 404
 - 启动/关闭无残留进程
+- T43 对话历史长轮询增量同步（seq 光标 / 超时 / 增量 / 并发不阻塞 / 断连不崩溃）
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ os.environ.setdefault("CCC_WEB_PASSWORD_HASH", TEST_PASS_HASH)
 os.environ.setdefault("CCC_WEB_TOKEN_TTL", "3600")
 
 import json
+import socket
 import threading
 import time
 from http.client import HTTPConnection
@@ -157,6 +159,26 @@ def _post_stream_raw(api_server: str, path: str, body_dict: dict, token: str | N
         ctype = resp.getheader("Content-Type", "")
         raw = resp.read().decode("utf-8", errors="replace")
         return resp.status, ctype, raw
+    finally:
+        conn.close()
+
+
+def _longpoll(api_server: str, path: str, token: str | None = None, timeout: float = 5.0) -> tuple[int, dict]:
+    """GET 长轮询请求（连接超时 = 轮询超时 + 2s），返回 (status, body_dict)。
+
+    阻塞直到响应到达（增量 / 超时 / 断连）。
+    """
+    parsed = urlparse(api_server)
+    conn = HTTPConnection(parsed.hostname, parsed.port, timeout=timeout + 2)
+    try:
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        conn.request("GET", path, headers=headers)
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8")
+        data = json.loads(raw) if raw else {}
+        return resp.status, data
     finally:
         conn.close()
 
@@ -479,6 +501,201 @@ class TestConversation:
         status, ctype, body = _post_stream_raw(api_server, "/conversation", {"message": "hi"}, token=token)
         assert not ctype.startswith("text/event-stream")
         assert "event:" not in body
+
+
+# ── T43 对话历史长轮询增量同步（GET /conversation?after=<seq>&timeout=<s>） ──
+
+
+class TestConversationLongPoll:
+    """T43：seq 光标 / 超时空增量 / 新消息增量 / after 正确 / 并发不阻塞 / 断连不崩溃。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_conversation_state(self):
+        """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
+        from server.web import server as srv_mod
+
+        srv_mod._conversations.clear()
+        _clear_brain_env()
+        yield
+        srv_mod._conversations.clear()
+        _clear_brain_env()
+
+    def test_no_after_returns_full(self, api_server, monkeypatch):
+        """不带 after：返回全量 + seq 光标（向后兼容，现有行为 + seq 字段）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/conversation", token=token)
+        assert status == 200
+        assert data["seq"] == 0
+        assert data["messages"] == []
+        _post(api_server, "/conversation", {"message": "first"}, token=token)
+        status, data = _get(api_server, "/conversation", token=token)
+        assert status == 200
+        assert data["seq"] == 2
+        assert len(data["messages"]) == 2
+        assert data["messages"][0]["role"] == "user"
+        assert data["messages"][0]["message"] == "first"
+        assert data["messages"][-1]["role"] == "assistant"
+
+    def test_after_cursor_increment(self, api_server, monkeypatch):
+        """after=<seq>：返回 seq 之后的增量（无需等待）；after 到当前 seq → 空增量。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "first"}, token=token)
+        status, inc = _get(api_server, "/conversation?after=1", token=token)
+        assert status == 200
+        assert inc["seq"] == 2
+        assert len(inc["messages"]) == 1
+        assert inc["messages"][0]["role"] == "assistant"
+        assert inc["messages"][0]["message"] == "ok"
+        # after 到达当前 seq → 挂起（短超时验证空增量返回）
+        status, empty = _longpoll(api_server, "/conversation?after=2&timeout=1", token, timeout=3)
+        assert status == 200
+        assert empty["messages"] == []
+        assert empty["seq"] == 2
+
+    def test_longpoll_timeout_returns_empty(self, api_server):
+        """挂起无新消息 → 超时返回 {messages:[], seq 不变}。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/conversation", token=token)
+        seq = data["seq"]
+        t0 = time.monotonic()
+        status, data = _longpoll(api_server, f"/conversation?after={seq}&timeout=1", token, timeout=3)
+        elapsed = time.monotonic() - t0
+        assert status == 200
+        assert data["messages"] == []
+        assert data["seq"] == seq
+        assert elapsed >= 0.8, f"应等到超时才返回: {elapsed:.2f}s"
+
+    def test_longpoll_returns_increment_on_new_message(self, api_server, monkeypatch):
+        """挂起期间新消息到达 → 立即返回增量 + seq 推进（notify_all 唤醒）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "inc-reply", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "first"}, token=token)
+        status, data = _get(api_server, "/conversation", token=token)
+        base_seq = data["seq"]
+        result: dict = {}
+
+        def poll():
+            result["status"], result["data"] = _longpoll(
+                api_server, f"/conversation?after={base_seq}&timeout=5", token, timeout=8
+            )
+
+        t = threading.Thread(target=poll)
+        t.start()
+        time.sleep(0.2)
+        status, posted = _post(api_server, "/conversation", {"message": "second"}, token=token)
+        assert status == 200
+        t.join(timeout=8)
+        assert not t.is_alive(), "长轮询应在新消息到达时被唤醒返回"
+        assert result["status"] == 200
+        data = result["data"]
+        assert data["seq"] == base_seq + 2
+        assert len(data["messages"]) == 2
+        assert data["messages"][0]["role"] == "user"
+        assert data["messages"][0]["message"] == "second"
+        assert data["messages"][-1]["role"] == "assistant"
+
+    def test_longpoll_hang_does_not_block_others(self, api_server):
+        """长轮询挂起期间 /health 与 /board/states 正常返回（ThreadingHTTPServer 并发）。"""
+        token = _get_token(api_server)
+        result: dict = {}
+
+        def poll():
+            result["data"] = _longpoll(api_server, "/conversation?after=999999&timeout=3", token, timeout=6)
+
+        t = threading.Thread(target=poll)
+        t.start()
+        time.sleep(0.3)
+        t0 = time.monotonic()
+        status, health = _get(api_server, "/health")
+        health_elapsed = time.monotonic() - t0
+        assert status == 200
+        assert health["status"] == "ok"
+        assert health_elapsed < 1.5, f"/health 被长轮询阻塞: {health_elapsed:.2f}s"
+        status, states = _get(api_server, "/board/states", token=token)
+        assert status == 200
+        assert isinstance(states, dict)
+        t.join(timeout=6)
+        assert not t.is_alive()
+        assert result["data"][1]["messages"] == []
+
+    def test_longpoll_client_disconnect_no_crash(self, api_server):
+        """客户端长轮询中途断开 → 服务不崩溃、后续请求正常。"""
+        token = _get_token(api_server)
+        parsed = urlparse(api_server)
+        sock = socket.create_connection((parsed.hostname, parsed.port), timeout=3)
+        try:
+            req = (
+                f"GET /conversation?after=999999&timeout=10 HTTP/1.1\r\n"
+                f"Host: {parsed.hostname}:{parsed.port}\r\n"
+                f"Authorization: Bearer {token}\r\n"
+                f"Connection: close\r\n\r\n"
+            )
+            sock.sendall(req.encode("utf-8"))
+            time.sleep(0.3)
+            sock.close()  # 不读响应直接断开
+        finally:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        time.sleep(0.3)
+        status, health = _get(api_server, "/health")
+        assert status == 200
+        assert health["status"] == "ok"
+        status, states = _get(api_server, "/board/states", token=token)
+        assert status == 200
+        assert isinstance(states, dict)
+
+    def test_invalid_after_and_timeout_400(self, api_server):
+        """after/timeout 非法 → 400（不挂起）。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/conversation?after=abc", token=token)
+        assert status == 400
+        assert "error" in data
+        status, data = _get(api_server, "/conversation?after=0&timeout=abc", token=token)
+        assert status == 400
+        assert "error" in data
+
+    def test_hang_second_conversation_503_busy_not_blocked(self, api_server):
+        """T42 关闭条件：一路对话挂起（锁被占）时，第二路对话快速返回 503 busy（非网络阻塞）。"""
+        _set_brain_env()
+        from server.web import brain as brain_mod
+
+        token = _get_token(api_server)
+        # 模拟 SSE 流式挂起：测试线程持有 brain 锁（单会话串行）
+        acquired = brain_mod._brain_lock.acquire(blocking=False)
+        assert acquired
+        try:
+            # 第二路对话：应快速返回 503 busy（ThreadingHTTPServer 不被网络层阻塞）
+            t0 = time.monotonic()
+            status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
+            elapsed = time.monotonic() - t0
+            assert status == 503
+            assert "busy" in data["error"]
+            assert elapsed < 1.5, f"第二路对话被网络层阻塞（未达 brain 锁）: {elapsed:.2f}s"
+            # 挂起期间 /health、/board/states 正常
+            status, health = _get(api_server, "/health")
+            assert status == 200
+            assert health["status"] == "ok"
+            status, states = _get(api_server, "/board/states", token=token)
+            assert status == 200
+            assert isinstance(states, dict)
+        finally:
+            brain_mod._brain_lock.release()
 
 
 # ── 健康检查 ──

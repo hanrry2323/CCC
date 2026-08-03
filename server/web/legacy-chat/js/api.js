@@ -61,14 +61,40 @@ export async function loadProjects() {
   return summaries.map((ws) => ({ id: ws, name: ws, role: 'app' }));
 }
 
+// T43：对话历史长轮询增量同步（GET /conversation?after=<seq>&timeout=<s>）。
+// 模块级光标：首拉无 after 全量，之后带 after=seq 增量；seq 回退（服务端重置）→ 以本次为准。
+let _historySeq = 0;
+let _historyMsgs = [];
+// 长轮询默认超时（秒；与服务端 CCC_WEB_LONGPOLL_TIMEOUT 默认一致）
+const LONGPOLL_TIMEOUT = 30;
+
+async function _fetchHistory() {
+  const incremental = _historySeq > 0;
+  const qs = incremental
+    ? `?after=${_historySeq}&timeout=${LONGPOLL_TIMEOUT}`
+    : '';
+  const data = await apiGet('/conversation' + qs);
+  const msgs = data.messages || [];
+  const seq = data.seq || 0;
+  if (!incremental || seq < _historySeq) {
+    // 首拉全量 / 服务端 seq 重置 → 以本次返回为准（含 seq 回退清空）
+    _historySeq = seq;
+    _historyMsgs = msgs;
+  } else if (msgs.length) {
+    _historySeq = seq;
+    _historyMsgs = _historyMsgs.concat(msgs);
+  }
+  return data;
+}
+
 export async function loadHistory(project, source = 'all') {
-  const data = await apiGet('/conversation');
-  return { sessions: data.messages || [] };
+  const data = await _fetchHistory();
+  return { sessions: _historyMsgs.slice() };
 }
 
 export async function loadSession(id, project) {
-  const data = await apiGet('/conversation');
-  return { messages: data.messages || [] };
+  const data = await _fetchHistory();
+  return { messages: _historyMsgs.slice() };
 }
 
 export async function deleteSession(id, project) {
