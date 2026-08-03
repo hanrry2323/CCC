@@ -15,7 +15,8 @@
     环境变量（web/server.py 读取，零硬编码）：
       CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH / CCC_WEB_TOKEN_TTL
       RELAY_UPSTREAM_URL / RELAY_UPSTREAM_KEY
-      CCC_CONV_MODEL_NAME / CCC_CONV_UPSTREAM_PATH / CCC_CONV_UPSTREAM_TIMEOUT
+      CCC_BRAIN_CLAUDE_BIN / CCC_BRAIN_MODEL / CCC_BRAIN_BASE_URL /
+      CCC_BRAIN_AUTH_TOKEN / CCC_BRAIN_TIMEOUT（T29 对话大脑：/conversation 调用 2017 Claude Code）
   -->
   <key>Label</key>
   <string>com.ccc.web-server</string>

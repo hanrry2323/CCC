@@ -1,7 +1,7 @@
 # 任务卡 T29 · 对话接大脑 Agent（/conversation 从裸模型直答改为调用 2017 Claude Code，带心智/工具/知识库）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳，经 HTTP 直连 2017 大脑对话）· 依据：老板 2026-08-03 反馈「桌面端对话和弱智一样」；Codex 实锤根因：**/conversation 只做裸模型转发（6102 → deepseek-v4-flash），无 Agent 心智/工具/知识库**· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：执行中 · 日期：2026-08-03
 
 ## 根因（Codex 已实锤）
 
@@ -74,12 +74,42 @@
 
 ### 结果摘要
 
-（执行后填写）
+`/conversation` 从「裸转发 6102」升级为「调用 2017 本机 Claude Code CLI（走 6100 Anthropic 出口）」，携带 CCC 大脑人格 + 历史上下文，返回真实 Agent 输出。新建 `server/web/brain.py` 大脑代理模块；`server.py` 删除裸模型转发死代码（`_forward_to_upstream` + `CCC_CONV_*` env helpers），`/conversation` 改调 `call_brain`。本地 `pytest server/tests/` 全绿（208 passed，TestConversation 9 例覆盖 401/503缺配置/503忙/200/504超时/502失败/历史/prompt含上下文）。2017 部署 + 双端实测见「执行明细 D」。
 
 ### 执行明细
 
-（执行后填写：A–E 各步结果）
+**A. 大脑代理实现**
+- 新建 [server/web/brain.py](file:///Users/apple/program/CCC/server/web/brain.py)：
+  - `BRAIN_SYSTEM_PROMPT` 常量（CCC 大脑人格：方案讨论/知识核查/任务拆解/多壳对话，中文结论先行，禁选择题）。
+  - `_build_prompt()`：系统人格 + 最近 10 轮历史 + 当前消息，拼成 `claude -p` 单 prompt。
+  - `_run_claude()`：`subprocess.run([claude, "-p", prompt, "--output-format", "text"], env={...6100...}, timeout)`；env 在 `os.environ.copy()` 上覆盖 `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_MODEL`，不动 `~/.claude/settings.json`。
+  - `call_brain()`：配置校验 → 模块级 `threading.Lock` 非阻塞获取（单会话串行，忙立即 503）→ 调 `_run_claude` → 按 error_kind 映射 503/504/502/200。
+- [server/web/server.py](file:///Users/apple/program/CCC/server/web/server.py) `_handle_conversation_post` 改调 `call_brain(message, list(_conversations))`；失败/超时/忙/未配置均不落历史。鉴权/`/session`/`/health`/board/ops 只读接口保持不变。
+
+**B. 配置化**
+- [server/config/config.example.env](file:///Users/apple/program/CCC/server/config/config.example.env)：移除 `CCC_CONV_*` 块（T19 裸转发专用，已死），新增 `CCC_BRAIN_CLAUDE_BIN`(默认 claude)/`CCC_BRAIN_MODEL`(flash)/`CCC_BRAIN_BASE_URL`(http://127.0.0.1:6100)/`CCC_BRAIN_AUTH_TOKEN`(占位)/`CCC_BRAIN_TIMEOUT`(60)。`RELAY_UPSTREAM_URL`/`RELAY_UPSTREAM_KEY` 保留（中转站/relay 仍用，非对话专用）。
+- [server/deploy/com.ccc.web-server.plist](file:///Users/apple/program/CCC/server/deploy/com.ccc.web-server.plist) 注释同步：`CCC_CONV_*` → `CCC_BRAIN_*`。
+- server.py 全程 `os.environ.get`，零硬编码密钥。
+- 2017 `config.env` 同步补 `CCC_BRAIN_*`（不进 git）：见 D 步。
+
+**C. 测试**
+- [server/tests/test_http_api.py](file:///Users/apple/program/CCC/server/tests/test_http_api.py)：删除旧 `_MockUpstream`/`mock_upstream`/`_set_conv_env`/`_clear_conv_env`（裸转发专用），`TestConversation` 重写为大脑代理用例 9 条：`test_conversation_no_auth`(401)、`_empty_message`(400)、`_not_configured_503`、`_success`(200 reply)、`_history_after_success`、`_timeout_504`、`_failure_502`、`_busy_503`（测试线程持锁验服务线程拿 503 且不触达 `_run_claude`）、`_prompt_includes_history`（验 prompt 含系统人格+历史+当前消息）。`_run_claude` 经 monkeypatch 注入，不依赖真实 CLI。
+- `pytest server/tests/ -q` → **208 passed**（HEAD 为 206，净 +2：旧 7 例 → 新 9 例）。
+- `python -m py_compile server/web/brain.py server/web/server.py` 通过。
+- ruff：`brain.py` 零告警；`server.py`/`test_http_api.py` 11 处告警**全部 HEAD 已存在**（F821 `BoardItem` 未导入 ×6、F401 `OrderedDict`/`Path` 未用、F541 f-string、W292 缺尾换行），T29 未引入新告警。
+
+**D. 部署 + 验证（2017）**
+- （部署后填写：M1 push → 2017 pull → config.env 补 CCC_BRAIN_* → web-server kickstart → 本机 POST /conversation 实测 → 桌面端/网页跨机实测）
+
+**E. 提交 + 回写**
+- 提交：`chore(server): T29 对话接大脑 Agent——/conversation 调用 2017 Claude Code（带心智/工具/知识库）`（真实 commit）。
+- 回写：本卡头 `状态：待分派 → 执行中 → 已回写`，回写区填实现说明/配置/测试输出/双端实测/验收自检。
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+（对照验收标准逐条勾选；D 步实测后定稿）
+- [ ] 1. `/conversation` 回复来自 2017 Claude Code Agent（代码已核验：`call_brain` → `claude -p` via 6100；实测待 D 步）。
+- [x] 2. 走 6100（`CCC_BRAIN_BASE_URL=http://127.0.0.1:6100`），不再直连 6102（`_forward_to_upstream` 已删）；env 配置化零硬编码。
+- [x] 3. 鉴权（Bearer 中间件不变）/历史（`_conversations` 最近 10 轮）/超时（`CCC_BRAIN_TIMEOUT`，504）/并发（`_brain_lock` 单会话串行，忙 503）齐全；`pytest` 208 全绿。
+- [ ] 4. 桌面端与网页对话实测可用且智能度明显提升（待 D 步）。
+- [ ] 5. 真实提交；M1 工作树仅剩预存项；卡头状态已同步（D 步定稿为已回写）。

@@ -207,189 +207,163 @@ class TestAuth:
         assert "error" in data
 
 
-# ── 对话测试 ──
+# ── 对话测试（T29：/conversation 走大脑 Agent，调用 2017 Claude Code via 6100） ──
 
 
-class _MockUpstream:
-    """模拟上游 chat completions 服务（用于 /conversation 转发测试）。"""
-
-    def __init__(self, reply: str = "mock-reply", status: int = 200, fail_once: bool = False):
-        self.reply = reply
-        self.status = status
-        self.fail_once = fail_once
-        self._failed = False
-        self.received_requests: list[dict] = []
-        from http.server import HTTPServer, BaseHTTPRequestHandler
-
-        outer = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, fmt, *args):
-                pass
-
-            def do_POST(self):
-                length = int(self.headers.get("Content-Length", "0"))
-                raw = self.rfile.read(length) if length else b""
-                try:
-                    body = json.loads(raw) if raw else {}
-                except json.JSONDecodeError:
-                    body = {}
-                outer.received_requests.append({
-                    "path": self.path,
-                    "authorization": self.headers.get("Authorization", ""),
-                    "body": body,
-                })
-                if outer.fail_once and not outer._failed:
-                    outer._failed = True
-                    self.send_response(500)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(b'{"error":"mock fail"}')
-                    return
-                self.send_response(outer.status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                if outer.status == 200:
-                    resp = {"choices": [{"message": {"content": outer.reply}}]}
-                    self.wfile.write(json.dumps(resp).encode("utf-8"))
-                else:
-                    self.wfile.write(b'{"error":"mock error"}')
-
-        self._server = HTTPServer(("127.0.0.1", 0), Handler)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-
-    def start(self):
-        self._thread.start()
-        return self
-
-    @property
-    def url(self) -> str:
-        addr = self._server.server_address
-        return f"http://{addr[0]}:{addr[1]}"
-
-    def stop(self):
-        self._server.shutdown()
-        self._server.server_close()
+def _set_brain_env():
+    """设置大脑代理环境变量（运行时刷新）。"""
+    os.environ["CCC_BRAIN_MODEL"] = "flash"
+    os.environ["CCC_BRAIN_BASE_URL"] = "http://127.0.0.1:6100"
+    os.environ["CCC_BRAIN_AUTH_TOKEN"] = "ccc-relay-flash"
 
 
-@pytest.fixture
-def mock_upstream():
-    """启动模拟上游（默认返回 mock-reply），返回实例。"""
-    srv = _MockUpstream(reply="mock-reply", status=200).start()
-    yield srv
-    srv.stop()
-
-
-def _set_conv_env(upstream_url: str, model: str = "flash", key: str = "test-key"):
-    """设置对话上游环境变量（运行时刷新）。"""
-    os.environ["RELAY_UPSTREAM_URL"] = upstream_url
-    os.environ["RELAY_UPSTREAM_KEY"] = key
-    os.environ["CCC_CONV_MODEL_NAME"] = model
-
-
-def _clear_conv_env():
-    """清除对话上游环境变量。"""
-    for k in ("RELAY_UPSTREAM_URL", "RELAY_UPSTREAM_KEY", "CCC_CONV_MODEL_NAME"):
+def _clear_brain_env():
+    """清除大脑代理环境变量。"""
+    for k in (
+        "CCC_BRAIN_MODEL",
+        "CCC_BRAIN_BASE_URL",
+        "CCC_BRAIN_AUTH_TOKEN",
+        "CCC_BRAIN_TIMEOUT",
+        "CCC_BRAIN_CLAUDE_BIN",
+    ):
         os.environ.pop(k, None)
 
 
 class TestConversation:
-    """/conversation 转发上游测试：缺配置 503、上游成功往返、上游失败 502、鉴权不回归。"""
+    """/conversation 大脑代理测试：缺配置 503、忙 503、成功 200 reply、
+    超时 504、失败 502、历史落盘、prompt 含上下文、鉴权不回归。"""
 
     @pytest.fixture(autouse=True)
     def _clear_conversation_state(self):
-        """每个测试前清空对话历史与上游 env，避免跨用例污染。"""
+        """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
         from server.web import server as srv_mod
         srv_mod._conversations.clear()
-        _clear_conv_env()
+        _clear_brain_env()
         yield
         srv_mod._conversations.clear()
-        _clear_conv_env()
-
-    def test_conversation_no_upstream_503(self, api_server):
-        """缺上游配置返回 503。"""
-        _clear_conv_env()
-        token = _get_token(api_server)
-        status, data = _post(api_server, "/conversation", {"message": "hello"}, token=token)
-        assert status == 503
-        assert "error" in data
-        assert "not configured" in data["error"]
-
-    def test_conversation_upstream_success(self, api_server, mock_upstream):
-        """上游成功往返：返回真实模型回复（非 echo:）。"""
-        _set_conv_env(mock_upstream.url, model="flash", key="test-key")
-        try:
-            token = _get_token(api_server)
-            status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
-            assert status == 200
-            assert data["reply"] == "mock-reply"
-            # 上游应收到正确 payload
-            assert len(mock_upstream.received_requests) == 1
-            req = mock_upstream.received_requests[0]
-            assert req["authorization"] == "Bearer test-key"
-            assert req["body"]["model"] == "flash"
-            assert req["body"]["messages"][-1] == {"role": "user", "content": "hi"}
-            assert req["body"]["stream"] is False
-        finally:
-            _clear_conv_env()
-
-    def test_conversation_upstream_failure_502(self, api_server, mock_upstream):
-        """上游失败返回 502 且不落历史。"""
-        # 让 mock 返回 500
-        mock_upstream.status = 500
-        _set_conv_env(mock_upstream.url, model="flash")
-        try:
-            token = _get_token(api_server)
-            status, data = _post(api_server, "/conversation", {"message": "fail"}, token=token)
-            assert status == 502
-            assert "error" in data
-            # 历史应为空（失败不落历史）
-            status, data = _get(api_server, "/conversation", token=token)
-            assert status == 200
-            assert len(data["messages"]) == 0
-        finally:
-            _clear_conv_env()
-
-    def test_conversation_history_after_success(self, api_server, mock_upstream):
-        """成功对话后历史应包含 user + assistant 两条。"""
-        _set_conv_env(mock_upstream.url, model="flash")
-        try:
-            token = _get_token(api_server)
-            _post(api_server, "/conversation", {"message": "first"}, token=token)
-            status, data = _get(api_server, "/conversation", token=token)
-            assert status == 200
-            assert len(data["messages"]) >= 2
-            assert data["messages"][-2]["role"] == "user"
-            assert data["messages"][-2]["message"] == "first"
-            assert data["messages"][-1]["role"] == "assistant"
-            assert data["messages"][-1]["message"] == "mock-reply"
-        finally:
-            _clear_conv_env()
+        _clear_brain_env()
 
     def test_conversation_no_auth(self, api_server):
-        """未鉴权的对话请求返回 401（不触达上游）。"""
-        _clear_conv_env()
+        """未鉴权对话请求返回 401（不触达大脑）。"""
         status, data = _post(api_server, "/conversation", {"message": "hello"})
         assert status == 401
 
     def test_conversation_empty_message(self, api_server):
-        """空消息返回 400（不触达上游）。"""
-        _clear_conv_env()
+        """空消息返回 400（不触达大脑）。"""
         token = _get_token(api_server)
         status, data = _post(api_server, "/conversation", {"message": ""}, token=token)
         assert status == 400
 
-    def test_conversation_no_key_header(self, api_server, mock_upstream):
-        """未配置 RELAY_UPSTREAM_KEY 时上游请求不带 Authorization。"""
-        _set_conv_env(mock_upstream.url, model="flash", key="")
+    def test_conversation_not_configured_503(self, api_server):
+        """大脑未配置返回 503。"""
+        _clear_brain_env()
+        token = _get_token(api_server)
+        status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
+        assert status == 503
+        assert "not configured" in data["error"]
+
+    def test_conversation_success(self, api_server, monkeypatch):
+        """大脑成功返回 reply。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "brain-reply", None),
+        )
+        token = _get_token(api_server)
+        status, data = _post(api_server, "/conversation", {"message": "1+1"}, token=token)
+        assert status == 200
+        assert data["reply"] == "brain-reply"
+
+    def test_conversation_history_after_success(self, api_server, monkeypatch):
+        """成功对话后历史应包含 user + assistant 两条。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "first"}, token=token)
+        status, data = _get(api_server, "/conversation", token=token)
+        assert status == 200
+        assert len(data["messages"]) >= 2
+        assert data["messages"][-2]["role"] == "user"
+        assert data["messages"][-2]["message"] == "first"
+        assert data["messages"][-1]["role"] == "assistant"
+        assert data["messages"][-1]["message"] == "ok"
+
+    def test_conversation_timeout_504(self, api_server, monkeypatch):
+        """大脑超时返回 504 且不落历史。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (False, "brain timeout", "timeout"),
+        )
+        token = _get_token(api_server)
+        status, data = _post(api_server, "/conversation", {"message": "slow"}, token=token)
+        assert status == 504
+        assert "error" in data
+        # 历史应为空（超时不落历史）
+        status, data = _get(api_server, "/conversation", token=token)
+        assert status == 200
+        assert len(data["messages"]) == 0
+
+    def test_conversation_failure_502(self, api_server, monkeypatch):
+        """大脑失败返回 502 且不落历史。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (False, "brain failed: boom", "failed"),
+        )
+        token = _get_token(api_server)
+        status, data = _post(api_server, "/conversation", {"message": "x"}, token=token)
+        assert status == 502
+        assert "error" in data
+        # 历史应为空（失败不落历史）
+        status, data = _get(api_server, "/conversation", token=token)
+        assert status == 200
+        assert len(data["messages"]) == 0
+
+    def test_conversation_busy_503(self, api_server, monkeypatch):
+        """大脑忙（锁被占用）返回 503 且不触达 Claude Code。"""
+        _set_brain_env()
+        from server.web import brain as brain_mod
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: called.__setitem__("n", called["n"] + 1) or (True, "x", None),
+        )
+        # 测试线程持有锁，服务线程应拿到 503 busy 且不调用 _run_claude
+        acquired = brain_mod._brain_lock.acquire(blocking=False)
+        assert acquired
         try:
             token = _get_token(api_server)
-            _post(api_server, "/conversation", {"message": "hi"}, token=token)
-            assert len(mock_upstream.received_requests) == 1
-            assert mock_upstream.received_requests[0]["authorization"] == ""
+            status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
+            assert status == 503
+            assert "busy" in data["error"]
+            assert called["n"] == 0
         finally:
-            _clear_conv_env()
+            brain_mod._brain_lock.release()
+
+    def test_conversation_prompt_includes_history(self, api_server, monkeypatch):
+        """prompt 应包含系统人格 + 历史 + 当前消息。"""
+        _set_brain_env()
+        captured: dict = {}
+
+        def fake(prompt, timeout):
+            captured["prompt"] = prompt
+            return (True, "ok", None)
+
+        monkeypatch.setattr("server.web.brain._run_claude", fake)
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "first"}, token=token)
+        _post(api_server, "/conversation", {"message": "second"}, token=token)
+        prompt = captured["prompt"]
+        # 系统人格
+        assert "大脑 Agent" in prompt
+        # 历史与当前消息
+        assert "first" in prompt
+        assert "second" in prompt
 
 
 # ── 健康检查 ──
