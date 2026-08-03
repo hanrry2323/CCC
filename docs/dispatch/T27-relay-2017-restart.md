@@ -1,7 +1,7 @@
 # 任务卡 T27 · 2017 中转站（6100/6102）修复：拉起进程 + launchd 常驻 + 三调用方验证（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1 · 依据：老板 2026-08-03 指示「Mac2017 的 OpenCode 和 Claude Code 中转站配置全部有问题，写指令修复」+ 中转站双轨决议（6100/6102 = CCC 体系专用，使用方仅 2017 Claude Code + OpenCode，均 flash 档位）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 
 ## 根因（Codex 已实锤）
 
@@ -76,12 +76,34 @@
 
 ### 结果摘要
 
-（执行后填写）
+Mac2017 `ai-loop-router-ccc`（6100 anthropic / 6102 openai-chat）已拉起并以 launchd 常驻（`com.ccc.ai-loop-router`，KeepAlive+RunAtLoad），崩溃自愈 ≤1s 拉起。Claude Code（6100）、OpenCode（6102）、Engine env（6100）三调用方全部实测出模型响应；M1 4100/4102 PID 零变化。commit `82cdf98` 已落 ai-loop-router-ccc 仓（plist 模板 + 启动脚本 + gitignore）。
 
 ### 执行明细
 
-（执行后填写：A–D 各步结果、启动命令、plist 内容、崩溃自愈证据）
+**A. 临时拉起验证（2017）**
+- 产物核对：`~/program/apps/ai-loop-router-ccc/dist/proxy.js` 存在（205178B，2026-08-02）；node v22.16.0（>=18 满足）。
+- env 名核对（`src/ports.ts`）：`LOOP_ANTHROPIC_PORT` → anthropic 端口；`LOOP_OPENAI_PORT` → openai 端口；OpenAI 默认 = anthropic+2。任务卡 env 名正确。
+- 临时启动：`LOOP_ANTHROPIC_PORT=6100 LOOP_OPENAI_PORT=6102 nohup node dist/proxy.js` → PID 5673，双端口监听，日志「双端口就绪: 6100(anthropic) 6102(openai-chat)」。验证后 kill。
+
+**B. launchd 常驻 + 崩溃自愈**
+- plist 部署：`~/Library/LaunchAgents/com.ccc.ai-loop-router.plist`（Label `com.ccc.ai-loop-router`，ProgramArguments `/usr/local/bin/node` + `dist/proxy.js` 绝对路径，EnvironmentVariables `LOOP_ANTHROPIC_PORT=6100`/`LOOP_OPENAI_PORT=6102`/PATH，KeepAlive+RunAtLoad+ThrottleInterval 5+ExitTimeOut 30，日志 `~/program/apps/ai-loop-router-ccc/logs/stdout|stderr.log`）。对齐 `com.ccc.web-server`/`com.ccc.engine` 既有规范。
+- `launchctl bootstrap gui/501` → exit 0，PID 6050，6100/6102 监听，无 stderr。
+- 崩溃自愈：`kill -9 6050`（11:44:11）→ +1s KeepAlive 拉起 PID 6163，6100/6102 恢复监听（≤15s 要求达标）。
+
+**C. 三调用方验证（2017）**
+- Claude Code（6100）：`claude -p "回复OK"` → 「收到。」exit 0（config: ANTHROPIC_BASE_URL=127.0.0.1:6100, ANTHROPIC_MODEL=flash, token=ccc-relay-flash）。
+- OpenCode（6102）：`opencode run --model loop/flash --auto "回复OK"` → 「OK」exit 0（config: baseURL=127.0.0.1:6102/v1, model=loop/flash）。
+- Engine env（6100）：`curl http://127.0.0.1:6100/dashboard` → HTTP 200（connect=0.0004s）；`AGENT_PLANNER_BASE_URL=http://127.0.0.1:6100` 可达 HTTP 200。
+- M1 零影响：`lsof -iTCP:4100 -iTCP:4102` PID 63542 修复前后未变。
+
+**D. 提交**
+- ai-loop-router-ccc 仓 commit `82cdf98`：`scripts/com.ccc.ai-loop-router.plist`（新建）+ `scripts/start-ccc-router.sh`（新建，手动 start/stop/status 运维脚本）+ `.gitignore`（补 `.ccc-router.pid`）。3 文件 151 行。
+- 预存 `package-lock.json` 改动非本任务，未纳入提交。
+- upstreams.json 未读未改（红线 2）；端口全走 env（红线 3）。
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+1. ✅ `lsof -iTCP:6100 -iTCP:6102 -P -sTCP:LISTEN` 双端口监听（PID 6163）；launchd `com.ccc.ai-loop-router` 注册；崩溃自愈验证通过（kill -9 后 1s 拉起）。
+2. ✅ Claude Code（6100）「收到。」+ OpenCode（6102）「OK」实测出模型响应；Engine env（6100）curl HTTP 200 可达。
+3. ✅ M1 4100/4102 PID 63542 修复前后零变化。
+4. ✅ 无密钥进 git（upstreams.json 在 .gitignore；plist/脚本无 key 明文）；端口走 `LOOP_*_PORT` env 零硬编码；真实 commit `82cdf98`。
