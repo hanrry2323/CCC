@@ -1,7 +1,7 @@
 # 任务卡 T27 · 2017 中转站（6100/6102）修复：拉起进程 + launchd 常驻 + 三调用方验证（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1 · 依据：老板 2026-08-03 指示「Mac2017 的 OpenCode 和 Claude Code 中转站配置全部有问题，写指令修复」+ 中转站双轨决议（6100/6102 = CCC 体系专用，使用方仅 2017 Claude Code + OpenCode，均 flash 档位）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 
 ## 根因（Codex 已实锤）
 
@@ -107,3 +107,20 @@ Mac2017 `ai-loop-router-ccc`（6100 anthropic / 6102 openai-chat）已拉起并�
 2. ✅ Claude Code（6100）「收到。」+ OpenCode（6102）「OK」实测出模型响应；Engine env（6100）curl HTTP 200 可达。
 3. ✅ M1 4100/4102 PID 63542 修复前后零变化。
 4. ✅ 无密钥进 git（upstreams.json 在 .gitignore；plist/脚本无 key 明文）；端口走 `LOOP_*_PORT` env 零硬编码；真实 commit `82cdf98`。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 6100/6102 监听 | SSH 实测双端口由 PID 6163（node dist/proxy.js）监听 ✅ |
+| launchd 常驻 | `launchctl list` 见 `com.ccc.ai-loop-router`；崩溃自愈实测 kill 后 1 秒拉起新 PID ✅ |
+| 三调用方 | Claude Code(6100)「收到。」/ OpenCode(6102)「OK」/ Engine env(6100) curl 200 全实测 ✅ |
+| M1 零影响 | 4100/4102 PID 63542 对比未变 ✅ |
+| 提交 | 2017 `82cdf98`（plist+启动脚本+gitignore，upstreams.json 不入库）；plist 无密钥明文 ✅ |
+| 红线 | 端口走 env、密钥不落 git、M1 零接触 ✅ |
+
+**关联问题（登记至 T26-R，非本卡缺陷）**：M1 工作树 `desktop/Sources/CCCDesktop/Models.swift` 存在一笔未提交的 85 行删除（删除了仍被引用的 `InboxProposal`/`ManualEpicForm`/`TaskTemplate`/`Phase`/`ProjectStats`），当前 `swift build` 编译失败——要求 Trae 恢复该文件（`git checkout -- desktop/Sources/CCCDesktop/Models.swift` 或补全被删类型），恢复构建绿 + 工作树仅剩预存 2 项。
