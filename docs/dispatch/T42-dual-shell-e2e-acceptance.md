@@ -1,7 +1,7 @@
 # 任务卡 T42 · 双壳全链路联调 + 心智验收（OpenCode 执行）
 
 > 关联：新阶段「双壳可用 + 心智升级」收口 · 依据：T40（壳基座+三栏）与 T41（心智+流式）完成后联调验收
-> 执行体：OpenCode · 验收：Codex（严格）· 状态：执行中 · 日期：2026-08-03
+> 执行体：OpenCode · 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
 > 变更记录：2026-08-03 老板指示 Trae 流量用完 → 改派 OpenCode；状态置「执行中」防 2017 Engine 抢跑（T38 教训）。
 
 ## 目标
@@ -42,4 +42,60 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-03
+
+### 1. 部署记录（2017）
+
+- 备份：`~/.ccc/backup-t42-pre-deploy/`（config.env + executors.json，T22 生产配置）。
+- `git pull origin main`：`0a93644`(T39) → `8ef12cf`(T41 关闭)，30 文件 3368+/279-，含 T40/T41/T42 卡与代码。
+- config.env/executors.json 均 gitignore 未动（brain 全变量已含，含 `CCC_BRAIN_KB=1`/`AUTH_TOKEN=ccc-relay-flash`/`TIMEOUT=180`）。
+- kickstart 三服务：web-server(16982)/engine(16985)/board-scheduler(16988)，7788 监听；ai-loop-router(6163, 6100/6102) 零接触。
+- 部署后验证：`/health` `{"status":"ok",...}`；`POST /session`(ccc/ccc) 换 token 成功；`/board/states` `{待分派0,执行中1,已回写0,已关闭46,打回4}`；`/ops/summary` 三机 reachable。
+
+### 2. 双壳 E2E 实测
+
+**HTTP 壳（2017）**：`/` → 200；实际引用的全部静态资源（css/base,components,dual-pane,shell,themes,variables + js/app,login-gate,shell-ui,theme-init,api + data/board.js）均 200 无 401 无死页。鉴权门：无 token 401 → `/session` 换 token → 全 API 通。
+
+**同步对话兼容（T29）**：`POST /conversation {"stream":false}` → `{"reply":"就绪"}` 正常。
+**SSE 流式（T41）**：`POST /conversation {"stream":true}` → 完整事件流 meta→thinking→tool_use→tool_result→text→done{is_error:false}；真实回答（规划演练产出完整 T99 卡草案）。
+
+**桌面壳（M1）**：`swift build` 通过；默认连 `http://192.168.3.116:7788`(2017)；协议匹配（POST /session → Bearer → /conversation stream，T40 自动登录 + T41 streamConversation 流式）。GUI 需人工/Codex 桌面实测。
+
+### 3. 心智 4 类演练（经 2017 真实大脑，flash）
+
+| 演练 | 题 | 判定 |
+|------|----|----|
+| 规划 | 看板按项目名过滤 → 任务卡草案 | **达标**：编号确认（现有最高 T42 无冲突）→ 产出 T99 卡草案（卡头/范围/可执行验收含 curl 命令/步骤/红线 3 条含 T42 临时卡纪律） |
+| 写卡 | 落盘 T99 测试卡 | **达标**：实际 Write 落盘 `docs/dispatch/T99-board-project-filter.md`（1967B，结构齐全）；引擎 60s 巡检自动派发置「打回（退出码非 0）」→ 证明 Engine 派发链路真实工作 |
+| 验收 | 对 T99 卡判定 | **达标**：逐项核对 → 打回 + 问题清单（①状态值非法/括号未闭合/日志截断违反契约§2 五态 ②打回未附问题清单），合格项列表（卡头/验收可执行/红线/编号） |
+| 看板维护 | T99 脏状态如何回合法 | **达标**：具体操作（改 :4 元数据行→待分派、补回写区问题清单、无需重导看板依据 loader.py:86、引擎根因登记建议、演练收尾移卡纪律） |
+
+演练收尾：T99 卡已移出 `docs/dispatch/`，`server.board.export` 重导出（51 cards→board.js）；`/board/states` 回归 `{...已关闭46,打回4}`（打回 5→4），`T99 in snapshot: False`，看板无残留。
+
+### 4. 稳定性实测
+
+- **断线恢复：通过**。SSE 流式中客户端断开 → ~5s 内锁释放，新对话成功（回复「恢复成功」）。
+- **并发锁：实测发现阻塞项（见下）**。
+- **超时**：504 路径已由 `test_brain_stream.py` 单测覆盖（`error{status:504}`），生产 180s 未实测长等待。
+
+### 5. 阻塞项（如实记录，未越界改码）
+
+**单线程 HTTPServer 阻塞全服务**：`server/web/server.py:746` 用 `HTTPServer`（单线程）。SSE 流式挂起期间，`/health`、`/board/states`、第二路 /conversation 均 5s 超时（000）——双壳并发对话在服务端网络层即被阻塞，brain 并发锁（503 busy）无法被触发。**此与 T41 P1 心智预测一致，修复方案（ThreadingHTTPServer + 长轮询）已落 T43 卡并冻结待老板裁决**，故本卡不改码（红线 3 不越界 + T43 冻结）。验收标准 3「并发锁实测通过」判定为**待 T43 放行后重验**，其余标准均达。
+
+### 6. 看板一致性
+
+51 卡 = 46 已关闭 + 4 打回 + 1 执行中（T42 本卡），与 `/board/states` 逐项一致；board.js 重导出正确；T99 无残留。
+
+### 7. 测试与健康
+
+- `pytest server/tests/` → **331 passed**；`ruff check server/` clean；`py_compile` OK；`swift test` → **52/52**。
+- 2017 三服务运行中 + `/health` OK；工作树干净（仅预存 3 个 .bak 未跟踪）。
+
+### 8. 老板反馈 / Codex 复测
+
+- 待验收阶段执行：Codex 独立复测（T42 验收标准 5）+ 老板实测窗口（双壳对话收集反馈）。
+- 桌面壳 GUI 与「两壳同一会话连续性」需 Codex 桌面实测补充。
+
+### 9. push 证据
+
+本卡回写 commit：`docs(dispatch): T42 回写——双壳 E2E + 心智 4 演练达标 + T99 清理 + 单线程阻塞项如实记录`（push 成功后状态方置已回写）。
