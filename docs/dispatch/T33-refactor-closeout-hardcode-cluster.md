@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§9 全局红线 / D10 杜绝硬编码）
 > 依据：Codex 2026-08-03 全新取证重评——engine/cluster.py `DEFAULT_SERVICES` 硬编码且服务名仍是旧系统（ccc-chat-server/ccc-board-server，2017 已下线），集群/运维页会误报；legacy-chat 前端仍硬编码本机路径与 IP（utils.js/ports.js/settings.js）
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 
 ## 目标
 
@@ -40,5 +40,55 @@ server/engine/cluster.py、server/config/（loader.py、config.example.env）、
 
 ## 回写区
 
-**执行体**：Trae · 日期：
+**执行体**：Trae · 日期：2026-08-03
+
+### 清单改动（9 文件 +265/-71）
+
+| 文件 | 改动 |
+|------|------|
+| `server/engine/cluster.py` | 移除 `DEFAULT_SERVICES` 常量；新增 `parse_cluster_services(cfg)` 从 `CLUSTER_SERVICES` env 解析 `name:keyword` 列表（坏格式跳过+warning，不抛错）；`collect_cluster_status` 改用动态服务清单 |
+| `server/web/server.py` | `_collect_ops_services` 改用 `parse_cluster_services`；新增 `/config` 端点（免鉴权白名单 `_NO_AUTH_PATHS`）经 `_build_public_config()` 返回前端只读非敏感配置（ports/workspace_map/version）；`_PUBLIC_CONFIG_KEYS` 白名单严格限定，密钥/路径/上游地址一律不返回 |
+| `server/config/config.example.env` | 新增 `CLUSTER_SERVICES=web-server:server.web.server,engine:server.engine.main,board-scheduler:server.board.scheduler` + 注释（与 T22 launchd 实际命令行核对一致） |
+| `server/config/loader.py` | `OPTIONAL_KEYS` 增 `CLUSTER_SERVICES` 键 |
+| `server/web/legacy-chat/js/utils.js` | `resolveProjectPath` 移除 `/Users/apple/program/CCC` 硬编码，无配置时返回空串 |
+| `server/web/legacy-chat/js/ports.js` | 移除 `DEFAULT_HUB_LAN`/`DEFAULT_HUB_LOCAL`/`DEFAULT_AGENT` 硬编码 IP 常量；`hubBase`/`agentBase`/`hubUrl`/`agentUrl` 改同源相对路径（返回空串或 path） |
+| `server/web/legacy-chat/js/components/settings.js` | workspace map 占位改 `{"ccc":"/path/to/CCC"}` 示例（非真实路径）；连接设置提示改「2017 单端 :7788 四视图统一入口」 |
+| `server/tests/test_engine_cluster.py` | 新增 `TestParseClusterServices`（正常/空/坏格式/含冒号 keyword 4 用例）；旧 `DEFAULT_SERVICES` 相关用例改用动态清单 |
+| `server/tests/test_http_api.py` | 新增 `TestConfigEndpoint`（无 token 200、敏感字段 CCC_WEB_PASSWORD_HASH/RELAY_UPSTREAM_KEY 不泄露 2 用例） |
+
+### 2017 服务核对结果
+
+与 T22 部署记录核对：2017 launchd 三常驻服务命令行含模块名 `server.web.server` / `server.engine.main` / `server.board.scheduler`，已作为 `config.example.env` 默认值。无「待核」项。
+
+### 前端注入方案
+
+- 服务端：`GET /config`（免鉴权白名单）返回 `{ports, workspace_map, version}` 子集；`_PUBLIC_CONFIG_KEYS` 白名单严格限定，密钥/路径/上游地址不返回。
+- 前端：`utils.js` 通过 `window.__CCC_WORKSPACE_MAP__` 或 `localStorage` 读 workspace 映射，无配置返回空串；`ports.js` 所有 URL 走相对路径（同源 2017 :7788）。
+
+### 测试输出
+
+```
+pytest server/tests/ --tb=short
+238 passed in 4.48s
+
+ruff check server/
+27 errors（baseline 28 → 27，未新增；剩余均为预存在 W292 格式问题）
+
+三扫描自检：
+1. rg "DEFAULT_SERVICES|192\.168\.3\.116:7777|/Users/apple" server/ --glob '!**/__pycache__/**'
+   → 仅 test_kb_search.py 夹具 2 命中（验收标准「测试夹具除外」）
+2. rg "sk-[a-zA-Z0-9]{12,}|password\s*=\s*['\"][^'\"]{6,}|api_key\s*=\s*['\"][^'\"]{6,}" server/
+   → 0 命中
+3. rg "7777|7775|ccc-chat-server|ccc-board-server|ccc-hub" server/
+   → test_engine_cluster.py 测试夹具（parse_cluster_targets 端口解析用例）+ 前端历史注释/prompt 文案（非配置/采集逻辑，红线 1 范围外）
+
+本地起服务实测（CLUSTER_SERVICES 含坏格式 + CLUSTER_TARGETS 2 节点）：
+- /config 200 免鉴权 → {"ports":{"web":"","board":"","engine":"","relay":""},"workspace_map":{},"version":"v0.70.0"}
+- /ops/summary 未带 token → 401
+- /ops/summary 带 token → severity=amber（1/2 节点可达 · 服务 1/2 运行 · 坏格式自动跳过）
+```
+
+### commit hash
+
+- `f1b806a` refactor(server): T33 硬编码清零 + 集群服务清单配置化（9 文件 +265/-71）
 
