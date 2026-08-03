@@ -16,8 +16,14 @@ struct ContentView: View {
                 Group {
                     switch window.destination {
                     case .chat:
-                        CodexChatPane()
-                            .frame(minWidth: 480)
+                        HStack(spacing: 0) {
+                            CodexChatPane()
+                                .frame(minWidth: 480)
+                            if !model.isTaskPanelCollapsed {
+                                Divider()
+                                TaskCardPanel()
+                            }
+                        }
                     case .board:
                         BoardView()
                             .frame(minWidth: 560)
@@ -42,7 +48,7 @@ struct ContentView: View {
         // 切项目/会话时禁止整窗隐式动画（侧栏展开 + 中栏消息替换会叠成「闪一下」）
         .animation(nil, value: window.projectId)
         .animation(nil, value: window.threadId)
-        // bootstrap 在 WindowRootView，避免多窗重复打 Hub
+        // bootstrap 在 WindowRootView，避免多窗重复连接服务端
         .sheet(isPresented: Binding(
             get: { model.previewMarkdown != nil },
             set: { if !$0 { model.previewMarkdown = nil } }
@@ -321,7 +327,7 @@ struct CodexSidebar: View {
                 .font(.system(size: 13, weight: .medium))
             Text(
                 model.canChat
-                    ? "可继续聊；转任务可确认排队。Hub 恢复后后台自动投递（每 4s 探活）。"
+                    ? "可继续聊；转任务可确认排队。服务端恢复后后台自动投递（每 4s 探活）。"
                     : "对话走新服务端协议（非流式 POST /conversation）"
             )
                 .font(CCCTheme.caption)
@@ -784,6 +790,13 @@ struct CodexChatPaneBody: View {
                     .help("本会话 token 消耗")
                 }
             }
+            Button(model.isTaskPanelCollapsed ? "展开卡流" : "收起卡流") {
+                model.isTaskPanelCollapsed.toggle()
+            }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(CCCTheme.faint)
+                .help(model.isTaskPanelCollapsed ? "展开右栏任务卡流" : "收起右栏任务卡流")
             Button("上下文") { model.isContextPanelPresented = true }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
@@ -1548,7 +1561,7 @@ struct CodexMessageRow: View {
     }
 }
 
-/// 对齐旧 Hub：复制 / 编辑 / 重新生成 / 预览 / 转任务
+/// 消息操作：复制 / 编辑 / 重新生成 / 预览 / 转任务
 struct MessageActionBar: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState

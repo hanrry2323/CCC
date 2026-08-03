@@ -152,7 +152,7 @@ struct OpsView: View {
 
     // MARK: - Health lamp (homepage)
 
-    /// Hub severity + 本机 Agent + MCP 合并后的总灯（与侧栏角标共用 OpsHealthDisplay）
+    /// 服务端 severity + 本机 Agent + MCP 合并后的总灯（与侧栏角标共用 OpsHealthDisplay）
     private var displaySeverity: String {
         OpsHealthDisplay.severity(
             summary: model.opsSummary,
@@ -310,7 +310,6 @@ struct OpsView: View {
         let downN = cluster?.down_ports_n ?? model.opsOverview?.down_ports?.count ?? 0
         let engRunning = cluster?.engine_running
         let mode = cluster?.mode ?? "—"
-        let hubOk = cluster?.hub_port_7777 != false
         return VStack(alignment: .leading, spacing: 10) {
             sectionTitle("集群与服务", systemImage: "server.rack")
             HStack(spacing: 10) {
@@ -330,17 +329,12 @@ struct OpsView: View {
                     }()
                 )
                 domainChip(
-                    title: "Hub",
-                    ok: hubOk,
-                    subtitle: hubOk ? "编排 :7777" : "7777 异常"
-                )
-                domainChip(
                     title: "宕口",
                     ok: downN == 0,
                     subtitle: downN == 0 ? "全部正常" : "\(downN) 个异常"
                 )
             }
-            // 隧道状态已退役（T21），不再显示 com.ccc.hub-tunnel
+            // Hub :7777 已退役（T21，历史命名）；隧道状态已退役，不再显示 com.ccc.hub-tunnel
             if let ports = cluster?.ports, !ports.isEmpty {
                 Text(
                     "端口 "
@@ -421,7 +415,7 @@ struct OpsView: View {
     }
 
     private func mcpSubtitle(_ mcp: OpsDomainAgentMcp?) -> String {
-        guard let mcp else { return "待 Hub 探针" }
+        guard let mcp else { return "待探针" }
         if mcp.isRedFailure {
             let n = mcp.failedCount
             return n > 0 ? "失败 \(n)" : "探测失败"
@@ -779,7 +773,7 @@ struct OpsView: View {
                         .fill(CCCTheme.surface)
                 )
             } else {
-                emptyHint("后勤心跳未返回（刷新或升级 Hub）")
+                emptyHint("后勤心跳未返回（刷新或检查服务端）")
             }
         }
     }

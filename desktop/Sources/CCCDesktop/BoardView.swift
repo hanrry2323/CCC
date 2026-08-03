@@ -160,7 +160,7 @@ struct BoardView: View {
     }
 
     private var visibleColumns: [String] {
-        // 始终画出标准列：Hub 未返回 / 空字典时也不能整页空白（死页）
+        // 始终画出标准列：服务端未返回 / 空字典时也不能整页空白（死页）
         let keys = Set(model.boardColumns.keys)
         let ordered = columnOrder.filter { keys.contains($0) || keys.isEmpty }
         if keys.isEmpty {

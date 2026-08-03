@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 /// 本机会话 SSOT：`~/Library/Application Support/CCCDesktop/`
-/// Hub 仅异步镜像；杀 App / Hub 抖不丢消息与 tool_steps。
+/// 服务端仅异步镜像；杀 App / 服务端抖不丢消息与 tool_steps。
 enum LocalSessionStore {
     private static let fm = FileManager.default
 
@@ -152,7 +152,7 @@ enum LocalSessionStore {
         upsertIndex(projectId: rec.project_id, threadId: rec.thread_id, title: rec.title, updatedAt: rec.updated_at)
     }
 
-    /// 内容丰富度：条数 + 字数 + assistant 加权 + 工具步（用于禁止空 Hub 盖掉本机）
+    /// 内容丰富度：条数 + 字数 + assistant 加权 + 工具步（用于禁止空服务端盖掉本机）
     static func messageScore(_ messages: [ChatMessage]) -> Int {
         let body = messages.reduce(0) { $0 + $1.content.count }
         let tools = messages.reduce(0) { $0 + $1.toolSteps.count }
@@ -166,13 +166,12 @@ enum LocalSessionStore {
         messages: [ChatMessage],
         title: String? = nil,
         flow: FlowThreadSnapshot? = nil,
-        needsHubSync: Bool = false,
         /// false：若本机已有更丰富内容则拒绝用更空的写入覆盖
         allowDowngrade: Bool = false,
         revision: UInt64? = nil,
         claudeSessionId: String? = nil
     ) {
-        // 已存档会话禁止写回活动区（否则 refreshThreads / Hub 同步会「复活」）
+        // 已存档会话禁止写回活动区（否则 refreshThreads 会「复活」）
         if isArchived(projectId: projectId, threadId: threadId) {
             return
         }
@@ -210,7 +209,6 @@ enum LocalSessionStore {
                 var keep = existing
                 if let title, !title.isEmpty { keep.title = title }
                 if let flow { keep.flow = flow }
-                if needsHubSync { keep.needs_hub_sync = true }
                 keep.revision = max(keep.revision ?? 0, nextRev)
                 if let nextClaudeId { keep.claude_session_id = nextClaudeId }
                 save(keep)
@@ -224,7 +222,7 @@ enum LocalSessionStore {
             updated_at: isoNow(),
             messages: persistable,
             flow: flow ?? existing?.flow,
-            needs_hub_sync: needsHubSync || (existing?.needs_hub_sync ?? false),
+            needs_hub_sync: existing?.needs_hub_sync,
             revision: nextRev,
             claude_session_id: nextClaudeId
         )

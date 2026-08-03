@@ -1,6 +1,6 @@
 import Foundation
 
-/// Hub / Desktop 快捷条语义（内置 + 自定义）
+/// Desktop 快捷条语义（内置 + 自定义）
 /// v0.65：UI 只保留「对齐基线」「扫风险」；意图链由 Agent 理解后自动投出（勿靠人点转意图卡）。
 enum QuickPrompts {
     static let replyCompact =
@@ -13,8 +13,8 @@ enum QuickPrompts {
     static let investigatePref =
         "你是 Desktop **高级智能开发伙伴 · 架构师**（分析→架构→理解意图→**自动投意图链**→读测纠偏→连续优化；可查 HP/社区；板务仅挡事时；不是 Engine 本身）。" +
         "主交付 = 有序阶段路线图 + 失败自动纠正；禁止默认缩成单功能闲聊。" +
-        "业务仓事实：Hub 基线 + 一等 hub_* 工具 / 透镜 live；M1 无业务源码第二树。" +
-        "问看板/在飞/文件必须先 hub_board 等工具；Hub 断则明说不可达，禁止瞎编。" +
+        "业务仓事实：服务端基线 + 一等 hub_* 工具 / 透镜 live；M1 无业务源码第二树。" +
+        "问看板/在飞/文件必须先 hub_board 等工具；服务端断则明说不可达，禁止瞎编。" +
         "板堵/残卡/失败：本会话 hub_repair + 读 failure_pack；耗尽则**自动**优化意图卡并投链；禁止甩锅「打开编排运维」；禁止教贴命令；禁止卫生 epic；禁止 invent。" +
         "本机 Read/Write/git 仅限 CCC 平台仓；业务改码经意图卡→Engine。" +
         "意图收敛后**自动**出 ccc-transfer（系统 gate 绿→进代办）；**禁止**等人点「转意图卡」按钮。" +
@@ -31,7 +31,7 @@ enum QuickPrompts {
         "ready_for_task=false 或 inflight>0（非纯业务脏）：hub_repair(clear_blockers)，" +
         "再谈产品意图；仅业务脏/真在飞冲突时禁新产品（人可显式 override）。\n" +
         "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n" +
-        "禁止向用户输出 Hub CLI / Terminal 教程。\n"
+        "禁止向用户输出 MCP CLI / Terminal 教程。\n"
 
     /// 内部保留：自动投链 / 用户口述「开发/下达」时注入用（无 UI 按钮）
     static let nextStep =
@@ -79,7 +79,7 @@ enum QuickPrompts {
         "然后输出全部契约块（技术字段只进块内）。起草前读 digest 教训 + next_product_goal。\n" +
         mustAnswer
 
-    /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
+    /// 备用文案：正常路径走服务端 baseline API（AppModel.alignBaseline）
     static let alignBaseline =
         "请对齐项目基线。你是高级智能开发伙伴·架构师：分析项目并交付**系列开发计划**（3～7 步到收口），不是讨论一个功能。\n" +
         replyCompact + "\n" +
@@ -95,9 +95,9 @@ enum QuickPrompts {
     static let refreshBoard =
         "请刷新看板事实：当前权威仓在飞什么？\n" +
         replyCompact + "\n" + investigatePref +
-        "\n必须以 Hub live board（as_of + inflight）为准；" +
+        "\n必须以服务端 live board（as_of + inflight）为准；" +
         "覆盖本会话更早的「全 0 / 无在飞」印象。" +
-        "Hub 不可达就明说，禁止瞎编。" +
+        "服务端不可达就明说，禁止瞎编。" +
         "\n\n请按这个结构回答：\n" +
         "### 在飞\n列 planned/in_progress/testing/verified 的 tid 与标题；无则写「无」\n" +
         "### 计数\n各列数字 + as_of\n" +

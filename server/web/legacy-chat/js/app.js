@@ -184,20 +184,18 @@ function switchToProjectTab(projectId) {
 }
 
 async function onHubRoute(route) {
-  const { isDialogueShell } = await import('./ports.js');
-  const dialogue = isDialogueShell();
   document.title =
-    dialogue
-      ? 'CCC'
-      : route === 'chat' ? 'CCC · 对话' :
-        route === 'board' ? 'CCC · 看板' :
-        route === 'console' ? 'CCC · 控制台' :
-        route === 'ops' ? 'CCC · 运维' :
-        'CCC';
+    route === 'chat' ? 'CCC · 对话' :
+      route === 'board' ? 'CCC · 看板' :
+      route === 'console' ? 'CCC · 控制台' :
+      route === 'ops' ? 'CCC · 运维' :
+      'CCC';
   if (route === 'chat') {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
+    import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
   } else if (route === 'board') {
     unmountConsole();
     unmountOps();
@@ -237,19 +235,12 @@ function applyShellMode() {
 async function init() {
   applyShellMode();
   applyTheme(getThemeScheme());
-  // 登录门：Hub 壳走 A3 auth.js；对话壳走 agentAuth.js（7788 账号密码，窗口 K）
-  const { isDialogueShell } = await import('./ports.js');
-  if (isDialogueShell()) {
-    const agentAuth = await import('./agentAuth.js');
-    agentAuth.initAgentAuth();
-    const authed = await agentAuth.ensureAgentAuthenticated();
-    if (!authed) await agentAuth.waitForAgentAuth();
-  } else {
-    const auth = await import('./auth.js');
-    auth.initAuth();
-    const authed = await auth.ensureAuthenticated();
-    if (!authed) await auth.waitForAuth();
-  }
+  // 登录门：T40 — 无条件绑定（不再依赖 isDialogueShell 分支）
+  // 2017 单端 :7788 唯一入口；旧 Hub/双壳分支已退役。
+  const agentAuth = await import('./agentAuth.js');
+  agentAuth.initAgentAuth();
+  const authed = await agentAuth.ensureAgentAuthenticated();
+  if (!authed) await agentAuth.waitForAgentAuth();
   initRouter(onHubRoute);
   initTitlebar();
   initDualPaneControls(generateId);
@@ -266,13 +257,9 @@ async function init() {
   });
 
   try {
-    // T30：旧 sidecar /api/shell-config 端点在新服务端不存在；不再 fetch。
-    // 仅保留对话壳标记 + 默认 hubConfig。
-    const { isDialogueShell } = await import('./ports.js');
-    if (isDialogueShell()) {
-      window.__CCC_SHELL__ = 'dialogue';
-      window.__CCC_AGENT_BASE__ = window.__CCC_AGENT_BASE__ ?? '';
-    }
+    // T40：单端 :7788 唯一入口；旧 Hub/sidecar 分支已退役。
+    window.__CCC_SHELL__ = 'dialogue';
+    window.__CCC_AGENT_BASE__ = window.__CCC_AGENT_BASE__ ?? '';
     const cfg = await loadHubConfig();
     if (cfg?.chat_session_max_live) {
       state.set('maxLiveStreams', cfg.chat_session_max_live);

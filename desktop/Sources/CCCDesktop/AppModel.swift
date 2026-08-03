@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published var selectedProjectId: String?
     @Published var selectedThreadId: String?
     @Published var isContextPanelPresented = false
+    @AppStorage("ccc.taskPanelCollapsed") var isTaskPanelCollapsed: Bool = false
     @Published var composerAttachments: [ComposerAttachment] = []
     @Published var confirmEngineerMode = false
     @Published var chat = ChatState()
@@ -186,7 +187,7 @@ final class AppModel: ObservableObject {
         hydrateBoardCacheIfNeeded(projectId: pid)
         if !projects.isEmpty {
             connected = true
-            statusText = "本机缓存 · Hub 同步中…"
+            statusText = "本机缓存 · 同步中…"
         }
     }
 
@@ -268,7 +269,6 @@ final class AppModel: ObservableObject {
             messages: msgs,
             title: title,
             flow: nil,
-            needsHubSync: false,
             claudeSessionId: nil
         )
     }
@@ -386,6 +386,12 @@ final class AppModel: ObservableObject {
         if projects.isEmpty {
             hydrateFromDiskSync()
         }
+        // T40：自动登录（读 AppStorage 凭据 ccc/ccc → loginToServer）
+        // 401 → 凭据失效提示；连接失败 → 「服务端不可达（2017 :7788）」
+        if !authUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !authPass.isEmpty {
+            await loginToServer(silent: true)
+        }
         Task { @MainActor in
             await self.refreshProjects(showBusy: false)
         }
@@ -442,7 +448,7 @@ final class AppModel: ObservableObject {
             connected = !projects.isEmpty
             showSettingsHint = !connected
             statusText = "连接失败"
-            showToast("Hub 暂不可达：\(error.localizedDescription)")
+            showToast("服务端不可达（2017 :7788）：\(error.localizedDescription)")
         }
     }
 
@@ -665,7 +671,7 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: - Server Auth
-    func loginToServer() async {
+    func loginToServer(silent: Bool = false) async {
         guard let url = APIClient.makeBaseURL(from: serverURLString) else {
             serverLoginError = "服务端地址无效"
             return
@@ -680,13 +686,17 @@ final class AppModel: ObservableObject {
             _ = try await client.loginToNewServer(username: user, password: authPass)
             serverLoggedIn = true
             serverLoginError = nil
-            showToast("服务端登录成功")
+            if !silent { showToast("服务端登录成功") }
         } catch let apiErr as APIError {
             serverLoggedIn = false
-            serverLoginError = apiErr.localizedDescription
+            if case .http(let code, _) = apiErr, code == 401 {
+                serverLoginError = "凭据失效，请在设置中重新输入账号密码"
+            } else {
+                serverLoginError = "服务端不可达（2017 :7788）：\(apiErr.localizedDescription)"
+            }
         } catch {
             serverLoggedIn = false
-            serverLoginError = "登录失败：\(error.localizedDescription)"
+            serverLoginError = "服务端不可达（2017 :7788）：\(error.localizedDescription)"
         }
     }
 

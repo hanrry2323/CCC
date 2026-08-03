@@ -249,7 +249,7 @@ struct OpsDomainBGSession: Decodable, Hashable {
 struct OpsDomainCluster: Decodable {
     let engine_running: Bool?
     let mode: String?
-    let hub_port_7777: Bool?
+    // T40: hub_port_7777 已退役（Hub :7777 不再存在）；服务端仍可能返回此字段，Swift Decodable 自动忽略
     let ports: [OpsDomainPort]?
     let down_ports_n: Int?
     let alert_count: Int?
@@ -260,7 +260,7 @@ struct OpsDomainPort: Decodable {
     let ok: Bool?
 }
 
-/// Hub `domains.agent_mcp`：MCP 探针清单；未配置≠红，断连/探测失败才红。
+/// `domains.agent_mcp`：MCP 探针清单；未配置≠红，断连/探测失败才红。
 struct OpsDomainAgentMcp: Decodable {
     let ok: Bool?
     let mcp_probed: Bool?
@@ -351,10 +351,10 @@ struct OpsDomainMcpServer: Identifiable, Decodable, Hashable {
     }
 }
 
-// MARK: - Ops display merge (Hub severity + MCP)
+// MARK: - Ops display merge (服务端 severity + MCP)
 
 enum OpsHealthDisplay {
-    /// Hub alerts + domains.agent_mcp + 本地 ~/.ccc/alerts/ 巡查告警（去重）
+    /// 服务端 alerts + domains.agent_mcp + 本地 ~/.ccc/alerts/ 巡查告警（去重）
     static func alerts(summary: OpsSummary?, localPatrol: [OpsHealthAlert] = []) -> [OpsHealthAlert] {
         var list = summary?.alerts ?? []
         if let mcp = summary?.domains?.agent_mcp, mcp.isRedFailure {
@@ -384,7 +384,7 @@ enum OpsHealthDisplay {
                 影响：对话 Agent 工具链可能不可用
                 来源：agent_mcp
                 详情：\(detail)
-                建议：查 MCP 配置 / Hub domains.agent_mcp
+                建议：查 MCP 配置 / 服务端 domains.agent_mcp
                 机器字段：{"id":"mcp-probe-failed","source":"mcp","mcp_probed":true}
                 """ : trimmed
                 list.append(
@@ -411,10 +411,11 @@ enum OpsHealthDisplay {
     static func severity(summary: OpsSummary?, localPatrol: [OpsHealthAlert] = []) -> String {
         if summary?.domains?.agent_mcp?.isRedFailure == true { return "red" }
         if !localPatrol.isEmpty { return "red" }
-        let hub = (summary?.severity ?? "").lowercased()
-        if hub == "red" { return "red" }
-        if hub == "amber" || hub == "orange" { return "amber" }
-        if hub == "green" { return "green" }
+        // T40: 服务端 severity（Hub 旧名仅作历史注释，字段名 summary.severity 不变）
+        let remote = (summary?.severity ?? "").lowercased()
+        if remote == "red" { return "red" }
+        if remote == "amber" || remote == "orange" { return "amber" }
+        if remote == "green" { return "green" }
         if summary?.ready_to_dispatch?.ok == false { return "red" }
         if summary != nil { return "green" }
         return "amber"
@@ -469,7 +470,7 @@ struct OpsControlResp: Decodable {
     let mode: String?
     let invent_hard_disabled: Bool?
     let engine_running: Bool?
-    let hub_port_7777: Bool?
+    // T40: hub_port_7777 已退役；服务端仍可能返回，Swift Decodable 自动忽略
     let generated_at: String?
 }
 

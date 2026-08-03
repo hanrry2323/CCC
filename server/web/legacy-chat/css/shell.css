@@ -1450,10 +1450,13 @@ body.dialogue-mode #hub-views {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  display: flex;
   align-items: center;
   justify-content: center;
   background: var(--ccc-bg-deep);
+  display: none;
+}
+.login-view.open {
+  display: flex;
 }
 .login-card {
   width: min(360px, 88vw);

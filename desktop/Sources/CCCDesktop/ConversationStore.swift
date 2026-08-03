@@ -5,7 +5,7 @@ struct ConversationState: Equatable {
     var projectId: String
     var threadId: String
     var messages: [ChatMessage]
-    /// 右栏绑定 SSOT（随会话落盘；Hub 空列表不得冲掉）
+    /// 右栏绑定 SSOT（随会话落盘；服务端空列表不得冲掉）
     var boundEpicId: String?
     var flow: FlowThreadSnapshot?
     /// 单调修订；拒绝更旧写入（预留；落盘时递增）
@@ -55,7 +55,6 @@ enum ConversationStore {
     static func save(
         _ state: ConversationState,
         title: String? = nil,
-        needsHubSync: Bool = false,
         allowDowngrade: Bool = false
     ) {
         var flow = state.flow ?? FlowThreadSnapshot(
@@ -77,7 +76,6 @@ enum ConversationStore {
             messages: state.messages,
             title: title,
             flow: flow,
-            needsHubSync: needsHubSync,
             allowDowngrade: allowDowngrade,
             revision: nextRev,
             claudeSessionId: state.claudeSessionId

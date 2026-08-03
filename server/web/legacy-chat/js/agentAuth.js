@@ -8,6 +8,9 @@
  *
  * T30：token 键统一为 `ccc_chat_token`，与 auth.js / api.js 共用同一键，
  * 保证登录后所有请求（对话/看板/运维）都带 Bearer。
+ *
+ * T40：index.html 内联早期脚本已绑定表单 + 探活；本模块负责 401 重登与登出。
+ * initAgentAuth 检测 data-early-bound 标记，避免重复绑定。
  */
 
 const AGENT_TOKEN_KEY = 'ccc_chat_token';
@@ -135,7 +138,10 @@ export function applyAgentRoleUI() {
   if (logoutBtn) logoutBtn.style.display = logged ? '' : 'none';
 }
 
-/** 初始化：改登录视图文案 + 绑表单/登出/401 事件。 */
+/**
+ * 初始化：改登录视图文案 + 绑表单/登出/401 事件。
+ * T40：检测 data-early-bound 标记；内联脚本已绑表单时跳过重复绑定（仅补文案 + 401 + 登出）。
+ */
 export function initAgentAuth({ onAuthenticated } = {}) {
   const title = document.getElementById('login-title');
   if (title) title.textContent = 'CCC 对话口登录';
@@ -149,7 +155,10 @@ export function initAgentAuth({ onAuthenticated } = {}) {
 
   const view = document.getElementById('login-view');
   const form = view && view.querySelector('form');
-  if (form) {
+  const alreadyBound = form && form.dataset.earlyBound === 'true';
+
+  // T40：仅当内联脚本未绑表单时才绑定（避免双重提交）
+  if (form && !alreadyBound) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const userEl = view.querySelector('#login-user');
@@ -185,12 +194,22 @@ export function initAgentAuth({ onAuthenticated } = {}) {
 
 /**
  * 启动门：按 /health 判断是否需登录。
- * - /health 拉不到（sidecar 不可达）→ 放行，交给断连横幅；不误弹登录门。
+ * T40：内联脚本已做过一次探活；此处做二次确认（内联脚本可能因网络抖动失败）。
+ * - /health 拉不到 → 放行，交给断连横幅；不误弹登录门。
  * - auth_required=false → 放行（未开鉴权）。
  * - auth_configured=false → 弹登录门 + 「未配置登录凭证」提示。
  * - 否则探活会话：有效放行 / 失效弹登录门。
  */
 export async function ensureAgentAuthenticated() {
+  // T40：若已有 token 且内联脚本已验证，直接放行（避免重复探活）
+  if (hasAgentToken() && window.__CCC_LOGIN_EARLY_BOUND__) {
+    // 仍需轻探一次以确认 token 未过期
+    if (await probeAgentSession()) {
+      hideLogin();
+      applyAgentRoleUI();
+      return true;
+    }
+  }
   let health = null;
   try {
     const resp = await fetch('/health');
