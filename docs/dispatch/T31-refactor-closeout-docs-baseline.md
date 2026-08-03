@@ -90,7 +90,7 @@ $ python -m pytest server/tests/
 
 ### commit hash
 
-（待提交后填入）
+`5c5ab55` — docs(refactor): T31 文档基线切到新架构——薄驱动 Engine + 文档流转 + 2017 单端 + 任意设备壳（33 files changed, 693 insertions(+), 646 deletions(-)）
 
 ### 工作树预存项
 
