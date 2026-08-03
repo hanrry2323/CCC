@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§1 任务卡 / §9 全局红线）
 > 依据：Codex 2026-08-03 全新取证重评——T0–T30 已闭环，但仓内权威文档（CLAUDE.md / STARTUP-BRIEF.md / docs/INDEX.md / docs/roadmap.md / server/ 各 README / pyproject.toml）仍描述旧架构（Hub :7777、scripts/ 热路径、能力包、M1 Desktop+sidecar），部分命令指向已退役路径
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
 
@@ -97,3 +97,32 @@ $ python -m pytest server/tests/
 - `.ccc/agent-mind/decided.json`（运行态，非本次改动）
 - `_update_handoff.py`（预存脚本，非本次改动）
 
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**判定：✅ 通过（附 2 个 P2 修正项 + 1 项预存债登记，修正项由后续收口卡顺带处理）**
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 全仓 grep 旧口径零命中（排除 archive/历史） | 范围内文档零命中；剩余命中均在已标「待核/历史」文件、release 历史、知识库种子（合法描述）、STARTUP-BRIEF「勿再说」清单（故意列举） | ✅ 做到 |
+| 2. CLAUDE/STARTUP-BRIEF 命令真实可执行 | 命令均指向存在路径；但 `ruff check server/ tests/` 实测 89 错误（见 P2-2） | ⚠️ 半做 |
+| 3. VERSION=v0.70.0 / CHANGELOG 章节 / INDEX §0 权威链 | 全部落实，INDEX 权威链与 CHANGELOG 质量高 | ✅ 做到 |
+| 4. server/ 各 README 无「不真拉/零改动/只读」 | 实测 rg 零命中 | ✅ 做到 |
+| 5. pytest 全绿 / 工作树仅剩预存 / 真实提交 | pytest server/tests 实测通过（exit 0）；工作树仅 2 预存项；5c5ab55+68f3b0b 已 push origin/main | ✅ 做到 |
+
+### P2 修正项（随后续收口卡处理）
+
+- **P2-1 归档路径写错 3 处**：CLAUDE.md:22 / README.md:109 / CHANGELOG.md:14 写「旧 scripts/ 归档于 `.ccc/archive/legacy-retired-2026-08-02/scripts/`」，实际路径为 `docs/archive/legacy-retired-2026-08-02/scripts/`（T18 commit 72a5c66 已实锤 R100 rename）。改 3 处即可。
+- **P2-2 lint 配置误伤**：pyproject 移除 tests/scripts+tests/integration 的 F401/F841/E402/I001 忽略后，CLAUDE.md:50 `ruff check server/ tests/` 实测 89 错误（tests/ 61 个 F401、server/ 28 个）。恢复 tests/ 旧忽略（或 CLAUDE.md 命令改为 `ruff check server/`），使文档命令真实可绿；server/ 的 W292×16（已知挂账）+ 预存债并入 T35 清零。
+
+### 预存债登记（非 T31 引入，新暴露）
+
+- `server/web/server.py` 6 处 F821：`BoardItem` 用于注解但未导入（有 `from __future__ import annotations`，运行时安全）；补 import 即可。
+- `.pre-commit-config.yaml` ruff hook 仍指向已退役 `scripts/`；待 T35 或后续对齐。
+
+### 越范围说明（可接受）
+
+- 范围外 3 份重写（README/SKILL/SSOT）+ 16 份加「待核/历史」标记 + ccc-verify 重写，均有 commit message 说明且内容准确；red-lines/board-task-schema 标注明示「红线本身仍现行」，未削弱权威。摘要列 14 份，实际 16 份——计数偏差，内容无碍。
