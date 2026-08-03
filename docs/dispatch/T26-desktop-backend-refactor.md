@@ -1,7 +1,7 @@
 # 任务卡 T26 · 桌面端后端层重构（API 层重写为纯新服务端协议，拆旧 Hub/Agent 绑定）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳零业务逻辑；对话口账号密码+token；§3 状态同步）· 依据：老板 2026-08-03 指示「除 UI 与前端框架外，后端 API 与后端代码全部重构，旧代码拆分」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：1 · 日期：2026-08-03
 > 前置：T25 已闭环（旧对话页找回）；本卡为桌面端后端层彻底重构——**不是补丁禁用，是从代码里拆掉旧 Hub/Agent 绑定**。
 
 ## 背景（Codex 分析结论 · 已逐行拆解）
@@ -91,3 +91,20 @@
 ### 验收自检
 
 （执行后填写：对照验收标准逐条勾选）
+
+---
+
+## 打回区（Codex 独立取证 · 2026-08-03）
+
+**结论：打回 ❌**（方向对、执行不完整；4 项硬伤）
+
+**认可部分**：APIClient 1863→361 行仅剩新协议方法；AppModel 6750→1757 行；删 10 个旧依赖文件；UI 保留完整（CodexChatPane/messageArea/composerDock/CodexMessageRow/BoardView/OpsView）；`swift build` 独立复验零错误。
+
+**硬伤（修完重提）**：
+
+1. **P0 桌面端测试编译失败**：`Tests/CCCDesktopTests/LocalSessionStoreCodecTests.swift` 与 `LocalSessionStorePersistenceTests.swift` 仍调用已删除的 `loadTransferReceipts`/`upsertTransferReceipt`/`TransferReceipt` → `swift test` 报 `type 'LocalSessionStore' has no member 'loadTransferReceipts'`，测试套件红。**要求：删除/重写这两个测试文件中对 outbox/receipt 的用例，`swift test` 全绿。**
+2. **P0 旧 Hub 残留未清**：`AppModel.swift` 行 190 `preferHubTunnelIfReady()` 仍调 `/api/desktop/config`（17777），且被 `bootstrap`（行 463）调用；`hubTunnelURL`/`serverURLString`/`client.update(baseURL:)` 旧 Hub 基建仍在。**要求：删除该函数及调用、删除 `hubTunnelURL`/`serverURLString`/旧 `client.update(baseURL:)` 参数链，App 启动不打任何旧端点。**
+3. **P0 未提交**：30 个文件变更 + 10 个文件删除全部在工作树，无 commit。**要求：真实提交 `chore(desktop): T26...` 并 push。**
+4. **P2 useNewServer 残留分支**：行 411/772 仍 `guard useNewServer`，重构后应恒 true 无分支。**要求：移除分支，`useNewServer` 开关删除或恒 true。**
+
+修完逐条对照验收标准重写回写区（旧符号 grep 零命中含测试目录；`swift test` 全绿；无 17777//api/ 残留；真实提交）。
