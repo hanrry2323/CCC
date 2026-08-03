@@ -268,6 +268,120 @@ class TestRunOnceManualGui:
         assert [w.id for w in running] == ["m1"]
 
 
+class TestRunOnceDispatchByBinding:
+    """T39：卡头执行体绑定优先派发（run_once 端到端行为）。"""
+
+    @staticmethod
+    def _trae_role_has_cli_registry(tmp_path: Path) -> Path:
+        """构造 T38 插曲场景注册表：开发执行体同时含 Trae(手动 GUI) + OpenCode(CLI)。"""
+        p = tmp_path / "trae_role_has_cli.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "executors": [
+                        {
+                            "角色": "开发执行体",
+                            "分类": "手动 GUI",
+                            "当前绑定": "Trae",
+                            "命令": "",
+                            "参数模板": "",
+                            "工作目录": "",
+                            "备注": "人工接单",
+                        },
+                        {
+                            "角色": "开发执行体",
+                            "分类": "可后台 CLI",
+                            "当前绑定": "OpenCode",
+                            "命令": "echo",
+                            "参数模板": "{work_id}",
+                            "工作目录": "",
+                            "备注": "默认写码",
+                        },
+                        {
+                            "角色": "管理席",
+                            "分类": "—",
+                            "当前绑定": "Codex",
+                            "命令": "",
+                            "参数模板": "",
+                            "工作目录": "",
+                            "备注": "",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return p
+
+    def test_trae_card_manual_even_if_role_has_cli(self, tmp_path: Path) -> None:
+        """① 卡头 Trae（手动 GUI）但角色含 OpenCode CLI 行 → MANUAL，挂起 + 无执行日志。
+
+        T38 插曲回归：修复前 decide(role) 会返回 AUTO 并拉起 OpenCode。
+        """
+        reg_path = self._trae_role_has_cli_registry(tmp_path)
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="t38card", role="开发执行体", executor="Trae"))
+        log_dir = tmp_path / "logs"
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(log_dir),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+        }
+        summary = run_once(reg, store, cfg)
+        # MANUAL：派发计数 +1，挂起在执行中，不收单
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 0
+        assert summary["in_flight"] == 1
+        running = store.list_work(state=State.RUNNING)
+        assert [w.id for w in running] == ["t38card"]
+        # 关键：没有真实拉起 → 无执行日志文件
+        assert not log_dir.exists() or not (log_dir / "t38card.log").exists()
+
+    def test_opencode_card_auto_real_dispatch(self, tmp_path: Path) -> None:
+        """② 卡头 OpenCode（CLI）→ AUTO 真实拉起收单（echo 退出 0 → 已回写）。"""
+        reg_path = self._trae_role_has_cli_registry(tmp_path)
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="cli-card", role="开发执行体", executor="OpenCode"))
+        log_dir = tmp_path / "logs"
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(log_dir),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 1
+        assert summary["in_flight"] == 0
+        done = store.list_work(state=State.DONE)
+        assert [w.id for w in done] == ["cli-card"]
+        # 真实拉起 → 日志文件存在
+        assert (log_dir / "cli-card.log").is_file()
+
+    def test_codex_card_none_not_dispatched(self, tmp_path: Path) -> None:
+        """③ 卡头 Codex（管理席「—」）→ NONE 不派发，留在待分派。"""
+        reg_path = self._trae_role_has_cli_registry(tmp_path)
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="codex-card", role="管理席", executor="Codex"))
+        log_dir = tmp_path / "logs"
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(log_dir),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 0
+        assert summary["collected"] == 0
+        pending = store.list_work(state=State.TODO)
+        assert [w.id for w in pending] == ["codex-card"]
+        # 不派发 → 无日志
+        assert not log_dir.exists() or not (log_dir / "codex-card.log").exists()
+
+
 class TestFileBoardStore:
     """P1-1 文件/卡驱动 BoardStore：读 docs/dispatch → 构造 Work → 回写卡头状态。"""
 
@@ -284,7 +398,7 @@ class TestFileBoardStore:
         )
 
     def test_list_work_reads_card_headers(self, tmp_path: Path) -> None:
-        """list_work 扫卡目录 → 解析卡头 → 构造 Work（含 role 反查）。"""
+        """list_work 扫卡目录 → 解析卡头 → 构造 Work（含 role 反查 + executor 绑定）。"""
         reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
         reg = load_registry(reg_path)
         # 注册表里「当前绑定」=demo，卡头执行体也写 demo → role=开发执行体
@@ -297,6 +411,22 @@ class TestFileBoardStore:
         assert w.role == "开发执行体"
         assert w.state is State.TODO
         assert w.card_path.endswith("T99-test.md")
+        # T39：卡头执行体绑定名填充到 work.executor
+        assert w.executor == "demo"
+
+    def test_list_work_fills_executor_empty_for_unknown(self, tmp_path: Path) -> None:
+        """T39：卡头执行体不在注册表（未知）→ work.executor 仍保留卡头名（回退角色决策）。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        # 卡头写一个注册表里没有的执行体名
+        self._write_card(tmp_path / "T97-ghost.md", "T97", "GhostTool", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        works = store.list_work()
+        assert len(works) == 1
+        w = works[0]
+        # 未知执行体 → role 反查失败 → 空串；executor 保留卡头名供 decide_work 回退
+        assert w.role == ""
+        assert w.executor == "GhostTool"
 
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
         """list_work(state=X) 只返回匹配状态的卡。"""

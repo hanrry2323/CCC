@@ -22,6 +22,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from string import Formatter
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from server.engine.task import Work
 
 # 契约 §7：分类只允许「可后台 CLI」/「手动 GUI」；管理席/验收席不做执行，分类「—」
 VALID_CATEGORIES: frozenset[str] = frozenset({"可后台 CLI", "手动 GUI", "—"})
@@ -74,10 +78,25 @@ class ExecutorRegistry:
         """返回该角色下的全部注册行（开发执行体可有多行）。"""
         return [e for e in self.entries if e.role == role]
 
+    def rows_for_binding(self, tool_name: str) -> list[ExecutorEntry]:
+        """返回与工具名（卡头「执行体」绑定）匹配的全部注册行（T39）。
+
+        一个工具名可能命中多个角色/分类行（如开发执行体同时含 Trae 手动 GUI + OpenCode CLI），
+        全部返回由调用方按分类决策。
+        """
+        return [e for e in self.entries if e.binding == tool_name]
+
     def cli_entry_for_role(self, role: str) -> ExecutorEntry | None:
         """返回该角色的首个「可后台 CLI」行；无则 None。"""
         for e in self.entries:
             if e.role == role and e.category == "可后台 CLI":
+                return e
+        return None
+
+    def cli_entry_for_binding(self, tool_name: str) -> ExecutorEntry | None:
+        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。"""
+        for e in self.entries:
+            if e.binding == tool_name and e.category == "可后台 CLI":
                 return e
         return None
 
@@ -180,6 +199,38 @@ def decide(role: str, registry: ExecutorRegistry) -> DispatchDecision:
     if any(r.category == "手动 GUI" for r in rows):
         return DispatchDecision.MANUAL
     return DispatchDecision.NONE
+
+
+def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
+    """按卡头「执行体」绑定优先做派发决策（T39）。
+
+    解决 T38 插曲：卡头指定手动 GUI 执行体（如 Trae）时，不应因角色含 CLI 行而自动拉起。
+
+    决策顺序：
+    1. 有 `work.executor`（卡头指定执行体）→ 按 binding 找注册表行：
+       - 命中行含「可后台 CLI」→ AUTO；
+       - 仅命中「手动 GUI」→ MANUAL；
+       - 仅命中「—」（管理/验收席）→ NONE；
+       - 未命中任何行（未知执行体）→ 回退 `decide(work.role, registry)`。
+    2. 无 `work.executor`（卡未指定执行体）→ 回退 `decide(work.role, registry)`（现行为不变）。
+
+    Args:
+        work: 待派发的 work 卡（含 executor 字段）。
+        registry: 执行体注册表。
+
+    Returns:
+        DispatchDecision.AUTO / MANUAL / NONE。
+    """
+    if work.executor:
+        rows = registry.rows_for_binding(work.executor)
+        if rows:
+            if any(r.category == "可后台 CLI" for r in rows):
+                return DispatchDecision.AUTO
+            if any(r.category == "手动 GUI" for r in rows):
+                return DispatchDecision.MANUAL
+            return DispatchDecision.NONE
+        # 未命中 binding → 回退角色决策（未知执行体）
+    return decide(work.role, registry)
 
 
 def build_command(

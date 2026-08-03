@@ -13,8 +13,10 @@ from server.engine.dispatch import (
     ExecutorRegistry,
     build_command,
     decide,
+    decide_work,
     load_registry,
 )
+from server.engine.task import Work
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = PROJECT_ROOT / "server" / "config" / "executors.example.json"
@@ -196,6 +198,73 @@ class TestDecide:
         """未知角色 → 不派发。"""
         reg = load_registry(REGISTRY_PATH)
         assert decide("不存在的角色", reg) is DispatchDecision.NONE
+
+
+class TestDecideWork:
+    """T39：卡头执行体绑定优先派发决策。
+
+    覆盖 6 类用例：① Trae 手动 GUI 但角色含 CLI 行 → MANUAL；
+    ② OpenCode CLI → AUTO；③ Codex（—）→ NONE；④ 无 executor → 回退角色 AUTO；
+    ⑤ 未知 executor → 回退角色决策；⑥ 现有用例不回归（由现有测试套件保证）。
+    """
+
+    def test_trae_manual_gui_even_if_role_has_cli(self) -> None:
+        """① 卡头 Trae（手动 GUI）但角色「开发执行体」含 OpenCode CLI 行 → MANUAL。
+
+        这是 T38 插曲的核心场景：卡头指定手动 GUI 执行体时，不应因角色含 CLI 行而 AUTO。
+        """
+        reg = load_registry(REGISTRY_PATH)  # 含 Trae(手动 GUI) + OpenCode(可后台 CLI)
+        work = Work(id="t39-1", role="开发执行体", executor="Trae")
+        assert decide_work(work, reg) is DispatchDecision.MANUAL
+
+    def test_opencode_binding_auto(self) -> None:
+        """② 卡头 OpenCode（可后台 CLI）→ AUTO（真实拉起）。"""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t39-2", role="开发执行体", executor="OpenCode")
+        assert decide_work(work, reg) is DispatchDecision.AUTO
+
+    def test_codex_staff_binding_none(self) -> None:
+        """③ 卡头 Codex（分类「—」管理/验收席）→ NONE 不派发。"""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t39-3", role="管理席", executor="Codex")
+        assert decide_work(work, reg) is DispatchDecision.NONE
+
+    def test_no_executor_falls_back_to_role_auto(self) -> None:
+        """④ 无 executor（空串）→ 回退 decide(role)；开发执行体 → AUTO。"""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t39-4", role="开发执行体", executor="")
+        assert decide_work(work, reg) is DispatchDecision.AUTO
+
+    def test_unknown_executor_falls_back_to_role(self) -> None:
+        """⑤ 未知 executor（不在注册表）→ 回退 decide(role)。
+
+        role=开发执行体 → AUTO；role=管理席 → NONE；role=空 → NONE。
+        """
+        reg = load_registry(REGISTRY_PATH)
+        # 已知角色 + 未知执行体 → 沿用角色决策
+        assert decide_work(
+            Work(id="t39-5a", role="开发执行体", executor="GhostTool"), reg
+        ) is DispatchDecision.AUTO
+        assert decide_work(
+            Work(id="t39-5b", role="管理席", executor="GhostTool"), reg
+        ) is DispatchDecision.NONE
+        # 空角色 + 未知执行体 → NONE
+        assert decide_work(
+            Work(id="t39-5c", role="", executor="GhostTool"), reg
+        ) is DispatchDecision.NONE
+
+    def test_no_executor_unknown_role_none(self) -> None:
+        """④ 补充：无 executor + 未知角色 → NONE（回退路径）。"""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t39-4b", role="幽灵角色", executor="")
+        assert decide_work(work, reg) is DispatchDecision.NONE
+
+    def test_decide_work_consistent_with_decide_when_no_executor(self) -> None:
+        """⑥ 回归：无 executor 时 decide_work 与 decide 结果一致（不破坏 T32 行为）。"""
+        reg = load_registry(REGISTRY_PATH)
+        for role in ("开发执行体", "维护执行体", "管理席", "验收席", "未知角色"):
+            work = Work(id=f"reg-{role}", role=role, executor="")
+            assert decide_work(work, reg) is decide(role, reg)
 
 
 class TestBuildCommand:

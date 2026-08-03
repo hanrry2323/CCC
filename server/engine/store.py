@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Protocol
 
 from server.board.loader import _strip_parenthetical  # noqa: PLC0415 — 复用同一解析逻辑
-from server.board.models import base_state
+from server.board.models import UNKNOWN, base_state
 from server.engine.dispatch import ExecutorRegistry
 from server.engine.task import State, Work
 
@@ -162,15 +162,18 @@ class FileBoardStore:
         if st is None:
             # 未知状态（如「未知」）→ 默认待分派，让 Engine 能看到
             st = State.TODO
-        # 执行体 → 角色反查
+        # 执行体 → 角色反查（卡头「执行体：X」）
         executor_name = _strip_parenthetical(item.executor)
         role = self._registry.role_for_binding(executor_name) or ""
+        # T39：保留卡头执行体绑定名（未知/缺省 → 空串，回退角色决策）
+        executor_binding = "" if executor_name == UNKNOWN else executor_name
         return Work(
             id=item.id,
             role=role,
             title=item.title,
             state=st,
             card_path=str(path.resolve()),
+            executor=executor_binding,
         )
 
 

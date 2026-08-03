@@ -1,11 +1,11 @@
 # engine/ — 薄驱动核心
 
-> 施工卡：T2（骨架）+ T32（真实派发闭环）· 依赖：`config/`（已就绪）· 被依赖：`web/`、`deploy/`、`tests/`
+> 施工卡：T2（骨架）+ T32（真实派发闭环）+ T39（按卡头执行体绑定派发）· 依赖：`config/`（已就绪）· 被依赖：`web/`、`deploy/`、`tests/`
 
 ## 职责
 
 - 读取 `config/executors.json`（契约 §7 注册表），决定任务派发给谁。
-- 发单：把待办任务变为可执行 work；派发：按执行体「分类」选择自动拉起（可后台 CLI）或挂起等人（手动 GUI）。
+- 发单：把待办任务变为可执行 work；派发：按卡头执行体绑定优先（T39）+ 注册表「分类」选择自动拉起（可后台 CLI）或挂起等人（手动 GUI）。
 - **真实派发**（T32）：`subprocess.Popen` 拉起可后台 CLI 执行体，stdout/stderr 重定向到 `{EXECUTOR_LOG_DIR}/{work_id}.log`，按 `EXECUTOR_TIMEOUT_SECONDS` 超时收单。
 - 收单：按退出码判定 → 0 = 已回写；非 0 / 超时 / 启动失败 = 打回（附问题清单）。
 - 状态更新写入看板接口（`store.py`），T3 前用内存实现。
@@ -13,7 +13,9 @@
 ## 关键约定
 
 - **Engine 负责真实派发/收单**：`engine/` 不含任何具体工具逻辑；工具名只存在于注册表配置；按注册表配置真实拉起可后台 CLI 执行体、采集结果、按契约状态机收单并驱动看板。
-- 派发规则（契约 §7 → §2）：`可后台 CLI` → Engine 自动拉起（Popen + wait + 退出码判定）；`手动 GUI` → 挂起等人；管理席/验收席（分类「—」）与未知角色 → 不派发。
+- 派发规则（T39 卡头绑定优先 → 契约 §7 → §2）：
+  - 卡头「执行体：X」命中注册表行 → 按该 binding 的分类决策：`可后台 CLI` → AUTO；`手动 GUI` → MANUAL（即便角色含 CLI 行也不自动拉起，修复 T38 插曲）；`—` → NONE；
+  - 卡未指定执行体 / binding 未命中 → 回退 `decide(role)`（现行为不变）。
 - 状态机 = **契约 §2 五态**：`待分派 → 执行中 → 已回写 → 已关闭`；失败路径 `执行中/已回写 → 打回（附问题清单）`，人工处理后 `打回 → 待分派` 重新派发；终态 `已关闭`。**非法状态转移一律抛 `IllegalTransitionError`。**
 - 零硬编码：执行体命令/参数模板/工作目录全部走注册表；超时/日志目录走 `config.env`。代码不出现工具名字面量。
 - 模型出口一律经 `relay/`，engine 不直连上游。
@@ -22,30 +24,30 @@
 
 | 文件 | 职责 |
 |------|------|
-| `task.py` | `Work` 数据结构（含 `card_path`）+ 契约 §2 状态机（合法/非法转移） |
-| `dispatch.py` | 注册表读取（§7 字段/分类/命令校验）+ `decide()` 派发决策 + `build_command()` 命令构造 |
-| `store.py` | 看板对接接口 `BoardStore` + 内存实现 `InMemoryBoardStore`（T3 前占位） |
-| `main.py` | 入口：`--config` → `load_config`；`--once` 单次扫描+真实派发+收单；持续模式循环+心跳+催单 |
+| `task.py` | `Work` 数据结构（含 `card_path` / `executor`）+ 契约 §2 状态机（合法/非法转移） |
+| `dispatch.py` | 注册表读取（§7 字段/分类/命令校验）+ `decide()` 角色决策 + `decide_work()` 卡头绑定优先决策（T39）+ `build_command()` 命令构造 |
+| `store.py` | 看板对接接口 `BoardStore` + 内存实现 `InMemoryBoardStore`（T3 前占位）；`FileBoardStore` 解析卡头执行体填充 `Work.executor` |
+| `main.py` | 入口：`--config` → `load_config`；`--once` 单次扫描+真实派发+收单；持续模式循环+心跳+催单；`run_once` 决策走 `decide_work` |
 | `scheduler.py` | 通用定时任务框架：只读巡检 + 变更类走卡（不绕过 Engine） |
 | `cluster.py` | 集群节点状态采集（只读巡检） |
 
-## 派发管道（T32 真实派发闭环）
+## 派发管道（T32 真实派发闭环 + T39 绑定优先）
 
 ```text
 run_once(registry, store, cfg)
   ├─ 扫描「待分派」work
-  ├─ decide(role) → AUTO / MANUAL / NONE
+  ├─ decide_work(work, registry) → AUTO / MANUAL / NONE（T39：卡头 executor 优先，回退 decide(role)）
   ├─ AUTO：
   │   ├─ work.transition(执行中) → store.save
-  │   ├─ entry = registry.cli_entry_for_role(role)
+  │   ├─ entry = registry.cli_entry_for_role(role)   # role 已由 store 从 executor 反查
   │   ├─ cmd = build_command(entry, work_id, role, card_path, default_workdir)
   │   │        # 模板占位符 {work_id}/{card_path}/{role}/{workdir} 替换 + shlex.split
   │   ├─ Popen(cmd, stdout={EXECUTOR_LOG_DIR}/{work_id}.log, cwd=workdir)
   │   ├─ proc.wait(timeout=EXECUTOR_TIMEOUT_SECONDS)
   │   └─ 退出码 0 → work.transition(已回写)
   │      非 0 / TimeoutExpired / OSError → work.transition(打回, problems=[...])
-  ├─ MANUAL：work.transition(执行中) → 挂起等人（不收单）
-  └─ NONE：跳过（管理席/验收席/未知角色）
+  ├─ MANUAL：work.transition(执行中) → 挂起等人（不收单，即便角色含 CLI 行也不拉起）
+  └─ NONE：跳过（管理席/验收席/未知角色/未知执行体回退 NONE）
 ```
 
 ## 注册表 schema（契约 §7 + T32）

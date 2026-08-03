@@ -32,7 +32,7 @@ from server.engine.dispatch import (
     DispatchDecision,
     ExecutorRegistry,
     build_command,
-    decide,
+    decide_work,
     load_registry,
 )
 from server.engine.store import BoardStore, FileBoardStore
@@ -125,8 +125,8 @@ def run_once(
     """单次扫描 + 派发 + 收单。
 
     1. 扫描「待分派」work；
-    2. 按注册表决策派发：可后台 CLI → 真实拉起执行体 + 同步收单；手动 GUI → 挂起等人；
-       管理席/验收席/未知角色 → 不派发；
+    2. 按卡头执行体绑定优先决策（T39）：可后台 CLI → 真实拉起执行体 + 同步收单；
+       手动 GUI → 挂起等人；管理席/验收席/未知角色 → 不派发；
     3. 收单：按退出码 + 输出判定 → 状态机流转（执行中 → 已回写/打回）。
     """
     cfg = cfg or {}
@@ -142,7 +142,7 @@ def run_once(
     collected = 0
     timed_out = 0
     for work in pending:
-        decision = decide(work.role, registry)
+        decision = decide_work(work, registry)
         if decision is DispatchDecision.AUTO:
             work.transition(State.RUNNING)
             store.save_work(work)
@@ -160,12 +160,18 @@ def run_once(
                 store.save_work(work)
                 logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
         elif decision is DispatchDecision.MANUAL:
-            logger.info("挂起等人接单: work=%s role=%s", work.id, work.role)
+            logger.info(
+                "挂起等人接单: work=%s role=%s executor=%s",
+                work.id, work.role, work.executor or "(未指定)",
+            )
             work.transition(State.RUNNING)
             store.save_work(work)
             dispatched += 1
         else:
-            logger.warning("不参与派发: work=%s role=%s", work.id, work.role)
+            logger.warning(
+                "不参与派发: work=%s role=%s executor=%s",
+                work.id, work.role, work.executor or "(未指定)",
+            )
 
     in_flight = len(store.list_work(state=State.RUNNING))
     summary: dict[str, int] = {
