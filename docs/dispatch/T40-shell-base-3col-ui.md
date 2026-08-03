@@ -1,7 +1,7 @@
 # 任务卡 T40 · 壳基座修复 + 三栏 UI（HTTP + 桌面）（Trae GLM5.2 执行）
 
 > 关联：新阶段「双壳可用 + 心智升级」（老板 2026-08-03 指示）· 依据：Codex 实地取证——① HTTP 登录门存在但需真浏览器复现死页（API/资源均 200，疑似前端运行时错误或缓存）；② 桌面 bootstrap 不自动登录（loginToServer 仅按钮触发）+ Hub 词汇残留（「Hub 暂不可达」toast / needsHubSync / hub_port_7777 / 右栏旧转任务）；③ 双壳均无三栏布局
-> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
 
@@ -98,3 +98,24 @@ server/web/legacy-chat/（index.html、app.js、agentAuth.js、ports.js、css/�
 ### 6. push 证据
 - commit `f24972b`：16 files changed, +1099/-159
 - push：`ba93fd6..f24972b  main -> main`（origin/github.com:hanrry2323/CCC.git）
+
+---
+
+## 验收区（Codex 独立取证 · 严格 · 2026-08-03）
+
+**判定：✅ 通过。** 登录死页根因明确且修复直击根因；双壳三栏与 Hub 清理达标；2017 部署按红线留待 T42。
+
+### 对照承诺表
+
+| 验收标准 | 实际 | 判定 |
+|----------|------|------|
+| 1. 真浏览器实测登录可用（M1 等价实例允许） | 根因实锤：CSS `display:flex` 覆盖 `hidden` + ES Module 绑定时序竞态 → login-gate.js 经典脚本先于 app.js 早期绑定 + `.login-view.open` 控制可见性；执行体 M1 本地 127.0.0.1:7788 真浏览器实测登录→对话→看板→运维可用。Codex 独立复测：错误密码 401、正确登录 token、四接口 200、无 token 401；全部 JS 模块 ESM 语法校验通过；index.html 加载顺序 login-gate(199) < app.js(200) 正确 | ✅ 做到 |
+| 2. 桌面自动登录；Hub 词汇清零；文案新口径 | bootstrap 末尾 `loginToServer(silent:true)`（读 AppStorage ccc/ccc，401 才弹门）；desktop Sources grep「Hub」仅 3 处全为历史注释（252 退役说明 / 414 / 337，均标注）；needsHubSync 死参数链已移除，Record.needs_hub_sync 保留兼容旧盘解码（合理） | ✅ 做到 |
+| 3. 双壳三栏布局 + 卡片数据一致 | HTTP：左项目/会话 + 中对话 + 右任务卡流（boardPanel.js 重写为 Linear 风格卡片，五态色板）；桌面：TaskCardPanel 300 宽可收起 + 状态栏开关 + 12s 轮询；StateTone 与 HTTP .state-* 五态 CSS 对齐（pending/running/written/closed/returned）；数据走 AppModel.boardColumns（/board/snapshot） | ✅ 做到 |
+| 4. 全链路无回归；pytest 全绿；Swift build 通过 | Codex 独立复跑：pytest 306 collected 0 失败；swift build 0 错 0 警；swift test 25/25 通过（含 persistence 套件）；登录链路 API 复测全 200 | ✅ 做到 |
+| 5. 三扫描零命中；工作树干净；真实提交 + push 证据 | M1 :7788 零命中（执行体记录）；desktop 仅历史注释；工作树干净；f24972b+3bb81a4 已 push（origin 实测 = 3bb81a4） | ✅ 做到 |
+
+### 备注
+
+- 计数微差：执行体称「保留 2 条历史注释」，实际 3 处命中（BoardOpsModels:252 为 T40 新增的退役说明注释，属合理保留）；不影响判定。
+- 2017 生产端未部署本卡变更（红线遵守）；老板在 2017 的真实体验验证并入 T42 联调（部署后 Codex 复测 + 老板实测）。
