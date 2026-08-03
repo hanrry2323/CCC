@@ -1,8 +1,8 @@
 # 任务卡 T43 · 对话历史 HTTP 长轮询增量同步（OpenCode 执行）
 
 > 关联：新阶段「对话壳感知 + 增量同步」 · 依据：T29（对话大脑 /conversation）与 T41（SSE 流式）已落地，前端仍整表轮询 /conversation
-> 执行体：OpenCode · 验收：Codex（严格）· 状态：执行中 · 日期：2026-08-03
-> 变更记录：2026-08-03 老板放行；Codex 决定执行体 OpenCode（工程类任务）；状态置「执行中」防 2017 Engine 抢跑；T42 查验确认单线程阻塞为本卡步骤 1 的必要修复。
+> 执行体：OpenCode · 验收：Codex（严格）· 状态：已回写 · 日期：2026-08-03
+> 变更记录：2026-08-03 老板放行；Codex 决定执行体 OpenCode（工程类任务）；状态置「执行中」防 2017 Engine 抢跑；T42 查验确认单线程阻塞为本卡步骤 1 的必要修复。2026-08-04 执行完成回写（commit 6ad7f8f）。
 
 ## 目标
 
@@ -49,4 +49,48 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-04
+
+---
+
+### 1. seq 光标设计说明
+
+- `_conversations` 为 append-only 列表，单调 seq = `len(_conversations)`（缺省 0）；历史清空（测试隔离）后 seq 自然回 0。
+- `GET /conversation` 无 `after` → `{messages: 全量, seq}`（向后兼容，仅新增 `seq` 字段，现有对话测试原样通过）。
+- `GET /conversation?after=<seq>&timeout=<s>` → `server.py:_wait_conversation_increment` 在 `threading.Condition`（`_conv_cond`）上挂起：`after < len` 立即返回 `_conversations[after:]`；否则等到超时（空增量、seq 不变）或被 `notify_all()` 唤醒。
+- 「看到 seq 必见消息」：两处历史写点（同步 `_handle_conversation_post` + SSE done `_handle_conversation_stream`）均在 `with _conv_cond:` 内 append + `notify_all()`，与读取同锁。
+- 非法参数：`after` 非整数/负数、`timeout` 非整数 → 400（不挂起）。
+- 客户端断开：等待循环每 ≤0.5s 用 `select([connection])` 探测 readable/EOF（`_client_gone`），断开即抛 `ConnectionResetError` 退出释放线程；写响应时 BrokenPipe/Reset 亦被捕获。断连不崩溃、不长期占线程。
+
+### 2. ThreadingHTTPServer 切换依据
+
+- `create_server`/`serve_forever`：`HTTPServer`（单线程）→ `ThreadingHTTPServer`（`server.py:848`），stdlib 一行切换。
+- 依据：T42 独立复现实锤——SSE 流式挂起独占唯一线程，`/health`、`/board/states`、第二路 /conversation 均网络层超时（000），brain 并发锁（503 busy）无法触发。切换后长轮询/SSE 挂起不再阻塞其他请求。
+
+### 3. 前端改造 diff 摘要（`api.js`）
+
+- 新增模块级光标 `_historySeq` + 缓存 `_historyMsgs` + `_fetchHistory()`：首拉无 `after` 全量；之后 `after=<seq>&timeout=30` 增量；服务端 seq 回退（重启/清空）→ 以本次返回为准重置。
+- `loadHistory`/`loadSession` 改为经 `_fetchHistory` 返回合并后的完整 `{messages}`（旧实现整表重拉 /conversation）。UI 消费契约不变。
+
+### 4. 新增测试清单与结果（`test_http_api.py` `TestConversationLongPoll`，8 项全绿）
+
+| 用例 | 验证点 |
+|------|--------|
+| `test_no_after_returns_full` | 无 after 全量 + seq 光标（向后兼容） |
+| `test_after_cursor_increment` | after 增量切片正确；after 到当前 seq → 空增量 |
+| `test_longpoll_timeout_returns_empty` | 超时返回 `{messages:[], seq 不变}`（实测 ≥0.8s 才返回） |
+| `test_longpoll_returns_increment_on_new_message` | 挂起被 notify 唤醒，返回增量 + seq 推进 |
+| `test_longpoll_hang_does_not_block_others` | 挂起期间 /health、/board/states 正常（实测 <1.5s） |
+| `test_longpoll_client_disconnect_no_crash` | 长轮询中途断连 → 服务不崩溃、后续请求正常 |
+| `test_invalid_after_and_timeout_400` | 非法 after/timeout → 400 不挂起 |
+| `test_hang_second_conversation_503_busy_not_blocked` | T42 关闭条件：锁占用时第二路对话快速返回 503 busy（实测 <1.5s，非网络阻塞） |
+
+结果：`pytest server/tests/` → **339 passed**（T41 基线 331 + 本卡 8）；`python -m py_compile server/web/server.py` OK；`ruff check server/` clean；`node --check js/api.js` OK。
+
+### 5. 并发锁重验记录（T42 关闭条件）
+
+新增 `test_hang_second_conversation_503_busy_not_blocked` 独立重验：一路对话挂起（模拟 SSE 流式占用 brain 锁）时，第二路 `POST /conversation` 实测 <1.5s 返回 **503 busy**（网络层不再阻塞，brain 并发锁真正可触发），同时 `/health`、`/board/states` 正常返回。T42 并发锁项达标，待 Codex 复验后关闭。
+
+### 6. push 证据
+
+代码 commit：`6ad7f8f feat(web): T43 对话历史长轮询增量同步 + ThreadingHTTPServer 并发化（...）`（本回写 commit 推送后一并 push）。
