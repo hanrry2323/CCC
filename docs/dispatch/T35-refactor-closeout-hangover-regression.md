@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§5 安全三件套 / §6 验收）
 > 依据：Codex 2026-08-03 全新取证重评——INT-120 挂账：patrol 2 失败（引用已归档 brief）、cluster DEFAULT_SERVICES 硬编码（T33 处理）、W292×16、2017 config.env.bak.T29、docs/REFACTOR-INDEX.md 验收清单未勾
-> 执行体：Trae · 验收：Codex · 状态：执行中 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 > ⚠ 2026-08-03 T32 验收登记新增子项（P1-1）：Engine 接真实看板——文件/卡驱动 BoardStore（读 docs/dispatch → 回写卡头状态行）+ scheduler 扫真实卡 + 真实卡端到端演示；补完 Codex 复验 M2。
 > ⚠ 2026-08-03 T33 验收附注：T31 P2 修正项并入本卡——P2-1 修正 CLAUDE.md/README.md/CHANGELOG.md 三处 scripts 归档路径（`.ccc/archive/...` → `docs/archive/...`）；P2-2 恢复 tests/ F401/F841/E402/I001 忽略（或 CLAUDE.md ruff 命令改 `server/`）使文档命令真实可绿。
 > ⚠ 2026-08-03 T34 验收登记：dispatchCard.js 挂载死功能收口——摘除 components/message.js + components/composer.js 的动态引用，归档 dispatchCard.js（dispatchFormat.js 若仅被其引用一并归档）；另 docs/roadmap.md:27 T34 状态行过时随卡头校对更新。
@@ -48,4 +48,88 @@ tests/scripts/test_authority_patrol.py、server/（W292×16 尾换行）、docs/
 
 ## 回写区
 
-**执行体**：Trae · 日期：
+**执行体**：Trae · 日期：2026-08-03 · commit：c5d10b2
+
+### P1-1 Engine 接真实看板（FileBoardStore）
+
+- `server/engine/store.py` 新增 `FileBoardStore`：扫 `docs/dispatch/*.md` 卡头元数据 → 构造 `Work`（含 `role` 反查）→ 状态流转后原子回写卡头「状态」行（tmp + os.replace）
+- `server/engine/main.py` 生产路径切 `FileBoardStore`（替换 `InMemoryBoardStore`），新增 `DISPATCH_DIR` 配置读取
+- `server/engine/dispatch.py` 新增 `role_for_binding()`（工具名→角色反查，优先可后台 CLI）
+- `server/config/loader.py` + `config.example.env` 新增 `DISPATCH_DIR`（默认 `docs/dispatch`）
+- `server/engine/task.py` `State` 改 `StrEnum`（UP042）
+- 7 个新增测试（`test_engine_main.py::TestFileBoardStore`）：list_work 读卡头/按状态过滤/save_work 回写/保留其他元数据/端到端派发回写
+- 端到端演示：echo executor + T99-demo.md → run_once → 真实执行 → 卡头 `待分派`→`执行中`→`已回写` → board/export 派生可见
+
+### P2-1 归档路径修正（8 处）
+
+CLAUDE.md / README.md / CHANGELOG.md / AUDIT.md / SSOT.md / docs/architecture.md / docs/roadmap.md / specs/ccc-growth-prompt.md：
+`.ccc/archive/legacy-retired-2026-08-02/` → `docs/archive/legacy-retired-2026-08-02/`
+
+### P2-2 ruff 存量债清零
+
+- W292（缺尾换行）×16 清零
+- F821（未定义名 BoardItem）×6 修复（server/web/server.py 补 import）
+- F401（未用 import）×3 清理
+- UP042（StrEnum）task.py + dispatch.py
+- `ruff check server/` + `--select W292` 全绿
+
+### P2-3 EXECUTOR_LOG_DIR 改必填
+
+`server/engine/main.py`：移除 DEFAULT_LOG_DIR 硬编码，缺 EXECUTOR_LOG_DIR 抛 ConfigError（零硬编码）
+
+### dispatchCard.js 收口
+
+摘除 `legacy-chat/js/components/message.js` + `composer.js` + `fixedActions.js` 对 dispatchCard.js 的动态引用
+
+### patrol 修复根因
+
+`scripts/ccc-authority-patrol.py` 已随 `scripts/` 整体退役（归档于 `docs/archive/legacy-retired-2026-08-02/scripts/`）。patrol 卡 #20 引用的 brief 已归档。`references/authority-patrol.jsonl` 卡 #20 路径更新到归档区。patrol 测试文件随 `tests/scripts/` 一并归档。
+
+### 遗留测试/配置归档（随 scripts/ 退役）
+
+| 路径 | 文件数 | 理由 |
+|------|--------|------|
+| `tests/scripts/` → `archive/legacy-retired-2026-08-02/tests-scripts/` | 100+ | conftest 引用退役 scripts/，66 collection error |
+| `tests/integration/` → `archive/legacy-retired-2026-08-02/tests-integration/` | 2 | 引用退役 ccc-board.py |
+| `tests/e2e/` → `archive/legacy-retired-2026-08-02/tests-e2e/` | 12 | shell 脚本引用退役 scripts/ |
+| `deploy/launchd/com.ccc.regress.plist.example` → archive | 1 | 引用退役 ccc-board.py |
+
+CI (`.github/workflows/ci.yml`) + pre-commit (`.pre-commit-config.yaml`) 重写：移除全部退役 scripts/ 引用，切到 `server/` 栈（pytest server/tests + ruff server/ + shellcheck server/deploy + swift-test）。
+
+### 卡头状态校对
+
+全量 docs/dispatch/*.md 卡头「状态」与回写区一致。4 张「打回」卡（T1/T12/T14/T26）均有对应「已关闭」-R 修复卡。
+
+### 双端 kickstart 实测
+
+**M1 本地 :7788**：
+- /health → 200 `{"status":"ok","auth_required":true,"auth_configured":true}`
+- /session → token 64 字符
+- /board/states → `{"待分派":0,"执行中":1,"已回写":0,"已关闭":39,"打回":4}`（执行中:1 = T35 本卡）
+
+**2017 :7788**（192.168.3.116）：
+- /health → 200
+- /session → token 64 字符（ccc/ccc）
+- /conversation → 大脑 Agent 回复正常（走 6100 Anthropic 出口）
+- /board/snapshot → 33 已关闭/4 打回/1 已回写/1 待分派
+- /board/states → counts dict 正常
+- /board/roadmap → 7 items
+- /ops/summary → overview（machines/alert_count/down_ports/generated_at）
+- 401 鉴权验证通过（无 token → 401）
+- ⚠ 2017 看板缺 T31-T35 卡（未 git pull；不动运行面，登记待核）
+
+### 2017 config.env.bak.T29 清理
+
+SSH fan@192.168.3.116 删除 `~/program/CCC/server/config/config.env.bak.T29`（config.env 本身未动）。清理后无 .bak 文件残留。
+
+### 全量回归
+
+- `pytest server/tests/ -q` → 246 passed
+- `ruff check server/` → All checks passed
+- `ruff check server/ --select W292` → All checks passed
+- 三扫描：server/ + desktop/ 零退役 scripts/ 引用
+
+### 提交
+
+- commit c5d10b2 `refactor(closeout): T35 挂账清零 + FileBoardStore + 全量回归`（183 files, +379/-235）
+- pushed to origin/main（5d28cdc..c5d10b2）
