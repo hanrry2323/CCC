@@ -1,7 +1,7 @@
 # 任务卡 T26 · 桌面端后端层重构（API 层重写为纯新服务端协议，拆旧 Hub/Agent 绑定）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳零业务逻辑；对话口账号密码+token；§3 状态同步）· 依据：老板 2026-08-03 指示「除 UI 与前端框架外，后端 API 与后端代码全部重构，旧代码拆分」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：1 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：2 · 日期：2026-08-03
 > 前置：T25 已闭环（旧对话页找回）；本卡为桌面端后端层彻底重构——**不是补丁禁用，是从代码里拆掉旧 Hub/Agent 绑定**。
 
 ## 背景（Codex 分析结论 · 已逐行拆解）
@@ -108,3 +108,25 @@
 4. **P2 useNewServer 残留分支**：行 411/772 仍 `guard useNewServer`，重构后应恒 true 无分支。**要求：移除分支，`useNewServer` 开关删除或恒 true。**
 
 修完逐条对照验收标准重写回写区（旧符号 grep 零命中含测试目录；`swift test` 全绿；无 17777//api/ 残留；真实提交）。
+
+---
+
+## 打回区 2（Codex 复验 · 2026-08-03）
+
+**结论：仍打回 ❌**（三项已修 ✅，17777 残留未清完）
+
+**已修复 ✅**：
+1. `swift test` 独立复验 31/31 全绿（0 failures）✅
+2. `preferHubTunnelIfReady`/`hubTunnelURL` 已删，启动不再调 `/api/desktop/config` ✅
+3. `useNewServer` 全仓 grep 零命中（含 ContentView 开关）✅
+
+**未清完（17777 字面量 + 旧 UI 残留，逐条修）**：
+
+1. `AppModel.swift:23`：`@AppStorage("ccc.server") var serverURLString = "http://127.0.0.1:17777"` — 默认值改 `http://192.168.3.116:7788`（或删整条，见 3）。
+2. `AppModel.swift:178/180`（init）：`UserDefaults ... ?? "http://127.0.0.1:17777"` 与 `?? URL(string:"http://127.0.0.1:17777")!` — 回退改新服务端地址。
+3. `AppModel.swift:379`（prepareClient）：`makeBaseURL(from: serverURLString)` + `client.update(baseURL:user:password:)` — 新服务端路径只走 `configureNewServer(newServerURLString)`，**这段旧 Hub update 链直接删除**（APIClient.update 若只剩此调用点也一并删）。
+4. `ContentView.swift:1662`：设置里「Hub 地址」TextField 绑定 `serverURLString` — 删除（用户只需配「新服务端地址」行 1712）。
+5. `OpsView.swift:372/410`：`tunnelOk = serverURLString.contains(":17777")` + 「com.ccc.hub-tunnel」状态行 — hub-tunnel 已退役（T21），**整段删除**。
+6. `openHubInBrowser`（AppModel:1053 附近，无 UI 入口）：删除方法体或整个方法（死代码）。
+
+修完标准：`grep -rn "17777" desktop/Sources/ desktop/Tests/` 零命中；`swift build` + `swift test` 全绿；真实提交并 push。
