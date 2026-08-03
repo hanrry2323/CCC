@@ -18,7 +18,8 @@
     CCC_BRAIN_MODEL         模型逻辑名（flash / Pro / code）
     CCC_BRAIN_BASE_URL      出口 base URL（如 http://127.0.0.1:6100）
     CCC_BRAIN_AUTH_TOKEN    出口 Bearer token
-    CCC_BRAIN_TIMEOUT       调用超时秒（默认 60）
+    CCC_BRAIN_TIMEOUT       调用超时秒（默认 120；知识题需读文档+推理，
+                            实测 ~74s，60s 过紧故默认上调）
 """
 
 from __future__ import annotations
@@ -65,11 +66,14 @@ def _get_brain_auth_token() -> str:
 
 
 def _get_brain_timeout() -> int:
-    """大脑调用超时（秒，默认 60）。"""
+    """大脑调用超时（秒，默认 120）。
+
+    60s 对知识题过紧（实测 Claude Code 读文档+推理 ~74s），故默认上调到 120。
+    """
     try:
-        return int(os.environ.get("CCC_BRAIN_TIMEOUT", "60"))
+        return int(os.environ.get("CCC_BRAIN_TIMEOUT", "120"))
     except ValueError:
-        return 60
+        return 120
 
 
 def _is_brain_configured() -> bool:
