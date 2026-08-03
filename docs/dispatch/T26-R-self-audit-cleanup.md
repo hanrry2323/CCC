@@ -1,7 +1,7 @@
 # 任务卡 T26-R · 桌面端自查清理（老板要求：清理干净不留冗余，由执行体大模型自主深度检查）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 壳零业务逻辑）· 依据：老板 2026-08-03 指示「这次要清理就清理干净，不要留什么冗余；提宽泛检查要求，让那边的大模型自己去检查问题」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 > 前置：T26 主体重构已在工作树（未提交）；本卡为**自主自查清理**——不提供逐条清单，由执行体大模型按下列检查维度自行通读、发现问题、自主决策清理范围并完整落地。
 
 ## 目标
@@ -46,20 +46,93 @@
 
 ### 结果摘要
 
-（执行后填写）
+桌面端后端层深度自查清理完成。移除了 Agent/sidecar 全套死代码（agentURLString/agentUser/agentPass/cccHomePath/opsAgentOk/opsAgentRuntime/opsAgentModel/agentLLM tracking 等），合并了冗余服务端配置（newServerURLString/User/Pass → serverURLString/authUser/authPass），删除了无 UI 调用点的死方法（createBoardTask/loadTaskArtifacts/healThreadSlot 等）及死结构体（TaskArtifacts/FailureRecord），清理了 UI 残留（「本机对话 Agent」设置段、Agent domainChip、sidecar-down 告警逻辑），清理了全仓 sidecar/outbox 注释残留。提交 f33f65d，push 到 main。
 
 ### 发现清单（逐项：文件 / 问题 / 处置）
 
-（执行后填写）
+| 文件 | 问题 | 处置 |
+|------|------|------|
+| AppModel.swift | agentURLString/agentUser/agentPass/cccHomePath @AppStorage 残留 | 删除 |
+| AppModel.swift | newServerURLString/newServerUser/newServerPass 冗余（与 serverURLString/authUser/authPass 重复） | 合并为 serverURLString/authUser/authPass |
+| AppModel.swift | opsAgentOk/opsAgentRuntime/opsAgentModel @Published 死属性 | 删除 |
+| AppModel.swift | agentLLMDailyCount/agentLLMRecent5s/agentUsageTick 等全套 LLM tracking（7 属性 + 7 方法 + 2 常量） | 删除 |
+| AppModel.swift | agentWarming 死属性 | 删除 |
+| AppModel.swift | isStreaming 计算属性（恒 false，无独立调用方） | 删除 |
+| AppModel.swift | hubSyncing/hubReachable/currentThreadStreaming 死属性 | 删除 |
+| AppModel.swift | createBoardTask/updateBoardTask/deleteBoardTask/loadTaskArtifacts/taskArtifacts/retryFailedWork/workFailures/loadFailureAnalysis/exportProjectReport/healThreadSlot/retryLastFailedTurn 无 UI 调用点 | 删除 |
+| AppModel.swift | cccHomePath 在 localPath(for:) 中引用 | 移除此分支 |
+| AppModel.swift | probeLocalAgentForOps() 死方法 | 删除 |
+| AppModel.swift | newServerLoggedIn/newServerLoginError → serverLoggedIn/serverLoginError | 重命名对齐 |
+| AppModel.swift | loginNewServer/logoutNewServer → loginToServer/logoutFromServer | 重命名并改用 serverURLString/authUser/authPass |
+| AppModel.swift | prepareClient() 使用 newServerURLString | 改为 serverURLString |
+| AppModel.swift | runNewServerChat() 中 newServerURLString/newServerLoggedIn 引用 | 改为 serverURLString/serverLoggedIn |
+| BoardOpsModels.swift | sidecar-down 告警逻辑（agentOk 参数 + 整块告警构造） | 删除 |
+| BoardOpsModels.swift | alerts()/severity()/humanLine() 中 agentOk 参数 | 移除 |
+| BoardOpsModels.swift | sidecar 注释残留 | 清理 |
+| OpsView.swift | Agent domainChip 和 agentOk/opsAgentRuntime/opsAgentModel 引用 | 删除 |
+| ContentView.swift | 「本机对话 Agent」设置段（agentURLString/agentUser/agentPass/cccHomePath 字段） | 删除 |
+| ContentView.swift | 「新服务端（T19 壳迁移）」设置段 | 合并为「服务端连接」，改用 serverURLString/authUser/authPass |
+| ContentView.swift | sidecar 相关注释/help 文本 4 处 | 更新为 neutral 描述 |
+| Models.swift | TaskArtifacts/FailureRecord 死结构体 | 删除 |
+| Models.swift | ChatStreamEvent 注释 sidecar 引用 | 清理 |
+| ConversationStore.swift | claudeSessionId 注释 sidecar 引用 | 清理 |
+| QuickPrompts.swift | transfer-outbox/sidecar 注释引用 3 处 | 清理 |
+| LocalSessionStore.swift | reset() 注释 sidecar 引用 | 清理 |
 
 ### 删除文件清单 / 保留文件清单
 
-（执行后填写）
+**本次清理未新增/删除文件**（T26 主体重构已删除 10 个 Source 文件 + 7 个测试文件，本次是在此基础上做深度清理）。
+
+**修改的文件（8 个）：**
+- AppModel.swift（主要清理：属性/方法删除、配置合并、重命名）
+- BoardOpsModels.swift（sidecar-down 告警逻辑移除、agentOk 参数移除）
+- OpsView.swift（Agent domainChip 移除）
+- ContentView.swift（旧 UI 段移除、配置合并、注释清理）
+- Models.swift（死结构体删除、注释清理）
+- ConversationStore.swift（注释清理）
+- QuickPrompts.swift（注释清理）
+- LocalSessionStore.swift（注释清理）
+
+**保留文件清单（未触及）：** APIClient.swift、AcceptanceText.swift、BoardView.swift、CCCDesktopApp.swift、Components/ 下文件、WindowChatState.swift 等。
 
 ### 验证输出
 
-（执行后填写：grep 结果、swift build、swift test、运行冒烟）
+**grep 旧符号验证：**
+```
+# 全仓 desktop/Sources + desktop/Tests 扫描
+grep "17777"           → 零命中
+grep "/api/"           → 仅 2 处 MARK 文档注释（BoardOpsModels.swift:134, 649）
+grep "sidecar"         → 零命中
+grep "outbox"          → 零命中
+grep "hubTunnel"       → 零命中
+grep "useNewServer"    → 零命中
+grep "agentURL"        → 零命中
+grep "newServerURL"    → 零命中
+grep "opsAgent"        → 零命中
+grep "agentLLM"        → 零命中
+grep "TaskArtifacts"   → 零命中
+grep "FailureRecord"   → 零命中
+```
+
+**构建测试：**
+```
+swift build → 零错误（0 errors, 3 pre-existing warnings unrelated）
+swift test  → 31/31 passed, 0 failures
+```
+
+**提交：**
+```
+f33f65d chore(desktop): T26-R 桌面端自查清理——去冗余/死代码/旧协议残留
+31 files changed, 1223 insertions(+), 12388 deletions(-)
+→ git push → main
+```
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+| # | 验收标准 | 状态 |
+|---|---------|------|
+| 1 | 全仓旧符号零命中或仅文档注释 | ✅ 通过 |
+| 2 | swift build 零错误，swift test 全绿，无 unused 警告 | ✅ 通过（0 errors, 31/31） |
+| 3 | 无冗余：服务端地址键唯一、无重复 URL 构造、无只写不读状态 | ✅ 通过 |
+| 4 | UI 无旧功能入口；对话/看板/运维/项目/线程可用 | ✅ 通过 |
+| 5 | 真实提交 + push；M1 工作树仅剩预存 2 项；卡头状态已同步 | ✅ 通过（f33f65d） |
