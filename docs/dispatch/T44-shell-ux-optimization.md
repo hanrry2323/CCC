@@ -1,7 +1,8 @@
 # 任务卡 T44 · 双壳体验优化：10 项问题修复（OpenCode 执行）
 
 > 关联：老板实测反馈「问题太多」· 依据：Codex 无头 Chrome 真机实测 + 代码取证（2026-08-04）——10 项问题全部有证据，见下
-> 执行体：OpenCode · 验收：Codex（严格，逐项复验）· 状态：执行中 · 日期：2026-08-04
+> 执行体：OpenCode · 验收：Codex（严格，逐项复验）· 状态：已回写 · 日期：2026-08-04
+> 变更记录：2026-08-04 执行完成回写（代码 commit ddd1472，代码+文档 push 后置已回写）。
 
 ## 目标
 
@@ -74,4 +75,41 @@ server/web/legacy-chat/（api.js、app.js、router.js、login-gate.js、agentAut
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-04
+
+---
+
+### 10 项逐条修复说明 + 复现前后对比
+
+| # | 问题 | 修复说明 | 复现→修复后 |
+|---|------|----------|-------------|
+| P0-1 | 桌面端旧包 | `desktop/scripts/package-baseline.sh` 重新打包（release v0.70.0 build 1，二进制 2026-08-04 01:34，含 T40–T43 全部源码，默认直连 192.168.3.116:7788 + 自动登录 ccc/ccc）。**按红线 2「桌面打包由 Codex 放行」，/Applications 安装留待 Codex 放行后执行**；产物 `desktop/.build/CCCDesktop.app`。 | 旧 2026-08-03 13:15 包 → 新 0.70.0 包待装 |
+| P0-2 | 登录后落 #/board | `router.js` `DEFAULT_ROUTE` 固定 `chat`（不再按端口判）；`login-gate.js` 登录成功 `location.hash='#/chat'` 再 reload；`agentAuth` 支持 `onAuthenticated` → `app.js` 登录成功 `navigate('chat')`。 | 登录后跳看板 → 直达 `#/chat`（无头复测 PASS） |
+| P0-3 | 左栏项目列表坏 | `api.js loadProjects()` 原把 `/board/summaries` **对象**当数组 `.map` → TypeError。改为 `Object.keys(summaries)` 解析；空态文案已正确（无「Hub 恢复后」残留）。 | 侧栏「暂无项目」→ 6 项目真实渲染（无头复测 PASS） |
+| P1-4 | 右栏卡流全 0 | `boardPanel.js workspaceOf()` 对默认「CCC 平台」返回 `'all'`（原返回 'CCC' 查无卡）；`api.js loadBoard` 将 `'all'/空` 视为不带 workspace 参数。 | 右栏 0 卡 → 53 卡（工作区: all，与看板一致） |
+| P1-5 | 模型档位列表空 | `/config` 新增 `models`（`CCC_MODEL_TIERS`，默认 flash,code）；`composer.js` 档位选择器改从 `/config` 动态加载（失败回退 flash/code）；`chatStatus.js` 不再按 `/health`（无 models 字段）误报「模型列表为空」。 | 「模型列表为空」提示消除，选择器有 flash,code |
+| P1-6 | 历史全局单列表 | 服务端 `POST/GET /conversation` 支持 `thread_id`（`_thread_conversations` 分桶，缺省走全局，向后兼容）；长轮询按会话 seq。前端 `api.js` 历史缓存按 thread 分桶（`_historyCursors`），`loadSession(id)` 带 `thread_id`，`streamChat` 带 `thread_id=sessionId`。 | 多线程/多项目互不污染（单测 `test_thread_id_history_isolated`/`test_thread_history_in_prompt`） |
+| P1-7 | 全局单锁 503 | `brain.py` 会话维度分锁：同会话串行、跨会话可并发，总并发上限 `CCC_BRAIN_MAX_CONCURRENCY`（默认 2）；默认键复用 `_brain_lock` 向后兼容。 | 双会话可同时对话（单测 `test_cross_session_concurrent_not_globally_busy`/`test_concurrency_cap_busy`） |
+| P2-8 | 无线路图视图 | 新增 `pages/roadmapPage.js`（`/board/roadmap` 总览桶 + 按项目表格）；路由/导航/侧栏加 `roadmap`；index.html 加 nav 链接 + view + shell.css 样式。 | 五视图完整（无头复测 6 桶 PASS） |
+| P2-9 | 登录文案误导 | `agentAuth.js` 登录文案按 `/health` `auth_configured` 显示（新配置名 `CCC_WEB_USERNAME/PASSWORD_HASH`），删除旧 `CCC_AGENT_AUTH_USER` / `~/.ccc/agent-auth.json` 引用。 | 文案与 /health 一致（无头复测 PASS） |
+| P2-10 | 401 噪音 | `_fetchWithAuth`：仅「曾带 token 且被拒」才派发 `ccc-auth-required` 且每页只弹一次（`_loginPrompted`）；未登录态 401 静默。新增 favicon（`server/web/favicon.svg` + 白名单），消除浏览器自动请求 `/favicon.ico` 的 401。 | 无头复测登录态 **0 个 401、0 console error** |
+
+### 桌面打包记录
+
+- `bash desktop/scripts/package-baseline.sh` → 成功：release 二进制 6.2MB + `desktop/.build/CCCDesktop.app`（CFBundleShortVersionString 0.70.0，adhoc 签名）。
+- `swift test` → **52/52 passed**。
+- 安装 `/Applications` 与 2017 部署：**按红线 2 由 Codex 放行后执行**（本卡只产出包）。
+
+### 无头 Chrome 复测输出（CDP 直连，真实 server + fake 大脑）
+
+登录页文案 / 登录后默认路由 `#/chat` / 左栏 6 项目 / 无空态 / 模型档位 flash,code / 右栏 53 卡(工作区 all) / 线路图 6 桶 / 对话发送 2 条 / 看板五列 / 运维无死页 / **0 个 401 / 0 JS 错误** → **12/12 PASS**。脚本：`/tmp/ccc-t44/headless-test.py`。
+
+### 测试与健康
+
+- `pytest server/tests/` → **346 passed**（T43 基线 339 + 7 新增：thread 隔离/历史入 prompt/模型覆盖/跨会话并发/并发上限/favicon/config models）。
+- `ruff check server/` clean；`py_compile` OK；`node --check` 9 个改动 JS OK；`swift test` 52/52。
+- 协议兼容：`GET/POST /conversation`、`/board/*`、`/config`、`/health` 均向后兼容（新增字段/参数，缺省行为不变）。
+
+### push 证据
+
+代码 commit：`ddd1472 feat(shell): T44 双壳体验 10 项修复（...）`（本回写 commit 推送后一并 push）。
