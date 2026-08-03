@@ -30,10 +30,6 @@ enum LocalSessionStore {
         rootURL.appendingPathComponent("projects-cache.json")
     }
 
-    static var pendingSyncURL: URL {
-        rootURL.appendingPathComponent("pending-sync.json")
-    }
-
     static func boardCacheURL(projectId: String) -> URL {
         let safe = projectId.replacingOccurrences(of: "/", with: "_")
         return rootURL.appendingPathComponent("board-cache-\(safe).json")
@@ -81,12 +77,6 @@ enum LocalSessionStore {
         var title: String?
         var updated_at: String?
         var project_id: String?
-    }
-
-    struct PendingSyncItem: Codable, Hashable {
-        var project_id: String
-        var thread_id: String
-        var attempts: Int
     }
 
     struct ProjectsCache: Codable {
@@ -510,57 +500,6 @@ enum LocalSessionStore {
         return try? JSONDecoder().decode(ProjectsCache.self, from: data)
     }
 
-    // MARK: - Hub sync retry queue
-
-    static func enqueueSync(projectId: String, threadId: String) {
-        var q = loadPendingSync()
-        if let i = q.firstIndex(where: { $0.project_id == projectId && $0.thread_id == threadId }) {
-            q[i].attempts += 0 // keep
-        } else {
-            q.append(PendingSyncItem(project_id: projectId, thread_id: threadId, attempts: 0))
-        }
-        writePendingSync(q)
-        if var rec = load(projectId: projectId, threadId: threadId) {
-            rec.needs_hub_sync = true
-            save(rec)
-        }
-    }
-
-    static func dequeueSync(projectId: String, threadId: String) {
-        var q = loadPendingSync()
-        q.removeAll { $0.project_id == projectId && $0.thread_id == threadId }
-        writePendingSync(q)
-        if var rec = load(projectId: projectId, threadId: threadId) {
-            rec.needs_hub_sync = false
-            save(rec)
-        }
-    }
-
-    static func loadPendingSync() -> [PendingSyncItem] {
-        guard let data = try? Data(contentsOf: pendingSyncURL),
-              let q = try? JSONDecoder().decode([PendingSyncItem].self, from: data)
-        else { return [] }
-        return q
-    }
-
-    static func bumpAttempt(projectId: String, threadId: String) -> Int {
-        var q = loadPendingSync()
-        if let i = q.firstIndex(where: { $0.project_id == projectId && $0.thread_id == threadId }) {
-            q[i].attempts += 1
-            writePendingSync(q)
-            return q[i].attempts
-        }
-        return 0
-    }
-
-    private static func writePendingSync(_ q: [PendingSyncItem]) {
-        ensureDir(rootURL)
-        guard let data = try? JSONEncoder().encode(q) else { return }
-        try? data.write(to: pendingSyncURL, options: .atomic)
-    }
-
-    static let maxSyncAttempts = 5
-
     // MARK: - Board disk cache
 
     static func saveBoardCache(
@@ -590,53 +529,8 @@ enum LocalSessionStore {
 
     // MARK: - Display compaction
 
-    /// 显示压缩阈值：消息数 > 80（约 40 轮）或 token 估算 > 30k 触发
-    static let compactMessageThreshold = 80
-    static let compactTokenThreshold = 30_000
-    /// 单次压缩保留最早的轮数被替换为摘要卡；保留最近 ~30 条不动
-    static let compactKeepRecent = 30
-
     /// 粗估 token：4 字符 ≈ 1 token
     static func estimateTokens(_ messages: [ChatMessage]) -> Int {
         messages.reduce(0) { $0 + $1.content.count } / 4
-    }
-
-    /// 若消息超阈值，把最早 N 轮替换为一条 kind=summary 的占位卡片。
-    /// 返回 (新消息, 是否压缩, 被压缩轮数)；不超阈值返回原消息。
-    static func compactIfNeeded(_ messages: [ChatMessage]) -> (messages: [ChatMessage], didCompact: Bool, rounds: Int) {
-        guard messages.count > compactMessageThreshold
-                || estimateTokens(messages) > compactTokenThreshold
-        else { return (messages, false, 0) }
-
-        // 跳过已有 summary 卡片，找首个非 summary 的 user/assistant
-        let firstReal = messages.firstIndex(where: { $0.kind == "chat" }) ?? 0
-        let keepStart = max(firstReal, messages.count - compactKeepRecent)
-        let toCompact = Array(messages[firstReal..<keepStart])
-        guard toCompact.count >= 4 else { return (messages, false, 0) }
-
-        // 统计被压缩轮数（user 消息数）
-        let rounds = toCompact.filter { $0.role == "user" }.count
-        let summary = ChatMessage(
-            role: "assistant",
-            content: "已压缩 \(rounds) 轮对话（保留最近 \(compactKeepRecent) 条）",
-            kind: "summary",
-            summaryRounds: rounds
-        )
-        var result: [ChatMessage] = []
-        // 保留前置 summary 卡片
-        result.append(contentsOf: messages[..<firstReal])
-        result.append(summary)
-        result.append(contentsOf: messages[keepStart...])
-        return (result, true, rounds)
-    }
-
-    static func isExhaustRepairHint(_ text: String) -> Bool {
-        let low = text.lowercased()
-        let keys = [
-            "hang_detected", "hang auto-restart", "short_path_fail",
-            "acceptance_cmd_failed", "fail_loop_exhausted", "unresolvable",
-            "phase graph", "retry budget", "耗尽",
-        ]
-        return keys.contains { low.contains($0) || text.contains($0) }
     }
 }

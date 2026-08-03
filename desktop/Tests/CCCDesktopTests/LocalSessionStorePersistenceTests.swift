@@ -22,20 +22,6 @@ final class LocalSessionStorePersistenceTests: XCTestCase {
         }
     }
 
-    // MARK: - sync 队列
-
-    func testSyncQueueEnqueueDedupBumpDequeue() {
-        LocalSessionStore.enqueueSync(projectId: "p", threadId: "p::t1")
-        LocalSessionStore.enqueueSync(projectId: "p", threadId: "p::t1") // 去重
-        XCTAssertEqual(LocalSessionStore.loadPendingSync().count, 1)
-        XCTAssertEqual(LocalSessionStore.bumpAttempt(projectId: "p", threadId: "p::t1"), 1)
-        XCTAssertEqual(LocalSessionStore.bumpAttempt(projectId: "p", threadId: "p::t1"), 2)
-        LocalSessionStore.enqueueSync(projectId: "p", threadId: "p::t2")
-        XCTAssertEqual(LocalSessionStore.loadPendingSync().count, 2)
-        LocalSessionStore.dequeueSync(projectId: "p", threadId: "p::t1")
-        XCTAssertEqual(LocalSessionStore.loadPendingSync().map(\.thread_id), ["p::t2"])
-    }
-
     // MARK: - saveMessages / downgrade protection
 
     func testSaveMessagesRoundTripAndRevision() {
