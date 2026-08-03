@@ -416,7 +416,7 @@
 
   <!-- ============ 开发阶段 ============ -->
   <section id="phases">
-    <div class="sec-head"><div class="idx" style="color:var(--emerald)">04</div><h2>开发阶段 P0–P5</h2><span class="tag">P0–P5 全部完成 · 收尾阶段</span></div>
+    <div class="sec-head"><div class="idx" style="color:var(--emerald)">04</div><h2>开发阶段 P0–P5 + 收口</h2><span class="tag">P0–P5 + 收口 T31–T39 全部完成 · 2026-08-03</span></div>
     <div class="card"><div class="tl">
       <div class="tl-item done"><h3>P0 · 清场 <span class="badge ok">完成</span></h3>
         <p>立保留清单（红线/权威基线保留）→ CCC 仓内旧协议归档 → HP 中 CCC 旧记录标废弃。</p></div>
@@ -434,13 +434,12 @@
         <p>定时任务归 Engine；集群状态与运维页采集独立重做。</p></div>
       <div class="tl-item done"><h3>P5 · 知识移植 → 移交 <span class="badge ok">完成</span></h3>
         <p>一次性种子移植（节点/路径/项目元数据/决策/教训）→ CCC 独立运行，外脑回归纯顾问。</p></div>
-      <div class="tl-item doing"><h3>收尾 T12–T17 <span class="badge" style="color:var(--amber);border-color:rgba(251,191,36,.35)">收尾中</span></h3>
+      <div class="tl-item done"><h3>收口 T31–T39 <span class="badge ok">全部关闭</span></h3>
         <ul>
-          <li>✅ 退役第一阶段（构建产物清理 + 小模块归档）</li>
-          <li>✅ 壳对接服务端侧（HTTP API + 鉴权 + 桌面端指向就绪）</li>
-          <li>✅ 全量验收（T17：P0=0，P1×3 已修）</li>
-          <li>⏳ 退役第二阶段（scripts/ 归档 + 2017 旧引擎停止）——待放行</li>
-          <li>⏳ 壳迁移（7788 对话口 / 桌面端切换）——待放行</li>
+          <li>✅ 文档基线切新架构（T31）/ Engine 真派发（T32）/ 硬编码清零（T33）/ 双壳清理（T34）/ 挂账回归（T35）</li>
+          <li>✅ M2 生产验证：2017 全链路实测（真实卡 待分派→执行中→已回写→看板派生）</li>
+          <li>✅ M4 知识移植 + 独立移交（T36 种子刷新 / T37 大脑接库 / T38 零外脑验收）</li>
+          <li>✅ T39：Engine 派发按执行体绑定优先（M4 观察项闭环，2017 实测 Trae 卡挂起不拉起）</li>
         </ul></div>
     </div></div>
   </section>
@@ -452,31 +451,64 @@
       <div class="card ms"><div class="m">M1</div><p>契约定稿<br>（P0 + P1 完成）</p><span class="badge ok">达成</span></div>
       <div class="card ms"><div class="m">M2</div><p>全流程跑通（新栈 E2E）</p><span class="badge ok">达成</span></div>
       <div class="card ms"><div class="m">M3</div><p>线路图上线<br>（P3 完成）</p><span class="badge ok">达成</span></div>
-      <div class="card ms"><div class="m" style="font-size:22px"><span class="grad">M4</span></div><p>CCC 独立移交日：退役执行 + 壳对接完成 + E2E 跑通</p><span class="badge" style="color:var(--amber);border-color:rgba(251,191,36,.35)">前哨就绪 · 两项待放行</span></div>
+      <div class="card ms"><div class="m" style="font-size:22px"><span class="grad">M4</span></div><p>CCC 独立移交日：知识移植完成 · 零外脑验收 · INT-120 关闭</p><span class="badge ok">达成（2026-08-03）</span></div>
     </div>
   </section>
 
   <!-- ============ 线路图 ============ -->
   <section id="roadmap">
-    <div class="sec-head"><div class="idx" style="color:var(--violet)">06</div><h2>项目线路图（当前状态）</h2><span class="tag">派生视图 · 状态自动聚合</span></div>
+    <div class="sec-head"><div class="idx" style="color:var(--violet)">06</div><h2>开发路线（当前状态 · 2026-08-03）</h2><span class="tag">已开发 12 项 · 缺口 10 项 · 总体完善度 90/100</span></div>
+
     <div class="card">
-      <div class="chip-row" style="margin-bottom:16px">
-        <span class="chip">未开发 0</span>
-        <span class="chip">开发中 0</span>
-        <span class="chip">已开发待验收 0</span>
-        <span class="chip">已验收待确认 0</span>
-        <span class="chip ok">确认可用 21</span>
-        <span class="chip warn">有问题（打回）3</span>
-      </div>
+      <h3 style="margin-bottom:10px">重点功能模块 · 完善度（100 分满分）</h3>
       <table>
-        <thead><tr><th style="width:36%">M4 门槛</th><th style="width:28%">状态</th><th>说明</th></tr></thead>
+        <thead><tr><th style="width:26%">模块</th><th style="width:10%">完善度</th><th style="width:14%">状态</th><th>说明 / 依据</th></tr></thead>
         <tbody>
-          <tr><td><b>E2E 全链路流程测试</b></td><td><span class="chip ok">✅ 完成</span></td><td>新栈任务卡→Engine→回写→看板→线路图全链路跑通（T14-R）</td></tr>
-          <tr><td><b>旧系统退役</b></td><td><span class="chip ok">✅ 第一阶段</span> <span class="chip" style="color:var(--amber);border-color:rgba(251,191,36,.35)">⏳ 第二阶段待放行</span></td><td>构建产物已清、小模块已归档；scripts/ 归档 + 2017 旧引擎停止待新栈接管 qb 后放行</td></tr>
-          <tr><td><b>壳对接</b></td><td><span class="chip ok">✅ 服务端侧</span> <span class="chip" style="color:var(--amber);border-color:rgba(251,191,36,.35)">⏳ 迁移待放行</span></td><td>HTTP API + Bearer 鉴权 + 桌面端指向就绪；7788/桌面端实际切换待放行</td></tr>
-          <tr><td><b>M1 旧中转站</b></td><td><span class="chip ok">双轨并行中</span></td><td>M1 :4100/4102 保留；2017 :6100/6102 独立实例；停用时机另定</td></tr>
+          <tr><td><b>文档流转 + 任务卡 + 看板</b></td><td><b>95</b></td><td><span class="chip ok">生产可用</span></td><td>卡头状态机 / 回写 / board 派生 / 六视图全通；M2 生产实测卡头流转</td></tr>
+          <tr><td><b>薄驱动 Engine</b></td><td><b>90</b></td><td><span class="chip ok">生产运行</span></td><td>真实 Popen 派发 / 收单 / 超时 / FileBoardStore 接真实卡 / 按执行体绑定派发（T39）；催单仅日志、无自动重派</td></tr>
+          <tr><td><b>HTTP 服务 + 四视图</b></td><td><b>92</b></td><td><span class="chip ok">生产运行</span></td><td>2017 :7788、账号密码 + token、/config 白名单；对话/看板/运维/线路图全 200；运维页深度不足、手机/平板未实测</td></tr>
+          <tr><td><b>桌面壳（Swift）</b></td><td><b>88</b></td><td><span class="chip ok">已安装</span></td><td>协议对齐壳化收敛、v0.70 打包安装；GUI 端到端待老板界面实测</td></tr>
+          <tr><td><b>大脑 Agent + 知识库</b></td><td><b>85</b></td><td><span class="chip ok">生产可用</span></td><td>/conversation 调 2017 Claude Code + KB BM25 检索注入（编号歧义实测通过）；无持久记忆、KB MCP 未接调用方</td></tr>
+          <tr><td><b>中转站基建</b></td><td><b>95</b></td><td><span class="chip ok">常驻</span></td><td>2017 6100/6102 launchd 自愈、Claude/OpenCode/Engine 三调用方、M1 4100/4102 双轨保留</td></tr>
+          <tr><td><b>定时任务</b></td><td><b>70</b></td><td><span class="chip warn">半成品</span></td><td>只读巡检（cluster-collect）跑通；变更类框架在、无注册实例、无真实到点发单</td></tr>
+          <tr><td><b>独立移交与治理</b></td><td><b>95</b></td><td><span class="chip ok">达成</span></td><td>D2/D3 零外脑验收、M4 主档落档、INT-120 关闭、T39 观察项闭环</td></tr>
         </tbody>
       </table>
+      <p style="margin-top:12px;color:var(--muted)"><b>总体完善度：90 / 100</b> —— 核心链路全通且 2017 生产验证；扣分项 = 定时变更类 / 运维页深度 / 对话记忆 / KB MCP 接入 / 跨设备实测，均为深度完善项，无阻塞项。</p>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:10px">已开发（12 项，全链路生产验证）</h3>
+      <ul>
+        <li>薄驱动 Engine：注册表加载 → 真实拉起（Popen）→ 收单 → 状态机流转 → FileBoardStore 接真实任务卡</li>
+        <li>派发按卡头执行体绑定优先（T39：Trae 手动卡只挂起不拉起，生产实测）</li>
+        <li>文档流转：任务卡格式 / 卡头状态机 / 回写协议 / board 派生视图</li>
+        <li>看板：实时 / 7 天 / 项目 / 线路图 / 集群 / 运维六视图 + HTTP API</li>
+        <li>HTTP 服务：2017 :7788 单端、账号密码 + token 鉴权、/config 配置注入</li>
+        <li>大脑 Agent：/conversation → 2017 Claude Code（6100 出口）+ KB 检索注入 + 编号区分</li>
+        <li>知识库：四类种子（2026-08-03 刷新）、BM25 索引 80 文档、search / MCP 服务</li>
+        <li>中转站：6100/6102 常驻自愈、三调用方实测</li>
+        <li>桌面壳：Swift 协议对齐、旧 Hub 调用清零、v0.70 打包安装</li>
+        <li>配置化：config.env / executors.json 驱动、零硬编码扫描、CI / pre-commit 切新栈</li>
+        <li>调度器：只读巡检（cluster-collect）+ 变更类任务框架</li>
+        <li>独立移交：M2 生产验证、M4 零外脑验收、INT-120 关闭</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:10px">未开发 / 缺口（10 项，按优先级）</h3>
+      <ul>
+        <li><b>定时任务变更类</b>：到点生成任务卡并派发——框架在、无实例（完善度拉低主因）</li>
+        <li><b>运维页深度</b>：/ops/summary 的 quality / resources / history 等字段为 null，仅 overview + 服务清单子集</li>
+        <li><b>线路图「确认可用」写回</b>：目前只有派生视图，人工确认无 API / 无写回动作</li>
+        <li><b>KB MCP 接入调用方</b>：mcp_server 存在 + 自测，大脑实际走 search.py 直连，MCP 未落地使用</li>
+        <li><b>对话持久记忆</b>：brain 历史在内存（_conversations），服务重启即失</li>
+        <li><b>催单 / 超时自动重派</b>：Engine 只有催单日志，无自动重派动作</li>
+        <li><b>手机 / 平板壳实测</b>：HTTP 页面在，跨设备访问未实测</li>
+        <li><b>桌面端 GUI 端到端实测</b>：待老板界面确认</li>
+        <li><b>知识库常态化维护</b>：M4 起新决策/教训只写 knowledge/，但无定期刷新 / 校验机制</li>
+        <li><b>2017 运维备份清理</b>：config .bak 手动保留，无自动清理策略</li>
+      </ul>
     </div>
   </section>
 
@@ -506,7 +538,7 @@
           <tr><td><b>线路图漂移</b></td><td>状态自动聚合，人只确认</td></tr>
           <tr><td><b>最强脑成本</b></td><td>只用在方案 / 验收 / 裁决三处</td></tr>
           <tr><td><b>过渡期 QXMAP 职责过重</b></td><td>递减移交，以 M4 为界</td></tr>
-          <tr><td><b>停 M1 中转站未切换调用方</b>（Claude Code / OpenCode / Codex）</td><td>CCC 自带中转站就绪并切换后再停</td></tr>
+          <tr><td><b>M1 中转站双轨并行</b></td><td>2026-08-02 决议：M1 :4100/4102 长期保留，2017 :6100/6102 为 CCC 专用；不停用、无切换压力</td></tr>
           <tr><td><b>硬编码回潮</b></td><td>验收含硬编码扫描；注册表 / 路径权威表 / 配置化强制</td></tr>
         </tbody>
       </table>
@@ -517,6 +549,7 @@
   <section id="log">
     <div class="sec-head"><div class="idx" style="color:var(--violet)">09</div><h2>更新日志</h2><span class="tag">每次讨论收口后更新本页</span></div>
     <div class="card"><div class="log">
+      <div class="log-item"><div class="date">2026-08-03 · 全天</div><p><b>重构收口 + M2/M4 + T39 全部闭环</b>：T31–T35 五卡严格验收关闭（文档基线 / Engine 真派发 / 硬编码清零 / 双壳清理 / 挂账回归）；M2 生产验证通过（2017 Engine→claude→卡头回写→看板全链路）；M4 知识移植独立移交完成（T36 种子刷新 / T37 大脑接库 / T38 零外脑验收 + 编号歧义实测）；T39 Engine 按执行体绑定派发并生产验证；INT-120 关闭。本页更新至 2026-08-03 当前状态（总体完善度 90/100，含模块评分与缺口清单）。</p></div>
       <div class="log-item"><div class="date">2026-08-02 · 深夜</div><p><b>全量验收通过（T17）</b>：P0=0、P1×3 修复（loader base_state 断言 / web 鉴权适配 / README 对齐）；M4 三门槛完成 E2E + 退役第一阶段 + 壳对接服务端侧；24 任务卡全闭环；本页更新至当前状态。</p></div>
       <div class="log-item"><div class="date">2026-08-02 · 晚间</div><p><b>v2 完善版</b>：重排方案，新增 D10 杜绝硬编码、终态拓扑（2017 单端 / 任意设备壳）、契约清单；本页上线。</p></div>
       <div class="log-item"><div class="date">2026-08-02 · 下午</div><p><b>D9 中转站并入</b>：ai-loop-router 作为 CCC 基建配属，随服务端部署 2017；M1 旧实例调用方切换后停用。</p></div>
@@ -546,8 +579,8 @@
 </script>
 
 <footer>
-  管理席：Codex（QXMAP 对话 · INT-120）&nbsp;·&nbsp; 执行：Trae（积分过渡期）&nbsp;·&nbsp; 后期主力：OpenCode / Claude Code &nbsp;·&nbsp; 验收：Codex<br>
-  本页为静态页面，无 API；方案每次讨论收口后由 Codex 更新。最终裁决以方案文档为准。
+  管理席：Codex · 执行：Trae（GLM5.2）/ OpenCode / Claude Code · 验收：Codex<br>
+  本页为静态页面，无 API；方案每次讨论收口后由 Codex 更新。最终裁决以方案文档为准。更新：2026-08-03（重构收口 + M4 移交后基线）
 </footer>
 
 </body>
