@@ -1,7 +1,7 @@
 # 任务卡 T30 · HTTP 页面重构（修复登录 bug + 页面功能/UI 按新栈方案重做）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳，HTTP 直连 2017 对话/看板/运维；多壳锁门账号密码+token）· 依据：老板 2026-08-03 指示「HTTP 页面还没重构，看清单页功能、UI 然后出方案；特别是账号密码登录不了」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 
 ## 根因（Codex 已实锤）
 
@@ -126,3 +126,23 @@ T30 HTTP 页面重构完成：登录 bug 根因（token 键不统一 + /health �
 | 2 | 页面功能全走新协议：对话 /conversation、看板 /board/*、运维 /ops/summary、项目 /board/summaries；零旧 /api/* 调用 | ✅ grep 零旧 fetch('/api/...')；旧组件 no-op |
 | 3 | UI 为桌面端 Claude 风格（暖米色/橙红/serif/气泡/composer/主题切换），四视图视觉一致 | ✅ themes.css + theme.js + theme-init.js 恢复深/浅切换 |
 | 4 | pytest 全绿；三扫描零命中；真实提交；M1 工作树仅剩预存 2 项；卡头状态已同步 | ✅ 209 passed；三扫描 0；commit dc57178；工作树剩 .ccc/agent-mind/decided.json + _update_handoff.py；卡头→已回写 |
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 提交 | `dc57178`（13 文件 +581/-1897）+ `bcbb18b` 回写真实；2017 HEAD=dc57178 已同步 ✅ |
+| 登录修复 | 2017 实测：/health 含 `auth_required/auth_configured`；token 键统一 `ccc_chat_token`（auth.js/agentAuth.js/api.js 三处一致）；ccc/ccc 换 token → 四接口全 200；错误密码 401 ✅ |
+| 功能新协议 | 带 token `/board/states` `/board/snapshot` `/ops/summary` `/conversation` 全 200（经大脑 Agent）；旧 `/api/*` fetch 零命中（dispatchCard.js 仅注释且未挂载=死代码）✅ |
+| UI 风格 | themes.css 含 `#d97a55` 橙红 accent；theme.js 深/浅/system 三态切换恢复 ✅ |
+| 测试 | 独立跑 `pytest server/tests/` → **209 passed** ✅ |
+| 双端部署 | 2017 web-server（PID 37587）在跑、7788 监听 ✅ |
+| 工作树 | M1 仅剩预存项 ✅ |
+
+**遗留登记**：2017 `server/config/config.env.bak.T29` 未跟踪备份仍在（同 T29 遗留）；`dispatchCard.js` 未挂载死代码（T25 遗留，清理轮处理）。
+
+**结论**：登录 bug 修复、页面功能全走新栈协议、UI 按 Claude 风格收口——HTTP 页面重构闭环，老板可直接登录使用。
