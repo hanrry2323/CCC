@@ -1,10 +1,13 @@
-"""Engine 主入口 — 配置加载 + 主循环（薄驱动，只做编排，不真拉执行体）。
+"""Engine 主入口 — 配置加载 + 主循环（薄驱动，负责真实派发/收单）。
 
 用法：
     $PYTHON_BIN -m server.engine.main --config <config.env>        # 持续模式（循环 + 心跳）
     $PYTHON_BIN -m server.engine.main --config <config.env> --once  # 单次扫描 + 收单后退出
 
 `--once` 输出一行 JSON 统计；缺 `--config` 或配置缺失 → 非零退出并报错。
+
+Engine 职责（契约 §2/§7）：读取执行体注册表 → 派发（可后台 CLI 自动拉起 / 手动 GUI 挂起）→
+收单（按退出码 + 输出判定）→ 状态机流转（待分派 → 执行中 → 已回写/打回 → 已关闭）。
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ DEFAULT_HEARTBEAT_SECONDS = 60
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="ccc-engine",
-        description="CCC Engine 薄驱动核心（只做编排，T4 前不真拉执行体）",
+        description="CCC Engine 薄驱动核心（负责真实派发/收单）",
     )
     parser.add_argument("--config", required=True, help="config.env 路径（必填）")
     parser.add_argument("--once", action="store_true", help="单次扫描 + 收单后退出")
@@ -48,12 +51,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run_once(registry: ExecutorRegistry, store: BoardStore) -> dict[str, int]:
-    """单次扫描 + 派发 + 收单（T2 占位）。
+    """单次扫描 + 派发 + 收单。
 
     1. 扫描「待分派」work；
-    2. 按注册表决策派发：可后台 CLI → 写「模拟拉起」日志；手动 GUI → 挂起等人；
+    2. 按注册表决策派发：可后台 CLI → 拉起执行体；手动 GUI → 挂起等人；
        管理席/验收席/未知角色 → 不派发；
-    3. 收单：无真实执行结果（T4 前），仅统计在飞数量。
+    3. 收单：按退出码 + 输出判定 → 状态机流转（执行中 → 已回写/打回）。
     """
     pending = store.list_work(state=State.TODO)
     dispatched = 0
@@ -89,7 +92,7 @@ def run_loop(
     store: BoardStore,
     heartbeat_interval: int,
 ) -> None:
-    """持续模式：每轮扫描 + 收单，心跳占位。"""
+    """持续模式：每轮扫描 + 派发 + 收单，心跳 + 催单日志。"""
     logger.info("Engine 持续模式启动（T4 前不真拉执行体）")
     while True:
         summary = run_once(registry, store)

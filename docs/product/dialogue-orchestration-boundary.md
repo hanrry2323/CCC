@@ -1,5 +1,9 @@
 # 对话面 / 编排面 / 运维面 边界契约（项目基线）
 
+> **⚠ 待核（T31 文档基线收口）** — 本文描述 2026-08-02 重构定稿前的旧架构（Hub :7777 / 三面分离 / M1+Mac2017 双机）。
+> 现行权威 = [`../INDEX.md`](../INDEX.md) §0：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；本文已被重构方案取代（史）。
+> 本文完整重写待后续卡处理或归档。
+
 > **架构基线（过桥 + 三面职责）**。**事实权威（代码/看板/透镜/运维灯）以 [`loop-engineer-authority.md`](loop-engineer-authority.md) 为准**；冲突时改本文对齐它。  
 > 相关：[`transfer-gate.md`](transfer-gate.md) · [`flow-events.md`](flow-events.md) · [`desktop-connection.md`](desktop-connection.md) · [`ccc-desktop-architecture.md`](ccc-desktop-architecture.md)
 

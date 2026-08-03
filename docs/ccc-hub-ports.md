@@ -1,5 +1,9 @@
 # CCC Hub 端口 · 账密 · 运维（权威）
 
+> **⚠ 待核（T31 文档基线收口）** — 本文描述 2026-08-02 重构定稿前的旧端口（Hub :7777 / Board :7775 / sidecar :7788 / Cockpit :7778）。
+> 现行权威 = [`INDEX.md`](INDEX.md) §0：2017 单端 :7788（HTTP 直连，账号密码 + token）；旧端口已退役。
+> 本文完整重写待后续卡处理。
+
 > 更新日期：2026-07-21（双口纠偏）  
 > **编排口**：`http://<Mac2017>:7777`（看板 / 运维 / transfer API）  
 > **对话口**：`http://<M1>:7788`（sidecar；见 [`product/hub-remote-management.md`](product/hub-remote-management.md)）  

@@ -1,23 +1,42 @@
 # CCC 发展路线图
 
-> **现行叙事**：[`VISION.md`](VISION.md) · **版本**：根目录 `VERSION`  
-> **下阶段北星（唯一）**：[`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)  
-> 本文底部为 v0.19–v0.26 **历史归档**；勿用下文「Hub 为入口」等旧口径覆盖 VISION。
+> **现行叙事**：[`VISION.md`](VISION.md) · **版本**：根目录 `VERSION`（v0.70.0）  
+> **权威链**：[`INDEX.md`](INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）  
+> 本文底部为 v0.19–v0.26 **历史归档**；勿用下文「Hub 为入口」等旧口径覆盖重构决策。
 
 ---
 
 ## 当前方向（索引）
 
-| 已定型 | 说明 |
-|--------|------|
-| Desktop 对话壳 | M1 Desktop + sidecar；定意图 → transfer |
-| Hub 编排 API | Mac2017；transfer / flow / board；非主聊天 |
-| Loop Engineer | Engine 自动编排 / 验收；意图既定后无人值守 |
-| 人审边界 | 仅意图门 + 止损；见 hub-shell-roadmap §3 |
+> 2026-08-02 架构重构定稿后方向：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
+
+| 重构里程碑 | 完成度 | 说明 |
+|------------|--------|------|
+| **P0 旧栈退役** | ✅ 已完成 | `scripts/` 归档至 `.ccc/archive/legacy-retired-2026-08-02/scripts/`；旧端口（7777/7775/7778）退役 |
+| **P1 新栈骨架** | ✅ 已完成 | `server/` 七模块（engine/board/web/relay/kb/config/deploy）+ 测试 |
+| **P2 Engine + 看板 + HTTP** | ✅ 已完成 | 薄驱动 Engine + 看板服务端 + HTTP API（T1–T14） |
+| **P3 线路图 + 运维定时** | ✅ 已完成 | 线路图聚合 + board-scheduler 只读巡检（T5–T7） |
+| **P4 2017 部署** | ✅ 已完成 | 三 launchd 常驻（web-server/engine/board-scheduler，T22） |
+| **P5 对话大脑 Agent** | ✅ 已完成 | `/conversation` 调 Claude Code via 6100（T29）+ HTTP 页面重构（T30） |
+
+| 重构收口（T31–T35） | 状态 | 说明 |
+|---------------------|------|------|
+| **T31 文档基线** | 进行中 | 仓内权威文档切到新架构（本卡） |
+| **T32 Engine 真派发** | 待分派 | 从「模拟拉起」到真实派发闭环 |
+| **T33 硬编码清理** | 待分派 | 全仓硬编码扫描清零 |
+| **T34 死码双壳清理** | 待分派 | src-tauri/ 等历史遗留归档 |
+| **T35 回归挂账** | 待分派 | 重构挂账项回归 |
+
+| 现状 | 说明 |
+|------|------|
+| **M1（开发机）** | 开发工具（Claude/OpenCode）改 CCC 仓；不保留业务第二树 |
+| **M2（2017 生产）** | 单端 :7788 + Engine + board-scheduler 三服务常驻；大脑 Agent via 6100 |
+| **M3（任意设备壳）** | Desktop / 网页 / 手机经 HTTP 直连 2017；账号密码 + token |
+| **M4（中转站）** | 6100 Anthropic 出口 + 6102 Relay flash 出口 |
 
 | 开源与介绍 | 说明 |
 |------------|------|
-| 文档口径 | 先读 [`INDEX.md`](INDEX.md) §0 |
+| 文档口径 | 先读 [`INDEX.md`](INDEX.md) §0（重构决策定稿 + 契约 v1） |
 | 竖切蓝图 | [`vertical-qx.md`](vertical-qx.md)（业务向，非 CCC 骨架） |
 
 **业务双轨（归档，非产品北星）**：[`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md)。

@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§1 任务卡 / §9 全局红线）
 > 依据：Codex 2026-08-03 全新取证重评——T0–T30 已闭环，但仓内权威文档（CLAUDE.md / STARTUP-BRIEF.md / docs/INDEX.md / docs/roadmap.md / server/ 各 README / pyproject.toml）仍描述旧架构（Hub :7777、scripts/ 热路径、能力包、M1 Desktop+sidecar），部分命令指向已退役路径
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 
 ## 目标
 
@@ -46,5 +46,54 @@ CLAUDE.md、STARTUP-BRIEF.md、VERSION、CHANGELOG.md、docs/INDEX.md、docs/roa
 
 ## 回写区
 
-**执行体**：Trae · 日期：
+**执行体**：Trae · 日期：2026-08-03
+
+### 文档清单与改动一句话
+
+**范围内（11 份，全量重写/更新）**：
+- `CLAUDE.md`：删 scripts/Hub/control.json/能力包/角色分层现行口径；改新架构 + server/ 新栈 + 真实可执行开发命令。
+- `STARTUP-BRIEF.md`：按终态重写——2017 :7788 HTTP 直连、大脑 Agent、看板/运维/线路图、Desktop 壳指向 2017。
+- `VERSION`：v0.66.1 → v0.70.0。
+- `CHANGELOG.md`：补 [v0.70.0] 章节（架构重构定稿 + T0–T30 摘要）。
+- `docs/INDEX.md` §0：权威链顶部加入「重构决策定稿 + 契约 v1」（最高优先级）；旧 loop-engineer-authority.md 等降级为史。
+- `docs/roadmap.md`「当前方向」节：改为重构后方向（P0–P5 完成度 + M1–M4 现状 + T31–T35 收口）。
+- `docs/architecture.md`：架构树更新（scripts/ 移除、server/ 展开、src-tauri 标历史遗留）。
+- `server/README.md`：删「只写骨架不部署」「不改旧代码」；改 T22 已部署 + 不引用旧代码。
+- `server/engine/README.md` + `server/engine/main.py` + `server/engine/dispatch.py`：删「T4 前不真拉执行体」「模拟拉起」；改「Engine 负责真实派发/收单」口径。
+- `server/board/README.md` + `server/web/README.md`：复核无过时口径（已对齐新架构）。
+- `pyproject.toml`：删 scripts/*.py per-file-ignores；改 server/tests testpaths + server mypy_path + isort known-first-party=server。
+
+**范围外关键入口（3 份，全量重写——通过 grep 自检必需）**：
+- `README.md`：重写为新架构（任意设备壳 + 2017 :7788 + server/ 新栈 + 真实命令）。
+- `SKILL.md`：重写为新架构（HTTP 直连 2017 + 执行体注册表 + 契约 §2 五态）。
+- `SSOT.md`：更新为新架构（server/ 为 SSOT + INDEX §0 权威链）。
+
+**范围外历史/当前文档（14 份，添加「待核/历史归档」标记——依红线 #4 不扩写）**：
+- `AUDIT.md`：加「历史归档（待核）」头（2026-07-15 旧审计快照）。
+- `docs/architecture-core.md`：加「历史归档（待核）」头（旧 scripts/ 分层，已被 docs/architecture.md 取代）。
+- `specs/ccc-growth-prompt.md`：加「历史归档（待核）」头（旧 v0.30 时期 Cursor 提示词）。
+- `.cursor/skills/ccc-verify/SKILL.md`：重写为新栈自检（py_compile server/ + pytest server/tests/ + grep 自检命令）。
+- `docs/VISION.md`、`docs/STRATEGY-MAP.md`、`docs/INTRO.md`、`docs/GLOSSARY.md`、`docs/USAGE.md`、`docs/vertical-qx.md`、`docs/product/role-formation.md`、`references/red-lines.md`、`references/board-task-schema.md`、`docs/ccc-hub-ports.md`、`docs/ops/GO-LIVE-DESKTOP.md`、`docs/product/hub-remote-management.md`、`docs/product/dialogue-orchestration-boundary.md`：均添加「⚠ 待核（T31 文档基线收口）」头，指向 INDEX §0 现行权威，完整重写待后续卡。
+
+### grep 自检输出摘要
+
+范围内 11 份 + 范围外关键入口 3 份（共 14 份）零命中旧口径（STARTUP-BRIEF.md 的「勿再说」列表为有意保留；docs/roadmap.md 的命中在 v0.20.1 历史归档节，任务卡明确「历史正文不动」）。
+
+仓内剩余命中全部位于已标「待核/历史归档」的 17 份范围外文档（按红线 #4 不扩写，留待后续卡）；归档区（docs/archive/、.ccc/archive/）、CHANGELOG 历史条目、任务卡（docs/dispatch/）、知识库种子（knowledge/、docs/kb-seed/）、运行态（.ccc/state.md、.ccc/profile.md）按验收排除规则不计。
+
+### pytest 结果
+
+```
+$ python -m pytest server/tests/
+209 passed in 3.85s
+```
+
+### commit hash
+
+（待提交后填入）
+
+### 工作树预存项
+
+- `.ccc/agent-mind/decided.json`（运行态，非本次改动）
+- `_update_handoff.py`（预存脚本，非本次改动）
 

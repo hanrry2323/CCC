@@ -1,6 +1,7 @@
 """执行体注册表读取 + 派发决策（契约 §7 → §2）。
 
-只做编排决策，不真拉执行体；「模拟拉起」由 main 写日志（T4 前）。
+负责编排决策：按注册表分类决定派发方式（可后台 CLI → 自动拉起 / 手动 GUI → 挂起等人）。
+真实拉起执行体由 main.py 的派发管道执行。
 
 用法：
     from server.engine.dispatch import load_registry, decide, DispatchDecision

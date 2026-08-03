@@ -1,5 +1,9 @@
 # CCC 完整介绍 — Connect–Claude Code · Loop Engineer
 
+> **⚠ 待核（T31 文档基线收口）** — 本文部分口径（Hub 入口、阶段能力包、M1+Mac2017 分层）描述 2026-08-02 重构定稿前的旧架构。
+> 现行权威 = [`INDEX.md`](INDEX.md) §0：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
+> 现行架构概览见 [`architecture.md`](architecture.md)；本文完整重写待后续卡处理。
+
 > **对外完整介绍稿**（比 README 更全面）。定位 SSOT 仍是 [`VISION.md`](VISION.md)。  
 > 操作分镜：[`INTRO-WALKTHROUGH.md`](INTRO-WALKTHROUGH.md) · 视频脚本：[`releases/intro-video-script.md`](releases/intro-video-script.md)  
 > 竖切样板：[`vertical-qx.md`](vertical-qx.md)

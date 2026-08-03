@@ -1,5 +1,9 @@
 # 竖切蓝图：CCC × clawmed-ccc（原 QX 资产）
 
+> **⚠ 待核（T31 文档基线收口）** — 本文部分口径（阶段能力包）描述 2026-08-02 重构定稿前的旧架构。
+> 现行权威 = [`INDEX.md`](INDEX.md) §0：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
+> 本文完整重写待后续卡处理。
+
 > **产品名 / 目录（已拍板）**：`clawmed-ccc` @ `~/program/clawmed-ccc`  
 > **策略**：全新仓（D2-B），旧 `projects/qx` / `projects/clawmed-ai` 为归档零件库。  
 > 执行计划：[`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md)

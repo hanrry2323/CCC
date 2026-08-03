@@ -1,34 +1,16 @@
 # CCC — Connect–Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.66.1-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.70.0-blue.svg)](VERSION)
 [![Release](https://img.shields.io/github/v/release/hanrry2323/CCC)](https://github.com/hanrry2323/CCC/releases/latest)
 
 > **Loop Engineer：人定意图，系统自动编排与自主执行。**  
-> 主入口 **CCC Desktop**（SwiftUI 三栏）；自由编排 + 多执行面；Skill + Prompt 即角色——用户不选角色、不背 Skill。
+> 任意设备壳经 HTTP 直连 2017 单端服务；对话口接大脑 Agent；编排面（薄驱动 Engine + 文档流转 + 看板/HTTP）远端开发。
 
-**完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **Desktop 架构**：[`docs/product/ccc-desktop-architecture.md`](docs/product/ccc-desktop-architecture.md)  
-**启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · 版本：`VERSION`  
-**Release**：[CHANGELOG#v0620---2026-07-26](CHANGELOG.md)（LPSN 意图飞轮 L→P→S→N + claude --bg 长 session 跃迁）· [v0.52.2](docs/releases/v0.52.2.md)（Hub-Shell Wave A + Phase17）· [v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
+**完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)  
+**启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · **版本**：`VERSION`（v0.70.0）· **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0
 
-> v0.62.0 修复 5 个 P0(register_bg_session 接入 / Hub 跨进程读 state.json / done 文件移交 reviewer.py / claude --bg 输出解析 / 不硬编码 claude 路径),9 个 P1(fleet stop 杀真进程 / 僵尸过滤 / dead GC / 重复注册杀旧 / shell 注入 / 短 sha / 端点 try-except / Swift Codable 防御 / README 链),20 个 P2。详见 [CHANGELOG#v0620](CHANGELOG.md)。
-
----
-
-## 截图导览（操作流程）
-
-> 将截图放入 [`docs/assets/intro/`](docs/assets/intro/) 后即可点亮下列预览。分镜与旁白：[`docs/INTRO-WALKTHROUGH.md`](docs/INTRO-WALKTHROUGH.md)。
-
-| 步骤 | 文件 | 一句话 |
-|------|------|--------|
-| 1 | `01-hub-home.png` | 入口是 Desktop（网页 Hub `#/board` `#/ops` 可用作 web 视图） |
-| 2 | `02-quick-actions.png` | 对齐 / 下一步 / 定稿 / 转任务 |
-| 3 | `03-dispatch-block.png` | 定稿输出可执行契约 |
-| 4 | `04-dispatch-card.png` | 下达并开工 + Skill 软偏好 |
-| 5 | `05-board.png` | Loop 在看板上可见 |
-| 6 | `06-console.png` | 失败可重开、控制面可见 |
-
-（截图就位后可在此用 `![...](docs/assets/intro/01-hub-home.png)` 嵌入。）
+> 2026-08-02 架构重构定稿：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。旧 `scripts/` 已退役归档；旧端口（7777 Hub / 7775 Board / 7788 sidecar / 7778 Cockpit）已退役。详见 [CHANGELOG#v0700](CHANGELOG.md)。
 
 ---
 
@@ -40,41 +22,31 @@ CCC 不是「又一个 IDE」，也不是「角色超市」。它是一台 **Loo
 
 | 层 | 做什么 |
 |----|--------|
-| **Desktop（对话面）** | 左项目 / 中方案对话 / 右编排流程；定稿 → 转任务（仅 epic） |
-| **Engine + Board（编排面）** | 自由扇出 work、赋身份与执行面；看板闭环 |
-| **Executors（执行面）** | 默认 OpenCode；python / ollama / cli 可插拔 |
+| **任意设备壳**（Desktop / 网页 / 手机） | 经 HTTP 直连 2017 :7788；对话/看板/运维/线路图四视图 |
+| **2017 单端 :7788**（server/web/server.py） | HTTP API + 静态页；`/conversation` 接大脑 Agent |
+| **薄驱动 Engine**（server/engine/） | 读取执行体注册表 → 派发 → 收单 → 状态机流转 |
+| **看板服务端**（server/board/） | 从 `docs/dispatch/*.md` 解析任务卡 → 三视图 + 线路图 |
 
-仓库中的 `skills/ccc-*` 是 **Engine 阶段默认能力包**（不是给用户点选的角色列表）：
-
-```text
-任务意图 → 路由工具 → Skill + Prompt = 本次角色（无穷）
-```
-
----
-
-## 垂直行业：同一底座，换上行业资产
-
-```text
-CCC + 爬虫/DB/worker + Domain Skill + 自定义快捷键
-  = 垂直 AI 工具
-```
-
-首个样板蓝图（医药采价调度 **QX**）：[`docs/vertical-qx.md`](docs/vertical-qx.md)。  
-完整故事见 [`docs/INTRO.md`](docs/INTRO.md) §5–6。
+任务卡文档 = **唯一事实源**：`docs/dispatch/T<n>-*.md`，元数据行含 `状态：X` / `执行体：Y` / `日期：Z`。
 
 ---
 
 ## 30 秒看懂闭环
 
 ```text
-对齐 → 定稿 → 转任务 → Engine 自动编排
-  → 开发 → 验收 →（失败则重试/重开）→ 归档 → 可进化
+任意设备壳 → HTTP 直连 2017:7788 → /conversation 聊意图
+  → 写任务卡 docs/dispatch/T<n>-*.md
+  → Engine 派发执行体（可后台 CLI 自动拉起 / 手动 GUI 挂起等人）
+  → 收单 → 状态机流转：待分派 → 执行中 → 已回写 → 已关闭
+  → 看板/线路图实时反映进度
 ```
 
+任务卡状态机（契约 §2 五态）：
+
 ```text
-backlog(epic 大卡常驻)
-  → Claude 扇出 → planned(work) → in_progress → testing → verified → released
-  → 子卡全 released → 大卡 done 沉底
+待分派 → 执行中 → 已回写 → 已关闭
+              ↓        ↑
+            打回（附问题清单）→ 待分派（人工重派）
 ```
 
 ---
@@ -85,29 +57,38 @@ backlog(epic 大卡常驻)
 git clone https://github.com/hanrry2323/CCC.git
 cd CCC
 
-bash scripts/install-board-plist.sh --start
-bash scripts/install-hub-plist.sh --start
+# 2017 生产端已部署三 launchd 常驻服务（T22 落地）：
+# - com.ccc.web-server       → server/web/server.py :7788
+# - com.ccc.engine           → server/engine/main.py
+# - com.ccc.board-scheduler  → server/board/scheduler.py
 
-open http://127.0.0.1:7777
-# 默认账密：ccc / ccc   （详见 docs/ccc-hub-ports.md）
+# 任意设备壳直连（账密 ccc/ccc → 换 token）
+curl -s http://192.168.3.116:7788/health
 ```
 
-1. **对齐基线** → **定稿方案** → **转任务** → **下达并开工**  
-2. 自动跑队列：`bash scripts/ccc-autostart-guard.sh enable --start`  
+本地开发：
+
+```bash
+# Python 语法检查
+python -m py_compile server/engine/main.py
+
+# 单测（新栈测试）
+pytest server/tests/ -q --tb=short
+
+# Ruff lint（CI 级，覆盖 server/）
+ruff check server/ tests/
+
+# 引擎单次扫描 + 收单
+python3 -m server.engine.main --config server/config/config.env --once
+
+# 看板导出（从 docs/dispatch/ 解析任务卡 → web/data/board.js）
+python3 -m server.board.export
+
+# HTTP API 服务启动（生产走 launchd plist）
+python3 -m server.web.server --port 7788
+```
 
 详解：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)
-
----
-
-## 和谁不一样
-
-| | Chat | OpenCode 等执行器 | ECC 类角色工坊 | **CCC** |
-|--|------|-------------------|----------------|---------|
-| 入口 | 对话 | CLI / 编辑器 | 选角色 | **Desktop** |
-| 编排 | 无 | 弱 | 人工为主 | **Engine Loop** |
-| 角色 | 无 | 无 | 固定一堆 | **任务生成（无穷）** |
-| 验收 | 口头 | 自测 | 看产品 | **verdict 文件门禁** |
-| 垂直扩展 | 难 | 脚本堆砌 | 再造角色 | **挂资产 + 快捷键** |
 
 ---
 
@@ -115,14 +96,17 @@ open http://127.0.0.1:7777
 
 | 路径 | 说明 |
 |------|------|
-| `docs/INTRO.md` | 对外完整介绍 |
-| `docs/VISION.md` | 产品叙事 SSOT |
-| `desktop/` | CCC Desktop（SwiftUI 主客户端） |
-| `scripts/chat_server/` | Center Server API + 网页 Hub（#/board #/ops web 视图，`#/console` 应急） |
-| `scripts/ccc-engine.py` | Loop 主循环 |
-| `scripts/ccc-board.py` | 看板与阶段能力调度 |
-| `skills/ccc-*/` | 阶段默认能力包 |
-| `docs/CONTROL.md` | 控制面 |
+| `server/` | ★ 新栈（2026-08-02 重构定稿）：engine / board / web / relay / kb / config / deploy |
+| `server/engine/` | 薄驱动核心：dispatch / main / scheduler / store / task / cluster |
+| `server/board/` | 看板服务端：loader / queries / export / models / scheduler |
+| `server/web/` | HTTP API + 静态页：server.py / brain.py（大脑 Agent 代理） |
+| `desktop/` | Desktop 壳（SwiftUI，任意设备壳之一） |
+| `docs/dispatch/` | ★ 任务卡文档（唯一事实源） |
+| `docs/INDEX.md` | 文档索引 SSOT（§0 重构决策 + 契约 v1 最高优先级） |
+| `docs/architecture.md` | 架构概览 |
+| `references/red-lines.md` | 红线 + X/R 系列 |
+| `references/board-task-schema.md` | 任务卡文档契约 |
+| `.ccc/archive/legacy-retired-2026-08-02/` | 旧栈归档（scripts/ 等，已退役，勿引用） |
 
 ---
 
@@ -130,7 +114,8 @@ open http://127.0.0.1:7777
 
 - **红线 11**：验收必须写 verdict 文件  
 - **红线 12**：禁止 agent 擅自启用 CCC  
-- **控制面默认 `disabled`**  
+- **任务卡 = 唯一事实源**：`docs/dispatch/*.md`，状态机五态
+- **零硬编码**：端口 / 路径 / 模型名 / 工具名走 `config.env` 与执行体注册表
 
 ---
 
@@ -138,14 +123,12 @@ open http://127.0.0.1:7777
 
 | 文档 | 读者 |
 |------|------|
-| [完整介绍 INTRO](docs/INTRO.md) | 所有人 |
-| [VISION](docs/VISION.md) | 定位 SSOT |
-| [Walkthrough](docs/INTRO-WALKTHROUGH.md) | 截图分镜 |
-| [QX 竖切](docs/vertical-qx.md) | 商用样板 |
-| [Getting Started](docs/GETTING-STARTED.md) | 首次安装 |
-| [USAGE](docs/USAGE.md) | 日常使用 |
-| [STARTUP-BRIEF](STARTUP-BRIEF.md) | Agent |
-| [CONTRIBUTING](CONTRIBUTING.md) | 贡献者 |
+| [INDEX](docs/INDEX.md) | 先读 §0 权威链 |
+| [architecture](docs/architecture.md) | 架构概览 |
+| [VISION](docs/VISION.md) | 叙事 SSOT |
+| [roadmap](docs/roadmap.md) | 当前方向 + 历史归档 |
+| [GETTING-STARTED](docs/GETTING-STARTED.md) | 首次安装 |
+| [STARTUP-BRIEF](STARTUP-BRIEF.md) | Agent 启动 |
 | [CHANGELOG](CHANGELOG.md) | 版本历史 |
 
 ---

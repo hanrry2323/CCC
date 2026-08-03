@@ -1,5 +1,10 @@
 # CCC 项目审计报告
 
+> **历史归档（待核）** — 本报告基于 2026-07-15 取证（VERSION v0.30.0），描述旧 `scripts/` 架构。
+> 2026-08-02 架构重构定稿后，旧 `scripts/` 已退役归档至 `.ccc/archive/legacy-retired-2026-08-02/`；
+> 现行架构以 `server/` 新栈为准（详见 [`docs/INDEX.md`](docs/INDEX.md) §0、[`docs/architecture.md`](docs/architecture.md)）。
+> 本报告仅供历史追溯，不再代表现行架构；清理归档在 T34 范围。
+
 ## 元数据
 
 | 项 | 值 |

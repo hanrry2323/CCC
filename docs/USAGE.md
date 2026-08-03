@@ -1,5 +1,9 @@
 # CCC USAGE — 三类用户指南
 
+> **⚠ 待核（T31 文档基线收口）** — 本文部分口径（Hub 入口、阶段能力包）描述 2026-08-02 重构定稿前的旧架构。
+> 现行权威 = [`INDEX.md`](INDEX.md) §0：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
+> 本文完整重写待后续卡处理。
+
 > 叙事：[`VISION.md`](VISION.md) · 安装：[`GETTING-STARTED.md`](GETTING-STARTED.md)  
 > CCC = **Connect–Claude Code** · **Loop Engineer**（Hub 入口 + Engine 编排 + 工具路由）
 

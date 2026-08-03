@@ -1,6 +1,12 @@
 # CCC 核心架构（Engine / Board）
 
-> 维护热点说明。改角色逻辑 → `scripts/board/roles/`；改调度 → `scripts/ccc-engine.py` 或 `scripts/engine/`。
+> **历史归档（待核）** — 本文件描述旧 `scripts/` 架构的 Engine / Board 分层。
+> 2026-08-02 架构重构定稿后，旧 `scripts/` 已退役归档；现行架构以 `server/` 新栈为准：
+> 薄驱动 Engine（`server/engine/`）+ 看板服务端（`server/board/`）+ HTTP API（`server/web/`）。
+> 现行架构概览见 [`architecture.md`](architecture.md)；权威链见 [`INDEX.md`](INDEX.md) §0。
+> 本文件仅供历史追溯，清理归档在 T34 范围。
+
+> 维护热点说明（旧架构，已退役）。改角色逻辑 → `scripts/board/roles/`；改调度 → `scripts/ccc-engine.py` 或 `scripts/engine/`。
 
 ## 职责分层
 

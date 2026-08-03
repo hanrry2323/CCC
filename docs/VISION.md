@@ -1,5 +1,9 @@
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
+> **⚠ 待核（T31 文档基线收口）** — 本文部分口径（Hub :7777、Desktop 主入口、M1+Mac2017 分层、`control.json`、阶段能力包）描述 2026-08-02 重构定稿前的旧架构。
+> 现行权威 = [`INDEX.md`](INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
+> 现行架构概览见 [`architecture.md`](architecture.md)；本文完整重写待后续卡处理，请勿据本文旧口径判断现行架构。
+
 > **产品叙事 SSOT（对外/对内统一）**。README、Release、SKOT、Hub 文案冲突时以本文为准。  
 > 版本对齐：`VERSION` · 更新日期：2026-07-21 · **Desktop 主产品**（见 `docs/product/ccc-desktop-architecture.md`）  
 > 平台谁改 / 对话模型谁定：[`product/dev-channel.md`](product/dev-channel.md)

@@ -1,5 +1,9 @@
 # CCC Desktop 上线卡
 
+> **⚠ 待核（T31 文档基线收口）** — 本文描述 2026-08-02 重构定稿前的旧架构（Hub :7777 / sidecar :7788 / Desktop 主入口）。
+> 现行权威 = [`../INDEX.md`](../INDEX.md) §0：2017 单端 :7788（HTTP 直连）；Desktop = 任意设备壳之一。
+> 本文完整重写待后续卡处理。
+
 > **日期**：2026-07-30（对齐 v0.65.0） · **范围**：内测（未公证）  
 > 架构 SSOT：[`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md)  
 > 连接契约：[`../product/desktop-connection.md`](../product/desktop-connection.md) · 隧道：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md)  

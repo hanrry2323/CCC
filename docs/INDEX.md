@@ -1,36 +1,33 @@
 # CCC 文档索引
 
 > **先读本页再进别的文件。** `docs/` 约 100+ 篇，多数是历史/烟测/专项；**不要按文件名新旧猜权威。**  
-> 冲突裁决顺序：`VERSION` → `CHANGELOG` → **VISION** → **边界基线** → 专题 SSOT → 其余。
+> 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **VISION** → 专题 SSOT → 其余（旧 `loop-engineer-authority.md` 等已被重构方案取代，仅作史实）。
 
 ---
 
 ## 0. 现在只认这几份（产品/架构）
 
-> **事实权威（代码/看板/透镜）+ 人机共识以 [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) 为最新 SSOT。**  
-> 其余文档若与它冲突，改其余文档或标「史」，勿并行维护两套「现行真理」。  
-> **共识落盘**：你我达成共识 → 先改该文（及 Cursor rule）→ 再改代码；禁止只留在聊天。
+> **2026-08-02 架构重构定稿后，事实权威 = 重构决策定稿 + 契约 v1（最高优先级）。**  
+> 旧 [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) 等已被重构方案取代（史），仅作历史追溯；若与重构决策冲突，以重构决策为准。  
+> **共识落盘**：你我达成共识 → 先改本 §0 权威链 → 再改代码；禁止只留在聊天。
 
 | 优先级 | 文档 | 管什么 |
 |--------|------|--------|
-| 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实 |
+| **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
+| 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（v0.70.0 架构重构） |
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
-| **3** | **[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md)** | **事实权威 + Hub 只读透镜 + 旁路收死（最新）** |
-| 4 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | 对话/编排边界与过桥 |
-| 5 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | 下阶段北星（壳 + Hub API） |
-| 5a | [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门门禁**（L→P→S→N） |
-| 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC：开发工具（Claude/OpenCode）合入 · 个人 Claude Code 草稿工 · Desktop 禁改仓 |
-| 5d | [`briefs/2026-07-27-ccc-production-readiness.md`](briefs/2026-07-27-ccc-production-readiness.md) | **生产级三层出门 + 分程**（先工具后生产；Ops 抛光已收束） |
-| 5e | [`dev-packets/README.md`](dev-packets/README.md) | 转发给个人 Claude Code 的指令包（金路径缺陷为主） |
-| 5f | [`briefs/2026-07-27-golden-path-evidence.md`](briefs/2026-07-27-golden-path-evidence.md) | Layer1 金路径探针与断点日志 |
-| 5g | [`briefs/2026-07-27-qb-domain-ship-gate.md`](briefs/2026-07-27-qb-domain-ship-gate.md) | qb 业务域 KPI（与 `intent_stable` 分勾） |
-| 5c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | 四面协作 + 流畅基线 |
-| 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
-| 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |
+| 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
+| 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
+| 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
+| 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC：开发工具（Claude/OpenCode）合入 · Desktop 禁改仓 |
+| 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
+| 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |
+| 8 | [`../CLAUDE.md`](../CLAUDE.md) | 平台开发硬规则 + 开发命令（已按新栈重写） |
 
-部署拓扑：[`deploy/topology.md`](deploy/topology.md)。控制面：[`CONTROL.md`](CONTROL.md)。
+部署拓扑：[`deploy/topology.md`](deploy/topology.md)。2017 布局：[`deploy/server-layout.md`](deploy/server-layout.md)。
 
-**日常短读**：handoff → identity；**迁仓清扫史**：[`m1-no-second-tree-closeout.md`](product/m1-no-second-tree-closeout.md)（勿当日常真理）。
+**重构收口任务卡**：[`dispatch/T31`](dispatch/T31-refactor-closeout-docs-baseline.md)～[`T35`](dispatch/T35-refactor-closeout-hangover-regression.md)（文档基线 / Engine 真派发 / 硬编码 / 死码 / 回归）。  
+**日常短读**：本 §0 → `architecture.md` → `STARTUP-BRIEF.md`。
 
 ---
 
@@ -130,11 +127,11 @@
 |------|------|
 | [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 全景 + 演进史（长） |
 | [`GLOSSARY.md`](GLOSSARY.md) | 术语 |
-| [`architecture.md`](architecture.md) | 若与 VISION/边界冲突 → 以 VISION/边界为准 |
+| [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`；若与重构决策冲突 → 以重构决策为准） |
 | [`model-tier-strategy.md`](model-tier-strategy.md) | **已收口 stub** → 平台走开发工具（Claude/OpenCode）；旧文在 archive/retired-tooling |
 | [`../references/red-lines.md`](../references/red-lines.md) | 红线 |
-| [`../references/board-task-schema.md`](../references/board-task-schema.md) | 看板任务契约 |
+| [`../references/board-task-schema.md`](../references/board-task-schema.md) | 任务卡文档契约 |
 
 ---
 
-*索引修订：2026-07-20 — 收口「多北星」；下阶段唯一指向 `product/hub-shell-roadmap.md`。*
+*索引修订：2026-08-03 — T31 文档基线切到新架构；权威链顶部改为「重构决策定稿 + 契约 v1」，旧 `loop-engineer-authority.md` 等降级为史。*

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.70.0] — 2026-08-02
+
+### Changed — 架构重构定稿（薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳）
+
+- **新栈 `server/` 取代旧 `scripts/`**：薄驱动 Engine（`server/engine/`）+ 看板服务端（`server/board/`）+ HTTP API（`server/web/`）+ 中转站（`server/relay/`）+ 知识库（`server/kb/`）+ 配置化（`server/config/`）+ 部署模板（`server/deploy/`）。旧 `scripts/` 已退役归档至 `.ccc/archive/legacy-retired-2026-08-02/scripts/`。
+- **2017 单端 :7788**：HTTP 直连，账号密码 + token；对话/看板/运维/线路图四视图统一入口。旧端口（7777 Hub / 7775 Board API / 7788 sidecar / 7778 Cockpit）已退役。
+- **大脑 Agent**：`/conversation` 调用 2017 Claude Code CLI（via 6100 Anthropic 出口），带心智/工具/知识库；替代旧裸模型直答。
+- **文档流转**：任务卡 `docs/dispatch/T<n>-*.md` 为唯一事实源；`server/board/loader.py` 从任务卡解析派生看板数据。
+- **任意设备壳**：Desktop / 网页 / 手机经 HTTP 直连 2017；Desktop 不再是控制面，而是壳之一。
+- **权威链**：`docs/INDEX.md` §0 顶部改为「重构决策定稿 + 契约 v1」（最高优先级）；旧 `loop-engineer-authority.md` 等降级为史。
+
+### T0–T30 摘要
+
+- T1–T3：`server/` 骨架 + Engine 薄驱动 + 看板服务端 + HTTP API
+- T4–T7：中转站部署 + 看板调度 + 线路图 + 运维定时
+- T8–T12：开关清单 + KB seed/init/MCP + 旧栈退役清单
+- T13–T18：HTTP API + 全链验收 + Phase2 退役
+- T19–T21：壳迁移（board/ops/对话）
+- T22：2017 部署（三 launchd 常驻：web-server / engine / board-scheduler）
+- T23–T25：HTTP 直连开放 + Desktop 协议对齐 + 旧对话页找回
+- T26–T26R：Desktop 后端重构 + 自审清理（删 8 死类型 + 14 stub 方法）
+- T27–T28：Relay 2017 重启 + Desktop 重打包
+- T29：对话接大脑 Agent（`/conversation` 调 Claude Code via 6100）
+- T30：HTTP 页面重构（登录修复 + 功能新协议化 + UI Claude 风格收口）
+
+### Docs
+
+- `CLAUDE.md` / `STARTUP-BRIEF.md` 按终态重写；`docs/INDEX.md` §0 权威链更新；`docs/architecture.md` 架构树更新；`docs/roadmap.md`「当前方向」索引节更新。
+- `server/` 各 README 删过时口径（「T4 前不真拉执行体」「desktop/ 零改动」「本服务仅只读」），按 T32 目标写「Engine 负责真实派发/收单」口径。
+- `pyproject.toml` per-file-ignores 切到 `server/` 路径。
+
+---
+
 ## [v0.66.1] — 2026-07-31
 
 ### Fixed
