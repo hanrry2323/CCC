@@ -7,13 +7,17 @@ Guidance for agents editing CCC in **开发工具（Claude/OpenCode）**. You ar
 > **人定意图，系统自动编排与自主执行。** 任意设备壳经 HTTP 直连 2017 单端服务；对话口接大脑 Agent；编排面（薄驱动 Engine + 文档流转 + 看板/HTTP）远端开发。
 > **事实权威 + 人机共识（最新）**：重构决策定稿 `docs/INDEX.md` §0（最高优先级）· 边界：`docs/product/dialogue-orchestration-boundary.md`（史） · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.70.0**）
 
+> **开发方向（唯一基线 · 2026-08-04 收口，与本文件其他旧口径冲突时以此为准）**：
+> 双阶段模型——**自研期（当前）**：CCC 自身开发由管理席（Codex）出卡驱动 → 执行体按卡头绑定接单（T39）→ Codex 验收 → 放行部署；自研卡**不走 Engine 自动派发**（状态置「执行中」防抢跑）。**业务期（自研成熟后）**：老板用壳直聊大脑 Agent 做业务（对话即工作，T49 能力），业务任务走 Engine 派发 2017 执行体。Codex = 自研驱动者 + 系统总维护 + 外脑后台，不抢业务执行。
+> 决策留痕：qx-map `__archive__/decisions/ccc-双阶段运行模型-Codex角色-定稿-2026-08-04.md`。
+
 **路径一句话**：人定意图 → 写任务卡到 `docs/dispatch/` → 2017 Engine 派发执行体 → 收单回写看板 → 验收闭环；全程只认一个权威仓 + 一份任务卡文档。
 
 **共识落盘**：你我新共识先改权威链文档（`docs/INDEX.md` §0），禁止只留在聊天。
 
 **勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色；把运维/知识席当成开发席。
 
-**席位**：Claude/OpenCode=开发合入 · Claude Code=运维 · OpenCode=Engine 写码槽 · Codex=知识/闲聊 · Desktop=任意设备壳。
+**席位**：Claude/OpenCode=开发执行（按卡头绑定接单）· Codex=自研驱动者 + 系统总维护 + 外脑（不抢业务执行）· Desktop=任意设备壳（业务期直聊大脑）。
 
 ---
 

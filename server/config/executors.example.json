@@ -18,7 +18,7 @@
       "命令": "opencode",
       "参数模板": "--dir {workdir} -p \"请按任务卡 {card_path} 完成 work {work_id}\"",
       "工作目录": "",
-      "备注": "默认写码/改仓执行器；Engine 扇出 work 时优先自动拉起；工作目录留空则用 config.env 的 DATA_DIR"
+      "备注": "默认写码/改仓执行器；业务任务 Engine 扇出时自动拉起；CCC 自研卡由管理席出卡驱动、按卡头绑定接单（T39，不走 Engine 自动派发）；工作目录留空则用 config.env 的 DATA_DIR"
     },
     {
       "角色": "维护执行体",
