@@ -56,6 +56,8 @@ class Work:
         card_path: 任务卡文件路径（派发时注入执行体参数模板的 {card_path} 占位符）。
         executor: 卡头「执行体」绑定名（去括号后，如 Trae / OpenCode / Claude Code / Codex）；
             空字符串表示卡未指定，派发回退到 role-based 决策（T39）。
+        dispatch: 派发方式（manual|engine，缺省 engine）。manual 卡由管理席派发，
+            Engine 不自动拉（保持待分派，T53）。
     """
 
     id: str
@@ -65,6 +67,7 @@ class Work:
     problems: list[str] = field(default_factory=list)
     card_path: str = ""
     executor: str = ""
+    dispatch: str = "engine"
 
     def transition(self, new_state: State, problems: list[str] | None = None) -> None:
         """按契约 §2 转移状态；非法跳转抛 `IllegalTransitionError`。
