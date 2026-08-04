@@ -170,3 +170,10 @@ pytest `server/tests/` **355 passed**（+17 T45 免登录用例，TestNoAuthMode
 - 偏差说明属实：chatStatus.js 实际在 `js/` 下（pages/ 无此文件），按实际路径修改，无越界。
 - taskDialog「无业务项目可下达」守卫合理（业务仓须先登记）；CCC 编排仓提示用开发工具，与双轨纪律一致。
 - 剩余动作（不阻塞关闭）：桌面包（v0.70.0+T45 源码重打包安装）与 2017 部署（pull + 三服务重启）由 Codex 放行后执行。
+
+### 部署记录（Codex 放行执行 · 2026-08-04）
+
+- **桌面**：T45 源码重打包 v0.70.0（package-baseline.sh，adhoc 签名校验 OK）→ 安装 /Applications（旧包备份 .bak-T45）→ 已启动（PID 86200），默认直连 2017:7788。
+- **2017**：pull → `3d731cd`（T45 全量）；三服务重启（web 63521 / engine 63523 / board-scheduler 63525），relay 21258 零接触。
+- **生产实测**：`/health` `auth_required:false`（免登录生效）；无 token 直连 /board/states 200（50 关/4 打回）、同步对话 {"reply":"正常"}（经 6100 大脑）、页面含线路图标签、/config models=[flash,code]。
+- 老板可双壳免登录直连即聊。
