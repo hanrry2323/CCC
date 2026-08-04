@@ -14,7 +14,7 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（Claude Code CLI via 6100，带心智/工具/知识库）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
 
-**席位（硬）**：**Claude/OpenCode**=CCC 合入开发 · **Claude Code**=本机养机 + 日常维护 · **OpenCode**=Engine 写码槽 · **Codex**=知识/闲聊 · **Desktop**=任意设备壳。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。  
+**席位（硬，2026-08-04 双阶段收口）**：**Claude/OpenCode**=开发执行（按卡头绑定接单）· **Codex**=自研驱动者 + 系统总维护 + 外脑（不抢业务执行）· **Desktop**=任意设备壳（业务期直聊大脑）· 业务任务走 Engine 派发 2017 执行体。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；共识必须写入权威链文档（`docs/INDEX.md` §0）再应用。  

@@ -14,7 +14,7 @@
 |------|------|------|
 | **Claude/OpenCode** | 主力开发 + 合入 | **CCC** 合入；**QuantHive** 开发合入；热更 2017、生产密钥 |
 | **Claude Code**（个人 CLI） | 运维双职 | ① 本机 `~/.ccc` / launchd / relay；② **QuantHive 日常维护** |
-| **OpenCode** | Engine 写码槽 | 2017 `--dir`（**qb** 等走 CCC） |
+| **OpenCode** | 开发执行体（按卡头绑定接单） | 业务任务 Engine 派发 2017；CCC 自研卡由管理席出卡驱动（2026-08-04 双阶段收口） |
 | **Codex**（ChatGPT.app） | **知识管理 + 闲聊** | qb∥QuantHive **分域**；不改权威仓 |
 | **CCC Desktop** | 产线控制面 | **qb** 等挂 CCC：意图讨论/看板/方案文件起草；**不管** QuantHive 开发主路径 |
 | **Engine Claude** | 编排执行器 | product / reviewer 等阶段；≠ 平台 IDE（≠ Claude 后台程序：后者是无记忆拆卡+飞轮） |
