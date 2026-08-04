@@ -1,7 +1,7 @@
 # 任务卡 T52 · 自动化基建：出卡模板 + 一键放行 + 验收自动化（Claude Code 执行）
 
 > 关联：阶段 3 P1 · 依据：规划确认——Codex 只留「验收+放行」；出卡/门禁/部署自动化
-> 执行体：Claude Code · 验收：Codex（严格）· 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53/T51）后按 Engine 自动派发重出。
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t52-auto-base`（先 `git fetch origin main && git checkout -b codex/t52-auto-base origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块（出卡模板 / 一键放行 / 验收自动化 / 测试流程任务）立即 commit+push，禁止攒到结尾；执行超时 7200s。
@@ -101,7 +101,20 @@
 - ruff：本机未安装（CI `card-validate`/`ruff` job 会跑）；代码未引入新依赖
 - 分支 `codex/t52-auto-base` 已推送 origin，分步提交：
   - `e55bc813` feat(scripts): T52-A 出卡模板 new-card.sh
-  - `6e71a763` feat(deploy): T52-B 一键放行 release.sh
-  - `e732724a` feat(board): T52-C 验收自动化 validate+CI+pre-commit
-  - `5460de50` feat(scripts): T52-D headless 复验 verify-shell.sh
-  - （本 commit）docs(dispatch): T52 回写 + docs/automation-base.md 流程说明
+- `6e71a763` feat(deploy): T52-B 一键放行 release.sh
+- `e732724a` feat(board): T52-C 验收自动化 validate+CI+pre-commit
+- `5460de50` feat(scripts): T52-D headless 复验 verify-shell.sh
+- （本 commit）docs(dispatch): T52 回写 + docs/automation-base.md 流程说明
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-04 · 合入 main + 2017 部署后）
+
+**判定：✅ 通过。** 自动化流程三件套落地（出卡/放行/验收），测试流程任务端到端跑通。
+
+- **new-card.sh**：Codex 实测临时目录生成 `T1-task.md`，validate 卡头校验通过 ✅
+- **release.sh**：--dispatch-dir 支持 + 自动验证 + 放行报告 + 卡头关闭（执行端回写证据 + 测试流程任务端到端）✅
+- **验收自动化**：validate 门禁增强 + CI + pre-commit（执行端演示证据）；verify-shell.sh 六场景 headless 复验 ✅
+- **流程文档**：docs/automation-base.md（94 行）入库 ✅
+- 回归：pytest 全绿、ruff clean ✅；2017 已部署（三件套在位）✅
+- 自动化流程：75 分钟闭环，分步提交 A/B/C/D（e55bc813/6e71a763/e732724a/5460de50）✅
