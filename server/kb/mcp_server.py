@@ -1,6 +1,6 @@
 """CCC 知识库 MCP stdio server。
 
-暴露三个工具：
+暴露三个工具（统一查询内核 = ``server/kb/service.py``）：
   - kb_search(query, domain?) → 检索结果 [{id, section, snippet, score}]
   - kb_read(path) → 读取指定知识条目全文 {id, section, content, source}
   - kb_list(domain?) → 列出域内条目 [{id, section, source}]
@@ -9,48 +9,21 @@
     $PYTHON_BIN -m server.kb.mcp_server                # 启动 MCP stdio server
     $PYTHON_BIN -m server.kb.mcp_server --selftest      # 自测（启动→调用三工具→退出）
     $PYTHON_BIN -m server.kb.mcp_server --list-tools    # 列出工具清单
-    $PYTHON_BIN -m server.kb.mcp_server --reindex       # 重建索引
+    $PYTHON_BIN -m server.kb.mcp_server --health        # 健康自检
+    $PYTHON_BIN -m server.kb.mcp_server --reindex       # 全量重建索引
+    $PYTHON_BIN -m server.kb.mcp_server --reindex-incremental  # 增量重建索引
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sys
-from pathlib import Path
 from typing import Any, Callable
 
-
-# ── 路径配置 ──
-
-def _project_root() -> Path:
-    """返回项目根目录（server/..）。"""
-    return Path(__file__).resolve().parents[2]
+from . import service
 
 
-def _default_knowledge_root() -> str:
-    return str(_project_root() / "knowledge")
-
-
-def _default_index_dir() -> str:
-    return os.environ.get(
-        "CCC_KB_INDEX_DIR",
-        str(_project_root() / "knowledge" / ".index"),
-    )
-
-
-# ── 工具实现 ──
-
-def _ensure_index() -> None:
-    """确保索引已构建，否则自动构建。"""
-    index_dir = _default_index_dir()
-    if not Path(index_dir, "documents.json").is_file():
-        from .indexer import reindex as _reindex
-        count = _reindex(_default_knowledge_root(), index_dir)
-        # 重置 search 引擎
-        from .search import reset_engine
-        reset_engine()
-
+# ── 工具实现（统一内核：service） ──
 
 def _tool_kb_search(args: dict[str, Any]) -> list[dict[str, Any]]:
     """kb_search 工具实现。"""
@@ -58,9 +31,7 @@ def _tool_kb_search(args: dict[str, Any]) -> list[dict[str, Any]]:
     if not query:
         return []
     domain = args.get("domain")
-    _ensure_index()
-    from .search import search
-    return search(query, domain=domain, index_dir=_default_index_dir())
+    return service.search(query, domain=domain)
 
 
 def _tool_kb_read(args: dict[str, Any]) -> dict[str, Any] | None:
@@ -68,17 +39,13 @@ def _tool_kb_read(args: dict[str, Any]) -> dict[str, Any] | None:
     path = args.get("path", "")
     if not path:
         return None
-    _ensure_index()
-    from .search import read_document
-    return read_document(path, index_dir=_default_index_dir())
+    return service.read_document(path)
 
 
 def _tool_kb_list(args: dict[str, Any]) -> list[dict[str, str]]:
     """kb_list 工具实现。"""
     domain = args.get("domain")
-    _ensure_index()
-    from .search import list_documents
-    return list_documents(domain=domain, index_dir=_default_index_dir())
+    return service.list_documents(domain=domain)
 
 
 # ── 工具注册表 ──
@@ -260,15 +227,18 @@ def run_server() -> None:
 # ── 自测 ──
 
 def _selftest() -> int:
-    """自测：启动→索引重建→调用三工具→退出。
+    """自测：启动→索引就绪→调用三工具→健康检查→退出。
 
     Returns:
         0 成功，非零失败
     """
-    # 1. 重建索引
-    from .indexer import reindex
-    count = reindex(_default_knowledge_root(), _default_index_dir())
-    print(f"[selftest] 索引重建完成：{count} 文档", file=sys.stderr)
+    # 1. 索引就绪（首次全量，之后增量）
+    status = service.ensure_index()
+    h = service.health()
+    print(f"[selftest] 索引状态：{status}；文档数：{h['documents']}", file=sys.stderr)
+    if not h["ok"]:
+        print("[selftest] FAIL 索引无文档", file=sys.stderr)
+        return 1
 
     # 2. 测 kb_search
     search_result = _tool_kb_search({"query": "CCC", "domain": None})
@@ -300,6 +270,17 @@ def _selftest() -> int:
         return 1
     print("[selftest] kb_search 空结果正确", file=sys.stderr)
 
+    # 6. 测域过滤 + 数字检索（T51：IP 可检索）
+    ip_result = _tool_kb_search({"query": "192.168.3.116"})
+    if not ip_result:
+        print("[selftest] FAIL 数字检索（IP）应命中", file=sys.stderr)
+        return 1
+    filtered = _tool_kb_search({"query": "192.168.3.116", "domain": "nodes-paths"})
+    if filtered and any(r["section"] != "nodes-paths" for r in filtered):
+        print("[selftest] FAIL 域过滤返回异域结果", file=sys.stderr)
+        return 1
+    print(f"[selftest] 数字检索命中 {len(ip_result)} / 域过滤 {len(filtered)}", file=sys.stderr)
+
     print("[selftest] ALL PASSED", file=sys.stderr)
     return 0
 
@@ -312,10 +293,16 @@ def main() -> None:
         sys.exit(_selftest())
     elif "--list-tools" in sys.argv:
         print(json.dumps(TOOLS, ensure_ascii=False, indent=2))
+    elif "--health" in sys.argv:
+        h = service.health()
+        print(json.dumps(h, ensure_ascii=False, indent=2))
+        sys.exit(0 if h["ok"] else 1)
     elif "--reindex" in sys.argv:
-        from .indexer import reindex
-        count = reindex(_default_knowledge_root(), _default_index_dir())
-        print(f"索引重建完成：{count} 文档")
+        count = service.reindex_all()
+        print(f"索引全量重建完成：{count} 文档")
+    elif "--reindex-incremental" in sys.argv:
+        status = service.ensure_index()
+        print(f"索引增量重建完成：{status}")
     else:
         run_server()
 

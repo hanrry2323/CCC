@@ -229,7 +229,8 @@ def _retrieve_kb_context(message: str) -> str:
     if not _get_brain_kb_enabled():
         return ""
     try:
-        from server.kb.search import search as kb_search
+        # T51：统一查询内核（与 kb MCP 同一 service），自动增量 ensure_index
+        from server.kb.service import search as kb_search
 
         index_dir = _get_brain_kb_index_dir()
         results = kb_search(
