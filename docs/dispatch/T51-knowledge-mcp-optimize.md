@@ -1,7 +1,8 @@
 # 任务卡 T51 · 知识库 MCP 优化（Claude Code 执行）
 
 > 关联：阶段 3 P1 · 依据：老板点名「自建知识库 MCP 与优化做好」；现状=kb MCP（stdio）存在但无真实调用方，大脑直连 search.py，索引全量重建
-> 执行体：Claude Code · 验收：Codex（严格）· 状态：执行中 · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-04
+> 作废记录：2026-08-04 方向调整——本卡按 M1 worktree 出卡，与「Codex 出卡 → 2017 Engine 自动执行」方向不符；作废，待 2017 执行环境（dev worktree + Engine 派发）跑通后重出（内容保留为参考）。
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-p1a`（分支 `codex/p1a-kb-mcp`）**，与 T52 并行；文件所有权见下
 
 ## 目标
