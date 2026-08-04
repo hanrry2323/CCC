@@ -1,19 +1,19 @@
 /**
  * boardPage.js — 看板页（T30：新协议版）
+ * T56: 改接 cardApi + TaskCard* 统一数据层及组件层。
  *
  * 数据源（全部走新服务端）：
- *   - 项目列表：GET /board/summaries（无参 → 全部项目各自一个 snapshot）
- *   - 单项目看板：GET /board/snapshot?workspace=X
- *     返回 {columns: {状态: [BoardTask]}, counts: {...}, workspace}
+ *   - 列表/搜索：GET /cards?project=&state=&page=
  *   - 多项目指标：GET /board/summaries?workspaces=a,b,c
  *   - 卡详情：GET /tasks/{id}（不含 events；events 字段为 []）
- *
- * 写操作（移卡/建卡/清理）已禁用：服务端不暴露；请在桌面端或编排口操作。
  *
  * 状态命名：契约 §2 五态（中文）：待分派 / 执行中 / 已回写 / 已关闭 / 打回。
  */
 
-import { apiGet } from '../api.js';
+import { apiGet, getCards } from '../api.js';
+import { TaskCardList } from '../components/taskCardList.js';
+import { renderTaskCardDetail } from '../components/taskCardDetail.js';
+import { fmtTaskCopy } from '../components/taskCard.js';
 
 /** 契约 §2 五态（与 server/board/models.py STATES 对齐）。 */
 const FLOW_COLS = ['待分派', '执行中', '已回写', '已关闭', '打回'];
@@ -33,6 +33,7 @@ let _wsNames = [];
 let _indicatorBusy = false;
 let _filterQ = '';
 let _filterDebounce = null;
+let _colLists = {}; // Map of state -> TaskCardList instance
 
 function esc(s) {
   if (s == null) return '';
@@ -45,35 +46,6 @@ function matchesKeyword(t, q) {
   if (!q) return true;
   const hay = [t.id, t.title, t.executor, t.status, t.note].filter(Boolean).join(' ');
   return hay.toLowerCase().indexOf(q.toLowerCase()) >= 0;
-}
-
-function fmtTaskCopy(t, col) {
-  const lines = [
-    '<<<CCC_TASK>>>',
-    'id: ' + (t.id || ''),
-    'workspace: ' + _ws,
-    'column: ' + (col || t.status || ''),
-    'kind: ' + (t.card_kind || 'work'),
-    'title: ' + (t.title || ''),
-  ];
-  if (t.parent_id) lines.push('parent: ' + t.parent_id);
-  if (t.split_status) lines.push('split_status: ' + t.split_status);
-  if (t.note) lines.push('note: ' + t.note);
-  if (Array.isArray(t.phases) && t.phases.length) {
-    lines.push('phases: ' + t.phases.join(', '));
-  }
-  lines.push('<<<END_CCC_TASK>>>');
-  lines.push('（请围绕上述任务与我讨论：现状、风险、下一步）');
-  return lines.join('\n');
-}
-
-function copyBtnHtml() {
-  return (
-    '<button type="button" class="card-copy-btn" title="复制任务信息到对话" aria-label="复制任务">' +
-    '<span class="card-copy-ico" aria-hidden="true">⧉</span>' +
-    '<span class="card-copy-txt">复制</span>' +
-    '</button>'
-  );
 }
 
 async function copyTextToClipboard(text) {
@@ -100,21 +72,6 @@ async function copyTextToClipboard(text) {
     return !!ok;
   } catch (_) {
     return false;
-  }
-}
-
-async function copyCardTask(card) {
-  if (!card) return;
-  const id = card.dataset.id;
-  const col = card.dataset.col;
-  const t = (_state.columns[col] || []).find((x) => x.id === id) || { id, title: '' };
-  const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
-  if (ok) {
-    window.showToast?.('已复制任务块，可粘贴到对话', 'success');
-    card.classList.add('just-copied');
-    setTimeout(() => card.classList.remove('just-copied'), 600);
-  } else {
-    window.showToast?.('复制失败：请长按选中后手动复制', 'error');
   }
 }
 
@@ -157,7 +114,7 @@ function html() {
   </div>
   <div class="board-main">
     <div class="board-layout" id="board-layout">
-      <div class="board-flow-cols" id="board-flow"></div>
+      <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(220px, 1fr); grid-auto-flow: column; gap: 10px; height: 100%; overflow-x: auto; padding: 10px 0;"></div>
     </div>
   </div>
 </div>
@@ -168,8 +125,8 @@ function html() {
       <div id="board-did" style="font-family:var(--ccc-font-mono);font-size:11px;color:var(--ccc-text-muted)"></div>
       <div id="board-dtt" style="font-weight:500;padding:6px 0"></div>
       <div id="board-dmt" style="padding:6px 0;border-top:1px solid var(--ccc-border-subtle);font-size:11px"></div>
-      <div id="board-dde" style="white-space:pre-wrap;border-top:1px solid var(--ccc-border-subtle);padding-top:6px"></div>
-      <div id="board-dacc" style="border-top:1px solid var(--ccc-border-subtle);padding-top:6px;margin-top:6px"></div>
+      <div id="board-dde" style="white-space:pre-wrap;border-top:1px solid var(--ccc-border-subtle);padding-top:6px;display:none;"></div>
+      <div id="board-dacc" style="border-top:none;padding-top:6px;margin-top:6px"></div>
     </div>
     <div class="btns" style="margin-top:10px">
       <button type="button" class="hub-btn" id="board-dclose">关闭</button>
@@ -184,60 +141,58 @@ function _viewTasks(col) {
   return tasks;
 }
 
-function _buildFlowCol(col) {
-  const tasks = _viewTasks(col);
-  const d = document.createElement('div');
-  d.className = 'board-col';
-  const cards = tasks.length
-    ? tasks
-        .map((t) => {
-          const border = COLORS[col] || '#a39e93';
-          const exec = t.executor ? `<div class="parent-tag">执行体: ${esc(t.executor)}</div>` : '';
-          const idLine = `<div class="id">${esc(t.id)}</div>`;
-          const ti = `<div class="ti">${esc(t.title)}</div>`;
-          return `<div class="board-card board-card-work" data-id="${esc(t.id)}" data-col="${esc(col)}" style="border-left-color:${border}">
-            ${idLine}
-            ${ti}
-            ${exec}
-            ${copyBtnHtml()}
-          </div>`;
-        })
-        .join('')
-    : '<div class="board-empty">—</div>';
-  d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
-  return d;
-}
-
-function renderFlowCols() {
+function renderCols() {
   const host = _root.querySelector('#board-flow');
   if (!host) return;
-  const newSigs = {};
-  for (const col of FLOW_COLS) {
-    const tasks = _viewTasks(col);
-    newSigs[col] = tasks.map((t) => t.id + ':' + (t.updated_at || '')).join('|');
-  }
-  const existingCols = host.querySelectorAll('.board-col');
-  if (existingCols.length !== FLOW_COLS.length) {
-    host.innerHTML = '';
-    for (const col of FLOW_COLS) host.appendChild(_buildFlowCol(col));
-    host.dataset.sigs = JSON.stringify(newSigs);
-    return;
-  }
-  let prevSigs = {};
-  try { prevSigs = JSON.parse(host.dataset.sigs || '{}'); } catch (_) {}
-  for (let i = 0; i < FLOW_COLS.length; i++) {
-    const col = FLOW_COLS[i];
-    if (prevSigs[col] !== newSigs[col]) {
-      const oldEl = existingCols[i];
-      const oldBody = oldEl.querySelector('.board-col-body');
-      const scrollTop = oldBody ? oldBody.scrollTop : 0;
-      const newEl = _buildFlowCol(col);
-      oldEl.replaceWith(newEl);
-      const newBody = newEl.querySelector('.board-col-body');
-      if (newBody && scrollTop) newBody.scrollTop = scrollTop;
+
+  if (host.innerHTML === '') {
+    // Build initial column frames
+    host.innerHTML = FLOW_COLS.map(col => `
+      <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%;">
+        <div class="board-col-h">
+          <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span>
+          <span class="ct" id="ct-${col}">0</span>
+        </div>
+        <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 6px; gap: 4px;"></div>
+      </div>
+    `).join('');
+
+    // Instantiate TaskCardList for each column
+    for (const col of FLOW_COLS) {
+      const colEl = _root.querySelector(`#col-list-${col}`);
+      if (colEl) {
+        _colLists[col] = new TaskCardList(colEl, {
+          onCardClick: (card, id) => {
+            showDetail(id);
+          },
+          onCopyClick: async (btn, id) => {
+            const t = (_state.columns[col] || []).find((x) => x.id === id) || { id, title: '' };
+            const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
+            if (ok) {
+              window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+            } else {
+              window.showToast?.('复制失败：请长按选中后手动复制', 'error');
+            }
+          }
+        });
+        // Enable virtual scrolling for extremely large lists
+        _colLists[col].enableVirtualScroll(true);
+      }
     }
   }
-  host.dataset.sigs = JSON.stringify(newSigs);
+
+  // Update items in each column list
+  for (const col of FLOW_COLS) {
+    const tasks = _viewTasks(col);
+    const countEl = _root.querySelector(`#ct-${col}`);
+    if (countEl) countEl.textContent = tasks.length;
+
+    if (_colLists[col]) {
+      _colLists[col].setItems(tasks);
+    }
+  }
+
+  updateSummary();
 }
 
 function updateSummary() {
@@ -246,11 +201,6 @@ function updateSummary() {
   const counts = _state.counts || {};
   const total = FLOW_COLS.reduce((s, c) => s + Number(counts[c] || 0), 0);
   el.textContent = _ws + ` · 共 ${total} 张`;
-}
-
-function renderCols() {
-  renderFlowCols();
-  updateSummary();
 }
 
 function classifyWsStatus(payload) {
@@ -324,7 +274,6 @@ function setActiveWorkspace(name) {
 }
 
 async function loadConfig() {
-  // T30：项目列表来自 /board/summaries（无参 → 全部项目各自一个 snapshot）
   const data = await apiGet('/board/summaries');
   const summaries = (data && data.summaries) || {};
   const btns = _root.querySelector('#board-ws-btns');
@@ -354,10 +303,24 @@ async function loadConfig() {
 }
 
 async function loadBoard() {
-  const qs = _ws === 'all' ? '' : ('?workspace=' + encodeURIComponent(_ws));
   try {
-    const r = await apiGet('/board/snapshot' + qs);
-    _state = r || { columns: {}, counts: {} };
+    const project = _ws === 'all' ? '' : _ws;
+    const r = await getCards({ project, page_size: 1000 });
+    const cards = r.cards || [];
+
+    // Build columns & counts map
+    const columns = { '待分派': [], '执行中': [], '已回写': [], '已关闭': [], '打回': [] };
+    const counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
+
+    for (const c of cards) {
+      const st = c.state || c.status || '待分派';
+      if (columns[st] !== undefined) {
+        columns[st].push(c);
+        counts[st]++;
+      }
+    }
+
+    _state = { columns, counts };
     renderCols();
     refreshAllWsIndicators().catch(() => {});
   } catch (err) {
@@ -378,12 +341,10 @@ async function showDetail(id) {
       r.parent_id ? `父卡: ${esc(r.parent_id)}` : '',
     ].filter(Boolean).join(' · ');
     _root.querySelector('#board-dmt').innerHTML = meta;
-    _root.querySelector('#board-dde').textContent = r.note || '(无描述)';
+
     const accEl = _root.querySelector('#board-dacc');
-    if (r.acceptance) {
-      accEl.innerHTML = '<h3 style="font-size:11px;color:var(--ccc-text-muted)">验收标准</h3><div style="white-space:pre-wrap;font-size:12px">' + esc(r.acceptance) + '</div>';
-    } else {
-      accEl.innerHTML = '';
+    if (accEl) {
+      accEl.innerHTML = renderTaskCardDetail(r);
     }
     _root.querySelector('#board-dm').classList.add('open');
   } catch (err) {
@@ -416,29 +377,6 @@ function bind() {
       }, 150);
     });
   }
-  _root.querySelector('#board-layout').addEventListener('click', (e) => {
-    const copyBtn = e.target.closest('.card-copy-btn');
-    if (copyBtn) {
-      e.stopPropagation();
-      e.preventDefault();
-      const card = copyBtn.closest('.board-card');
-      copyCardTask(card);
-      return;
-    }
-    const card = e.target.closest('.board-card');
-    if (card) {
-      showDetail(card.dataset.id);
-    }
-  });
-  _root.querySelector('#board-layout').addEventListener(
-    'pointerdown',
-    (e) => {
-      const copyBtn = e.target.closest('.card-copy-btn');
-      if (!copyBtn) return;
-      e.stopPropagation();
-    },
-    true
-  );
 }
 
 export async function mountBoard(el) {
@@ -466,4 +404,5 @@ export function unmountBoard() {
     clearInterval(_timer);
     _timer = null;
   }
+  _colLists = {};
 }
