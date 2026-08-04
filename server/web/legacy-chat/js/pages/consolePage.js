@@ -16,7 +16,8 @@
 import { apiGet } from '../api.js';
 
 let _root = null;
-let _timer = null;
+let _timer = null;   // 看板快照轮询（15s）
+let _rtimer = null;  // 后台任务进程轮询（8s，T53）
 let _ws = 'all';
 
 function esc(s) {
@@ -45,6 +46,10 @@ function html() {
   <div class="console-section">
     <h3>执行中 <span class="badge" id="console-active-n">0</span></h3>
     <div class="console-tasks" id="console-active"></div>
+  </div>
+  <div class="console-section">
+    <h3>后台任务进程 <span class="badge" id="console-running-n">0</span></h3>
+    <div class="console-tasks" id="console-running"></div>
   </div>
   <div class="console-section">
     <h3>打回 <span class="badge" id="console-abn-n">0</span></h3>
@@ -95,6 +100,59 @@ function renderTasks(elId, badgeId, tasks, opts = {}) {
       </div>`
     )
     .join('');
+}
+
+function fmtElapsed(secs) {
+  if (secs == null) return '--';
+  const s = Math.max(0, Math.round(secs));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm' + Math.round(s % 60) + 's';
+  return Math.floor(s / 3600) + 'h' + Math.round((s % 3600) / 60) + 'm';
+}
+
+function runningCard(t) {
+  const tail = (t.log_tail || []).slice(-5);
+  const tailHtml = tail.length ? tail.map((l) => esc(l)).join('<br>') : '（无日志）';
+  const recent = t.last_activity_at
+    ? (Date.now() - new Date(t.last_activity_at).getTime()) < 30000
+    : false;
+  const active = t.last_activity_at ? recent : (t.elapsed_s != null);
+  const dotColor = active ? '#3d9a5f' : '#a39e93';
+  const label = t.last_activity_at ? (active ? '活动' : '空闲') : '运行中';
+  return `<div class="console-tc" style="border-left-color:#2f7dd1">
+    <div class="title">${esc(t.title || t.work_id)}</div>
+    <div class="id">${esc(t.work_id)} · ${esc(t.executor || '')} · 已用时 ${fmtElapsed(t.elapsed_s)}</div>
+    <div style="margin:8px 0 6px;display:flex;align-items:center;gap:6px">
+      <span class="board-dot" style="background:${dotColor};animation:${active ? 'pulse-dot 1.2s ease-in-out infinite' : 'none'}"></span>
+      <span style="font-size:11px;color:var(--ccc-text-muted)">${label}</span>
+      <span style="flex:1"></span>
+      <span style="font-size:11px;color:var(--ccc-text-muted)">日志尾 ${tail.length} 行</span>
+    </div>
+    <!-- indeterminate 进度条：无百分比进度，用 shimmer 滑动光带表示「进行中」 -->
+    <div style="height:6px;border-radius:3px;background:var(--ccc-bg-hover);overflow:hidden;margin-bottom:8px">
+      <div style="height:100%;background:linear-gradient(90deg,var(--ccc-bg-hover),#2f7dd1,var(--ccc-bg-hover));background-size:200% 100%;animation:shimmer 1.6s linear infinite"></div>
+    </div>
+    <pre style="margin:0;font-size:10px;line-height:1.5;color:var(--ccc-text-secondary);white-space:pre-wrap;word-break:break-all;max-height:96px;overflow:hidden;background:var(--ccc-bg-layer);border-radius:6px;padding:8px">${tailHtml}</pre>
+  </div>`;
+}
+
+function renderRunning(tasks) {
+  const el = _root.querySelector('#console-running');
+  const nEl = _root.querySelector('#console-running-n');
+  if (nEl) nEl.textContent = String(tasks.length);
+  if (!el) return;
+  if (!tasks.length) {
+    el.innerHTML = '<div class="console-empty">当前无后台任务</div>';
+    return;
+  }
+  el.innerHTML = tasks.map(runningCard).join('');
+}
+
+async function pollRunning() {
+  try {
+    const data = await apiGet('/tasks/running');
+    renderRunning((data && data.tasks) || []);
+  } catch (_) { /* 后台任务面板失败不阻断整体 */ }
 }
 
 async function poll() {
@@ -150,12 +208,19 @@ export async function mountConsole(el) {
     });
   }
   await poll();
+  await pollRunning();
   if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 15000);
+  // T53：后台任务进程 8 秒轮询（简单可靠；SSE 实时推送后置 T49）
+  if (!_rtimer) _rtimer = setInterval(() => pollRunning().catch(() => {}), 8000);
 }
 
 export function unmountConsole() {
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
+  }
+  if (_rtimer) {
+    clearInterval(_rtimer);
+    _rtimer = null;
   }
 }
