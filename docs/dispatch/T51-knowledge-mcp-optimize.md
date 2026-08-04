@@ -1,9 +1,10 @@
 # 任务卡 T51 · 知识库 MCP 优化（Claude Code 执行）
 
 > 关联：阶段 3 P1 · 依据：老板点名「自建知识库 MCP 与优化做好」；现状=kb MCP（stdio）存在但无真实调用方，大脑直连 search.py，索引全量重建
-> 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-04
-> 作废记录：2026-08-04 方向调整——本卡按 M1 worktree 出卡，与「Codex 出卡 → 2017 Engine 自动执行」方向不符；作废，待 2017 执行环境（dev worktree + Engine 派发）跑通后重出（内容保留为参考）。
-> 并行执行：**工作目录 `/Users/apple/program/ccc-ws-p1a`（分支 `codex/p1a-kb-mcp`）**，与 T52 并行；文件所有权见下
+> 执行体：Claude Code · 验收：Codex（严格）· 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53）后按 Engine 自动派发重出。
+> 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t51-kb-mcp-optimize`（先 `git fetch origin main && git checkout -b codex/t51-kb-mcp-optimize origin/main`）
+> **分步提交纪律（硬）**：每完成一个逻辑块（MCP 接入 / 索引增量 / BM25 调参 / 测试）立即 commit+push，禁止攒到结尾；执行超时 7200s。
 
 ## 目标
 
