@@ -44,6 +44,9 @@ knowledge/
 
 ### 检索方式
 
+> T51 起：MCP / 大脑 / CLI 统一走同一查询内核（`server/kb/service.py`）；
+> 索引按 mtime 增量更新（改动文档后只重扫变化源）。详见 `server/kb/README.md`。
+
 #### 方式一：MCP 服务（推荐，v1.0）
 
 ```bash
@@ -53,11 +56,17 @@ python3 -m server.kb.mcp_server
 # 自测
 python3 -m server.kb.mcp_server --selftest
 
+# 健康自检
+python3 -m server.kb.mcp_server --health
+
 # 列出工具
 python3 -m server.kb.mcp_server --list-tools
 
-# 重建索引
+# 全量重建索引
 python3 -m server.kb.mcp_server --reindex
+
+# 增量重建索引（只重扫变化的文档）
+python3 -m server.kb.mcp_server --reindex-incremental
 ```
 
 MCP server 暴露三个工具：
@@ -65,7 +74,7 @@ MCP server 暴露三个工具：
 - **kb_read**(path) — 读取指定知识条目全文
 - **kb_list**(domain?) — 列出域内条目
 
-#### 方式二：脚本检索（兼容）
+#### 方式二：脚本检索（兼容，T51 起走统一内核）
 
 ```bash
 # 全文关键词检索
