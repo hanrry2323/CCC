@@ -1,7 +1,7 @@
 # 任务卡 T51 · 知识库 MCP 优化（Claude Code 执行）
 
 > 关联：阶段 3 P1 · 依据：老板点名「自建知识库 MCP 与优化做好」；现状=kb MCP（stdio）存在但无真实调用方，大脑直连 search.py，索引全量重建
-> 执行体：Claude Code · 验收：Codex（严格）· 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex（严格）· 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53）后按 Engine 自动派发重出。
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t51-kb-mcp-optimize`（先 `git fetch origin main && git checkout -b codex/t51-kb-mcp-optimize origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块（MCP 接入 / 索引增量 / BM25 调参 / 测试）立即 commit+push，禁止攒到结尾；执行超时 7200s。
@@ -37,4 +37,40 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · 日期：2026-08-04
+
+### MCP 接入方案
+
+统一查询内核 `server/kb/service.py`：**大脑 / MCP / CLI 同一内核**。
+- `mcp_server.py` 三工具（kb_search / kb_read / kb_list）全部改走 service；
+- `brain.py` 知识检索入口改走 service（自动增量 ensure_index，异常静默降级不变）；
+- 新 CLI `server/kb/cli.py`，`knowledge/ccc-kb-search.sh` 对齐（与 MCP 同结果）。
+- 新增 `--health` / `--reindex-incremental`；selftest 扩数字检索 + 域过滤。
+- qx-map `ide/mcp-manifest.md` 已登记 ccc-kb（stdio）为准入服务（qx-map commit `1c67b73`）。
+
+### 增量索引实现
+
+`server/kb/indexer.py`：索引文件升级 version 2，携带源文件 **mtime 表**（`mtimes`）。
+- `incremental_index()` 只重扫 mtime 变化的源文件；无变化零扫；删除源移除其文档；v1 索引退化全量重建。
+- `service.ensure_index()` 查询前自动增量：改动 1 个知识文档后只重扫该文档。
+- 实测：touch `knowledge/domains/lessons/seed.md` → 增量重建只扫 1 个文件（`seed.md`）；无变化零扫。
+
+### BM25 调参结论
+
+- **数字分词**：数字串独立成 token，IP（192.168.3.116）/ 端口（7788/6100）可直接检索（此前 IP 零命中）。
+- **域归一**：seed JSON 数字前缀 section（01-nodes-paths 等）构建时归一为域过滤名，域过滤恒生效。
+- **跨源去重**：同 section 内 seed JSON ↔ domains MD 同实体折叠，保留分数高者（修复 qb/CCC 双源重复）。
+- **k1/b**：走环境变量 `CCC_KB_BM25_K1` / `CCC_KB_BM25_B`（默认 1.2/0.75，标准 BM25）；网格（1.0–2.0 × 0.3–0.75）对用例集均 14/14 命中，默认稳健。
+
+### 用例集结果
+
+`knowledge/query-cases.md`：**14 题覆盖四域**（nodes-paths 4 / projects 4 / decisions 3 / lessons 3），
+`test_kb_query_cases.py` 逐题验证 top-5 命中预期域——**14/14 命中**（≥8 达标）。
+
+### pytest / 验证 / push 证据
+
+- pytest 全量：**450 passed**（基座 397 → +53 新增用例）
+- ruff：新代码全过（`server/kb/` 仅基座既有 2 处 UP038，非本次引入）；`py_compile` clean
+- MCP 真实协议调用（JSON-RPC over stdio）：`kb_search("192.168.3.116", domain=nodes-paths)` 返回 6 条全 nodes-paths，命中 ✓
+- 分支 `codex/t51-kb-mcp-optimize` 分步提交（A 索引增量 / B BM25 调参 / C 统一入口 / D 用例集 / E 文档），已全部 push：
+  `091fc881` → `d84f56f5` → `05f57b2e` → `ee2a185e` → `cd2ec5c9`
