@@ -112,11 +112,15 @@ def _parse_seed_json(filepath: Path) -> list[KbDocument]:
                 elif isinstance(v, list):
                     for i, item in enumerate(v):
                         if isinstance(item, dict):
-                            # 提取 id/title/name 作为文档标识
+                            # 提取实体字段作为文档标识（T51 增 hostname/project，
+                            # 使 doc_id 含可读实体名，供跨源去重与引用标注）
                             ident = (
                                 item.get("id")
                                 or item.get("title")
                                 or item.get("name")
+                                or item.get("hostname")
+                                or item.get("project")
+                                or item.get("code")
                                 or f"{k}_{i}"
                             )
                             # 展平为文本

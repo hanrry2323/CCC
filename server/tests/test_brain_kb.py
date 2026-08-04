@@ -216,23 +216,24 @@ class TestRetrievalExceptionDegrade:
 # ════════════════════════════════════════════════════════════
 
 class TestNonKnowledgeNoInjection:
-    """非知识问题不注入：纯数学/闲聊类查询无 BM25 命中 → 不注入。
+    """非知识问题不注入：纯符号/闲聊类查询无 BM25 命中 → 不注入。
 
-    BM25 分词只取中文字符与英文单词（不含数字），「1+1=?」无 token → 无命中。
+    T51 起 BM25 分词含数字（IP/端口可检索），故用纯符号查询（无中英/数字 token）
+    验证「无 token → 无命中 → 不注入」。
     """
 
     def test_math_question_no_injection(self, small_index, monkeypatch):
-        """纯数学题（无中英 token）不触发注入。"""
+        """纯符号题（无中英/数字 token）不触发注入。"""
         _enable_kb(monkeypatch, small_index)
-        ctx = _retrieve_kb_context("1+1=?")
+        ctx = _retrieve_kb_context("???+++")
         assert ctx == ""
 
     def test_math_question_prompt_no_kb_block(self, small_index, monkeypatch):
-        """纯数学题 prompt 不含参考段落。"""
+        """纯符号题 prompt 不含参考段落。"""
         _enable_kb(monkeypatch, small_index)
-        prompt = _build_prompt("1+1=?", [])
+        prompt = _build_prompt("???+++", [])
         assert "【知识库参考】" not in prompt
-        assert "1+1=?" in prompt
+        assert "???+++" in prompt
 
 
 # ════════════════════════════════════════════════════════════
