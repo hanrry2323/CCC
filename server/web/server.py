@@ -1352,6 +1352,74 @@ class _APIHandler(BaseHTTPRequestHandler):
         self._send_json({"ok": True})
 
 
+_last_card_states: dict[str, str] = {}
+
+
+def _notify_card_status_change(item: BoardItem, change_type: str, old_state: str = None):
+    thread_id = item.thread_id
+    if not thread_id:
+        return
+
+    state_desc = base_state(item.state)
+    if change_type == "created":
+        msg_text = f"【系统通知】任务卡 **{item.id}** 已成功下达并创建：\n- **标题**: {item.title}\n- **状态**: {item.state}"
+    else:
+        msg_text = f"【系统通知】任务卡 **{item.id}** 状态发生变化：\n- **标题**: {item.title}\n- **最新状态**: {item.state}"
+        if old_state:
+            msg_text += f" (原状态: {old_state})"
+
+    now = datetime.now(timezone.utc).isoformat()
+    sys_msg = {
+        "role": "system",
+        "type": "task_status",
+        "task_id": item.id,
+        "status": state_desc,
+        "title": item.title,
+        "message": msg_text,
+        "timestamp": now,
+    }
+
+    with _conv_cond:
+        conv = _conv_list_for(thread_id)
+        conv.append(sys_msg)
+        _conv_cond.notify_all()
+
+    project = _project_of_thread_id(thread_id)
+    if project:
+        _persist_thread_messages(project, thread_id, [sys_msg])
+
+
+def _start_card_watcher():
+    def watch_loop():
+        # Initialize last card states on first scan
+        try:
+            items = _load_board_items()
+            for item in items:
+                _last_card_states[item.id] = item.state
+        except Exception:
+            pass
+
+        while True:
+            time.sleep(3)
+            try:
+                items = _load_board_items()
+                for item in items:
+                    old_state = _last_card_states.get(item.id)
+                    if old_state is None:
+                        # This is a newly created card!
+                        _last_card_states[item.id] = item.state
+                        _notify_card_status_change(item, "created")
+                    elif old_state != item.state:
+                        # Status changed!
+                        _last_card_states[item.id] = item.state
+                        _notify_card_status_change(item, "changed", old_state)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=watch_loop, daemon=True)
+    t.start()
+
+
 def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建 HTTP 服务实例（不启动）。
 
@@ -1365,6 +1433,7 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
 
 def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建并启动 HTTP 服务（阻塞）。"""
+    _start_card_watcher()
     server = create_server(host, port)
     addr = server.server_address
     print(f"[web] HTTP API 启动于 http://{addr[0]}:{addr[1]}", file=sys.stderr)

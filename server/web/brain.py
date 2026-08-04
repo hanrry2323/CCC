@@ -52,12 +52,11 @@ BRAIN_SYSTEM_PROMPT = (
     "并作为多壳对话的大脑。所有输出：结论先行、条理清晰、中文作答；"
     "禁止把问题抛回给用户做选择题——信息不足时给出最合理判断与依据，而非反问。\n\n"
     "【职责一：规划】\n"
-    "理解目标 → 拆解为可执行步骤 → 产出任务卡草案。拆解粒度以一次性执行体可完成为准，"
-    "避免过粗（无法执行）或过碎（无意义小卡）。\n\n"
+    "理解目标 → 拆解为可执行步骤 → 产出任务卡草案（产出 ```ccc-transfer ... ``` JSON 块供用户在对话中确认，绝对不要在第一阶段提前在 docs/dispatch 中创建或写入物理文件）。\n\n"
     "【职责二：写任务卡】\n"
-    "任务卡写入 docs/dispatch/，格式遵守 references/board-task-schema.md（契约 §1/§2）：\n"
-    "- 标题：`# 任务卡 Txx · 标题`；`>` 元数据行 `关联：project` · `执行体：executor` · "
-    "`状态：待分派` · `日期：YYYY-MM-DD`；\n"
+    "只有当用户确认了草案，或者收到包含「确认下达」的指令后，你才正式执行【职责二】。此时你将任务卡正式写入 docs/dispatch/ 目录（或对应的子目录，如果是新卡），格式遵守 references/board-task-schema.md（契约 §1/§2）：\n"
+    "- 标题：`# 任务卡 Txx · 标题`；`>` 元数据行 `关联：project` · `执行体：executor` · `状态：待分派` · `日期：YYYY-MM-DD` · `会话：thread_id`；\n"
+    "- 必须在卡头的元数据行中保留 `会话：thread_id`（将其设为当前会话的 thread_id，如 qb::abc），以便状态能回流！\n"
     "- 正文：目标 / 范围 / 验收标准（可执行，含验证命令）/ 步骤 / 红线；\n"
     "- 状态机五态：待分派 → 执行中 → 已回写 → 已关闭（打回 → 待分派）；\n"
     "- 写卡前先读 docs/dispatch/ 现有卡编号，避免撞号。\n\n"
@@ -259,9 +258,11 @@ def _retrieve_kb_context(message: str) -> str:
     return "\n".join(lines)
 
 
-def _build_prompt(message: str, history: list[dict[str, Any]]) -> str:
+def _build_prompt(message: str, history: list[dict[str, Any]], thread_id: str = "") -> str:
     """组装单次 Claude Code 调用 prompt：系统人格 + 知识库参考 + 最近 N 轮历史 + 当前消息。"""
     parts: list[str] = [BRAIN_SYSTEM_PROMPT, ""]
+    if thread_id:
+        parts.append(f"【当前会话 ID】\n{thread_id}\n")
     # T37：知识库检索注入（命中才注入，置于系统人格与历史之间）
     kb_context = _retrieve_kb_context(message)
     if kb_context:
@@ -345,7 +346,7 @@ def call_brain(
             "brain not configured (CCC_BRAIN_MODEL / CCC_BRAIN_BASE_URL / CCC_BRAIN_AUTH_TOKEN)",
             503,
         )
-    prompt = _build_prompt(message, history)
+    prompt = _build_prompt(message, history, thread_id=session_key or "")
     # 非阻塞获取会话槽位，忙则立即拒绝（不排队等待，避免长阻塞）
     key = session_key or ""
     if not _acquire_brain_slot(key):
@@ -590,7 +591,7 @@ def stream_brain_events(
             },
         )
         return
-    prompt = _build_prompt(message, history)
+    prompt = _build_prompt(message, history, thread_id=session_key or "")
     key = session_key or ""
     if not _acquire_brain_slot(key):
         yield ("error", {"status": 503, "message": "brain busy, try later"})

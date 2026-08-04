@@ -134,6 +134,7 @@ class FileBoardStore:
                 dispatch=entry.get("dispatch", "engine"),
                 type=entry.get("card_type", "task"),
                 project=entry.get("project", ""),
+                thread_id=entry.get("thread_id", ""),
             )
             works.append(work)
         return works
@@ -199,6 +200,7 @@ class FileBoardStore:
             dispatch=item.dispatch or "engine",
             type=item.type,
             project=item.project,
+            thread_id=item.thread_id,
         )
 
 

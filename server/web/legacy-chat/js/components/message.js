@@ -4,6 +4,7 @@ import { escapeHtml, ts, scrollToBottom } from '../utils.js';
 import { streamChat } from '../api.js';
 import { WAIT_HINT_TEXT } from '../chatStatus.js';
 import { refreshSidebar } from './sidebar.js';
+import { parseDispatchBlock } from './dispatchFormat.js';
 import {
   createProgressRail,
   appendProgressStep,
@@ -60,6 +61,16 @@ function attachMessageActions(msgEl, role, content) {
 }
 
 export function renderMessage(container, role, content, appendToLast) {
+  if (role === 'system') {
+    const div = document.createElement('div');
+    div.className = 'msg system';
+    div.innerHTML =
+      '<div class="bubble">' + renderMarkdown(content) + '</div>';
+    container.appendChild(div);
+    requestAnimationFrame(() => scrollToBottom(container));
+    return div;
+  }
+
   const lastMsg = container.lastElementChild;
   if (appendToLast && lastMsg && lastMsg.classList.contains(role) && role === 'assistant') {
     const bubble = lastMsg.querySelector('.bubble');
@@ -75,13 +86,58 @@ export function renderMessage(container, role, content, appendToLast) {
     }
   }
 
+  const isAssistant = (role === 'assistant');
+  let draftHtml = '';
+  let p = null;
+  if (isAssistant) {
+    p = parseDispatchBlock(content);
+    if (p.ok) {
+      const acceptanceList = (p.acceptance || []).map(a => `<li>${escapeHtml(a)}</li>`).join('');
+      draftHtml = `
+        <div class="draft-card" style="margin-top: 12px; padding: 12px; border: 1px solid var(--ccc-border-accent, #444); border-radius: 6px; background: rgba(255,255,255,0.02);">
+          <div class="draft-title" style="font-weight: bold; margin-bottom: 8px; color: var(--ccc-text-accent, #a885f7);">【任务卡草案】${escapeHtml(p.title)}</div>
+          <div class="draft-goal" style="margin-bottom: 6px;"><strong>目标</strong>: ${escapeHtml(p.goal)}</div>
+          <div class="draft-acceptance" style="margin-bottom: 12px;">
+            <strong>验收标准</strong>:
+            <ul style="margin: 4px 0 0 16px; padding: 0;">${acceptanceList}</ul>
+          </div>
+          <div class="draft-actions" style="display: flex; gap: 8px;">
+            <button class="btn-primary confirm-btn" style="padding: 4px 12px; font-size: 12px; cursor: pointer; background: var(--ccc-bg-accent, #6200ee); color: #fff; border: none; border-radius: 4px;">确认下达</button>
+            <button class="btn-secondary modify-btn" style="padding: 4px 12px; font-size: 12px; cursor: pointer; background: transparent; border: 1px solid #666; color: var(--ccc-text-primary, #ccc); border-radius: 4px;">修改</button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
   const div = document.createElement('div');
   div.className = 'msg ' + role;
   div.innerHTML =
     '<div class="msg-label">' + (role === 'user' ? 'You' : 'Claude') + '</div>' +
-    '<div class="bubble">' + renderMarkdown(content) + '</div>' +
+    '<div class="bubble">' + renderMarkdown(content) + draftHtml + '</div>' +
     '<div class="time">' + ts() + '</div>';
   container.appendChild(div);
+
+  if (isAssistant && p && p.ok) {
+    const confirmBtn = div.querySelector('.confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        sendMessage("【确认下达】已确认该方案，请正式下达并在 docs/dispatch 目录下创建任务卡。");
+      });
+    }
+    const modifyBtn = div.querySelector('.modify-btn');
+    if (modifyBtn) {
+      modifyBtn.addEventListener('click', () => {
+        const input = document.getElementById('composer-input');
+        if (input) {
+          input.value = `请修改以下任务方案：\n标题：${p.title}\n目标：${p.goal}\n修改意见：`;
+          input.focus();
+          input.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+  }
+
   attachMessageActions(div, role, content);
   requestAnimationFrame(() => scrollToBottom(container));
 

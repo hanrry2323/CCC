@@ -134,6 +134,7 @@ def parse_card(path: Path | str) -> BoardItem:
         dispatch=_resolve_dispatch(meta),
         type=card_type,
         parent=parent_card,
+        thread_id=meta.get("会话", "").strip() or meta.get("thread_id", "").strip(),
     )
 
 
@@ -224,6 +225,7 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "dispatch": item.dispatch,
         "card_type": item.type,
         "parent_card": item.parent,
+        "thread_id": item.thread_id,
     }
 
 
@@ -307,6 +309,7 @@ def load_dispatch_cards_incremental(directory: Path | str) -> list[BoardItem]:
                 dispatch=entry.get("dispatch", "engine"),
                 type=entry.get("card_type", "task"),
                 parent=entry.get("parent_card", ""),
+                thread_id=entry.get("thread_id", ""),
             )
             items.append(item)
             updated_entries[entry["id"]] = entry
@@ -368,6 +371,7 @@ def derive_epic_states_and_progress(items: list[BoardItem]) -> list[BoardItem]:
                     type=item.type,
                     parent=item.parent,
                     progress=progress_str,
+                    thread_id=item.thread_id,
                 )
                 derived_items.append(new_item)
             else:

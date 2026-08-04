@@ -76,6 +76,7 @@ class Work:
     dispatch: str = "engine"
     type: str = "task"
     project: str = ""
+    thread_id: str = ""
 
     def transition(self, new_state: State, problems: list[str] | None = None) -> None:
         """按契约 §2 转移状态；非法跳转抛 `IllegalTransitionError`。

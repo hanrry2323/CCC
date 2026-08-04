@@ -454,6 +454,67 @@ async function init() {
     renderProjectTabs(state.get('activeTabId'));
     refreshSidebar();
   });
+
+  state.on('currentSessionId', (sid) => {
+    startConversationLongPoll(sid);
+  });
+  // Start initial polling
+  const initialSid = state.get('currentSessionId');
+  if (initialSid) {
+    startConversationLongPoll(initialSid);
+  }
+}
+
+let currentPollAbort = null;
+
+async function startConversationLongPoll(sid) {
+  if (currentPollAbort) {
+    currentPollAbort.abort();
+    currentPollAbort = null;
+  }
+  if (!sid) return;
+  const abort = new AbortController();
+  currentPollAbort = abort;
+
+  const pid = state.get('currentProject') || 'ccc';
+
+  while (!abort.signal.aborted) {
+    if (document.visibilityState !== 'visible' || state.get('activeTabId') === '') {
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
+    try {
+      const { loadSession } = await import('./api.js');
+      const data = await loadSession(sid, pid);
+      if (abort.signal.aborted) break;
+
+      const tabsNow = state.get('tabs') || [];
+      let tab = tabsNow.find((t) => t.sessionId === sid);
+      if (tab) {
+        const msgs = data.messages || [];
+        if (msgs.length > tab.messages.length) {
+          tab.messages = msgs;
+          state.set('tabs', tabsNow);
+          if (state.get('currentSessionId') === sid) {
+            state.set('currentMessages', msgs);
+            const { loadMessages } = await import('./components/message.js');
+            loadMessages({ messages: msgs });
+
+            // Check if last message is system/status notification
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && (lastMsg.type === 'task_status' || lastMsg.role === 'system')) {
+              const { refreshBoardPanel } = await import('./components/boardPanel.js');
+              refreshBoardPanel({ quiet: true });
+            }
+          }
+        }
+      }
+      await new Promise(r => setTimeout(r, 100));
+    } catch (err) {
+      if (abort.signal.aborted) break;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

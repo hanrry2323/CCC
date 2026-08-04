@@ -92,6 +92,7 @@ class BoardItem:
     type: str = "task"
     parent: str = ""
     progress: str = ""
+    thread_id: str = ""
 
     def to_dict(self) -> dict[str, str | int]:
         """转纯字典（JSON 可序列化）。"""
@@ -108,4 +109,5 @@ class BoardItem:
             "type": self.type,
             "parent": self.parent,
             "progress": self.progress,
+            "thread_id": self.thread_id,
         }

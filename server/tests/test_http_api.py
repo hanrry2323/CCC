@@ -1753,3 +1753,31 @@ class TestThreadPersistence:
         assert status == 200
         assert len(data["cards"]) == 2
         assert data["cards"][0]["executor"] == "Claude"
+
+    def test_task_status_feedback_loop(self, api_server, monkeypatch, tmp_path):
+        """测试任务状态变化回流与 watcher 通知。"""
+        from server.board.models import BoardItem
+        from server.web import server as srv_mod
+
+        # 模拟 card
+        item = BoardItem(
+            id="T99",
+            title="测试任务",
+            state="待分派",
+            project="qb",
+            thread_id="qb::test_thread",
+        )
+
+        # 触发通知
+        srv_mod._notify_card_status_change(item, "created")
+
+        # 验证会话内存中是否有通知消息
+        conv = srv_mod._thread_conversations["qb::test_thread"]
+        assert len(conv) == 1
+        assert conv[0]["role"] == "system"
+        assert conv[0]["type"] == "task_status"
+        assert conv[0]["task_id"] == "T99"
+        assert conv[0]["status"] == "待分派"
+        assert "T99" in conv[0]["message"]
+        assert "已成功下达" in conv[0]["message"]
+
