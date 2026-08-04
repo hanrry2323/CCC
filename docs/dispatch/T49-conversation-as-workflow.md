@@ -1,7 +1,7 @@
 # 任务卡 T49 · 业务流程打通：对话即工作闭环（Claude Code 执行）
 
 > 关联：老板指示「站在业务流程梳理高度，前端界面与后端功能业务打通」· 前置：T46（稳定+SSE）、T47（项目会话+左栏）
-> 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t59-conversation-as-workflow`（先 `git fetch origin main && git checkout -b codex/t59-conversation-as-workflow origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -69,3 +69,10 @@
 - **Ruff Lint自验**: `ruff check server/` 通过，无任何格式或语法警告。
 - **Push证据**: 已成功将 `codex/t59-conversation-as-workflow` 分支推送至 GitHub 远端：
   - **Commit HASH**: `f94ebd690c9a7f276996d1a3b79c23e8f3700d2c`
+
+
+---
+
+## 验收区（Codex 独立取证 · 过夜执行）
+
+**判定：✅ 通过。** 对话即工作闭环（task_status 回流/下达确认/验收回显，f94ebd69 +255 行，pytest 全绿，2017 已部署）。
