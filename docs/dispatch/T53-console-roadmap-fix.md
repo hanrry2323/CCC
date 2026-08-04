@@ -2,6 +2,7 @@
 
 > 关联：阶段 3（控制台/线路图修复，老板 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；请先 `git fetch origin main && git checkout -b codex/t53-console-roadmap-fix origin/main`
+> **续作指令（2026-08-04 二次派发）**：ccc-dev-ws 中已有上次超时留下的**完整未提交改动**（16 文件 +437/-26，`pytest server/tests` 已实测全绿，含 A/B/C 实现与测试）。**不要重做**——直接按逻辑分步提交（A 状态语义 / B 项目聚合 / C 后台进程 + 测试各一个 commit）→ push 分支 → 回写。执行超时已调至 7200s；**每完成一个逻辑块立即 commit，禁止攒到结尾**。
 
 ## 目标
 
