@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# ── CCC 出卡模板：生成标准任务卡骨架（T52 自动化基建 第 1 件） ──
+# ── CCC 出卡模板：生成标准任务卡骨架（T52 基建 + T54 命名规则） ──
 #
-# 生成 `T<序号>-<slug>.md` 到目标任务卡目录，包含标准卡头字段与
-# 目标/红线/范围/步骤/验收标准/回写要求/回写区 七个骨架节；
-# 自动查重（编号唯一 + 同名卡拒绝）+ 编号自增；写卡后自动联动
-# `server/board/validate.py` 门禁校验（不合规卡直接报错）。
+# 生成 `<前缀><三位序号>-<slug>.md` 到 `<dispatch-dir>/<前缀>/` 子目录，
+# 包含标准卡头字段与 目标/红线/范围/步骤/验收标准/回写要求/回写区 七节；
+# 前缀序号自增（同前缀最大序号 +1，三位补零）+ 同名/同编号查重 + slug 校验；
+# 写卡后自动联动 `server/board/validate.py` 门禁（不合规卡直接删除报错）。
 #
 # 用法：
 #   scripts/new-card.sh [选项]
 #
 # 选项：
 #   --title "标题"            卡标题（必填；slug 由标题 ASCII 词派生，空则用 --slug）
-#   --project <前缀>          卡头「项目」字段（默认 ccc）
+#   --project <前缀>          项目前缀 = 子目录名 = 卡头「项目」（默认 ccc；见 T-mapping.md）
 #   --executor "Claude Code"  卡头「执行体」字段（默认 $CCC_CARD_EXECUTOR 或 Claude Code）
 #   --acceptance "Codex"      卡头「验收」字段（默认 $CCC_CARD_ACCEPTANCE 或 Codex）
 #   --related "关联文本"       卡头「关联」字段（默认 "阶段 3 P1"）
 #   --dispatch engine|manual  卡头「派发」字段（默认 engine）
 #   --dispatch-dir <目录>     任务卡目录（默认 docs/dispatch；测试可用临时目录）
-#   --id T90-test             显式卡编号（跳过自动自增；格式 T<数字|-slug>）
-#   --slug <slug>             文件名 slug 覆盖（默认从标题派生）
+#   --id <前缀><NNN>[-slug]   显式卡编号（跳过自增；如 ccc064-auto-naming）
+#   --slug <slug>             文件名 slug 覆盖（默认从标题派生；小写字母数字+单连字符）
 #   --dry-run                 只打印卡内容与目标路径，不写文件
 #   --quiet                   不打印写卡日志
 #
@@ -84,21 +84,26 @@ if [[ -z "$PYTHON_BIN" ]]; then
   exit 2
 fi
 
+# ── T54：前缀 = 子目录名 = 卡头「项目」；粗校验（2-4 位小写字母），未知前缀由 validate 拦截 ──
+if [[ ! "$PROJECT_PREFIX" =~ ^[a-z]{2,4}$ ]]; then
+  echo "[ERROR] 前缀非法: ${PROJECT_PREFIX}（须 2-4 位小写字母，如 ccc/qb/hp/tst，见 T-mapping.md 前缀表）" >&2
+  exit 2
+fi
+
 # 解析目标目录（相对路径按仓库根解析）
 case "$DISPATCH_DIR" in
   /*) TARGET_DIR="$DISPATCH_DIR" ;;
   *)  TARGET_DIR="$PROJECT_ROOT/$DISPATCH_DIR" ;;
 esac
+PREFIX_DIR="$TARGET_DIR/$PROJECT_PREFIX"
 
-# ── 编号：--id 覆盖 or 自动自增 ──
-declare -a CARD_IDS=()
+# ── 编号：--id 覆盖 or 前缀内自动自增（同前缀最大序号 +1，三位补零） ──
 next_num=0
-if [[ -d "$TARGET_DIR" ]]; then
-  for f in "$TARGET_DIR"/T[0-9]*.md; do
+if [[ -d "$PREFIX_DIR" ]]; then
+  for f in "$PREFIX_DIR"/"$PROJECT_PREFIX"[0-9][0-9][0-9]-*.md; do
     [[ -e "$f" ]] || continue
     base="$(basename "$f" .md)"
-    CARD_IDS+=("$base")
-    if [[ "$base" =~ ^T([0-9]+) ]]; then
+    if [[ "$base" =~ ^"$PROJECT_PREFIX"([0-9]{3}) ]]; then
       n=$((10#${BASH_REMATCH[1]}))
       (( n > next_num )) && next_num=$n
     fi
@@ -106,21 +111,35 @@ if [[ -d "$TARGET_DIR" ]]; then
 fi
 
 if [[ -n "$ID_OVERRIDE" ]]; then
-  CARD_ID="$ID_OVERRIDE"
-  # 查重：显式 ID 的数字前缀已存在（如 --id T1 命中 T1-t52.md）则拒绝
-  id_num="$(printf '%s' "$CARD_ID" | sed -nE 's/^T([0-9]+).*/\1/p')"
-  for existing in "${CARD_IDS[@]:-}"; do
-    existing_num="$(printf '%s' "$existing" | sed -nE 's/^T([0-9]+).*/\1/p')"
-    if [[ -n "$id_num" && -n "$existing_num" && "$id_num" == "$existing_num" ]]; then
-      echo "[ERROR] 卡编号冲突：${CARD_ID} 与 ${existing} 重复（T${id_num} 已存在）" >&2
+  # 显式编号：<前缀><NNN> 或 <前缀><NNN>-<slug>；前缀必须与 --project 一致
+  if [[ "$ID_OVERRIDE" =~ ^([a-z]{2,4})([0-9]{3})(-[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+    id_prefix="${BASH_REMATCH[1]}"
+    id_num="${BASH_REMATCH[2]}"
+    id_slug="${BASH_REMATCH[3]:1}"  # 去前导 '-'，空则从标题派生
+    if [[ "$id_prefix" != "$PROJECT_PREFIX" ]]; then
+      echo "[ERROR] --id 前缀 ${id_prefix} 与 --project ${PROJECT_PREFIX} 不一致（前缀=子目录名=卡头项目）" >&2
       exit 3
     fi
-  done
+    # 查重：同前缀同序号已存在则拒绝
+    for f in "$PREFIX_DIR"/"$PROJECT_PREFIX"[0-9][0-9][0-9]-*.md; do
+      [[ -e "$f" ]] || continue
+      existing="$(basename "$f" .md)"
+      if [[ "$existing" =~ ^"$PROJECT_PREFIX"([0-9]{3}) && "${BASH_REMATCH[1]}" == "$id_num" ]]; then
+        echo "[ERROR] 卡编号冲突：${ID_OVERRIDE} 与 ${existing} 重复（${PROJECT_PREFIX}${id_num} 已存在）" >&2
+        exit 3
+      fi
+    done
+  else
+    echo "[ERROR] --id 格式非法: $ID_OVERRIDE（须 <前缀><三位序号>[-slug]，如 ccc064-auto-naming）" >&2
+    exit 3
+  fi
+  CARD_ID="${id_prefix}${id_num}"
+  [[ -n "$id_slug" ]] && SLUG_OVERRIDE="$id_slug"
 else
-  CARD_ID="T$(( next_num + 1 ))"
+  CARD_ID="$(printf '%s%03d' "$PROJECT_PREFIX" "$(( next_num + 1 ))")"
 fi
 
-# ── slug：显式 or 从标题派生（ASCII 词；中文标题回落 task） ──
+# ── slug：显式 or 从标题派生（ASCII 词；中文标题回落 task）；T54 校验小写字母数字+单连字符 ──
 if [[ -n "$SLUG_OVERRIDE" ]]; then
   SLUG="$SLUG_OVERRIDE"
 else
@@ -128,9 +147,13 @@ else
   SLUG="$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\{1,\}/-/g; s/^-//; s/-$//')"
   [[ -z "$SLUG" ]] && SLUG="task"
 fi
+if [[ ! "$SLUG" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  echo "[ERROR] slug 非法: ${SLUG}（须小写字母数字开头结尾，可含单连字符分隔）" >&2
+  exit 2
+fi
 
 CARD_FILE="${CARD_ID}-${SLUG}.md"
-CARD_PATH="$TARGET_DIR/$CARD_FILE"
+CARD_PATH="$PREFIX_DIR/$CARD_FILE"
 if [[ -e "$CARD_PATH" ]]; then
   echo "[ERROR] 同名卡已存在：$CARD_PATH" >&2
   exit 3
@@ -178,7 +201,7 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
-mkdir -p "$TARGET_DIR"
+mkdir -p "$PREFIX_DIR"
 printf '%s\n' "$CARD_BODY" > "$CARD_PATH"
 
 # ── 联动 validate 门禁：不合规卡拒绝并删除 ──
