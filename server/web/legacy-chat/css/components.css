@@ -3072,3 +3072,67 @@
   color: var(--ccc-text-muted);
   animation: none;
 }
+
+/* ================================================================
+   T58 — board-refactor 列表默认 + 视图切换
+   ================================================================ */
+.view-switch-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: none;
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ccc-text-muted);
+}
+.view-switch-btn:hover {
+  color: var(--ccc-text-base);
+  background: var(--ccc-bg-hover);
+}
+.view-switch-btn.active {
+  color: #fff;
+  background: var(--ccc-text-accent);
+  font-weight: 600;
+}
+
+/* 列表高密度单行样式 */
+.board-list-density .board-task-card {
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-left-width: 4px;
+}
+.board-list-density .board-task-card .board-card-row {
+  margin-bottom: 0;
+  flex: 0 0 140px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.board-list-density .board-task-card .board-card-title {
+  margin-bottom: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 500;
+}
+.board-list-density .board-task-card .board-card-meta {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.board-list-density .board-task-card .board-card-meta .board-card-time {
+  margin-left: 0;
+}
+
+/* 分组样式 */
+.board-group-header:hover {
+  background: var(--ccc-bg-hover) !important;
+}
+
