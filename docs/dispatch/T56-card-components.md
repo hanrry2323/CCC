@@ -1,6 +1,6 @@
 # 任务卡 T56 · T-B1 统一卡片组件层（Claude Code 执行）
 
-> 关联：阶段 3（T-B1 统一卡片组件，过夜任务前端链 1/2）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（T-B1 统一卡片组件，过夜任务前端链 1/2）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t56-card-components`（先 `git fetch origin main && git checkout -b codex/t56-card-components origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块立即 commit+push；超时 7200s。与 T55（索引层）并行，文件所有权见下。
 
@@ -86,3 +86,15 @@
   - `2ac97a70` (feat): `TaskCard`, `TaskCardDetail`, `TaskCardList` 统一组件层
   - `36abe7b0` (feat): `api.js` 统一数据层前端接口支持
 
+
+
+---
+
+## 验收区（Codex 独立取证 · 过夜执行 · 2026-08-04 深夜）
+
+**判定：✅ 通过。** T-B1 统一卡片组件层落地（cardApi + TaskCard/List/Detail，看板与右栏卡流接入，旧拼 DOM 清零）。
+
+- cardApi（/cards 分页/搜索对齐 T55 协议）✅
+- TaskCard/TaskCardList（分页虚拟滚动）/TaskCardDetail ✅
+- boardPage + boardPanel 接入统一组件，旧 task-card 直接拼 DOM 零残留 ✅
+- pytest 全绿；2017 已部署 ✅
