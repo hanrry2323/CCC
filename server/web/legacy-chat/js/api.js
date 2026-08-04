@@ -398,3 +398,21 @@ export async function loadDesktopThread(threadId) {
 export function cancelStream(tabId) {
   registryCancelStream(tabId);
 }
+
+export async function getCards({ project = '', state = '', page = 1, page_size = 50 } = {}) {
+  const qs = new URLSearchParams();
+  if (project) qs.append('project', project);
+  if (state) qs.append('state', state);
+  if (page) qs.append('page', String(page));
+  if (page_size) qs.append('page_size', String(page_size));
+  return apiGet('/cards?' + qs.toString());
+}
+
+export async function searchCards({ q = '', project = '', state = '', page = 1 } = {}) {
+  const qs = new URLSearchParams();
+  if (q) qs.append('q', q);
+  if (project) qs.append('project', project);
+  if (state) qs.append('state', state);
+  if (page) qs.append('page', String(page));
+  return apiGet('/cards/search?' + qs.toString());
+}
