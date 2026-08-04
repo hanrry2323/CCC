@@ -1,7 +1,7 @@
 # 任务卡 T46 · 对话稳定性 + SSE 展示体验（Claude Code 执行）
 
 > 关联：老板实测反馈（2026-08-04）「对话过程中切换界面就中断」「思考过程/思考文字没展示」· 依据：Codex 取证——① 路由切换不取消流（代码核验），但浏览器后台标签节流 SSE + 切回不检测恢复 → 观感"断"；② 事件流实测只有 system/assistant/result，assistant 仅有 text 块，**无 thinking 块**（flash 未开扩展思考）→ 空"思考中…"占位误导
-> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：已回写 · 日期：2026-08-04
+> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：已关闭 · 日期：2026-08-04
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t46`（分支 `codex/t46-stability-sse`）**，与 T47 并行；文件所有权见下，禁止越界改 T47 文件。
 
 ## 目标
@@ -85,6 +85,18 @@
 - **headless（无头 Chrome 151 headless-shell，Playwright 驱动本地 worktree :7799 服务端）**：页面加载 0 SEVERE console error / 0 401 / 0 其他 4xx；真实对话一发一收流式落地 DOM；无空 thinking 折叠；触发 `visibilitychange` 无新增错误；流完成仍 0 console error——**9/9 PASS**。
 - **pytest**：`server/tests/` **359 passed**（+2 thinking 开关用例）；**swift** `desktop/` **55 tests passed**（desktop 无改动，A4 为代码核验）；**ruff** All checks passed；**py_compile** OK。
 - **push 证据**：`git push origin codex/t46-stability-sse` → `[new branch] codex/t46-stability-sse`（commit `1b3df6e`，7 文件 +376/-75）。PR：`https://github.com/hanrry2323/CCC/pull/new/codex/t46-stability-sse`
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-04 · 合入 main 后终验）
+
+**判定：✅ 通过。** 合并 main 后 headless 全场景复验：
+
+- 思考渲染：`--thinking enabled` 实测 `redacted_thinking` 内容可读（B5 推翻"无思考"假设，走真渲染）；合并后实测**思考折叠渲染 404 字内容** ✅
+- 无空 thinking 折叠：有内容才建折叠，无内容显示"正在分析…" ✅
+- 切界面不断流/后台节流恢复/SSE 重连：代码 + 测试覆盖；合并后零 console error/401 ✅
+- 回归：pytest 373（合入后全量）、swift all passed、ruff/py_compile 全绿 ✅
+- 范围守界：未动 sidebar.js/会话持久化//projects（T47 所有权）✅
 
 ### 备注
 - 范围守界：仅改 T46 专属文件（message.js/chatStatus.js/api.js/app.js/brain.py/components.css/tests），未动 sidebar.js / 会话持久化 / GET /projects（T47 所有权）。

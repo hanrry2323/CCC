@@ -1,7 +1,7 @@
 # 任务卡 T47 · 项目+会话模型重构 + 左栏（借鉴 Codex/Cursor）（Claude Code 执行）
 
 > 关联：老板指出「左侧栏展示逻辑错误——应该项目+对话，用项目区分，不是任务分组；展示逻辑借鉴 Codex/Cursor 成熟工具」· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
-> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：已回写 · 日期：2026-08-04
+> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：已关闭 · 日期：2026-08-04
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t47`（分支 `codex/t47-project-sidebar`）**，与 T46 并行；文件所有权见下，禁止越界改 T46 文件。
 
 ## 目标
@@ -76,3 +76,15 @@
 - headless：`/projects` 返回 17 真实业务项目、4 目标业务项目（CCC/qb/QuantHive/medio-0）taskable 且存在、无任务卡分组名；会话写入→列表可见→重启恢复闭环通过。
 - 测试：`pytest server/tests/` 361 passed 全绿；新增 `/projects` + 会话持久化/重命名/删除/重启恢复 12 用例。`ruff check server/` 全过；`python -m py_compile` 通过。桌面 `swift build` + `swift test`（55）全绿。
 - push 证据见提交：`dde8c50`（server+HTTP 左栏）、`0bf7780`（桌面）。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-04 · 合入 main 后终验）
+
+**判定：✅ 通过。** 合并 main 后 headless 实测：
+
+- 左栏 = 真实业务项目（ai-loop-router / CCC / medio-0 / qb / QuantHive / ccc-demo），**无任务分组名（INT-120/T 编号）** ✅
+- `/projects` 免鉴权返回真实项目源（替代 /board/summaries 任务卡分组）✅
+- 会话持久化（session_store.py 落盘）+ 左栏会话树交互（新建/切换/重命名/清空）✅
+- 回归：pytest 373（合入后全量）、swift all passed、ruff/py_compile 全绿 ✅
+- 范围守界：未动 message.js/chatStatus/流式消费（T46 所有权）✅
