@@ -15,6 +15,18 @@ UNKNOWN = "未知"
 # 无「项目」字段且推导不出项目名时的归类（T53：旧卡兼容）
 UNCLASSIFIED = "未分类"
 
+# T54 命名规则：项目前缀表（前缀 = 子目录名 = 文件名前缀；T-mapping.md 有完整映射）
+# 展示名与缩写并存的项以前缀为准（`项目` 字段 = 前缀，与旧卡 `项目：ccc` 一致）。
+PREFIXES: dict[str, str] = {
+    "qb": "qb",
+    "qh": "QuantHive",
+    "ccc": "ccc",
+    "mx": "medio-0",
+    "xy": "xianyu",
+    "hp": "知识库",
+    "tst": "临时测试",
+}
+
 # 契约 §2 五态
 STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")
 
