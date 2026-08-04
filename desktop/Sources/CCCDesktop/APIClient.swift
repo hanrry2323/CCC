@@ -412,27 +412,42 @@ actor APIClient {
         let default_project: String?
     }
 
-    /// 新服务端项目列表：GET /board/summaries → 派生 DesktopProject 列表
+    /// 新服务端项目列表：GET /projects（T47 真实业务项目）→ DesktopProject 列表
+    ///
+    /// 取代旧的 /board/summaries 任务卡分组做法；字段映射：
+    /// workspace_path → path/workspace、is_taskable → engine_eligible、kind → role。
     func fetchProjectsNewServer() async throws -> ProjectsResp {
-        var req = try newServerAuthedRequest(path: "board/summaries")
+        var req = try newServerAuthedRequest(path: "projects")
         req.timeoutInterval = 10
-        struct SummariesResp: Decodable {
-            let summaries: [String: DecodableStub]
+        struct ProjectsDTO: Decodable {
+            let projects: [ProjectDTO]
         }
-        struct DecodableStub: Decodable {}
-        let resp = try await send(req, as: SummariesResp.self, maxAttempts: 2)
-        let names = resp.summaries.keys.sorted()
-        let projects: [DesktopProject] = names.map { name in
-            DesktopProject(
-                id: name,
-                name: name,
-                path: "",
-                workspace: name,
-                role: "app",
-                engine_eligible: true
+        struct ProjectDTO: Decodable {
+            let id: String
+            let name: String
+            let workspace_path: String?
+            let kind: String?
+            let is_taskable: Bool?
+            enum CodingKeys: String, CodingKey {
+                case id, name
+                case workspace_path, kind, is_taskable
+            }
+        }
+        let resp = try await send(req, as: ProjectsDTO.self, maxAttempts: 2)
+        let projects: [DesktopProject] = resp.projects.map { dto in
+            let taskable = dto.is_taskable ?? true
+            let ws = dto.workspace_path ?? dto.id
+            let role = dto.kind ?? (taskable ? "app" : "readonly")
+            return DesktopProject(
+                id: dto.id,
+                name: dto.name,
+                path: ws,
+                workspace: ws,
+                role: role,
+                engine_eligible: taskable
             )
         }
-        return ProjectsResp(projects: projects, default_project: names.first)
+        return ProjectsResp(projects: projects, default_project: projects.first?.id)
     }
 
     /// 新服务端看板快照：GET /board/snapshot?workspace=X
