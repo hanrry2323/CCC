@@ -1,7 +1,7 @@
 # 任务卡 T51 · 知识库 MCP 优化（Claude Code 执行）
 
 > 关联：阶段 3 P1 · 依据：老板点名「自建知识库 MCP 与优化做好」；现状=kb MCP（stdio）存在但无真实调用方，大脑直连 search.py，索引全量重建
-> 执行体：Claude Code · 验收：Codex（严格）· 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53）后按 Engine 自动派发重出。
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t51-kb-mcp-optimize`（先 `git fetch origin main && git checkout -b codex/t51-kb-mcp-optimize origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块（MCP 接入 / 索引增量 / BM25 调参 / 测试）立即 commit+push，禁止攒到结尾；执行超时 7200s。
@@ -74,3 +74,17 @@
 - MCP 真实协议调用（JSON-RPC over stdio）：`kb_search("192.168.3.116", domain=nodes-paths)` 返回 6 条全 nodes-paths，命中 ✓
 - 分支 `codex/t51-kb-mcp-optimize` 分步提交（A 索引增量 / B BM25 调参 / C 统一入口 / D 用例集 / E 文档），已全部 push：
   `091fc881` → `d84f56f5` → `05f57b2e` → `ee2a185e` → `cd2ec5c9`
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-04 · 合入 main + 2017 部署后）
+
+**判定：✅ 通过。** 自动化流程真实开发闭环（Engine 派发 → 2017 claude 开发 → 分步提交 A/B/C/D/E → push → 验收 → 合入 → 部署）。
+
+- **统一查询内核**：`server/kb/service.py` 为唯一查询入口，MCP/brain/CLI 同一服务（代码核验）✅
+- **索引增量**：mtime 表 + 只重扫变化源（T51-A 091fc881）✅
+- **BM25 调参**：数字分词 + k1/b 环境变量 + 跨源去重（T51-B d84f56f5）✅
+- **用例集**：14 题覆盖四域自动化验证（T51-D ee2a185）；Codex 实测「LC1 教训」命中 lessons 域 ✅
+- **MCP 真实协议调用**：JSON-RPC over stdio kb_search 实测命中（执行端证据）✅
+- 回归：pytest 450（合入后全量）、ruff clean ✅；2017 已部署（HEAD 37748a5）✅
+- 分步提交纪律全程生效（5 块独立 commit，无攒批）✅
