@@ -1,7 +1,7 @@
 # 任务卡 T45 · 以人为本体验整改：10 项（Claude Code 执行）
 
 > 关联：老板实测强烈反馈（2026-08-04）——「登录脱裤子放屁」「发一次就断」「无流式无工具卡」「界面一堆 bug」；Codex 真机取证逐项定位根因
-> 执行体：Claude Code（M1 开发副本执行，改完 push → 2017 部署由 Codex 放行）· 验收：Codex（严格，逐项真机复验）· 状态：已回写 · 日期：2026-08-04
+> 执行体：Claude Code（M1 开发副本执行，改完 push → 2017 部署由 Codex 放行）· 验收：Codex（严格，逐项真机复验）· 状态：已关闭 · 日期：2026-08-04
 
 ## 目标
 
@@ -139,3 +139,34 @@ pytest `server/tests/` **355 passed**（+17 T45 免登录用例，TestNoAuthMode
 ### push 证据
 `git push origin main`：`0ed5769..44a2552  main -> main`（commit `44a2552`，20 文件 +518/-135）。
 桌面包与 2017 部署由 Codex 放行（本卡 M1 实现不动 2017 运行面）。
+
+---
+
+## 验收区（Codex 独立取证 · 严格 · 2026-08-04）
+
+**判定：✅ 通过。** 10 项逐条真机复验达标；桌面包与 2017 部署按红线留待 Codex 放行。
+
+### 逐项复验结果
+
+| # | 项 | Codex 复验 |
+|---|----|-----------|
+| 1 | 免登录 | server `CCC_WEB_AUTH_REQUIRED` 默认 0、`_auth_required()` 放行全端点、/health 返回字段；login-gate/agentAuth 免登录放行；桌面 APIClient/AppModel `authRequired=false` 直连即聊；**无头 Chrome 实测免登录直进对话（无登录页）** ✅ |
+| 2 | M1 7788 口径 | INDEX/topology 标注「M1 7788 已退役停用，2017 单端唯一入口」；**M1 :7788 无监听**（launchd 已停）✅ |
+| 3 | 流式光标残留 | done/error 统一 removeStreamingCursors；**秒回题实测流结束 cursor=0（无残留）**；知识长题 150s 仍在流属正常（非残留）✅ |
+| 4 | SSE 生命周期+断线重连 | chatStatus.js 断连横幅「连接中断，点击重试」+ 即时探活；api.js 网络错误人话 ✅ |
+| 5 | 工具卡真实可见 | **知识题实测 tools=1（agent-progress 工具卡渲染）+ thinking=1**；tool_result 按 id 配对（代码核验）✅ |
+| 6 | 错误人话化 | chatErrors.js `humanizeBrainError`/`friendlyChatError` 抽出并映射中文 ✅ |
+| 7 | 桌面首启+重试 | ContentView「连接失败 + 重试」按钮（`model.reconnect()`）；AppModel 免登录直连失败不再静默 ✅ |
+| 8 | 空态引导 | HTTP message.js + 桌面 ContentView 双壳一致：「直接输入你的目标，我会帮你规划、写任务卡、验收和维护看板。无需登录，直连即聊。」✅ |
+| 9 | 卡流操作闭环 | taskDialog.js「下达（大脑写卡）」——任务交给大脑 Agent 写成任务卡 docs/dispatch，不再调禁用 API；业务仓登记守卫保留 ✅ |
+| 10 | 会话可见性 | sidebar.js 单击打开/双击重命名/✎ 重命名/⌫ 清空本会话 ✅ |
+
+### 回归
+
+- Codex 独立复跑：pytest 355 collected 0 失败、py_compile OK、ruff All checks passed、swift test All passed；无头 Chrome：免登录直进 PASS、连续两条消息稳定、秒回题光标清理 PASS、零 console error/401。
+
+### 备注
+
+- 偏差说明属实：chatStatus.js 实际在 `js/` 下（pages/ 无此文件），按实际路径修改，无越界。
+- taskDialog「无业务项目可下达」守卫合理（业务仓须先登记）；CCC 编排仓提示用开发工具，与双轨纪律一致。
+- 剩余动作（不阻塞关闭）：桌面包（v0.70.0+T45 源码重打包安装）与 2017 部署（pull + 三服务重启）由 Codex 放行后执行。
