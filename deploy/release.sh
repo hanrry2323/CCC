@@ -312,7 +312,7 @@ else:
   case "$CONV_RESULT" in
     OK*)    record PASS "一次对话" "$CONV_RESULT" ;;
     FLOWING*) record PASS "一次对话" "$CONV_RESULT" ;;
-    *)      record FAIL "一次对话" "$CONV_RESULT（curl rc=$CURL_RC）" ;;
+    *)      record FAIL "一次对话" "$CONV_RESULT（curl rc=${CURL_RC}）" ;;
   esac
 fi
 
