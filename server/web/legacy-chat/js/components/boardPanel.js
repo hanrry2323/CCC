@@ -1,25 +1,19 @@
 /**
  * boardPanel.js — T40 三栏右栏：任务卡流（Linear 风格卡片）。
+ * T56: 改接 cardApi + TaskCard* 统一数据层及组件层。
  *
- * 数据走 /board/snapshot?workspace=X → {columns: {状态: [BoardTask]}, counts, workspace}
+ * 数据走 GET /cards?project=&state=&page=
  * 卡片：ID + 标题 + 状态徽章 + 执行体 + 打回次数 + 更新时间，点击展开详情。
  * 自动打开：首次进入对话视图且 localStorage 标记未关闭时打开（T40）。
  */
 import { state } from '../state.js';
-import { loadBoard, getBoardTask } from '../api.js';
-import { escapeHtml } from '../utils.js';
+import { getCards, getBoardTask } from '../api.js';
+import { STATE_TONE, escapeHtml, fmtTaskCopy } from './taskCard.js';
+import { TaskCardList } from './taskCardList.js';
+import { renderTaskCardDetail } from './taskCardDetail.js';
 
 // 契约 §2 五态（与新栈 models.STATES 对齐；旧 backlog/planned/... 已退役）
 const STATES = ['待分派', '执行中', '已回写', '已关闭', '打回'];
-
-// 状态色板（与桌面 CCCTheme 对齐；css/variables.css 已定义同名 CSS 变量）
-const STATE_TONE = {
-  '待分派': 'pending',
-  '执行中': 'running',
-  '已回写': 'written',
-  '已关闭': 'closed',
-  '打回': 'returned',
-};
 
 const PANEL_KEY = 'ccc_board_panel_open';
 const DETAIL_KEY = 'ccc_board_panel_detail';
@@ -27,6 +21,7 @@ const DETAIL_KEY = 'ccc_board_panel_detail';
 let pollTimer = null;
 let trackedTask = null;
 let lastDetailId = null;
+let cardListInstance = null;
 
 export function workspaceOf() {
   const map = state.get('projectWorkspaceMap') || {};
@@ -51,18 +46,18 @@ export async function openBoardPanel() {
   if (!panel) {
     panel = document.createElement('aside');
     panel.id = 'board-panel';
-    panel.innerHTML =
-      '<div class="board-panel-header">' +
-        '<span class="board-panel-title">任务卡流</span>' +
-        '<div class="board-panel-actions">' +
-          '<a class="artifact-btn" id="board-full-link" href="#/board" title="完整看板">↗</a>' +
-          '<button type="button" class="artifact-btn" id="board-refresh" title="刷新">⟳</button>' +
-          '<button type="button" class="artifact-btn" id="board-close" title="收起">×</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="board-panel-body" id="board-panel-body">' +
-        '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>' +
-      '</div>';
+    panel.innerHTML = `
+      <div class="board-panel-header">
+        <span class="board-panel-title">任务卡流</span>
+        <div class="board-panel-actions">
+          <a class="artifact-btn" id="board-full-link" href="#/board" title="完整看板">↗</a>
+          <button type="button" class="artifact-btn" id="board-refresh" title="刷新">⟳</button>
+          <button type="button" class="artifact-btn" id="board-close" title="收起">×</button>
+        </div>
+      </div>
+      <div class="board-panel-body" id="board-panel-body">
+        <div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>
+      </div>`;
     document.getElementById('layout')?.appendChild(panel);
     const boardLink = document.getElementById('board-full-link');
     if (boardLink) {
@@ -86,6 +81,7 @@ export function closeBoardPanel() {
   document.getElementById('board-panel')?.classList.remove('open');
   document.getElementById('layout')?.classList.remove('with-board');
   try { localStorage.setItem(PANEL_KEY, '0'); } catch (_) {}
+  cardListInstance = null;
 }
 
 /** 首次进入对话视图时自动打开右栏（用户曾手动关闭则不强制）。 */
@@ -146,28 +142,30 @@ export function trackDispatchedTask(taskId, workspace) {
 export async function refreshBoardPanel(opts = {}) {
   const body = document.getElementById('board-panel-body');
   if (!body) return;
-  if (!opts.quiet) {
+  if (!opts.quiet && !cardListInstance) {
     body.innerHTML = '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>';
   }
   const ws = workspaceOf();
   try {
-    const data = await loadBoard(ws);
-    const board = data.columns || data.board || {};
-    const counts = data.counts || {};
-    // 收集所有任务并附状态列
-    let all = [];
-    for (const st of STATES) {
-      const arr = board[st] || [];
-      if (counts[st] == null) counts[st] = Array.isArray(arr) ? arr.length : 0;
-      if (Array.isArray(arr)) {
-        for (const t of arr) all.push({ ...t, state: st });
+    const res = await getCards({ project: ws === 'all' ? '' : ws, page_size: 1000 });
+    const all = res.cards || [];
+
+    // Calculate counts for each state
+    const counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
+    for (const c of all) {
+      const st = c.state || c.status;
+      if (counts[st] !== undefined) {
+        counts[st]++;
       }
     }
-    // 排序：打回 > 执行中 > 待分派 > 已回写 > 已关闭；同状态按更新时间倒序
+
+    // Sort: 打回 > 执行中 > 待分派 > 已回写 > 已关闭; same state sorted by update time desc
     const order = { '打回': 0, '执行中': 1, '待分派': 2, '已回写': 3, '已关闭': 4 };
     all.sort((a, b) => {
-      const oa = order[a.state] ?? 9;
-      const ob = order[b.state] ?? 9;
+      const stateA = a.state || a.status || '待分派';
+      const stateB = b.state || b.status || '待分派';
+      const oa = order[stateA] ?? 9;
+      const ob = order[stateB] ?? 9;
       if (oa !== ob) return oa - ob;
       return String(b.written_at || b.dispatched_at || '').localeCompare(String(a.written_at || a.dispatched_at || ''));
     });
@@ -184,83 +182,71 @@ export async function refreshBoardPanel(opts = {}) {
       '</button>'
     ).join('');
 
-    body.innerHTML =
-      '<div class="board-ws">工作区: <strong>' + escapeHtml(ws) + '</strong></div>' +
-      trackLine +
-      '<div class="board-stat-row">' + countsHtml + '</div>' +
-      '<div class="board-recent-title">任务卡流</div>' +
-      '<div class="board-card-list" id="board-card-list">' +
-        (all.length
-          ? all.map(renderCard).join('')
-          : '<div class="board-empty">暂无任务</div>') +
-      '</div>' +
-      '<button type="button" class="btn-primary board-dispatch-btn" id="board-dispatch">下达任务</button>';
+    // Update body structure if it's the first render or workspace changed
+    const wrapperId = 'board-card-list-wrapper';
+    let listWrapper = document.getElementById(wrapperId);
+    if (!listWrapper) {
+      body.innerHTML = `
+        <div class="board-ws">工作区: <strong>${escapeHtml(ws)}</strong></div>
+        ${trackLine}
+        <div class="board-stat-row">${countsHtml}</div>
+        <div class="board-recent-title">任务卡流</div>
+        <div id="${wrapperId}" style="flex: 1; min-height: 200px; display: flex; flex-direction: column; overflow: hidden; margin-bottom: 12px;"></div>
+        <button type="button" class="btn-primary board-dispatch-btn" id="board-dispatch">下达任务</button>
+      `;
+      listWrapper = document.getElementById(wrapperId);
+
+      document.getElementById('board-dispatch')?.addEventListener('click', () => {
+        import('./taskDialog.js').then(m => m.openTaskDialog());
+      });
+
+      cardListInstance = new TaskCardList(listWrapper, {
+        onCardClick: async (card, id) => {
+          await toggleCardDetail(card, id);
+        },
+        onCopyClick: async (btn, id) => {
+          const t = cardListInstance.items.find(x => x.id === id) || { id, title: '' };
+          navigator.clipboard?.writeText(fmtTaskCopy(t, t.state || t.status)).then(() => {
+            window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+          });
+        }
+      });
+      // Enable virtual scrolling for the card stream
+      cardListInstance.enableVirtualScroll(true);
+    } else {
+      // Just update track line and state stats if wrapper already exists
+      const trackEl = body.querySelector('.board-track');
+      if (trackedTask) {
+        if (trackEl) {
+          trackEl.innerHTML = `跟踪: <code>${escapeHtml(trackedTask.id)}</code> → ${escapeHtml(trackedTask.lastCol || '?')}`;
+        } else {
+          const wsEl = body.querySelector('.board-ws');
+          if (wsEl) {
+            wsEl.insertAdjacentHTML('afterend', `<div class="board-track">跟踪: <code>${escapeHtml(trackedTask.id)}</code> → ${escapeHtml(trackedTask.lastCol || '?')}</div>`);
+          }
+        }
+      } else if (trackEl) {
+        trackEl.remove();
+      }
+
+      const statRow = body.querySelector('.board-stat-row');
+      if (statRow) {
+        statRow.innerHTML = countsHtml;
+      }
+    }
 
     const full = document.getElementById('board-full-link');
     if (full) full.href = '#/board?ws=' + encodeURIComponent(ws);
 
-    document.getElementById('board-dispatch')?.addEventListener('click', () => {
-      import('./taskDialog.js').then(m => m.openTaskDialog());
-    });
+    // Update list elements inside TaskCardList
+    cardListInstance.setItems(all);
 
-    // 卡片点击：展开/收起详情
-    document.querySelectorAll('#board-card-list .board-task-card').forEach(card => {
-      card.addEventListener('click', (ev) => {
-        if (ev.target.closest('.board-card-copy')) return;
-        const id = card.dataset.id;
-        toggleCardDetail(card, id);
-      });
-    });
-    // 复制按钮
-    document.querySelectorAll('#board-card-list .board-card-copy').forEach(btn => {
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        const id = btn.dataset.id;
-        if (id) {
-          navigator.clipboard?.writeText(id).then(() => {
-            window.showToast?.('已复制任务 ID: ' + id, 'info');
-          });
-        }
-      });
-    });
   } catch (err) {
     if (!opts.quiet) {
       body.innerHTML = '<div class="board-empty">看板不可用: ' + escapeHtml(err.message || String(err)) + '</div>';
     }
+    cardListInstance = null;
   }
-}
-
-function renderCard(t) {
-  const tone = STATE_TONE[t.state] || 'pending';
-  const reject = Number(t.reject_count || 0);
-  const rejectBadge = reject > 0
-    ? '<span class="board-card-badge badge-reject" title="打回次数">↩ ' + reject + '</span>'
-    : '';
-  const executor = t.executor && t.executor !== '未知'
-    ? '<span class="board-card-badge badge-exec" title="执行体">@' + escapeHtml(t.executor) + '</span>'
-    : '';
-  const updated = t.written_at && t.written_at !== '未知'
-    ? t.written_at
-    : (t.dispatched_at && t.dispatched_at !== '未知' ? t.dispatched_at : '');
-  const updatedHtml = updated
-    ? '<span class="board-card-time" title="更新时间">' + escapeHtml(updated) + '</span>'
-    : '';
-  return (
-    '<div class="board-task-card state-' + tone + '" data-id="' + escapeHtml(t.id) + '">' +
-      '<div class="board-card-row">' +
-        '<span class="board-card-id">' + escapeHtml(t.id) + '</span>' +
-        '<span class="board-card-state state-' + tone + '">' + escapeHtml(t.state) + '</span>' +
-      '</div>' +
-      '<div class="board-card-title">' + escapeHtml(t.title || t.id) + '</div>' +
-      '<div class="board-card-meta">' +
-        executor +
-        rejectBadge +
-        updatedHtml +
-        '<button type="button" class="board-card-copy" data-id="' + escapeHtml(t.id) + '" title="复制 ID" aria-label="复制 ID">⧉</button>' +
-      '</div>' +
-      '<div class="board-card-detail" hidden></div>' +
-    '</div>'
-  );
 }
 
 async function toggleCardDetail(card, taskId) {
@@ -276,47 +262,9 @@ async function toggleCardDetail(card, taskId) {
   detail.removeAttribute('hidden');
   try {
     const t = await getBoardTask(taskId);
-    detail.innerHTML = renderDetail(t);
+    detail.innerHTML = renderTaskCardDetail(t);
     try { sessionStorage.setItem(DETAIL_KEY, taskId); } catch (_) {}
   } catch (err) {
     detail.innerHTML = '<div class="board-detail-error">详情不可用: ' + escapeHtml(err.message || String(err)) + '</div>';
   }
-}
-
-function renderDetail(t) {
-  const phases = Array.isArray(t.phases) ? t.phases : [];
-  const events = Array.isArray(t.events) ? t.events : [];
-  // T45：状态流转说明（契约 §2 五态），让卡片点击不只展示静态详情
-  const flowHtml =
-    '<div class="board-detail-section"><div class="board-detail-h">状态流转</div>' +
-    '<div class="board-detail-flow">待分派 → 执行中 → 已回写 → 已关闭；打回 → 待分派（附问题清单）</div></div>';
-  const phasesHtml = phases.length
-    ? '<div class="board-detail-section"><div class="board-detail-h">阶段</div>' +
-      phases.map(p =>
-        '<div class="board-detail-phase">' +
-          '<span class="phase-name">' + escapeHtml(p.name || '') + '</span>' +
-          '<span class="phase-status st-' + (p.status || 'unknown') + '">' + escapeHtml(p.status || '—') + '</span>' +
-          (p.commit ? '<code class="phase-commit">' + escapeHtml(p.commit) + '</code>' : '') +
-        '</div>'
-      ).join('') + '</div>'
-    : '';
-  const eventsHtml = events.length
-    ? '<div class="board-detail-section"><div class="board-detail-h">时间线</div>' +
-      events.map(ev =>
-        '<div class="board-detail-event">' +
-          '<span class="ev-ts">' + escapeHtml(ev.ts || '') + '</span>' +
-          '<span class="ev-role">@' + escapeHtml(ev.role || 'system') + '</span>' +
-          '<span class="ev-msg">' + escapeHtml(ev.message || '') + '</span>' +
-        '</div>'
-      ).join('') + '</div>'
-    : '';
-  const note = t.note ? '<div class="board-detail-note">' + escapeHtml(t.note) + '</div>' : '';
-  const acceptance = t.acceptance ? '<div class="board-detail-section"><div class="board-detail-h">验收</div><div class="board-detail-acc">' + escapeHtml(t.acceptance) + '</div></div>' : '';
-  return (
-    flowHtml +
-    note +
-    acceptance +
-    phasesHtml +
-    eventsHtml
-  );
 }
