@@ -4,6 +4,10 @@
 > 执行体：Trae · 验收：Codex · 状态：打回 · 打回次数：2 · 日期：2026-08-03
 > 前置：T25 已闭环（旧对话页找回）；本卡为桌面端后端层彻底重构——**不是补丁禁用，是从代码里拆掉旧 Hub/Agent 绑定**。
 
+## 目标
+
+保留 SwiftUI UI 与 Claude 风格（CCCTheme/消息气泡/composer/侧栏/看板/运维视图），后端层重写为纯新服务端协议客户端——删除旧 Hub 认证体系、SSE 流式、transfer/flow/mind/任务写/Agent sidecar 全部代码，`useNewServer` 恒为 true（不再有旧分支）。
+
 ## 背景（Codex 分析结论 · 已逐行拆解）
 
 桌面端共 17820 行，旧绑定规模：

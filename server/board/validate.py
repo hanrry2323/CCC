@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,13 +36,27 @@ class CardIssue:
     reason: str
 
 
-def _header_line(card: Path) -> str:
-    """取卡头 ``>`` 元数据行（首个以 ``>`` 开头且含「状态」的行）。"""
-    for line in card.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped.startswith(">") and "状态" in stripped:
-            return stripped
-    return ""
+def _header_lines(card: Path) -> list[str]:
+    """取卡头全部 ``>`` 元数据行（与 loader 同款：多行合并解析）。"""
+    return [
+        ln.strip()
+        for ln in card.read_text(encoding="utf-8").splitlines()
+        if ln.strip().startswith(">")
+    ]
+
+
+def _header_metadata(card: Path) -> dict[str, str]:
+    """用 loader 同款解析合并全部 ``>`` 行 → ``key: value`` 字典。
+
+    历史卡把 关联/执行体/状态/日期 分布在多个 ``>`` 行，只查首行会误报；
+    与 `server/board/loader._parse_metadata` 一致语义合并解析。
+    """
+    from server.board.loader import _parse_metadata  # noqa: PLC0415
+
+    meta: dict[str, str] = {}
+    for line in _header_lines(card):
+        meta.update(_parse_metadata(line))
+    return meta
 
 
 def _body_has(card: Path, marker: str) -> bool:
@@ -49,27 +64,73 @@ def _body_has(card: Path, marker: str) -> bool:
     return marker in text
 
 
+def _card_number(path: Path) -> str:
+    """取文件名数字编号（``T<N>-...`` → ``N``；``T90-test`` → ``90``）。"""
+    m = re.match(r"T(\d+)", path.name)
+    return m.group(1) if m else ""
+
+
+def _header_card_id(card: Path) -> str:
+    """取卡头 ``# 任务卡 T<N>[-slug]`` 的 ID（停在 ``·`` 或空白处）；未匹配返回空。
+
+    历史卡两种写法并存：``# 任务卡 T1-server-skeleton``（含 slug）与
+    ``# 任务卡 T52 · 自动化基建``（仅编号），统一取 ``T<N>`` 前缀即可。
+    """
+    m = re.search(r"#\s*任务卡\s+(T[^\s·]+)", card.read_text(encoding="utf-8"))
+    return m.group(1).strip() if m else ""
+
+
+def _header_number(card: Path) -> str:
+    """取卡头 ID 的数字部分（``T52`` / ``T1-server-skeleton`` → ``52`` / ``1``）。"""
+    m = re.match(r"T(\d+)", _header_card_id(card))
+    return m.group(1) if m else ""
+
+
 def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
-    """校验目录下全部任务卡，返回问题清单（空 = 全通过）。"""
+    """校验目录下全部任务卡，返回问题清单（空 = 全通过）。
+
+    T52 增强（出卡门禁）：
+    - 编号一致性：卡头 ``# 任务卡 T<N>`` 的数字前缀与文件名 ``T<N>-...`` 必须一致
+      （防止文件改名/复制后卡头编号错乱）；
+    - 编号唯一：卡头 ID 重复（同编号两张卡，如复制卡只改文件名不改卡头）报重。
+    注：R/X 变体卡（``T1`` 与 ``T1-R-...``）数字前缀允许共存，按卡头 ID 判重。
+    """
     issues: list[CardIssue] = []
     d = Path(dispatch_dir)
     if not d.is_dir():
         return [CardIssue("?", str(d), "目录不存在")]
-    for card in sorted(d.glob("T*.md")):
-        header = _header_line(card)
+    cards = sorted(d.glob("T*.md"))
+
+    # 编号唯一：卡头 ID 重复报重（R/X 变体卡卡头 ID 不同，不误伤）
+    by_hdr_id: dict[str, list[Path]] = {}
+    for card in cards:
+        hdr_id = _header_card_id(card)
+        if hdr_id:
+            by_hdr_id.setdefault(hdr_id, []).append(card)
+    for hdr_id, dupes in by_hdr_id.items():
+        if len(dupes) > 1:
+            for card in dupes[1:]:
+                issues.append(
+                    CardIssue(card.stem, str(card), f"编号 {hdr_id} 重复（与 {dupes[0].name} 冲突，编号必须唯一）")
+                )
+
+    for card in cards:
         card_id = card.name.split(".")[0]
-        if not header:
-            issues.append(CardIssue(card_id, str(card), "缺少卡头元数据行（> 且含「状态」）"))
+        # 编号一致性：卡头数字前缀 == 文件名数字前缀
+        hdr_num = _header_number(card)
+        file_num = _card_number(card)
+        if hdr_num and file_num and hdr_num != file_num:
+            issues.append(
+                CardIssue(card_id, str(card), f"卡头编号 T{hdr_num} 与文件名 T{file_num} 不一致")
+            )
+        meta = _header_metadata(card)
+        if not meta:
+            issues.append(CardIssue(card_id, str(card), "缺少卡头元数据行（> 且含 key：value）"))
             continue
-        missing = [k for k in REQUIRED_HEADER_KEYS if f"{k}：" not in header and f"{k}:" not in header]
+        missing = [k for k in REQUIRED_HEADER_KEYS if not meta.get(k, "").strip()]
         if missing:
             issues.append(CardIssue(card_id, str(card), f"卡头缺字段: {missing}"))
-        state_raw = ""
-        for seg in header.split("·"):
-            seg = seg.strip()
-            if seg.startswith("状态：") or seg.startswith("状态:"):
-                state_raw = seg.split("：", 1)[-1].split(":", 1)[-1].strip()
-                break
+        state_raw = meta.get("状态", "")
         base = base_state(state_raw)
         if base not in VALID_STATES:
             issues.append(CardIssue(card_id, str(card), f"状态值非法: {state_raw!r}（合法={sorted(VALID_STATES)}）"))

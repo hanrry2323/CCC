@@ -15,3 +15,11 @@ repos:
         pass_filenames: false
         files: \.(py|pyi)$
         types: [file]
+      # 卡头门禁（T52）：任务卡字段/状态/编号唯一校验——docs/dispatch 改动即校验
+      - id: card-validate
+        name: validate task cards (docs/dispatch)
+        entry: python -m server.board.validate docs/dispatch
+        language: system
+        pass_filenames: false
+        files: ^docs/dispatch/
+        types: [markdown]

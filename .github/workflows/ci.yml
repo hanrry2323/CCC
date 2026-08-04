@@ -27,6 +27,17 @@ jobs:
       - name: Run server tests
         run: pytest server/tests/ -v --tb=short
 
+  card-validate:
+    name: card validate (docs/dispatch 卡头门禁)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate task cards
+        run: python -m server.board.validate docs/dispatch
+
   ruff:
     name: ruff (server/ lint)
     runs-on: ubuntu-latest
