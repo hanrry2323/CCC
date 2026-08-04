@@ -1,7 +1,7 @@
 # 任务卡 T46 · 对话稳定性 + SSE 展示体验（Claude Code 执行）
 
 > 关联：老板实测反馈（2026-08-04）「对话过程中切换界面就中断」「思考过程/思考文字没展示」· 依据：Codex 取证——① 路由切换不取消流（代码核验），但浏览器后台标签节流 SSE + 切回不检测恢复 → 观感"断"；② 事件流实测只有 system/assistant/result，assistant 仅有 text 块，**无 thinking 块**（flash 未开扩展思考）→ 空"思考中…"占位误导
-> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：执行中 · 日期：2026-08-04
+> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：已回写 · 日期：2026-08-04
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t46`（分支 `codex/t46-stability-sse`）**，与 T47 并行；文件所有权见下，禁止越界改 T47 文件。
 
 ## 目标
@@ -59,4 +59,34 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code（M1 开发副本）· 日期：2026-08-04 · commit `1b3df6e`（已 push `codex/t46-stability-sse`）
+
+### A. 切换界面不断流（P0）
+1. **A1 路由护栏**：`app.js` `onHubRoute` 处加护栏注释，核验无任何 `cancelStream`/`abort` 于路由切换/视图 mount-unmount；流的取消仅保留用户主动点停止（composer cancel-btn）与关 tab。
+2. **A3 后台节流恢复**：`message.js` 新增 `noteStreamActivity(tabId)` 记录每流最后事件时间 + `recoverOnForeground()`——`visibilitychange` 回前台时对 >5s 无事件的活跃流主动探测服务端 seq / 历史，完成则自然复位 UI，失败提示顶部横幅重试；DOM 容器不被清空重建（回前台按 currentMessages 增量重绘）。
+3. **A4 桌面核验**：`ContentView.swift` 中 `cancelChat` 仅两处调用（773「停止」按钮、1198 composer 停止 toggle），均在用户主动触发路径；`onDisappear`/`.onChange`（79/91/95/…）只重绑定窗口状态，不取消流。满足。
+
+### B. 思考展示（P1，先验证后实现）
+5. **B5 扩展思考验证（结论：可以拿到 thinking）**：
+   - 基线（无 `--thinking`）：`claude -p 1+1=? --output-format stream-json --verbose` → assistant 仅 `text` 块，**无 thinking**（与卡头取证一致）。
+   - 开启后：`claude -p … --output-format stream-json --verbose --thinking enabled` → 事件流出现 **`redacted_thinking` 块，其 `data` 为可读推理文本**（"The user is asking a simple math question… Let me think about this. 3.8 vs 39.2…"）。
+   - **结论**：扩展思考在 6100/4100 中继下可达、内容可读 → 走 **B6**（真渲染进折叠），非 B7。live 实测已捕获到 `{"type":"redacted_thinking","data":"…可读…"}`。
+6. **落地**：`brain.py` 生产调用 `[claude,-p,…,--verbose]` 增加 `--thinking <mode>`，由配置 `CCC_BRAIN_THINKING` 控制（默认 `enabled`；空则不传，模型/中继不支持时可静态关闭）。`_get_brain_thinking()` 读取，测试内 `test_thinking_flag_default_enabled` / `test_thinking_flag_disabled_via_env` 双断言。
+7. **B6 渲染**：`message.js` `ensureThinkingHost` 仅在 `thinkingBuf` 有内容时才建立 `details.thinking-fold`（含 `⧉` 复制按钮）；`appendThinking` 追加渲染。**B7 过程可视化**：无 thinking 内容时建 `.proc-line` 动作行「正在分析… 已用时 Xs」，首包后/错误后清除；不再出现无内容可展开的空「思考中…」折叠。C8 归一化将 `redacted_thinking` 与 `thinking` 同为 `thinking` 事件。
+
+### C. SSE 渲染与稳定性（P1）
+8. **C8 归一化**：`brain.py` `_normalize_stream_event` 对 `assistant.message.content` 支持多块——text 块完整拼接（不丢字不重复），thinking/tool_use 取首、由单块事件承载，退化路径逐块取 text 兜底；`test_assistant_multiple_text_blocks_no_loss` / `test_assistant_text_blocks_interleaved_not_lost` 覆盖。
+9. **句读节奏**：首包立即显示（`markFirstPacket`）、长停顿过程行提示、done/error 统一 `clearProcLine` + `removeStreamingCursors`（无假流式残留）。
+10. **C10 断线重连**：`api.js` `streamChat` 重构为 `openStream`+`runOnce`，网络失败且未收到任何事件时自动重连一次（`MAX_AUTO_RETRY=1` 防抖，收到任意事件不重连避免重复）；重连时 `dispatchEvent('ccc-stream-reconnecting')` → `chatStatus.js` `showReconnecting()` 顶部横幅「连接中断，自动重连中…」，成功由健康轮询清掉。
+11. **C11 错误人话**：401/503/504/502 统一人话文案 + 重试按钮；错误后 UI 复位（无假流式）。
+
+### 验收证据
+- **扩展思考验证**：live 6100/4100 实测——无 `--thinking` 仅 text；`--thinking enabled` 出现 `redacted_thinking` 且 data 可读（上方证据）。
+- **headless（无头 Chrome 151 headless-shell，Playwright 驱动本地 worktree :7799 服务端）**：页面加载 0 SEVERE console error / 0 401 / 0 其他 4xx；真实对话一发一收流式落地 DOM；无空 thinking 折叠；触发 `visibilitychange` 无新增错误；流完成仍 0 console error——**9/9 PASS**。
+- **pytest**：`server/tests/` **359 passed**（+2 thinking 开关用例）；**swift** `desktop/` **55 tests passed**（desktop 无改动，A4 为代码核验）；**ruff** All checks passed；**py_compile** OK。
+- **push 证据**：`git push origin codex/t46-stability-sse` → `[new branch] codex/t46-stability-sse`（commit `1b3df6e`，7 文件 +376/-75）。PR：`https://github.com/hanrry2323/CCC/pull/new/codex/t46-stability-sse`
+
+### 备注
+- 范围守界：仅改 T46 专属文件（message.js/chatStatus.js/api.js/app.js/brain.py/components.css/tests），未动 sidebar.js / 会话持久化 / GET /projects（T47 所有权）。
+- 若老板在对话中看到思考展开即真实 thinking；未展开时为过程可视化动作行，均无空占位。
+- 待 Codex 验收放行后合入 main + 部署 2017。

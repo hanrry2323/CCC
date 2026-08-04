@@ -185,6 +185,11 @@ function switchToProjectTab(projectId) {
 }
 
 async function onHubRoute(route) {
+  // T46 A1 护栏：路由切换 / 视图 mount-unmount 不得调用 cancelStream/abort。
+  // 流的取消仅允许用户主动点停止（composer cancel-btn → cancelStream），或
+  // 关闭 tab（close-tab 里 cancelStream）。切到 #/board 再回 #/chat，活跃流
+  // 保持接收、DOM 容器不被重建（showTabContent 从 tab.messages 增量重绘）。
+  // 违反此约定的代码 = 切换即中断的回归源。
   document.title =
     route === 'chat' ? 'CCC · 对话' :
       route === 'board' ? 'CCC · 看板' :

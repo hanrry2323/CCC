@@ -956,6 +956,31 @@
   word-break: break-word;
   max-height: 220px;
   overflow: auto;
+  user-select: text;
+}
+.thinking-copy {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--ccc-text-muted, #888);
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+  font-family: inherit;
+}
+.thinking-copy:hover {
+  background: var(--ccc-bg-hover, rgba(0,0,0,0.05));
+  color: var(--ccc-text-base, #222);
+}
+/* T46 B7：无 thinking 时的大脑当前动作行（过程可视化） */
+.proc-line {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  color: var(--ccc-text-muted, #888);
+}
+.proc-line::before {
+  content: '⌛ ';
 }
 .tools-host {
   margin-top: 4px;
