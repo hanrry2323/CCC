@@ -1,6 +1,6 @@
 # 任务卡 T54 · T-A1 命名与目录迁移（Claude Code 执行）
 
-> 关联：阶段 3（T-A1 命名规则落地，Codex 决策 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（T-A1 命名规则落地，Codex 决策 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t54-auto-naming`（先 `git fetch origin main && git checkout -b codex/t54-auto-naming origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块立即 commit+push，禁止攒批；执行超时 7200s。
 
@@ -81,3 +81,16 @@
 - `10a15974` - feat(board): T54 B1 子目录扫描——loader/store/web 支持 `<前缀>/` 一层子目录 + 卡头过滤
 - `e87d2039` - feat(board): T54 A+B2-validate——T-mapping + 前缀表 + validate 新命名规则
 - `52f9cb0b` - docs(dispatch): T54 T-A1 命名与目录迁移——走 Engine 自动派发
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-04 · 合入 main + 2017 部署后）
+
+**判定：✅ 通过。** T-A1 命名与目录迁移落地（三次派发 + 续作完成，上游波动期间零工作丢失）。
+
+- **T-mapping.md**：68 条 T 编号映射（T1–T54 全量），旧卡零改动 ✅
+- **子目录扫描**：loader/store/web 支持 `<前缀>/` 一层子目录，新旧混合实测扫描 63 卡正确 ✅
+- **validate 命名规则**：新卡按 `<前缀><NNN>-<slug>.md` + 子目录校验，旧卡零拦截 ✅
+- **new-card.sh**：升级为新命名生成（子目录 + 编号自增）✅
+- 回归：pytest 全绿、ruff clean ✅；2017 已部署（HEAD 8de0c74，T-mapping 在位）✅
+- 流程韧性强：三次派发 + 续作，上游两次波动均零丢失 ✅
