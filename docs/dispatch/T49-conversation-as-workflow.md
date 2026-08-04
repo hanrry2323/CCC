@@ -1,7 +1,7 @@
 # 任务卡 T49 · 业务流程打通：对话即工作闭环（Claude Code 执行）
 
 > 关联：老板指示「站在业务流程梳理高度，前端界面与后端功能业务打通」· 前置：T46（稳定+SSE）、T47（项目会话+左栏）
-> 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t59-conversation-as-workflow`（先 `git fetch origin main && git checkout -b codex/t59-conversation-as-workflow origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -39,4 +39,33 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · 日期：2026-08-05
+
+### 1. `task_status` 协议实现
+- **服务端底层**: 任务卡增加 `thread_id` 属性；在 `server/web/server.py` 中实现了后台线程守护Watcher `_start_card_watcher()`。
+  - Watcher 自动在后台对 `docs/dispatch/` 开展3s周期的只读增量状态扫描，通过首发/状态比对发现任务卡新建与流转，精准找到对应的会话ID。
+  - 一旦发生变化，即生成一条 `role: "system"`, `type: "task_status"` 的系统消息通知，注入会话历史，并调用 `_conv_cond.notify_all()` 实时唤醒长轮询/流式订阅者。
+- **前端感知**: 
+  - `server/web/legacy-chat/js/app.js` 的 `init()` 中注册 `state.on('currentSessionId', (sid) => startConversationLongPoll(sid))` 实现自适应流式增量长轮询监控。
+  - 收到变化后，自动重绘消息区，并在最后一条消息是系统任务通知时自动调用右栏任务卡流的刷新，实现实时卡流联动。
+  - `legacy-chat/js/components/message.js` 支持 `.msg.system` 渲染，以精美简洁的虚线卡片形式把任务卡状态流转（创建、派派、回写、验收、打回）直接推给用户。
+
+### 2. 下达确认交互实现
+- **草案机制**: 精炼了 `server/web/brain.py` 中的 `BRAIN_SYSTEM_PROMPT`。在职责一中明确禁止第一阶段直接写盘，要求仅产出 `ccc-transfer` 代码契约 JSON。
+- **草案摘要**: 
+  - 前端 `message.js` 中 `renderMessage` 实时调用 `parseDispatchBlock(content)` 识别助理回复中的 `ccc-transfer` 定稿块，并精美铺设独立白话草案摘要卡片（包含标题、目标、验收标准）。
+  - 下设「确认下达」与「修改」两个自适应交互键：
+    - 点击「确认下达」即向会话发出指令 `"【确认下达】已确认该方案，请正式下达并在 docs/dispatch 目录下创建任务卡。"`。
+    - 点击「修改」则将草案元数据自动填装回输入框，供用户便捷修改意图再调整，满足未确认绝对不下达的安全机制。
+
+### 3. 状态一致性验证与自验证据
+- 经对齐验证，所有状态、卡流、看板视图均以 `docs/dispatch` 下的 Markdown 卡头元数据为唯一事实源（SSOT）。
+- **Python语法自验**: `python3 -m py_compile server/web/server.py ...` 全部成功。
+- **Pytest自验**: 增加专属测试用例 `test_task_status_feedback_loop` 验证 Watcher 异步通知性能，471 个用例全绿通过！
+  ```bash
+  $ pytest server/tests/ -v --tb=short
+  ============================= 471 passed in 15.18s =============================
+  ```
+- **Ruff Lint自验**: `ruff check server/` 通过，无任何格式或语法警告。
+- **Push证据**: 已成功将 `codex/t59-conversation-as-workflow` 分支推送至 GitHub 远端：
+  - **Commit HASH**: `f94ebd690c9a7f276996d1a3b79c23e8f3700d2c`
