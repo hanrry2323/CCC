@@ -32,7 +32,7 @@ function esc(s) {
 function html() {
   return `
 <div class="roadmap-page hub-page">
-  <div class="orch-hint">线路图 · 数据来自 /board/roadmap（按状态聚合）。2017 单端 :7788 五视图。</div>
+  <div class="orch-hint">线路图 · 数据来自 /board/roadmap（按项目聚合，T53）。2017 单端 :7788 五视图。</div>
   <div class="board-toolbar">
     <h2>线路图</h2>
     <div class="board-toolbar-actions">
@@ -72,7 +72,7 @@ function projectRow(row) {
     .join('');
   return `
   <tr class="roadmap-proj-row">
-    <td class="roadmap-proj-name">${esc(row.project)}<span class="roadmap-proj-total">${row.count}</span></td>
+    <td class="roadmap-proj-name">${esc(row.project)}<span class="roadmap-proj-total">· 共 ${row.count} 卡</span></td>
     ${cells}
   </tr>`;
 }
