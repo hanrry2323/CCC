@@ -1,6 +1,6 @@
 # 任务卡 T58 · T-B2 看板重构（列表默认 + 视图切换）（Claude Code 执行）
 
-> 关联：阶段 3（T-B2，过夜任务前端链 2/2）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（T-B2，过夜任务前端链 2/2）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t58-board-refactor`（先 `git fetch origin main && git checkout -b codex/t58-board-refactor origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -66,3 +66,10 @@
   To github.com:hanrry2323/CCC.git
    * [new branch]        codex/t58-board-refactor -> codex/t58-board-refactor
   ```
+
+
+---
+
+## 验收区（Codex 独立取证 · 过夜执行）
+
+**判定：✅ 通过。** 看板三视图（列表默认/Kanban/分组）+ 筛选搜索分页，复用 T56 组件（1c819622，2017 已部署）。
