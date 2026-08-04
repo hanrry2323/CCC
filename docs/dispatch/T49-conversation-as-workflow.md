@@ -1,7 +1,9 @@
 # 任务卡 T49 · 业务流程打通：对话即工作闭环（Claude Code 执行）
 
 > 关联：老板指示「站在业务流程梳理高度，前端界面与后端功能业务打通」· 前置：T46（稳定+SSE）、T47（项目会话+左栏）
-> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，端到端演练）· 状态：待分派 · 派发：manual · 项目：ccc · 日期：2026-08-04
+> 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t59-conversation-as-workflow`（先 `git fetch origin main && git checkout -b codex/t59-conversation-as-workflow origin/main`）
+> **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
 ## 目标
 
