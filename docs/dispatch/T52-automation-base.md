@@ -1,9 +1,10 @@
 # 任务卡 T52 · 自动化基建：出卡模板 + 一键放行 + 验收自动化（Claude Code 执行）
 
 > 关联：阶段 3 P1 · 依据：规划确认——Codex 只留「验收+放行」；出卡/门禁/部署自动化
-> 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-04
-> 作废记录：2026-08-04 方向调整——同 T51，作废待 2017 执行环境跑通后重出。
-> 并行执行：**工作目录 `/Users/apple/program/ccc-ws-p1b`（分支 `codex/p1b-auto-base`）**，与 T51 并行；文件所有权见下
+> 执行体：Claude Code · 验收：Codex（严格）· 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53/T51）后按 Engine 自动派发重出。
+> 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t52-auto-base`（先 `git fetch origin main && git checkout -b codex/t52-auto-base origin/main`）
+> **分步提交纪律（硬）**：每完成一个逻辑块（出卡模板 / 一键放行 / 验收自动化 / 测试流程任务）立即 commit+push，禁止攒到结尾；执行超时 7200s。
 
 ## 目标
 
@@ -16,7 +17,7 @@
 3. **验收自动化**：
    - validate.py 接入 CI（.github/workflows/ci.yml）+ pre-commit（新卡格式门禁：字段/状态/编号唯一）；
    - `scripts/verify-shell.sh`：headless 复验固化（免登录直进/流式/思考折叠无空占位/切界面不断流/左栏业务项目/零 console error）一键跑。
-4. **测试流程任务先行（老板硬性要求）**：用 release.sh 跑一条 `T9x-test` 占位卡端到端（出卡→执行→验收→放行→看板可见→**删除测试卡无残留**），跑通后才允许正式任务走该链路。
+4. **测试流程任务先行（老板硬性要求）**：release.sh 支持 `--dispatch-dir` 参数，测试时用**临时目录**跑一条 `T9x-test` 占位卡端到端（出卡→执行→验收→放行→看板可见→**删除测试卡无残留**），**不碰生产 docs/dispatch**；跑通后才允许正式任务走该链路。Codex 验收时再在生产链路跑一条真实测试流程任务。
 
 ## 红线
 
