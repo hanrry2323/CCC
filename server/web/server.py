@@ -93,6 +93,7 @@ from server.engine.cluster import (
     parse_cluster_targets,
 )
 from server.web.brain import call_brain, stream_brain_events
+from server.web import session_store
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
@@ -138,6 +139,23 @@ def _conv_list_for(thread_id: str) -> list[dict[str, Any]]:
     return _conversations
 
 
+def _project_of_thread_id(thread_id: str) -> str:
+    """从 thread_id 派生项目：``{project}::{suffix}`` 格式取前缀；否则空。"""
+    if "::" in thread_id:
+        return thread_id.split("::", 1)[0].strip()
+    return ""
+
+
+def _persist_thread_messages(project: str, thread_id: str, messages: list[dict[str, Any]]) -> None:
+    """对话落盘（T47 会话持久化）+ 更新会话索引（标题/时间/消息数）。
+
+    消息 JSONL 追加写，索引整文件更新。落盘失败尽力而为，不阻断对话主流程。
+    切项目/会话不中断活跃流——落盘是内存历史的旁路。
+    """
+    session_store.append_messages(project, thread_id, messages)
+    session_store.touch_thread(project, thread_id)
+
+
 def _get_model_tiers() -> list[str]:
     """模型档位列表（CCC_MODEL_TIERS，逗号分隔，默认 flash,code）。"""
     raw = os.environ.get("CCC_MODEL_TIERS", "flash,code")
@@ -153,8 +171,49 @@ _thread_conversations: dict[str, list[dict[str, Any]]] = {}
 # 长轮询唤醒条件（T43：与历史写入同锁，保证「看到 seq 必见消息」）
 _conv_cond = threading.Condition()
 
+# 项目元数据种子文件（T47：真实业务项目来源，替代 /board/summaries 任务卡分组）
+_PROJECT_METADATA_PATH = _PROJECT_ROOT / "knowledge" / "seed" / "02-project-metadata.json"
+# 会话持久化根目录（T47：DATA_DIR 优先，规避运行面依赖；缺省用项目内 data/）
+_DEFAULT_DATA_DIR = _PROJECT_ROOT / "data"
+# 会话持久化子目录：DATA_DIR/conversations/<project>/<thread>.jsonl
+_CONVERSATIONS_RELDIR = "conversations"
+
+
+def _conversations_dir() -> Path:
+    """会话持久化根目录（session_store 内部亦有 _data_root 逻辑，保持一致）。"""
+    raw = os.environ.get("CCC_DATA_DIR", "") or os.environ.get("DATA_DIR", "")
+    if raw:
+        return Path(raw).expanduser().resolve() / _CONVERSATIONS_RELDIR
+    return _DEFAULT_DATA_DIR / _CONVERSATIONS_RELDIR
+
+
+def _load_persisted_threads() -> None:
+    """启动时把磁盘上已持久化的会话历史加载进内存（T47 会话恢复）。
+
+    按项目遍历 DATA_DIR/conversations/<project>/：以 ``_index.json`` 里的
+    **真实 thread_id** 为键，其文件名是清洗后的（``::`` 等被替换），故必须用索引
+    恢复原 thread_id 注入 _thread_conversations。仅加载尚未在内存的线程。
+    无索引的项目目录跳过（无持久化会话）。
+    """
+    root = _conversations_dir()
+    if not root.is_dir():
+        return
+    for proj_dir in sorted(p for p in root.iterdir() if p.is_dir()):
+        index = session_store.load_index(proj_dir.name)
+        for tid in index:
+            if tid in _thread_conversations:
+                continue
+            try:
+                _thread_conversations[tid] = session_store.load_thread(proj_dir.name, tid)
+            except OSError:
+                continue
+
+
+# 启动加载已持久化的会话历史（T47 会话恢复）
+_load_persisted_threads()
+
 # ── 免鉴权的路径前缀 ──
-_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config"})
+_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects"})
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面；T25：旧对话页 legacy-chat/） ──
@@ -297,6 +356,91 @@ def _build_public_config() -> dict[str, Any]:
         "models": _get_model_tiers(),
         "version": "v0.70.0",
     }
+
+
+# ── 项目数据源（T47：GET /projects 返回真实业务项目，替代任务卡分组） ──
+
+
+def _extract_workspace_path(raw_path: str) -> str:
+    """从项目元数据 path 字段提取纯文件系统路径。
+
+    元数据 path 形如 ``M1 /Users/apple/program/CCC/``、``Mac2017 /Users/fan/.../（SMB: ...）``，
+    取首个空格后的路径段，去括号注释/尾部空白。
+    """
+    s = raw_path.strip()
+    if " " in s:
+        s = s.split(" ", 1)[1]
+    s = s.split("（", 1)[0].strip()
+    s = s.split("(", 1)[0].strip()
+    return s.rstrip("/")
+
+
+def _load_project_metadata() -> list[dict[str, Any]]:
+    """读取项目元数据种子文件，扁平化为项目列表。
+
+    结构：``priority.ccc_projects``（CCC 体系核心）+ ``projects``（其余业务/旧项目）。
+    文件缺失/损坏 → 返回空列表（前端显示空态引导，不 500）。
+    """
+    try:
+        data = json.loads(_PROJECT_METADATA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    priority = data.get("priority", {})
+    items = list(priority.get("ccc_projects", [])) + list(data.get("projects", []))
+    return items
+
+
+def _is_taskable_projects() -> set[str]:
+    """可下达任务的项目名单（T47：qb/CCC/QuantHive/medio-0 等真实业务仓）。
+
+    依据 02-project-metadata.json 的 role/nature/last_activity 推导：活跃、可下达
+    开发/自动化任务的项目才 taskable；旧项目/学习资料/退役产物不是。
+    """
+    return {"CCC", "qb", "QuantHive", "medio-0", "ai-loop-router"}
+
+
+def _build_public_projects() -> list[dict[str, Any]]:
+    """构造 GET /projects 响应：真实业务项目清单。
+
+    字段：``id/name/kind/workspace_path/is_taskable``（T47 契约）。
+    ``id`` 用 name 的稳定 slug；``kind`` 由 role/nature 推断；``workspace_path`` 为纯路径；
+    ``is_taskable`` 走 _is_taskable_projects 白名单（可下达任务）。
+    本接口不带任何任务卡分组名（INT-120 等只在看板筛选出现，不进入左栏）。
+    """
+    projects: list[dict[str, Any]] = []
+    taskable = _is_taskable_projects()
+    for item in _load_project_metadata():
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        projects.append(
+            {
+                "id": name,  # 稳定 id（name 即业务仓稳定标识）
+                "name": name,
+                "kind": _infer_project_kind(item),
+                "workspace_path": _extract_workspace_path(str(item.get("path") or "")),
+                "is_taskable": name in taskable,
+            }
+        )
+    # 固定排序：taskable 业务项目在前，其余按 name
+    projects.sort(key=lambda p: (not p["is_taskable"], p["name"].lower()))
+    return projects
+
+
+def _infer_project_kind(item: dict[str, Any]) -> str:
+    """由元数据推断项目种类：base（底座）/ business（业务）/ legacy（旧/退役）。"""
+    role = str(item.get("role") or "").lower()
+    nature = str(item.get("nature") or "").lower()
+    name = str(item.get("name") or "").lower()
+    last_act = str(item.get("last_activity") or "").lower()
+    if (
+        "退役" in role or "retired" in role or "旧" in role or "离线" in role
+        or last_act == "retired" or "unknown" in last_act
+    ):
+        return "legacy"
+    if "底座" in role or "base" in name or name == "ccc":
+        return "base"
+    return "business"
 
 
 def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | None:
@@ -636,8 +780,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         thread_id = str(body.get("thread_id") or "").strip()
         model = str(body.get("model") or "").strip()
+        project = str(body.get("project") or "").strip() or _project_of_thread_id(thread_id)
         if body.get("stream"):
-            self._handle_conversation_stream(message, thread_id, model)
+            self._handle_conversation_stream(message, thread_id, model, project)
             return
         history = list(_conv_list_for(thread_id))
         success, reply, status = call_brain(message, history, session_key=thread_id or None, model=model or None)
@@ -651,9 +796,15 @@ class _APIHandler(BaseHTTPRequestHandler):
             conv.append({"role": "user", "message": message, "timestamp": now})
             conv.append({"role": "assistant", "message": reply, "timestamp": now})
             _conv_cond.notify_all()
+        if thread_id and project:
+            _persist_thread_messages(
+                project, thread_id,
+                [{"role": "user", "message": message, "timestamp": now},
+                 {"role": "assistant", "message": reply, "timestamp": now}],
+            )
         self._send_json({"reply": reply})
 
-    def _handle_conversation_stream(self, message: str, thread_id: str = "", model: str = ""):
+    def _handle_conversation_stream(self, message: str, thread_id: str = "", model: str = "", project: str = ""):
         """POST /conversation {stream:true}：SSE 逐事件转发大脑流式输出。
 
         错误（未配置/忙/超时/失败）也以 ``event: error`` 流式返回（HTTP 200），
@@ -699,6 +850,12 @@ class _APIHandler(BaseHTTPRequestHandler):
                     conv.append({"role": "user", "message": message, "timestamp": now})
                     conv.append({"role": "assistant", "message": reply, "timestamp": now})
                     _conv_cond.notify_all()
+                if thread_id and project:
+                    _persist_thread_messages(
+                        project, thread_id,
+                        [{"role": "user", "message": message, "timestamp": now},
+                         {"role": "assistant", "message": reply, "timestamp": now}],
+                    )
 
     def _client_gone(self) -> bool:
         """长轮询等待期间检测客户端是否断开（连接变为 readable/EOF）。"""
@@ -852,6 +1009,17 @@ class _APIHandler(BaseHTTPRequestHandler):
             # T33：前端只读配置注入（免鉴权白名单，仅非敏感字段）
             self._send_json(_build_public_config())
             return
+        if path == "/projects":
+            # T47：真实业务项目清单（免鉴权白名单，与 /config 同；非任务卡分组）
+            self._send_json({"projects": _build_public_projects()})
+            return
+        if path.startswith("/projects/") and path.endswith("/threads"):
+            # T47：项目下会话列表（来自会话存储，非本地 tabs）
+            from urllib.parse import unquote
+
+            project = unquote(path[len("/projects/") : -len("/threads")])
+            self._send_json({"threads": session_store.list_threads(project)})
+            return
         if not self._check_auth():
             return
         if path == "/conversation":
@@ -902,8 +1070,62 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_session()
         elif path == "/conversation":
             self._handle_conversation_post()
+        elif m := self._match_thread_route(path, "rename"):
+            self._handle_thread_rename(m[0], m[1])
         else:
             self._send_404()
+
+    def do_DELETE(self):
+        """DELETE /projects/<project>/threads/<thread>：删除会话（仅会话存储）。"""
+        if not self._check_auth():
+            return
+        path = self.path.rstrip("/").split("?")[0]
+        m = self._match_thread_route(path, "delete")
+        if m:
+            project, thread_id = m
+            session_store.delete_thread(project, thread_id)
+            # 同步清内存中的该会话历史（长轮询/断连引用一并释放）
+            _thread_conversations.pop(thread_id, None)
+            self._send_json({"ok": True})
+            return
+        self._send_404()
+
+    def _match_thread_route(self, path: str, kind: str) -> tuple[str, str] | None:
+        """解析 /projects/<project>/threads/<thread>[/<kind>]（kind=delete|rename 时要求路径后缀）。
+
+        delete → /threads/<id>（无后缀）；rename → /threads/<id>/rename。匹配返回 (project, thread_id)。
+        project/thread_id 段做 URL 解码（thread_id 常含 ``::``）。
+        """
+        from urllib.parse import unquote
+
+        prefix = "/projects/"
+        if not path.startswith(prefix):
+            return None
+        rest = path[len(prefix):]
+        if kind == "rename":
+            if not rest.endswith("/rename"):
+                return None
+            path_part = rest[: -len("/rename")]
+        else:  # delete
+            path_part = rest.rstrip("/")
+        # path_part = <project>/threads/<thread>
+        segs = path_part.split("/")
+        if len(segs) != 3 or segs[1] != "threads":
+            return None
+        return unquote(segs[0]), unquote(segs[2])
+
+    def _handle_thread_rename(self, project, thread_id):
+        """POST /projects/<project>/threads/<thread>/rename：持久化改标题。"""
+        body = self._read_body()
+        if not body:
+            self._send_json({"error": "invalid request body"}, 400)
+            return
+        title = str(body.get("title") or "").strip()
+        if not title:
+            self._send_json({"error": "title required"}, 400)
+            return
+        session_store.rename_thread(project, thread_id, title)
+        self._send_json({"ok": True})
 
 
 def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:

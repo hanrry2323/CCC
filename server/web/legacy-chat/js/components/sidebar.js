@@ -7,8 +7,12 @@ import { escapeHtml, debounce, desktopThreadId, resolveProjectPath } from '../ut
 import { showToast } from './toast.js';
 import { setProjectActive } from './composer.js';
 import { navigate, currentRoute } from '../router.js';
+// api.js 新增：loadThreads 拉项目下会话（服务端会话存储）
+import { loadThreads, deleteThread } from '../api.js';
 
 let _projects = [];
+// T47：项目下服务端会话缓存（{projectId: [thread...]}），选中项目时懒加载
+let _serverThreads = {};
 
 function projectDisplayName(p) {
   if (!p) return '';
@@ -23,6 +27,60 @@ function tabsForProject(pid) {
 
 function isMainSession(sid, pid) {
   return String(sid || '') === desktopThreadId(pid, 'main');
+}
+
+// T47：项目下会话 = 服务端持久化会话 + 本地已开 tabs（按 sessionId 去重，服务端优先）。
+// 服务端会话列出的是「刷新/重启后仍在」的真会话；本地 tabs 是本次会话中已打开的上下文。
+function mergedThreadsFor(pid) {
+  const server = _serverThreads[pid] || [];
+  const local = tabsForProject(pid);
+  const seen = new Set();
+  const out = [];
+  for (const st of server) {
+    const sid = st.thread_id || '';
+    if (!sid) continue;
+    seen.add(sid);
+    out.push({
+      _server: true,
+      threadId: sid,
+      sessionId: sid,
+      title: st.title || '新对话',
+      updated_at: st.updated_at || '',
+      message_count: st.message_count || 0,
+    });
+  }
+  for (const t of local) {
+    const sid = t.sessionId || desktopThreadId(pid, t.id);
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    out.push({
+      _server: false,
+      threadId: sid,
+      sessionId: sid,
+      id: t.id,
+      tab: t,
+      title: t.title || '对话',
+    });
+  }
+  // 主会话（::main）排最前，其余按最后活动倒序
+  out.sort((a, b) => {
+    const am = isMainSession(a.sessionId, pid) ? 0 : 1;
+    const bm = isMainSession(b.sessionId, pid) ? 0 : 1;
+    if (am !== bm) return am - bm;
+    return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+  });
+  return out;
+}
+
+// T47：懒加载选中项目下服务端会话，刷新后渲染
+async function loadServerThreads(pid) {
+  if (_serverThreads[pid]) return;
+  try {
+    _serverThreads[pid] = await loadThreads(pid);
+  } catch (_) {
+    _serverThreads[pid] = [];
+  }
+  refreshSidebar();
 }
 
 export function renderAppSidebar(projects) {
@@ -45,11 +103,14 @@ export function renderAppSidebar(projects) {
     return;
   }
 
+  // T47：选中项目懒加载其服务端会话（仅一次；后续由刷新驱动）
+  if (activePid) loadServerThreads(activePid);
+
   let html = '';
   for (const p of _projects) {
     const selected = p.id === activePid;
-    const threads = tabsForProject(p.id);
-    const streaming = threads.some((t) => t._streaming);
+    const threads = mergedThreadsFor(p.id);
+    const streaming = tabsForProject(p.id).some((t) => t._streaming);
     const status = streaming ? '对话中' : '';
     html +=
       '<div class="project-card-wrap" data-project-id="' +
@@ -81,16 +142,12 @@ export function renderAppSidebar(projects) {
 
     if (selected) {
       html += '<div class="sidebar-thread-list">';
-      const rows = threads.slice().sort((a, b) => {
-        const am = isMainSession(a.sessionId, p.id) ? 0 : 1;
-        const bm = isMainSession(b.sessionId, p.id) ? 0 : 1;
-        return am - bm;
-      });
+      const rows = threads.slice().slice(0, 12);
       if (!rows.length) {
         html +=
           '<div class="sidebar-thread-empty">暂无会话 · 点 + 新建</div>';
       } else {
-        for (const t of rows.slice(0, 12)) {
+        for (const t of rows) {
           const sid = t.sessionId || desktopThreadId(p.id, t.id);
           const on = sid === activeSid || t.id === state.get('activeTabId');
           const title =
@@ -99,21 +156,25 @@ export function renderAppSidebar(projects) {
               : isMainSession(sid, p.id)
                 ? '对话'
                 : String(sid).split('::').pop()?.slice(0, 12) || '会话';
+          // 服务端会话用 threadId 作 data-tab-id（打开时物化本地 tab）；本地会话用 t.id
+          const tabId = t.id || encodeURIComponent(sid);
           html +=
             '<div class="sidebar-thread-row' +
             (on ? ' selected' : '') +
             '" data-tab-id="' +
-            escapeHtml(t.id) +
+            escapeHtml(tabId) +
             '" data-sid="' +
             escapeHtml(sid) +
-            '" title="单击打开 · 双击重命名">' +
+            '"' +
+            (t._server ? ' data-server="1"' : '') +
+            ' title="单击打开 · 双击重命名">' +
             '<span class="sidebar-thread-icon" aria-hidden="true">○</span>' +
             '<span class="sidebar-thread-title">' +
             escapeHtml(title) +
             '</span>' +
             '<span class="sidebar-thread-actions">' +
             '<button type="button" class="sidebar-thread-act" data-act2="rename" title="重命名">✎</button>' +
-            '<button type="button" class="sidebar-thread-act" data-act2="clear" title="清空本会话">⌫</button>' +
+            '<button type="button" class="sidebar-thread-act" data-act2="clear" title="删除本会话">⌫</button>' +
             '</span>' +
             '</div>';
         }
@@ -139,10 +200,29 @@ export function renderAppSidebar(projects) {
     });
   });
 
-  // T45：会话行——单击打开、双击重命名、悬停操作（重命名/清空本会话）
+  // T47/T45：会话行——单击打开、双击重命名、悬停操作（重命名/删除）
+  // 服务端会话行（data-server="1"）在本地无 tab：打开时物化 tab，删除走服务端。
   host.querySelectorAll('.sidebar-thread-row').forEach((row) => {
     const pid = row.closest('.project-card-wrap')?.dataset?.projectId;
     const tabId = row.dataset.tabId;
+    const sid = row.dataset.sid;
+    if (row.dataset.server === '1') {
+      row.addEventListener('click', (e) => {
+        const act = e.target.closest('.sidebar-thread-act');
+        if (act) {
+          e.stopPropagation();
+          if (act.dataset.act2 === 'rename') renameServerThread(row, pid, sid);
+          else if (act.dataset.act2 === 'clear') deleteThreadConfirm(pid, sid);
+          return;
+        }
+        openServerThread(pid, sid);
+      });
+      row.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.sidebar-thread-act')) return;
+        renameServerThread(row, pid, sid);
+      });
+      return;
+    }
     row.addEventListener('click', (e) => {
       const act = e.target.closest('.sidebar-thread-act');
       if (act) {
@@ -224,6 +304,120 @@ function openThreadTab(tabId, pid) {
   document.dispatchEvent(new CustomEvent('switch-tab', { detail: { id: tabId } }));
   refreshSidebar();
   closeMobileSidebar();
+}
+
+// ── T47：服务端会话行交互（物化本地 tab / 重命名 / 删除） ──
+
+/** 打开一个服务端持久化会话：若本地无对应 tab 则物化（建 tab + 拉历史）再切换。 */
+async function openServerThread(pid, sid) {
+  if (!sid) return;
+  navigate('chat');
+  if (state.get('currentProject') !== pid) {
+    const p = _projects.find((x) => x.id === pid);
+    setProjectActive(pid, projectDisplayName(p) || pid);
+  }
+  const tabs = state.get('tabs') || [];
+  let tab = tabs.find((t) => (t.sessionId || desktopThreadId(pid, t.id)) === sid);
+  if (!tab) {
+    // 物化本地 tab：threadId 即 sessionId；消息首次渲染时由 loadSession 拉取
+    const { loadSession } = await import('../api.js');
+    const id = 'sid-' + encodeURIComponent(sid).replace(/%/g, '').slice(0, 24);
+    tab = {
+      id,
+      title: sid.split('::').pop()?.slice(0, 12) || '会话',
+      sessionId: sid,
+      messages: [],
+      projectId: pid,
+    };
+    try {
+      const loaded = await loadSession(sid, pid);
+      tab.messages = loaded.messages || [];
+    } catch (_) {}
+    tabs.push(tab);
+    state.set('tabs', tabs);
+  }
+  state.set('activeTabId', tab.id);
+  state.set('currentSessionId', sid);
+  document.dispatchEvent(new CustomEvent('switch-tab', { detail: { id: tab.id } }));
+  refreshSidebar();
+  closeMobileSidebar();
+}
+
+/** 删除服务端会话（仅删会话存储/该 thread，不动任务卡/看板）。 */
+async function deleteThreadConfirm(pid, sid) {
+  if (!sid) return;
+  if (!confirm('删除本会话？持久化记录将被删除，无法撤销。看板与编排任务不受影响。')) return;
+  try {
+    await deleteThread(pid, sid);
+    if (_serverThreads[pid]) {
+      _serverThreads[pid] = _serverThreads[pid].filter((t) => t.thread_id !== sid);
+    }
+    // 若本地开了对应 tab，一并移出
+    const tabs = state.get('tabs') || [];
+    const kept = tabs.filter((t) => (t.sessionId || desktopThreadId(pid, t.id)) !== sid);
+    state.set('tabs', kept);
+    if (state.get('currentSessionId') === sid) {
+      state.set('currentSessionId', '');
+    }
+    refreshSidebar();
+    showToast('会话已删除', 'success');
+  } catch (e) {
+    showToast(e.message || '删除失败', 'error');
+  }
+}
+
+/** 重命名服务端会话（持久化标题）。行内输入，回车/失焦保存。 */
+function renameServerThread(row, pid, sid) {
+  if (!row || !sid) return;
+  const titleEl = row.querySelector('.sidebar-thread-title');
+  if (!titleEl) return;
+  const orig = titleEl.textContent || '会话';
+  const input = document.createElement('input');
+  input.className = 'sidebar-thread-rename';
+  input.value = orig;
+  input.maxLength = 40;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    const val = input.value.trim();
+    if (val && val !== orig) {
+      const { apiPost } = await import('../api.js');
+      try {
+        await apiPost(
+          '/projects/' + encodeURIComponent(pid) + '/threads/' + encodeURIComponent(sid) + '/rename',
+          { title: val }
+        );
+        if (_serverThreads[pid]) {
+          const hit = _serverThreads[pid].find((t) => t.thread_id === sid);
+          if (hit) hit.title = val;
+        }
+        // 同步已物化的本地 tab 标题
+        const tabs = state.get('tabs') || [];
+        const tab = tabs.find((t) => (t.sessionId || desktopThreadId(pid, t.id)) === sid);
+        if (tab) {
+          tab.title = val;
+          import('./titlebar.js').then((m) => m.renderTabs(tabs, state.get('activeTabId')));
+        }
+      } catch (e) {
+        showToast(e.message || '重命名失败', 'error');
+      }
+    }
+    refreshSidebar();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    } else if (e.key === 'Escape') {
+      done = true;
+      refreshSidebar();
+    }
+  });
 }
 
 /** T45：会话重命名（本地）。双击会话行或点 ✎ → 行内输入，回车/失焦保存。 */

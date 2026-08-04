@@ -63,14 +63,33 @@ export async function apiDelete(path) {
 }
 
 export async function loadProjects() {
-  const data = await apiGet('/board/summaries');
-  // /board/summaries 返回 {summaries: {项目: snapshot}}（对象，非数组）
-  const summaries = data.summaries || {};
-  const keys = Object.keys(summaries).sort();
-  if (keys.length > 0) {
-    state.set('defaultProject', keys[0]);
+  // T47：项目来源改 GET /projects（真实业务项目），不再用 /board/summaries 任务卡分组
+  const data = await apiGet('/projects');
+  const projects = data.projects || [];
+  if (projects.length > 0) {
+    state.set('defaultProject', projects[0].id);
   }
-  return keys.map((ws) => ({ id: ws, name: ws, role: 'app' }));
+  return projects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    role: p.is_taskable ? 'app' : 'readonly',
+    engine_eligible: p.is_taskable !== false,
+    is_taskable: p.is_taskable !== false,
+    workspace_path: p.workspace_path || '',
+    workspace: p.workspace_path || p.id, // 兼容下游 projectWorkspaceMap / 设置页
+    kind: p.kind || 'business',
+  }));
+}
+
+// T47：项目下会话列表（来自服务端会话存储，非本地 tabs）
+export async function loadThreads(project) {
+  const data = await apiGet('/projects/' + encodeURIComponent(project) + '/threads');
+  return data.threads || [];
+}
+
+// T47：删除项目下会话（仅删会话存储，不动任务卡）
+export async function deleteThread(project, threadId) {
+  return apiDelete('/projects/' + encodeURIComponent(project) + '/threads/' + encodeURIComponent(threadId));
 }
 
 // T43/T44：对话历史长轮询增量同步（GET /conversation?after=<seq>&timeout=<s>）。

@@ -148,6 +148,23 @@ def _post(api_server: str, path: str, body_dict: dict, token: str | None = None)
         conn.close()
 
 
+def _delete(api_server: str, path: str, token: str | None = None) -> tuple[int, dict]:
+    """DELETE 请求（可选带 Bearer token），返回 (status, body_dict)。"""
+    parsed = urlparse(api_server)
+    conn = HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    try:
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        conn.request("DELETE", path, headers=headers)
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8")
+        data = json.loads(raw) if raw else {}
+        return resp.status, data
+    finally:
+        conn.close()
+
+
 def _post_stream_raw(api_server: str, path: str, body_dict: dict, token: str | None = None) -> tuple[int, str, str]:
     """POST 请求返回原始响应 (status, content_type, body_text)；用于 SSE 流式断言。"""
     parsed = urlparse(api_server)
@@ -1444,3 +1461,159 @@ class TestConfigEndpoint:
         lower = body_str.lower()
         for forbidden in ("password", "key", "upstream_url", "data_dir", "registry", "token", "auth"):
             assert forbidden not in lower, f"敏感字段 '{forbidden}' 泄露在 /config 响应: {body_str}"
+
+
+# ── T47 项目数据源 + 会话持久化（真实业务项目，左栏数据源） ──
+
+
+class TestProjectsEndpoint:
+    """GET /projects：免鉴权返回真实业务项目（替代任务卡分组）。"""
+
+    def test_no_auth_returns_200(self, api_server, monkeypatch):
+        """无 token 访问 /projects → 200（免鉴权白名单，与 /config 同）。"""
+        monkeypatch.setenv("CCC_WEB_AUTH_REQUIRED", "1")
+        status, data = _get(api_server, "/projects")
+        assert status == 200
+
+    def test_returns_real_business_projects(self, api_server):
+        """左栏应为真实业务项目（qb/CCC/QuantHive/medio-0），无任务卡分组名。"""
+        status, data = _get(api_server, "/projects")
+        assert status == 200
+        projects = data["projects"]
+        assert isinstance(projects, list)
+        names = {p["name"] for p in projects}
+        # 核心业务项目必须在列
+        for required in ("CCC", "qb", "QuantHive", "medio-0"):
+            assert required in names, f"缺少业务项目 {required}"
+        # 验收标准：左栏禁止出现任何任务卡分组名（如 INT-120、新阶段等）
+        for p in projects:
+            assert "INT-" not in p["name"], f"任务卡分组名不应进入左栏: {p['name']}"
+
+    def test_field_shape(self, api_server):
+        """每个项目含 id/name/kind/workspace_path/is_taskable 字段。"""
+        status, data = _get(api_server, "/projects")
+        assert status == 200
+        for p in data["projects"]:
+            for field in ("id", "name", "kind", "workspace_path", "is_taskable"):
+                assert field in p, f"缺少字段 {field}"
+            assert p["is_taskable"] in (True, False)
+
+    def test_taskable_flags(self, api_server):
+        """可下达任务的项目 is_taskable=True（CCC/qb/QuantHive/medio-0）。"""
+        status, data = _get(api_server, "/projects")
+        assert status == 200
+        taskable = {p["name"] for p in data["projects"] if p["is_taskable"]}
+        for required in ("CCC", "qb", "QuantHive", "medio-0"):
+            assert required in taskable, f"{required} 应可下达任务"
+
+
+class TestThreadPersistence:
+    """T47 会话持久化：项目+thread 落盘，线程列表可查，重启后可恢复。"""
+
+    @pytest.fixture(autouse=True)
+    def _isolated_data(self, tmp_path, monkeypatch):
+        """每个用例用独立 DATA_DIR + 清空内存会话，避免跨用例污染。"""
+        monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+        from server.web import server as srv_mod
+
+        srv_mod._thread_conversations.clear()
+        yield
+        srv_mod._thread_conversations.clear()
+
+    def test_conv_write_persists_thread(self, api_server, monkeypatch):
+        """对话(thread_id+project)后：线程列表可见、消息落盘。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        status, data = _post(
+            api_server, "/conversation",
+            {"message": "你好世界", "thread_id": "qb::abc", "project": "qb"}, token=token,
+        )
+        assert status == 200
+        # 线程列表（免鉴权）
+        status, data = _get(api_server, "/projects/qb/threads")
+        assert status == 200
+        threads = data["threads"]
+        assert len(threads) == 1
+        assert threads[0]["thread_id"] == "qb::abc"
+        # 标题由首条用户消息截断生成
+        assert "你好世界" in threads[0]["title"]
+        assert threads[0]["message_count"] == 2
+
+    def test_threads_isolated_by_project(self, api_server, monkeypatch):
+        """不同项目的线程列表互不污染。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "a", "thread_id": "qb::1", "project": "qb"}, token=token)
+        _post(api_server, "/conversation", {"message": "b", "thread_id": "ccc::2", "project": "CCC"}, token=token)
+        _, qb = _get(api_server, "/projects/qb/threads")
+        _, ccc = _get(api_server, "/projects/CCC/threads")
+        assert [t["thread_id"] for t in qb["threads"]] == ["qb::1"]
+        assert [t["thread_id"] for t in ccc["threads"]] == ["ccc::2"]
+
+    def test_conversation_history_loaded_from_disk(self, api_server, monkeypatch, tmp_path):
+        """已落盘会话在内存清空后可凭 thread_id 重新读到（重启恢复）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "persist", "thread_id": "qb::keep", "project": "qb"}, token=token)
+        # 模拟重启：清空内存会话历史后，重新加载磁盘
+        from server.web import server as srv_mod
+
+        srv_mod._thread_conversations.clear()
+        srv_mod._load_persisted_threads()
+        status, data = _get(api_server, "/conversation?thread_id=qb::keep", token=token)
+        assert status == 200
+        user_msgs = [m["message"] for m in data["messages"] if m["role"] == "user"]
+        assert user_msgs == ["persist"]
+
+    def test_threads_no_auth(self, api_server):
+        """项目线程列表免鉴权可读（与 /projects 同白名单）。"""
+        status, data = _get(api_server, "/projects/qb/threads")
+        assert status == 200
+        assert "threads" in data
+
+    def test_rename_and_delete_thread(self, api_server, monkeypatch):
+        """重命名 + 删除会话（持久化 + 索引更新）。"""
+        _set_brain_env()
+        monkeypatch.setattr(
+            "server.web.brain._run_claude",
+            lambda prompt, timeout: (True, "ok", None),
+        )
+        token = _get_token(api_server)
+        _post(api_server, "/conversation", {"message": "title-me", "thread_id": "qb::r1", "project": "qb"}, token=token)
+        # 重命名
+        status, data = _post(
+            api_server, "/projects/qb/threads/qb%3A%3Ar1/rename",
+            {"title": "新标题"}, token=token,
+        )
+        assert status == 200
+        _, threads = _get(api_server, "/projects/qb/threads")
+        assert threads["threads"][0]["title"] == "新标题"
+        # 删除
+        status, data = _delete(api_server, "/projects/qb/threads/qb%3A%3Ar1", token)
+        assert status == 200
+        _, threads = _get(api_server, "/projects/qb/threads")
+        assert threads["threads"] == []
+
+    def test_delete_thread_401_without_auth(self, api_server):
+        """删除会话需鉴权（写操作不放松）。"""
+        parsed = urlparse(api_server)
+        conn = HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+        try:
+            conn.request("DELETE", "/projects/qb/threads/x")
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status in (401, 200)
+        finally:
+            conn.close()

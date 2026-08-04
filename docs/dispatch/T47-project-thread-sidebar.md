@@ -1,7 +1,7 @@
 # 任务卡 T47 · 项目+会话模型重构 + 左栏（借鉴 Codex/Cursor）（Claude Code 执行）
 
 > 关联：老板指出「左侧栏展示逻辑错误——应该项目+对话，用项目区分，不是任务分组；展示逻辑借鉴 Codex/Cursor 成熟工具」· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
-> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：执行中 · 日期：2026-08-04
+> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：已回写 · 日期：2026-08-04
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t47`（分支 `codex/t47-project-sidebar`）**，与 T46 并行；文件所有权见下，禁止越界改 T46 文件。
 
 ## 目标
@@ -47,4 +47,32 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · 日期：2026-08-04
+
+### /projects 协议（服务端 `server/web/server.py`）
+
+- `GET /projects`（免鉴权，加入 `_NO_AUTH_PATHS` 与 /config 同白名单）返回 `{projects:[{id,name,kind,workspace_path,is_taskable}]}`。数据源 `knowledge/seed/02-project-metadata.json`（`priority.ccc_projects` + `projects` 扁平化），**不再用 /board/summaries 任务卡分组**。
+  - `id`=name（稳定业务仓标识）；`workspace_path`=`path` 字段纯文件系统路径（剥离 `M1 `/`Mac2017` 主机前缀与括号注释）；`kind`=base/business/legacy（由 role/nature/last_activity 推断）；`is_taskable`=可下达任务（CCC/qb/QuantHive/medio-0/ai-loop-router）。
+  - 已验证：无任何 INT-120 等任务卡分组名出现在 `/projects`。
+- `GET /projects/<project>/threads`（免鉴权）→ `{threads:[{thread_id,title,created_at,updated_at,message_count}]}`，按最后活动倒序。
+- `DELETE /projects/<project>/threads/<thread>`（需鉴权）→ 删除会话（仅会话存储，不动看板/任务卡）。
+- `POST /projects/<project>/threads/<thread>/rename`（需鉴权）→ 持久化改标题；project/thread 段 URL 解码（thread_id 含 `::`）。
+
+### 会话持久化方案（新增 `server/web/session_store.py`）
+
+- 项目+thread 落盘 `<DATA_DIR>/conversations/<project>/<thread>.jsonl`（消息 JSONL 追加写）+ `<project>/_index.json`（元数据：标题/创建时间/最后活动/消息数）。`DATA_DIR` 读 `CCC_DATA_DIR`/`DATA_DIR` env，缺省 `_PROJECT_ROOT/data/`（零硬编码走 config）。
+- `/conversation` POST（同步+SSE，SSE keep-alive 区未改）完成后旁路持久化：`_persist_thread_messages` 追加消息 + 更新索引。thread_id 形如 `{project}::{suffix}` 时 `_project_of_thread_id` 派生 project。
+- 服务启动 `_load_persisted_threads()` 把磁盘会话恢复进内存（幂等），保证**刷新/重启服务后会话仍在**（无头实测：重启后 GET /conversation 恢复历史、/projects/<p>/threads 仍列）。
+- 会话元数据：标题=首条 user 消息截断 30 字符（可重命名），创建/最后活动/消息数随索引维护。
+
+### 左栏 UI（HTTP `sidebar.js` + 桌面 `APIClient.swift`，参考 Codex/Cursor 对照）
+
+- **HTTP 左栏**：顶部项目卡（图标+名称+对话中徽标，可点开/新建）→ 选中项目展开会话列表（服务端持久化会话 + 本地已开 tabs 合并，按 `::main` 主会话前排 + 最后活动倒序）。交互：单击切换会话、双击/✎ 重命名、hover ⌫ 删除、＋新建会话、流状态「对话中」徽标（streamRegistry）。切项目/会话**不取消活跃流**（流绑 thread_id，切换仅换可见 tab，T44/T46 架构天然保留；sidebar 未动 message.js 流式消费）。
+- **桌面**（仅数据源对齐）：`APIClient.fetchProjectsNewServer` 改 `GET /projects`；字段映射 `workspace_path→path/workspace`、`is_taskable→engine_eligible`、`kind→role`；消费方 `AppModel.refreshProjects` 不需改。项目下会话树沿用 ConversationStore（已有持久化）。
+- 与 Codex/Cursor 对照：项目=真实业务项目，项目下=会话列表（替代任务卡分组），切换项目的会话树按项目隔离，视觉为「项目卡片 + 嵌套线程行」。
+
+### 质量与实测
+
+- headless：`/projects` 返回 17 真实业务项目、4 目标业务项目（CCC/qb/QuantHive/medio-0）taskable 且存在、无任务卡分组名；会话写入→列表可见→重启恢复闭环通过。
+- 测试：`pytest server/tests/` 361 passed 全绿；新增 `/projects` + 会话持久化/重命名/删除/重启恢复 12 用例。`ruff check server/` 全过；`python -m py_compile` 通过。桌面 `swift build` + `swift test`（55）全绿。
+- push 证据见提交：`dde8c50`（server+HTTP 左栏）、`0bf7780`（桌面）。
