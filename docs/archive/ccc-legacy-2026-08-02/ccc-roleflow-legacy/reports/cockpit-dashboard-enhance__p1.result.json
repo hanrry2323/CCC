@@ -1,0 +1,10 @@
+[ccc.opencode-exec] opencode-exec config: exec_timeout=300s
+{
+  "phase_id": "cockpit-dashboard-enhance-p1",
+  "exit_code": -1,
+  "stdout": "",
+  "stderr": "timeout after 300s — killed",
+  "duration_s": 300.07,
+  "pid": 6019,
+  "killed": true
+}

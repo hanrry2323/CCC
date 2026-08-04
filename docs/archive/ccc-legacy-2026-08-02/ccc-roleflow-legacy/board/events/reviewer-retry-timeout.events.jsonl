@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "reviewer-retry-timeout", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T21:06:40+08:00"}
+{"event": "move", "task_id": "reviewer-retry-timeout", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T21:06:40+08:00"}
+{"event": "move", "task_id": "reviewer-retry-timeout", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T21:13:05+08:00"}
+{"event": "move", "task_id": "reviewer-retry-timeout", "from": "testing", "to": "abnormal", "timestamp": "2026-07-14T21:20:43+08:00"}

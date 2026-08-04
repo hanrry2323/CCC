@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "engine-log-rotation", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T20:23:07+08:00"}
+{"event": "move", "task_id": "engine-log-rotation", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T20:23:07+08:00"}
+{"event": "move", "task_id": "engine-log-rotation", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T20:30:00+08:00"}
+{"event": "move", "task_id": "engine-log-rotation", "from": "testing", "to": "verified", "timestamp": "2026-07-14T20:30:00+08:00"}
+{"event": "move", "task_id": "engine-log-rotation", "from": "verified", "to": "abnormal", "timestamp": "2026-07-14T20:30:01+08:00"}

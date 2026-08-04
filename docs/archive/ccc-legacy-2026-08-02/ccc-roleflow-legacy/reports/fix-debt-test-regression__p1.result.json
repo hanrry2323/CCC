@@ -1,0 +1,10 @@
+[ccc.opencode-exec] opencode-exec config: exec_timeout=300s
+{
+  "phase_id": "fix-debt-test-regression-p1",
+  "exit_code": -1,
+  "stdout": "",
+  "stderr": "timeout after 300s — killed",
+  "duration_s": 300.2,
+  "pid": 86307,
+  "killed": true
+}

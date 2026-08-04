@@ -1,0 +1,6 @@
+{"event": "move", "task_id": "cockpit-queue-display", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T21:20:03+08:00"}
+{"event": "move", "task_id": "cockpit-queue-display", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T21:20:03+08:00"}
+{"event": "move", "task_id": "cockpit-queue-display", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T21:58:32+08:00"}
+{"event": "move", "task_id": "cockpit-queue-display", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T22:04:36+08:00"}
+{"event": "move", "task_id": "cockpit-queue-display", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T22:11:53+08:00"}
+{"event": "move", "task_id": "cockpit-queue-display", "from": "testing", "to": "abnormal", "timestamp": "2026-07-14T22:13:21+08:00"}

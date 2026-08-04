@@ -1,0 +1,6 @@
+{"event": "move", "task_id": "backlog-auto-replenish", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T20:14:05+08:00"}
+{"event": "move", "task_id": "backlog-auto-replenish", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T20:14:05+08:00"}
+{"event": "move", "task_id": "backlog-auto-replenish", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T20:20:13+08:00"}
+{"event": "move", "task_id": "backlog-auto-replenish", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T20:20:23+08:00"}
+{"event": "move", "task_id": "backlog-auto-replenish", "from": "testing", "to": "verified", "timestamp": "2026-07-14T20:20:24+08:00"}
+{"event": "move", "task_id": "backlog-auto-replenish", "from": "verified", "to": "abnormal", "timestamp": "2026-07-14T20:20:24+08:00"}

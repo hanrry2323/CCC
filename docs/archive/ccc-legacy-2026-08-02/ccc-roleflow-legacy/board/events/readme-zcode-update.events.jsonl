@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "readme-zcode-update", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T00:40:27+08:00"}
+{"event": "move", "task_id": "readme-zcode-update", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T01:12:43+08:00"}
+{"event": "move", "task_id": "readme-zcode-update", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T01:48:18+08:00"}
+{"event": "move", "task_id": "readme-zcode-update", "from": "verified", "to": "released", "timestamp": "2026-07-14T01:59:27+08:00"}

@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "debt-docstring-sweep", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T11:01:27+08:00"}
+{"event": "move", "task_id": "debt-docstring-sweep", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T12:42:05+08:00"}
+{"event": "move", "task_id": "debt-docstring-sweep", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T12:50:11+08:00"}
+{"event": "move", "task_id": "debt-docstring-sweep", "from": "testing", "to": "verified", "timestamp": "2026-07-14T12:50:11+08:00"}
+{"event": "move", "task_id": "debt-docstring-sweep", "from": "verified", "to": "released", "timestamp": "2026-07-14T12:50:18+08:00"}

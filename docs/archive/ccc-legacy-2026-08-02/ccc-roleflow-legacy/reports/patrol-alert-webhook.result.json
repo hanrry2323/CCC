@@ -1,0 +1,10 @@
+[ccc.opencode-exec] opencode-exec config: exec_timeout=300s
+{
+  "phase_id": "patrol-alert-webhook-p1",
+  "exit_code": -15,
+  "stdout": "",
+  "stderr": "\u001b[0m\n> build · code\n\u001b[0m\n",
+  "duration_s": 45.35,
+  "pid": 10996,
+  "killed": false
+}

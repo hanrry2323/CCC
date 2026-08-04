@@ -1,0 +1,6 @@
+{"event": "move", "task_id": "engine-failure-lessons", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T23:37:58+08:00"}
+{"event": "move", "task_id": "engine-failure-lessons", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T23:37:59+08:00"}
+{"event": "move", "task_id": "engine-failure-lessons", "from": "in_progress", "to": "planned", "timestamp": "2026-07-15T00:09:27+08:00"}
+{"event": "move", "task_id": "engine-failure-lessons", "from": "planned", "to": "in_progress", "timestamp": "2026-07-15T00:31:35+08:00"}
+{"event": "move", "task_id": "engine-failure-lessons", "from": "in_progress", "to": "abnormal", "timestamp": "2026-07-15T00:44:11+08:00"}
+{"event": "move", "task_id": "engine-failure-lessons", "from": "abnormal", "to": "released", "timestamp": "2026-07-15T00:44:18+08:00"}

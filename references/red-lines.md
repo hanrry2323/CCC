@@ -4,6 +4,9 @@
 > 现行权威 = [`docs/INDEX.md`](../docs/INDEX.md) §0：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
 > 红线本身仍现行（红线 1/3/6/11/12/R-15 等）；与旧架构绑定的描述（如「阶段能力包定时开发系统」「7 launchd plist」）待后续卡清理。
 
+> **⚠ 2026-08-04 重构口径修正** — 2026-08-02 重构（D1）已取消角色分层/三档契约/能力包/重试预算等重型机制，以下**历史红线**随旧流程退役，仅作追溯：**4（单 phase 单 commit）、5（phases.json 必写全）、6（角色不互串）、11（Verifier 写 verdict）、14/15（Executor monitor/轮询）、19（独立 Verifier 验收）、20（bash v3 模板）、X1–X3（OpenCode 进程池/杀进程/watchdog）**。
+> **现行红线（替代上述历史项）**：任务卡是唯一事实源（卡头状态机合法）；单卡单 commit、回写前必须 push 成功并附证据；验收=验收席（Codex）逐项判定、打回附问题清单；杜绝硬编码（D10）；不越范围、不碰运行面；零外脑独立（D2）；对话口鉴权（免登录仅限局域网配置）。
+
 违反任何红线即记 Critical 违规。叠加入项目 `docs/lessons.md` 并触发修订流程。
 
 ---
@@ -15,21 +18,21 @@
 | 1 | 不动系统文件 | v0.5 |
 | 2 | 验收必须可执行 | v0.5 |
 | 3 | 不超出 plan 文件范围 | v0.5 |
-| 4 | 单 phase 单 commit | v0.5 |
-| 5 | phases.json 必写全 | v0.5 |
-| 6 | 角色不互串 | v0.5 |
+| 4 | 单 phase 单 commit | v0.5 · **历史（2026-08-02 重构取消，改单卡单 commit）** |
+| 5 | phases.json 必写全 | v0.5 · **历史（重构取消）** |
+| 6 | 角色不互串 | v0.5 · **历史（重构取消角色分层）** |
 | 7 | 代理启动顺序固定 | v0.5 |
 | 8 | 每步必 commit（不攒） | v0.5 |
 | 9 | Executor 卡死立即止损 | v0.5 |
 | 10 | 禁止跨会话隐式记忆 | v0.5 |
-| 11 | Verifier 必须写 verdict 文件 | v0.5（Lesson 28 配套） |
+| 11 | Verifier 必须写 verdict 文件 | v0.5（Lesson 28 配套）· **历史（重构取消，改验收席判定）** |
 | 12 | 禁止 agent 自主启用 CCC | v0.5（Lesson 28 配套） |
 | 13 | 禁止未使用路线代码 | v0.7-slim（含旧 v0.6 watchdog 子条） |
 | 14 | Executor 必须配 monitor + 5min 轮询 | v0.7d-prime |
 | 15 | 轮询进程完成自动终止 | v0.7d-prime |
 | 18 | 飞轮候选必须经过人工 review 才合并 | v0.6 |
-| 19 | 跨设备 / 跨 session 必须有独立 Verifier 验收 | v1.0 配套 |
-| 20 | 跨设备 bash 脚本必须用 v3 portability 模板 | v0.5 配套（Lesson 29） |
+| 19 | 跨设备 / 跨 session 必须有独立 Verifier 验收 | v1.0 配套 · **历史（重构取消，改 Codex 验收）** |
+| 20 | 跨设备 bash 脚本必须用 v3 portability 模板 | v0.5 配套（Lesson 29）· **历史（重构取消模板制）** |
 | **X1** | **OpenCode 进程池最多 3 并发** | v0.8 |
 | **X2** | **每 phase 必杀 opencode 进程** | v0.8 |
 | **X3** | **OpenCode 启动前必跑残留 watchdog** | v0.8 |

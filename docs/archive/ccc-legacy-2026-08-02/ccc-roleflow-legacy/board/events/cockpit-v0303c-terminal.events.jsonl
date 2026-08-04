@@ -1,0 +1,9 @@
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T18:58:41+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:02:28+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "in_progress", "to": "testing", "timestamp": "2026-07-13T19:17:20+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "testing", "to": "abnormal", "timestamp": "2026-07-13T19:17:57+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T19:25:08+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:25:08+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "in_progress", "to": "testing", "timestamp": "2026-07-13T19:30:28+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "testing", "to": "verified", "timestamp": "2026-07-13T19:30:28+08:00"}
+{"event": "move", "task_id": "cockpit-v0303c-terminal", "from": "verified", "to": "released", "timestamp": "2026-07-13T19:30:32+08:00"}

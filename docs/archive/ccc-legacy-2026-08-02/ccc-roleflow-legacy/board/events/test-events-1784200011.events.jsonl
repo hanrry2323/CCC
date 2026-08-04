@@ -1,0 +1,6 @@
+{"event": "move", "task_id": "test-events-1784200011", "from": "none", "to": "backlog", "timestamp": "2026-07-16T19:06:51+08:00"}
+{"event": "move", "task_id": "test-events-1784200011", "from": "backlog", "to": "planned", "timestamp": "2026-07-16T19:06:51+08:00"}
+{"event": "move", "task_id": "test-events-1784200011", "from": "planned", "to": "in_progress", "timestamp": "2026-07-16T19:06:53+08:00"}
+{"event": "move", "task_id": "test-events-1784200011", "from": "in_progress", "to": "testing", "timestamp": "2026-07-16T19:06:53+08:00"}
+{"event": "move", "task_id": "test-events-1784200011", "from": "testing", "to": "verified", "timestamp": "2026-07-16T19:06:53+08:00"}
+{"event": "move", "task_id": "test-events-1784200011", "from": "verified", "to": "released", "timestamp": "2026-07-16T19:27:37+08:00"}

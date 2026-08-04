@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "cockpit-status-sort", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T11:00:44+08:00"}
+{"event": "move", "task_id": "cockpit-status-sort", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T12:42:05+08:00"}
+{"event": "move", "task_id": "cockpit-status-sort", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T12:50:10+08:00"}
+{"event": "move", "task_id": "cockpit-status-sort", "from": "testing", "to": "verified", "timestamp": "2026-07-14T12:50:10+08:00"}
+{"event": "move", "task_id": "cockpit-status-sort", "from": "verified", "to": "released", "timestamp": "2026-07-14T12:50:16+08:00"}

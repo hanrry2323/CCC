@@ -1,0 +1,8 @@
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T14:14:37+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T15:06:39+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T17:45:56+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T17:47:57+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T18:18:49+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T18:45:08+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "testing", "to": "verified", "timestamp": "2026-07-14T18:45:08+08:00"}
+{"event": "move", "task_id": "engine-phase-parallel-dispatch", "from": "verified", "to": "released", "timestamp": "2026-07-14T18:45:10+08:00"}

@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "fix-test-parallel-key", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T19:29:05+08:00"}
+{"event": "move", "task_id": "fix-test-parallel-key", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T19:48:23+08:00"}
+{"event": "move", "task_id": "fix-test-parallel-key", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T20:02:06+08:00"}
+{"event": "move", "task_id": "fix-test-parallel-key", "from": "testing", "to": "verified", "timestamp": "2026-07-14T20:02:06+08:00"}
+{"event": "move", "task_id": "fix-test-parallel-key", "from": "verified", "to": "abnormal", "timestamp": "2026-07-14T20:02:06+08:00"}

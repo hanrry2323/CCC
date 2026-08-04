@@ -1,0 +1,8 @@
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T18:52:09+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:00:48+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:22:22+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T19:25:08+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:25:08+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "in_progress", "to": "testing", "timestamp": "2026-07-13T19:25:18+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "testing", "to": "verified", "timestamp": "2026-07-13T19:25:18+08:00"}
+{"event": "move", "task_id": "cockpit-v0303b-chatui", "from": "verified", "to": "abnormal", "timestamp": "2026-07-13T19:25:18+08:00"}

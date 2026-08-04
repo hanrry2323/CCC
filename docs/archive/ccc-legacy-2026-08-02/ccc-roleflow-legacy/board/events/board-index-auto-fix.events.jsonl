@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "board-index-auto-fix", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T22:42:39+08:00"}
+{"event": "move", "task_id": "board-index-auto-fix", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T22:46:26+08:00"}
+{"event": "move", "task_id": "board-index-auto-fix", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T22:59:02+08:00"}
+{"event": "move", "task_id": "board-index-auto-fix", "from": "testing", "to": "verified", "timestamp": "2026-07-14T23:01:07+08:00"}
+{"event": "move", "task_id": "board-index-auto-fix", "from": "verified", "to": "released", "timestamp": "2026-07-14T23:01:11+08:00"}

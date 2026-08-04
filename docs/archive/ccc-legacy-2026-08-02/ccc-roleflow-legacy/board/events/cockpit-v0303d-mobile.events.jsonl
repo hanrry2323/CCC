@@ -1,0 +1,12 @@
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T19:00:48+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:17:57+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T19:25:08+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T19:25:18+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "in_progress", "to": "testing", "timestamp": "2026-07-13T19:25:28+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "testing", "to": "abnormal", "timestamp": "2026-07-13T19:30:28+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T00:40:27+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T01:12:43+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T01:45:26+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T01:51:09+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "testing", "to": "verified", "timestamp": "2026-07-14T01:58:38+08:00"}
+{"event": "move", "task_id": "cockpit-v0303d-mobile", "from": "verified", "to": "released", "timestamp": "2026-07-14T01:59:25+08:00"}

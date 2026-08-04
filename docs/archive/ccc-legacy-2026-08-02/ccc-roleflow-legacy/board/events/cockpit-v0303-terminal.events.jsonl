@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "cockpit-v0303-terminal", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T17:16:27+08:00"}
+{"event": "move", "task_id": "cockpit-v0303-terminal", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T17:25:48+08:00"}
+{"event": "move", "task_id": "cockpit-v0303-terminal", "from": "in_progress", "to": "testing", "timestamp": "2026-07-13T17:37:43+08:00"}
+{"event": "move", "task_id": "cockpit-v0303-terminal", "from": "testing", "to": "verified", "timestamp": "2026-07-13T17:37:44+08:00"}
+{"event": "move", "task_id": "cockpit-v0303-terminal", "from": "verified", "to": "released", "timestamp": "2026-07-13T17:37:57+08:00"}

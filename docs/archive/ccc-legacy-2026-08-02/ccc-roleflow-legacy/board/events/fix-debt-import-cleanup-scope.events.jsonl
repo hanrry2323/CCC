@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "fix-debt-import-cleanup-scope", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T19:48:22+08:00"}
+{"event": "move", "task_id": "fix-debt-import-cleanup-scope", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T19:59:50+08:00"}
+{"event": "move", "task_id": "fix-debt-import-cleanup-scope", "from": "testing", "to": "verified", "timestamp": "2026-07-14T20:01:33+08:00"}
+{"event": "move", "task_id": "fix-debt-import-cleanup-scope", "from": "verified", "to": "released", "timestamp": "2026-07-14T20:02:06+08:00"}

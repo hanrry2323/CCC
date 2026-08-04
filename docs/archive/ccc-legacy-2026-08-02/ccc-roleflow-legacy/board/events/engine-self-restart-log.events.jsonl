@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "engine-self-restart-log", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T22:07:08+08:00"}
+{"event": "move", "task_id": "engine-self-restart-log", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T22:15:03+08:00"}
+{"event": "move", "task_id": "engine-self-restart-log", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T22:44:43+08:00"}
+{"event": "move", "task_id": "engine-self-restart-log", "from": "testing", "to": "abnormal", "timestamp": "2026-07-14T22:50:06+08:00"}
+{"event": "move", "task_id": "engine-self-restart-log", "from": "abnormal", "to": "released", "timestamp": "2026-07-14T22:50:07+08:00"}

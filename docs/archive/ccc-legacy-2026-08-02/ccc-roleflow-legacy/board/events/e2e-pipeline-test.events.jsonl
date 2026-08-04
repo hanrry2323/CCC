@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "e2e-pipeline-test", "from": "planned", "to": "in_progress", "timestamp": "2026-08-02T19:45:27+08:00"}
+{"event": "move", "task_id": "e2e-pipeline-test", "from": "in_progress", "to": "testing", "timestamp": "2026-08-02T19:45:44+08:00"}
+{"event": "move", "task_id": "e2e-pipeline-test", "from": "testing", "to": "verified", "timestamp": "2026-08-02T19:45:44+08:00"}
+{"event": "move", "task_id": "e2e-pipeline-test", "from": "verified", "to": "released", "timestamp": "2026-08-02T19:45:44+08:00"}

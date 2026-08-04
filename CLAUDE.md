@@ -154,7 +154,6 @@ launchd(com.ccc.board-scheduler)   → server/board/scheduler.py（只读巡检 
 | `docs/dispatch/` | 任务卡文档（唯一事实源） |
 | `docs/INDEX.md` | 文档索引 SSOT（§0 重构决策 + 契约 v1 最高优先级） |
 | `docs/architecture.md` | 架构概览 |
-| `templates/` | plan/phases/report/verdict/AGENTS 模板（Engine 运行时依赖） |
 
 ---
 
@@ -164,16 +163,14 @@ launchd(com.ccc.board-scheduler)   → server/board/scheduler.py（只读巡检 
 |---|------|--------|
 | 1 | 不动系统文件 | /etc、~/.env、密钥不改 |
 | 2 | 验收必须可执行 | 自然语言 + 可选命令 |
-| 3 | 不超出任务卡范围 | 白名单外不动 |
-| 4 | 单 phase 单 commit | 兜底 commit 由脚本做 |
-| 5 | 任务卡必写全 | 元数据行 + 回写区 |
-| 6 | 执行体不互串 | product 不写代码，reviewer 不写 plan |
-| 7 | 启动顺序固定 | 读 state.md + profile.md 第一 |
-| 8 | 每步必 commit | exec-commit 兜底 |
-| 9 | 卡死立即止损 | kill + 下一个角色接管 |
-| 10 | 禁止跨会话隐式记忆 | state.md 强制接力 |
-| **11** | Verdict 必须写 verdict 文件 | 口头 PASS 不算 |
-| **12** | 禁止 agent 自主启用 CCC | 用户显式触发 |
+| 3 | 任务卡是唯一事实源 | docs/dispatch/ 卡头状态机合法，看板只读派生 |
+| 4 | 不超出任务卡范围 | 白名单外不动（越界=打回） |
+| 5 | 单卡单 commit | 回写前必须 push 成功并附证据 |
+| 6 | 验收席判定 | Codex 逐项验收，打回附问题清单；不越范围 |
+| 7 | 杜绝硬编码（D10） | 路径/端口/模型/密钥走 config；验收含扫描 |
+| 8 | 零外脑独立（D2） | 运行时不读不写 qx-map/hp-kb |
+| 9 | 鉴权/免登录 | CCC_WEB_AUTH_REQUIRED=0 仅限局域网；恢复登录只改配置 |
+| 10 | 不碰运行面 | 2017 部署由 Codex 放行；生产配置只 pull 不手改 |
 
 完整版含 R-/X- 别名 → `references/red-lines.md`。
 

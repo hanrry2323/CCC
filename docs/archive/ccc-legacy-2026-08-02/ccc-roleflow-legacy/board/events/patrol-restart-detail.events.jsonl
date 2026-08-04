@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "patrol-restart-detail", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T20:55:29+08:00"}
+{"event": "move", "task_id": "patrol-restart-detail", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T20:55:29+08:00"}
+{"event": "move", "task_id": "patrol-restart-detail", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T21:00:53+08:00"}
+{"event": "move", "task_id": "patrol-restart-detail", "from": "testing", "to": "verified", "timestamp": "2026-07-14T21:03:43+08:00"}
+{"event": "move", "task_id": "patrol-restart-detail", "from": "verified", "to": "released", "timestamp": "2026-07-14T21:03:48+08:00"}

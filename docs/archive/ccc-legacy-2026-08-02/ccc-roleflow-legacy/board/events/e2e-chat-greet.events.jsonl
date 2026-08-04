@@ -1,0 +1,8 @@
+{"event": "move", "task_id": "e2e-chat-greet", "from": "none", "to": "backlog", "timestamp": "2026-07-16T17:15:25+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "backlog", "to": "planned", "timestamp": "2026-07-16T17:15:30+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "planned", "to": "in_progress", "timestamp": "2026-07-16T17:15:30+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "in_progress", "to": "testing", "timestamp": "2026-07-16T17:18:43+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "testing", "to": "abnormal", "timestamp": "2026-07-16T17:19:17+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "abnormal", "to": "testing", "timestamp": "2026-07-16T17:19:42+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "testing", "to": "verified", "timestamp": "2026-07-16T17:22:50+08:00"}
+{"event": "move", "task_id": "e2e-chat-greet", "from": "verified", "to": "released", "timestamp": "2026-07-16T17:25:32+08:00"}

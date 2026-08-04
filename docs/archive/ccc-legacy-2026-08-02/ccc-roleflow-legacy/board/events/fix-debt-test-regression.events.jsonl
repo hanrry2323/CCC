@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "fix-debt-test-regression", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T19:26:18+08:00"}
+{"event": "move", "task_id": "fix-debt-test-regression", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T19:48:22+08:00"}
+{"event": "move", "task_id": "fix-debt-test-regression", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T20:42:10+08:00"}
+{"event": "move", "task_id": "fix-debt-test-regression", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T21:33:13+08:00"}
+{"event": "move", "task_id": "fix-debt-test-regression", "from": "abnormal", "to": "planned", "timestamp": "2026-07-14T23:05:01+08:00"}

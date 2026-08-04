@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "product-phase-limit", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T20:59:11+08:00"}
+{"event": "move", "task_id": "product-phase-limit", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T20:59:11+08:00"}
+{"event": "move", "task_id": "product-phase-limit", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T21:03:48+08:00"}
+{"event": "move", "task_id": "product-phase-limit", "from": "testing", "to": "verified", "timestamp": "2026-07-14T21:03:49+08:00"}
+{"event": "move", "task_id": "product-phase-limit", "from": "verified", "to": "abnormal", "timestamp": "2026-07-14T21:03:49+08:00"}

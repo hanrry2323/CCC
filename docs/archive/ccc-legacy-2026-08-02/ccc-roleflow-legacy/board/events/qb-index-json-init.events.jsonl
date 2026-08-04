@@ -1,0 +1,5 @@
+{"event": "move", "task_id": "qb-index-json-init", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T20:34:50+08:00"}
+{"event": "move", "task_id": "qb-index-json-init", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T20:34:50+08:00"}
+{"event": "move", "task_id": "qb-index-json-init", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T20:36:01+08:00"}
+{"event": "move", "task_id": "qb-index-json-init", "from": "testing", "to": "verified", "timestamp": "2026-07-14T20:36:06+08:00"}
+{"event": "move", "task_id": "qb-index-json-init", "from": "verified", "to": "abnormal", "timestamp": "2026-07-14T20:36:06+08:00"}

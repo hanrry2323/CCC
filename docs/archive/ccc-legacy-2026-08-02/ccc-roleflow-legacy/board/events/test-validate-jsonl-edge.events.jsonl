@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "test-validate-jsonl-edge", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T18:44:09+08:00"}
+{"event": "move", "task_id": "test-validate-jsonl-edge", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T18:50:21+08:00"}
+{"event": "move", "task_id": "test-validate-jsonl-edge", "from": "testing", "to": "verified", "timestamp": "2026-07-14T18:50:21+08:00"}
+{"event": "move", "task_id": "test-validate-jsonl-edge", "from": "verified", "to": "released", "timestamp": "2026-07-14T18:50:23+08:00"}

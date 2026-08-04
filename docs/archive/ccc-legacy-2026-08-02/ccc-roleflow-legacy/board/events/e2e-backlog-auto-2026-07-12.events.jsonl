@@ -1,0 +1,10 @@
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "testing", "to": "abnormal", "timestamp": "2026-07-12T20:45:08+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "planned", "to": "in_progress", "timestamp": "2026-07-12T23:33:03+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "in_progress", "to": "abnormal", "timestamp": "2026-07-13T05:33:08+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "backlog", "to": "planned", "timestamp": "2026-07-13T23:54:31+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "planned", "to": "in_progress", "timestamp": "2026-07-13T23:55:03+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "backlog", "to": "planned", "timestamp": "2026-07-14T00:23:53+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "planned", "to": "in_progress", "timestamp": "2026-07-14T00:23:53+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "in_progress", "to": "testing", "timestamp": "2026-07-14T00:27:41+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "testing", "to": "verified", "timestamp": "2026-07-14T00:27:41+08:00"}
+{"event": "move", "task_id": "e2e-backlog-auto-2026-07-12", "from": "verified", "to": "released", "timestamp": "2026-07-14T00:27:46+08:00"}
