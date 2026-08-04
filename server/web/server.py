@@ -213,7 +213,8 @@ def _load_persisted_threads() -> None:
 _load_persisted_threads()
 
 # ── 免鉴权的路径前缀 ──
-_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects"})
+# /tasks/running 与 /projects 同组（T53：控制台后台任务进程面板数据源，免登录白名单）
+_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects", "/tasks/running"})
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面；T25：旧对话页 legacy-chat/） ──
@@ -664,6 +665,78 @@ def _load_board_items():
     return load_dispatch_cards(_DISPATCH_DIR)
 
 
+# ── T53：后台任务进程实时展示（GET /tasks/running） ──
+
+
+def _executor_log_dir() -> Path | None:
+    """执行体日志目录（EXECUTOR_LOG_DIR）；未配置返回 None。"""
+    raw = os.environ.get("EXECUTOR_LOG_DIR", "").strip()
+    return Path(raw).expanduser().resolve() if raw else None
+
+
+def _tail_lines(path: Path, n: int = 5) -> list[str]:
+    """读文件末尾 n 行；文件不存在/读取失败 → 空列表。
+
+    从文件末尾开 8KB 窗口倒读，避免整文件载入（执行日志可能很大）。
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - 8192)
+            f.seek(start)
+            chunk = f.read()
+        lines = chunk.splitlines()
+        return lines[-n:]
+    except OSError:
+        return []
+
+
+def _load_running_tasks() -> dict[str, Any]:
+    """GET /tasks/running：执行中任务进程视图（T53）。
+
+    - 数据源：docs/dispatch 卡头状态 == 执行中（真实队列语义，manual 卡不在此列）；
+    - 日志尾部读 ``EXECUTOR_LOG_DIR/<work_id>.log``（存在时）；
+      开始时间用日志文件 ctime，最近活动用 mtime，已用时 = now - ctime；
+    - 无日志文件（如历史遗留/无进程）→ 仅卡信息，日志为空、已用时未知。
+    """
+    items = _load_board_items()
+    log_dir = _executor_log_dir()
+    now = time.time()
+    tasks: list[dict[str, Any]] = []
+    for item in items:
+        if base_state(item.state) != "执行中":
+            continue
+        task: dict[str, Any] = {
+            "work_id": item.id,
+            "title": item.title,
+            "executor": item.executor,
+            "started_at": None,
+            "elapsed_s": None,
+            "log_tail": [],
+            "last_activity_at": None,
+        }
+        if log_dir is not None:
+            log_path = log_dir / f"{item.id}.log"
+            try:
+                st = log_path.stat()
+            except OSError:
+                pass  # 无日志文件 → 保留卡信息
+            else:
+                task["started_at"] = datetime.fromtimestamp(
+                    st.st_ctime, tz=timezone.utc
+                ).isoformat(timespec="seconds")
+                task["last_activity_at"] = datetime.fromtimestamp(
+                    st.st_mtime, tz=timezone.utc
+                ).isoformat(timespec="seconds")
+                task["elapsed_s"] = max(0, int(now - st.st_ctime))
+                task["log_tail"] = _tail_lines(log_path, 5)
+        tasks.append(task)
+    # 无日志（未知已用时）置底；其余按已用时长倒序（跑得久的在上）
+    tasks.sort(key=lambda t: (t["elapsed_s"] is None, -(t["elapsed_s"] or 0)))
+    return {"tasks": tasks}
+
+
 class _APIHandler(BaseHTTPRequestHandler):
     """HTTP API 请求处理器。"""
 
@@ -1019,6 +1092,10 @@ class _APIHandler(BaseHTTPRequestHandler):
 
             project = unquote(path[len("/projects/") : -len("/threads")])
             self._send_json({"threads": session_store.list_threads(project)})
+            return
+        if path == "/tasks/running":
+            # T53：执行中任务进程视图（免登录白名单，与 /projects 同组；须在 /tasks/{id} 之前）
+            self._send_json(_load_running_tasks())
             return
         if not self._check_auth():
             return

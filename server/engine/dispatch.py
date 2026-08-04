@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shlex
 from dataclasses import dataclass
 from enum import StrEnum
@@ -26,6 +27,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from server.engine.task import Work
+
+logger = logging.getLogger("ccc.engine.dispatch")
 
 # 契约 §7：分类只允许「可后台 CLI」/「手动 GUI」；管理席/验收席不做执行，分类「—」
 VALID_CATEGORIES: frozenset[str] = frozenset({"可后台 CLI", "手动 GUI", "—"})
@@ -215,12 +218,16 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     2. 无 `work.executor`（卡未指定执行体）→ 回退 `decide(work.role, registry)`（现行为不变）。
 
     Args:
-        work: 待派发的 work 卡（含 executor 字段）。
+        work: 待派发的 work 卡（含 executor / dispatch 字段）。
         registry: 执行体注册表。
 
     Returns:
         DispatchDecision.AUTO / MANUAL / NONE。
     """
+    # T53：卡头「派发：manual」→ 管理席派发，Engine 不自动拉，保持待分派（消灭假「执行中」）。
+    if work.dispatch == "manual":
+        logger.info("manual 卡由管理席派发，Engine 不自动拉: work=%s", work.id)
+        return DispatchDecision.NONE
     if work.executor:
         rows = registry.rows_for_binding(work.executor)
         if rows:

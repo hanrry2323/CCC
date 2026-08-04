@@ -266,6 +266,22 @@ class TestDecideWork:
             work = Work(id=f"reg-{role}", role=role, executor="")
             assert decide_work(work, reg) is decide(role, reg)
 
+    def test_manual_dispatch_not_dispatched(self) -> None:
+        """⑦ T53：卡头「派发：manual」→ NONE（管理席派发，Engine 不自动拉，保持待分派）。
+
+        即使执行体绑定（Claude Code）是可后台 CLI，manual 卡也不得被 Engine 自动拉起
+        （消灭 T48/T49/T50 假「执行中」）。
+        """
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t53-manual", role="维护执行体", executor="Claude Code", dispatch="manual")
+        assert decide_work(work, reg) is DispatchDecision.NONE
+
+    def test_engine_dispatch_auto(self) -> None:
+        """⑧ T53：卡头「派发：engine」（缺省）→ 按绑定正常 AUTO 派发。"""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t53-engine", role="维护执行体", executor="Claude Code", dispatch="engine")
+        assert decide_work(work, reg) is DispatchDecision.AUTO
+
 
 class TestBuildCommand:
     """命令构造（占位符替换 + argv 向量）。"""

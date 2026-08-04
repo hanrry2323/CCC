@@ -1,6 +1,6 @@
 # 任务卡 T53 · 控制台/线路图修复 + 后台任务进程实时展示（Claude Code 执行）
 
-> 关联：阶段 3（控制台/线路图修复，老板 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（控制台/线路图修复，老板 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；请先 `git fetch origin main && git checkout -b codex/t53-console-roadmap-fix origin/main`
 > **续作指令（2026-08-04 二次派发）**：ccc-dev-ws 中已有上次超时留下的**完整未提交改动**（16 文件 +437/-26，`pytest server/tests` 已实测全绿，含 A/B/C 实现与测试）。**不要重做**——直接按逻辑分步提交（A 状态语义 / B 项目聚合 / C 后台进程 + 测试各一个 commit）→ push 分支 → 回写。执行超时已调至 7200s；**每完成一个逻辑块立即 commit，禁止攒到结尾**。
 
@@ -54,4 +54,44 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-04
+
+### A. 真实状态语义（完成）
+
+- 卡头新增「派发：manual|engine」：`server/board/loader.py` `_resolve_dispatch` 解析（非法值回落 engine）→ `BoardItem.dispatch`；`server/engine/store.py` FileBoardStore 透传到 `Work.dispatch`；`server/engine/dispatch.py` `decide_work` 对 manual 卡直接 NONE（日志「manual 卡由管理席派发，Engine 不自动拉」），保持待分派。
+- 管理卡 T48/T49/T50 已改为「状态：待分派 + 派发：manual」（去掉假「执行中」，恢复真实队列语义）。
+
+### B. 线路图/看板按项目聚合（完成）
+
+- 卡头新增「项目」字段：`_resolve_project` 显式优先，缺省从「关联」首段（冒号/空格前 + 去括号）推导，推导不出归「未分类」（`UNCLASSIFIED`）；旧卡兼容。
+- `server/board/queries.py` `view_by_project` / `roadmap_by_project` 统一 `_project_rows_sorted`：按项目聚合（任务数倒序、名称升序），「未分类」置底；`roadmapPage.js` 项目名与计数「· 共 N 卡」分隔，修正「INT-12047」「阶段 3 P12」乱分组。
+
+### C. 后台任务进程实时展示（完成）
+
+- `GET /tasks/running`（免登录白名单，与 /projects 同组）：执行中任务 → work_id/标题/执行体/开始时间/已用时（now−log ctime）/日志尾 5 行（`EXECUTOR_LOG_DIR/<id>.log`，8KB 窗口倒读）/最近活动（mtime）；无日志仅卡信息；按已用时长倒序。
+- `consolePage.js` 新增「后台任务进程」面板：任务卡（ID/标题/执行体/已用时/日志尾/活动指示点 + indeterminate shimmer 进度条），空态「当前无后台任务」；8 秒轮询 `/tasks/running`（SSE 后置 T49），保留看板 15s 轮询。
+
+### T9x-test 实测（live curl 文本，2017 同源 ccc-dev-ws 起服 :7799）
+
+数据态（临时卡 T99 + 日志文件）：
+
+```json
+{"tasks": [{"work_id": "T99", "title": "T53 面板实测（临时）", "executor": "Claude Code", "started_at": "2026-08-04T08:45:12+00:00", "elapsed_s": 2, "log_tail": ["step1 start", "step2 processing", "step3 token consumed", "step4 writing report", "step5 almost done"], "last_activity_at": "2026-08-04T08:45:12+00:00"}]}
+```
+
+空态：`{"tasks": []}`（当前无执行中卡 → 面板空态「当前无后台任务」）。临时卡与日志已删，未留仓库。真实任务实测（T9x-test 全链路：执行中→已用时→日志尾→完成清空）按验收标准 3 由 Codex 验收时执行。
+
+### 测试结果
+
+- `pytest server/tests/`：**397 passed**（`/usr/local/bin/python3 -m pytest`，Python 3.12 + pytest 9.1.1）
+- `python -m py_compile` 改动文件：clean
+- ruff：本机未安装 ruff（无法运行），代码未引入新依赖
+
+### push 证据
+
+分支 `codex/t53-console-roadmap-fix` 已推送 `origin`（`git push -u` 成功）：
+
+- `738895e5` feat(dispatch): T53-A 真实状态语义——manual 卡不自动派发 + 卡头派发/项目字段解析
+- `269dc7ce` feat(board): T53-B 线路图/看板按项目聚合——未分类置底 + 前端渲染修正
+- `9df5ba3c` feat(web): T53-C 后台任务进程实时展示——GET /tasks/running + 控制台面板
+- （本 commit）docs(dispatch): T53 回写

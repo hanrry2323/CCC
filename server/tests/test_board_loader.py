@@ -57,15 +57,16 @@ class TestParseCard:
         assert item.reject_count == 1
 
     def test_missing_fields_unknown(self, tmp_path: Path) -> None:
-        """字段缺失容错：标「未知」不崩溃，ID 回退文件名。"""
+        """字段缺失容错：标「未知」不崩溃，ID 回退文件名；项目归「未分类」（T53）。"""
         item = parse_card(_write(tmp_path, "minimal.md", "# 随便写的东西\n没有任务卡格式\n"))
         assert item.id == "minimal"
         assert item.state == "未知"
-        assert item.project == "未知"
+        assert item.project == "未分类"
         assert item.executor == "未知"
         assert item.dispatched_at == "未知"
         assert item.written_at == "未知"
         assert item.reject_count == 0
+        assert item.dispatch == "engine"  # 缺省派发方式
 
     def test_executor_without_parenthesis(self, tmp_path: Path) -> None:
         content = "# 任务卡 T96 · 无括号\n\n> 执行体：纯名字 · 状态：待分派\n"
@@ -78,6 +79,50 @@ class TestParseCard:
         item = parse_card(_write(tmp_path, "T95.md", content))
         assert item.state == "打回（原因）"
         assert item.reject_count == 1
+
+    # ── T53：项目 / 派发 字段 ──
+
+    def test_project_field_overrides_related(self, tmp_path: Path) -> None:
+        """卡头「项目」字段优先于「关联」推导。"""
+        content = "# 任务卡 T94 · 项目字段\n\n> 关联：阶段 3 P1 · 项目：ccc · 执行体：某工具 · 状态：待分派\n"
+        item = parse_card(_write(tmp_path, "T94.md", content))
+        assert item.project == "ccc"
+
+    def test_project_derived_from_related_first_segment(self, tmp_path: Path) -> None:
+        """无「项目」字段 → 从「关联」首段推导（冒号/空格前 + 去括号）。"""
+        content = "# 任务卡 T93 · 推导\n\n> 关联：INT-120（CCC 重构）· 状态：待分派\n"
+        item = parse_card(_write(tmp_path, "T93.md", content))
+        assert item.project == "INT-120"
+
+    def test_project_derived_space_segment(self, tmp_path: Path) -> None:
+        """关联含空格 → 取空格前首段。"""
+        content = "# 任务卡 T92 · 空格段\n\n> 关联：阶段 3 P1 · 状态：待分派\n"
+        item = parse_card(_write(tmp_path, "T92.md", content))
+        assert item.project == "阶段"
+
+    def test_project_derived_garbled_unclassified(self, tmp_path: Path) -> None:
+        """关联首段含引号/括号（长句上下文）→ 归「未分类」。"""
+        content = "# 任务卡 T91 · 乱码\n\n> 关联：新阶段「双壳可用 + 心智升级」收口 · 状态：待分派\n"
+        item = parse_card(_write(tmp_path, "T91.md", content))
+        assert item.project == "未分类"
+
+    def test_dispatch_default_engine(self, tmp_path: Path) -> None:
+        """无「派发」字段 → 缺省 engine。"""
+        content = "# 任务卡 T90 · 缺省派发\n\n> 关联：PRJ-X · 状态：待分派\n"
+        item = parse_card(_write(tmp_path, "T90.md", content))
+        assert item.dispatch == "engine"
+
+    def test_dispatch_manual(self, tmp_path: Path) -> None:
+        """「派发：manual」→ manual。"""
+        content = "# 任务卡 T89 · 手动派发\n\n> 关联：PRJ-X · 状态：待分派 · 派发：manual\n"
+        item = parse_card(_write(tmp_path, "T89.md", content))
+        assert item.dispatch == "manual"
+
+    def test_dispatch_invalid_falls_back_engine(self, tmp_path: Path) -> None:
+        """「派发」非法值 → 回落 engine。"""
+        content = "# 任务卡 T88 · 非法派发\n\n> 关联：PRJ-X · 状态：待分派 · 派发：whatever\n"
+        item = parse_card(_write(tmp_path, "T88.md", content))
+        assert item.dispatch == "engine"
 
 
 class TestLoadDispatchCards:

@@ -382,6 +382,51 @@ class TestRunOnceDispatchByBinding:
         assert not log_dir.exists() or not (log_dir / "codex-card.log").exists()
 
 
+class TestRunOnceManualDispatch:
+    """T53：卡头「派发：manual」→ Engine 不自动拉，保持待分派（消灭假「执行中」）。"""
+
+    def test_manual_dispatch_work_stays_pending(self, tmp_path: Path) -> None:
+        """manual work（即使执行体是可后台 CLI）→ 不派发、不回写，仍留待分派。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(
+                id="m53", role="开发执行体", executor="demo",
+                card_path=str(tmp_path / "card.md"), dispatch="manual",
+            )
+        )
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        summary = run_once(reg, store, cfg)
+        assert summary["scanned"] == 1
+        assert summary["dispatched"] == 0
+        assert summary["collected"] == 0
+        pending = store.list_work(state=State.TODO)
+        assert [w.id for w in pending] == ["m53"]
+        # 不派发 → 无执行日志
+        assert not (tmp_path / "logs" / "m53.log").exists()
+
+    def test_manual_dispatch_via_real_card(self, tmp_path: Path) -> None:
+        """端到端：真实卡带 派发：manual → run_once 不派发，卡头保持待分派。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        card = tmp_path / "T53-e.md"
+        card.write_text(
+            "# 任务卡 T53 · 管理卡\n"
+            "> 关联：TEST · 执行体：demo · 状态：待分派 · 派发：manual · 日期：2026-08-04\n"
+            "\n## 目标\n管理席派发\n",
+            encoding="utf-8",
+        )
+        store = FileBoardStore(tmp_path, reg)
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 0
+        text = card.read_text(encoding="utf-8")
+        assert "状态：待分派" in text
+
+
 class TestFileBoardStore:
     """P1-1 文件/卡驱动 BoardStore：读 docs/dispatch → 构造 Work → 回写卡头状态。"""
 
@@ -427,6 +472,22 @@ class TestFileBoardStore:
         # 未知执行体 → role 反查失败 → 空串；executor 保留卡头名供 decide_work 回退
         assert w.role == ""
         assert w.executor == "GhostTool"
+
+    def test_list_work_propagates_manual_dispatch(self, tmp_path: Path) -> None:
+        """T53：卡头「派发：manual」透传到 Work.dispatch（Engine 据此不自动拉）。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        card = tmp_path / "T53-m.md"
+        card.write_text(
+            "# 任务卡 T53 · 管理卡\n"
+            "> 关联：TEST · 执行体：demo · 状态：待分派 · 派发：manual · 日期：2026-08-04\n"
+            "\n## 目标\n管理席派发\n",
+            encoding="utf-8",
+        )
+        store = FileBoardStore(tmp_path, reg)
+        w = store.list_work()[0]
+        assert w.dispatch == "manual"
+        assert w.state is State.TODO
 
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
         """list_work(state=X) 只返回匹配状态的卡。"""

@@ -1,6 +1,8 @@
 """从任务卡文档解析看板派生数据（任务卡 = 唯一事实源）。
 
-- 元数据块（`>` 行，`key：value` 以 `·` 分隔）→ 状态 / 项目 / 执行体 / 分派时间。
+- 元数据块（`>` 行，`key：value` 以 `·` 分隔）→ 状态 / 项目 / 执行体 / 分派时间 / 派发方式。
+- 项目：卡头「项目」字段优先；缺省从「关联」首段（冒号/空格前）推导，推导不出归「未分类」。
+- 派发方式：卡头「派发」字段（manual|engine，缺省 engine）。
 - 回写区（`## 回写区` 后 `**日期**：`）→ 回写时间。
 - 字段缺失容错：标「未知」不崩溃；无显式打回次数按 0。
 
@@ -16,7 +18,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from server.board.models import UNKNOWN, BoardItem, base_state
+from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state
 
 # `# 任务卡 T3 · 标题`（MULTILINE：^/$ 按行锚定）
 _TITLE_RE = re.compile(r"^#\s*任务卡\s+(\S+)\s*[·\-]\s*(.+?)\s*$", re.MULTILINE)
@@ -27,18 +29,49 @@ _WRITTEN_RE = re.compile(r"\*\*日期\*\*\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}
 # 显式打回次数：`打回次数：N`
 _REJECT_RE = re.compile(r"打回次数\s*[:：]\s*(\d+)")
 
-# 元数据键 → BoardItem 字段
-_META_TO_FIELD: dict[str, str] = {
-    "关联": "project",
-    "执行体": "executor",
-    "状态": "state",
-    "日期": "dispatched_at",
-}
+# 「派发」字段合法值（缺省 engine）
+_DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine"})
+# 推导出的项目名不得含这些字符（长句/引号/括号 → 非项目前缀，归「未分类」）
+_GARBLED_RE = re.compile(r"[「」『』【】\"'<>（）()]")
 
 
 def _strip_parenthetical(value: str) -> str:
     """取括号前部分（如 `INT-120（CCC 重构）` → `INT-120`）。"""
     return re.split(r"[（(]", value, maxsplit=1)[0].strip()
+
+
+def _derive_project_from_related(related: str) -> str:
+    """旧卡兼容：无「项目」字段时从「关联」首段推导项目名。
+
+    推导规则（T53）：
+    1. 取关联值首段（按 `：`/`:`/空格 切分）；
+    2. 去括号（如 `INT-120（CCC 重构）` → `INT-120`）；
+    3. 结果含引号/括号等非项目前缀字符、或为空/未知 → 「未分类」。
+
+    例：`INT-120（CCC 重构）` → `INT-120`；`阶段 3 P1` → `阶段`；
+        `新阶段「双壳可用 + 心智升级」` → 「未分类」。
+    """
+    if not related or related == UNKNOWN:
+        return UNCLASSIFIED
+    seg = re.split(r"[：:\s]", related, maxsplit=1)[0].strip()
+    seg = _strip_parenthetical(seg)
+    if not seg or seg == UNKNOWN or _GARBLED_RE.search(seg):
+        return UNCLASSIFIED
+    return seg
+
+
+def _resolve_project(meta: dict[str, str]) -> str:
+    """项目名：卡头「项目」字段优先；缺省从「关联」首段推导。"""
+    explicit = meta.get("项目", "").strip()
+    if explicit:
+        return _strip_parenthetical(explicit)
+    return _derive_project_from_related(meta.get("关联", UNKNOWN))
+
+
+def _resolve_dispatch(meta: dict[str, str]) -> str:
+    """派发方式：manual|engine（缺省 engine；非法值回落 engine）。"""
+    raw = (meta.get("派发", "") or "").strip().lower()
+    return raw if raw in _DISPATCH_VALUES else "engine"
 
 
 def _parse_metadata(text: str) -> dict[str, str]:
@@ -84,11 +117,12 @@ def parse_card(path: Path | str) -> BoardItem:
         id=card_id,
         title=title,
         state=meta.get("状态", UNKNOWN),
-        project=_strip_parenthetical(meta.get("关联", UNKNOWN)),
+        project=_resolve_project(meta),
         executor=_strip_parenthetical(meta.get("执行体", UNKNOWN)),
         dispatched_at=meta.get("日期", UNKNOWN),
         written_at=_parse_written_at(text),
         reject_count=reject_count,
+        dispatch=_resolve_dispatch(meta),
     )
 
 

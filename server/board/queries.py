@@ -14,10 +14,19 @@ from server.board.models import (
     ROADMAP_BUCKETS,
     STATE_TO_ROADMAP,
     STATES,
+    UNCLASSIFIED,
     UNKNOWN,
     BoardItem,
     base_state,
 )
+
+
+def _project_rows_sorted(groups: dict[str, list[BoardItem]]) -> list[tuple[str, list[BoardItem]]]:
+    """按项目排序：未分类置底，其余按任务数倒序、名称升序（T53 按项目聚合）。"""
+    return sorted(
+        groups.items(),
+        key=lambda kv: (kv[0] == UNCLASSIFIED, -len(kv[1]), kv[0]),
+    )
 
 
 def _parse_date(value: str) -> date | None:
@@ -61,12 +70,12 @@ def view_recent(
 
 
 def view_by_project(items: list[BoardItem]) -> list[dict]:
-    """按项目分类：分组 + 计数 + 各状态分布，按任务数倒序。"""
+    """按项目分类：分组 + 计数 + 各状态分布，按任务数倒序（未分类置底）。"""
     groups: dict[str, list[BoardItem]] = {}
     for item in items:
         groups.setdefault(item.project, []).append(item)
     rows = []
-    for project, members in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+    for project, members in _project_rows_sorted(groups):
         rows.append(
             {
                 "project": project,
@@ -102,14 +111,14 @@ def roadmap_overview(items: list[BoardItem]) -> list[dict]:
 def roadmap_by_project(items: list[BoardItem]) -> list[dict]:
     """L2 单项目线路图：各项目桶聚合。
 
-    返回按项目分组、按任务数倒序的 {project, buckets: [{bucket, count}]} 列表。
+    返回按项目分组、按任务数倒序（未分类置底）的 {project, buckets: [{bucket, count}]} 列表。
     """
     groups: dict[str, list[BoardItem]] = {}
     for item in items:
         groups.setdefault(item.project, []).append(item)
 
     rows: list[dict] = []
-    for project, members in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+    for project, members in _project_rows_sorted(groups):
         counts = {bucket: 0 for bucket in ROADMAP_BUCKETS}
         for item in members:
             bucket = STATE_TO_ROADMAP.get(base_state(item.state))

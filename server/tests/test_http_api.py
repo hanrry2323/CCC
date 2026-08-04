@@ -940,6 +940,13 @@ class TestNoAuthMode:
         assert status == 200
         assert "severity" in data
 
+    def test_tasks_running_no_token(self, api_server):
+        """免登录：/tasks/running 无 token 200（与 /projects 同白名单组，T53）。"""
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        assert "tasks" in data
+        assert isinstance(data["tasks"], list)
+
     def test_conversation_post_no_token_not_configured(self, api_server):
         """免登录：POST /conversation 无 token 可触达大脑（未配置 → 503，而非 401）。"""
         _clear_brain_env()
@@ -1348,6 +1355,86 @@ class TestTaskDetail:
         status, data = _get(api_server, "/tasks/T19")
         assert status == 401
         assert "error" in data
+
+
+# ── T53 后台任务进程：GET /tasks/running ──
+
+
+class TestTasksRunning:
+    """GET /tasks/running：执行中任务进程视图（免登录白名单 + 日志尾部）。"""
+
+    def test_whitelisted_requires_no_token(self, api_server):
+        """鉴权开启时 /tasks/running 仍免登录 200（与 /projects 同白名单组）。"""
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        assert "tasks" in data
+
+    def test_shape_and_log_tail(self, api_server, tmp_path, monkeypatch):
+        """执行中任务返回 work_id/标题/执行体/已用时/最近活动 + 日志尾 5 行。"""
+        from server.web import server as srv
+        from server.board.models import BoardItem
+
+        log_dir = tmp_path / "exec-logs"
+        log_dir.mkdir()
+        (log_dir / "T999.log").write_text("l1\nl2\nl3\nl4\nl5\nl6\nl7\n", encoding="utf-8")
+        monkeypatch.setenv("EXECUTOR_LOG_DIR", str(log_dir))
+        monkeypatch.setattr(
+            srv, "_load_board_items",
+            lambda: [
+                BoardItem(id="T999", title="测试运行中", state="执行中", executor="Claude Code"),
+                BoardItem(id="T1", title="待分派卡", state="待分派"),
+                BoardItem(id="T998", title="无日志运行中", state="执行中", executor="OpenCode"),
+            ],
+        )
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        tasks = data["tasks"]
+        assert len(tasks) == 2  # 只含执行中
+        t999 = next(t for t in tasks if t["work_id"] == "T999")
+        assert t999["title"] == "测试运行中"
+        assert t999["executor"] == "Claude Code"
+        assert t999["elapsed_s"] is not None and t999["elapsed_s"] >= 0
+        assert t999["started_at"] is not None
+        assert t999["last_activity_at"] is not None
+        # 日志尾 5 行（截取末尾，非整文件）
+        assert t999["log_tail"] == ["l3", "l4", "l5", "l6", "l7"]
+        # 无日志文件 → 仅卡信息，日志为空、已用时未知
+        t998 = next(t for t in tasks if t["work_id"] == "T998")
+        assert t998["log_tail"] == []
+        assert t998["elapsed_s"] is None
+
+    def test_only_running_included(self, api_server, monkeypatch):
+        """非执行中卡不进入 /tasks/running。"""
+        from server.web import server as srv
+        from server.board.models import BoardItem
+
+        monkeypatch.setattr(
+            srv, "_load_board_items",
+            lambda: [
+                BoardItem(id="T1", title="待分派", state="待分派"),
+                BoardItem(id="T2", title="已回写", state="已回写"),
+            ],
+        )
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        assert data["tasks"] == []
+
+    def test_no_log_dir_still_returns_cards(self, api_server, monkeypatch):
+        """EXECUTOR_LOG_DIR 未配置 → 仍返回执行中卡（日志字段空）。"""
+        from server.web import server as srv
+        from server.board.models import BoardItem
+
+        monkeypatch.delenv("EXECUTOR_LOG_DIR", raising=False)
+        monkeypatch.setattr(
+            srv, "_load_board_items",
+            lambda: [BoardItem(id="T5", title="跑着", state="执行中", executor="X")],
+        )
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        t = data["tasks"][0]
+        assert t["work_id"] == "T5"
+        assert t["log_tail"] == []
+        assert t["elapsed_s"] is None
 
 
 # ── T21 运维兼容接口：/ops/summary ──
