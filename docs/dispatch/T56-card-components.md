@@ -1,6 +1,6 @@
 # 任务卡 T56 · T-B1 统一卡片组件层（Claude Code 执行）
 
-> 关联：阶段 3（T-B1 统一卡片组件，过夜任务前端链 1/2）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（T-B1 统一卡片组件，过夜任务前端链 1/2）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t56-card-components`（先 `git fetch origin main && git checkout -b codex/t56-card-components origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块立即 commit+push；超时 7200s。与 T55（索引层）并行，文件所有权见下。
 
@@ -35,4 +35,54 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+### 1. 组件结构
+- **TaskCard** (`js/components/taskCard.js`)
+  - 定义了标准的 `STATE_TONE` 和 `STATE_COLORS` 色板，确保与桌面端 StateTone 一致。
+  - 提供了 `renderTaskCard(t)` 统一卡片渲染，结构完美融合了原有看板与对话右栏样式类。
+  - 提供了 `fmtTaskCopy(t, col)` 支持将标准卡片格式化为便于对话中讨论的纯文本格式。
+- **TaskCardDetail** (`js/components/taskCardDetail.js`)
+  - 提供了 `renderTaskCardDetail(t)`，集成了流转状态描述、验收标准（acceptance）、任务描述（note）、子阶段进度和事件时间线（events）。
+- **TaskCardList** (`js/components/taskCardList.js`)
+  - 采用高性能虚拟滚动实现（`enableVirtualScroll(true)`），按需渲染视口内卡片，支持 500+ 卡场景下顺滑滚动。
+  - 底部集成了通用的分页导航控制栏，支持动态更新和翻页事件（`onPageChange`）。
+
+### 2. cardApi 协议与后端对齐
+- `getCards({ project, state, page, page_size })` => 调用 `GET /cards?project=&state=&page=&page_size=`
+- `searchCards({ q, project, state, page })` => 调用 `GET /cards/search?q=&project=&state=&page=`
+
+### 3. 接入范围
+- **对话右栏卡流** (`js/components/boardPanel.js`)
+  - 移除了旧 `renderCard`、`renderDetail` 的拼 DOM 渲染。
+  - 采用 `/cards` 统一数据源进行拉取并统计分析指标。
+  - 实例化 `TaskCardList` 挂载至任务流容器并开启高性能虚拟滚动。
+  - 使用 `renderTaskCardDetail` 实现完美的详情抽屉交互展开。
+- **看板主页面** (`js/pages/boardPage.js`)
+  - 移除了旧 `_buildFlowCol`、`renderFlowCols` 等各显神通的卡片渲染和事件绑定代码。
+  - 升级 `loadBoard` 为调用 `getCards` 获取卡流并通过状态动态拆分为 5 列。
+  - 为每一列统一实例化一个 `TaskCardList` 并启用虚拟滚动，极高地提升了大批量任务渲染性能。
+  - 详情 Modal 全面升级，采用统一 `renderTaskCardDetail` 组合输出结构，消除冗余显示。
+
+### 4. headless 实测
+- 列表支持通过筛选参数进行过滤，状态展示一致，无多套代码。
+- 500+ 虚拟滚动与翻页场景验证流畅。
+- 展开详情内容精准渲染，无 console 报错。
+
+### 5. 删除旧渲染清单
+- `js/components/boardPanel.js`:
+  - `renderCard(t)`: 完全废弃删除。
+  - `renderDetail(t)`: 完全废弃删除。
+- `js/pages/boardPage.js`:
+  - `_buildFlowCol(col)`: 完全废弃删除。
+  - `renderFlowCols()`: 完全重构，不再进行拼 DOM 渲染卡片。
+
+### 6. push 证据
+- 代码按原子逻辑块分步提交并全部推送 remote 仓库。
+- 分支：`codex/t56-card-components`
+- 最近 commit 历史：
+  - `f813a002` (refactor): `boardPage.js` 接入统一卡片及 API 组件
+  - `a517411d` (refactor): `boardPanel.js` 接入统一卡片组件
+  - `2ac97a70` (feat): `TaskCard`, `TaskCardDetail`, `TaskCardList` 统一组件层
+  - `36abe7b0` (feat): `api.js` 统一数据层前端接口支持
+
