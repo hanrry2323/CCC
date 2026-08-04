@@ -72,9 +72,14 @@ def _dispatch_and_collect(
     Returns:
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
     """
-    entry = registry.cli_entry_for_role(work.role)
+    entry = None
+    if work.executor:
+        entry = registry.cli_entry_for_binding(work.executor, project=work.project)
     if entry is None:
-        return False, [f"角色 {work.role} 无可后台 CLI 注册行"]
+        entry = registry.cli_entry_for_role(work.role, project=work.project)
+
+    if entry is None:
+        return False, [f"无法为卡片找到对应的可后台 CLI 注册行 (role={work.role}, executor={work.executor}, project={work.project})"]
 
     default_workdir = cfg.get("DATA_DIR", "")
     try:

@@ -150,3 +150,51 @@ class TestT54Naming:
         assert len(errs) == 1
         assert "索引对账失败" in errs[0].reason
         assert "标题不一致" in errs[0].reason
+
+
+def test_epic_task_validation(tmp_path: Path) -> None:
+    # 1. Epic card with parent card -> Error (Epic cannot have parent)
+    p_epic = tmp_path / "T10-epic.md"
+    p_epic.write_text(
+        "# 任务卡 T10 · Epic 测试\n"
+        "> 关联：TEST · 执行体：X · 状态：待分派 · 日期：2026-08-04 · 类型：epic · 父卡：T11\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8"
+    )
+    issues = validate_cards(tmp_path)
+    errs = _errors(issues)
+    assert any("Epic 卡片不能指定父卡" in i.reason for i in errs)
+
+    # 2. Task card with non-existent parent card -> Error
+    p_task = tmp_path / "T11-task.md"
+    p_task.write_text(
+        "# 任务卡 T11 · Task 测试\n"
+        "> 关联：TEST · 执行体：X · 状态：待分派 · 日期：2026-08-04 · 类型：task · 父卡：T999\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8"
+    )
+    p_epic.unlink()
+    issues = validate_cards(tmp_path)
+    errs = _errors(issues)
+    assert any("父卡 T999 不存在" in i.reason for i in errs)
+
+    # 3. Task card with parent card of different project -> Error
+    p_parent = tmp_path / "T12-parent.md"
+    p_parent.write_text(
+        "# 任务卡 T12 · Parent\n"
+        "> 关联：TEST · 执行体：X · 状态：待分派 · 日期：2026-08-04 · 类型：epic · 项目：ccc\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8"
+    )
+    p_child = tmp_path / "T13-child.md"
+    p_child.write_text(
+        "# 任务卡 T13 · Child\n"
+        "> 关联：TEST · 执行体：X · 状态：待分派 · 日期：2026-08-04 · 类型：task · 父卡：T12 · 项目：qb\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8"
+    )
+    p_task.unlink()
+    issues = validate_cards(tmp_path)
+    errs = _errors(issues)
+    assert any("项目 (ccc) 与当前卡片项目 (qb) 不一致" in i.reason for i in errs)
+

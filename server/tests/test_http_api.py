@@ -917,7 +917,7 @@ class TestNoAuthMode:
         for path in ("/board/states", "/board/realtime", "/board/recent", "/board/by_project"):
             status, data = _get(api_server, path)
             assert status == 200, f"{path} 免登录应 200，got {status}"
-            assert isinstance(data, dict | list)
+            assert isinstance(data, (dict, list))
 
     def test_board_snapshot_no_token(self, api_server):
         """免登录：/board/snapshot 无 token 200。"""

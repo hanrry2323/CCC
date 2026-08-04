@@ -16,7 +16,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
+
+try:
+    from enum import StrEnum
+except ImportError:
+    class StrEnum(str, Enum):  # noqa: UP042
+        pass
 
 
 class State(StrEnum):
@@ -68,6 +74,8 @@ class Work:
     card_path: str = ""
     executor: str = ""
     dispatch: str = "engine"
+    type: str = "task"
+    project: str = ""
 
     def transition(self, new_state: State, problems: list[str] | None = None) -> None:
         """按契约 §2 转移状态；非法跳转抛 `IllegalTransitionError`。

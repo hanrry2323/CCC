@@ -20,7 +20,14 @@ import json
 import logging
 import shlex
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
+
+try:
+    from enum import StrEnum
+except ImportError:
+    class StrEnum(str, Enum):  # noqa: UP042
+        pass
+
 from pathlib import Path
 from string import Formatter
 from typing import TYPE_CHECKING
@@ -60,6 +67,7 @@ class ExecutorEntry:
         command: 启动命令（可后台 CLI 必填，如 `opencode`）。
         args_template: 参数模板，含 {work_id}/{card_path}/{role}/{workdir} 占位符。
         workdir: 工作目录（留空则用 config 的 DATA_DIR）。
+        project: 项目级绑定（按项目隔离）。
     """
 
     role: str
@@ -69,6 +77,7 @@ class ExecutorEntry:
     command: str = ""
     args_template: str = ""
     workdir: str = ""
+    project: str = ""
 
 
 @dataclass(frozen=True)
@@ -77,44 +86,48 @@ class ExecutorRegistry:
 
     entries: tuple[ExecutorEntry, ...]
 
-    def rows_for_role(self, role: str) -> list[ExecutorEntry]:
-        """返回该角色下的全部注册行（开发执行体可有多行）。"""
-        return [e for e in self.entries if e.role == role]
+    def rows_for_role(self, role: str, project: str = "") -> list[ExecutorEntry]:
+        """返回该角色下的全部注册行（开发执行体可有多行）。优先匹配项目。"""
+        role_entries = [e for e in self.entries if e.role == role]
+        if project:
+            proj_entries = [e for e in role_entries if e.project == project]
+            if proj_entries:
+                return proj_entries
+        return [e for e in role_entries if not e.project]
 
-    def rows_for_binding(self, tool_name: str) -> list[ExecutorEntry]:
-        """返回与工具名（卡头「执行体」绑定）匹配的全部注册行（T39）。
+    def rows_for_binding(self, tool_name: str, project: str = "") -> list[ExecutorEntry]:
+        """返回与工具名（卡头「执行体」绑定）匹配的全部注册行（T39）。优先匹配项目。"""
+        binding_entries = [e for e in self.entries if e.binding == tool_name]
+        if project:
+            proj_entries = [e for e in binding_entries if e.project == project]
+            if proj_entries:
+                return proj_entries
+        return [e for e in binding_entries if not e.project]
 
-        一个工具名可能命中多个角色/分类行（如开发执行体同时含 Trae 手动 GUI + OpenCode CLI），
-        全部返回由调用方按分类决策。
-        """
-        return [e for e in self.entries if e.binding == tool_name]
-
-    def cli_entry_for_role(self, role: str) -> ExecutorEntry | None:
-        """返回该角色的首个「可后台 CLI」行；无则 None。"""
-        for e in self.entries:
-            if e.role == role and e.category == "可后台 CLI":
+    def cli_entry_for_role(self, role: str, project: str = "") -> ExecutorEntry | None:
+        """返回该角色的首个「可后台 CLI」行；无则 None。优先匹配项目。"""
+        rows = self.rows_for_role(role, project=project)
+        for e in rows:
+            if e.category == "可后台 CLI":
                 return e
         return None
 
-    def cli_entry_for_binding(self, tool_name: str) -> ExecutorEntry | None:
-        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。"""
-        for e in self.entries:
-            if e.binding == tool_name and e.category == "可后台 CLI":
+    def cli_entry_for_binding(self, tool_name: str, project: str = "") -> ExecutorEntry | None:
+        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。优先匹配项目。"""
+        rows = self.rows_for_binding(tool_name, project=project)
+        for e in rows:
+            if e.category == "可后台 CLI":
                 return e
         return None
 
-    def role_for_binding(self, tool_name: str) -> str | None:
-        """反向查找：工具名 → 角色（优先可后台 CLI 行）。
-
-        用于 FileBoardStore 从卡头「执行体：X」反查注册表角色。
-        如 tool_name="OpenCode" → "开发执行体"。
-        """
-        for e in self.entries:
-            if e.binding == tool_name and e.category == "可后台 CLI":
+    def role_for_binding(self, tool_name: str, project: str = "") -> str | None:
+        """反向查找：工具名 → 角色（优先可后台 CLI 行）。优先匹配项目。"""
+        rows = self.rows_for_binding(tool_name, project=project)
+        for e in rows:
+            if e.category == "可后台 CLI":
                 return e.role
-        for e in self.entries:
-            if e.binding == tool_name:
-                return e.role
+        for e in rows:
+            return e.role
         return None
 
 
@@ -174,6 +187,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
                 command=command,
                 args_template=args_template,
                 workdir=workdir,
+                project=raw.get("项目", ""),
             )
         )
     return ExecutorRegistry(tuple(entries))
@@ -189,14 +203,14 @@ def _validate_placeholders(template: str, idx: int) -> None:
             )
 
 
-def decide(role: str, registry: ExecutorRegistry) -> DispatchDecision:
+def decide(role: str, registry: ExecutorRegistry, project: str = "") -> DispatchDecision:
     """按注册表分类做派发决策（契约 §7 → §2）。
 
     - 角色命中「可后台 CLI」行 → AUTO（Engine 自动拉起）
     - 无 CLI 行但命中「手动 GUI」行 → MANUAL（挂起等人）
     - 其余（席行「—」/ 未知角色）→ NONE（不派发）
     """
-    rows = registry.rows_for_role(role)
+    rows = registry.rows_for_role(role, project=project)
     if any(r.category == "可后台 CLI" for r in rows):
         return DispatchDecision.AUTO
     if any(r.category == "手动 GUI" for r in rows):
@@ -224,12 +238,15 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     Returns:
         DispatchDecision.AUTO / MANUAL / NONE。
     """
+    if work.type == "epic":
+        logger.info("Epic 卡不派发: work=%s", work.id)
+        return DispatchDecision.NONE
     # T53：卡头「派发：manual」→ 管理席派发，Engine 不自动拉，保持待分派（消灭假「执行中」）。
     if work.dispatch == "manual":
         logger.info("manual 卡由管理席派发，Engine 不自动拉: work=%s", work.id)
         return DispatchDecision.NONE
     if work.executor:
-        rows = registry.rows_for_binding(work.executor)
+        rows = registry.rows_for_binding(work.executor, project=work.project)
         if rows:
             if any(r.category == "可后台 CLI" for r in rows):
                 return DispatchDecision.AUTO
@@ -237,7 +254,7 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
                 return DispatchDecision.MANUAL
             return DispatchDecision.NONE
         # 未命中 binding → 回退角色决策（未知执行体）
-    return decide(work.role, registry)
+    return decide(work.role, registry, project=work.project)
 
 
 def build_command(

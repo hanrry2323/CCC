@@ -275,17 +275,34 @@ def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
     """BoardItem → 桌面端 BoardTask 兼容字典。
 
     字段映射：state→status；card_kind 统一 "work"（任务卡都是 work 卡）；
-    parent_id/split_status/note 任务卡无结构化对应，留空。
+    parent_id/split_status/note。
     """
+    card_kind = "epic" if item.type == "epic" else "work"
+
+    split_status = ""
+    if item.type == "epic":
+        from server.board.models import base_state
+        base = base_state(item.state)
+        if base == "已回写" or base == "已关闭":
+            split_status = "done"
+        elif base == "执行中":
+            split_status = "running"
+        elif base == "待分派":
+            split_status = "pending"
+        elif base == "打回":
+            split_status = "failed"
+
+    note = item.progress if item.type == "epic" else ""
+
     return {
         "id": item.id,
         "title": item.title,
-        "card_kind": "work",
-        "parent_id": "",
+        "card_kind": card_kind,
+        "parent_id": item.parent,
         "status": item.state,
-        "note": "",
+        "note": note,
         "executor": item.executor,
-        "split_status": "",
+        "split_status": split_status,
     }
 
 

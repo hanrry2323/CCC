@@ -282,6 +282,53 @@ class TestDecideWork:
         work = Work(id="t53-engine", role="维护执行体", executor="Claude Code", dispatch="engine")
         assert decide_work(work, reg) is DispatchDecision.AUTO
 
+    def test_epic_not_dispatched(self) -> None:
+        """T57: Epic cards are not dispatched (decide_work returns NONE)."""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t57-epic", role="开发执行体", executor="OpenCode", type="epic")
+        assert decide_work(work, reg) is DispatchDecision.NONE
+
+    def test_project_level_executor_isolation(self) -> None:
+        """T57: Project-level executor isolation in ExecutorRegistry and decide_work."""
+        from server.engine.dispatch import ExecutorRegistry, ExecutorEntry, decide_work
+
+        entry_global = ExecutorEntry(
+            role="开发执行体",
+            category="可后台 CLI",
+            binding="OpenCode",
+            note="",
+            command="opencode",
+            project=""
+        )
+        entry_qb = ExecutorEntry(
+            role="开发执行体",
+            category="可后台 CLI",
+            binding="QBExecutor",
+            note="",
+            command="qb-exec",
+            project="qb"
+        )
+
+        reg = ExecutorRegistry((entry_global, entry_qb))
+
+        # 1. Global card (no project specified) -> should match global entry
+        work_global = Work(id="t57-global", role="开发执行体", executor="OpenCode", project="")
+        assert decide_work(work_global, reg) is DispatchDecision.AUTO
+
+        # 2. qb project card -> matches qb specific entry
+        work_qb = Work(id="t57-qb", role="开发执行体", executor="QBExecutor", project="qb")
+        assert decide_work(work_qb, reg) is DispatchDecision.AUTO
+
+        # 3. qb project card with global executor -> should fallback to global if project specific binding not found
+        work_qb_global_exec = Work(id="t57-qb-fallback", role="开发执行体", executor="OpenCode", project="qb")
+        assert decide_work(work_qb_global_exec, reg) is DispatchDecision.AUTO
+
+        # 4. other project card requesting QBExecutor -> should NOT match qb-specific entry.
+        # If there is no global entry for the role, it must return NONE.
+        reg_no_global = ExecutorRegistry((entry_qb,))
+        work_other_qb_exec = Work(id="t57-other", role="开发执行体", executor="QBExecutor", project="other")
+        assert decide_work(work_other_qb_exec, reg_no_global) is DispatchDecision.NONE
+
 
 class TestBuildCommand:
     """命令构造（占位符替换 + argv 向量）。"""

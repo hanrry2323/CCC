@@ -28,7 +28,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from server.board.models import PREFIXES, base_state
+from server.board.models import PREFIXES, base_state, BoardItem
 
 VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
 REQUIRED_HEADER_KEYS = ("关联", "执行体", "状态", "日期")
@@ -197,6 +197,17 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         return [CardIssue("?", str(d), "目录不存在")]
     cards = _scan_cards(d)
 
+    from server.board.loader import parse_card
+    all_items: dict[Path, BoardItem] = {}
+    id_to_item: dict[str, BoardItem] = {}
+    for path, _ in cards:
+        try:
+            item = parse_card(path)
+            all_items[path.resolve()] = item
+            id_to_item[item.id] = item
+        except Exception:
+            pass
+
     # 编号唯一：新卡按 <前缀><NNN> 判重；旧卡按卡头 ID 判重（R/X 变体卡卡头 ID 不同，不误伤）
     new_by_id: dict[str, list[Path]] = {}
     old_by_hdr: dict[str, list[Path]] = {}
@@ -255,6 +266,27 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         if not meta:
             issues.append(CardIssue(card_id, str(path), "缺少卡头元数据行（> 且含 key：value）"))
             continue
+
+        # Check epic/task specific rules
+        type_raw = meta.get("类型")
+        if type_raw:
+            type_val = type_raw.strip().lower()
+            if type_val not in ("epic", "task"):
+                issues.append(CardIssue(card_id, str(path), f"类型值非法: {type_raw!r}（合法=epic|task）"))
+
+        item = all_items.get(path.resolve())
+        if item:
+            if item.type == "epic":
+                if item.parent:
+                    issues.append(CardIssue(item.id, str(path), f"Epic 卡片不能指定父卡: {item.parent}"))
+            elif item.type == "task":
+                if item.parent:
+                    parent_item = id_to_item.get(item.parent)
+                    if not parent_item:
+                        issues.append(CardIssue(item.id, str(path), f"父卡 {item.parent} 不存在"))
+                    elif parent_item.project != item.project:
+                        issues.append(CardIssue(item.id, str(path), f"父卡 {item.parent} 的项目 ({parent_item.project}) 与当前卡片项目 ({item.project}) 不一致"))
+
         missing = [k for k in REQUIRED_HEADER_KEYS if not meta.get(k, "").strip()]
         if missing:
             issues.append(CardIssue(card_id, str(path), f"卡头缺字段: {missing}"))
@@ -337,6 +369,10 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                 mismatches.append(f"回写时间不一致: 索引='{entry.get('written_at')}', 实际='{item.written_at}'")
             if entry.get("reject_count") != item.reject_count:
                 mismatches.append(f"打回次数不一致: 索引={entry.get('reject_count')}, 实际={item.reject_count}")
+            if entry.get("card_type", "task") != item.type:
+                mismatches.append(f"卡片类型不一致: 索引='{entry.get('card_type')}', 实际='{item.type}'")
+            if entry.get("parent_card", "") != item.parent:
+                mismatches.append(f"父卡不一致: 索引='{entry.get('parent_card')}', 实际='{item.parent}'")
             if entry.get("dispatch", "engine") != item.dispatch:
                 mismatches.append(f"派发方式不一致: 索引='{entry.get('dispatch')}', 实际='{item.dispatch}'")
 

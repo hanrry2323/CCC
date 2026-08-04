@@ -1,6 +1,6 @@
 # 任务卡 T57 · T-A4 大卡/小卡 + 项目级执行体隔离（Claude Code 执行）
 
-> 关联：阶段 3（T-A4，过夜任务后端链 2/3）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（T-A4，过夜任务后端链 2/3）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t57-big-small-cards`（先 `git fetch origin main && git checkout -b codex/t57-big-small-cards origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -35,4 +35,27 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+### 1. 字段/派发/聚合/隔离实现
+
+- **类型/父卡字段**：在 `BoardItem` 数据模型中新增 `type` 与 `parent` 字段，并在 `parse_card` 中解析卡头 `类型` 及 `父卡`，默认值为 `"task"` 与空。在增量加载中也支持从 index 读取与保存，在 `validate_cards` 中严格校验 `epic` 无父卡及 `task` 的父卡存在且在同个项目中。
+- **派发规则**：在 `decide_work` 中对 `epic` 类型的卡片进行判定，直接返回 `DispatchDecision.NONE` 拦截派发，仅允许 `task` 派发。
+- **聚合视图**：在 `loader.py` 中实现 `derive_epic_states_and_progress`，扫描并聚合子卡进度。如所有子卡均已关闭则 Epic 状态自动派生为 `"已回写"`（即待验收），否则根据是否有活跃子卡（执行中/已回写/打回）派生为 `"执行中"` 或 `"待分派"`。进度追加到 Epic 的 `title` (`f"{title} ({closed}/{total})"`) 以及桌面端兼容的 `note` 字段。
+- **项目级隔离**：在 `executors.json` 注册表条目中支持 `"项目"` 字段；在 `Work` 模型中新增 `project` 字段。在 `ExecutorRegistry` 的 `rows_for_role` 等查找方法、以及 `decide_work` 匹配逻辑中，优先精确匹配特定项目的执行体（如 `qb` 项目仅匹配 `qb` 绑定的执行体），无则回退至全局。
+
+### 2. 测试任务验证
+
+- 新增 `test_board_validate.py::test_epic_task_validation`，测试 Epic 不能指定父卡、非空父卡必须存在、以及父卡与当前卡片项目必须一致等规则，校验全部成功通过。
+- 新增 `test_engine_dispatch.py::TestDecideWork::test_epic_not_dispatched`，测试 `decide_work` 对 Epic 拦截，不派发。
+- 新增 `test_engine_dispatch.py::TestDecideWork::test_project_level_executor_isolation`，测试项目级执行器隔离匹配与回退机制，确保 `qb` 仅派发到 `qb` 指定执行体。
+
+### 3. pytest/build & Ruff 证据
+
+- **ruff check**: `All checks passed!`
+- **pytest**: `470 passed in 15.33s` 单元/接口测试全绿通过。
+
+### 4. Push 证据
+
+- **Commit**: `feat(epic-task): T57 epic/task mechanisms & project-level executor isolation`
+- **Verification**: `pytest 470 passed, ruff clean`

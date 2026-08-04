@@ -89,6 +89,9 @@ class BoardItem:
     written_at: str = UNKNOWN
     reject_count: int = 0
     dispatch: str = "engine"
+    type: str = "task"
+    parent: str = ""
+    progress: str = ""
 
     def to_dict(self) -> dict[str, str | int]:
         """转纯字典（JSON 可序列化）。"""
@@ -102,4 +105,7 @@ class BoardItem:
             "written_at": self.written_at,
             "reject_count": self.reject_count,
             "dispatch": self.dispatch,
+            "type": self.type,
+            "parent": self.parent,
+            "progress": self.progress,
         }

@@ -132,6 +132,8 @@ class FileBoardStore:
                 card_path=str(abs_path.resolve()),
                 executor=executor_binding,
                 dispatch=entry.get("dispatch", "engine"),
+                type=entry.get("card_type", "task"),
+                project=entry.get("project", ""),
             )
             works.append(work)
         return works
@@ -195,6 +197,8 @@ class FileBoardStore:
             executor=executor_binding,
             # T53：派发方式随卡头透传（manual 卡保持待分派，Engine 不自动拉）
             dispatch=item.dispatch or "engine",
+            type=item.type,
+            project=item.project,
         )
 
 
