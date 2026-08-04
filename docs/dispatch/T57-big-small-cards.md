@@ -1,6 +1,6 @@
 # 任务卡 T57 · T-A4 大卡/小卡 + 项目级执行体隔离（Claude Code 执行）
 
-> 关联：阶段 3（T-A4，过夜任务后端链 2/3）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（T-A4，过夜任务后端链 2/3）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t57-big-small-cards`（先 `git fetch origin main && git checkout -b codex/t57-big-small-cards origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -59,3 +59,10 @@
 
 - **Commit**: `feat(epic-task): T57 epic/task mechanisms & project-level executor isolation`
 - **Verification**: `pytest 470 passed, ruff clean`
+
+
+---
+
+## 验收区（Codex 独立取证 · 过夜执行）
+
+**判定：✅ 通过。** epic/task 机制 + 项目级执行体隔离落地（f4dd805e，pytest 全绿，2017 已部署）。
