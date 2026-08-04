@@ -107,7 +107,7 @@ def _parse_seed_json(filepath: Path) -> list[KbDocument]:
                 if k in skip_keys:
                     continue
                 child_path = f"{path}.{k}" if path else k
-                if isinstance(v, (str, int, float, bool)):
+                if isinstance(v, str | int | float | bool):
                     pass  # 叶子值在上一层处理
                 elif isinstance(v, list):
                     for i, item in enumerate(v):
@@ -128,7 +128,7 @@ def _parse_seed_json(filepath: Path) -> list[KbDocument]:
                             for vk, vv in item.items():
                                 if vk in skip_keys:
                                     continue
-                                if isinstance(vv, (str, int, float, bool)):
+                                if isinstance(vv, str | int | float | bool):
                                     parts.append(f"{vk}: {vv}")
                                 elif isinstance(vv, list):
                                     parts.append(f"{vk}: {'; '.join(str(x) for x in vv)}")

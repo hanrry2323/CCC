@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 from typing import Protocol
 
-from server.board.loader import _strip_parenthetical, scan_dispatch_files  # noqa: PLC0415 — 复用同一解析逻辑
+from server.board.loader import _strip_parenthetical  # noqa: PLC0415 — 复用同一解析逻辑
 from server.board.models import UNKNOWN, base_state
 from server.engine.dispatch import ExecutorRegistry
 from server.engine.task import State, Work
@@ -101,25 +101,39 @@ class FileBoardStore:
         self._registry = registry
 
     def list_work(self, state: State | None = None) -> list[Work]:
-        """扫描任务卡目录（根平铺旧卡 + 一层子目录新卡）→ 解析卡头 → 构造 Work 列表。
+        """走索引列出 work (扫描仅用于重建/校验)。"""
+        from server.board.loader import load_dispatch_cards, load_index_file
+        load_dispatch_cards(self._dir)
 
-        state=None 返回全部；指定状态则过滤。
-        无法解析状态或执行体不匹配注册表的卡仍返回（role 可能为空，decide() 会跳过）。
-        只认含 `# 任务卡` 卡头标题的 .md（T-mapping.md 等说明文档不构成 work）。
-        """
+        index_entries = load_index_file(self._dir)
         works: list[Work] = []
-        for path in scan_dispatch_files(self._dir):
-            try:
-                work = self._parse_card_to_work(path)
-            except OSError:
+        project_root = Path(__file__).resolve().parents[2]
+
+        for entry in index_entries.values():
+            st = _state_from_str(entry["state"])
+            if st is None:
+                st = State.TODO
+
+            if state is not None and st is not state:
                 continue
-            except Exception:
-                logger.exception("解析任务卡失败: %s", path)
-                continue
-            if work is None:
-                continue
-            if state is None or work.state is state:
-                works.append(work)
+
+            executor_name = _strip_parenthetical(entry["executor"])
+            role = self._registry.role_for_binding(executor_name) or ""
+            executor_binding = "" if executor_name == UNKNOWN else executor_name
+
+            rel_path = entry.get("path", "")
+            abs_path = project_root / rel_path
+
+            work = Work(
+                id=entry["id"],
+                role=role,
+                title=entry["title"],
+                state=st,
+                card_path=str(abs_path.resolve()),
+                executor=executor_binding,
+                dispatch=entry.get("dispatch", "engine"),
+            )
+            works.append(work)
         return works
 
     def save_work(self, work: Work) -> None:
@@ -150,6 +164,12 @@ class FileBoardStore:
         tmp.write_text(new_text, encoding="utf-8")
         os.replace(tmp, path)
         logger.info("save_work: %s → 状态：%s", path.name, new_state_str)
+        # 写卡后失效：重新加载索引以同步最新状态
+        try:
+            from server.board.loader import load_dispatch_cards
+            load_dispatch_cards(self._dir)
+        except Exception:
+            logger.exception("save_work: 索引失效重扫失败（不影响回写成功）")
 
     def _parse_card_to_work(self, path: Path) -> Work | None:
         """解析单张任务卡 → Work 对象。"""

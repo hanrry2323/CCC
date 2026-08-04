@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import os
+import json
 import re
 from pathlib import Path
 
@@ -153,11 +155,161 @@ def scan_dispatch_files(directory: Path | str) -> list[Path]:
 
 
 def load_dispatch_cards(directory: Path | str) -> list[BoardItem]:
-    """扫描目录下全部任务卡（根平铺旧卡 + 一层子目录新卡）；单张失败跳过不崩。"""
+    """扫描目录下全部任务卡（使用增量索引机制，只重扫变化卡）。"""
+    return load_dispatch_cards_incremental(directory)
+
+
+def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
+    if "PYTEST_CURRENT_TEST" in os.environ and dispatch_dir is not None:
+        return Path(dispatch_dir) / "cards.index.jsonl"
+
+    raw = os.environ.get("CCC_DATA_DIR") or os.environ.get("DATA_DIR")
+    if raw:
+        base = Path(raw).expanduser().resolve()
+        return base / "cards" / "cards.index.jsonl"
+
+    base = Path(__file__).resolve().parents[2] / "data"
+    return base / "cards" / "cards.index.jsonl"
+
+
+def _derive_card_type(path: Path) -> str:
+    from server.board.validate import NEW_CARD_RE, OLD_CARD_RE
+    stem = path.stem
+    if NEW_CARD_RE.match(stem):
+        return "new"
+    if OLD_CARD_RE.match(stem):
+        return "old"
+    return "other"
+
+
+def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
+    ctype = _derive_card_type(path)
+    parent_dir = path.parent
+    if parent_dir.name == "dispatch" or parent_dir.name == "":
+        parent = ""
+    else:
+        parent = parent_dir.name
+
+    closed_at = UNKNOWN
+    if base_state(item.state) == "已关闭":
+        closed_at = item.written_at
+
+    project_root = Path(__file__).resolve().parents[2]
+    try:
+        repo_path = str(path.resolve().relative_to(project_root.resolve()))
+    except ValueError:
+        repo_path = str(path)
+
+    return {
+        "id": item.id,
+        "project": item.project,
+        "type": ctype,
+        "parent": parent,
+        "state": item.state,
+        "executor": item.executor,
+        "dispatched_at": item.dispatched_at,
+        "written_at": item.written_at,
+        "closed_at": closed_at,
+        "reject_count": item.reject_count,
+        "title": item.title,
+        "path": repo_path,
+        "mtime": mtime,
+        "dispatch": item.dispatch,
+    }
+
+
+def load_index_file(dispatch_dir: Path | str | None = None) -> dict[str, dict]:
+    index_path = get_index_path(dispatch_dir)
+    if not index_path.is_file():
+        return {}
+
+    entries: dict[str, dict] = {}
+    try:
+        with open(index_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if "id" in data:
+                        entries[data["id"]] = data
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return entries
+
+
+def save_index_file(entries: dict[str, dict], dispatch_dir: Path | str | None = None) -> None:
+    index_path = get_index_path(dispatch_dir)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    sorted_entries = sorted(entries.values(), key=lambda x: x["id"])
+    tmp_path = index_path.with_suffix(".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            for entry in sorted_entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        tmp_path.replace(index_path)
+    except Exception:
+        if tmp_path.is_file():
+            tmp_path.unlink()
+
+
+def load_dispatch_cards_incremental(directory: Path | str) -> list[BoardItem]:
+    """增量扫描任务卡：按 mtime 检测变化卡只重扫，写回索引并返回全部卡。"""
+    dispatch_dir = Path(directory)
+    index_entries = load_index_file(dispatch_dir)
+
+    index_by_path: dict[str, dict] = {}
+    for entry in index_entries.values():
+        if "path" in entry:
+            index_by_path[entry["path"]] = entry
+
+    disk_files = scan_dispatch_files(dispatch_dir)
+    project_root = Path(__file__).resolve().parents[2]
+
+    updated_entries: dict[str, dict] = {}
     items: list[BoardItem] = []
-    for path in scan_dispatch_files(directory):
+    updated = False
+
+    for path in disk_files:
         try:
-            items.append(parse_card(path))
+            repo_path = str(path.resolve().relative_to(project_root.resolve()))
+        except ValueError:
+            repo_path = str(path)
+
+        try:
+            mtime = path.stat().st_mtime
         except OSError:
             continue
+
+        entry = index_by_path.get(repo_path)
+        if entry is not None and entry.get("mtime") == mtime:
+            item = BoardItem(
+                id=entry["id"],
+                title=entry["title"],
+                state=entry["state"],
+                project=entry["project"],
+                executor=entry["executor"],
+                dispatched_at=entry["dispatched_at"],
+                written_at=entry["written_at"],
+                reject_count=entry["reject_count"],
+                dispatch=entry.get("dispatch", "engine"),
+            )
+            items.append(item)
+            updated_entries[entry["id"]] = entry
+        else:
+            try:
+                item = parse_card(path)
+                new_entry = build_index_entry(path, item, mtime)
+                items.append(item)
+                updated_entries[item.id] = new_entry
+                updated = True
+            except Exception:
+                continue
+
+    if len(updated_entries) != len(index_entries) or updated:
+        save_index_file(updated_entries, dispatch_dir)
+
     return items

@@ -214,7 +214,7 @@ _load_persisted_threads()
 
 # ── 免鉴权的路径前缀 ──
 # /tasks/running 与 /projects 同组（T53：控制台后台任务进程面板数据源，免登录白名单）
-_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects", "/tasks/running"})
+_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects", "/tasks/running", "/cards", "/cards/search"})
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面；T25：旧对话页 legacy-chat/） ──
@@ -1012,6 +1012,128 @@ class _APIHandler(BaseHTTPRequestHandler):
             {"messages": messages if has_increment else [], "seq": seq},
         )
 
+    def _handle_cards_get(self):
+        """GET /cards?project=&state=&page=&page_size="""
+        from urllib.parse import parse_qs
+        from server.board.loader import load_index_file
+        from server.board.models import base_state
+
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        project = (qs.get("project", [""])[0]).strip()
+        state = (qs.get("state", [""])[0]).strip()
+
+        try:
+            page = int(qs.get("page", ["1"])[0].strip() or "1")
+        except ValueError:
+            page = 1
+        if page < 1:
+            page = 1
+
+        try:
+            page_size = int(qs.get("page_size", ["50"])[0].strip() or "50")
+        except ValueError:
+            page_size = 50
+        if page_size < 1:
+            page_size = 50
+
+        try:
+            index_entries = load_index_file()
+        except Exception as e:
+            self._send_json({"error": f"index load failed: {e}"}, 500)
+            return
+
+        cards_list = list(index_entries.values())
+        cards_list.sort(key=lambda x: x["id"])
+
+        filtered = cards_list
+        if project:
+            filtered = [c for c in filtered if c["project"].lower() == project.lower()]
+        if state:
+            filtered = [c for c in filtered if c["state"] == state or base_state(c["state"]) == state]
+
+        total = len(filtered)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated = filtered[start_idx:end_idx]
+
+        self._send_json({
+            "cards": paginated,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size if page_size > 0 else 1
+        })
+
+    def _handle_cards_search(self):
+        """GET /cards/search?q=&project=&state=&page="""
+        from urllib.parse import parse_qs
+        from server.board.loader import load_index_file
+        from server.board.models import base_state
+
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        q = (qs.get("q", [""])[0]).strip().lower()
+        project = (qs.get("project", [""])[0]).strip()
+        state = (qs.get("state", [""])[0]).strip()
+
+        try:
+            page = int(qs.get("page", ["1"])[0].strip() or "1")
+        except ValueError:
+            page = 1
+        if page < 1:
+            page = 1
+
+        page_size = 50
+
+        try:
+            index_entries = load_index_file()
+        except Exception as e:
+            self._send_json({"error": f"index load failed: {e}"}, 500)
+            return
+
+        cards_list = list(index_entries.values())
+
+        filtered = cards_list
+        if project:
+            filtered = [c for c in filtered if c["project"].lower() == project.lower()]
+        if state:
+            filtered = [c for c in filtered if c["state"] == state or base_state(c["state"]) == state]
+
+        if q:
+            scored = []
+            for c in filtered:
+                score = 0.0
+                if q in c["id"].lower():
+                    score += 10.0 if c["id"].lower() == q else 5.0
+                if q in c["title"].lower():
+                    score += 3.0
+                if q in c["executor"].lower():
+                    score += 1.5
+                if q in c["project"].lower():
+                    score += 1.0
+                if q in c["state"].lower():
+                    score += 0.5
+
+                if score > 0.0:
+                    scored.append((score, c))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            results = [item for _, item in scored]
+        else:
+            results = filtered
+            results.sort(key=lambda x: x["id"])
+
+        total = len(results)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated = results[start_idx:end_idx]
+
+        self._send_json({
+            "cards": paginated,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size if page_size > 0 else 1
+        })
+
     def _handle_board_snapshot(self, items: list[BoardItem]):
         """GET /board/snapshot?workspace=X&include_hidden=0 → BoardSnapshot 兼容结构。"""
         from urllib.parse import parse_qs
@@ -1098,6 +1220,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/tasks/running":
             # T53：执行中任务进程视图（免登录白名单，与 /projects 同组；须在 /tasks/{id} 之前）
             self._send_json(_load_running_tasks())
+            return
+        if path == "/cards":
+            self._handle_cards_get()
+            return
+        if path == "/cards/search":
+            self._handle_cards_search()
             return
         if not self._check_auth():
             return

@@ -131,3 +131,22 @@ class TestT54Naming:
         issues = validate_cards(tmp_path)
         assert _errors(issues) == []
         assert any("位于子目录" in i.reason for i in issues)
+
+    def test_index_reconciliation_detects_mismatch(self, tmp_path: Path) -> None:
+        """测试索引对账：手动篡改索引后对账报错。"""
+        p = self._new_card(tmp_path, "ccc", "ccc100-reconcile.md", "ccc100")
+        issues = validate_cards(tmp_path)
+        assert _errors(issues) == []
+
+        from server.board.loader import get_index_path, load_index_file, save_index_file
+        index_entries = load_index_file(tmp_path)
+        assert "ccc100" in index_entries
+
+        index_entries["ccc100"]["title"] = "Mismatched Title"
+        save_index_file(index_entries, tmp_path)
+
+        issues = validate_cards(tmp_path)
+        errs = _errors(issues)
+        assert len(errs) == 1
+        assert "索引对账失败" in errs[0].reason
+        assert "标题不一致" in errs[0].reason

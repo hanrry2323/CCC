@@ -268,6 +268,109 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             issues.append(CardIssue(card_id, str(path), "缺少 ## 目标"))
         if not _body_has(path, "## 验收标准"):
             issues.append(CardIssue(card_id, str(path), "缺少 ## 验收标准"))
+
+    # 如果存在阻断性错误，跳过索引对账以防连带报错
+    if any(i.severity == "error" for i in issues):
+        return issues
+
+    # 对账索引 vs 磁盘文件
+    try:
+        from server.board.loader import load_index_file, parse_card, get_index_path, load_dispatch_cards
+        index_path = get_index_path(d)
+        if not index_path.is_file():
+            load_dispatch_cards(d)
+
+        index_entries = load_index_file(d)
+
+        # 1. Check disk vs index
+        disk_ids = set()
+        project_root = Path(__file__).resolve().parents[2]
+
+        for path, _loc in cards:
+            try:
+                item = parse_card(path)
+            except Exception:
+                continue
+
+            disk_ids.add(item.id)
+
+            try:
+                repo_path = str(path.resolve().relative_to(project_root.resolve()))
+            except ValueError:
+                repo_path = str(path)
+
+            if item.id not in index_entries:
+                issues.append(
+                    CardIssue(
+                        card_id=item.id,
+                        path=str(path),
+                        reason=f"索引缺失：卡片 {item.id} 在磁盘上存在，但未在索引中找到",
+                        severity="error"
+                    )
+                )
+                continue
+
+            entry = index_entries[item.id]
+            if entry.get("path") != repo_path:
+                issues.append(
+                    CardIssue(
+                        card_id=item.id,
+                        path=str(path),
+                        reason=f"路径不一致：索引路径为 {entry.get('path')}，实际路径为 {repo_path}",
+                        severity="error"
+                    )
+                )
+
+            # Check fields
+            mismatches = []
+            if entry.get("title") != item.title:
+                mismatches.append(f"标题不一致: 索引='{entry.get('title')}', 实际='{item.title}'")
+            if entry.get("state") != item.state:
+                mismatches.append(f"状态不一致: 索引='{entry.get('state')}', 实际='{item.state}'")
+            if entry.get("project") != item.project:
+                mismatches.append(f"项目不一致: 索引='{entry.get('project')}', 实际='{item.project}'")
+            if entry.get("executor") != item.executor:
+                mismatches.append(f"执行体不一致: 索引='{entry.get('executor')}', 实际='{item.executor}'")
+            if entry.get("dispatched_at") != item.dispatched_at:
+                mismatches.append(f"分派时间不一致: 索引='{entry.get('dispatched_at')}', 实际='{item.dispatched_at}'")
+            if entry.get("written_at") != item.written_at:
+                mismatches.append(f"回写时间不一致: 索引='{entry.get('written_at')}', 实际='{item.written_at}'")
+            if entry.get("reject_count") != item.reject_count:
+                mismatches.append(f"打回次数不一致: 索引={entry.get('reject_count')}, 实际={item.reject_count}")
+            if entry.get("dispatch", "engine") != item.dispatch:
+                mismatches.append(f"派发方式不一致: 索引='{entry.get('dispatch')}', 实际='{item.dispatch}'")
+
+            if mismatches:
+                issues.append(
+                    CardIssue(
+                        card_id=item.id,
+                        path=str(path),
+                        reason=f"索引对账失败: {'; '.join(mismatches)}",
+                        severity="error"
+                    )
+                )
+
+        # 2. Check index vs disk
+        for card_id, entry in index_entries.items():
+            if card_id not in disk_ids:
+                issues.append(
+                    CardIssue(
+                        card_id=card_id,
+                        path=entry.get("path", ""),
+                        reason=f"孤立索引：索引中存在卡片 {card_id}，但磁盘上未找到对应文件",
+                        severity="error"
+                    )
+                )
+    except Exception as e:
+        issues.append(
+            CardIssue(
+                card_id="?",
+                path="index",
+                reason=f"对账过程异常: {e}",
+                severity="error"
+            )
+        )
+
     return issues
 
 

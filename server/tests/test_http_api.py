@@ -917,7 +917,7 @@ class TestNoAuthMode:
         for path in ("/board/states", "/board/realtime", "/board/recent", "/board/by_project"):
             status, data = _get(api_server, path)
             assert status == 200, f"{path} 免登录应 200，got {status}"
-            assert isinstance(data, (dict, list))
+            assert isinstance(data, dict | list)
 
     def test_board_snapshot_no_token(self, api_server):
         """免登录：/board/snapshot 无 token 200。"""
@@ -1704,3 +1704,52 @@ class TestThreadPersistence:
             assert resp.status in (401, 200)
         finally:
             conn.close()
+
+    def test_cards_and_search_endpoints(self, api_server, monkeypatch, tmp_path):
+        """测试 GET /cards 与 GET /cards/search，含分页、过滤、搜索与免鉴权。"""
+        cards_dir = tmp_path / "cards"
+        cards_dir.mkdir(parents=True, exist_ok=True)
+        index_file = cards_dir / "cards.index.jsonl"
+
+        import json
+        mock_cards = [
+            {"id": "ccc001", "project": "ccc", "title": "任务一", "state": "待分派", "executor": "Claude", "path": "docs/dispatch/ccc/ccc001.md"},
+            {"id": "ccc002", "project": "ccc", "title": "任务二", "state": "执行中", "executor": "OpenCode", "path": "docs/dispatch/ccc/ccc002.md"},
+            {"id": "qb001", "project": "qb", "title": "任务三", "state": "已回写", "executor": "Claude", "path": "docs/dispatch/qb/qb001.md"},
+        ]
+        with open(index_file, "w", encoding="utf-8") as f:
+            for c in mock_cards:
+                f.write(json.dumps(c, ensure_ascii=False) + "\n")
+
+        # 1. Test GET /cards (no auth)
+        status, data = _get(api_server, "/cards")
+        assert status == 200
+        assert data["total"] == 3
+        assert len(data["cards"]) == 3
+        assert data["cards"][0]["id"] == "ccc001"
+
+        # 2. Test GET /cards with project filter
+        status, data = _get(api_server, "/cards?project=ccc")
+        assert status == 200
+        assert data["total"] == 2
+        assert all(c["project"] == "ccc" for c in data["cards"])
+
+        # 3. Test GET /cards with state filter
+        from urllib.parse import quote
+        status, data = _get(api_server, f"/cards?state={quote('执行中')}")
+        assert status == 200
+        assert data["total"] == 1
+        assert data["cards"][0]["id"] == "ccc002"
+
+        # 4. Test GET /cards pagination
+        status, data = _get(api_server, "/cards?page_size=2&page=1")
+        assert status == 200
+        assert len(data["cards"]) == 2
+        assert data["total"] == 3
+        assert data["pages"] == 2
+
+        # 5. Test GET /cards/search keyword and scoring
+        status, data = _get(api_server, "/cards/search?q=Claude")
+        assert status == 200
+        assert len(data["cards"]) == 2
+        assert data["cards"][0]["executor"] == "Claude"
