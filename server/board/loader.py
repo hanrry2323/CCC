@@ -33,6 +33,8 @@ _REJECT_RE = re.compile(r"打回次数\s*[:：]\s*(\d+)")
 _DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine"})
 # 推导出的项目名不得含这些字符（长句/引号/括号 → 非项目前缀，归「未分类」）
 _GARBLED_RE = re.compile(r"[「」『』【】\"'<>（）()]")
+# 卡头标题行：`# 任务卡 <ID>`（行首锚定；正文/说明里出现 `# 任务卡` 字面量不算）
+_CARD_TITLE_RE = re.compile(r"^#\s*任务卡\s", re.MULTILINE)
 
 
 def _strip_parenthetical(value: str) -> str:
@@ -126,10 +128,34 @@ def parse_card(path: Path | str) -> BoardItem:
     )
 
 
+def _is_task_card(path: Path) -> bool:
+    """是否任务卡：行首含 `# 任务卡` 卡头标题；T-mapping.md 等说明文档跳过。"""
+    return bool(_CARD_TITLE_RE.search(path.read_text(encoding="utf-8")))
+
+
+def scan_dispatch_files(directory: Path | str) -> list[Path]:
+    """扫描任务卡文件：根目录平铺（旧卡）+ 一层子目录（`<prefix>/` 下新卡）。
+
+    T54 规则：旧卡（根 `T*.md`）与 `<prefix>/` 子目录新卡共存；只认含 `# 任务卡`
+    卡头标题的 .md，T-mapping.md 等说明文档不参与。目录不存在返回空。
+    """
+    d = Path(directory)
+    if not d.is_dir():
+        return []
+    files: list[Path] = []
+    for p in sorted(d.glob("*.md")):
+        if _is_task_card(p):
+            files.append(p)
+    for p in sorted(d.glob("[!.]*/[!.]*.md")):
+        if _is_task_card(p):
+            files.append(p)
+    return files
+
+
 def load_dispatch_cards(directory: Path | str) -> list[BoardItem]:
-    """扫描目录下全部任务卡；单张失败跳过不崩。"""
+    """扫描目录下全部任务卡（根平铺旧卡 + 一层子目录新卡）；单张失败跳过不崩。"""
     items: list[BoardItem] = []
-    for path in sorted(Path(directory).glob("*.md")):
+    for path in scan_dispatch_files(directory):
         try:
             items.append(parse_card(path))
         except OSError:

@@ -501,6 +501,26 @@ class TestFileBoardStore:
         closed = store.list_work(state=State.CLOSED)
         assert [w.id for w in closed] == ["T2"]
 
+    def test_list_work_scans_subdir_cards(self, tmp_path: Path) -> None:
+        """T54：子目录 <prefix>/ 下新卡被扫入 work（根平铺 + 子目录混合）。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T9x-test.md", "T9x", "demo", "待分派")
+        (tmp_path / "ccc").mkdir()
+        self._write_card(tmp_path / "ccc" / "ccc100-test.md", "ccc100", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        works = store.list_work(state=State.TODO)
+        assert {w.id for w in works} == {"T9x", "ccc100"}
+
+    def test_list_work_skips_non_card_docs(self, tmp_path: Path) -> None:
+        """T54：T-mapping.md 等说明文档（无卡头标题）不构成 work。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        (tmp_path / "T-mapping.md").write_text("# T 卡 → 前缀映射\n说明文档\n", encoding="utf-8")
+        self._write_card(tmp_path / "T98.md", "T98", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        assert [w.id for w in store.list_work()] == ["T98"]
+
     def test_save_work_writes_back_status(self, tmp_path: Path) -> None:
         """save_work 回写卡头「状态」行（原子替换）。"""
         reg_path = _write_demo_registry(tmp_path)

@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 from typing import Protocol
 
-from server.board.loader import _strip_parenthetical  # noqa: PLC0415 — 复用同一解析逻辑
+from server.board.loader import _strip_parenthetical, scan_dispatch_files  # noqa: PLC0415 — 复用同一解析逻辑
 from server.board.models import UNKNOWN, base_state
 from server.engine.dispatch import ExecutorRegistry
 from server.engine.task import State, Work
@@ -101,15 +101,14 @@ class FileBoardStore:
         self._registry = registry
 
     def list_work(self, state: State | None = None) -> list[Work]:
-        """扫描任务卡目录 → 解析卡头 → 构造 Work 列表。
+        """扫描任务卡目录（根平铺旧卡 + 一层子目录新卡）→ 解析卡头 → 构造 Work 列表。
 
         state=None 返回全部；指定状态则过滤。
         无法解析状态或执行体不匹配注册表的卡仍返回（role 可能为空，decide() 会跳过）。
+        只认含 `# 任务卡` 卡头标题的 .md（T-mapping.md 等说明文档不构成 work）。
         """
         works: list[Work] = []
-        if not self._dir.is_dir():
-            return works
-        for path in sorted(self._dir.glob("*.md")):
+        for path in scan_dispatch_files(self._dir):
             try:
                 work = self._parse_card_to_work(path)
             except OSError:

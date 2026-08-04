@@ -139,6 +139,44 @@ class TestLoadDispatchCards:
         items = load_dispatch_cards(DISPATCH_DIR)
         ids = {item.id for item in items}
         assert {"T1", "T1-R", "T2", "T3"} <= ids
+        # T54：T-mapping.md 是说明文档（无卡头标题），不得作为任务卡混入看板
+        assert "T-mapping" not in ids
         for item in items:
             # 契约 §2 允许括号变体（如「打回（原因）」），断言按基础态归并
             assert base_state(item.state) in {"待分派", "执行中", "已回写", "已关闭", "打回", "未知"}
+
+
+class TestSubdirScan:
+    """T54 子目录扫描：根平铺旧卡 + <前缀>/ 子目录新卡共存；说明文档跳过。"""
+
+    def test_scan_mixed_root_and_subdir(self, tmp_path: Path) -> None:
+        """根目录旧卡 + 子目录新卡都被扫到。"""
+        _write(tmp_path, "T99-old.md", SAMPLE)
+        (tmp_path / "ccc").mkdir()
+        new_card = (
+            "# 任务卡 ccc100 · 子目录新卡\n"
+            "> 关联：CCC · 执行体：X · 验收：Codex · 状态：待分派 · 日期：2026-08-04\n"
+            "\n## 目标\n测试\n"
+        )
+        _write(tmp_path / "ccc", "ccc100-subdir.md", new_card)
+        items = load_dispatch_cards(tmp_path)
+        ids = {item.id for item in items}
+        assert "T99" in ids
+        assert "ccc100" in ids
+
+    def test_scan_skips_non_card_doc(self, tmp_path: Path) -> None:
+        """T-mapping.md 等说明文档（无 `# 任务卡` 卡头）不参与扫描。"""
+        _write(tmp_path, "T-mapping.md", "# T 卡 → 前缀映射\n说明文档，无卡头标题\n")
+        _write(tmp_path, "T1-ok.md", SAMPLE)
+        items = load_dispatch_cards(tmp_path)
+        assert {i.id for i in items} == {"T99"}
+
+    def test_scan_one_level_subdir_only(self, tmp_path: Path) -> None:
+        """只扫一层子目录；二层（ccc/sub/）不扫（T54 目录规则）。"""
+        (tmp_path / "ccc" / "deep").mkdir(parents=True)
+        deep_card = (
+            "# 任务卡 ccc101 · 二层\n"
+            "> 关联：CCC · 执行体：X · 状态：待分派 · 日期：2026-08-04\n"
+        )
+        _write(tmp_path / "ccc" / "deep", "ccc101-deep.md", deep_card)
+        assert load_dispatch_cards(tmp_path) == []

@@ -313,8 +313,10 @@ def _parse_task_acceptance(card_id: str) -> str:
     """从任务卡文件解析 `## 验收标准` section 文本（简单文本拼接，未找到返回空串）。"""
     import re
 
-    # 任务卡命名：T19-xxx.md；用前缀 glob 定位
+    # 任务卡命名：根目录 T19-xxx.md（旧卡）或 <前缀>/ccc001-xxx.md（新卡 T54 子目录）
     candidates = sorted(_DISPATCH_DIR.glob(f"{card_id}-*.md"))
+    if not candidates:
+        candidates = sorted(_DISPATCH_DIR.glob(f"*/{card_id}-*.md"))
     if not candidates:
         candidates = sorted(_DISPATCH_DIR.glob(f"*{card_id}*.md"))
     if not candidates:
