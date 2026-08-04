@@ -2,6 +2,7 @@
 
 > 关联：老板指出「左侧栏展示逻辑错误——应该项目+对话，用项目区分，不是任务分组；展示逻辑借鉴 Codex/Cursor 成熟工具」· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
 > 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：执行中 · 日期：2026-08-04
+> 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t47`（分支 `codex/t47-project-sidebar`）**，与 T46 并行；文件所有权见下，禁止越界改 T46 文件。
 
 ## 目标
 
@@ -37,6 +38,12 @@
 ## 回写要求
 
 卡头状态更新为「已回写」；回写区填：/projects 协议、会话持久化方案、左栏 UI 说明（含参考 Codex/Cursor 的对照）、headless 实测（左栏截图断言+切换不断流）、pytest/build 结果、push 证据。
+
+## 并行执行说明（与 T46 并行，Codex 合入）
+
+- **T47 专属文件**：`server/web/server.py`（GET /projects + 会话持久化区域，勿动 SSE keep-alive 区）、`server/web/legacy-chat/js/sidebar.js`、新增会话存储模块、`api.js`（仅 loadProjects 改 /projects）、`app.js`（仅项目 boot/currentProject 接线）、`desktop/`（仅项目数据源 refreshProjects 与项目模型）。
+- **禁止改**：`message.js`、`chatStatus.js`、`chatErrors.js`、流式消费相关（T46 所有）。
+- 完成 push 分支 `codex/t47-project-sidebar` → Codex 验收后顺序合入 main（与 T46 冲突由 Codex 裁决）。
 
 ## 回写区
 

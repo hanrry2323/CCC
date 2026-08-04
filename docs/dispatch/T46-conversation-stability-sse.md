@@ -2,6 +2,7 @@
 
 > 关联：老板实测反馈（2026-08-04）「对话过程中切换界面就中断」「思考过程/思考文字没展示」· 依据：Codex 取证——① 路由切换不取消流（代码核验），但浏览器后台标签节流 SSE + 切回不检测恢复 → 观感"断"；② 事件流实测只有 system/assistant/result，assistant 仅有 text 块，**无 thinking 块**（flash 未开扩展思考）→ 空"思考中…"占位误导
 > 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：执行中 · 日期：2026-08-04
+> 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t46`（分支 `codex/t46-stability-sse`）**，与 T47 并行；文件所有权见下，禁止越界改 T47 文件。
 
 ## 目标
 
@@ -49,6 +50,12 @@
 ## 回写要求
 
 卡头状态更新为「已回写」；回写区填：A/B/C 各项实现说明 + 扩展思考验证结果 + headless 场景复验输出 + pytest/build 结果 + push 证据。
+
+## 并行执行说明（与 T47 并行，Codex 合入）
+
+- **T46 专属文件**：`server/web/legacy-chat/js/message.js`、`chatStatus.js`、`chatErrors.js`、`api.js`（仅 streamChat/loadHistory/断线相关）、`app.js`（仅路由护栏相关行）、`server/web/brain.py`（仅事件归一化）、`server/web/server.py`（仅 SSE keep-alive/超时策略区域）、`desktop/`（仅流取消护栏相关：APIClient/AppModel/ContentView 的流处理部分）。
+- **禁止改**：`sidebar.js`、会话持久化、GET /projects（T47 所有）。
+- 完成 push 分支 `codex/t46-stability-sse` → Codex 验收后顺序合入 main（与 T47 冲突由 Codex 裁决）。
 
 ## 回写区
 
