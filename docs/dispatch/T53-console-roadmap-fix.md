@@ -1,6 +1,6 @@
 # 任务卡 T53 · 控制台/线路图修复 + 后台任务进程实时展示（Claude Code 执行）
 
-> 关联：阶段 3（控制台/线路图修复，老板 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：阶段 3（控制台/线路图修复，老板 2026-08-04）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；请先 `git fetch origin main && git checkout -b codex/t53-console-roadmap-fix origin/main`
 > **续作指令（2026-08-04 二次派发）**：ccc-dev-ws 中已有上次超时留下的**完整未提交改动**（16 文件 +437/-26，`pytest server/tests` 已实测全绿，含 A/B/C 实现与测试）。**不要重做**——直接按逻辑分步提交（A 状态语义 / B 项目聚合 / C 后台进程 + 测试各一个 commit）→ push 分支 → 回写。执行超时已调至 7200s；**每完成一个逻辑块立即 commit，禁止攒到结尾**。
 
@@ -95,3 +95,22 @@
 - `269dc7ce` feat(board): T53-B 线路图/看板按项目聚合——未分类置底 + 前端渲染修正
 - `9df5ba3c` feat(web): T53-C 后台任务进程实时展示——GET /tasks/running + 控制台面板
 - （本 commit）docs(dispatch): T53 回写
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-04 · 合入 main + 2017 部署后）
+
+**判定：✅ 通过。** 自动化流程真实开发闭环（Engine 自动派发 → 2017 claude 在 ccc-dev-ws 开发 → 分步提交 A/B/C → push → 验收 → 合入 → 部署）。
+
+### 逐项复验
+
+- **A 真实状态语义**：headless 实测控制台「待分派 3 / 执行中 0」——T48/T49/T50 显示为 manual 队列，假"执行中"消失 ✅
+- **B 线路图按项目聚合**：headless 实测按项目分组（INT-120·48 卡 / ccc·4 卡 / 未分类·6 卡），无「INT-12047」乱码 ✅
+- **C 后台任务进程**：`/tasks/running` 实测——T99-panel-test 执行中时返回该任务（work_id/执行体）；面板前端渲染（本地实测空态 + 数据态逻辑）✅
+- 回归：pytest 397（合入后全量）、ruff/py_compile clean ✅；合入 main（440422f）+ 2017 部署（/tasks/running 在线）✅
+- 自动化流程实证：Engine 派发 → 2017 claude 开发 → 分步提交（738895e5/269dc7ce/9df5ba3c）→ push → 回写 ✅
+
+### 观察项（登记，非阻塞）
+
+1. **M1→2017 无头 Chrome ERR_CONNECTION_RESET**：headless 直连 192.168.3.116:7788 资源偶发连接重置（本地 127.0.0.1 正常）——疑 headless Chrome 网络特性或 2017 连接处理，待老板实际浏览器确认；若复现再查。
+2. **占位任务执行时长波动**：T99-flow-test 90s 完成，T99-panel-test 20min+ 未完成（6100 中继性能波动）——自动化流程稳定性待调（下次任务前先探活中继）。
