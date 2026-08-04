@@ -229,14 +229,20 @@ export async function streamChat(
     onError(msg || '生成失败');
   };
 
-  let resp;
-  try {
-    resp = await _fetchWithAuth(
+  // T46 C10：网络抖动（fetch/SSE 中断）自动重连一次；连续失败不再自动重试（防抖）。
+  const MAX_AUTO_RETRY = 1;
+  let autoRetryLeft = MAX_AUTO_RETRY;
+  let receivedAnyEvent = false;   // 已收到任意流事件 → 不自动重连（避免重复内容）
+  let lastPromptSent = prompt;
+
+  // 构造单次流请求
+  async function openStream() {
+    const resp = await _fetchWithAuth(
       '/conversation',
       {
         method: 'POST',
         body: JSON.stringify({
-          message: prompt,
+          message: lastPromptSent,
           stream: true,
           // T44：按会话分桶历史/分锁；模型档位覆盖
           thread_id: sessionId || null,
@@ -246,43 +252,14 @@ export async function streamChat(
       },
       true
     );
-  } catch (e) {
-    if (e && e.name === 'AbortError') settleDone();
-    else settleError('网络连接中断，请检查网络后重试');
-    return;
-  }
-  if (resp.status === 401) {
-    settleError('登录状态已失效，请刷新页面重新连接');
-    return;
-  }
-  if (!resp.ok || !resp.body) {
-    const data = await resp.json().catch(() => ({}));
-    settleError(friendlyChatError(resp.status, data.message || data.error));
-    return;
+    return resp;
   }
 
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-  let eventName = null;
-  let dataLines = [];
-
-  // SSE 块解析：块以空行（\n\n）分隔；event:/data: 行累积到块结束再派发，
-  // 天然兼容 fetch 流式分块边界（半个 JSON 不会被解析）。
-  function flushBlock() {
-    if (eventName === null && dataLines.length === 0) return;
-    const raw = dataLines.join('\n');
-    dataLines = [];
-    const ev = eventName;
-    eventName = null;
-    if (!raw) return;
-    let payload = null;
-    try {
-      payload = JSON.parse(raw);
-    } catch (_) {
-      return;
+  // 上报「自动重连中」（顶部横幅，T46 C10）
+  function notifyReconnecting() {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ccc-stream-reconnecting'));
     }
-    routeEvent(ev, payload);
   }
 
   function routeEvent(ev, payload) {
@@ -307,41 +284,88 @@ export async function streamChat(
     }
   }
 
-  function consumeBlock(block) {
-    for (const line of block.split('\n')) {
-      if (line.startsWith('event:')) {
-        eventName = line.slice(6).trim();
-      } else if (line.startsWith('data:')) {
-        dataLines.push(line.slice(5).replace(/^ /, ''));
+  async function runOnce() {
+    let resp;
+    try {
+      resp = await openStream();
+    } catch (e) {
+      if (e && e.name === 'AbortError') return 'settled';
+      // fetch 失败
+      return 'network';
+    }
+    if (resp.status === 401) {
+      settleError('登录状态已失效，请刷新页面重新连接');
+      return 'settled';
+    }
+    if (!resp.ok || !resp.body) {
+      const data = await resp.json().catch(() => ({}));
+      settleError(friendlyChatError(resp.status, data.message || data.error));
+      return 'settled';
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let eventName = null;
+    let dataLines = [];
+
+    function flushBlock() {
+      if (eventName === null && dataLines.length === 0) return;
+      const raw = dataLines.join('\n');
+      dataLines = [];
+      const ev = eventName;
+      eventName = null;
+      if (!raw) return;
+      let payload = null;
+      try { payload = JSON.parse(raw); } catch (_) { return; }
+      receivedAnyEvent = true;
+      routeEvent(ev, payload);
+    }
+    function consumeBlock(block) {
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+      }
+      flushBlock();
+    }
+    function feed(chunk) {
+      buffer += chunk;
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        consumeBlock(block);
       }
     }
-    flushBlock();
-  }
 
-  function feed(chunk) {
-    buffer += chunk;
-    let idx;
-    while ((idx = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      consumeBlock(block);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        feed(decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n'));
+      }
+      feed(decoder.decode().replace(/\r\n/g, '\n'));
+      if (buffer.trim()) consumeBlock(buffer);
+      // T45：EOF 且未收到 done/error → 流中断，统一按结束处理（UI 复位，避免假流式）
+      settleDone();
+      return 'settled';
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        settleDone();
+        return 'settled';
+      }
+      return 'network';  // SSE 读中断
     }
   }
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      feed(decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n'));
-    }
-    feed(decoder.decode().replace(/\r\n/g, '\n'));
-    if (buffer.trim()) consumeBlock(buffer);
-    // T45：EOF 且未收到 done/error → 流中断，统一按结束处理（UI 复位，避免假流式）
-    settleDone();
-  } catch (e) {
-    if (e && e.name === 'AbortError') settleDone();
-    else settleError('网络连接中断，请检查网络后重试');
+  // T46 C10：首次尝试；若网络失败且尚未收到任何内容 → 自动重连一次（不重复内容）。
+  const first = await runOnce();
+  if (first === 'network' && !receivedAnyEvent && autoRetryLeft > 0) {
+    autoRetryLeft -= 1;
+    notifyReconnecting();
+    await runOnce();
   }
+  // 连续失败：runOnce 内部已 settleError；防抖（只重试一次）已生效。
 }
 
 export async function putDesktopThreadMessages(threadId, messages, projectId) {

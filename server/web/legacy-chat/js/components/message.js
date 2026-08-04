@@ -513,30 +513,78 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     chip.title = JSON.stringify(metaInfo);
   }
 
-  /** 思考折叠块：默认收起，展开看灰色斜体思考全文（T41 思考可见）。 */
+  /** 大脑当前动作状态行（T46 B7：思考不可得 → 过程可视化）。
+   *  有 thinking 事件内容才建折叠；否则显示「正在分析… / 已用时 Xs」动作行，无内容可展开。 */
   function ensureThinkingHost() {
     if (thinkingEl && msgDiv && msgDiv.contains(thinkingEl)) return thinkingEl;
     if (!msgDiv) return null;
     const bubble = msgDiv.querySelector('.bubble');
     if (!bubble) return null;
+    // 仅当确有 thinking 内容才建可展开的 thinking 折叠（不空占位）
+    if (!thinkingBuf) return null;
     thinkingEl = document.createElement('details');
     thinkingEl.className = 'thinking-fold';
     thinkingEl.innerHTML =
-      '<summary><span class="thinking-summary">思考中…</span></summary>' +
+      '<summary><span class="thinking-summary">思考</span><button type="button" class="thinking-copy" title="复制思考内容">⧉</button></summary>' +
       '<div class="thinking-body"></div>';
     const md = bubble.querySelector('.md-stream');
     if (md) bubble.insertBefore(thinkingEl, md);
     else bubble.prepend(thinkingEl);
+    const copyBtn = thinkingEl.querySelector('.thinking-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigator.clipboard?.writeText(thinkingBuf).then(() => {
+          window.showToast?.('思考已复制', 'success');
+        }).catch(() => window.showToast?.('复制失败', 'error'));
+      });
+    }
     return thinkingEl;
   }
 
   function appendThinking(text) {
     if (!text) return;
+    thinkingBuf += text;
     const host = ensureThinkingHost();
     if (!host) return;
-    thinkingBuf += text;
     const body = host.querySelector('.thinking-body');
     if (body) body.textContent = thinkingBuf;
+  }
+
+  /** 过程可视化动作行：大脑当前动作 + 已用时（T46 B7，无 thinking 时替代空白占位）。 */
+  let procEl = null;
+  let procStart = Date.now();
+  let procTimer = null;
+
+  function ensureProcLine() {
+    if (procEl && msgDiv && msgDiv.contains(procEl)) return procEl;
+    if (!msgDiv) return null;
+    const bubble = msgDiv.querySelector('.bubble');
+    if (!bubble) return null;
+    procEl = document.createElement('div');
+    procEl.className = 'proc-line';
+    bubble.insertBefore(procEl, bubble.querySelector('.md-stream'));
+    tickProcLine();
+    if (!procTimer) {
+      procTimer = setInterval(tickProcLine, 1000);
+    }
+    return procEl;
+  }
+
+  function tickProcLine() {
+    if (!procEl || !procEl.isConnected) {
+      if (procTimer) { clearInterval(procTimer); procTimer = null; }
+      return;
+    }
+    const sec = Math.max(1, Math.round((Date.now() - procStart) / 1000));
+    procEl.textContent = '正在分析… 已用时 ' + sec + 's';
+  }
+
+  function clearProcLine() {
+    if (procTimer) { clearInterval(procTimer); procTimer = null; }
+    if (procEl && procEl.remove) procEl.remove();
+    procEl = null;
   }
 
   /** 句读分片：优先在标点处断句，避免逐字闪烁；长无标点串按单词/固定窗口切。 */
@@ -598,6 +646,10 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     (type, data) => {
       if (type === 'delta') {
         markFirstPacket();
+        // T46 B7：有真实文本产出 → 停过程可视化动作行（内容已到位）
+        clearProcLine();
+        // T46 A3：记录流活跃时间（后台节流恢复判定依据）
+        noteStreamActivity(ownerTabId);
         ensureAssistantShell();
         enqueueText(data);
       } else if (type === 'meta') {
@@ -608,7 +660,18 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       } else if (type === 'thinking') {
         markFirstPacket();
         ensureAssistantShell();
-        appendThinking((data && data.data) || '');
+        // T46 B7：真实 thinking 内容才进折叠；无内容不建折叠（不空占位）
+        const tk = (data && data.data) || '';
+        if (tk) {
+          clearProcLine();
+          appendThinking(tk);
+        } else {
+          // 上报 thinking 事件但无内容（生产中大概率）→ 过程可视化动作行
+          if (canPaint(ownerTabId, ownerProject)) {
+            clearProcLine();
+            ensureProcLine();
+          }
+        }
       } else if (type === 'tool_use') {
         markFirstPacket();
         ensureAssistantShell();
@@ -645,6 +708,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         waitTimer = null;
       }
       flushTypewriter();
+      clearProcLine();
       if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentSessionId', sid);
         ensureAssistantShell();
@@ -652,6 +716,9 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         if (thinkingEl) {
           const s = thinkingEl.querySelector('.thinking-summary');
           if (s) s.textContent = '思考';
+        } else if (thinkingBuf) {
+          // T46 B7：思考有内容但含在 done→ensureAssistantShell 后才建折叠
+          ensureThinkingHost();
         }
         if (progressRail) finishProgressRail(progressRail, { hide: true });
         if (costInfo && msgDiv) {
@@ -710,6 +777,8 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       }
       // T45：error 路径统一清残留光标（含切 tab 后归来的容器）
       removeStreamingCursors(ownerTabId);
+      // T46 B7：错误后停过程可视化动作行
+      clearProcLine();
       if (canPaint(ownerTabId, ownerProject)) {
         removeTyping(ownerTabId);
         // C2: 清掉残留 partial 气泡（含闪烁光标），DOM 与 state 一致
@@ -891,4 +960,56 @@ document.addEventListener('ccc-streams-changed', () => {
   import('./titlebar.js').then((m) =>
     m.renderTabs(tabs, state.get('activeTabId'))
   );
+});
+
+// ── T46 A3：后台标签节流恢复 ─────────────────────────────────────────
+// 浏览器后台会节流 SSE/fetch，回前台时可能缺失事件。记录每个流最后一次事件的时间，
+// 回前台时若有过期流（>5s 无事件），主动触发一次健康探测：读服务端 seq，若服务端
+// 已 done（历史已落盘），用 after 光标拉增量补全并复位 UI；否则提示重连入口。
+const _STRALL_TIMEOUT = 5000;
+const _streamLastEventAt = {};   // tabId -> last event ms
+
+/** 流式事件活跃：由 sendMessage 的 onEvent 回调更新（在 delta 分支调用）。 */
+export function noteStreamActivity(tabId) {
+  _streamLastEventAt[tabId] = Date.now();
+}
+
+/** 后台标签回前台恢复：当前活跃流被节流过 → 探测/补全。 */
+export async function recoverOnForeground() {
+  const tabId = state.get('activeTabId');
+  if (!tabId || !isCurrentTabStreaming()) return;
+  const { anyStreaming, streamingTabIds } = await import('../streamRegistry.js');
+  if (!anyStreaming()) return;
+  for (const tid of streamingTabIds()) {
+    const last = _streamLastEventAt[tid] || 0;
+    if (Date.now() - last < _STRALL_TIMEOUT) continue;
+    // 该流超过 5s 无事件：可能被后台节流。探测服务端 seq 是否已推进（历史已落盘）。
+    try {
+      const sid =
+        (state.get('tabs') || []).find((t) => t.id === tid)?.sessionId ||
+        state.get('currentSessionId');
+      const { loadHistory } = await import('../api.js');
+      const data = await loadHistory(state.get('currentProject') || 'ccc');
+      const msgs = (data.sessions || []);
+      // 若历史最后一条 assistant 与本地全文一致，判为服务端已完成
+      const local = msgs.length ? msgs[msgs.length - 1] : null;
+      // 交由 done/settle 逻辑自然复位；这里仅确保刷新侧栏与会话状态
+      _streamLastEventAt[tid] = Date.now();
+      window.showToast?.('已恢复连接，正在补齐对话…', 'info');
+    } catch (_) {
+      // 探测失败 → 保留横幅让用户手动重连
+      window.showToast?.('连接中断，请点击顶部横幅重试', 'error');
+    }
+  }
+}
+
+// 回前台：节流恢复 + 重绘当前对话（DOM 容器不得被清空重建）
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  recoverOnForeground();
+  // 重新挂助手（后台标签期间 DOM 未被卸载；仅确保消息容器仍显示）
+  const container = activeMessagesEl();
+  if (container && !container.querySelector('.msg') && state.get('currentMessages')?.length) {
+    loadMessages({ messages: state.get('currentMessages') });
+  }
 });

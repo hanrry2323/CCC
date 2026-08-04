@@ -173,6 +173,16 @@ def _get_brain_timeout() -> int:
         return 120
 
 
+def _get_brain_thinking() -> str:
+    """大脑扩展思考开关（enabled / disabled / ""=不传）。
+
+    T46 B5 实测：flash 经 `--thinking enabled` 后 stream-json 出现
+    `redacted_thinking` 块且其 data 为可读推理文本 → 思考可达，走 B6 渲染。
+    用 config 控制避免硬编码（红线 #7）；默认 enabled 以真跑通 B6。
+    """
+    return os.environ.get("CCC_BRAIN_THINKING", "enabled").strip()
+
+
 def _is_brain_configured() -> bool:
     """大脑代理配置是否齐全。
 
@@ -379,7 +389,40 @@ def _normalize_stream_event(event: dict[str, Any]) -> tuple[str, dict[str, Any]]
         )
     if etype == "assistant":
         msg = event.get("message", {}) or {}
-        for block in msg.get("content", []) or []:
+        # T46 C8：assistant.message.content 可能含多个同类型块。text 块需完整拼接
+        # （不丢字/不重复），其他类型（thinking/tool_use）取首个。编排侧保证一次
+        # 事件只产出一种语义事件；text 拼接后一次性输出。
+        blocks = msg.get("content", []) or []
+        # 收集非 text 块的优先级：thinking > tool_use（按首个出现的特别事件）
+        special = None
+        for block in blocks:
+            btype = block.get("type")
+            if btype in ("thinking", "redacted_thinking"):
+                special = ("thinking", {"data": block.get("data", "") or ""})
+                break
+            if btype == "tool_use":
+                special = (
+                    "tool_use",
+                    {
+                        "id": block.get("id", "") or "",
+                        "name": block.get("name", "") or "",
+                        "input": block.get("input", {}) or {},
+                    },
+                )
+                break
+        text_parts = [
+            b.get("text", "") or ""
+            for b in blocks
+            if b.get("type") == "text"
+        ]
+        if text_parts:
+            # 有 text → 输出完整拼接的 text 事件（thinking/tool_use 由单块事件承载）
+            return ("text", {"text": "".join(text_parts)})
+        # 无 text → 输出首个特别事件；两者皆无则不产出
+        if special is not None:
+            return special
+        # 退化：content 里既无 text 也无特别块 → 尝试逐块取 text 兜底
+        for block in blocks:
             btype = block.get("type")
             if btype in ("thinking", "redacted_thinking"):
                 return ("thinking", {"data": block.get("data", "") or ""})
@@ -392,8 +435,6 @@ def _normalize_stream_event(event: dict[str, Any]) -> tuple[str, dict[str, Any]]
                         "input": block.get("input", {}) or {},
                     },
                 )
-            if btype == "text":
-                return ("text", {"text": block.get("text", "") or ""})
         return None
     if etype == "user":
         msg = event.get("message", {}) or {}
@@ -456,9 +497,16 @@ def _stream_claude(prompt: str, timeout: int | None = None):
     env["ANTHROPIC_BASE_URL"] = _get_brain_base_url()
     env["ANTHROPIC_AUTH_TOKEN"] = _get_brain_auth_token()
     env["ANTHROPIC_MODEL"] = _effective_model()
+    # T46 B5：扩展思考可由 `--thinking <enabled|disabled>` 控制（可读 redacted_thinking）。
+    # 空白则不传（模型/中继不支持时后端可静态关闭，避免 CLI 报错）。
+    _thinking = _get_brain_thinking()
+    _thinking_args = (
+        ["--thinking", _thinking] if _thinking in ("enabled", "disabled") else []
+    )
     try:
         proc = subprocess.Popen(
-            [bin_path, "-p", prompt, "--output-format", "stream-json", "--verbose"],
+            [bin_path, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+            + _thinking_args,
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

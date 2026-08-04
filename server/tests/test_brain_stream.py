@@ -21,6 +21,7 @@ _BRAIN_ENV_KEYS = (
     "CCC_BRAIN_AUTH_TOKEN",
     "CCC_BRAIN_TIMEOUT",
     "CCC_BRAIN_CLAUDE_BIN",
+    "CCC_BRAIN_THINKING",
 )
 
 
@@ -147,6 +148,41 @@ class TestNormalizeStreamEvent:
         assert name == "text"
         assert payload["text"] == "你好"
 
+    def test_assistant_multiple_text_blocks_no_loss(self):
+        """C8：assistant.message.content 含多个 text 块不得丢字——需完整拼接顺序输出。"""
+        ev = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "第一段。"},
+                    {"type": "text", "text": "第二段。"},
+                    {"type": "text", "text": "第三段。"},
+                ]
+            },
+        }
+        name, payload = _norm(ev)
+        assert name == "text"
+        # 三段文本按原序完整拼接：不丢字、不重复
+        assert payload["text"] == "第一段。第二段。第三段。"
+
+    def test_assistant_text_blocks_interleaved_not_lost(self):
+        """C8：text 块与 tool_use / thinking 穿插时，text 内容不得被吞。"""
+        ev = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "开头。"},
+                    {"type": "thinking", "data": "不该出现在 text 事件"},
+                    {"type": "tool_use", "id": "tu9", "name": "Read", "input": {}},
+                    {"type": "text", "text": "结尾。"},
+                ]
+            },
+        }
+        name, payload = _norm(ev)
+        # 本事件应产出 text；thinking/tool_use 由后续事件/分块负责，text 事件只含文本
+        assert name == "text"
+        assert payload["text"] == "开头。结尾。"
+
     def test_user_tool_result_str(self):
         ev = {
             "type": "user",
@@ -265,6 +301,39 @@ class TestStreamClaude:
         events = list(brain_mod._stream_claude("hi"))
         assert events[0][0] == "error"
         assert events[0][1]["status"] == 502
+
+    def test_thinking_flag_default_enabled(self, monkeypatch):
+        """T46 B5：CCC_BRAIN_THINKING 缺省 enabled → CLI 带 --thinking enabled。"""
+        _configure_brain(monkeypatch)
+        monkeypatch.delenv("CCC_BRAIN_THINKING", raising=False)
+        captured = {}
+
+        def _fake_popen(*args, **kwargs):
+            captured["popen_args"] = kwargs.get("args", args[0] if args else None)
+            return _FakeProc(_SAMPLE_STREAM_LINES)
+
+        monkeypatch.setattr("server.web.brain.subprocess.Popen", _fake_popen)
+        list(brain_mod._stream_claude("hi"))
+        assert captured.get("popen_args") == [
+            "claude", "-p", "hi", "--output-format", "stream-json", "--verbose",
+            "--thinking", "enabled",
+        ]
+
+    def test_thinking_flag_disabled_via_env(self, monkeypatch):
+        """CCC_BRAIN_THINKING="" → 不传 --thinking（模型/中继不支持时可静态关闭）。"""
+        _configure_brain(monkeypatch)
+        monkeypatch.setenv("CCC_BRAIN_THINKING", "")
+        captured = {}
+
+        def _fake_popen(*args, **kwargs):
+            captured["popen_args"] = kwargs.get("args", args[0] if args else None)
+            return _FakeProc(_SAMPLE_STREAM_LINES)
+
+        monkeypatch.setattr("server.web.brain.subprocess.Popen", _fake_popen)
+        list(brain_mod._stream_claude("hi"))
+        assert captured["popen_args"] == [
+            "claude", "-p", "hi", "--output-format", "stream-json", "--verbose",
+        ]
 
 
 # ════════════════════════════════════════════════════════════

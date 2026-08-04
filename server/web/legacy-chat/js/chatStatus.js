@@ -184,8 +184,17 @@ export function startHealthPing(intervalMs) {
   _pingTimer = setInterval(ping, ms);
 }
 
-/** 对话壳启动时调用一次：注入 banner 元素 + 启动轮询。 */
+/** T46 C10：流自动重连中 → 顶部横幅提示（不打断，恢复后横幅消失）。 */
+export function showReconnecting() {
+  setConnBanner(true, '连接中断，自动重连中…');
+}
+
+/** 对话壳启动时调用一次：注入 banner 元素 + 启动轮询 + 重连事件监听。 */
 export function initChatStatus() {
   _ensureEls();
   startHealthPing();
+  // T46 C10：流自动重连事件 → 顶部横幅「自动重连中…」；成功后由健康轮询清掉
+  if (typeof document !== 'undefined') {
+    document.addEventListener('ccc-stream-reconnecting', () => showReconnecting());
+  }
 }
