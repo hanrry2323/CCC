@@ -43,6 +43,7 @@ export class TaskCardList {
   }
 
   setItems(items) {
+    this.loading = false;
     this.items = items;
     this.visibleItems = items;
     this.render();
