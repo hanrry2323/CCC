@@ -31,6 +31,7 @@ enum BrainStreamEvent: Equatable {
     case toolResult(toolUseID: String, content: String)
     case done(isError: Bool, text: String, error: String)
     case error(status: Int, message: String)
+    case taskStatus([String: Any])
 
     static func == (lhs: BrainStreamEvent, rhs: BrainStreamEvent) -> Bool {
         switch (lhs, rhs) {
@@ -44,6 +45,8 @@ enum BrainStreamEvent: Equatable {
         case (.done(let a1, let a2, let a3), .done(let b1, let b2, let b3)):
             return a1 == b1 && a2 == b2 && a3 == b3
         case (.error(let a, let b), .error(let c, let d)): return a == c && b == d
+        case (.taskStatus(let a), .taskStatus(let b)):
+            return NSDictionary(dictionary: a).isEqual(to: b)
         default: return false
         }
     }
@@ -360,6 +363,8 @@ actor APIClient {
                 status: payload["status"] as? Int ?? 0,
                 message: payload["message"] as? String ?? ""
             )
+        case "task_status":
+            return .taskStatus(payload)
         default:
             return nil
         }

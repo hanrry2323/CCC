@@ -12,6 +12,7 @@ struct TaskCardPanel: View {
     @State private var detailBusy = false
     @State private var detailError: String?
     @State private var pollTimer: Timer?
+    @State private var isLinkedMode = true
 
     // 契约 §2 五态（与新栈 models.STATES 对齐）
     private let states = ["待分派", "执行中", "已回写", "已关闭", "打回"]
@@ -45,6 +46,32 @@ struct TaskCardPanel: View {
                 ProgressView().controlSize(.mini)
             }
             Spacer()
+            HStack(spacing: 0) {
+                Button("关联") {
+                    isLinkedMode = true
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: isLinkedMode ? .bold : .regular))
+                .foregroundStyle(isLinkedMode ? CCCTheme.accent : CCCTheme.faint)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(isLinkedMode ? CCCTheme.hover : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Button("全部") {
+                    isLinkedMode = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: !isLinkedMode ? .bold : .regular))
+                .foregroundStyle(!isLinkedMode ? CCCTheme.accent : CCCTheme.faint)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(!isLinkedMode ? CCCTheme.hover : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            .background(RoundedRectangle(cornerRadius: 6).stroke(CCCTheme.border, lineWidth: 0.5))
+            .padding(.trailing, 4)
+
             Button {
                 Task { await model.refreshBoard() }
             } label: {
@@ -140,6 +167,17 @@ struct TaskCardPanel: View {
         // dedupe by id
         var seen = Set<String>()
         all = all.filter { seen.insert($0.id).inserted }
+
+        if isLinkedMode {
+            let currentThread = model.selectedThreadId ?? ""
+            all = all.filter { task in
+                let status = task.status ?? stateMap[task.id] ?? ""
+                let isNotClosed = (status != "已关闭" && status != "released" && status != "closed")
+                let isAssociatedWithCurrentThread = !currentThread.isEmpty && currentThread.contains(task.id)
+                return isNotClosed || isAssociatedWithCurrentThread
+            }
+        }
+
         all.sort { (a, b) in
             let sa = a.status ?? stateMap[a.id] ?? ""
             let sb = b.status ?? stateMap[b.id] ?? ""

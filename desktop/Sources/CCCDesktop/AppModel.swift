@@ -943,6 +943,10 @@ final class AppModel: ObservableObject {
                 case .error(let status, let message):
                     failure = message.isEmpty ? "生成失败（HTTP \(status)）" : message
                     consumed = true
+                case .taskStatus:
+                    Task { @MainActor in
+                        await self.refreshBoard()
+                    }
                 }
             }
         } catch let apiErr as APIError {
@@ -995,6 +999,9 @@ final class AppModel: ObservableObject {
         }
         setStreamStatus(threadId: threadId, nil)
         flushDiskSave(threadId: threadId)
+        Task { @MainActor in
+            await self.refreshBoard()
+        }
     }
 
     /// 句读分片（打字机）：优先标点断句；长无标点串按空格/固定窗口切。
