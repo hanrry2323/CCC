@@ -41,6 +41,7 @@ struct OpsView: View {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     // P0 四域 above-the-fold：①总灯 ②集群 ③Agent/MCP/Relay ④仅红
                     healthLampSection
+                    cockpitKPISection
                     clusterSummarySection
                     agentMcpRelaySection
                     redAlertsSection
@@ -1218,5 +1219,48 @@ struct OpsView: View {
         case "medium", "warn", "warning": return "exclamationmark.triangle.fill"
         default: return "info.circle.fill"
         }
+    }
+
+    private var cockpitKPISection: some View {
+        let pendingN = model.boardColumns["待分派"]?.count ?? 0
+        let runningN = model.boardColumns["执行中"]?.count ?? 0
+        let writtenN = model.boardColumns["已回写"]?.count ?? 0
+        let closedN = model.boardColumns["已关闭"]?.count ?? 0
+        let returnedN = model.boardColumns["打回"]?.count ?? 0
+
+        return VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("驾驶舱看板计数", systemImage: "chart.bar.doc.horizontal")
+            HStack(spacing: 8) {
+                kpiTile(title: "待分派", count: pendingN, desc: "尚未执行", tone: StateTone.pending)
+                kpiTile(title: "执行中", count: runningN, desc: "正在执行", tone: StateTone.running)
+                kpiTile(title: "已回写", count: writtenN, desc: "待验收", tone: StateTone.written)
+                kpiTile(title: "已关闭", count: closedN, desc: "已归档", tone: StateTone.closed)
+                kpiTile(title: "打回", count: returnedN, desc: "需介入", tone: StateTone.returned)
+            }
+        }
+    }
+
+    private func kpiTile(title: String, count: Int, desc: String, tone: StateTone.Palette) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(CCCTheme.faint)
+            Text("\(count)")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(tone.fg)
+            Text(desc)
+                .font(.system(size: 9))
+                .foregroundStyle(CCCTheme.faint)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(tone.bg.opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.bar.opacity(0.3), lineWidth: 1)
+        )
     }
 }
