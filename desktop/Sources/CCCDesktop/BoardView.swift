@@ -10,6 +10,54 @@ struct BoardView: View {
     @State private var detailError: String?
     @State private var pollTimer: Timer?
     @State private var autoRefresh = true
+    @State private var viewMode: BoardViewMode = .list
+    @State private var groupType: GroupType = .project
+    @State private var collapsedGroups = Set<String>()
+
+    enum BoardViewMode: String, CaseIterable, Identifiable {
+        case list, kanban, grouping
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .list: return "列表"
+            case .kanban: return "看板"
+            case .grouping: return "分组"
+            }
+        }
+    }
+
+    enum GroupType: String, CaseIterable, Identifiable {
+        case project, executor
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .project: return "按项目"
+            case .executor: return "按执行体"
+            }
+        }
+    }
+
+    private var allFilteredTasks: [BoardTask] {
+        var list: [BoardTask] = []
+        for (_, tasks) in model.filteredBoardColumns {
+            list.append(contentsOf: tasks)
+        }
+        var seen = Set<String>()
+        list = list.filter { seen.insert($0.id).inserted }
+        list.sort { $0.id > $1.id }
+        return list
+    }
+
+    private func guessProject(taskId: String) -> String {
+        if taskId.hasPrefix("T") {
+            return "ccc"
+        }
+        let letters = taskId.prefix { $0.isLetter }
+        if !letters.isEmpty {
+            return String(letters)
+        }
+        return "未知"
+    }
 
     private let columnOrder = [
         "backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal",
@@ -59,22 +107,13 @@ struct BoardView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
             }
-            GeometryReader { geo in
-                let cols = visibleColumns
-                let gap: CGFloat = 12
-                let hPad: CGFloat = 16
-                let n = max(cols.count, 1)
-                let colW = max(200, (geo.size.width - hPad * 2 - gap * CGFloat(n - 1)) / CGFloat(n))
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(alignment: .top, spacing: gap) {
-                        ForEach(cols, id: \.self) { col in
-                            columnPane(col, width: colW, height: geo.size.height - 8)
-                        }
-                    }
-                    .padding(.horizontal, hPad)
-                    .padding(.bottom, 12)
-                    .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
-                }
+            switch viewMode {
+            case .list:
+                listView
+            case .kanban:
+                kanbanView
+            case .grouping:
+                groupingView
             }
         }
         .background(CCCTheme.chatBg)
@@ -93,6 +132,26 @@ struct BoardView: View {
             workspacePicker
                 .font(.system(size: 12))
                 .foregroundStyle(CCCTheme.faint)
+
+            Picker("", selection: $viewMode) {
+                ForEach(BoardViewMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 150)
+
+            if viewMode == .grouping {
+                Picker("", selection: $groupType) {
+                    ForEach(GroupType.allCases) { type in
+                        Text(type.title).tag(type)
+                    }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 90)
+            }
+
             Spacer()
             Toggle(isOn: Binding(
                 get: { model.boardShowHidden },
@@ -368,6 +427,201 @@ struct BoardView: View {
         .padding(20)
         .frame(width: 480, height: 560, alignment: .topLeading)
         .background(CCCTheme.chatBg)
+    }
+
+    private var kanbanView: some View {
+        GeometryReader { geo in
+            let cols = visibleColumns
+            let gap: CGFloat = 12
+            let hPad: CGFloat = 16
+            let n = max(cols.count, 1)
+            let colW = max(200, (geo.size.width - hPad * 2 - gap * CGFloat(n - 1)) / CGFloat(n))
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(alignment: .top, spacing: gap) {
+                    ForEach(cols, id: \.self) { col in
+                        columnPane(col, width: colW, height: geo.size.height - 8)
+                    }
+                }
+                .padding(.horizontal, hPad)
+                .padding(.bottom, 12)
+                .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
+            }
+        }
+    }
+
+    private var listView: some View {
+        ScrollView {
+            LazyVStack(spacing: 6) {
+                let tasks = allFilteredTasks
+                if tasks.isEmpty {
+                    Text("暂无任务")
+                        .font(.system(size: 13))
+                        .foregroundStyle(CCCTheme.faint)
+                        .padding(.top, 40)
+                } else {
+                    ForEach(tasks) { task in
+                        listRow(task)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private func listRow(_ task: BoardTask) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(task.id)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CCCTheme.accent)
+
+                    if let status = task.status, !status.isEmpty {
+                        let tone = StateTone.of(status)
+                        Text(status)
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(tone.bg))
+                            .foregroundStyle(tone.fg)
+                    }
+
+                    if task.isEpic {
+                        Text("EPIC")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(CCCTheme.accent)
+                    }
+
+                    Spacer()
+
+                    if let exec = task.executor, !exec.isEmpty {
+                        Text("@\(exec)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(CCCTheme.secondary)
+                    }
+                }
+
+                Text(task.displayTitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(CCCTheme.ink)
+                    .lineLimit(1)
+
+                if let note = task.note, !note.isEmpty {
+                    Text(note)
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+
+            Spacer(minLength: 0)
+
+            let locator = CardLocator.line(
+                project: model.selectedProjectId,
+                thread: model.selectedThreadId,
+                kind: task.isEpic ? "epic" : "work",
+                id: task.id,
+                title: task.displayTitle,
+                stage: task.split_status ?? task.status,
+                column: task.status ?? ""
+            )
+            LocatorCopyButton(text: locator)
+                .padding(.trailing, 8)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(CCCTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(CCCTheme.border, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { openDetail(task) }
+    }
+
+    private var groupedTasks: [String: [BoardTask]] {
+        var groups: [String: [BoardTask]] = [:]
+        let tasks = allFilteredTasks
+        for t in tasks {
+            let key: String
+            switch groupType {
+            case .project:
+                key = guessProject(taskId: t.id)
+            case .executor:
+                key = (t.executor == nil || t.executor?.isEmpty == true || t.executor == "未知") ? "未分配" : t.executor!
+            }
+            groups[key, default: []].append(t)
+        }
+        return groups
+    }
+
+    private var groupingView: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                let groups = groupedTasks.sorted { $0.key < $1.key }
+                if groups.isEmpty {
+                    Text("暂无分组任务")
+                        .font(.system(size: 13))
+                        .foregroundStyle(CCCTheme.faint)
+                        .padding(.top, 40)
+                } else {
+                    ForEach(groups, id: \.key) { key, tasks in
+                        VStack(spacing: 0) {
+                            HStack {
+                                Image(systemName: collapsedGroups.contains(key) ? "chevron.right" : "chevron.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(CCCTheme.faint)
+
+                                Text(key)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(CCCTheme.ink)
+
+                                Text("\(tasks.count)")
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .background(Capsule().fill(CCCTheme.hover))
+                                    .foregroundStyle(CCCTheme.secondary)
+
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(CCCTheme.surface)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if collapsedGroups.contains(key) {
+                                    collapsedGroups.remove(key)
+                                } else {
+                                    collapsedGroups.insert(key)
+                                }
+                            }
+
+                            if !collapsedGroups.contains(key) {
+                                VStack(spacing: 6) {
+                                    ForEach(tasks) { task in
+                                        listRow(task)
+                                    }
+                                }
+                                .padding(8)
+                                .background(CCCTheme.chatBg)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(CCCTheme.border, lineWidth: 1)
+                        )
+                        .padding(.horizontal, 16)
+                    }
+                }
+            }
+            .padding(.vertical, 12)
+        }
     }
 
     private func startPolling() {
