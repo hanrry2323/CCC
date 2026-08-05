@@ -180,3 +180,16 @@ class TestSubdirScan:
         )
         _write(tmp_path / "ccc" / "deep", "ccc101-deep.md", deep_card)
         assert load_dispatch_cards(tmp_path) == []
+
+    def test_scan_skips_invalid_utf8_binary_card(self, tmp_path: Path) -> None:
+        """F02: 扫描时跳过非 UTF-8 编码的二进制文件，不抛错，其余卡正常返回。"""
+        # 写一个正常任务卡
+        _write(tmp_path, "T1-ok.md", SAMPLE)
+
+        # 写一个包含非 UTF-8 字节的二进制文件（模拟损坏的非 UTF-8 卡）
+        invalid_card = tmp_path / "T2-invalid.md"
+        invalid_card.write_bytes(b"\x80\x81\xff\x00\x01\x02# \xcc\xdd\xee\xff")
+
+        items = load_dispatch_cards(tmp_path)
+        # 校验：仅有正常卡返回，非 UTF-8 损坏文件被安全跳过，不崩溃
+        assert [i.id for i in items] == ["T99"]

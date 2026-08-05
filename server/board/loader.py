@@ -15,12 +15,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import json
 import re
 from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state
+
+logger = logging.getLogger("ccc.board.loader")
 
 # `# 任务卡 T3 · 标题`（MULTILINE：^/$ 按行锚定）
 _TITLE_RE = re.compile(r"^#\s*任务卡\s+(\S+)\s*[·\-]\s*(.+?)\s*$", re.MULTILINE)
@@ -144,7 +147,11 @@ def parse_card(path: Path | str) -> BoardItem:
 
 def _is_task_card(path: Path) -> bool:
     """是否任务卡：行首含 `# 任务卡` 卡头标题；T-mapping.md 等说明文档跳过。"""
-    return bool(_CARD_TITLE_RE.search(path.read_text(encoding="utf-8")))
+    try:
+        return bool(_CARD_TITLE_RE.search(path.read_text(encoding="utf-8")))
+    except (UnicodeDecodeError, OSError) as exc:
+        logger.warning("跳过无法读取的文件 %s: %s", path, exc)
+        return False
 
 
 def scan_dispatch_files(directory: Path | str) -> list[Path]:
