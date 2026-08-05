@@ -525,4 +525,8 @@ async function startConversationLongPoll(sid) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+  init();
+} else {
+  document.addEventListener('DOMContentLoaded', init);
+}
