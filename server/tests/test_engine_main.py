@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,7 @@ def _write_demo_registry(
     tmp_path: Path,
     command: str = "echo",
     args_template: str = "work={work_id} card={card_path}",
+    worktree_base: str = "",
 ) -> Path:
     """写临时 executors.json（演示用占位命令，禁止生产引用）。"""
     p = tmp_path / "executors.json"
@@ -56,6 +58,7 @@ def _write_demo_registry(
                         "命令": command,
                         "参数模板": args_template,
                         "工作目录": "",
+                        "worktree_base": worktree_base,
                         "备注": "测试夹具",
                     },
                     {
@@ -738,3 +741,118 @@ class TestParallelAndRelayGuard:
         assert w.id == "ret2"
         assert w.state is State.REJECTED
         assert any("执行超时" in p for p in w.problems)
+
+
+class TestEngineWorktree:
+    """测试 Engine 自动按卡创建 worktree 功能。"""
+
+    def test_get_worktree_path(self) -> None:
+        """验证 get_worktree_path 能正确替换各种占位符或追加 work_id。"""
+        from server.engine.main import get_worktree_path
+
+        # 1. 替换 <task>
+        assert get_worktree_path("/path/to/ccc-dev-ws-<task>", "T64") == "/path/to/ccc-dev-ws-t64"
+        # 2. 替换 {task}
+        assert get_worktree_path("/path/to/ccc-dev-ws-{task}", "T64") == "/path/to/ccc-dev-ws-t64"
+        # 3. 替换 <work_id>
+        assert get_worktree_path("/path/to/ccc-dev-ws-<work_id>", "T64") == "/path/to/ccc-dev-ws-t64"
+        # 4. 替换 {work_id}
+        assert get_worktree_path("/path/to/ccc-dev-ws-{work_id}", "T64") == "/path/to/ccc-dev-ws-t64"
+        # 5. 无占位符则追加
+        assert get_worktree_path("/path/to/ccc-dev-ws", "T64") == "/path/to/ccc-dev-ws-t64"
+
+    def test_run_once_with_worktree_enabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """配置了 worktree_base，自动创建 worktree，并注入 {worktree} 占位符且在其中运行。"""
+        # 1. 在 tmp_path 里初始化一个真实 git 仓库
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        (tmp_path / "foo.txt").write_text("hello", encoding="utf-8")
+        subprocess.run(["git", "add", "foo.txt"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(["git", "checkout", "-b", "origin/main"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        # 2. 切换当前进程的工作目录到 tmp_path
+        monkeypatch.chdir(tmp_path)
+
+        # 3. 设置 registry，配置 worktree_base 和 {worktree} 占位符
+        worktree_base_dir = tmp_path / "wt"
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="work={work_id} wt={worktree}",
+            worktree_base=str(worktree_base_dir),
+        )
+        reg = load_registry(reg_path)
+
+        store = InMemoryBoardStore()
+        # card_path 模拟卡 ID slug 派生分支名
+        card_file = tmp_path / "T64-auto-worktree.md"
+        card_file.write_text("Title: T64", encoding="utf-8")
+        store.seed(Work(id="T64", role="开发执行体", card_path=str(card_file)))
+
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        # 4. 执行 run_once
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+
+        # 5. 验证 worktree 确实被创建，并且是真实的 git 仓库（主分支/对应分支）
+        expected_worktree_path = tmp_path / "wt-t64"
+        assert expected_worktree_path.exists()
+        assert (expected_worktree_path / ".git").exists()
+
+        # 6. 验证日志中确实被执行了，并且占位符被替换
+        log_file = tmp_path / "logs" / "T64.log"
+        assert log_file.exists()
+        log_content = log_file.read_text(encoding="utf-8")
+        assert "work=T64" in log_content
+        assert f"wt={expected_worktree_path}" in log_content
+
+    def test_run_once_with_worktree_failed_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """如果 git worktree 创建失败（例如不是 git 仓库），自动回退到默认工作目录而不丢失卡状态。"""
+        # 不初始化 git 仓库，直接 chdir 到 tmp_path
+        monkeypatch.chdir(tmp_path)
+
+        # 设置 registry，配置 worktree_base
+        worktree_base_dir = tmp_path / "wt"
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="work={work_id} wt={worktree}",
+            worktree_base=str(worktree_base_dir),
+        )
+        reg = load_registry(reg_path)
+
+        store = InMemoryBoardStore()
+        store.seed(Work(id="T64", role="开发执行体", card_path=str(tmp_path / "T64.md")))
+
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        # 执行 run_once 应该成功，因为有优雅的回退
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+
+        # 验证 worktree 确实没有被成功创建
+        expected_worktree_path = tmp_path / "wt-t64"
+        assert not expected_worktree_path.exists()
+
+        # 验证日志，由于回退，wt 占位符应该被替换为空字符串
+        log_file = tmp_path / "logs" / "T64.log"
+        assert log_file.exists()
+        log_content = log_file.read_text(encoding="utf-8")
+        assert "work=T64" in log_content
+        assert "wt=" in log_content  # wt 被渲染为空字符串
+

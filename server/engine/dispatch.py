@@ -44,7 +44,7 @@ REQUIRED_FIELDS: frozenset[str] = frozenset({"角色", "分类", "当前绑定",
 # 「可后台 CLI」行必填的派发字段（T32 真实派发闭环）
 CLI_REQUIRED_FIELDS: frozenset[str] = frozenset({"命令", "参数模板"})
 # build_command 支持的占位符（参数模板里允许引用）
-ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role", "workdir"})
+ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role", "workdir", "worktree"})
 
 
 class DispatchDecision(StrEnum):
@@ -77,6 +77,7 @@ class ExecutorEntry:
     command: str = ""
     args_template: str = ""
     workdir: str = ""
+    worktree_base: str = ""
     project: str = ""
 
 
@@ -169,6 +170,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
         command = raw.get("命令", "")
         args_template = raw.get("参数模板", "")
         workdir = raw.get("工作目录", "")
+        worktree_base = raw.get("worktree_base", "")
         # 可后台 CLI 行必须有命令（参数模板允许空，表示无参数）
         if category == "可后台 CLI":
             if not command:
@@ -187,6 +189,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
                 command=command,
                 args_template=args_template,
                 workdir=workdir,
+                worktree_base=worktree_base,
                 project=raw.get("项目", ""),
             )
         )
@@ -263,6 +266,7 @@ def build_command(
     role: str,
     card_path: str,
     default_workdir: str,
+    worktree: str = "",
 ) -> list[str]:
     """按注册表条目的命令 + 参数模板生成 argv 向量（绝不写死工具名）。
 
@@ -272,6 +276,7 @@ def build_command(
         role: 角色名。
         card_path: 任务卡路径。
         default_workdir: entry.workdir 留空时用此值（来自 config 的 DATA_DIR）。
+        worktree: 每卡独立 worktree 路径（可选）。
 
     Returns:
         argv 列表，如 `["opencode", "--dir", "/data", "-p", "请按..."]`。
@@ -293,6 +298,7 @@ def build_command(
             card_path=card_path,
             role=role,
             workdir=workdir,
+            worktree=worktree,
         )
     )
     args = shlex.split(rendered)

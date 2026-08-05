@@ -112,6 +112,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def get_worktree_path(worktree_base: str, work_id: str) -> str:
+    """按 worktree_base 和 work_id 计算实际 worktree 路径，支持占位符。"""
+    work_id_lower = work_id.lower()
+    if "<task>" in worktree_base:
+        return worktree_base.replace("<task>", work_id_lower)
+    if "{task}" in worktree_base:
+        return worktree_base.replace("{task}", work_id_lower)
+    if "<work_id>" in worktree_base:
+        return worktree_base.replace("<work_id>", work_id_lower)
+    if "{work_id}" in worktree_base:
+        return worktree_base.replace("{work_id}", work_id_lower)
+    return f"{worktree_base}-{work_id_lower}"
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
@@ -134,6 +148,40 @@ def _dispatch_and_collect(
         return False, [f"无法为卡片找到对应的可后台 CLI 注册行 (role={work.role}, executor={work.executor}, project={work.project})"]
 
     default_workdir = cfg.get("DATA_DIR", "")
+    worktree_path = ""
+    worktree_base = getattr(entry, "worktree_base", "")
+
+    if worktree_base:
+        target_worktree = get_worktree_path(worktree_base, work.id)
+        card_id_slug = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
+        branch_name = f"codex/{card_id_slug}"
+
+        try:
+            target_path = Path(target_worktree).expanduser().resolve()
+            if target_path.exists():
+                logger.info("Worktree 目录已存在，重用: %s", target_worktree)
+                worktree_path = str(target_path)
+            else:
+                # 尝试用新分支创建
+                cmd_add = ["git", "worktree", "add", str(target_path), "-b", branch_name, "origin/main"]
+                logger.info("正在创建 worktree: %s", " ".join(cmd_add))
+                res = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
+                if res.returncode == 0:
+                    worktree_path = str(target_path)
+                    logger.info("Worktree 创建成功: %s (分支 %s)", worktree_path, branch_name)
+                else:
+                    logger.warning("git worktree add -b 失败: %s. 尝试关联已存在分支...", res.stderr.strip())
+                    # 尝试关联已存在的分支
+                    cmd_add_existing = ["git", "worktree", "add", str(target_path), branch_name]
+                    res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
+                    if res_existing.returncode == 0:
+                        worktree_path = str(target_path)
+                        logger.info("Worktree 关联已有分支成功: %s", worktree_path)
+                    else:
+                        logger.warning("git worktree add 关联已有分支也失败: %s. 自动回退到默认工作目录行为。", res_existing.stderr.strip())
+        except Exception as exc:
+            logger.warning("创建/获取 worktree 过程发生异常: %s. 自动回退到默认工作目录行为。", exc)
+
     try:
         cmd = build_command(
             entry,
@@ -141,6 +189,7 @@ def _dispatch_and_collect(
             role=work.role,
             card_path=work.card_path,
             default_workdir=default_workdir,
+            worktree=worktree_path,
         )
     except ValueError as exc:
         return False, [f"命令构造失败: {exc}"]
@@ -155,7 +204,7 @@ def _dispatch_and_collect(
                 cmd,
                 stdout=logf,
                 stderr=subprocess.STDOUT,
-                cwd=entry.workdir or default_workdir or None,
+                cwd=worktree_path or entry.workdir or default_workdir or None,
             )
     except FileNotFoundError as exc:
         return False, [f"启动失败（命令不存在）: {exc}"]

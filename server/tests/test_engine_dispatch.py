@@ -422,3 +422,17 @@ class TestBuildCommand:
             entry, work_id="w1", role="r", card_path="/path/T1.md", default_workdir="/data"
         )
         assert cmd == ["echo", "-p", "请按任务卡 /path/T1.md 完成 w1"]
+
+    def test_build_command_with_worktree(self) -> None:
+        """参数模板含 {worktree} 且传入 worktree 时能正确渲染。"""
+        entry = _cli_entry(args_template='--dir {worktree} -p "完成 {work_id}"')
+        cmd = build_command(
+            entry,
+            work_id="T64",
+            role="r",
+            card_path="/path/T64.md",
+            default_workdir="/data",
+            worktree="/Users/fan/program/ccc-dev-ws-t64",
+        )
+        assert cmd == ["echo", "--dir", "/Users/fan/program/ccc-dev-ws-t64", "-p", "完成 T64"]
+
