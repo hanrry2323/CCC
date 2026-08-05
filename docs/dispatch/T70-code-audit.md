@@ -1,6 +1,6 @@
 # 任务卡 T70 · 全项目代码 bug 检查（Cursor 测试卡 2 · M1 只读审计）
 
-> 关联：老板 2026-08-06 指示「Cursor 做一次全部 CCC 项目检查，主要做代码 bug 检查」· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：待分派 · 派发：manual · 项目：ccc · 日期：2026-08-06
+> 关联：老板 2026-08-06 指示「Cursor 做一次全部 CCC 项目检查，主要做代码 bug 检查」· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-06
 > 工作目录：M1 `/Users/apple/program/CCC`；分支 `codex/cursor-t02-code-audit`（从 main 新建）
 > 背景交接：`docs/cursor-code-check-handoff.md`（先读）
 > **分步提交纪律（硬）**：清单分批 commit+push；禁止 `git add -A` 全量提交。
@@ -35,4 +35,46 @@
 
 ## 回写区
 
-**执行体**：Cursor（M1）· 日期：
+**执行体**：Cursor（M1）· **日期**：2026-08-05
+
+### 清单
+
+完整问题清单：[`docs/dispatch/T70-audit-report.md`](T70-audit-report.md)
+
+- 新发现 **21** 条（F01–F21）：覆盖 engine/board、web/kb/前端、desktop
+- 已登记 **5** 条（K1–K5）对照交接文档 §三
+- P0×6 / P1×11 / P2×4
+
+### 检查方法
+
+1. 读 CURSOR.md / handoff / T70 / INDEX §0
+2. 从 main 建分支 `codex/cursor-t02-code-audit`
+3. 代码走读 server/engine|board|web|kb + legacy-chat + desktop；关键缺陷本地脚本复现
+4. 不改业务代码；只写报告与本卡回写
+
+### pytest（真实输出）
+
+```text
+$ .venv-hub/bin/python -m pytest server/tests --tb=no
+7 failed, 484 passed in 13.50s
+```
+
+失败 7 例均 `test_engine_main.py`，探活 `http://127.0.0.1:6100/` Connection refused（M1 无中继，环境正常）。样例：
+
+```text
+WARNING  ccc.engine:main.py:118 探活失败: URL http://127.0.0.1:6100/ … Connection refused
+WARNING  ccc.engine:main.py:348 探活失败，跳过该卡（保持待分派）
+```
+
+### swift
+
+```text
+$ cd desktop && swift build
+Build complete! (exit 0)
+```
+
+### push 证据
+
+- 分支：`codex/cursor-t02-code-audit`（已 push `origin`）
+- commits：`37f0283`（清单）→ `1ecc28c`（本卡回写）
+- HEAD：`1ecc28c0fedfc4a78d14cb45eec11d5f327782b2`
