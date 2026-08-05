@@ -1,6 +1,6 @@
 # 任务卡 T68 · HTTP 壳静态资源加载韧性（Cursor 测试卡 · M1 前端开发）
 
-> 关联：T48 审计 P0（M1→2017 静态资源并发 ERR_CONNECTION_RESET 41%，SPA 白屏根因，前端侧）· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复验）· 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-05
+> 关联：T48 审计 P0（M1→2017 静态资源并发 ERR_CONNECTION_RESET 41%，SPA 白屏根因，前端侧）· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复验）· 状态：已关闭 · 派发：manual · 项目：ccc · 日期：2026-08-05
 > 工作目录：M1 `/Users/apple/program/CCC`；分支 `codex/cursor-t01-resource-resilience`（从 main 新建）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；禁止 `git add -A` 全量提交。
 
@@ -129,3 +129,10 @@ push：origin/codex/cursor-t01-resource-resilience
 ### 复现脚本要点（Codex 可独立重跑）
 
 M1：`/tmp/t68_headless_resilience.py` + ChromeDriver 148（`/tmp/chromedriver-mac-arm64/chromedriver`）+ 本机 Chrome。核心：本地托管 `server/web/legacy-chat/`，对 `state.js` 先返回 503（预算 N 次），Selenium headless 打开 `/index.html`，断言横幅或恢复。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** 独立复验（非自述）：① 实现审查——成功路径零变化、失败重试+降级逻辑正确、window error 双保险、bootloader 自身 onerror 兜底；② 无头 Chrome（Playwright）三场景实测——持续阻断 state.js → 3 次重试后横幅真实出现（blocked×7、nav×3）；瞬时失败 1 次 → 自动 reload 恢复、5 视图渲染、无横幅；正常路径 5 视图、零页面错误；③ node --check OK；④ pytest 2017 worktree 全绿（EXIT=0，board.js 生成物补齐后 0 FAILED）；⑤ 本地 verify-shell 3/3 PASS。改动范围合规（仅 legacy-chat + 卡）。
+**纪律备注**：Cursor 将本地 main fast-forward 到分支头（未 push 远端、无污染），下次应只动分支、合入由验收席执行。
