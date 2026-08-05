@@ -237,8 +237,10 @@ start_engine() { # 生产模式：checkout 后恢复 Engine（bootout 已卸载 
       exit 1
     }
 
-    # 使用 python 自愈渲染 plist
-    if ! "$PYTHON_BIN" - "$template_path" "$plist" "$REPO_PATH" "$CONFIG_ENV" "$data_dir" "$log_dir" "$USER" <<'PYEOF' 2>/dev/null; then
+    # 使用 python 自愈渲染 plist，若失败/无 python，则使用 pure bash fallback
+    local python_ok=false
+    if [[ -n "${PYTHON_BIN:-}" ]] && command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+      if "$PYTHON_BIN" - "$template_path" "$plist" "$REPO_PATH" "$CONFIG_ENV" "$data_dir" "$log_dir" "$USER" <<'PYEOF' 2>/dev/null; then
 import sys
 template_path, out_path, repo_path, config_env, data_dir, log_dir, username = sys.argv[1:8]
 content = open(template_path, encoding='utf-8').read()
@@ -250,8 +252,24 @@ content = content.replace('$LOG_DIR', log_dir)
 content = content.replace('$USERNAME', username)
 open(out_path, 'w', encoding='utf-8').write(content)
 PYEOF
-      record FAIL "启 Engine" "plist 自愈渲染解析失败"
-      exit 1
+        python_ok=true
+      fi
+    fi
+
+    if [[ "$python_ok" != "true" ]]; then
+      # Pure bash fallback (无外部依赖，防 python 环境缺失/破损崩溃)
+      local temp_plist
+      temp_plist="$(mktemp)"
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line//\$PROJECT_ROOT/$REPO_PATH}"
+        line="${line//\$ENGINE_ENTRY/.venv-hub/bin/python -m server.engine.main}"
+        line="${line//\$CONFIG_ENV/$CONFIG_ENV}"
+        line="${line//\$DATA_DIR/$data_dir}"
+        line="${line//\$LOG_DIR/$log_dir}"
+        line="${line//\$USERNAME/$USER}"
+        printf '%s\n' "$line"
+      done < "$template_path" > "$temp_plist"
+      mv "$temp_plist" "$plist"
     fi
 
     if [[ ! -f "$plist" ]]; then
@@ -331,8 +349,9 @@ else
   local engine_stderr_log="$log_dir/engine.stderr.log"
   local engine_ok=false
 
-  record PASS "Engine 自检" "正在等待 Engine 心跳日志出现..."
-  for _ in $(seq 1 15); do
+  local timeout_sec="${CCC_ENGINE_HEARTBEAT_TIMEOUT:-30}"
+  record PASS "Engine 自检" "正在等待 Engine 心跳日志出现（最多等待 ${timeout_sec}s）..."
+  for _ in $(seq 1 "$timeout_sec"); do
     if { [[ -f "$engine_stdout_log" ]] && grep -q "heartbeat:" "$engine_stdout_log"; } || \
        { [[ -f "$engine_stderr_log" ]] && grep -q "heartbeat:" "$engine_stderr_log"; }; then
       engine_ok=true

@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -293,7 +294,9 @@ def run_once(
 
     max_concurrent = int(cfg.get("EXECUTOR_MAX_CONCURRENT") or 2)
     parallel_enabled = max_concurrent > 1
-    probe_url = cfg.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
+    probe_url = cfg.get("EXECUTOR_PROBE_URL")
+    if probe_url is None:
+        probe_url = os.environ.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
 
     pending = store.list_work(state=State.TODO)
     dispatched = 0

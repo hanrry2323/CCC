@@ -30,7 +30,7 @@ mkdir -p "$HOME"
 ENGINE_LABEL="com.ccc.engine"
 REPO_PATH="$TEST_SANDBOX/mock_repo"
 CONFIG_ENV="$REPO_PATH/server/config/config.env"
-PYTHON_BIN="$(which python3 || which python)"
+PYTHON_BIN="${PYTHON_BIN:-$(which python3 || which python)}"
 
 mkdir -p "$REPO_PATH/server/deploy"
 mkdir -p "$REPO_PATH/server/config"
@@ -139,16 +139,18 @@ mv "$REPO_PATH/server/deploy/com.ccc.engine.plist" "$REPO_PATH/server/deploy/com
 # 由于 exit 会终止当前 Shell，我们使用子 Shell 运行来测试它
 set +e
 (
-  # 在子 Shell 里定义退出和记录逻辑
-  exit() {
-    echo "[MOCK_EXIT] exit $1"
-    builtin exit "$1"
-  }
   launchctl() { return 1; }
   start_engine
 )
+EXIT_CODE=$?
 # 恢复模板
 mv "$REPO_PATH/server/deploy/com.ccc.engine.plist.bak" "$REPO_PATH/server/deploy/com.ccc.engine.plist"
 set -e
+
+if [[ $EXIT_CODE -ne 1 ]]; then
+  echo "[FAIL] Case 4: start_engine 未能在模板缺失时以 1 退出，实际退出码: $EXIT_CODE" >&2
+  exit 1
+fi
+echo "[PASS] Case 4: start_engine 正确以状态码 1 退出阻断部署"
 
 echo "=== 所有 plist 自愈测试全部成功！ ==="

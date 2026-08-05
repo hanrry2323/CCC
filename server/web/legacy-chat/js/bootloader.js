@@ -25,12 +25,22 @@
   var bootListening = true;
 
   function failCount() {
-    var n = parseInt(sessionStorage.getItem(STORAGE_KEY) || '0', 10);
+    // P0 加固：sessionStorage 在无痕模式/禁用存储下会抛 SecurityError，
+    // 必须包裹 try-catch 平滑降级，否则守护代码反而引发永久白屏。
+    var raw;
+    try {
+      raw = sessionStorage.getItem(STORAGE_KEY) || '0';
+    } catch (_) {
+      return 0;
+    }
+    var n = parseInt(raw, 10);
     return isNaN(n) || n < 0 ? 0 : n;
   }
 
   function setFailCount(n) {
-    sessionStorage.setItem(STORAGE_KEY, String(n));
+    try {
+      sessionStorage.setItem(STORAGE_KEY, String(n));
+    } catch (_) { /* 存储被禁用时静默降级：本次会话不持久化计数 */ }
   }
 
   function clearFailCount() {
@@ -145,8 +155,8 @@
       var file = String((ev && ev.filename) || '');
       var msg = String((ev && ev.message) || '');
       if (
-        /\/js\/(?:state|app)\.js/i.test(file) ||
-        /Failed to (load|fetch) module|error loading dynamically imported module/i.test(
+        /\bjs\/(?:state|app)\.js/i.test(file) ||
+        /Failed to (load|fetch) module|error loading dynamically imported module|Load failed/i.test(
           msg
         )
       ) {
