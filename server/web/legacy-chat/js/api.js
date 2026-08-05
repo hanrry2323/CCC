@@ -378,13 +378,16 @@ export async function streamChat(
   }
 
   // T46 C10：首次尝试；若网络失败且尚未收到任何内容 → 自动重连一次（不重复内容）。
-  const first = await runOnce();
-  if (first === 'network' && !receivedAnyEvent && autoRetryLeft > 0) {
+  let result = await runOnce();
+  if (result === 'network' && !receivedAnyEvent && autoRetryLeft > 0) {
     autoRetryLeft -= 1;
     notifyReconnecting();
-    await runOnce();
+    result = await runOnce();
   }
-  // 连续失败：runOnce 内部已 settleError；防抖（只重试一次）已生效。
+  // 连续失败或读取中断：若结果为 network 且未 settle，强制上报网络错误以复位 UI
+  if (result === 'network' && !settled) {
+    settleError('网络中断，请重试');
+  }
 }
 
 export async function putDesktopThreadMessages(threadId, messages, projectId) {
