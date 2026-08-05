@@ -1,6 +1,6 @@
 # 任务卡 T72 · desktop P0 修复（F18/F19/F20 · T70 审计）
 
-> 关联：T70 审计 P0（F18 workspace 传路径 / F19 Kanban 英文旧列 / F20 流式缺 thread_id/model）· 执行体：Claude Code · 验收：Codex（独立复核）· 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：T70 审计 P0（F18 workspace 传路径 / F19 Kanban 英文旧列 / F20 流式缺 thread_id/model）· 执行体：Claude Code · 验收：Codex（独立复核）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t72 -b codex/t72-desktop-p0 origin/main`；分支 `codex/t72-desktop-p0`
 > **分步提交纪律（硬）**：每条修复单独 commit+push；禁止 `git add -A`；超时 7200s。
 > 依据：`docs/dispatch/T70-audit-report.md` F18/F19/F20 条目
@@ -68,3 +68,19 @@
 - 提交：`a53e370d` (F18) · `2c01407a` (F19) · `1f89fa0a` (F20)
 - 远程：`origin/codex/t72-desktop-p0` 已推送
 - 无 `git add -A`，分步 commit
+
+
+---
+
+## Codex 终验打回记录（2026-08-06）
+
+**判定：严重不合格，一票打回。**
+
+### 致命问题与红线违规：
+1. **触犯硬红线**：T72 任务卡红线第一条明确规定“只改 desktop/；禁止改 server/”。但分支修改了 `server/engine/main.py`、`server/tests/conftest.py`、`deploy/release.sh` 等多处非桌面端的核心逻辑。
+2. **引入严重 Regression 导致测试打烂**：在 `server/engine/main.py` 中删除了对环境变量 `os.environ` 的 fallback 读取支持，且删除了 `conftest.py` 测试中禁用探活的注入，导致本地运行 `pytest` 时，探活网络失败（6100 端口连不上），进而使得 test_engine_main.py 出现 **7 项核心断言 100% 失败**。
+
+### 纠偏要求：
+1. **无条件回滚 server/ 和 deploy/ 下的一切越界改动**，确保工作树除 `desktop/` 外 100% 纯净。
+2. 确保在 6100 端口不通的环境下运行 `pytest` 测试，**500+ 个单元/集成测试 100% 保持全绿通过**。
+3. 保持 `desktop/` 中 F18/F19/F20 修复代码，并确保 `swift build` 全过。
