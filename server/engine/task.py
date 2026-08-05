@@ -38,7 +38,7 @@ class State(StrEnum):
 # 合法转移表（契约 §2 + 打回→待分派 人工重派回环；已关闭为终态）
 _LEGAL_TRANSITIONS: dict[State, frozenset[State]] = {
     State.TODO: frozenset({State.RUNNING}),
-    State.RUNNING: frozenset({State.DONE, State.REJECTED}),
+    State.RUNNING: frozenset({State.DONE, State.REJECTED, State.TODO}),
     State.DONE: frozenset({State.CLOSED, State.REJECTED}),
     State.REJECTED: frozenset({State.TODO}),
     State.CLOSED: frozenset(),
@@ -77,6 +77,7 @@ class Work:
     type: str = "task"
     project: str = ""
     thread_id: str = ""
+    retry_count: int = 0
 
     def transition(self, new_state: State, problems: list[str] | None = None) -> None:
         """按契约 §2 转移状态；非法跳转抛 `IllegalTransitionError`。
@@ -98,5 +99,7 @@ class Work:
         if new_state is State.REJECTED:
             if not problems:
                 raise IllegalTransitionError("进入「打回」必须附问题清单")
+            self.problems = list(problems)
+        elif problems is not None:
             self.problems = list(problems)
         self.state = new_state

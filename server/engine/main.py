@@ -25,6 +25,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,55 @@ logger = logging.getLogger("ccc.engine")
 
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
+
+_probe_failures_count = 0
+
+
+def probe_relay(url: str, timeout: int = 5) -> bool:
+    """GET 探活地址，失败则跳过该卡（保持待分派），连续 3 次失败记录告警。"""
+    global _probe_failures_count
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout):
+            pass
+        _probe_failures_count = 0
+        return True
+    except urllib.error.HTTPError:
+        # HTTPError is still a successful connection because the server responded
+        _probe_failures_count = 0
+        return True
+    except Exception as exc:
+        _probe_failures_count += 1
+        if _probe_failures_count >= 3:
+            logger.error("探活连续失败告警: URL %s 连续失败 %d 次! (%s)", url, _probe_failures_count, exc)
+        else:
+            logger.warning("探活失败: URL %s 失败 %d 次 (%s)", url, _probe_failures_count, exc)
+        return False
+
+
+def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tuple[bool, str]:
+    """判断执行体是否因上游问题非正常结束（退出码非 0 且日志含超时/网络特征，或执行超时）。"""
+    if any("超时" in p for p in problems) or any("timeout" in p.lower() for p in problems):
+        return True, "执行超时"
+
+    log_path = log_dir / f"{work_id}.log"
+    if log_path.is_file():
+        try:
+            log_content = log_path.read_text(encoding="utf-8", errors="ignore").lower()
+            keywords = [
+                "timeout", "timed out", "connection error", "network error",
+                "network unreachable", "host unreachable", "dns resolution",
+                "connection reset", "broken pipe", "bad gateway",
+                "service unavailable", "gateway timeout", "502", "503", "504",
+                "relay error", "read timeout", "connect timeout", "connection timed out"
+            ]
+            for kw in keywords:
+                if kw in log_content:
+                    return True, f"日志含网络或超时特征: {kw}"
+        except Exception as exc:
+            logger.warning("读取日志判断重试失败: %s (%s)", log_path, exc)
+
+    return False, ""
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -133,7 +184,7 @@ def run_once(
     1. 扫描「待分派」work；
     2. 按卡头执行体绑定优先决策（T39）：可后台 CLI → 真实拉起执行体 + 同步/并发收单；
        手动 GUI → 挂起等人；管理席/验收席/未知角色 → 不派发；
-    3. 收单：按退出码 + 输出判定 → 状态机流转（执行中 → 已回写/打回）。
+    3. 收单：按退出码 + 输出判定 → 状态机流转（执行中 → 已回写/打回/待分派重试）。
     """
     cfg = cfg or {}
     timeout = int(cfg.get("EXECUTOR_TIMEOUT_SECONDS") or DEFAULT_EXECUTOR_TIMEOUT)
@@ -145,6 +196,7 @@ def run_once(
 
     max_concurrent = int(cfg.get("EXECUTOR_MAX_CONCURRENT") or 2)
     parallel_enabled = max_concurrent > 1
+    probe_url = cfg.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
 
     pending = store.list_work(state=State.TODO)
     dispatched = 0
@@ -168,17 +220,33 @@ def run_once(
                             results["collected"] += 1
                             logger.info("收单成功: work=%s → 已回写", w.id)
                         else:
-                            if any("超时" in p for p in problems):
-                                results["timed_out"] += 1
-                            w.transition(State.REJECTED, problems=problems)
-                            store.save_work(w)
-                            logger.warning("收单失败: work=%s → 打回 %s", w.id, problems)
+                            retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
+                            is_retryable = False
+                            retry_reason = ""
+                            if retry_enabled and w.retry_count == 0:
+                                is_retryable, retry_reason = is_retryable_failure(w.id, problems, log_dir)
+
+                            if is_retryable:
+                                logger.info("自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派", w.id, w.retry_count, retry_reason)
+                                w.retry_count = 1
+                                w.transition(State.TODO, problems=[retry_reason])
+                                store.save_work(w)
+                            else:
+                                if any("超时" in p for p in problems):
+                                    results["timed_out"] += 1
+                                w.transition(State.REJECTED, problems=problems)
+                                store.save_work(w)
+                                logger.warning("收单失败: work=%s → 打回 %s", w.id, problems)
             except Exception as exc:
                 logger.exception("Worker thread encountered unexpected error for work %s: %s", w.id, exc)
 
         for work in pending:
             decision = decide_work(work, registry)
             if decision is DispatchDecision.AUTO:
+                if probe_url and not probe_relay(probe_url):
+                    logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
+                    continue
+
                 work.transition(State.RUNNING)
                 store.save_work(work)
                 dispatched += 1
@@ -208,13 +276,18 @@ def run_once(
         timed_out = results["timed_out"]
 
     else:
-        # Serial Mode
+        # Serial Mode (max_concurrent <= 1)
         for work in pending:
             decision = decide_work(work, registry)
             if decision is DispatchDecision.AUTO:
+                if probe_url and not probe_relay(probe_url):
+                    logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
+                    continue
+
                 work.transition(State.RUNNING)
                 store.save_work(work)
                 dispatched += 1
+
                 ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
                 if ok:
                     work.transition(State.DONE)
@@ -222,11 +295,23 @@ def run_once(
                     collected += 1
                     logger.info("收单成功: work=%s → 已回写", work.id)
                 else:
-                    if any("超时" in p for p in problems):
-                        timed_out += 1
-                    work.transition(State.REJECTED, problems=problems)
-                    store.save_work(work)
-                    logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
+                    retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
+                    is_retryable = False
+                    retry_reason = ""
+                    if retry_enabled and work.retry_count == 0:
+                        is_retryable, retry_reason = is_retryable_failure(work.id, problems, log_dir)
+
+                    if is_retryable:
+                        logger.info("自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派", work.id, work.retry_count, retry_reason)
+                        work.retry_count = 1
+                        work.transition(State.TODO, problems=[retry_reason])
+                        store.save_work(work)
+                    else:
+                        if any("超时" in p for p in problems):
+                            timed_out += 1
+                        work.transition(State.REJECTED, problems=problems)
+                        store.save_work(work)
+                        logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
             elif decision is DispatchDecision.MANUAL:
                 logger.info(
                     "挂起等人接单: work=%s role=%s executor=%s",

@@ -47,6 +47,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     # 任务卡目录（P1-1 FileBoardStore 读写；默认 docs/dispatch）
     "DISPATCH_DIR": "docs/dispatch",
     "EXECUTOR_MAX_CONCURRENT": "2",
+    "EXECUTOR_PROBE_URL": "http://127.0.0.1:6100/",
+    "EXECUTOR_RETRY_ONCE": "true",
     # 大脑知识库检索（T37：/conversation 回答前检索 CCC 自建知识库）
     "CCC_BRAIN_KB": "0",
     "CCC_KB_INDEX_DIR": "",

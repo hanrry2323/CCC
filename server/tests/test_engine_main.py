@@ -177,7 +177,7 @@ class TestRunOnceRealDispatch:
         store = InMemoryBoardStore()
         store.seed(Work(id="w4", role="开发执行体"))
         cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "1"}
+               "EXECUTOR_TIMEOUT_SECONDS": "1", "EXECUTOR_RETRY_ONCE": "false"}
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -613,6 +613,7 @@ class TestParallelAndRelayGuard:
             "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
             "EXECUTOR_TIMEOUT_SECONDS": "5",
             "EXECUTOR_MAX_CONCURRENT": "2",
+            "EXECUTOR_PROBE_URL": "",  # Disable probe
         }
 
         start_time = time.time()
@@ -631,3 +632,109 @@ class TestParallelAndRelayGuard:
         done = store.list_work(state=State.DONE)
         assert len(done) == 2
         assert {w.id for w in done} == {"p1", "p2"}
+
+    def test_probe_success_dispatches_work(self, tmp_path: Path, monkeypatch) -> None:
+        """探活成功：正常派发。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="pr1", role="开发执行体", card_path=str(tmp_path / "pr1.md")))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",  # Serial to be simpler
+            "EXECUTOR_PROBE_URL": "http://mock-probe-url/",
+        }
+
+        # Mock probe_relay to return True (success)
+        import server.engine.main
+        monkeypatch.setattr(server.engine.main, "probe_relay", lambda url, timeout=5: True)
+
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 1
+        assert len(store.list_work(state=State.DONE)) == 1
+
+    def test_probe_failure_skips_work(self, tmp_path: Path, monkeypatch) -> None:
+        """探活失败：跳过派发，仍留在待分派。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="pr2", role="开发执行体", card_path=str(tmp_path / "pr2.md")))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "http://mock-probe-url/",
+        }
+
+        # Mock probe_relay to return False (failure)
+        import server.engine.main
+        monkeypatch.setattr(server.engine.main, "probe_relay", lambda url, timeout=5: False)
+
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 0
+        assert summary["collected"] == 0
+        # Remains in TODO
+        pending = store.list_work(state=State.TODO)
+        assert len(pending) == 1
+        assert pending[0].id == "pr2"
+
+    def test_auto_retry_once_on_timeout(self, tmp_path: Path) -> None:
+        """上游波动超时：自动续作重派，状态重回待分派并附原因。"""
+        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="10")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="ret1", role="开发执行体", card_path=str(tmp_path / "ret1.md")))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "1",  # Force timeout
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",  # Disable probe
+            "EXECUTOR_RETRY_ONCE": "true",
+        }
+
+        summary = run_once(reg, store, cfg)
+        # It was dispatched, but not collected or timed_out yet, because it went back to TODO!
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 0
+        assert summary["timed_out"] == 0
+
+        pending = store.list_work(state=State.TODO)
+        assert len(pending) == 1
+        w = pending[0]
+        assert w.id == "ret1"
+        assert w.state is State.TODO
+        assert w.retry_count == 1
+        assert any("执行超时" in p for p in w.problems)
+
+    def test_reject_after_retry_fails_again(self, tmp_path: Path) -> None:
+        """重派仍失败：最终打回并附原问题。"""
+        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="10")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        # Seed a work that has already been retried once! (retry_count=1)
+        store.seed(Work(id="ret2", role="开发执行体", card_path=str(tmp_path / "ret2.md"), retry_count=1))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "1",  # Force timeout
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",  # Disable probe
+            "EXECUTOR_RETRY_ONCE": "true",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 0
+        assert summary["timed_out"] == 1  # Incremented
+
+        rejected = store.list_work(state=State.REJECTED)
+        assert len(rejected) == 1
+        w = rejected[0]
+        assert w.id == "ret2"
+        assert w.state is State.REJECTED
+        assert any("执行超时" in p for p in w.problems)

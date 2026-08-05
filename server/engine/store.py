@@ -124,6 +124,11 @@ class FileBoardStore:
             rel_path = entry.get("path", "")
             abs_path = project_root / rel_path
 
+            retry_count = 0
+            raw_state = entry.get("state", "")
+            if raw_state and "待分派（" in raw_state:
+                retry_count = 1
+
             work = Work(
                 id=entry["id"],
                 role=role,
@@ -135,6 +140,7 @@ class FileBoardStore:
                 type=entry.get("card_type", "task"),
                 project=entry.get("project", ""),
                 thread_id=entry.get("thread_id", ""),
+                retry_count=retry_count,
             )
             works.append(work)
         return works
@@ -157,6 +163,9 @@ class FileBoardStore:
         if work.state is State.REJECTED and work.problems:
             reason = work.problems[0][:40]
             new_state_str = f"打回（{reason}）"
+        elif work.state is State.TODO and work.problems:
+            reason = work.problems[0][:40]
+            new_state_str = f"待分派（{reason}）"
 
         new_text = _replace_state_in_metadata(text, new_state_str)
         if new_text == text:
