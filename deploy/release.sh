@@ -194,17 +194,81 @@ stop_engine() { # 生产模式：checkout 前优雅停 Engine，等待在途执�
 start_engine() { # 生产模式：checkout 后恢复 Engine（bootout 已卸载 → bootstrap；未卸载 → kickstart -k）→ 0/1
   local domain="gui/$(id -u)/$ENGINE_LABEL"
   local plist="$HOME/Library/LaunchAgents/$ENGINE_LABEL.plist"
+  local template_path="$REPO_PATH/server/deploy/$ENGINE_LABEL.plist"
+
+  # 1. 检查服务是否已注册（launchctl print）
   if launchctl print "$domain" >/dev/null 2>&1; then
+    # 服务已注册，尝试 kickstart 重启
     if launchctl kickstart -k "$domain" >/dev/null 2>&1; then
-      record PASS "启 Engine" "launchctl kickstart $ENGINE_LABEL"
+      record PASS "启 Engine" "launchctl kickstart $ENGINE_LABEL 成功"
       return 0
+    else
+      record FAIL "启 Engine" "launchctl kickstart $ENGINE_LABEL 失败"
+      exit 1
     fi
-  elif [[ -f "$plist" ]] && launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1; then
-    record PASS "启 Engine" "launchctl bootstrap $ENGINE_LABEL"
-    return 0
   fi
-  record WARN "启 Engine" "launchctl 恢复失败（服务未注册/plist 缺失）"
-  return 1
+
+  # 2. 服务未注册，检查 plist 文件。如果缺失，启动自愈重建
+  if [[ ! -f "$plist" ]]; then
+    # 检查模板是否存在
+    if [[ ! -f "$template_path" ]]; then
+      record FAIL "启 Engine" "plist 模板缺失：$template_path"
+      exit 1
+    fi
+
+    # 计算自愈占位变量
+    local data_dir="${CCC_DATA_DIR:-${DATA_DIR:-$REPO_PATH/data}}"
+    local log_dir="${CCC_LOG_DIR:-${LOG_DIR:-}}"
+    if [[ -z "$log_dir" ]]; then
+      if [[ -n "${EXECUTOR_LOG_DIR:-}" ]]; then
+        log_dir="$(dirname "$EXECUTOR_LOG_DIR")/logs"
+      else
+        log_dir="$HOME/.ccc/logs"
+      fi
+    fi
+
+    # 创建目标目录
+    mkdir -p "$HOME/Library/LaunchAgents" || {
+      record FAIL "启 Engine" "创建 LaunchAgents 目录失败"
+      exit 1
+    }
+    mkdir -p "$log_dir" || {
+      record FAIL "启 Engine" "创建日志目录失败: $log_dir"
+      exit 1
+    }
+
+    # 使用 python 自愈渲染 plist
+    if ! "$PYTHON_BIN" - "$template_path" "$plist" "$REPO_PATH" "$CONFIG_ENV" "$data_dir" "$log_dir" "$USER" <<'PYEOF' 2>/dev/null; then
+import sys
+template_path, out_path, repo_path, config_env, data_dir, log_dir, username = sys.argv[1:8]
+content = open(template_path, encoding='utf-8').read()
+content = content.replace('$PROJECT_ROOT', repo_path)
+content = content.replace('$ENGINE_ENTRY', '.venv-hub/bin/python -m server.engine.main')
+content = content.replace('$CONFIG_ENV', config_env)
+content = content.replace('$DATA_DIR', data_dir)
+content = content.replace('$LOG_DIR', log_dir)
+content = content.replace('$USERNAME', username)
+open(out_path, 'w', encoding='utf-8').write(content)
+PYEOF
+      record FAIL "启 Engine" "plist 自愈渲染解析失败"
+      exit 1
+    fi
+
+    if [[ ! -f "$plist" ]]; then
+      record FAIL "启 Engine" "plist 自愈渲染未生成目标文件"
+      exit 1
+    fi
+    record PASS "启 Engine" "plist 缺失已自愈重建: $plist"
+  fi
+
+  # 3. 运行 bootstrap 注册并加载服务
+  if launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1; then
+    record PASS "启 Engine" "launchctl bootstrap $ENGINE_LABEL 成功"
+    return 0
+  else
+    record FAIL "启 Engine" "launchctl bootstrap $ENGINE_LABEL 失败"
+    exit 1
+  fi
 }
 
 # ── 1. git pull / checkout ──
@@ -246,6 +310,60 @@ else
       if curl -sf --max-time 3 "http://${WEB_HOST}:${WEB_PORT}/health" >/dev/null 2>&1; then break; fi
       sleep 1
     done
+  fi
+
+  # ── 部署后自检 com.ccc.engine 运行状态与心跳 ──
+  record PASS "Engine 自检" "开始验证 Engine 运行状态..."
+  if ! launchctl list | grep -q "com.ccc.engine"; then
+    record FAIL "Engine 自检" "launchctl list 中未找到 com.ccc.engine"
+    exit 1
+  fi
+
+  local log_dir="${CCC_LOG_DIR:-${LOG_DIR:-}}"
+  if [[ -z "$log_dir" ]]; then
+    if [[ -n "${EXECUTOR_LOG_DIR:-}" ]]; then
+      log_dir="$(dirname "$EXECUTOR_LOG_DIR")/logs"
+    else
+      log_dir="$HOME/.ccc/logs"
+    fi
+  fi
+  local engine_stdout_log="$log_dir/engine.stdout.log"
+  local engine_stderr_log="$log_dir/engine.stderr.log"
+  local engine_ok=false
+
+  record PASS "Engine 自检" "正在等待 Engine 心跳日志出现..."
+  for _ in $(seq 1 15); do
+    if { [[ -f "$engine_stdout_log" ]] && grep -q "heartbeat:" "$engine_stdout_log"; } || \
+       { [[ -f "$engine_stderr_log" ]] && grep -q "heartbeat:" "$engine_stderr_log"; }; then
+      engine_ok=true
+      break
+    fi
+    sleep 1
+  done
+
+  if [[ "$engine_ok" == true ]]; then
+    local hb_line=""
+    if [[ -f "$engine_stdout_log" ]] && grep -q "heartbeat:" "$engine_stdout_log"; then
+      hb_line="$(grep "heartbeat:" "$engine_stdout_log" | tail -n 1)"
+    else
+      hb_line="$(grep "heartbeat:" "$engine_stderr_log" | tail -n 1)"
+    fi
+    record PASS "Engine 自检" "心跳验证成功: $hb_line"
+  else
+    record FAIL "Engine 自检" "未能在 15 秒内检测到心跳日志"
+    echo "=== STDOUT ($engine_stdout_log) ===" >&2
+    if [[ -f "$engine_stdout_log" ]]; then
+      tail -n 20 "$engine_stdout_log" >&2
+    else
+      echo "文件不存在" >&2
+    fi
+    echo "=== STDERR ($engine_stderr_log) ===" >&2
+    if [[ -f "$engine_stderr_log" ]]; then
+      tail -n 20 "$engine_stderr_log" >&2
+    else
+      echo "文件不存在" >&2
+    fi
+    exit 1
   fi
 fi
 
