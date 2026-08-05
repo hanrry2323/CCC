@@ -34,8 +34,8 @@ async function _fetchWithAuth(path, options = {}, json = true) {
   return resp;
 }
 
-export async function apiGet(path) {
-  const resp = await _fetchWithAuth(path, { method: 'GET' }, false);
+export async function apiGet(path, options = {}) {
+  const resp = await _fetchWithAuth(path, { method: 'GET', ...options }, false);
   if (!resp.ok) {
     if (resp.status === 401) throw new Error('登录状态已失效，请刷新页面重新连接');
     throw new Error('GET ' + path + ' ' + resp.status);

@@ -27,6 +27,10 @@ let _abnList = null;
 let _writtenList = null;
 let _allCards = [];
 
+let _isPolling = false;
+let _loadingTimeout = null;
+let _pollAbortController = null;
+
 function esc(s) {
   if (s == null) return '';
   const d = document.createElement('div');
@@ -212,17 +216,46 @@ async function pollRunning() {
   } catch (_) { /* 后台任务面板失败不阻断整体 */ }
 }
 
+function triggerLoadingTimeout() {
+  if (_loadingTimeout) {
+    clearTimeout(_loadingTimeout);
+  }
+  _loadingTimeout = setTimeout(() => {
+    if (_abnList && _abnList.loading) {
+      _abnList.loading = false;
+      _abnList.scroller.innerHTML = `<div class="board-empty" style="color:#a33a2c;">数据加载异常，请尝试手动刷新</div>`;
+    }
+    if (_activeList && _activeList.loading) {
+      _activeList.loading = false;
+      _activeList.scroller.innerHTML = `<div class="board-empty" style="color:#a33a2c;">数据加载异常，请尝试手动刷新</div>`;
+    }
+    if (_writtenList && _writtenList.loading) {
+      _writtenList.loading = false;
+      _writtenList.scroller.innerHTML = `<div class="board-empty" style="color:#a33a2c;">数据加载异常，请尝试手动刷新</div>`;
+    }
+  }, 5000);
+}
+
 async function poll() {
+  if (_isPolling) return;
+  _isPolling = true;
+
+  if (_pollAbortController) {
+    _pollAbortController.abort();
+  }
+  _pollAbortController = new AbortController();
+  const signal = _pollAbortController.signal;
+
   try {
     let counts;
     if (_ws === 'all') {
       // 1. 状态计数接 /board/states，真实状态
-      counts = await apiGet('/board/states');
-      const data = await apiGet('/cards?page_size=1000');
+      counts = await apiGet('/board/states', { signal });
+      const data = await apiGet('/cards?page_size=1000', { signal });
       _allCards = data.cards || [];
     } else {
       // 2. 状态计数接 /cards 聚合（按项目过滤）
-      const data = await apiGet('/cards?project=' + encodeURIComponent(_ws) + '&page_size=1000');
+      const data = await apiGet('/cards?project=' + encodeURIComponent(_ws) + '&page_size=1000', { signal });
       _allCards = data.cards || [];
       counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
       for (const card of _allCards) {
@@ -254,17 +287,26 @@ async function poll() {
     if (_writtenList) _writtenList.setItems(writtenCards.slice(0, 10));
 
   } catch (err) {
+    if (err && err.name === 'AbortError') {
+      return; // 忽略被 abort 产生的异常，保持 UI 最新状态
+    }
     const box = _root.querySelector('#console-kpi');
     if (box) box.innerHTML = `<div class="console-empty">加载失败: ${esc(err?.message || String(err))}</div>`;
 
     if (_abnList) _abnList.showError(err);
     if (_activeList) _activeList.showError(err);
     if (_writtenList) _writtenList.showError(err);
+  } finally {
+    _isPolling = false;
+    if (_loadingTimeout) {
+      clearTimeout(_loadingTimeout);
+      _loadingTimeout = null;
+    }
   }
 
   // 运维告警数（来自 /ops/summary）
   try {
-    const agg = await apiGet('/ops/summary');
+    const agg = await apiGet('/ops/summary', { signal });
     const badge = _root.querySelector('#console-ops-n');
     if (badge) {
       const alertCount = (agg.overview && agg.overview.alert_count) || 0;
@@ -353,6 +395,7 @@ export async function mountConsole(el) {
         if (_abnList) _abnList.showLoading();
         if (_activeList) _activeList.showLoading();
         if (_writtenList) _writtenList.showLoading();
+        triggerLoadingTimeout();
 
         await poll();
       } catch (_) { /* ignore */ }
@@ -362,6 +405,7 @@ export async function mountConsole(el) {
   if (_abnList) _abnList.showLoading();
   if (_activeList) _activeList.showLoading();
   if (_writtenList) _writtenList.showLoading();
+  triggerLoadingTimeout();
 
   await poll();
   await pollRunning();
@@ -378,6 +422,14 @@ export function unmountConsole() {
   if (_rtimer) {
     clearInterval(_rtimer);
     _rtimer = null;
+  }
+  if (_loadingTimeout) {
+    clearTimeout(_loadingTimeout);
+    _loadingTimeout = null;
+  }
+  if (_pollAbortController) {
+    _pollAbortController.abort();
+    _pollAbortController = null;
   }
   _activeList = null;
   _abnList = null;
