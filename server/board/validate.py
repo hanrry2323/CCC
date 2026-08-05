@@ -88,6 +88,30 @@ def _body_has(card: Path, marker: str) -> bool:
     return marker in text
 
 
+def _is_accepted(path: Path) -> bool:
+    """读卡正文 `## 验收区` 后 20 行内含 `✅` 或 `判定：通过`。"""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return False
+
+    idx = -1
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## 验收区"):
+            idx = i
+            break
+
+    if idx == -1:
+        return False
+
+    # 检查后 20 行
+    for j in range(idx + 1, min(idx + 21, len(lines))):
+        line = lines[j]
+        if "✅" in line or "判定：通过" in line:
+            return True
+    return False
+
+
 def _classify_card(path: Path) -> tuple[str, str, str]:
     """按文件名分类：``(类型, 前缀, 编号)``。类型: new|old|other。"""
     stem = path.stem
@@ -294,6 +318,14 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         base = base_state(state_raw)
         if base not in VALID_STATES:
             issues.append(CardIssue(card_id, str(path), f"状态值非法: {state_raw!r}（合法={sorted(VALID_STATES)}）"))
+        if _is_accepted(path) and base != "已关闭":
+            issues.append(
+                CardIssue(
+                    card_id,
+                    str(path),
+                    f"卡片已通过验收（## 验收区 后 20 行内含有 ✅ 或 判定：通过），但当前卡头状态为 {base!r}（期望：'已关闭'）",
+                )
+            )
         if base in ("已回写", "已关闭", "打回") and not _body_has(path, "## 回写区"):
             issues.append(CardIssue(card_id, str(path), f"状态 {base} 但缺少 ## 回写区"))
         if not _body_has(path, "## 目标"):

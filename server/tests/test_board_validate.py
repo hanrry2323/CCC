@@ -198,3 +198,49 @@ def test_epic_task_validation(tmp_path: Path) -> None:
     errs = _errors(issues)
     assert any("项目 (ccc) 与当前卡片项目 (qb) 不一致" in i.reason for i in errs)
 
+
+def test_acceptance_consistency(tmp_path: Path) -> None:
+    # 1. 验收区 + 已关闭 -> 通过
+    p1 = tmp_path / "T201-accepted-closed.md"
+    p1.write_text(
+        "# 任务卡 T201 · 验收关闭\n"
+        "> 关联：TEST · 执行体：X · 状态：已关闭 · 日期：2026-08-04\n"
+        "## 目标\nx\n\n## 验收标准\nx\n\n## 回写区\n**执行体**：X · 日期：2026-08-04\n\n"
+        "## 验收区\n✅ 判定：通过\n",
+        encoding="utf-8"
+    )
+    issues = validate_cards(tmp_path)
+    assert _errors(issues) == []
+
+    # 删除 index 以便下一次检测能重新生成
+    idx_path = tmp_path / "cards.index.jsonl"
+    if idx_path.is_file():
+        idx_path.unlink()
+
+    # 2. 验收区 + 待分派 -> 报错 (error)
+    p2 = tmp_path / "T202-accepted-dispatched.md"
+    p2.write_text(
+        "# 任务卡 T202 · 验收待分派\n"
+        "> 关联：TEST · 执行体：X · 状态：待分派 · 日期：2026-08-04\n"
+        "## 目标\nx\n\n## 验收标准\nx\n\n"
+        "## 验收区\n判定：通过\n",
+        encoding="utf-8"
+    )
+    issues = validate_cards(tmp_path)
+    errs = _errors(issues)
+    assert len(errs) == 1
+    assert "期望：'已关闭'" in errs[0].reason
+
+    if idx_path.is_file():
+        idx_path.unlink()
+
+    # 3. 验收区超过 20 行含有 ✅ -> 不触发 (视为未验收)
+    p2.write_text(
+        "# 任务卡 T202 · 验收待分派\n"
+        "> 关联：TEST · 执行体：X · 状态：待分派 · 日期：2026-08-04\n"
+        "## 目标\nx\n\n## 验收标准\nx\n\n"
+        "## 验收区\n" + "\n" * 21 + "✅\n",
+        encoding="utf-8"
+    )
+    issues = validate_cards(tmp_path)
+    assert _errors(issues) == []

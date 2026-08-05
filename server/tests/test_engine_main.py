@@ -856,3 +856,88 @@ class TestEngineWorktree:
         assert "work=T64" in log_content
         assert "wt=" in log_content  # wt 被渲染为空字符串
 
+
+class TestAcceptanceGuard:
+    """T67 防线 2：派发前验收区预检——已验收卡（## 验收区 后 20 行内 ✅/判定：通过）不派发。"""
+
+    @staticmethod
+    def _write_card(path: Path, card_id: str, accepted: bool) -> None:
+        body = "\n## 验收区\n✅ 判定：通过\n" if accepted else "\n## 目标\nx\n"
+        path.write_text(
+            f"# 任务卡 {card_id} · 测试\n"
+            f"> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-05\n"
+            f"{body}",
+            encoding="utf-8",
+        )
+
+    def test_accepted_card_not_dispatched(self, tmp_path: Path, caplog) -> None:
+        """已验收卡（卡头待分派漏网）→ 不派发、保持待分派、warning 记录。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T67-a.md", "T67-a", accepted=True)
+        store = FileBoardStore(tmp_path, reg)
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
+               "EXECUTOR_PROBE_URL": ""}
+        import logging
+        with caplog.at_level(logging.WARNING, logger="ccc.engine"):
+            summary = run_once(reg, store, cfg)
+        assert summary["scanned"] == 1
+        assert summary["dispatched"] == 0
+        assert summary["collected"] == 0
+        # 保持原状态（待分派）
+        pending = store.list_work(state=State.TODO)
+        assert [w.id for w in pending] == ["T67-a"]
+        # 未拉起执行体 → 无执行日志
+        assert not (tmp_path / "logs" / "T67-a.log").exists()
+        assert any("已验收卡不派发: work=T67-a" in r.message for r in caplog.records)
+
+    def test_normal_pending_card_still_dispatched(self, tmp_path: Path) -> None:
+        """无验收区正常待分派卡 → 行为不变，照常派发收单（回归防线 2 不误伤）。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T67-b.md", "T67-b", accepted=False)
+        store = FileBoardStore(tmp_path, reg)
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
+               "EXECUTOR_PROBE_URL": ""}
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 1
+        done = store.list_work(state=State.DONE)
+        assert [w.id for w in done] == ["T67-b"]
+
+    def test_accepted_skipped_in_parallel(self, tmp_path: Path) -> None:
+        """并行模式：已验收卡跳过，正常卡照常派发。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T67-c.md", "T67-c", accepted=True)
+        self._write_card(tmp_path / "T67-d.md", "T67-d", accepted=False)
+        store = FileBoardStore(tmp_path, reg)
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "2",
+               "EXECUTOR_PROBE_URL": ""}
+        summary = run_once(reg, store, cfg)
+        assert summary["scanned"] == 2
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 1
+        pending = store.list_work(state=State.TODO)
+        assert [w.id for w in pending] == ["T67-c"]
+        done = store.list_work(state=State.DONE)
+        assert [w.id for w in done] == ["T67-d"]
+
+    def test_is_card_accepted_cached_by_mtime(self, tmp_path: Path) -> None:
+        """is_card_accepted 按 mtime 缓存；文件变化后重新判定。"""
+        import server.engine.main as m
+        card = tmp_path / "T67-e.md"
+        card.write_text("# 任务卡 T67-e\n> 状态：待分派\n## 验收区\n✅\n", encoding="utf-8")
+        assert m.is_card_accepted(str(card)) is True
+        # 未变化 → 命中缓存仍 True
+        assert m.is_card_accepted(str(card)) is True
+        # 文件更新为无验收区 → mtime 变化 → 重新判定 False
+        card.write_text("# 任务卡 T67-e\n> 状态：待分派\n## 目标\nx\n", encoding="utf-8")
+        assert m.is_card_accepted(str(card)) is False
+        # 空路径/不存在文件 → False
+        assert m.is_card_accepted("") is False
+        assert m.is_card_accepted(str(tmp_path / "missing.md")) is False
+

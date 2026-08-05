@@ -2,11 +2,14 @@
 # ── CCC 一键放行：部署 + 自动验证 + 放行报告 + 卡头关闭（T52 自动化基建 第 2 件） ──
 #
 # 生产模式（默认，在 2017 上对生产仓执行）：
+#   0. stop_engine()：优雅停 Engine（launchctl bootout），等在途执行体退出（≤300s）
 #   1. git fetch + checkout 目标 commit/tag（2017 pull）
-#   2. launchctl kickstart 三常驻服务（web-server / engine / board-scheduler）
+#   2. start_engine() + launchctl kickstart 三常驻服务（web-server / engine / board-scheduler）
 #   3. 自动验证：/health、/board/states、/projects、/session 或免登录直连、一次对话
 #   4. 输出放行报告（stdout + 报告文件）
 #   5. 卡头状态自动更新「已关闭」（验收席放行后；--card 指定或按 commit 自动识别）
+#
+# --no-pull / --simulate 跳过停/启 Engine（无 checkout 即无竞态窗口）。
 #
 # 模拟模式（--simulate，M1 模拟 / 临时目录测试）：
 #   - 跳过 git pull 与 launchctl kickstart 与一次对话；
@@ -157,12 +160,61 @@ json_field() { # <json> <key> → 输出字段值
   "$PYTHON_BIN" -c "import sys,json; d=json.load(sys.stdin); print(d.get(sys.argv[1],''))" "$1"
 }
 
+# ── T67 部署窗口防线：优雅停/启 Engine，杜绝 checkout 窗口误扫 + kickstart 杀在途执行体 ──
+ENGINE_LABEL="com.ccc.engine"
+INFLIGHT_PATTERN="${CCC_INFLIGHT_PATTERN:-claude -p}"
+INFLIGHT_WAIT_SECONDS="${CCC_INFLIGHT_WAIT_SECONDS:-300}"
+INFLIGHT_POLL_INTERVAL="${CCC_INFLIGHT_POLL_INTERVAL:-10}"
+
+in_flight_executors() { # → 0=无在途执行体, 1=有
+  pgrep -f "$INFLIGHT_PATTERN" >/dev/null 2>&1
+}
+
+stop_engine() { # 生产模式：checkout 前优雅停 Engine，等待在途执行体退出（≤300s，超时警告继续）
+  if launchctl bootout "gui/$(id -u)/$ENGINE_LABEL" 2>/dev/null; then
+    record PASS "停 Engine" "launchctl bootout $ENGINE_LABEL"
+  else
+    record WARN "停 Engine" "launchctl bootout 失败（服务未注册?）— 继续部署"
+  fi
+  local waited=0
+  while in_flight_executors; do
+    if [[ "$waited" -ge "$INFLIGHT_WAIT_SECONDS" ]]; then
+      record WARN "在途执行体" "等待 ${waited}s 仍有在途（${INFLIGHT_PATTERN}），超时继续部署（不阻塞）"
+      return 0
+    fi
+    waited=$((waited + INFLIGHT_POLL_INTERVAL))
+    if [[ "$JSON_OUTPUT" != true ]]; then
+      printf '[WAIT] 在途执行体等待退出… %ss/%ss\n' "$waited" "$INFLIGHT_WAIT_SECONDS"
+    fi
+    sleep "$INFLIGHT_POLL_INTERVAL"
+  done
+  record PASS "在途执行体" "无在途（${INFLIGHT_PATTERN}）"
+}
+
+start_engine() { # 生产模式：checkout 后恢复 Engine（bootout 已卸载 → bootstrap；未卸载 → kickstart -k）→ 0/1
+  local domain="gui/$(id -u)/$ENGINE_LABEL"
+  local plist="$HOME/Library/LaunchAgents/$ENGINE_LABEL.plist"
+  if launchctl print "$domain" >/dev/null 2>&1; then
+    if launchctl kickstart -k "$domain" >/dev/null 2>&1; then
+      record PASS "启 Engine" "launchctl kickstart $ENGINE_LABEL"
+      return 0
+    fi
+  elif [[ -f "$plist" ]] && launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1; then
+    record PASS "启 Engine" "launchctl bootstrap $ENGINE_LABEL"
+    return 0
+  fi
+  record WARN "启 Engine" "launchctl 恢复失败（服务未注册/plist 缺失）"
+  return 1
+}
+
 # ── 1. git pull / checkout ──
 GIT_SHA=""
 if [[ "$SIMULATE" == true || "$NO_PULL" == true ]]; then
   GIT_SHA="$(git -C "$REPO_PATH" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
   record PASS "git 定位" "跳过 pull（${SIMULATE:+模拟}${NO_PULL:+--no-pull}）；当前 HEAD=$GIT_SHA"
 else
+  # T67 防线：checkout 前优雅停 Engine，避免部署窗口误扫 + kickstart 杀在途执行体
+  stop_engine
   if [[ -z "$TARGET" ]]; then
     TARGET="$(git -C "$REPO_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
   fi
@@ -180,7 +232,8 @@ if [[ "$SIMULATE" == true || "$NO_KICKSTART" == true ]]; then
   record SKIP "三服务 kickstart" "跳过（${SIMULATE:+模拟}${NO_KICKSTART:+--no-kickstart}）"
 else
   KICK_OK=true
-  for svc in com.ccc.web-server com.ccc.engine com.ccc.board-scheduler; do
+  if ! start_engine; then KICK_OK=false; fi
+  for svc in com.ccc.web-server com.ccc.board-scheduler; do
     if ! launchctl kickstart -k "gui/$(id -u)/$svc" 2>/dev/null; then
       KICK_OK=false
       record WARN "kickstart $svc" "launchctl 失败（服务未注册?）"

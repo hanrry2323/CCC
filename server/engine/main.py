@@ -48,6 +48,54 @@ DEFAULT_EXECUTOR_TIMEOUT = 300
 
 _probe_failures_count = 0
 
+# T67 验收区预检缓存：{文件路径: (mtime, 已验收判定)}，避免持续模式每轮全量读盘
+_acceptance_cache: dict[str, tuple[float, bool]] = {}
+
+
+def _card_body_accepted(path: Path) -> bool:
+    """读卡正文 ``## 验收区`` 后 20 行内是否含 ``✅`` / ``判定：通过``（与 validate.py 同语义）。
+
+    文件缺失/不可读/未含验收区标记 → 视为未验收（返回 False，不阻断派发）。
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    idx = -1
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## 验收区"):
+            idx = i
+            break
+    if idx == -1:
+        return False
+    for j in range(idx + 1, min(idx + 21, len(lines))):
+        line = lines[j]
+        if "✅" in line or "判定：通过" in line:
+            return True
+    return False
+
+
+def is_card_accepted(card_path: str) -> bool:
+    """卡文件含验收区标记 → 已验收，Engine 不派发（防线 2，防御 validate 未覆盖的旧卡/漏网）。
+
+    按文件 mtime 缓存判定结果，仅 mtime 变化才重读，避免持续模式每轮全量读盘。
+    """
+    if not card_path:
+        return False
+    path = Path(card_path)
+    try:
+        if not path.is_file():
+            return False
+        mtime = path.stat().st_mtime
+    except OSError:
+        return False
+    cached = _acceptance_cache.get(str(path))
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    accepted = _card_body_accepted(path)
+    _acceptance_cache[str(path)] = (mtime, accepted)
+    return accepted
+
 
 def probe_relay(url: str, timeout: int = 5) -> bool:
     """GET 探活地址，失败则跳过该卡（保持待分派），连续 3 次失败记录告警。"""
@@ -290,6 +338,10 @@ def run_once(
                 logger.exception("Worker thread encountered unexpected error for work %s: %s", w.id, exc)
 
         for work in pending:
+            # T67 防线 2：已验收卡（## 验收区 后 20 行内 ✅/判定：通过）不派发，保持原状态
+            if is_card_accepted(work.card_path):
+                logger.warning("已验收卡不派发: work=%s", work.id)
+                continue
             decision = decide_work(work, registry)
             if decision is DispatchDecision.AUTO:
                 if probe_url and not probe_relay(probe_url):
@@ -327,6 +379,10 @@ def run_once(
     else:
         # Serial Mode (max_concurrent <= 1)
         for work in pending:
+            # T67 防线 2：已验收卡（## 验收区 后 20 行内 ✅/判定：通过）不派发，保持原状态
+            if is_card_accepted(work.card_path):
+                logger.warning("已验收卡不派发: work=%s", work.id)
+                continue
             decision = decide_work(work, registry)
             if decision is DispatchDecision.AUTO:
                 if probe_url and not probe_relay(probe_url):
