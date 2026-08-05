@@ -1,6 +1,6 @@
 # 任务卡 T66 · 历史卡格式存量债统一（Claude Code 执行）
 
-> 关联：任务卡体系规则（旧卡 69 处格式偏差规范化）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：任务卡体系规则（旧卡 69 处格式偏差规范化）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t66 -b codex/t66-card-format origin/main`；分支 `codex/t66-card-format`
 > **分步提交纪律（硬）**：按项目/批次分步 commit+push；超时 7200s。
 
@@ -43,3 +43,10 @@
 - **抽样核对**：抽样核点了 T1-server-skeleton, T10-kb-init, T22-deploy-2017, T30-http-refactor, T45-user-centric-ux-overhaul 等历史卡的语义，确认正文和验收条件未做任何改变。
 - **混合测试**：通过 `python3 -m server.board.export` 重新生成增量索引文件，并实测 `python3 -m server.board.validate` 结果。loader 与 validation 执行均 100% 正常。
 - **验证与测试**：`uv run pytest server/tests/` 单元测试通过，`ruff` 检查 100% 正常。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** 56 张旧卡补全 项目/派发 字段，123 行改动全部落在卡头元数据（正文零触碰）；worktree validate 0 error + pytest 全绿；分支 95b160b 推送。
+**纪律备注**：执行体未按卡内「分步提交纪律」自行 commit+push，退出前停在「请老板确认 commit」——由验收席放行并代执行机械提交（工作内容独立复核通过）。后续卡需执行体自行提交，禁止把 commit 当待审批项。
