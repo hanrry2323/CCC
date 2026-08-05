@@ -1,6 +1,6 @@
 # 任务卡 T67 · 部署窗口误派防线（卡头纪律 + Engine/放行双保险）（Claude Code 执行）
 
-> 关联：T60 误派复盘（2026-08-05 部署窗口：已验收卡因卡头未同步被 Engine 重新拉起）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：T60 误派复盘（2026-08-05 部署窗口：已验收卡因卡头未同步被 Engine 重新拉起）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t67 -b codex/t67-deploy-race-guard origin/main`；分支 `codex/t67-deploy-race-guard`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -55,3 +55,10 @@
 - **validate 现存卡**：76 卡零新增 error（验收区命中 47 张状态均已关闭）
 - **release.sh**：`bash -n` 通过；隔离 harness（mock launchctl/pgrep/sleep）11 项断言全过（无在途/在途退出/超时不阻塞/bootout 失败继续/kickstart/bootstrap）；`--simulate` 放行通过（2 PASS / 8 SKIP / 0 FAIL）exit 0
 - **push 证据**：`9881e27b`（validate）· `7eaa2100`（engine）· `f89285c5`（release.sh）· `f2ce3341`（T60 复盘）
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** 三防线实现独立复核：validate 新增规则用合成违规卡实测拦截（exit 1）；Engine 双路径预检代码审查通过（mtime 缓存合理）；release.sh bash -n 通过 + 停/启逻辑审查通过；pytest 2017 全绿（exit 0、零失败）、ruff/py_compile 全过；现有 76 卡零新增 error。
+**纪律备注**：执行器未按卡要求新建 worktree ccc-dev-ws-t67，复用 ccc-dev-ws（分支/基线正确，功能无影响）——工作树路径纪律下轮强化。
