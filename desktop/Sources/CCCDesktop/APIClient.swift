@@ -447,7 +447,7 @@ actor APIClient {
                 id: dto.id,
                 name: dto.name,
                 path: ws,
-                workspace: ws,
+                workspace: dto.id,
                 role: role,
                 engine_eligible: taskable
             )
