@@ -1,6 +1,6 @@
 # 任务卡 T64 · Engine 自动按卡建 worktree（并行派发完善）（Claude Code 执行）
 
-> 关联：T59 并行派发发现——每卡需独立 worktree，当前靠卡内续作指令手动建 · 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：T59 并行派发发现——每卡需独立 worktree，当前靠卡内续作指令手动建 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t64 -b codex/t64-engine-auto-worktree origin/main`；分支 `codex/t64-engine-auto-worktree`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -36,4 +36,19 @@ Engine 派发 AUTO 卡时自动创建每卡独立 worktree 并作为执行体工
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+1. **实现详情**：
+   - 见 `server/config/executors.example.json`：后台 CLI 执行体增加可选的 `worktree_base` 配置。
+   - 见 `server/engine/dispatch.py:47`：向 `ALLOWED_PLACEHOLDERS` 添加了 `{worktree}`，并在 `build_command` 中支持注入。
+   - 见 `server/engine/main.py`：新增了 `get_worktree_path` 解析器，支持 `<task>`、`{task}`、`<work_id>` 和 `{work_id}` 占位符。在 `_dispatch_and_collect` 调度中自动检查并调用 `git worktree add` 独立建仓分支（`codex/<slug>`），失败时日志报错并优雅回退到默认工作空间。
+2. **测试与覆盖**：
+   - 见 `server/tests/test_engine_dispatch.py`：增加 `{worktree}` 占位符的命令构建单元测试。
+   - 见 `server/tests/test_engine_main.py`：使用 `monkeypatch.chdir` 构造真实临时 git 仓库环境，完整覆盖了配置生效并自动建 worktree 运行、以及建 worktree 失败优雅回退的标准流程，所有测试通过。
+3. **Pytest 全绿**：
+   - 见 `server/tests/test_engine_main.py:745`：36 个测试用例，全通过。
+   - 见 `server/tests/test_engine_dispatch.py:426`：32 个测试用例，全通过。
+4. **Push 证据**：
+   - 分支已成功 push 到 `origin/codex/t64-engine-auto-worktree`。
+   - Commit ID: `e7b25ac7`
+
