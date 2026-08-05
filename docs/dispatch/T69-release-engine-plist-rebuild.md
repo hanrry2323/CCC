@@ -1,6 +1,6 @@
 # 任务卡 T69 · release.sh Engine plist 自愈（T68 部署事故修复）
 
-> 关联：T68 部署事故（2026-08-05：start_engine 遇 plist 缺失仅 WARN，Engine 掉线未恢复，Codex 现场重建恢复）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：T68 部署事故（2026-08-05：start_engine 遇 plist 缺失仅 WARN，Engine 掉线未恢复，Codex 现场重建恢复）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t69 -b codex/t69-release-engine-plist-rebuild origin/main`；分支 `codex/t69-release-engine-plist-rebuild`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -103,3 +103,9 @@ $ bash server/tests/test_release_healing.sh
 To github.com:hanrry2323/CCC.git
  * [new branch]        codex/t69-release-engine-plist-rebuild -> codex/t69-release-engine-plist-rebuild
 ```
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** 独立复验（非自述）：① 实现审查——start_engine 三态（已注册 kickstart / plist 在 bootstrap / plist 缺失自愈重建），失败一律 FAIL+exit 1（不再 WARN 继续）；部署后自检（launchctl list + 15s 心跳轮询，失败倾倒日志 exit 1）；② 测试脚本 `server/tests/test_release_healing.sh` 4 用例独立重跑全过（含核心自愈重建场景）；③ 自愈渲染内容验证——无残留占位符、关键字段（python 入口/--config/日志目录）全部正确；④ bash -n OK、2017 pytest EXIT=0 零失败；⑤ 根因排查诚实（未定位明确删除者，靠自愈兜底）。**备注**：自愈 DATA_DIR fallback 为 `$REPO_PATH/data`，与真实 `~/.ccc/data` 略有差异（Engine 主要用 config.env 路径，影响低，后续卡可对齐）；本次部署即实战验证。
