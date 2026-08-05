@@ -122,6 +122,9 @@ def parse_card(path: Path | str) -> BoardItem:
         card_type = "task"
     parent_card = meta.get("父卡", "").strip()
 
+    p = Path(path)
+    is_archived = "docs/archive" in p.as_posix() or "docs/archive" in p.resolve().as_posix()
+
     return BoardItem(
         id=card_id,
         title=title,
@@ -135,6 +138,7 @@ def parse_card(path: Path | str) -> BoardItem:
         type=card_type,
         parent=parent_card,
         thread_id=meta.get("会话", "").strip() or meta.get("thread_id", "").strip(),
+        archived=is_archived,
     )
 
 
@@ -162,9 +166,29 @@ def scan_dispatch_files(directory: Path | str) -> list[Path]:
     return files
 
 
-def load_dispatch_cards(directory: Path | str) -> list[BoardItem]:
+def get_archive_dir(dispatch_dir: Path | str) -> Path:
+    """由任务卡目录推导归档目录（docs/archive/ccc-tasks）。"""
+    d = Path(dispatch_dir)
+    return d.parent / "archive" / "ccc-tasks"
+
+
+def scan_archive_files(archive_dir: Path) -> list[Path]:
+    """扫描归档目录下的任务卡（docs/archive/ccc-tasks/<project>/<filename>.md）。"""
+    if not archive_dir.is_dir():
+        return []
+    files: list[Path] = []
+    for p in sorted(archive_dir.glob("[!.]*/[!.]*.md")):
+        if _is_task_card(p):
+            files.append(p)
+    for p in sorted(archive_dir.glob("*.md")):
+        if _is_task_card(p):
+            files.append(p)
+    return files
+
+
+def load_dispatch_cards(directory: Path | str, include_archived: bool = False) -> list[BoardItem]:
     """扫描目录下全部任务卡（使用增量索引机制，只重扫变化卡）。"""
-    return load_dispatch_cards_incremental(directory)
+    return load_dispatch_cards_incremental(directory, include_archived=include_archived)
 
 
 def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
@@ -226,6 +250,7 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "card_type": item.type,
         "parent_card": item.parent,
         "thread_id": item.thread_id,
+        "archived": item.archived,
     }
 
 
@@ -267,7 +292,7 @@ def save_index_file(entries: dict[str, dict], dispatch_dir: Path | str | None = 
             tmp_path.unlink()
 
 
-def load_dispatch_cards_incremental(directory: Path | str) -> list[BoardItem]:
+def load_dispatch_cards_incremental(directory: Path | str, include_archived: bool = False) -> list[BoardItem]:
     """增量扫描任务卡：按 mtime 检测变化卡只重扫，写回索引并返回全部卡。"""
     dispatch_dir = Path(directory)
     index_entries = load_index_file(dispatch_dir)
@@ -278,13 +303,17 @@ def load_dispatch_cards_incremental(directory: Path | str) -> list[BoardItem]:
             index_by_path[entry["path"]] = entry
 
     disk_files = scan_dispatch_files(dispatch_dir)
+    archive_dir = get_archive_dir(dispatch_dir)
+    archive_files = scan_archive_files(archive_dir)
+
+    all_files = disk_files + archive_files
     project_root = Path(__file__).resolve().parents[2]
 
     updated_entries: dict[str, dict] = {}
     items: list[BoardItem] = []
     updated = False
 
-    for path in disk_files:
+    for path in all_files:
         try:
             repo_path = str(path.resolve().relative_to(project_root.resolve()))
         except ValueError:
@@ -310,6 +339,7 @@ def load_dispatch_cards_incremental(directory: Path | str) -> list[BoardItem]:
                 type=entry.get("card_type", "task"),
                 parent=entry.get("parent_card", ""),
                 thread_id=entry.get("thread_id", ""),
+                archived=entry.get("archived", False),
             )
             items.append(item)
             updated_entries[entry["id"]] = entry
@@ -325,6 +355,9 @@ def load_dispatch_cards_incremental(directory: Path | str) -> list[BoardItem]:
 
     if len(updated_entries) != len(index_entries) or updated:
         save_index_file(updated_entries, dispatch_dir)
+
+    if not include_archived:
+        items = [i for i in items if not i.archived]
 
     return derive_epic_states_and_progress(items)
 

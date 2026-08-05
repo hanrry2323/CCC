@@ -1038,6 +1038,11 @@ class _APIHandler(BaseHTTPRequestHandler):
         qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
         project = (qs.get("project", [""])[0]).strip()
         state = (qs.get("state", [""])[0]).strip()
+        executor = (qs.get("executor", [""])[0]).strip()
+        dispatched_at = (qs.get("dispatched_at", [""])[0]).strip()
+        written_at = (qs.get("written_at", [""])[0]).strip()
+        closed_at = (qs.get("closed_at", [""])[0]).strip()
+        include_archived = (qs.get("include_archived", [""])[0]).strip().lower() in ("1", "true")
 
         try:
             page = int(qs.get("page", ["1"])[0].strip() or "1")
@@ -1055,6 +1060,31 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         try:
             index_entries = load_index_file()
+            if not index_entries:
+                index_entries = load_index_file(_DISPATCH_DIR)
+            if not index_entries:
+                import sys
+                print(f"[web] 索引文件缺失或为空，自动回退全量扫描并重建索引: {_DISPATCH_DIR}", file=sys.stderr)
+                from server.board.loader import load_dispatch_cards
+                try:
+                    load_dispatch_cards(_DISPATCH_DIR, include_archived=True)
+                    index_entries = load_index_file()
+                    if not index_entries:
+                        index_entries = load_index_file(_DISPATCH_DIR)
+                except Exception as e:
+                    print(f"[web] 自动重建索引失败: {e}，回退至内存动态扫描", file=sys.stderr)
+                    from server.board.loader import scan_dispatch_files, parse_card, build_index_entry, get_archive_dir, scan_archive_files
+                    disk_files = scan_dispatch_files(_DISPATCH_DIR)
+                    archive_dir = get_archive_dir(_DISPATCH_DIR)
+                    archive_files = scan_archive_files(archive_dir)
+                    index_entries = {}
+                    for path in disk_files + archive_files:
+                        try:
+                            item = parse_card(path)
+                            entry = build_index_entry(path, item, 0.0)
+                            index_entries[item.id] = entry
+                        except Exception:
+                            continue
         except Exception as e:
             self._send_json({"error": f"index load failed: {e}"}, 500)
             return
@@ -1063,10 +1093,20 @@ class _APIHandler(BaseHTTPRequestHandler):
         cards_list.sort(key=lambda x: x["id"])
 
         filtered = cards_list
+        if not include_archived:
+            filtered = [c for c in filtered if not c.get("archived", False)]
         if project:
             filtered = [c for c in filtered if c["project"].lower() == project.lower()]
         if state:
             filtered = [c for c in filtered if c["state"] == state or base_state(c["state"]) == state]
+        if executor:
+            filtered = [c for c in filtered if executor.lower() in c.get("executor", "").lower()]
+        if dispatched_at:
+            filtered = [c for c in filtered if c.get("dispatched_at") == dispatched_at]
+        if written_at:
+            filtered = [c for c in filtered if c.get("written_at") == written_at]
+        if closed_at:
+            filtered = [c for c in filtered if c.get("closed_at") == closed_at]
 
         total = len(filtered)
         start_idx = (page - 1) * page_size
@@ -1091,6 +1131,11 @@ class _APIHandler(BaseHTTPRequestHandler):
         q = (qs.get("q", [""])[0]).strip().lower()
         project = (qs.get("project", [""])[0]).strip()
         state = (qs.get("state", [""])[0]).strip()
+        executor = (qs.get("executor", [""])[0]).strip()
+        dispatched_at = (qs.get("dispatched_at", [""])[0]).strip()
+        written_at = (qs.get("written_at", [""])[0]).strip()
+        closed_at = (qs.get("closed_at", [""])[0]).strip()
+        include_archived = (qs.get("include_archived", [""])[0]).strip().lower() in ("1", "true")
 
         try:
             page = int(qs.get("page", ["1"])[0].strip() or "1")
@@ -1103,6 +1148,31 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         try:
             index_entries = load_index_file()
+            if not index_entries:
+                index_entries = load_index_file(_DISPATCH_DIR)
+            if not index_entries:
+                import sys
+                print(f"[web] 索引文件缺失或为空，自动回退全量扫描并重建索引: {_DISPATCH_DIR}", file=sys.stderr)
+                from server.board.loader import load_dispatch_cards
+                try:
+                    load_dispatch_cards(_DISPATCH_DIR, include_archived=True)
+                    index_entries = load_index_file()
+                    if not index_entries:
+                        index_entries = load_index_file(_DISPATCH_DIR)
+                except Exception as e:
+                    print(f"[web] 自动重建索引失败: {e}，回退至内存动态扫描", file=sys.stderr)
+                    from server.board.loader import scan_dispatch_files, parse_card, build_index_entry, get_archive_dir, scan_archive_files
+                    disk_files = scan_dispatch_files(_DISPATCH_DIR)
+                    archive_dir = get_archive_dir(_DISPATCH_DIR)
+                    archive_files = scan_archive_files(archive_dir)
+                    index_entries = {}
+                    for path in disk_files + archive_files:
+                        try:
+                            item = parse_card(path)
+                            entry = build_index_entry(path, item, 0.0)
+                            index_entries[item.id] = entry
+                        except Exception:
+                            continue
         except Exception as e:
             self._send_json({"error": f"index load failed: {e}"}, 500)
             return
@@ -1110,10 +1180,20 @@ class _APIHandler(BaseHTTPRequestHandler):
         cards_list = list(index_entries.values())
 
         filtered = cards_list
+        if not include_archived:
+            filtered = [c for c in filtered if not c.get("archived", False)]
         if project:
             filtered = [c for c in filtered if c["project"].lower() == project.lower()]
         if state:
             filtered = [c for c in filtered if c["state"] == state or base_state(c["state"]) == state]
+        if executor:
+            filtered = [c for c in filtered if executor.lower() in c.get("executor", "").lower()]
+        if dispatched_at:
+            filtered = [c for c in filtered if c.get("dispatched_at") == dispatched_at]
+        if written_at:
+            filtered = [c for c in filtered if c.get("written_at") == written_at]
+        if closed_at:
+            filtered = [c for c in filtered if c.get("closed_at") == closed_at]
 
         if q:
             scored = []
@@ -1123,7 +1203,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                     score += 10.0 if c["id"].lower() == q else 5.0
                 if q in c["title"].lower():
                     score += 3.0
-                if q in c["executor"].lower():
+                if q in c.get("executor", "").lower():
                     score += 1.5
                 if q in c["project"].lower():
                     score += 1.0

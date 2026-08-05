@@ -93,8 +93,9 @@ class BoardItem:
     parent: str = ""
     progress: str = ""
     thread_id: str = ""
+    archived: bool = False
 
-    def to_dict(self) -> dict[str, str | int]:
+    def to_dict(self) -> dict[str, str | int | bool]:
         """转纯字典（JSON 可序列化）。"""
         return {
             "id": self.id,
@@ -110,4 +111,5 @@ class BoardItem:
             "parent": self.parent,
             "progress": self.progress,
             "thread_id": self.thread_id,
+            "archived": self.archived,
         }

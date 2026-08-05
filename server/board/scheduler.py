@@ -42,6 +42,15 @@ def export_safe(
     失败时保留旧 board.js + 记日志；不中断、不产生脏数据。
     """
     try:
+        # 定时执行自动归档：关闭 >6 个月卡自动移入 docs/archive/ccc-tasks/<project>/
+        try:
+            from server.board.archive import archive_old_cards
+            archived = archive_old_cards(dispatch_dir)
+            if archived:
+                logger.info("automatically archived %d old cards: %s", len(archived), archived)
+        except Exception:
+            logger.exception("automatic archiving failed, proceeding with export")
+
         items = load_dispatch_cards(dispatch_dir)
         output = Path(output_path)
         tmp = output.with_suffix(_TMP_SUFFIX)

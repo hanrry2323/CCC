@@ -1781,3 +1781,115 @@ class TestThreadPersistence:
         assert "T99" in conv[0]["message"]
         assert "已成功下达" in conv[0]["message"]
 
+
+class TestCardsFallback:
+    """测试 /cards 缺索引兜底与结构化高级回顾查询功能。"""
+
+    @pytest.fixture(autouse=True)
+    def _setup_dispatch(self, tmp_path, monkeypatch):
+        # 隔离数据和索引
+        monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+
+        # 模拟 dispatch 目录
+        dispatch_dir = tmp_path / "docs" / "dispatch"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr("server.web.server._DISPATCH_DIR", dispatch_dir)
+
+        # 写入两个常规测试任务卡
+        c1 = (
+            "# 任务卡 tst001 · 任务一\n"
+            "> 关联：TST · 执行体：Claude · 验收：Codex · 状态：待分派 · 项目：tst · 日期：2026-08-01\n"
+        )
+        c2 = (
+            "# 任务卡 tst002 · 任务二\n"
+            "> 关联：TST · 执行体：OpenCode · 验收：Codex · 状态：执行中 · 项目：tst · 日期：2026-08-02\n"
+        )
+        p1 = dispatch_dir / "tst001.md"
+        p2 = dispatch_dir / "tst002.md"
+        p1.write_text(c1, encoding="utf-8")
+        p2.write_text(c2, encoding="utf-8")
+
+        # 确保初始状态无索引文件存在
+        index_file = dispatch_dir / "cards.index.jsonl"
+        if index_file.exists():
+            index_file.unlink()
+
+        return dispatch_dir
+
+    def test_cards_missing_index_fallback(self, api_server, tmp_path, _setup_dispatch):
+        """测试索引文件缺失时，/cards 接口自动回退至全量扫描并重建索引。"""
+        dispatch_dir = _setup_dispatch
+        index_file = dispatch_dir / "cards.index.jsonl"
+        assert not index_file.exists()
+
+        # 发起查询
+        status, data = _get(api_server, "/cards")
+        assert status == 200
+        assert data["total"] == 2
+        assert len(data["cards"]) == 2
+        assert {c["id"] for c in data["cards"]} == {"tst001", "tst002"}
+
+        # 验证索引文件是否已被成功重建
+        assert index_file.exists()
+
+    def test_cards_search_missing_index_fallback(self, api_server, tmp_path, _setup_dispatch):
+        """测试索引文件缺失时，/cards/search 接口自动回退至全量扫描并重建索引。"""
+        dispatch_dir = _setup_dispatch
+        index_file = dispatch_dir / "cards.index.jsonl"
+        assert not index_file.exists()
+
+        # 发起查询
+        status, data = _get(api_server, "/cards/search?q=Claude")
+        assert status == 200
+        assert data["total"] == 1
+        assert data["cards"][0]["id"] == "tst001"
+
+        # 验证索引文件是否已被成功重建
+        assert index_file.exists()
+
+    def test_structured_reviews_and_archived_filter(self, api_server, tmp_path, _setup_dispatch):
+        """测试结构化高级查询（按执行体/时间过滤）与 include_archived 功能。"""
+        dispatch_dir = _setup_dispatch
+
+        # 写入一张模拟的已归档过期卡
+        c3 = (
+            "# 任务卡 tst003 · 归档任务\n"
+            "> 关联：TST · 执行体：Claude · 验收：Codex · 状态：已关闭 · 项目：tst · 日期：2026-01-01\n"
+            "## 回写区\n"
+            "**日期**：2026-01-05\n"
+        )
+        archive_dir = dispatch_dir.parent / "archive" / "ccc-tasks" / "tst"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        (archive_dir / "tst003-old.md").write_text(c3, encoding="utf-8")
+
+        # 重建包含归档文件的索引
+        from server.board.loader import load_dispatch_cards
+        load_dispatch_cards(dispatch_dir, include_archived=True)
+
+        # 1. 默认查询不含已归档任务卡
+        status, data = _get(api_server, "/cards")
+        assert status == 200
+        assert data["total"] == 2
+        assert "tst003" not in {c["id"] for c in data["cards"]}
+
+        # 2. 显式指定 include_archived=1 含已归档任务卡
+        status, data = _get(api_server, "/cards?include_archived=1")
+        assert status == 200
+        assert data["total"] == 3
+        assert "tst003" in {c["id"] for c in data["cards"]}
+
+        # 3. 按执行体 (executor) 过滤回顾
+        status, data = _get(api_server, "/cards?executor=Claude&include_archived=1")
+        assert status == 200
+        assert data["total"] == 2
+        assert {c["id"] for c in data["cards"]} == {"tst001", "tst003"}
+
+        # 4. 按分派日期 (dispatched_at) 过滤回顾
+        status, data = _get(api_server, "/cards?dispatched_at=2026-08-02")
+        assert status == 200
+        assert data["total"] == 1
+        assert data["cards"][0]["id"] == "tst002"
+
+
