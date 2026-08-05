@@ -1,6 +1,6 @@
 # 任务卡 T63 · Nginx 统一入口（Claude Code 执行）
 
-> 关联：阶段 3（Nginx 统一入口）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：阶段 3（Nginx 统一入口）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t63 -b codex/t63-nginx-entry origin/main`，在其中工作；分支 `codex/t63-nginx-entry`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -74,3 +74,10 @@
    create mode 100755 deploy/nginx/install-nginx.sh
    create mode 100644 docs/deploy/nginx-entry.md
   ```
+
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** Nginx 模板+安装脚本落地（d9d9ec61，2017 实际安装按放行执行）。
