@@ -1,6 +1,6 @@
 # 任务卡 T64 · Engine 自动按卡建 worktree（并行派发完善）（Claude Code 执行）
 
-> 关联：T59 并行派发发现——每卡需独立 worktree，当前靠卡内续作指令手动建 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：T59 并行派发发现——每卡需独立 worktree，当前靠卡内续作指令手动建 · 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t64 -b codex/t64-engine-auto-worktree origin/main`；分支 `codex/t64-engine-auto-worktree`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -52,3 +52,10 @@ Engine 派发 AUTO 卡时自动创建每卡独立 worktree 并作为执行体工
    - 分支已成功 push 到 `origin/codex/t64-engine-auto-worktree`。
    - Commit ID: `e7b25ac7`
 
+
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** Engine 自动建 worktree（e7b25ac7，pytest 494）；最初测试失败系新鲜 worktree 缺 gitignored board.js 的环境问题（生成后通过），非回归。
