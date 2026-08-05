@@ -1,0 +1,132 @@
+# ==============================================================================
+# CCC (Connect-Claude Code) Nginx Reverse Proxy Configuration
+# ==============================================================================
+#
+# This file is an example configuration for routing traffic from port 80 to
+# the 2017 single-end web server running on port 7788.
+#
+# Installation Instructions:
+# 1. Copy this file to your Nginx configuration directory as 'ccc.conf'.
+#    - macOS (Homebrew Intel):  /usr/local/etc/nginx/servers/ccc.conf
+#    - macOS (Homebrew M1/M2):  /opt/homebrew/etc/nginx/servers/ccc.conf
+#    - Linux (Ubuntu/Debian):  /etc/nginx/sites-available/ccc.conf (and symlink to sites-enabled)
+# 2. Modify the 'server_name' if using a custom domain.
+# 3. Test configuration: 'nginx -t'
+# 4. Reload Nginx:       'nginx -s reload' (or sudo systemctl reload nginx)
+# ==============================================================================
+
+# Upstream definition for 2017 Single-End server
+upstream ccc_backend {
+    server 127.0.0.1:7788;
+    keepalive 32; # Keep-alive connections to backend
+}
+
+server {
+    listen 80;
+    server_name 127.0.0.1 192.168.3.116 localhost;
+
+    # Log configurations
+    access_log /var/log/nginx/ccc_access.log combined;
+    error_log /var/log/nginx/ccc_error.log warn;
+
+    # Global proxy headers (inherited by locations)
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Root routing - passes all requests to the 7788 web-server by default
+    location / {
+        proxy_pass http://ccc_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+
+    # 1. /conversation (Long-polling / SSE stream transpassing)
+    # Long-polling and SSE connections require proxy buffering disabled and extended timeout.
+    location /conversation {
+        proxy_pass http://ccc_backend;
+
+        # Disable proxy buffering to ensure SSE/stream and long-polling messages are sent immediately.
+        proxy_buffering off;
+        proxy_cache off;
+
+        # Long connection / Long-polling / SSE timeout (T63 requires 300s)
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+
+        # Support Keep-Alive and WebSockets upgrade
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+
+    # 2. Static Assets Cache Configuration
+    # Caches css/js/svg/ico/etc. on the client side with Cache-Control headers.
+    # Paths include legacy-chat files and data/board.js and data/cluster.js.
+    location ~* \.(?:css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2|ttf|otf)$ {
+        proxy_pass http://ccc_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Static cache (css/js cache headers)
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, must-revalidate";
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+}
+
+# ==============================================================================
+# OPTIONAL: HTTPS / TLS Configuration (Self-signed ccc.lan Domain)
+# ==============================================================================
+# To enable secure TLS access for ccc.lan, uncomment the block below and follow:
+#
+# 1. Generate self-signed certificates:
+#    $ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#        -keyout /etc/nginx/ssl/ccc.key -out /etc/nginx/ssl/ccc.crt \
+#        -subj "/CN=ccc.lan"
+# 2. Add domain mapping in client's hosts file (/etc/hosts):
+#    192.168.3.116  ccc.lan
+# 3. Uncomment this block, restart/reload Nginx, and enjoy https://ccc.lan/
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name ccc.lan;
+#
+#     ssl_certificate /etc/nginx/ssl/ccc.crt;
+#     ssl_certificate_key /etc/nginx/ssl/ccc.key;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers HIGH:!aNULL:!MD5;
+#     ssl_prefer_server_ciphers on;
+#
+#     access_log /var/log/nginx/ccc_ssl_access.log combined;
+#     error_log /var/log/nginx/ccc_ssl_error.log warn;
+#
+#     proxy_set_header Host $host;
+#     proxy_set_header X-Real-IP $remote_addr;
+#     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#     proxy_set_header X-Forwarded-Proto $scheme;
+#
+#     location / {
+#         proxy_pass http://ccc_backend;
+#         proxy_http_version 1.1;
+#         proxy_set_header Connection "";
+#     }
+#
+#     location /conversation {
+#         proxy_pass http://ccc_backend;
+#         proxy_buffering off;
+#         proxy_cache off;
+#         proxy_read_timeout 300s;
+#         proxy_send_timeout 300s;
+#         proxy_http_version 1.1;
+#         proxy_set_header Connection "";
+#     }
+#
+#     location ~* \.(?:css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2|ttf|otf)$ {
+#         proxy_pass http://ccc_backend;
+#         proxy_http_version 1.1;
+#         proxy_set_header Connection "";
+#         expires 7d;
+#         add_header Cache-Control "public, max-age=604800, must-revalidate";
+#     }
+# }
