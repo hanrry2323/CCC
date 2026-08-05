@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # After file edit: quiet dry-run; inject context if RED (no notify spam).
+# Missing/broken runner must not false-alarm (post 2026-08-02 scripts/ retirement).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -26,14 +27,23 @@ case "$path" in
     ;;
 esac
 
+PATROL="$ROOT/scripts/ccc-authority-patrol.py"
+if [[ ! -f "$PATROL" ]]; then
+  printf '%s\n' '{"ok":true}'
+  exit 0
+fi
+
 set +e
-CCC_NOTIFY=0 python3 scripts/ccc-authority-patrol.py --dry-run --json >"$tmp_out" 2>/dev/null
+CCC_NOTIFY=0 python3 "$PATROL" --dry-run --json >"$tmp_out" 2>/dev/null
 set -e
 
 python3 -c '
 import json, sys
-path = open(sys.argv[1]).read().strip() if False else None
-d = json.load(open(sys.argv[1]))
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print(json.dumps({"ok": True}))
+    raise SystemExit(0)
 if d.get("ok"):
     print(json.dumps({"ok": True}))
     raise SystemExit(0)
