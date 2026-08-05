@@ -846,7 +846,7 @@ final class AppModel: ObservableObject {
 
     /// 流式消费：打字机增量落 content；thinking 提示；tool_use → ToolStep；done/error 终结
     private func consumeStream(projectId: String, threadId: String, assistantId: UUID, message: String) async {
-        let stream = await client.streamConversation(message: message)
+        let stream = await client.streamConversation(message: message, threadId: threadId, model: preferredModel)
         var pending = ""
         var consumed = false
         var failure: String?

@@ -124,6 +124,8 @@ actor APIClient {
     struct StreamBody: Encodable {
         let message: String
         let stream: Bool
+        let thread_id: String?
+        let model: String?
     }
 
     /// 配置新服务端地址（nil = 禁用）
@@ -253,10 +255,10 @@ actor APIClient {
     /// 事件归一化为 BrainStreamEvent（meta / thinking / text / tool_use /
     /// tool_result / done / error）。401 → 抛 APIError 并清除 token；
     /// 客户端断连/取消 → 正常 finish（不抛错）。与 server/web/brain.py 协议对齐。
-    func streamConversation(message: String) -> AsyncThrowingStream<BrainStreamEvent, Error> {
+    func streamConversation(message: String, threadId: String? = nil, model: String? = nil) -> AsyncThrowingStream<BrainStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                await self.runStreamConversation(message: message, continuation: continuation)
+                await self.runStreamConversation(message: message, threadId: threadId, model: model, continuation: continuation)
             }
             continuation.onTermination = { @Sendable _ in
                 task.cancel()
@@ -266,10 +268,12 @@ actor APIClient {
 
     private func runStreamConversation(
         message: String,
+        threadId: String?,
+        model: String?,
         continuation: AsyncThrowingStream<BrainStreamEvent, Error>.Continuation
     ) async {
         do {
-            let body = try JSONEncoder().encode(StreamBody(message: message, stream: true))
+            let body = try JSONEncoder().encode(StreamBody(message: message, stream: true, thread_id: threadId, model: model))
             let req = try newServerStreamingRequest(path: "conversation", body: body)
             let (bytes, resp) = try await streamSession.bytes(for: req)
             guard let http = resp as? HTTPURLResponse else {
