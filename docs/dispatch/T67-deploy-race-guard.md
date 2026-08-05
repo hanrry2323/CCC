@@ -41,7 +41,7 @@
 
 **执行体**：Claude Code（2017）· 日期：2026-08-05
 
-三条防线全部落地（分支 `codex/t67-deploy-race-guard`，远端 HEAD `8531d439`）：
+三条防线全部落地（分支 `codex/t67-deploy-race-guard`，4 个实现提交已推送）：
 
 1. **卡头纪律校验**（`server/board/validate.py`）：新增 `_is_accepted()`——读卡正文 `## 验收区` 后 20 行内 `✅`/`判定：通过` 即视为已验收，与五态/必填字段同级 error 规则（验收区命中但状态 ≠ 已关闭 → 报错阻断）。单测 3 类：验收区+已关闭=通过 / 验收区+待分派=error / 超 20 行不触发。
 2. **Engine 派发防误**（`server/engine/main.py`）：`is_card_accepted()` 按 mtime 缓存做派发前验收区预检；命中 → `logger.warning("已验收卡不派发: work=%s", ...)` 跳过保持原状态（并行/串行两派发路径接入）。单测 4 类：已验收不派发 / 正常卡照常派发 / 并行混合 / mtime 缓存判定。
