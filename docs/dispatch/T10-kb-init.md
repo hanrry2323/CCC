@@ -1,7 +1,7 @@
 # 任务卡 T10 · CCC 知识库初始化 + 种子入库（依赖 T9 · M4 前哨）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D3 知识 / P5 知识移植 / M4 移交）
-> 管理席：Claude Code（调度）· 执行体：Trae（窗口 C）· 验收：Claude Code
+> 管理席：Claude Code（调度）· 执行体：Trae（窗口 C）· 验收：Claude Code · 派发：manual · 项目：ccc
 > 状态：已关闭 · 日期：2026-08-02
 > **依赖：T9（种子包就绪后本卡才可开工）**
 

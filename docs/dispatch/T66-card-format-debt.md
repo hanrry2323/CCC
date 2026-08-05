@@ -1,6 +1,6 @@
 # 任务卡 T66 · 历史卡格式存量债统一（Claude Code 执行）
 
-> 关联：任务卡体系规则（旧卡 69 处格式偏差规范化）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：任务卡体系规则（旧卡 69 处格式偏差规范化）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t66 -b codex/t66-card-format origin/main`；分支 `codex/t66-card-format`
 > **分步提交纪律（硬）**：按项目/批次分步 commit+push；超时 7200s。
 
@@ -35,4 +35,11 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+- **盘点清单**：共 63 张历史任务卡（T1-T54），其中 56 张由于历史原因缺失 `项目` 与 `派发` 字段，已全部梳理定位。
+- **重写批次**：采用自动化脚本对全部 56 张格式存量债卡进行一键批量重写（追加 `· 派发：manual · 项目：ccc`）。
+- **validate 结果**：修复后执行 `python3 -m server.board.validate` 校验结果 0 errors，validate 全绿通过。
+- **抽样核对**：抽样核点了 T1-server-skeleton, T10-kb-init, T22-deploy-2017, T30-http-refactor, T45-user-centric-ux-overhaul 等历史卡的语义，确认正文和验收条件未做任何改变。
+- **混合测试**：通过 `python3 -m server.board.export` 重新生成增量索引文件，并实测 `python3 -m server.board.validate` 结果。loader 与 validation 执行均 100% 正常。
+- **验证与测试**：`uv run pytest server/tests/` 单元测试通过，`ruff` 检查 100% 正常。

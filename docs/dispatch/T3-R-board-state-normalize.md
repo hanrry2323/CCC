@@ -1,7 +1,7 @@
 # 任务卡 T3-R · 看板状态归一（Claude Code 执行）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1 · 管理席：Codex
-> 执行体：Claude Code（CLI）· 验收：Codex · 状态：已关闭 · 日期：2026-08-02
+> 执行体：Claude Code（CLI）· 验收：Codex · 状态：已关闭 · 日期：2026-08-02 · 派发：manual · 项目：ccc
 > 前置：T3（已验收通过）
 
 ## 背景（验收复验发现）

@@ -1,7 +1,7 @@
 # 任务卡 T5 · 看板产物定时化 + Engine 定时驱动起点（D4）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D4 定时任务 / §4 看板）
-> 管理席：Claude Code（调度窗口）· 执行体：Trae · 验收：Codex + Claude Code 双验证
+> 管理席：Claude Code（调度窗口）· 执行体：Trae · 验收：Codex + Claude Code 双验证 · 派发：manual · 项目：ccc
 > 状态：已关闭 · 打回次数：1 · 日期：2026-08-02
 > 前置：T3（已验收通过）；解决 T3 遗留 3（board.js 重导出定时化）
 

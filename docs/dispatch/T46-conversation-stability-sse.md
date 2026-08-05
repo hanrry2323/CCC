@@ -1,7 +1,7 @@
 # 任务卡 T46 · 对话稳定性 + SSE 展示体验（Claude Code 执行）
 
 > 关联：老板实测反馈（2026-08-04）「对话过程中切换界面就中断」「思考过程/思考文字没展示」· 依据：Codex 取证——① 路由切换不取消流（代码核验），但浏览器后台标签节流 SSE + 切回不检测恢复 → 观感"断"；② 事件流实测只有 system/assistant/result，assistant 仅有 text 块，**无 thinking 块**（flash 未开扩展思考）→ 空"思考中…"占位误导
-> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：已关闭 · 日期：2026-08-04
+> 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，headless 场景复验 + 老板实测）· 状态：已关闭 · 日期：2026-08-04 · 派发：manual · 项目：ccc
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t46`（分支 `codex/t46-stability-sse`）**，与 T47 并行；文件所有权见下，禁止越界改 T47 文件。
 
 ## 目标

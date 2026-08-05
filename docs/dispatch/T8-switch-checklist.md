@@ -1,7 +1,7 @@
 # 任务卡 T8 · 调用方切换清单准备（T4 阶段 4 · Trae 窗口 B）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§8 拓扑 / D9 中转站并入）
-> 管理席：Claude Code（调度）· 执行体：Trae（窗口 B）· 验收：Claude Code
+> 管理席：Claude Code（调度）· 执行体：Trae（窗口 B）· 验收：Claude Code · 派发：manual · 项目：ccc
 > 状态：已关闭 · 日期：2026-08-02
 > 前置：T4（已验收通过，6100/6102 已运行）
 

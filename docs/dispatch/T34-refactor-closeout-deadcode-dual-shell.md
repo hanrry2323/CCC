@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§5 不越范围 / 提交卫生）
 > 依据：Codex 2026-08-03 全新取证重评——孤儿看板壳 server/web/index.html 未被静态白名单挂载（"/" 走 legacy-chat）；legacy-chat 存在未挂载死代码（dispatchCard.js）与旧 Hub 文案（M1 :7788 / CCC Hub 编排口）；src-tauri 为 Tauri 旧 Cockpit 遗留、现行系统只用 desktop/（Swift）；根目录 _update_handoff.py 为 QuantHive 会话遗留物混入 CCC 仓
-> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03 · 派发：manual · 项目：ccc
 
 ## 目标
 

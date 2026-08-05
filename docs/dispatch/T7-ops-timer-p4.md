@@ -1,6 +1,6 @@
 # 任务卡 T7 · 定时任务 + 集群/运维页（P4 · Trae 窗口 B）
 
-> 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D4 定时任务 / D5 集群状态页）
+> 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D4 定时任务 / D5 集群状态页） · 派发：manual · 项目：ccc
 > 管理席：Claude Code（调度窗口）· 执行体：Trae（窗口 B）· 验收：Claude Code
 > 状态：已关闭 · 日期：2026-08-02
 > 前置：T2/T5（已验收通过）· **并行：T6/P3（worktree trae-a-p3）**

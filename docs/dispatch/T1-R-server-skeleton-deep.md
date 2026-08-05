@@ -1,7 +1,7 @@
 # 任务卡 T1-R · 服务端骨架修复与深化（Claude Code 执行）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1 · 管理席：Codex
-> 执行体：Claude Code（CLI）· 验收：Codex · 状态：已关闭 · 日期：2026-08-02
+> 执行体：Claude Code（CLI）· 验收：Codex · 状态：已关闭 · 日期：2026-08-02 · 派发：manual · 项目：ccc
 > 前序：T1（Trae）验收未通过，问题清单见下；本卡在既有 `server/` 上修复深化，不推倒重来。
 
 ## 打回问题清单（Trae 版 T1 未通过的原因）

@@ -1,7 +1,7 @@
 # 任务卡 T29 · 对话接大脑 Agent（/conversation 从裸模型直答改为调用 2017 Claude Code，带心智/工具/知识库）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳，经 HTTP 直连 2017 大脑对话）· 依据：老板 2026-08-03 反馈「桌面端对话和弱智一样」；Codex 实锤根因：**/conversation 只做裸模型转发（6102 → deepseek-v4-flash），无 Agent 心智/工具/知识库**· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03 · 派发：manual · 项目：ccc
 
 ## 根因（Codex 已实锤）
 

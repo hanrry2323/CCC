@@ -1,7 +1,7 @@
 # 任务卡 T27 · 2017 中转站（6100/6102）修复：拉起进程 + launchd 常驻 + 三调用方验证（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1 · 依据：老板 2026-08-03 指示「Mac2017 的 OpenCode 和 Claude Code 中转站配置全部有问题，写指令修复」+ 中转站双轨决议（6100/6102 = CCC 体系专用，使用方仅 2017 Claude Code + OpenCode，均 flash 档位）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03 · 派发：manual · 项目：ccc
 
 ## 根因（Codex 已实锤）
 

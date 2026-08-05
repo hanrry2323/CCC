@@ -1,7 +1,7 @@
 # 任务卡 T39 · Engine 派发按卡头执行体绑定优先（M4 观察项落地）（Trae GLM5.2 执行）
 
 > 关联：INT-120 关闭后新阶段 · M4 主档 `__archive__/decisions/ccc-refactor-M4-移交-2026-08-03.md` §三 观察项
-> 依据：T38 插曲——`状态：待分派` 管理卡被 2017 生产 Engine 自动派发（卡头执行体 Trae=手动 GUI，但角色「开发执行体」注册表含 OpenCode CLI 行 → `decide()` 返回 AUTO → 错误拉起并打回）
+> 依据：T38 插曲——`状态：待分派` 管理卡被 2017 生产 Engine 自动派发（卡头执行体 Trae=手动 GUI，但角色「开发执行体」注册表含 OpenCode CLI 行 → `decide()` 返回 AUTO → 错误拉起并打回） · 派发：manual · 项目：ccc
 > 执行体：Trae（GLM5.2）· 验收：Codex（严格）· 状态：已关闭 · 日期：2026-08-03
 
 ## 目标
