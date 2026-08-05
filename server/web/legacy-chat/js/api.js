@@ -340,20 +340,27 @@ export async function streamChat(
       receivedAnyEvent = true;
       routeEvent(ev, payload);
     }
-    function consumeBlock(block) {
-      for (const line of block.split('\n')) {
-        if (line.startsWith('event:')) eventName = line.slice(6).trim();
-        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+    function processLine(line) {
+      const trimmed = line.trim();
+      if (trimmed === '') {
+        flushBlock();
+      } else if (line.startsWith('event:')) {
+        if (eventName !== null || dataLines.length > 0) {
+          flushBlock();
+        }
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        const d = line.slice(5);
+        dataLines.push(d.startsWith(' ') ? d.slice(1) : d);
       }
-      flushBlock();
     }
     function feed(chunk) {
       buffer += chunk;
       let idx;
-      while ((idx = buffer.indexOf('\n\n')) >= 0) {
-        const block = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        consumeBlock(block);
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).replace(/\r$/, '');
+        buffer = buffer.slice(idx + 1);
+        processLine(line);
       }
     }
 
@@ -364,7 +371,10 @@ export async function streamChat(
         feed(decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n'));
       }
       feed(decoder.decode().replace(/\r\n/g, '\n'));
-      if (buffer.trim()) consumeBlock(buffer);
+      if (buffer.trim()) {
+        processLine(buffer);
+        flushBlock();
+      }
       // T45：EOF 且未收到 done/error → 流中断，统一按结束处理（UI 复位，避免假流式）
       settleDone();
       return 'settled';

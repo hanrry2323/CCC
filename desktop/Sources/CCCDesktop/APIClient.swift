@@ -477,6 +477,23 @@ actor APIClient {
         return try await send(req, as: BoardTaskDetail.self)
     }
 
+    /// 新服务端任务状态流转：POST /tasks/{id}/transition
+    func transitionTaskNewServer(taskId: String, state: String) async throws {
+        let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+        let body = try JSONEncoder().encode(["status": state])
+        let req = try newServerAuthedRequest(path: "tasks/\(t)/transition", method: "POST", body: body)
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 401 {
+            newServerToken = nil
+            throw APIError.http(401, "新服务端会话 token 过期，请重新登录")
+        }
+        guard (200..<300).contains(code) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.http(code, text)
+        }
+    }
+
     /// 新服务端运维汇总：GET /ops/summary
     func fetchOpsSummaryNewServer() async throws -> OpsSummary {
         var req = try newServerAuthedRequest(path: "ops/summary")

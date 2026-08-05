@@ -11,6 +11,7 @@ final class WindowChatState: ObservableObject {
     @Published var threadId: String?
     /// 每窗独立导航（对话 / 看板 / 运维），禁止全局 destination 串窗
     @Published var destination: SidebarDestination = .chat
+    @Published var composerText: String = ""
 
     /// 设置项目时：若本窗已有属于该项目的会话且仍在列表中，禁止被 first 抢走
     func bindProject(_ pid: String, availableThreads: [DesktopThread]) {

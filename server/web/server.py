@@ -1261,6 +1261,89 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         self._send_json(detail)
 
+    def _find_card_file(self, card_id: str) -> Path | None:
+        """根据 id 寻找任务卡文件。"""
+        candidates = sorted(_DISPATCH_DIR.glob(f"{card_id}-*.md"))
+        if not candidates:
+            candidates = sorted(_DISPATCH_DIR.glob(f"*/{card_id}-*.md"))
+        if not candidates:
+            candidates = sorted(_DISPATCH_DIR.glob(f"*{card_id}*.md"))
+        return candidates[0] if candidates else None
+
+    def _handle_task_transition(self, task_id: str):
+        """POST /tasks/{id}/transition
+        Body: {"status": "..."} or {"state": "..."}
+        """
+        body = self._read_body()
+        if not body:
+            self._send_json({"error": "request body required"}, 400)
+            return
+
+        target_state_str = body.get("status") or body.get("state")
+        if not target_state_str:
+            self._send_json({"error": "status parameter is required"}, 400)
+            return
+
+        from server.engine.task import State, _LEGAL_TRANSITIONS
+        state_map = {
+            "todo": State.TODO,
+            "running": State.RUNNING,
+            "done": State.DONE,
+            "closed": State.CLOSED,
+            "rejected": State.REJECTED,
+            "待分派": State.TODO,
+            "执行中": State.RUNNING,
+            "已回写": State.DONE,
+            "已关闭": State.CLOSED,
+            "打回": State.REJECTED,
+        }
+
+        target_state = state_map.get(target_state_str.lower() if isinstance(target_state_str, str) else target_state_str)
+        if not target_state:
+            self._send_json({"error": f"invalid status: {target_state_str}"}, 400)
+            return
+
+        card_file = self._find_card_file(task_id)
+        if not card_file:
+            self._send_json({"error": f"task card not found for: {task_id}"}, 404)
+            return
+
+        try:
+            from server.board.loader import parse_card
+            item = parse_card(card_file)
+        except Exception as exc:
+            self._send_json({"error": f"failed to parse card: {exc}"}, 500)
+            return
+
+        curr_state_str = item.state
+        curr_state = state_map.get(curr_state_str)
+        if not curr_state:
+            curr_state = State.TODO
+
+        allowed = _LEGAL_TRANSITIONS.get(curr_state, frozenset())
+        if target_state not in allowed:
+            allowed_vals = [s.value for s in sorted(allowed, key=str)]
+            self._send_json({
+                "error": f"Illegal state transition: {curr_state.value} -> {target_state.value} (Allowed targets: {allowed_vals})"
+            }, 400)
+            return
+
+        try:
+            from server.engine.store import _replace_state_in_metadata
+            text = card_file.read_text(encoding="utf-8")
+            new_state_str = target_state.value
+            new_text = _replace_state_in_metadata(text, new_state_str)
+            card_file.write_text(new_text, encoding="utf-8")
+
+            # 重建索引/刷新看板
+            from server.board.loader import load_dispatch_cards
+            load_dispatch_cards(_DISPATCH_DIR)
+        except Exception as exc:
+            self._send_json({"error": f"failed to write transition: {exc}"}, 500)
+            return
+
+        self._send_json({"ok": True, "id": task_id, "from": curr_state.value, "to": target_state.value})
+
     def _handle_ops_summary(self):
         """GET /ops/summary → OpsSummary 兼容子集（cluster 采集 + board 派生 severity）。
 
@@ -1376,6 +1459,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_conversation_post()
         elif m := self._match_thread_route(path, "rename"):
             self._handle_thread_rename(m[0], m[1])
+        elif path.startswith("/tasks/") and path.endswith("/transition"):
+            task_id = path[len("/tasks/") : -len("/transition")].strip("/")
+            self._handle_task_transition(task_id)
         else:
             self._send_404()
 

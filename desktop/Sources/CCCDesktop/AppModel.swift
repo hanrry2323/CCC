@@ -1382,6 +1382,18 @@ final class AppModel: ObservableObject {
         return try await client.fetchTaskDetailNewServer(taskId: task.id, workspace: ws)
     }
 
+    func transitionTask(_ task: BoardTask, toState state: String) async throws {
+        try await prepareClient()
+        do {
+            try await client.transitionTaskNewServer(taskId: task.id, state: state)
+            boardError = nil
+        } catch {
+            boardError = "任务转移失败：\(error.localizedDescription)"
+            throw error
+        }
+        await refreshBoard()
+    }
+
     private func applyBoardSnapshot(columns: [String: [BoardTask]], error: Error?) {
         if let error {
             boardStale = true

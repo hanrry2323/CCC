@@ -301,7 +301,7 @@ def _run_claude(prompt: str, timeout: int) -> tuple[bool, str, str | None]:
     env["ANTHROPIC_MODEL"] = _get_brain_model()
     try:
         proc = subprocess.run(
-            [bin_path, "-p", prompt, "--output-format", "text"],
+            [bin_path, "-p", prompt, "--output-format", "text", "-y"],
             env=env,
             timeout=timeout,
             capture_output=True,
@@ -508,7 +508,8 @@ def _stream_claude(prompt: str, timeout: int | None = None):
     try:
         proc = subprocess.Popen(
             [bin_path, "-p", prompt, "--output-format", "stream-json", "--verbose"]
-            + _thinking_args,
+            + _thinking_args
+            + ["-y"],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
