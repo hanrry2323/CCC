@@ -21,6 +21,7 @@
 | 6 | **P2** | 无头 375px 视口无横向溢出（通过项，记录为对照基线） | 走查 `mobile_375_overflow=false` | 无需修 |
 | 7 | **P3** | 桌面端与 HTTP 壳共享 #1 的并发拉取风险（桌面拉 /projects /board 等也会偶发失败） | 同源网络层问题 | 桌面端 API 客户端加重试/退避（现有部分场景已有） |
 | 8 | **P3** | Nginx 统一入口模板/脚本已就绪但 2017 实际未安装（Homebrew formula DSL 报错） | T63 记录 | 后续修 brew 环境或换安装法 |
+| 9 | **P3** | release.sh 生产模式 `git checkout <commit>` 后 2017 停在 detached HEAD，下次 pull 报错需手动 `git checkout main` | 2026-08-05 两次实测 | release.sh 改为 checkout 到 main 后 fast-forward，或部署结束补 `git checkout main` |
 
 ## 说明
 
