@@ -255,8 +255,17 @@ struct BoardView: View {
                             .padding(8)
                     }
                     ForEach(tasks) { task in
-                        boardCard(task, col: col)
-                            .onTapGesture { openDetail(task) }
+                        BoardCard2(task: task, col: col, onTransition: { targetState in
+                            Task {
+                                do {
+                                    try await model.transitionTask(task, toState: targetState)
+                                } catch {
+                                    print("Transition failed: \(error)")
+                                }
+                            }
+                        }, onTap: {
+                            openDetail(task)
+                        })
                     }
                 }
             }
@@ -271,72 +280,6 @@ struct BoardView: View {
                     .stroke(CCCTheme.border, lineWidth: 1)
             )
         }
-    }
-
-    private func boardCard(_ task: BoardTask, col: String) -> some View {
-        let isAbnormal = (task.status == "abnormal") || (task.split_status == "failed")
-        let locator = CardLocator.line(
-            project: model.selectedProjectId,
-            thread: model.selectedThreadId,
-            kind: task.isEpic ? "epic" : "work",
-            id: task.id,
-            title: task.displayTitle,
-            stage: task.split_status ?? task.status,
-            column: col
-        )
-        return ZStack(alignment: .bottomTrailing) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    if task.isEpic {
-                        Text("EPIC")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(CCCTheme.accent)
-                    }
-                    Spacer(minLength: 0)
-                    if isAbnormal {
-                        Circle().fill(CCCTheme.nodeFail).frame(width: 6, height: 6)
-                    }
-                }
-                Text(task.displayTitle)
-                    .font(.system(size: 13.5, weight: .medium))
-                    .foregroundStyle(CCCTheme.ink)
-                    .lineLimit(3)
-                if let note = task.note, !note.isEmpty {
-                    Text(note)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(CCCTheme.faint)
-                        .lineLimit(2)
-                }
-                HStack(spacing: 6) {
-                    if let split = task.split_status, !split.isEmpty {
-                        Text(split)
-                            .font(.system(size: 10))
-                            .foregroundStyle(CCCTheme.secondary)
-                    }
-                    if let ex = task.executor, !ex.isEmpty {
-                        Text(ex)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(CCCTheme.faint)
-                            .padding(.horizontal, 4)
-                            .background(CCCTheme.chatBg)
-                            .clipShape(RoundedRectangle(cornerRadius: 3))
-                    }
-                }
-            }
-            .padding(8)
-            .padding(.bottom, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            LocatorCopyButton(text: locator)
-                .padding(6)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(CCCTheme.chatBg)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.clear, lineWidth: 1.5)
-        )
     }
 
     private func openDetail(_ task: BoardTask) {
@@ -638,5 +581,185 @@ struct BoardView: View {
     private func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
+    }
+}
+
+// MARK: - 看板卡片 2.0 升级
+struct BoardCard2: View {
+    let task: BoardTask
+    let col: String
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
+    let onTransition: (String) -> Void
+    let onTap: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let isAbnormal = (task.status == "abnormal") || (task.split_status == "failed")
+        let locator = CardLocator.line(
+            project: model.selectedProjectId,
+            thread: model.selectedThreadId,
+            kind: task.isEpic ? "epic" : "work",
+            id: task.id,
+            title: task.displayTitle,
+            stage: task.split_status ?? task.status,
+            column: col
+        )
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(task.id)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CCCTheme.accent)
+
+                if task.isEpic {
+                    Text("EPIC")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(CCCTheme.accent))
+                }
+
+                Spacer()
+
+                if isAbnormal {
+                    Circle()
+                        .fill(CCCTheme.nodeFail)
+                        .frame(width: 6, height: 6)
+                }
+            }
+
+            Text(task.displayTitle)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(CCCTheme.ink)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+
+            if let note = task.note, !note.isEmpty {
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            HStack(spacing: 6) {
+                if let split = task.split_status, !split.isEmpty {
+                    Text(split)
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(CCCTheme.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(CCCTheme.hover, in: RoundedRectangle(cornerRadius: 3))
+                }
+                if let ex = task.executor, !ex.isEmpty {
+                    Text("@" + ex)
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(CCCTheme.faint)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(CCCTheme.hover, in: RoundedRectangle(cornerRadius: 3))
+                }
+            }
+
+            Divider()
+                .opacity(0.3)
+
+            HStack(spacing: 6) {
+                if col == "待分派" {
+                    ActionButton(title: "接单", icon: "play.fill", color: CCCTheme.nodeRunning) {
+                        onTransition("执行中")
+                    }
+                } else if col == "执行中" {
+                    ActionButton(title: "回写", icon: "checkmark.circle.fill", color: CCCTheme.nodeDone) {
+                        onTransition("已回写")
+                    }
+                    ActionButton(title: "打回", icon: "exclamationmark.arrow.triangle.2.circlepath", color: CCCTheme.nodeFail) {
+                        onTransition("打回")
+                    }
+                } else if col == "已回写" {
+                    ActionButton(title: "关闭", icon: "archivebox.fill", color: CCCTheme.nodePending) {
+                        onTransition("已关闭")
+                    }
+                    ActionButton(title: "打回", icon: "exclamationmark.arrow.triangle.2.circlepath", color: CCCTheme.nodeFail) {
+                        onTransition("打回")
+                    }
+                } else if col == "打回" {
+                    ActionButton(title: "接单", icon: "arrow.counterclockwise.circle.fill", color: CCCTheme.nodeRunning) {
+                        onTransition("待分派")
+                    }
+                }
+
+                Spacer()
+
+                Button(action: {
+                    if window.composerText.isEmpty {
+                        window.composerText = locator
+                    } else {
+                        window.composerText += " " + locator
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "quote.bubble.fill")
+                            .font(.system(size: 9.5))
+                        Text("引用")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(CCCTheme.hover, in: RoundedRectangle(cornerRadius: 4))
+                    .foregroundStyle(CCCTheme.secondary)
+                }
+                .buttonStyle(.plain)
+
+                LocatorCopyButton(text: locator)
+                    .scaleEffect(0.85)
+            }
+        }
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: Color.black.opacity(hovering ? 0.08 : 0.03), radius: hovering ? 8 : 4, x: 0, y: hovering ? 4 : 2)
+        .scaleEffect(hovering ? 1.015 : 1.0)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(hovering ? CCCTheme.accent.opacity(0.3) : CCCTheme.border, lineWidth: 1)
+        )
+        .onHover { hovering = $0 }
+        .onTapGesture {
+            onTap()
+        }
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: hovering)
+    }
+}
+
+struct ActionButton: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 9))
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(hovering ? color.opacity(0.18) : color.opacity(0.08))
+            .foregroundStyle(color)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(color.opacity(0.25), lineWidth: hovering ? 1 : 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }

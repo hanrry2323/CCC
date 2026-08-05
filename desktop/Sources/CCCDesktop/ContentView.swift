@@ -489,8 +489,6 @@ struct CodexChatPaneBody: View {
     @EnvironmentObject var window: WindowChatState
     @ObservedObject var chat: ChatState
     @Environment(\.scenePhase) private var scenePhase
-    /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
-    @State private var composerText: String = ""
     @State private var lastScrollTargetId: String = ""
     /// 切窗/切会话后下一次滚动必须瞬移到末轮，禁止 easeOut 扫历史（长对话「刷一遍」）
     @State private var needsInstantBottomPin: Bool = true
@@ -1177,7 +1175,7 @@ struct CodexChatPaneBody: View {
 
             HStack(alignment: .bottom, spacing: 8) {
                 ComposerTextView(
-                    text: $composerText,
+                    text: $window.composerText,
                     placeholder: (window.projectId.flatMap { pid in model.projects.first { $0.id == pid } }?.isOrch == true)
                         ? "编排仓可聊方案；转任务请切到业务项目…"
                         : "问任何问题…",
@@ -1368,20 +1366,20 @@ struct CodexChatPaneBody: View {
     }
 
     private var canSend: Bool {
-        model.canChat && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        model.canChat && !window.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var showStopInsteadOfSend: Bool {
         paneStreaming
-            && composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && window.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendFromComposer() {
-        let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = window.composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         let atts = model.composerAttachments
         guard !text.isEmpty || !atts.isEmpty else { return }
         // 立刻清空本地输入；不要经 model.draft，避免 onChange 回填
-        composerText = ""
+        window.composerText = ""
         model.sendUserMessage(
             text,
             projectId: paneProjectId,

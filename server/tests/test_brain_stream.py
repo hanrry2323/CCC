@@ -316,7 +316,7 @@ class TestStreamClaude:
         list(brain_mod._stream_claude("hi"))
         assert captured.get("popen_args") == [
             "claude", "-p", "hi", "--output-format", "stream-json", "--verbose",
-            "--thinking", "enabled",
+            "--thinking", "enabled", "-y",
         ]
 
     def test_thinking_flag_disabled_via_env(self, monkeypatch):
@@ -332,7 +332,7 @@ class TestStreamClaude:
         monkeypatch.setattr("server.web.brain.subprocess.Popen", _fake_popen)
         list(brain_mod._stream_claude("hi"))
         assert captured["popen_args"] == [
-            "claude", "-p", "hi", "--output-format", "stream-json", "--verbose",
+            "claude", "-p", "hi", "--output-format", "stream-json", "--verbose", "-y",
         ]
 
 
