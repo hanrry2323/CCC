@@ -205,5 +205,58 @@ export class TaskCardList {
         }
       });
     });
+
+    // Check for pending detail ID and click it
+    if (window.__PENDING_DETAIL_ID__) {
+      const pendingId = window.__PENDING_DETAIL_ID__;
+      const cardEl = this.scroller.querySelector(`.board-task-card[data-id="${pendingId}"]`);
+      if (cardEl) {
+        window.__PENDING_DETAIL_ID__ = null; // Clear it
+        setTimeout(() => {
+          cardEl.click();
+        }, 50);
+      } else {
+        // Fallback: If not found in this list, but we have the modal in the DOM, let's open it directly!
+        const modal = document.querySelector('#board-dm');
+        if (modal) {
+          window.__PENDING_DETAIL_ID__ = null; // Clear it
+          import('../api.js').then(async (api) => {
+            try {
+              const r = await api.apiGet('/tasks/' + encodeURIComponent(pendingId));
+              const titleEl = document.querySelector('#board-dti');
+              const idEl = document.querySelector('#board-did');
+              const ttEl = document.querySelector('#board-dtt');
+              const mtEl = document.querySelector('#board-dmt');
+              const accEl = document.querySelector('#board-dacc');
+
+              if (titleEl) titleEl.textContent = '任务: ' + (r.id || pendingId);
+              if (idEl) idEl.textContent = r.id || pendingId;
+              if (ttEl) ttEl.textContent = r.title || '(无标题)';
+              if (mtEl) {
+                const esc = (s) => {
+                  const d = document.createElement('div');
+                  d.textContent = String(s || '');
+                  return d.innerHTML;
+                };
+                const meta = [
+                  `状态: ${esc(r.status || '—')}`,
+                  r.executor ? `执行体: ${esc(r.executor)}` : '',
+                  r.card_kind ? `类型: ${esc(r.card_kind)}` : '',
+                  r.parent_id ? `父卡: ${esc(r.parent_id)}` : '',
+                ].filter(Boolean).join(' · ');
+                mtEl.innerHTML = meta;
+              }
+              if (accEl) {
+                const detailMod = await import('./taskCardDetail.js');
+                accEl.innerHTML = detailMod.renderTaskCardDetail(r);
+              }
+              modal.classList.add('open');
+            } catch (err) {
+              window.showToast?.(err?.message || '加载详情失败', 'error');
+            }
+          });
+        }
+      }
+    }
   }
 }
