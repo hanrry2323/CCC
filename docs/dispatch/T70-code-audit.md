@@ -75,4 +75,6 @@ Build complete! (exit 0)
 
 ### push 证据
 
-（提交后填 commit hash / 远端分支）
+- 分支：`codex/cursor-t02-code-audit`（已 push `origin`）
+- commits：`37f0283`（清单）→ `1ecc28c`（本卡回写）
+- HEAD：`1ecc28c0fedfc4a78d14cb45eec11d5f327782b2`
