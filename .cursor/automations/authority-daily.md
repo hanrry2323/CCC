@@ -18,8 +18,10 @@
 2. 若绿，可做绿灯维护（有则做，无则安静结束）：
    - `pytest server/tests -q`（回归）
    - 版本号三处是否一致（`VERSION` / badge / package）——不一致只修对齐，不擅自 bump。
-   - 仓内是否又出现旧栈指引（Hub :7777 / scripts/ / 6+1 列 jsonl / 能力包）→ 标史或删（绿灯清理）。
+   - 仓内是否又出现旧栈指引（Hub :7777 / Board :7775 / sidecar / OpenCode 主线写码 / 6+1 列 jsonl / 能力包）→ 标史或改指 `CURSOR.md`（绿灯清理）。
+   - HP 记忆若捞到 Hub 时期「现状」→ 以 `/codex/topics/ccc/current-state-v070` 为准。
 3. 不要对 CCC 投业务 epic；不改生产配置（2017 `server/config/config.env` 由部署流程管理）。
+4. **禁止**再调用已退役的 `scripts/ccc-authority-patrol.py`。
 
 ## 对老板可见输出
 

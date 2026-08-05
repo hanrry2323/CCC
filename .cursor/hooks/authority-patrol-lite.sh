@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# After file edit: quiet dry-run; inject context if RED (no notify spam).
-# Missing/broken runner must not false-alarm (post 2026-08-02 scripts/ retirement).
+# After file edit: only watch authority-sensitive paths; run new-stack validate dry summary.
+# Missing validate module must not false-alarm.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 tmp_in="$(mktemp)"
-tmp_out="$(mktemp)"
-trap 'rm -f "$tmp_in" "$tmp_out"' EXIT
+trap 'rm -f "$tmp_in"' EXIT
 cat >"$tmp_in" || true
 
 path="$(python3 -c 'import json,sys
@@ -19,7 +18,7 @@ except Exception:
 print(p)' "$tmp_in")"
 
 case "$path" in
-  *docs/product*|*hub_voice*|*transfer_gate*|*loop-engineer*|*authority-patrol*|*dev-channel*|*desktop-connection*|*AppModel.swift*)
+  *docs/dispatch*|*docs/product/dev-channel*|*CURSOR.md*|*STARTUP-BRIEF*|*CLAUDE.md*|*loop-engineer-consensus*|*location-truth*)
     ;;
   *)
     printf '%s\n' '{"ok":true}'
@@ -27,32 +26,23 @@ case "$path" in
     ;;
 esac
 
-PATROL="$ROOT/scripts/ccc-authority-patrol.py"
-if [[ ! -f "$PATROL" ]]; then
-  printf '%s\n' '{"ok":true}'
+set +e
+python3 -m server.board.validate docs/dispatch >/dev/null 2>&1
+rc=$?
+set -e
+
+if [[ "$rc" -ne 0 ]]; then
+  python3 - <<'PY'
+import json
+print(json.dumps({
+  "ok": True,
+  "additional_context": (
+    "提醒：docs/dispatch 卡头门禁当前非绿。"
+    "现行权威=CURSOR.md + .cursor/rules + INDEX §0；勿引用 Hub:7777/sidecar。"
+  ),
+}, ensure_ascii=False))
   exit 0
 fi
 
-set +e
-CCC_NOTIFY=0 python3 "$PATROL" --dry-run --json >"$tmp_out" 2>/dev/null
-set -e
-
-python3 -c '
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    print(json.dumps({"ok": True}))
-    raise SystemExit(0)
-if d.get("ok"):
-    print(json.dumps({"ok": True}))
-    raise SystemExit(0)
-titles = [str(f.get("title") or f.get("id")) for f in (d.get("findings") or [])][:3]
-ctx = (
-    "权威巡查（编辑后轻检）发现可能违背："
-    + "；".join(titles)
-    + "。勿擅自改红线；会话结束会再巡查，或手动 python3 scripts/ccc-authority-patrol.py。"
-)
-print(json.dumps({"ok": True, "additional_context": ctx}, ensure_ascii=False))
-' "$tmp_out"
+printf '%s\n' '{"ok":true}'
 exit 0
