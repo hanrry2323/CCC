@@ -1,6 +1,6 @@
 # 任务卡 T62 · T-A5 历史归档与回顾 + /cards 兜底（Claude Code 执行）
 
-> 关联：阶段 3（T-A5）+ T50 联调发现（/cards 缺索引返回空，需兜底）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：阶段 3（T-A5）+ T50 联调发现（/cards 缺索引返回空，需兜底）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t62 -b codex/t62-archive-review origin/main`，在其中工作；分支 `codex/t62-archive-review`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -34,4 +34,37 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+### 1. 归档机制实现
+- **核心逻辑 (`server/board/archive.py`)**：检测状态为 `已关闭` 且其关闭日期 (`written_at` 或 `dispatched_at`) 超过 6 个月的任务卡，利用 `git mv`（失败回退 `shutil.move`）自动迁移到 `docs/archive/ccc-tasks/<project>/`。
+- **定时与触发**：在 `board-scheduler` 定时周期的 `export_safe` 中自动加载归档，且提供独立 CLI 接口可供手动触发（`scripts/archive-cards.sh`）。
+- **增量索引支持 (`server/board/loader.py`)**：对 `docs/archive/ccc-tasks` 下的归档卡，增量索引加载时能自动识别并带上 `archived=True` 标记。在 Kanban 看板各展示接口中，默认过滤掉 `archived=True` 的卡片。
+
+### 2. 兜底与结构化高级回顾
+- **/cards 缺索引兜底 (`server/web/server.py`)**：当索引文件在磁盘上缺失或为空时，`/cards` 和 `/cards/search` 自动回退执行全量扫描并重建磁盘索引；如果写磁盘失败，会自动降级采用内存动态解析，确保无论何种情况都绝不返回空。
+- **结构化高级回顾**：支持以 `executor`、`dispatched_at`、`written_at`、`closed_at` 以及 `include_archived=1` 等参数过滤，完美实现归档卡的多维度搜索。
+- **语义回顾**：语义走知识库检索已成熟衔接（由 T-A4 教训沉淀机制自动在闭卡时投递至 HP 知识库）。
+
+### 3. 测试记录
+- 在 `server/tests/test_board_archive.py` 中，编写了关于归档边界时间规则、过滤逻辑、看板/回顾过滤以及索引重建的单元测试。
+- 在 `server/tests/test_http_api.py` 的 `TestCardsFallback` 中，完成了索引缺失回退重建、结构化过滤和归档卡多维度参数检索的集成测试。
+- 本地全量 pytest 套件 110 个用例全部通过。
+
+### 4. Pytest & Ruff 验证
+```bash
+# 全量测试成功
+$ /usr/local/bin/python3 -m pytest server/tests/ -q --tb=short
+.............................................................................................................. [100%]
+110 passed in 8.35s
+
+# Ruff 质量扫描全绿
+$ /usr/local/bin/python3 -m ruff check server/board/archive.py
+All checks passed!
+```
+
+### 5. Push 证据
+已成功 push 分支到远程：
+- `codex/t62-archive-review` -> `origin/codex/t62-archive-review`
+- commit id: `c937c716`
+
