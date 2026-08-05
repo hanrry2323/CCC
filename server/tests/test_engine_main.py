@@ -569,6 +569,54 @@ class TestFileBoardStore:
         text = card.read_text(encoding="utf-8")
         assert "状态：打回（退出码非 0: 1（日志: /tmp/x.log））" in text
 
+    def test_save_work_replace_state_strictly_in_metadata(self, tmp_path: Path) -> None:
+        """F01：_replace_state_in_metadata 仅在卡头元数据行中替换，找不到则抛 ValueError 阻断且不误改正文。"""
+        from server.engine.store import _replace_state_in_metadata
+
+        # 场景 1：卡头正常，正文也含有「状态：」，应只修改卡头
+        text_with_body_state = (
+            "# 任务卡 T80 · 正常卡\n"
+            "> 关联：TEST · 状态：待分派 · 执行体：demo\n"
+            "\n"
+            "## 目标\n"
+            "我们要改变整个任务的当前状态：已完成。\n"
+        )
+        new_text = _replace_state_in_metadata(text_with_body_state, "执行中")
+        assert "> 关联：TEST · 状态：执行中 · 执行体：demo\n" in new_text
+        assert "状态：已完成。" in new_text  # 正文未被篡改
+
+        # 场景 2：卡头缺失状态字段，正文含有「状态：」，应直接抛出 ValueError
+        text_no_metadata_state = (
+            "# 任务卡 T81 · 无状态卡\n"
+            "> 关联：TEST · 执行体：demo\n"
+            "\n"
+            "## 目标\n"
+            "我们要检查状态：已关闭。\n"
+        )
+        with pytest.raises(ValueError, match="未在卡头元数据行中找到「状态」段"):
+            _replace_state_in_metadata(text_no_metadata_state, "执行中")
+
+        # 场景 3：调用 save_work 回写无状态卡时，抛错被拦截，文件内容不被误改且不写盘
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        card = tmp_path / "T82.md"
+        card.write_text(text_no_metadata_state, encoding="utf-8")
+        store = FileBoardStore(tmp_path, reg)
+
+        # 构造一个内存 work
+        w = Work(
+            id="T82",
+            role="开发执行体",
+            title="无状态卡",
+            state=State.RUNNING,
+            card_path=str(card.resolve()),
+            executor="demo",
+        )
+        # 调用 save_work，异常应该被拦截，并且写盘被阻断，内容完全未变
+        store.save_work(w)
+        final_text = card.read_text(encoding="utf-8")
+        assert final_text == text_no_metadata_state
+
     def test_end_to_end_dispatch_writes_back(self, tmp_path: Path) -> None:
         """端到端：真实卡 → Engine run_once → 卡头状态更新为「已回写」。"""
         reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")

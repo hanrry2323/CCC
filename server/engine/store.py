@@ -167,9 +167,10 @@ class FileBoardStore:
             reason = work.problems[0][:40]
             new_state_str = f"待分派（{reason}）"
 
-        new_text = _replace_state_in_metadata(text, new_state_str)
-        if new_text == text:
-            logger.warning("save_work: 未在卡头找到「状态」段 %s", path)
+        try:
+            new_text = _replace_state_in_metadata(text, new_state_str)
+        except ValueError as exc:
+            logger.warning("save_work: 未在卡头找到「状态」段 %s (%s)", path, exc)
             return
         # 原子写：tmp → rename
         tmp = path.with_suffix(path.suffix + ".tmp")
@@ -217,9 +218,20 @@ def _replace_state_in_metadata(text: str, new_state: str) -> str:
     """在 `>` 元数据行中替换「状态：X」段的值。
 
     只替换第一个匹配（卡头只有一行含「状态」）。
+    如果找不到「状态：X」段，则抛出 ValueError 异常由调用方拦截。
     """
-    return _STATE_PAIR_RE.sub(
-        lambda m: m.group(1) + new_state,
-        text,
-        count=1,
-    )
+    lines = text.splitlines(keepends=True)
+    replaced = False
+    for i, line in enumerate(lines):
+        if line.strip().startswith(">"):
+            if _STATE_PAIR_RE.search(line):
+                lines[i] = _STATE_PAIR_RE.sub(
+                    lambda m: m.group(1) + new_state,
+                    line,
+                    count=1,
+                )
+                replaced = True
+                break
+    if not replaced:
+        raise ValueError("未在卡头元数据行中找到「状态」段")
+    return "".join(lines)
