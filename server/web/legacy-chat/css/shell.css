@@ -1342,6 +1342,27 @@ body.dialogue-mode #hub-views {
   border-bottom: 1px solid var(--ccc-border-subtle);
 }
 
+/* T68: critical module load exhausted retries */
+.ccc-resource-fail-banner {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--ccc-danger, #c0392b);
+  background: var(--ccc-bg-layer, #fff5f5);
+  color: var(--ccc-danger, #c0392b);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  z-index: 10000;
+  position: relative;
+}
+.ccc-resource-fail-banner:hover {
+  background: var(--ccc-bg-hover, #ffe8e8);
+}
+
 /* 看板/运维：轻提示条（非刺眼蓝横幅） */
 .orch-hint {
   flex-shrink: 0;
