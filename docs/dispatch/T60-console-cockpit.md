@@ -1,6 +1,6 @@
 # 任务卡 T60 · T-B3 控制台驾驶舱对齐统一组件（Claude Code 执行）
 
-> 关联：前端四板块架构（T-B3）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：前端四板块架构（T-B3）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t60-console-cockpit`（先 `git fetch origin main && git checkout -b codex/t60-console-cockpit origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。与 T61 并行，文件所有权见下。
 
