@@ -1508,6 +1508,9 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
     （T42 独立复现实锤）。
     """
     server = ThreadingHTTPServer((host, port), _APIHandler)
+    # 2026-08-05 修复：默认 request_queue_size=5，浏览器并发拉静态资源（20+ 连接）
+    # 时连接队列溢出 → ERR_CONNECTION_RESET；调大队列消除并发连接失败。
+    server.request_queue_size = 128
     return server
 
 
