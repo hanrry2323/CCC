@@ -1,7 +1,8 @@
-# 任务卡 T72 · desktop P0 修复（F18/F19/F20 · T70 审计）（Cursor 测试卡 3）
+# 任务卡 T72 · desktop P0 修复（F18/F19/F20 · T70 审计）
 
-> 关联：T70 审计 P0（F18 workspace 传路径 / F19 Kanban 英文旧列 / F20 流式缺 thread_id/model）· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：待分派 · 派发：manual · 项目：ccc · 日期：2026-08-06
-> 工作目录：M1 `/Users/apple/program/CCC`；分支 `codex/cursor-t03-desktop-p0`（从 main 新建）
+> 关联：T70 审计 P0（F18 workspace 传路径 / F19 Kanban 英文旧列 / F20 流式缺 thread_id/model）· 执行体：Claude Code · 验收：Codex（独立复核）· 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t72 -b codex/t72-desktop-p0 origin/main`；分支 `codex/t72-desktop-p0`
+> **分步提交纪律（硬）**：每条修复单独 commit+push；禁止 `git add -A`；超时 7200s。
 > 依据：`docs/dispatch/T70-audit-report.md` F18/F19/F20 条目
 > **分步提交纪律（硬）**：每条修复单独 commit+push；禁止 `git add -A`。
 
@@ -24,10 +25,11 @@
 
 ## 验收标准（Codex 独立复核）
 
-1. F18：桌面连 2017 生产看板有真实数据（无头/源码走查证据）；`workspace=` 传值核对。
-2. F19：Kanban 列名中文五态；swift build 0 告警 + swift test 全绿。
-3. F20：`StreamBody` 含 thread_id/model；调用链贯通 preferredModel（代码审查）；swift build 通过。
-4. 分支分步提交、工作树干净、push 成功。
+1. F18：`workspace=` 传值核对（项目 id 而非路径）；2017 上 `swiftc -typecheck` 全量通过（无完整 Xcode 时）。
+2. F19：Kanban 列名中文五态；`swiftc -typecheck` 通过；色板与 TaskCardPanel 一致。
+3. F20：`StreamBody` 含 thread_id/model；调用链贯通 preferredModel（代码审查）；typecheck 通过。
+4. 完整 `swift build` + `swift test` 由 Codex 在 M1 独立复跑（2017 无完整 Xcode 工具链）。
+5. 分支分步提交、工作树干净、push 成功。
 
 ## 回写要求
 
@@ -35,4 +37,4 @@
 
 ## 回写区
 
-**执行体**：Cursor（M1）· 日期：
+**执行体**：Claude Code（2017）· 日期：
