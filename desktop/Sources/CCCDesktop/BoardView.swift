@@ -60,17 +60,15 @@ struct BoardView: View {
     }
 
     private let columnOrder = [
-        "backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal",
+        "待分派", "执行中", "已回写", "已关闭", "打回",
     ]
 
     private let columnTitles: [String: String] = [
-        "backlog": "待办",
-        "planned": "已规划",
-        "in_progress": "进行中",
-        "testing": "验收中",
-        "verified": "已验证",
-        "released": "已发布",
-        "abnormal": "异常",
+        "待分派": "待分派",
+        "执行中": "执行中",
+        "已回写": "已回写",
+        "已关闭": "已关闭",
+        "打回": "打回",
     ]
 
     var body: some View {
@@ -231,8 +229,12 @@ struct BoardView: View {
 
     private func columnPane(_ col: String, width: CGFloat, height: CGFloat) -> some View {
         let tasks = model.boardColumns[col] ?? []
+        let tone = StateTone.of(col)
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(tone.bar)
+                    .frame(width: 8, height: 8)
                 Text(columnTitles[col] ?? col)
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
