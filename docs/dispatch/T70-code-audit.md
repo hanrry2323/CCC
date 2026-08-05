@@ -1,6 +1,6 @@
 # 任务卡 T70 · 全项目代码 bug 检查（Cursor 测试卡 2 · M1 只读审计）
 
-> 关联：老板 2026-08-06 指示「Cursor 做一次全部 CCC 项目检查，主要做代码 bug 检查」· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-06
+> 关联：老板 2026-08-06 指示「Cursor 做一次全部 CCC 项目检查，主要做代码 bug 检查」· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：已关闭 · 派发：manual · 项目：ccc · 日期：2026-08-06
 > 工作目录：M1 `/Users/apple/program/CCC`；分支 `codex/cursor-t02-code-audit`（从 main 新建）
 > 背景交接：`docs/cursor-code-check-handoff.md`（先读）
 > **分步提交纪律（硬）**：清单分批 commit+push；禁止 `git add -A` 全量提交。
@@ -78,3 +78,10 @@ Build complete! (exit 0)
 - 分支：`codex/cursor-t02-code-audit`（已 push `origin`）
 - commits：`37f0283`（清单）→ `1ecc28c`（本卡回写）
 - HEAD：`1ecc28c0fedfc4a78d14cb45eec11d5f327782b2`
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-06）
+
+**判定：✅ 通过。** 独立复核：① 范围守界（仅报告+卡，零业务代码改动）；② 抽查 8 条 P0/P1（F01/F02/F10/F11/F18/F19/F20/F04）全部属实——F01 正则确无 `>` 锚定、F02 read_text 无异常捕获、F11 SSE catch 确未 settleError（注释与代码不符）、F19 Kanban 确留英文旧列、F20 StreamBody 确缺 thread_id/model、F10 threads 路由确在 auth 前；③ pytest 7 failed/484 passed 与自述一致（7 失败均 M1 无中继环境性）；④ 严重级分级合理、修复建议可执行。
+**评级**：Cursor 试运行表现合格（T68 首测 + T70 审计均独立验证无编造）。**修复排期**：P0 组（F01/F02/F11/F18/F19/F20）转修复卡；P1/P2 随整体联调消化。
