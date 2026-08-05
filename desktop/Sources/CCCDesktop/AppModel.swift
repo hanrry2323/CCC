@@ -234,13 +234,11 @@ final class AppModel: ObservableObject {
         let projectId = pid.isEmpty ? (selectedProjectId ?? "") : pid
         guard !projectId.isEmpty else { return }
         diskSaveTasks[threadId]?.cancel()
-        diskSaveTasks[threadId] = Task { [weak self, threadId, projectId] in
+        diskSaveTasks[threadId] = Task { @MainActor [weak self, threadId, projectId] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled, let self else { return }
-            await MainActor.run {
-                self.writeDiskSave(threadId: threadId, projectId: projectId)
-                self.diskSaveTasks[threadId] = nil
-            }
+            self.writeDiskSave(threadId: threadId, projectId: projectId)
+            self.diskSaveTasks[threadId] = nil
         }
     }
 

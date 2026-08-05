@@ -19,30 +19,32 @@ struct CCCDesktopApp: App {
                     .keyboardShortcut("n", modifiers: [.command])
             }
             CommandGroup(after: .newItem) {
-                Button("搜索消息") { appModel.requestSearchFocus() }
-                    .keyboardShortcut("f", modifiers: [.command])
-                Button("转任务…") { appModel.requestOpenTransfer() }
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
-                Divider()
-                Button("对话") { appModel.requestDestination(.chat) }
-                    .keyboardShortcut("1", modifiers: [.command])
-                Button("看板") { appModel.requestDestination(.board) }
-                    .keyboardShortcut("2", modifiers: [.command])
-                Button("运维") { appModel.requestDestination(.ops) }
-                    .keyboardShortcut("3", modifiers: [.command])
+                Group {
+                    Button("搜索消息") { appModel.requestSearchFocus() }
+                        .keyboardShortcut("f", modifiers: [.command])
+                    Button("转任务…") { appModel.requestOpenTransfer() }
+                        .keyboardShortcut("t", modifiers: [.command, .shift])
+                    Divider()
+                    Button("对话") { appModel.requestDestination(.chat) }
+                        .keyboardShortcut("1", modifiers: [.command])
+                    Button("看板") { appModel.requestDestination(.board) }
+                        .keyboardShortcut("2", modifiers: [.command])
+                    Button("运维") { appModel.requestDestination(.ops) }
+                        .keyboardShortcut("3", modifiers: [.command])
+                }
                 Divider()
                 Button("用法说明") { appModel.isHelpPresented = true }
                     .keyboardShortcut("/", modifiers: [.command, .shift])
                 Divider()
                 Button("分叉当前会话") {
-                    Task {
+                    Task { @MainActor in
                         guard let tid = appModel.selectedThreadId else { return }
                         _ = await appModel.forkThread(threadId: tid)
                     }
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
                 Button("压缩当前上下文") {
-                    Task {
+                    Task { @MainActor in
                         guard let tid = appModel.selectedThreadId else { return }
                         await appModel.manualCompact(threadId: tid)
                     }

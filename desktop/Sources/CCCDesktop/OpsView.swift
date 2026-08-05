@@ -39,12 +39,14 @@ struct OpsView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
-                    // P0 四域 above-the-fold：①总灯 ②集群 ③Agent/MCP/Relay ④仅红
-                    healthLampSection
-                    cockpitKPISection
-                    clusterSummarySection
-                    agentMcpRelaySection
-                    redAlertsSection
+                    Group {
+                        // P0 四域 above-the-fold：①总灯 ②集群 ③Agent/MCP/Relay ④仅红
+                        healthLampSection
+                        cockpitKPISection
+                        clusterSummarySection
+                        agentMcpRelaySection
+                        redAlertsSection
+                    }
 
                     DisclosureGroup("失败与提案", isExpanded: $showFailures) {
                         failuresSection
@@ -130,8 +132,10 @@ struct OpsView: View {
                 ProgressView().controlSize(.small)
             }
             Menu {
-                Button("刷新", systemImage: "arrow.clockwise") {
+                Button {
                     Task { await model.refreshOps() }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -482,7 +486,7 @@ struct OpsView: View {
                             .foregroundStyle(a == c ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                     }
                     ForEach(sList, id: \.session_id) { s in
-                        let sid = (s.session_id ?? "?").prefix(8)
+                        let sid = String((s.session_id ?? "?").prefix(8))
                         let role = s.role ?? "?"
                         let task = s.task_id ?? "?"
                         let aliveMark = s.alive == true ? "●" : "○"
