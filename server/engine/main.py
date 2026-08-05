@@ -23,6 +23,7 @@ import json
 import logging
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -130,7 +131,7 @@ def run_once(
     """单次扫描 + 派发 + 收单。
 
     1. 扫描「待分派」work；
-    2. 按卡头执行体绑定优先决策（T39）：可后台 CLI → 真实拉起执行体 + 同步收单；
+    2. 按卡头执行体绑定优先决策（T39）：可后台 CLI → 真实拉起执行体 + 同步/并发收单；
        手动 GUI → 挂起等人；管理席/验收席/未知角色 → 不派发；
     3. 收单：按退出码 + 输出判定 → 状态机流转（执行中 → 已回写/打回）。
     """
@@ -142,41 +143,103 @@ def run_once(
     log_dir = Path(log_dir_str)
     default_workdir = cfg.get("DATA_DIR", "")
 
+    max_concurrent = int(cfg.get("EXECUTOR_MAX_CONCURRENT") or 2)
+    parallel_enabled = max_concurrent > 1
+
     pending = store.list_work(state=State.TODO)
     dispatched = 0
     collected = 0
     timed_out = 0
-    for work in pending:
-        decision = decide_work(work, registry)
-        if decision is DispatchDecision.AUTO:
-            work.transition(State.RUNNING)
-            store.save_work(work)
-            dispatched += 1
-            ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
-            if ok:
-                work.transition(State.DONE)
+
+    if parallel_enabled:
+        threads = []
+        results = {"collected": 0, "timed_out": 0}
+        semaphore = threading.Semaphore(max_concurrent)
+        lock = threading.Lock()
+
+        def worker(w: Work):
+            try:
+                with semaphore:
+                    ok, problems = _dispatch_and_collect(w, registry, cfg, log_dir, timeout)
+                    with lock:
+                        if ok:
+                            w.transition(State.DONE)
+                            store.save_work(w)
+                            results["collected"] += 1
+                            logger.info("收单成功: work=%s → 已回写", w.id)
+                        else:
+                            if any("超时" in p for p in problems):
+                                results["timed_out"] += 1
+                            w.transition(State.REJECTED, problems=problems)
+                            store.save_work(w)
+                            logger.warning("收单失败: work=%s → 打回 %s", w.id, problems)
+            except Exception as exc:
+                logger.exception("Worker thread encountered unexpected error for work %s: %s", w.id, exc)
+
+        for work in pending:
+            decision = decide_work(work, registry)
+            if decision is DispatchDecision.AUTO:
+                work.transition(State.RUNNING)
                 store.save_work(work)
-                collected += 1
-                logger.info("收单成功: work=%s → 已回写", work.id)
+                dispatched += 1
+
+                t = threading.Thread(target=worker, args=(work,))
+                threads.append(t)
+                t.start()
+            elif decision is DispatchDecision.MANUAL:
+                logger.info(
+                    "挂起等人接单: work=%s role=%s executor=%s",
+                    work.id, work.role, work.executor or "(未指定)",
+                )
+                work.transition(State.RUNNING)
+                store.save_work(work)
+                dispatched += 1
             else:
-                if any("超时" in p for p in problems):
-                    timed_out += 1
-                work.transition(State.REJECTED, problems=problems)
+                logger.warning(
+                    "不参与派发: work=%s role=%s executor=%s",
+                    work.id, work.role, work.executor or "(未指定)",
+                )
+
+        # Wait for all threads to complete
+        for t in threads:
+            t.join()
+
+        collected = results["collected"]
+        timed_out = results["timed_out"]
+
+    else:
+        # Serial Mode
+        for work in pending:
+            decision = decide_work(work, registry)
+            if decision is DispatchDecision.AUTO:
+                work.transition(State.RUNNING)
                 store.save_work(work)
-                logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
-        elif decision is DispatchDecision.MANUAL:
-            logger.info(
-                "挂起等人接单: work=%s role=%s executor=%s",
-                work.id, work.role, work.executor or "(未指定)",
-            )
-            work.transition(State.RUNNING)
-            store.save_work(work)
-            dispatched += 1
-        else:
-            logger.warning(
-                "不参与派发: work=%s role=%s executor=%s",
-                work.id, work.role, work.executor or "(未指定)",
-            )
+                dispatched += 1
+                ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
+                if ok:
+                    work.transition(State.DONE)
+                    store.save_work(work)
+                    collected += 1
+                    logger.info("收单成功: work=%s → 已回写", work.id)
+                else:
+                    if any("超时" in p for p in problems):
+                        timed_out += 1
+                    work.transition(State.REJECTED, problems=problems)
+                    store.save_work(work)
+                    logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
+            elif decision is DispatchDecision.MANUAL:
+                logger.info(
+                    "挂起等人接单: work=%s role=%s executor=%s",
+                    work.id, work.role, work.executor or "(未指定)",
+                )
+                work.transition(State.RUNNING)
+                store.save_work(work)
+                dispatched += 1
+            else:
+                logger.warning(
+                    "不参与派发: work=%s role=%s executor=%s",
+                    work.id, work.role, work.executor or "(未指定)",
+                )
 
     in_flight = len(store.list_work(state=State.RUNNING))
     summary: dict[str, int] = {

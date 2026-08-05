@@ -592,3 +592,42 @@ class TestFileBoardStore:
         reg = load_registry(reg_path)
         store = FileBoardStore(tmp_path / "nonexistent", reg)
         assert store.list_work() == []
+
+
+class TestParallelAndRelayGuard:
+    """T59：并发派发与中继稳定性兜底测试。"""
+
+    def test_parallel_dispatch_concurrency(self, tmp_path: Path) -> None:
+        """两张卡并发派发，各自独立执行、收单正确、互不阻塞，总时间小于串行。"""
+        import time
+        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="1")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        # Launch two works
+        store.seed(
+            Work(id="p1", role="开发执行体", card_path=str(tmp_path / "p1.md")),
+            Work(id="p2", role="开发执行体", card_path=str(tmp_path / "p2.md")),
+        )
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "2",
+        }
+
+        start_time = time.time()
+        summary = run_once(reg, store, cfg)
+        end_time = time.time()
+
+        # Parallel: both sleeps run concurrently, so total time is close to 1 second, definitely < 1.8 seconds.
+        # Serial: would be 1 + 1 = 2 seconds, definitely > 2.0 seconds.
+        duration = end_time - start_time
+        assert duration < 1.8, f"Total execution time too long: {duration}s"
+        assert summary["scanned"] == 2
+        assert summary["dispatched"] == 2
+        assert summary["collected"] == 2
+
+        # Both works are DONE
+        done = store.list_work(state=State.DONE)
+        assert len(done) == 2
+        assert {w.id for w in done} == {"p1", "p2"}
