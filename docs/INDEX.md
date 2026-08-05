@@ -79,14 +79,14 @@
 
 | 文档 | 状态 | 怎么用 |
 |------|------|--------|
-| **[`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)** | **现行北星** | 下阶段开发只认这份 |
-| [`roadmap.md`](roadmap.md) | 半归档 | 当前方向已改指 hub-shell；正文大量 v0.19 史实 |
-| [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | xianyu/clawmed 拍板记录；**不是** CCC 产品北星 |
+| **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.70 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
+| [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-05：Claude Code 执行体 · OpenCode 禁用 |
+| [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
+| [`roadmap.md`](roadmap.md) 历史正文 | 半归档 | v0.19 等史实，勿覆盖「当前方向」 |
+| [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | **不是** CCC 产品北星 |
 | [`archive/next-upgrade-roadmap.md`](archive/next-upgrade-roadmap.md) | **过时** | v0.21→v0.23 |
-| [`archive/PLAN-dialogue-orchestration-boundary.md`](archive/PLAN-dialogue-orchestration-boundary.md) | **已执行完** | 收口计划记录 |
-| `v1.0-pipeline-plan` 等 | 在 `archive/` | 勿覆盖 VISION |
 
-**INDEX / 口头「下一步」若指向双轨或旧 roadmap，一律改指 `hub-shell-roadmap`。**
+**INDEX / 口头「下一步」若指向 Hub / hub-shell / 双轨旧文，一律改指 §0 + `roadmap.md` 当前方向 + `CURSOR.md`。**
 
 ---
 

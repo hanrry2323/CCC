@@ -78,3 +78,10 @@ bash deploy/release.sh <commit> --card TNN
 3. 不碰旧栈（scripts/ 归档、Hub :7777、6+1 列 jsonl、能力包）
 4. 不代替 2017 Claude Code 做主线开发合入（你是了解/讨论/排查角色）
 5. 无授权不删改归档目录（docs/archive/）
+
+## 八、记忆与旧文档（2026-08-05 对齐）
+
+- HP 现行状态条：`/codex/topics/ccc/current-state-v070`
+- Hub 时期废弃索引：`/codex/topics/ccc/HUB-ERA-DEPRECATED-INDEX`
+- 语义检索若命中 v0.63 / Hub:7777 / sidecar「现状」→ **立即改读 v070**，勿当现行
+- `docs/VISION.md` / 旧 `hub-shell-roadmap` = 史；席位以本文 + `docs/product/dev-channel.md` 为准

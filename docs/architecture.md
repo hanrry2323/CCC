@@ -8,7 +8,7 @@
 ## 一句话定义
 
 **CCC = Loop Engineer**（人定意图，系统自动编排与自主执行）。  
-终态架构：**任意设备壳**（HTTP 直连）+ **2017 单端 :7788**（薄驱动 Engine + 文档流转 + 看板/HTTP）+ **执行体**（Claude Code / OpenCode 经注册表派发）。
+终态架构：**任意设备壳**（HTTP 直连）+ **2017 单端 :7788**（薄驱动 Engine + 文档流转 + 看板/HTTP）+ **执行体**（现行 = Claude Code；OpenCode 主线已禁用，经注册表派发）。
 
 任务卡文档 = 唯一事实源；Engine 只做编排不执行；任意设备壳经 HTTP 直连 2017。
 
@@ -41,7 +41,7 @@
 
 中转站（server/relay/）
   ├─ 6100 = Anthropic 出口（大脑 Agent Claude Code CLI 走此）
-  └─ 6102 = Relay flash 出口（OpenCode 写码槽走此）
+  └─ 6102 = Relay flash/code 上游路由（中转站）
 ```
 
 ---
@@ -154,8 +154,8 @@
                          │ subprocess（按注册表配置）
 ┌────────────────────────▼────────────────────────────────┐
 │  L1: 执行体（经注册表派发）                               │
-│  Claude Code CLI（product/reviewer，via 6100）           │
-│  OpenCode（dev/tester，via 6102 Relay flash）            │
+│  Claude Code CLI（开发/维护/大脑，via 6100）              │
+│  OpenCode 主线已禁用（2026-08-05）                        │
 │  注册表分类：可后台 CLI → 自动拉起 / 手动 GUI → 挂起等人  │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -190,12 +190,11 @@
 
 `server/config/executors.json` 五角色，分类只允许「可后台 CLI」/「手动 GUI」：
 
-| 角色 | 分类 | 当前绑定 |
-|------|------|----------|
-| product | 可后台 CLI | Claude Code |
-| dev | 可后台 CLI | OpenCode |
-| reviewer | 可后台 CLI | Claude Code |
-| tester | 可后台 CLI | OpenCode |
+| 角色语义 | 分类 | 当前绑定 |
+|----------|------|----------|
+| 开发 / 写码 | 可后台 CLI | Claude Code |
+| 维护 | 可后台 CLI | Claude Code |
+| 管理 / 验收 | — | Codex |
 | ops | 手动 GUI | — |
 
 派发规则：`可后台 CLI` → Engine 自动拉起；`手动 GUI` → 挂起等人；未知角色 → 不派发。

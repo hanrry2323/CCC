@@ -1,64 +1,54 @@
 # CCC 开发通道（谁改什么）
 
-> **SSOT**：席位工具 + Desktop + Engine 谁干什么。  
-> 对齐：[`loop-engineer-authority.md`](loop-engineer-authority.md)「席位工具定位」· R-15  
-> 日期：2026-07-31 · **合入走开发工具（Claude/OpenCode）**  
-> **人格**：开发工具（Claude/OpenCode）平台助手 ≠ Desktop 对话 Agent（独立）。
-> **四方独立**：Claude 后台程序（拆卡）≠ Engine Claude（执行器）≠ Desktop 对话 Agent（谈方案）≠ 个人 Claude Code（运维）。
+> **SSOT（2026-08-05 新栈重写）**：席位工具 + 壳 + Engine 谁干什么。  
+> 对齐：[`CURSOR.md`](../../CURSOR.md) · `.cursor/rules/loop-engineer-consensus.mdc` · qx-map `ide/tool-roles.md` · R-15  
+> **旧文（Hub / sidecar / OpenCode 主线 / 四方 Claude 串台）已作废**，勿再引用 2026-07-31 口径。
 
 ---
 
-## 一句话（席位 + 产线）
+## 一句话（席位）
 
 | 席位 | 谁干 | 说明 |
 |------|------|------|
-| **Claude/OpenCode** | 主力开发 + 合入 | **CCC** 合入；**QuantHive** 开发合入；热更 2017、生产密钥 |
-| **Claude Code**（个人 CLI） | 运维双职 | ① 本机 `~/.ccc` / launchd / relay；② **QuantHive 日常维护** |
-| **OpenCode** | 开发执行体（按卡头绑定接单） | 业务任务 Engine 派发 2017；CCC 自研卡由管理席出卡驱动（2026-08-04 双阶段收口） |
-| **Codex**（ChatGPT.app） | **知识管理 + 闲聊** | qb∥QuantHive **分域**；不改权威仓 |
-| **CCC Desktop** | 产线控制面 | **qb** 等挂 CCC：意图讨论/看板/方案文件起草；**不管** QuantHive 开发主路径 |
-| **Engine Claude** | 编排执行器 | product / reviewer 等阶段；≠ 平台 IDE（≠ Claude 后台程序：后者是无记忆拆卡+飞轮） |
-| **Claude 后台程序**（Mac 2017·无记忆） | 拆卡 + 飞轮 | 多职能复用；消费方案文件 → 产出意图卡链 → gate；禁止：谈方案（归 IDE）/ 写业务源码（归 Engine） |
+| **Claude Code**（2017） | 开发 / 维护 / 合入执行体 | Engine 按卡自动拉起；中继 6100；worktree `ccc-dev-ws-tNN` |
+| **Codex** | 自研驱动者 + 验收席 | 出卡、把控、独立验收、冲突仲裁；不抢业务执行 |
+| **OpenCode** | **已禁用** | 不接主线；仅历史 M1 打包类先例 |
+| **Cursor / Trae** | 了解 / 讨论 / 排查 / 文档对齐 | 试运行可接手低风险工作；正式合入不经 Cursor（明确测试卡除外） |
+| **CCC Desktop / HTTP 壳** | 任意设备壳 | HTTP 直连 2017 `:7788`；**不是**控制面、不改仓 |
+| **Engine** | 薄驱动编排 | 读任务卡 + `executors.json` → 派发 / 收单；自己不写业务代码 |
 
-**双轨（硬）**：**qb**（CCC 自动化养大）与 **QuantHive**（Claude/OpenCode+Claude 薄链）**完全独立**，同步对照；禁止合并、禁止互为别名。见 authority「双轨业务」。
+**双轨（硬）**：**qb**（可挂 CCC 产线）与 **QuantHive**（独立轨道）完全独立；禁止合并、禁止互为别名、禁止用 CCC Engine「接管」QuantHive。
 
-**禁止**：Codex / Trae / Zed 当 CCC 合入工具；Claude Code 与 OpenCode 为授权开发工具。  
-**禁止**：Desktop Agent 改 CCC 合入；个人 Claude 冒充 Desktop。  
-**禁止**：用 CCC Hub/Engine「接管」QuantHive。  
-**配置家**：sidecar `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`；Engine：`~/.ccc/engine-claude`。
-
-同模型（Relay `flash`）不改变分工。主机指令：`~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` · `~/.config/opencode/AGENTS.md`。
+**禁止**：把 Desktop 人格限制写进开发工具身份（或反过来）；在 2017 生产副本手改；提旧拓扑（Hub :7777 / Board :7775 / sidecar / hub-tunnel）。
 
 ---
 
-## 草稿旁路（非主职）
+## 自研期标准链路
 
-个人 Claude Code **主职是运维**。草稿仅金路径白名单缺陷：
+```text
+Codex 出卡（docs/dispatch/TNN-*.md）→ push main
+  → 2017 pull → Engine 派发 Claude Code
+  → 独立 worktree + 分支 codex/tNN-*
+  → 分步 commit+push → Codex 独立验收
+  → 合入 main → 2017 pull + 三服务重启 → 关卡
+```
 
-1. 开发工具（Claude/OpenCode）写 / 更新 `docs/dev-packets/NNN-*.md`  
-2. 人转发个人 Claude Code  
-3. 人交回分支 / diff  
-4. 开发工具（Claude/OpenCode）审测合入或打回  
-
-模板：[`docs/dev-packets/_TEMPLATE.md`](../dev-packets/_TEMPLATE.md)。
+业务期（自研成熟后）：老板用壳直聊大脑 Agent；业务任务仍走 Engine 派发 2017 执行体。
 
 ---
 
-## Desktop / 模型
+## 配置与模型
 
-- sidecar 默认 ai-loop-router **`flash`**（M1→ai-loop-router `:4100`）。  
-- Codex 个人席走 `:4102` `/v1/responses`（垫片；非产线主路径）。  
-- fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`。  
-- 与个人 Claude shell `ANTHROPIC_*` 可共用中转站，**会话身份**与 Desktop 隔离。
+- 生产服务仅 2017：`:7788` + 中继 **6100 / 6102**
+- M1 不跑 web-server / Engine；Desktop 只连 2017
+- 执行体环境变量与命令以 `server/config/executors.json`（2017 实机）为准；仓内 `executors.example.json` 为模板
 
 ---
 
 ## 禁止混淆
 
-1. 合入 CCC = **走开发工具（Claude/OpenCode）**。运维 ≠ 合入；草稿 ≠ 合入。  
-2. Desktop = 控制面，≠ 平台开发，≠ 知识库主入口。  
-3. Engine 的 Claude / OpenCode = **编排执行器**，≠ 个人 IDE。  
-4. 产品名 Connect–Claude Code ≠ 用 Claude Code 当合入 IDE。  
-5. Codex 知识/聊天 ≠ 开发席。  
-6. **禁止**把 Desktop 人格限制写进开发工具（Claude/OpenCode）身份，或反过来。
-7. **Claude 后台程序（拆卡+飞轮）≠ Engine Claude（编排执行器）≠ Desktop 对话 Agent（谈方案）≠ 个人 Claude Code（运维）**——四个 Claude 角色不可串台。
+1. 合入 CCC 主线 = **Claude Code 执行体 + Codex 验收**，不是 Cursor 日常代劳。  
+2. Desktop / HTTP = 壳，≠ 平台开发 IDE。  
+3. Engine 拉起的 Claude Code = 编排执行器会话，≠ 本机闲聊 Claude。  
+4. Codex 知识/聊天 ≠ 开发席写码。  
+5. OpenCode 禁用后，文档若仍写「dev=OpenCode」一律当过期。

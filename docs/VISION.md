@@ -1,12 +1,11 @@
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
-> **⚠ 待核（T31 文档基线收口）** — 本文部分口径（Hub :7777、Desktop 主入口、M1+Mac2017 分层、`control.json`、阶段能力包）描述 2026-08-02 重构定稿前的旧架构。
-> 现行权威 = [`INDEX.md`](INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。
-> 现行架构概览见 [`architecture.md`](architecture.md)；本文完整重写待后续卡处理，请勿据本文旧口径判断现行架构。
+> **⚠ 历史叙事 · 非现行架构（2026-08-05 再确认）** — 下文大量口径（Hub :7777、Desktop 主入口、sidecar、OpenCode 写码槽、`control.json`、能力包）属于 **Hub 时期**，已被 v0.70 重构取代。  
+> **现行权威** = [`INDEX.md`](INDEX.md) §0 + [`../CURSOR.md`](../CURSOR.md) + [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) + [`product/dev-channel.md`](product/dev-channel.md)：薄驱动 Engine + 文档流转 + 看板/HTTP + **2017 单端 :7788** + 任意设备壳 + **Claude Code 执行体**（OpenCode 已禁用）。  
+> 架构概览：[`architecture.md`](architecture.md)。**完整重写待专门任务卡**；在此之前禁止用本文旧段指导开发/运维。
 
-> **产品叙事 SSOT（对外/对内统一）**。README、Release、SKOT、Hub 文案冲突时以本文为准。  
-> 版本对齐：`VERSION` · 更新日期：2026-07-21 · **Desktop 主产品**（见 `docs/product/ccc-desktop-architecture.md`）  
-> 平台谁改 / 对话模型谁定：[`product/dev-channel.md`](product/dev-channel.md)
+> ~~产品叙事 SSOT~~ → 叙事冲突时以 **INDEX §0 / STARTUP-BRIEF / CURSOR** 为准（本文降级为史）。  
+> 版本对齐：`VERSION`（v0.70.0）· 席位：[`product/dev-channel.md`](product/dev-channel.md)
 
 ---
 
