@@ -6,12 +6,14 @@ export class TaskCardList {
     onCopyClick = null,
     itemHeight = 85, // estimated height of each task card in pixels
     pageSize = 50,
+    emptyText = '下达任务，大脑会写卡',
   } = {}) {
     this.container = container;
     this.onCardClick = onCardClick;
     this.onCopyClick = onCopyClick;
     this.itemHeight = itemHeight;
     this.pageSize = pageSize;
+    this.emptyText = emptyText;
 
     this.items = [];         // current list of all matching items
     this.visibleItems = [];  // matching filtered/paged items
@@ -93,7 +95,7 @@ export class TaskCardList {
       return;
     }
     if (!this.visibleItems || this.visibleItems.length === 0) {
-      this.scroller.innerHTML = `<div class="board-empty">暂无任务</div>`;
+      this.scroller.innerHTML = `<div class="board-empty">${escapeHtml(this.emptyText)}</div>`;
       this.paginationContainer.innerHTML = '';
       return;
     }

@@ -274,6 +274,14 @@ async function init() {
     if (tabId) renderPaneByTabId(tabId);
   });
 
+  const handleTaskStatusEvent = async () => {
+    const { refreshBoardPanel } = await import('./components/boardPanel.js');
+    refreshBoardPanel({ quiet: true });
+  };
+  document.addEventListener('task_status', handleTaskStatusEvent);
+  document.addEventListener('task-status', handleTaskStatusEvent);
+  document.addEventListener('ccc-task-status', handleTaskStatusEvent);
+
   try {
     // T40：单端 :7788 唯一入口；旧 Hub/sidecar 分支已退役。
     window.__CCC_SHELL__ = 'dialogue';

@@ -896,6 +896,10 @@ export function loadMessages(data) {
     container.appendChild(createEmptyState());
   }
   state.set('currentMessages', msgs);
+  const lastMsg = msgs[msgs.length - 1];
+  if (lastMsg && (lastMsg.type === 'task_status' || lastMsg.role === 'system')) {
+    document.dispatchEvent(new CustomEvent('task_status'));
+  }
   for (const msg of msgs) {
     const label = msg.uiLabel;
     const show =

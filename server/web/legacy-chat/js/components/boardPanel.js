@@ -22,6 +22,7 @@ let pollTimer = null;
 let trackedTask = null;
 let lastDetailId = null;
 let cardListInstance = null;
+let filterMode = 'linked';
 
 export function workspaceOf() {
   const map = state.get('projectWorkspaceMap') || {};
@@ -142,22 +143,17 @@ export function trackDispatchedTask(taskId, workspace) {
 export async function refreshBoardPanel(opts = {}) {
   const body = document.getElementById('board-panel-body');
   if (!body) return;
-  if (!opts.quiet && !cardListInstance) {
-    body.innerHTML = '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>';
+  if (!opts.quiet) {
+    if (!cardListInstance) {
+      body.innerHTML = '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>';
+    } else {
+      cardListInstance.showLoading();
+    }
   }
   const ws = workspaceOf();
   try {
     const res = await getCards({ project: ws === 'all' ? '' : ws, page_size: 1000 });
     const all = res.cards || [];
-
-    // Calculate counts for each state
-    const counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
-    for (const c of all) {
-      const st = c.state || c.status;
-      if (counts[st] !== undefined) {
-        counts[st]++;
-      }
-    }
 
     // Sort: 打回 > 执行中 > 待分派 > 已回写 > 已关闭; same state sorted by update time desc
     const order = { '打回': 0, '执行中': 1, '待分派': 2, '已回写': 3, '已关闭': 4 };
@@ -169,6 +165,26 @@ export async function refreshBoardPanel(opts = {}) {
       if (oa !== ob) return oa - ob;
       return String(b.written_at || b.dispatched_at || '').localeCompare(String(a.written_at || a.dispatched_at || ''));
     });
+
+    // Associated filter: current project unclosed cards OR current session associated cards
+    const currentSessionId = state.get('currentSessionId');
+    const filtered = all.filter(c => {
+      if (filterMode === 'all') return true;
+      const cardState = c.state || c.status;
+      const isUnclosed = cardState !== '已关闭';
+      const isCurrentProject = (ws === 'all' || (c.project || 'ccc') === ws);
+      const isCurrentSession = currentSessionId && c.thread_id === currentSessionId;
+      return (isCurrentProject && isUnclosed) || isCurrentSession;
+    });
+
+    // Calculate counts for each state
+    const counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
+    for (const c of filtered) {
+      const st = c.state || c.status;
+      if (counts[st] !== undefined) {
+        counts[st]++;
+      }
+    }
 
     const trackLine = trackedTask
       ? '<div class="board-track">跟踪: <code>' + escapeHtml(trackedTask.id) + '</code> → ' +
@@ -190,7 +206,14 @@ export async function refreshBoardPanel(opts = {}) {
         <div class="board-ws">工作区: <strong>${escapeHtml(ws)}</strong></div>
         ${trackLine}
         <div class="board-stat-row">${countsHtml}</div>
-        <div class="board-recent-title">任务卡流</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 4px 0 8px;">
+          <div class="board-recent-title" style="margin: 0;">任务卡流</div>
+          <div class="board-filter-toggle" style="display: flex; gap: 8px; font-size: 11px;">
+            <button type="button" class="board-filter-btn" id="board-filter-linked" style="background: transparent; border: none; cursor: pointer; padding: 0 4px;">关联</button>
+            <span style="color: var(--ccc-border-subtle)">|</span>
+            <button type="button" class="board-filter-btn" id="board-filter-all" style="background: transparent; border: none; cursor: pointer; padding: 0 4px;">全部</button>
+          </div>
+        </div>
         <div id="${wrapperId}" style="flex: 1; min-height: 200px; display: flex; flex-direction: column; overflow: hidden; margin-bottom: 12px;"></div>
         <button type="button" class="btn-primary board-dispatch-btn" id="board-dispatch">下达任务</button>
       `;
@@ -235,11 +258,43 @@ export async function refreshBoardPanel(opts = {}) {
       }
     }
 
+    // Update filter buttons styling and bind handlers
+    const btnLinked = body.querySelector('#board-filter-linked');
+    const btnAll = body.querySelector('#board-filter-all');
+    if (btnLinked && btnAll) {
+      btnLinked.className = `board-filter-btn ${filterMode === 'linked' ? 'active' : ''}`;
+      btnLinked.style.color = filterMode === 'linked' ? 'var(--ccc-text-accent)' : 'var(--ccc-text-muted)';
+      btnLinked.style.fontWeight = filterMode === 'linked' ? 'bold' : 'normal';
+
+      btnAll.className = `board-filter-btn ${filterMode === 'all' ? 'active' : ''}`;
+      btnAll.style.color = filterMode === 'all' ? 'var(--ccc-text-accent)' : 'var(--ccc-text-muted)';
+      btnAll.style.fontWeight = filterMode === 'all' ? 'bold' : 'normal';
+
+      btnLinked.onclick = () => {
+        if (filterMode === 'linked') return;
+        filterMode = 'linked';
+        refreshBoardPanel({ quiet: true });
+      };
+      btnAll.onclick = () => {
+        if (filterMode === 'all') return;
+        filterMode = 'all';
+        refreshBoardPanel({ quiet: true });
+        // Enters Kanban:
+        const boardLink = document.getElementById('board-full-link');
+        if (boardLink) {
+          boardLink.href = '#/board?ws=' + encodeURIComponent(workspaceOf());
+          boardLink.click();
+        } else {
+          location.hash = '#/board?ws=' + encodeURIComponent(workspaceOf());
+        }
+      };
+    }
+
     const full = document.getElementById('board-full-link');
     if (full) full.href = '#/board?ws=' + encodeURIComponent(ws);
 
     // Update list elements inside TaskCardList
-    cardListInstance.setItems(all);
+    cardListInstance.setItems(filtered);
 
   } catch (err) {
     if (!opts.quiet) {

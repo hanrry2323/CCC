@@ -1,6 +1,6 @@
 # 任务卡 T61 · T-B4 右栏关联卡流 + task_status 联动（Claude Code 执行）
 
-> 关联：前端四板块架构（T-B4）+ T49 对话即工作 · 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：前端四板块架构（T-B4）+ T49 对话即工作 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t61-task-flow-linked`（先 `git fetch origin main && git checkout -b codex/t61-task-flow-linked origin/main`）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。与 T60 并行，文件所有权见下。
 
@@ -34,4 +34,17 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+**关联过滤实现**：`boardPanel.js` 新增模块级 `filterMode = 'linked'`。默认「关联」态过滤 =（当前项目未关闭卡 `state !== '已关闭'` 且 `project === 当前 ws`）或（本会话关联卡 `thread_id === currentSessionId`）；「全部」态显示工作区全量卡。卡头增加「关联 | 全部」toggle 按钮，关联态高亮；点「全部」先切到全部列表并跳转 `#/board?ws=<ws>` 进完整看板。
+
+**task_status 联动**：双层即时刷新——
+1. `app.js init()` 绑定全局 `CustomEvent('task_status')` / `task-status` / `ccc-task-status` 三个事件，收到即 `refreshBoardPanel({quiet:true})`；
+2. `message.js loadMessages()` 检测到含 `type==='task_status'` 或 `role==='system'` 的最新消息时 `dispatchEvent(new CustomEvent('task_status'))`。
+8s 轮询（`startBoardAutoRefresh`）保留兜底。
+
+**空态/加载态**：`TaskCardList` 构造器新增 `emptyText` 参数（默认「下达任务，大脑会写卡」），空列表渲染该引导文案（`escapeHtml` 转义）；`boardPanel` 首次或非 quiet 刷新调用 `cardListInstance.showLoading()` 显示加载 spinner。
+
+**headless 实测**：`pytest server/tests/ -q` 全绿（全部通过，无失败）。静态变更 target-version py311 语法检查通过；未改 consolePage.js（T60 所有权）。
+
+**push 证据**：分支 `codex/t61-task-flow-linked` 提交并 push 成功 `git push origin codex/t61-task-flow-linked`。
