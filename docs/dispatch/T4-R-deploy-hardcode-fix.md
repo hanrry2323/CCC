@@ -1,7 +1,7 @@
 # 任务卡 T4-R · T4 部署模板硬编码补丁（Trae 窗口 A）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§9 红线 4 杜绝硬编码）
-> 管理席：Claude Code（调度）· 执行体：Trae（窗口 A）· 验收：Claude Code
+> 管理席：Claude Code（调度）· 执行体：Trae（窗口 A）· 验收：Claude Code · 派发：manual · 项目：ccc
 > 状态：已关闭 · 日期：2026-08-02
 > 背景：T6 验收扫描发现 T4 产出模板硬编码 `/Users/fan/program/apps/ai-loop-router-ccc/` 绝对路径与 6100/6102/4100/4102 端口，违反 T4 验收标准「硬编码扫描零字面量」。本卡补修。
 

@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构收口）· 契约：CCC 重构契约 v1（§9 全局红线 / D10 杜绝硬编码）
 > 依据：Codex 2026-08-03 全新取证重评——engine/cluster.py `DEFAULT_SERVICES` 硬编码且服务名仍是旧系统（ccc-chat-server/ccc-board-server，2017 已下线），集群/运维页会误报；legacy-chat 前端仍硬编码本机路径与 IP（utils.js/ports.js/settings.js）
-> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03 · 派发：manual · 项目：ccc
 
 ## 目标
 

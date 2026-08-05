@@ -1,7 +1,7 @@
 # 任务卡 T6 · 线路图三层派生视图（P3 · Trae 窗口 A）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§4 看板 / D5 线路图）
-> 管理席：Claude Code（调度窗口）· 执行体：Trae（窗口 A）· 验收：Claude Code
+> 管理席：Claude Code（调度窗口）· 执行体：Trae（窗口 A）· 验收：Claude Code · 派发：manual · 项目：ccc
 > 状态：已关闭 · 日期：2026-08-02
 > 前置：T3/T3-R/T5（已验收通过）· **并行：T7/P4（worktree trae-b-p4）**
 > 工作区：`/Users/apple/program/CCC/.worktrees/trae-a-p3`（分支 `feat/p3-roadmap`）

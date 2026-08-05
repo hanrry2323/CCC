@@ -1,7 +1,7 @@
 # 任务卡 T9 · P5 知识移植种子准备（Trae 窗口 C）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D3 知识 / P5 知识移植）
-> 管理席：Claude Code（调度）· 执行体：Trae（窗口 C）· 验收：Claude Code
+> 管理席：Claude Code（调度）· 执行体：Trae（窗口 C）· 验收：Claude Code · 派发：manual · 项目：ccc
 > 状态：已关闭 · 日期：2026-08-02
 > 前置：P4（T7）已完成；输出供 T10（CCC 知识库初始化）消费
 
