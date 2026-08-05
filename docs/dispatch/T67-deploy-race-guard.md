@@ -1,6 +1,6 @@
 # 任务卡 T67 · 部署窗口误派防线（卡头纪律 + Engine/放行双保险）（Claude Code 执行）
 
-> 关联：T60 误派复盘（2026-08-05 部署窗口：已验收卡因卡头未同步被 Engine 重新拉起）· 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：T60 误派复盘（2026-08-05 部署窗口：已验收卡因卡头未同步被 Engine 重新拉起）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t67 -b codex/t67-deploy-race-guard origin/main`；分支 `codex/t67-deploy-race-guard`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -39,4 +39,19 @@
 
 ## 回写区
 
-**执行体**：Claude Code（2017）· 日期：
+**执行体**：Claude Code（2017）· 日期：2026-08-05
+
+三条防线全部落地（分支 `codex/t67-deploy-race-guard`，远端 HEAD `8531d439`）：
+
+1. **卡头纪律校验**（`server/board/validate.py`）：新增 `_is_accepted()`——读卡正文 `## 验收区` 后 20 行内 `✅`/`判定：通过` 即视为已验收，与五态/必填字段同级 error 规则（验收区命中但状态 ≠ 已关闭 → 报错阻断）。单测 3 类：验收区+已关闭=通过 / 验收区+待分派=error / 超 20 行不触发。
+2. **Engine 派发防误**（`server/engine/main.py`）：`is_card_accepted()` 按 mtime 缓存做派发前验收区预检；命中 → `logger.warning("已验收卡不派发: work=%s", ...)` 跳过保持原状态（并行/串行两派发路径接入）。单测 4 类：已验收不派发 / 正常卡照常派发 / 并行混合 / mtime 缓存判定。
+3. **放行窗口防中断**（`deploy/release.sh`）：生产模式 checkout 前 `stop_engine()`（launchctl bootout + `pgrep -f 'claude -p'` 在途检测，10s 打点，300s 超时警告不阻塞）；checkout 后 `start_engine()`（已卸载 → bootstrap 恢复 / 未卸载 → kickstart -k）。`--no-pull`/`--simulate` 跳过。规避 bash 3.2 `$VAR` 紧邻全角字符解析缺陷（统一 `${VAR}`）。
+4. **复盘文档**：`docs/dispatch/T60-console-cockpit.md` 验收区补 2026-08-05 误派根因 + 本卡防线一行。
+
+### 验证证据
+
+- **pytest**：`server/tests/` 490 passed（validate 17 → 20 用例、engine main 40 用例含 4 新）
+- **ruff 0.8.6**：本次改动的 4 个文件 0 告警；`server/` 基线既有 UP038×3（`server/kb/indexer.py`×2 属红线外、`server/tests/test_http_api.py`×1）非本次引入
+- **validate 现存卡**：76 卡零新增 error（验收区命中 47 张状态均已关闭）
+- **release.sh**：`bash -n` 通过；隔离 harness（mock launchctl/pgrep/sleep）11 项断言全过（无在途/在途退出/超时不阻塞/bootout 失败继续/kickstart/bootstrap）；`--simulate` 放行通过（2 PASS / 8 SKIP / 0 FAIL）exit 0
+- **push 证据**：`9881e27b`（validate）· `7eaa2100`（engine）· `f89285c5`（release.sh）· `f2ce3341`（T60 复盘）
