@@ -1,6 +1,6 @@
 # 任务卡 T62 · T-A5 历史归档与回顾 + /cards 兜底（Claude Code 执行）
 
-> 关联：阶段 3（T-A5）+ T50 联调发现（/cards 缺索引返回空，需兜底）· 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：阶段 3（T-A5）+ T50 联调发现（/cards 缺索引返回空，需兜底）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t62 -b codex/t62-archive-review origin/main`，在其中工作；分支 `codex/t62-archive-review`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
@@ -68,3 +68,10 @@ All checks passed!
 - `codex/t62-archive-review` -> `origin/codex/t62-archive-review`
 - commit id: `c937c716`
 
+
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-05）
+
+**判定：✅ 通过。** 历史归档+索引 archived+cards 缺索引兜底（c937c716，pytest 全绿）。
