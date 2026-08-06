@@ -49,3 +49,12 @@
 ### push 证据
 - 分支：`codex/ccc007-m5-audit-dogfood-rebase-hint`
 - commit：774dd92
+
+## 机审区
+
+**机审方**：Claude Code（2017）· 机审：通过
+
+- 验收1 ✓：`scripts/new-card.sh --dry-run` 生成正文含 `rebase origin/main`（实测 grep -F 命中）。
+- 验收2 ✓：`~/.ccc/logs/exec/ccc007.audit.log` 存在，engine 起 audit 子进程（child_pid，真机审非 evidence 补录）。
+- 验收3 ✓：分支 `25384cbe..HEAD` 仅改 `scripts/new-card.sh`（1 行净改）+ 本卡，未新增 SOP/席位文档。
+- 红线 ✓：未直推 main；禁写验收区/已关闭（本席未写）；范围 ≤3 行净增。
