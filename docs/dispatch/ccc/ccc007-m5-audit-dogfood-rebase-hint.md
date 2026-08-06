@@ -1,6 +1,6 @@
 # 任务卡 ccc007 · M5 audit dogfood rebase hint（OpenCode 执行）
 
-> 关联：M5 真机审狗粮 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-07
+> 关联：M5 真机审狗粮 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：manual · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 
