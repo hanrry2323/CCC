@@ -61,3 +61,9 @@
 
 ### push 证据
 - 见 main 合入 commit（M2 ccc006）
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（m4-first-audit-evidence）· 2026-08-07 02:00
+证据：main=c017500; pytest registry+audit_backfill+ccc_plan 绿; 实现已在 main（M4 受控首跑机审）
