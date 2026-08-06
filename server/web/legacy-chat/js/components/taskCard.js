@@ -129,18 +129,20 @@ export function renderTaskCard(t) {
          style="border-left-color: ${color}; --state-bar: ${color}">
       <div class="board-card-row">
         <span class="board-card-id id">${escapeHtml(t.id)}</span>
-        <span class="board-card-state state-${tone}">${escapeHtml(state)}</span>
+        <div class="board-card-row-right">
+          <span class="board-card-state state-${tone}">${escapeHtml(state)}</span>
+          <button type="button" class="board-card-copy card-copy-btn" data-id="${escapeHtml(t.id)}" title="复制任务块" aria-label="复制任务块">
+            <span class="card-copy-ico" aria-hidden="true">⧉</span>
+          </button>
+        </div>
       </div>
       <div class="board-card-title ti">${escapeHtml(t.title || t.id)}</div>
       <div class="board-card-meta">
         ${executor}
         <span class="board-card-stats">${statsHtml}</span>
         ${rejectHtml}
-        ${updatedHtml}
-        <button type="button" class="board-card-copy card-copy-btn" data-id="${escapeHtml(t.id)}" title="复制 ID" aria-label="复制 ID">
-          <span class="card-copy-ico" aria-hidden="true">⧉</span>
-        </button>
       </div>
+      ${updatedHtml ? `<div class="board-card-foot">${updatedHtml}</div>` : ''}
       <div class="board-card-detail" hidden></div>
     </div>
   `;

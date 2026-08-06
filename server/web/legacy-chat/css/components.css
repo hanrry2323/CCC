@@ -2471,11 +2471,21 @@
   gap: 6px;
   margin-bottom: 4px;
 }
+.board-card-row-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .board-card-id {
   font-family: var(--ccc-font-mono);
   font-size: 10px;
   color: var(--ccc-text-faint);
   letter-spacing: 0.02em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .board-card-state {
   font-size: 10px;
@@ -2573,27 +2583,38 @@
 }
 .board-card-stats {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+}
+.board-card-foot {
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+  min-height: 14px;
 }
 .board-card-time {
   font-family: var(--ccc-font-mono);
   font-size: 10px;
   color: var(--ccc-text-faint);
-  margin-left: auto;
+  margin-left: 0;
+  line-height: 1.2;
 }
 .board-card-copy {
   appearance: none;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--ccc-border-subtle);
+  background: var(--ccc-bg-layer);
   color: var(--ccc-text-faint);
   cursor: pointer;
-  font-size: 12px;
-  padding: 0 2px;
-  line-height: 1;
+  font-size: 11px;
+  padding: 1px 5px;
+  line-height: 1.2;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 .board-card-copy:hover {
   color: var(--ccc-text-accent);
+  border-color: color-mix(in srgb, var(--ccc-text-accent) 40%, transparent);
 }
 .board-card-detail {
   margin-top: 8px;
