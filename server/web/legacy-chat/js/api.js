@@ -18,6 +18,29 @@ function _headers(json = true) {
  */
 let _loginPrompted = false;
 
+let _activeStreamController = null;
+let _activePollController = null;
+
+export function abortActiveConnections() {
+  if (_activeStreamController) {
+    _activeStreamController.abort();
+    _activeStreamController = null;
+  }
+  if (_activePollController) {
+    _activePollController.abort();
+    _activePollController = null;
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('project-change', () => {
+    abortActiveConnections();
+  });
+  document.addEventListener('switch-tab', () => {
+    abortActiveConnections();
+  });
+}
+
 async function _fetchWithAuth(path, options = {}, json = true) {
   const tok = getToken();
   const resp = await fetch(path, {
@@ -111,7 +134,29 @@ async function _fetchHistory(threadId) {
   const qs = incremental
     ? `?after=${cur.seq}&timeout=${LONGPOLL_TIMEOUT}${tid}`
     : (threadId ? ('?thread_id=' + encodeURIComponent(threadId)) : '');
-  const data = await apiGet('/conversation' + qs);
+
+  // 发起新历史长轮询时，打断旧的在途长轮询，防止多会话长轮询堆叠
+  if (_activePollController) {
+    _activePollController.abort();
+  }
+  const controller = new AbortController();
+  _activePollController = controller;
+  const signal = controller.signal;
+
+  let data;
+  try {
+    data = await apiGet('/conversation' + qs, { signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      return { messages: [], seq: cur.seq };
+    }
+    throw err;
+  } finally {
+    if (_activePollController === controller) {
+      _activePollController = null;
+    }
+  }
+
   const msgs = data.messages || [];
   const seq = data.seq || 0;
   if (!incremental || seq < cur.seq) {
@@ -228,8 +273,14 @@ export async function streamChat(
   opts = {}
 ) {
   const projectId = project || state.get('currentProject') || 'ccc';
-  const signal =
-    (opts && opts.abortController && opts.abortController.signal) || null;
+
+  // 开启新流前，强制打断旧的在途流，彻底防止多会话流重叠污染
+  if (_activeStreamController) {
+    _activeStreamController.abort();
+  }
+  const controller = (opts && opts.abortController) || new AbortController();
+  _activeStreamController = controller;
+  const signal = controller.signal;
 
   const userMsgs = (messages || []).filter((m) => m.role === 'user');
   const prompt =
@@ -240,11 +291,13 @@ export async function streamChat(
   const settleDone = () => {
     if (settled) return;
     settled = true;
+    if (signal && signal.aborted) return; // 已经被 Abort 时静默丢弃，不触发 UI 回调
     onDone(sessionId);
   };
   const settleError = (msg) => {
     if (settled) return;
     settled = true;
+    if (signal && signal.aborted) return; // 已经被 Abort 时静默丢弃，不触发 UI 回调
     onError(msg || '生成失败');
   };
 
@@ -282,6 +335,7 @@ export async function streamChat(
   }
 
   function routeEvent(ev, payload) {
+    if (signal && signal.aborted) return; // 被打断时抛弃事件流
     if (ev === 'text') {
       onEvent('delta', (payload && payload.text) || '');
     } else if (
@@ -380,7 +434,7 @@ export async function streamChat(
       return 'settled';
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        settleDone();
+        settled = true;
         return 'settled';
       }
       return 'network';  // SSE 读中断

@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
+
+_write_lock = threading.Lock()
 
 
 def _data_root() -> Path:
@@ -81,25 +84,27 @@ def append_messages(project: str, thread_id: str, messages: list[dict[str, Any]]
     if not messages:
         return
     p = _thread_path(project, thread_id)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        lines = "".join(
-            json.dumps(m, ensure_ascii=False, default=str) + "\n" for m in messages
-        )
-        with p.open("a", encoding="utf-8") as fh:
-            fh.write(lines)
-    except OSError:
-        # 落盘失败不阻断对话主流程（内存历史仍可用）
-        return
+    with _write_lock:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            lines = "".join(
+                json.dumps(m, ensure_ascii=False, default=str) + "\n" for m in messages
+            )
+            with p.open("a", encoding="utf-8") as fh:
+                fh.write(lines)
+        except OSError:
+            # 落盘失败不阻断对话主流程（内存历史仍可用）
+            return
 
 
 def delete_thread(project: str, thread_id: str) -> None:
     """删除项目+thread 的消息文件与索引项。"""
     p = _thread_path(project, thread_id)
-    try:
-        p.unlink(missing_ok=True)
-    except OSError:
-        pass
+    with _write_lock:
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
     # 同步从索引移除（尽力而为）
     index = load_index(project)
     if thread_id in index:
@@ -141,11 +146,12 @@ def load_index(project: str) -> dict[str, dict[str, Any]]:
 
 def _write_index(project: str, index: dict[str, dict[str, Any]]) -> None:
     p = _index_path(project)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError:
-        return
+    with _write_lock:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            return
 
 
 def _derive_title(messages: list[dict[str, Any]]) -> str:

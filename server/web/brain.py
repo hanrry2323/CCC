@@ -41,6 +41,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import signal
 import subprocess
 import threading
 import time
@@ -162,14 +163,14 @@ def _get_brain_auth_token() -> str:
 
 
 def _get_brain_timeout() -> int:
-    """大脑调用超时（秒，默认 120）。
+    """大脑调用超时（秒，默认 300）。
 
-    60s 对知识题过紧（实测 Claude Code 读文档+推理 ~74s），故默认上调到 120。
+    防止重度工具调用（如全局知识检索等）发生超时，上调到 300。
     """
     try:
-        return int(os.environ.get("CCC_BRAIN_TIMEOUT", "120"))
+        return int(os.environ.get("CCC_BRAIN_TIMEOUT", "300"))
     except ValueError:
-        return 120
+        return 300
 
 
 def _get_brain_thinking() -> str:
@@ -474,15 +475,19 @@ def _normalize_stream_event(event: dict[str, Any]) -> tuple[str, dict[str, Any]]
 
 
 def _terminate_proc(proc: subprocess.Popen) -> None:
-    """确保子进程结束：运行中则 kill + wait（超时/断连兜底）。"""
+    """确保子进程及整个进程组结束：运行中则 killpg + wait（超时/断连兜底）。"""
     if proc.poll() is None:
         try:
-            proc.kill()
+            # 强力直接杀死整个进程组，防止拉起的子进程泄露成孤儿进程
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except OSError:
-            pass
+            try:
+                proc.kill()
+            except OSError:
+                pass
     try:
-        proc.wait()
-    except OSError:
+        proc.wait(timeout=1.0)
+    except Exception:
         pass
 
 
@@ -514,6 +519,7 @@ def _stream_claude(prompt: str, timeout: int | None = None):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            preexec_fn=os.setsid,
         )
     except (OSError, FileNotFoundError) as exc:
         yield ("error", {"status": 502, "message": f"brain failed: {exc}"})
