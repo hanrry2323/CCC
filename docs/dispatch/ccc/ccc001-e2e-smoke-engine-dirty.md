@@ -1,6 +1,6 @@
 # 任务卡 ccc001 · E2E smoke: Engine dispatch + worktree + board dirty（Claude Code 执行）
 
-> 关联：E2E联调 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -43,4 +43,14 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · 日期：2026-08-06
+
+### 实现说明
+- 新增 `docs/notes/2026-08-06-e2e-smoke.md`（14 行，含目录 `docs/notes/`），说明本烟雾目的与验证链路；未触碰 `server/`、`desktop/`、权威短读、其它任务卡。
+- 仅改本卡卡头「状态」及回写区，符合红线白名单。
+
+### 测试结果
+- 本文件新栈唯一改动 ≤20 行；白名单范围校验通过；`git diff` 仅含 notes 文件 + 本卡卡头/回写区。
+
+### push 证据
+- 分支 `codex/ccc001-e2e-smoke-engine-dirty`，commit 见 push 后 `git log --oneline -1`。
