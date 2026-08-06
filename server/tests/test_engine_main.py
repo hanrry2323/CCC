@@ -858,7 +858,11 @@ class TestEngineWorktree:
         assert get_worktree_path("/path/to/ccc-dev-ws", "T64") == "/path/to/ccc-dev-ws-t64"
 
     def test_run_once_with_worktree_enabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """配置了 worktree_base，自动创建 worktree，并注入 {worktree} 占位符且在其中运行。"""
+        """配置了 worktree_base，自动创建 worktree，注入 {worktree} 占位符并在其中运行。
+
+        ccc003：worktree 派发须产出 ≥1 新 commit（防 exit0 假成功），故执行体在 worktree 内
+        落盘并提交一个文件 → 产物存在 → 收单为「已回写」。
+        """
         # 1. 在 tmp_path 里初始化一个真实 git 仓库
         subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(tmp_path), check=True, capture_output=True)
@@ -871,12 +875,13 @@ class TestEngineWorktree:
         # 2. 切换当前进程的工作目录到 tmp_path
         monkeypatch.chdir(tmp_path)
 
-        # 3. 设置 registry，配置 worktree_base 和 {worktree} 占位符
+        # 3. 设置 registry，配置 worktree_base 和 {worktree} 占位符。
+        #    执行体在 worktree 内把两个占位符写入 work.txt 并提交（产物 = 新 commit）。
         worktree_base_dir = tmp_path / "wt"
         reg_path = _write_demo_registry(
             tmp_path,
-            command="echo",
-            args_template="work={work_id} wt={worktree}",
+            command="sh",
+            args_template="-c 'echo work={work_id} wt={worktree} > work.txt && git add work.txt && git commit -m workdone'",
             worktree_base=str(worktree_base_dir),
         )
         reg = load_registry(reg_path)
@@ -904,12 +909,13 @@ class TestEngineWorktree:
         assert expected_worktree_path.exists()
         assert (expected_worktree_path / ".git").exists()
 
-        # 6. 验证日志中确实被执行了，并且占位符被替换
+        # 6. 验证占位符被替换且产物已提交（work.txt 位于 worktree 内，日志产出 commit）
+        work_output = (expected_worktree_path / "work.txt").read_text(encoding="utf-8")
+        assert "work=T64" in work_output
+        assert f"wt={expected_worktree_path}" in work_output
         log_file = tmp_path / "logs" / "T64.log"
         assert log_file.exists()
-        log_content = log_file.read_text(encoding="utf-8")
-        assert "work=T64" in log_content
-        assert f"wt={expected_worktree_path}" in log_content
+        assert "[codex/t64-auto-worktree" in log_file.read_text(encoding="utf-8")
 
     def test_run_once_with_worktree_failed_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """如果 git worktree 创建失败（例如不是 git 仓库），自动回退到默认工作目录而不丢失卡状态。"""
@@ -1036,4 +1042,108 @@ class TestAcceptanceGuard:
         # 空路径/不存在文件 → False
         assert m.is_card_accepted("") is False
         assert m.is_card_accepted(str(tmp_path / "missing.md")) is False
+
+
+def _init_src_repo(tmp_path: Path) -> None:
+    """初始化一个带 origin/main 分支与初始 commit 的源仓库（worktree 的 `git worktree add` 来源）。"""
+    subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True, capture_output=True)
+    (tmp_path / "base.txt").write_text("base", encoding="utf-8")
+    subprocess.run(["git", "add", "base.txt"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "base commit"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(["git", "checkout", "-b", "origin/main"], cwd=str(tmp_path), check=True, capture_output=True)
+
+
+class TestRunOnceFakeSuccessGuard:
+    """ccc003 收单防假成功：worktree 派发 exit 0 但无产物 → 打回；有产物 → 已回写。"""
+
+    @staticmethod
+    def _make_worktree_registry(tmp_path: Path, command: str, worktree_base: Path) -> Path:
+        """构造带 worktree_base 的开发执行体注册表（Executor=OpenCode，走 worktree 产物核验）。"""
+        return _write_demo_registry(
+            tmp_path,
+            command=command,
+            args_template="-c 'echo run'",
+            worktree_base=str(worktree_base),
+        )
+
+    def _run_worktree_dispatch(self, tmp_path, command, card_state: str = "待分派") -> tuple:
+        _init_src_repo(tmp_path)
+        worktree_base = tmp_path / "wt"
+        reg_path = self._make_worktree_registry(tmp_path, command, worktree_base)
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_path = tmp_path / "T-fake.md"
+        card_path.write_text(
+            "# 任务卡 T-fake\n"
+            f"> 关联：TEST · 执行体：demo · 状态：{card_state} · 日期：2026-08-06\n"
+            "\n## 回写区\n",
+            encoding="utf-8",
+        )
+        store.seed(Work(id="T-fake", role="开发执行体", card_path=str(card_path)))
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
+               "EXECUTOR_PROBE_URL": ""}
+        return run_once(reg, store, cfg), store, worktree_base
+
+    def test_exit_zero_no_product_rejected(self, tmp_path: Path, monkeypatch) -> None:
+        """① returncode 0 + worktree 无新 commit + 卡头非已回写 → 打回（疑似 sandbox 假成功）。"""
+        monkeypatch.chdir(tmp_path)
+        summary, store, wt = self._run_worktree_dispatch(tmp_path, "echo")
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 0
+        rejected = store.list_work(state=State.REJECTED)
+        assert len(rejected) == 1
+        assert rejected[0].id == "T-fake"
+        assert any("exit 0 但无产物" in p for p in rejected[0].problems)
+
+    def test_exit_zero_with_new_commit_collected(self, tmp_path: Path, monkeypatch) -> None:
+        """② returncode 0 + worktree 内新增 commit → 已回写（产物 = git log 新 commit）。"""
+        monkeypatch.chdir(tmp_path)
+        # 执行体在 worktree 内落盘并提交 → 产物存在
+        cmd = "sh"
+        _script = "-c 'echo work > out.txt && git add out.txt && git commit -m done'"
+        _init_src_repo(tmp_path)
+        worktree_base = tmp_path / "wt"
+        reg_path = _write_demo_registry(tmp_path, command=cmd, args_template=_script, worktree_base=str(worktree_base))
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_path = tmp_path / "T-fake2.md"
+        card_path.write_text(
+            "# 任务卡 T-fake2\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n\n## 回写区\n",
+            encoding="utf-8",
+        )
+        store.seed(Work(id="T-fake2", role="开发执行体", card_path=str(card_path)))
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
+               "EXECUTOR_PROBE_URL": ""}
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 1
+        done = store.list_work(state=State.DONE)
+        assert [w.id for w in done] == ["T-fake2"]
+
+    def test_exit_zero_card_written_back_collected(self, tmp_path: Path, monkeypatch) -> None:
+        """③ returncode 0 + worktree 无新 commit 但卡头已「已回写」→ 已回写（第二个产物证据）。"""
+        monkeypatch.chdir(tmp_path)
+        _init_src_repo(tmp_path)
+        worktree_base = tmp_path / "wt"
+        reg_path = self._make_worktree_registry(tmp_path, "echo", worktree_base)
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_path = tmp_path / "T-fake3.md"
+        # 卡头已在磁盘回写为「已回写」（模拟执行体在 worktree 内回落状态）
+        card_path.write_text(
+            "# 任务卡 T-fake3\n> 关联：TEST · 执行体：demo · 状态：已回写 · 日期：2026-08-06\n\n## 回写区\n",
+            encoding="utf-8",
+        )
+        store.seed(Work(id="T-fake3", role="开发执行体", card_path=str(card_path)))
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
+               "EXECUTOR_PROBE_URL": ""}
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+        done = store.list_work(state=State.DONE)
+        assert [w.id for w in done] == ["T-fake3"]
 

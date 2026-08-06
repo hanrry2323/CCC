@@ -175,6 +175,49 @@ def get_worktree_path(worktree_base: str, work_id: str) -> str:
     return f"{worktree_base}-{work_id_lower}"
 
 
+def _worktree_has_new_commit(worktree_path: str) -> bool:
+    """worktree 内相对 origin/main 是否有 ≥1 个未合入新 commit（产物证据之一）。
+
+    命令失败（目录/分支不存在、非 git 等）一律视为无新 commit；不抛异常。
+    """
+    if not worktree_path or not os.path.isdir(worktree_path):
+        return False
+    try:
+        res = subprocess.run(
+            ["git", "-C", worktree_path, "log", "origin/main..HEAD", "--oneline"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return False
+    if res.returncode != 0:
+        return False
+    return bool(res.stdout.strip())
+
+
+def _card_is_written_back(card_path: str) -> bool:
+    """卡头「状态」段是否已为「已回写」（另一个产物证据）。
+
+    OpenCode/Claude Code 在 worktree 内回写共享任务卡到「已回写」即视为有产物。
+    """
+    if not card_path:
+        return False
+    try:
+        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith(">"):
+            continue
+        for seg in stripped[1:].split("·"):
+            seg = seg.strip()
+            if seg.startswith("状态："):
+                return seg[len("状态："):].strip() == "已回写"
+    return False
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
@@ -268,6 +311,23 @@ def _dispatch_and_collect(
         return False, [f"执行超时（{timeout}s 已 kill）"]
 
     if returncode == 0:
+        # ccc003 收单防假成功：exit 0 后追加产物核验（worktree 派发路径）。
+        # sandbox 假成功 —— OpenCode exit 0 却无产物，不得回写。产物证据二选一：
+        #   · worktree 内相对 origin/main 有 ≥1 新 commit；
+        #   · 卡头已回写为「已回写」。
+        # 仅 worktree 存在时核验（Claude Code/OpenCode 派发必经 worktree）；无 worktree
+        # 的简单执行体不回写卡头，走旧行为，避免误伤。
+        if worktree_path:
+            has_product = _worktree_has_new_commit(worktree_path) or _card_is_written_back(work.card_path)
+            if not has_product:
+                logger.warning(
+                    "exit 0 但无产物（疑似 sandbox 假成功）: work=%s worktree=%s → 打回",
+                    work.id, worktree_path,
+                )
+                return False, [
+                    f"exit 0 但无产物（疑似 sandbox 假成功）: worktree {worktree_path} 无新 commit "
+                    f"（git log origin/main..HEAD 为空）且卡头未回写为已回写"
+                ]
         return True, []
     return False, [f"退出码非 0: {returncode}（日志: {log_path}）"]
 

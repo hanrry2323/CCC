@@ -205,6 +205,18 @@ mkdir -p "$PREFIX_DIR"
 printf '%s\n' "$CARD_BODY" > "$CARD_PATH"
 
 # ── 联动 validate 门禁：不合规卡拒绝并删除 ──
+# ccc003 修复：validate 前先刷新卡片索引（走 server.board 加载/落盘，使新卡入索引），
+# 否则已有索引时新卡未入 index → validate 对账报「索引缺失」误删新卡。禁止手改索引缓存。
+if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys
+from server.board.loader import load_dispatch_cards
+load_dispatch_cards(sys.argv[1])
+" "$TARGET_DIR" ); then
+  echo "[ERROR] 刷新卡片索引失败：$TARGET_DIR" >&2
+  rm -f "$CARD_PATH"
+  exit 1
+fi
+
 if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.validate "$TARGET_DIR" ); then
   [[ "$QUIET" != true ]] && echo "[OK] 出卡成功 + validate 通过: $CARD_PATH"
   exit 0

@@ -64,13 +64,20 @@ class TestLoadRegistry:
 
     def test_example_registry_loads(self) -> None:
         reg = load_registry(REGISTRY_PATH)
-        assert len(reg.entries) == 5
-        # 开发执行体含可后台 CLI 行，且有命令字段
+        # ccc003：开发执行体含 手动GUI(Trae) + 两条可后台 CLI(Claude Code + OpenCode)，
+        # 加 维护执行体 / 管理席 / 验收席 = 6 行。
+        assert len(reg.entries) == 6
+        # 开发执行体可后台 CLI 行走角色回退时命中 Claude Code（模板先行者）
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
         assert cli.command == "claude"
         assert cli.binding == "Claude Code"
         assert "{work_id}" in cli.args_template
+        # 另一条开发 CLI 走绑定名 OpenCode → 模板须含 --auto 与 --dir {worktree}（防 exit0 假成功）
+        oc = reg.cli_entry_for_binding("OpenCode")
+        assert oc is not None
+        assert "run --auto" in oc.args_template
+        assert "--dir {worktree}" in oc.args_template
 
     def test_missing_fields_rejected(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.json"

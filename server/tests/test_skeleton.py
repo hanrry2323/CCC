@@ -154,10 +154,11 @@ class TestConfigLoader:
 class TestExecutorsExample:
     """executors.example.json 锁定契约 §7 五角色 schema。
 
-    - 角色集合 = 五角色（开发执行体 ×2 / 维护执行体 / 管理席 / 验收席）
+    - 角色集合 = 五角色（开发执行体 ×3 / 维护执行体 / 管理席 / 验收席；开发执行体含可后台 CLI×2）
     - 执行体行（开发/维护）分类 ∈ {可后台 CLI, 手动 GUI}
     - 席行（管理/验收）分类为「—」（不执行任务，分类不适用）
     - 当前绑定非空；无旧类型（opencode/python/ollama/cli/auto）
+    - OpenCode 可后台 CLI 行参数模板须同时含 --auto 与 --dir {worktree}（防 exit0 假成功）
     """
 
     EXECUTORS_PATH = SERVER_DIR / "config" / "executors.example.json"
@@ -166,8 +167,10 @@ class TestExecutorsExample:
     REQUIRED_FIELDS = frozenset({"角色", "分类", "当前绑定", "备注"})
 
     # 契约 §7 五角色（角色 / 分类规则；绑定只断言非空，不锁具体工具）
+    # ccc003 对齐：开发执行体「可后台 CLI」两条 = Claude Code + OpenCode（并列开发 CLI）
     CONTRACT_ROLES: list[dict[str, str]] = [
         {"角色": "开发执行体", "分类": "手动 GUI"},
+        {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "维护执行体", "分类": "可后台 CLI"},
         {"角色": "管理席", "分类": NOT_APPLICABLE_CATEGORY},
@@ -231,3 +234,23 @@ class TestExecutorsExample:
         roles = {e["角色"] for e in executors_data["executors"]}
         overlap = roles & self.LEGACY_ROLES
         assert not overlap, f"executors 含已废弃角色: {sorted(overlap)}"
+
+    def test_opencode_cli_requires_auto_and_dir_worktree(self, executors_data) -> None:
+        """防回归（ccc003）：当前绑定=OpenCode 的可后台 CLI 行，参数模板必须同时含
+        ``--auto`` 与 ``--dir {worktree}``，缺一即 fail。
+
+        值因：卡在生产仓、执行在 worktree，缺任一都会导致「exit 0 假成功」——
+        OpenCode exit 0 却无产物被误判为已回写。锁这两个硬参数作为契约 §7 模板约束。
+        """
+        cli_opencode = [
+            e for e in executors_data["executors"]
+            if e.get("分类") == "可后台 CLI" and e.get("当前绑定") == "OpenCode"
+        ]
+        assert cli_opencode, "example 注册表缺少当前绑定=OpenCode 的可后台 CLI 行（ccc003 契约）"
+        for idx, entry in enumerate(cli_opencode):
+            tpl = entry.get("参数模板", "")
+            missing = [p for p in ("--auto", "--dir {worktree}") if p not in tpl]
+            assert not missing, (
+                f"OpenCode 可后台 CLI 行参数模板缺 {missing}（须同时含 --auto 与 --dir {{worktree}}，"
+                f"否则易 exit 0 假成功）: {tpl}"
+            )

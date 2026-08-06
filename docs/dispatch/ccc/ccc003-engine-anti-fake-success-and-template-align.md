@@ -1,6 +1,6 @@
 # 任务卡 ccc003 · E2E 派发收单防假成功与技术债收口（Claude Code 执行）
 
-> 关联：E2E联调技术债 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调技术债 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -48,4 +48,24 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · 日期：2026-08-06
+
+### 实现说明
+
+1. **模板对齐（步骤 1）**：`server/config/executors.example.json` 当前绑定=OpenCode 的可后台 CLI 行（第 27-33 行）参数模板已含 `--auto` 与 `--dir {worktree}`，无需改动。2017 生产 `executors.json`（`/Users/fan/program/CCC/server/config/executors.json`）同名 OpenCode 行模板一致：`run --auto --model loop/code --dir {worktree} "请严格按任务卡 …"` —— **一致，无差异**。
+2. **防回归断言（步骤 2）**：`server/tests/test_skeleton.py::TestExecutorsExample` 新增 `test_opencode_cli_requires_auto_and_dir_worktree`：当前绑定=OpenCode 的可后台 CLI 行，参数模板必须同时含 `--auto` 与 `--dir {worktree}`，缺一即 fail。另修复同文件 `CONTRACT_ROLES`（开发执行体可后台 CLI 由 1 调整为 2 条，对齐 ccc002 加入 OpenCode 后的注册表）与 `test_engine_dispatch.py::test_example_registry_loads`（entry 数 5→6，补 OpenCode 模板断言）——两条均为既有存量断言，与 example JSON 现状不符，已一并收口走绿。
+3. **收单防假成功（步骤 3/4）**：`server/engine/main.py` 收单路径 `returncode == 0` 后追加产物核验——仅 worktree 派发路径生效：`_worktree_has_new_commit()`（`git -C <worktree> log origin/main..HEAD --oneline` ≥1 新 commit）**或** `_card_is_written_back()`（卡头状态已「已回写」）；两者皆无 → 打回问题清单「exit 0 但无产物（疑似 sandbox 假成功）」，不回写。无 worktree 的简单执行体走旧行为（避免误伤 echo 等）。新增 `test_engine_main.py::TestRunOnceFakeSuccessGuard` 三条单测覆盖「0+无产物→打回」「0+新 commit→已回写」「0+卡头已回写→已回写」；同时把既有 `test_run_once_with_worktree_enabled` 改为在 worktree 内产出真实 commit（旧行为=无产物也回写，与收单防假成功契约冲突，已按新意图改）。红线 2：未动五态状态机，只加收单核验门。
+4. **出卡先索引（步骤 5）**：`scripts/new-card.sh` 写卡后、validate 前先调 `server.board.loader.load_dispatch_cards($TARGET_DIR)` 刷新卡片索引（走 board 逻辑，未手改缓存），消除已有索引时新卡未入 index 触发「索引缺失」误删。实测：旧索引存在时出卡 `ccc101-anti-fake` 一次成功，validate 通过且进入索引；反向验证旧行为对账报「索引缺失」。
+
+### 测试结果
+
+- `pytest server/tests/test_skeleton.py -q`：28 passed
+- `pytest server/tests/ -q`：唯一失败为**既有存量** `test_http_api.py::TestStaticHosting::test_board_page_still_accessible`（`/data/board.js` 401，本机缺 `web/data/board.js` 派生命成物；stash 验证改动前即失败，与 ccc003 无关且不在白名单，属超范围）——本卡改动引入回归 0，新增用例全绿。
+- `ruff check server/`：本卡改动文件 0 告警；3 条既有 UP038（`kb/indexer.py`×2、`test_http_api.py`×1）为改动前存量，不在白名单。
+- `python3 -m server.board.validate docs/dispatch`：通过（85 张卡，0 error，82 条旧卡迁移提示）。红线 4：索引经 `server.board` 刷新，未手改缓存内容。
+
+### push 证据
+
+- 分支：`codex/ccc003-engine-anti-fake-success-and-template-align`
+- 改动文件：`server/engine/main.py`、`server/tests/test_skeleton.py`、`server/tests/test_engine_dispatch.py`、`server/tests/test_engine_main.py`、`scripts/new-card.sh`、本卡（卡头状态 + 回写区）
+- commit：见本次 push 记录（后续补充 commit id）
