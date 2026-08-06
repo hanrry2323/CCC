@@ -1,6 +1,7 @@
 # 任务卡 ccc002 · E2E smoke: OpenCode channel + worktree（OpenCode 执行）
 
-> 关联：E2E联调 OpenCode 2026-08-06 · 执行体：OpenCode · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调 OpenCode 2026-08-06 · 执行体：OpenCode · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 变更记录：2026-08-06 Cursor 独立取证验收通过；分支 `codex/ccc002-e2e-smoke-opencode`（`c47a2c2`）已 ff 合入 `main`。
 
 ## 目标
 
@@ -49,4 +50,18 @@
 
 **测试结果**：改动范围仅白名单内 2 项（新说明文件 + 本卡卡头/回写区），未触碰 server/、desktop/、权威短读及其它任务卡；git 状态确认无越界改动。
 
-**push 证据**：分支 `codex/ccc002-e2e-smoke-opencode`（未直推 main）· 提交见回写后 commit，`git log --oneline -1` 该分支可见。
+**push 证据**：分支 `codex/ccc002-e2e-smoke-opencode`，commit `c47a2c2`；已合入 `main`。
+
+---
+
+## 验收区（Cursor 独立取证 · 2026-08-06）
+
+**判定：通过** ✅
+
+| # | 标准 | 取证 |
+|---|------|------|
+| 1 | notes 文件在分支并合入 main | `docs/notes/2026-08-06-e2e-smoke-opencode.md`（17 行）@ `c47a2c2`，main ff 含该提交 |
+| 2 | 卡头已回写 + 回写区齐全 | Engine `收单成功: work=ccc002 → 已回写`；回写区有实现/测试/push |
+| 3 | 看板曾执行中 | `:7788/board/states` 观测 执行中:1 → 已回写:2；worktree `ccc-dev-ws-ccc002` + `--auto` 派发成功 |
+
+补充观测：首次因 launchd PATH 找不到 `opencode` 打回（已改绝对路径）；第二次 exit 0 假成功（sandbox 拒读卡外路径，无产物）— 模板加 `--auto --dir {worktree}` 后第三次真通。
