@@ -1,6 +1,6 @@
 # 任务卡 ccc005 · 项目注册表单源接线（PREFIXES /projects /taskable + 校验）
 
-> 关联：文档与项目注册统一治理 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：文档与项目注册统一治理 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -71,3 +71,9 @@
 机审：通过
 来源：engine 自动落盘（m4-first-audit-evidence）· 2026-08-07 02:00
 证据：main=c017500; pytest registry+audit_backfill+ccc_plan 绿; 实现已在 main（M4 受控首跑机审）
+
+## 验收区
+
+**合入批准** · 日期：2026-08-07
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
