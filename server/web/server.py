@@ -85,7 +85,7 @@ from server.board.queries import (
     view_recent,
     view_realtime,
 )
-from server.board.models import BOARD_COLUMNS, STATES, UNKNOWN, BoardItem, base_state, board_column
+from server.board.models import BOARD_COLUMNS, UNKNOWN, BoardItem, base_state, board_column
 from server.engine.cluster import (
     check_service_status,
     check_tcp_reachable,

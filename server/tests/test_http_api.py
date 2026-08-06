@@ -1270,9 +1270,15 @@ class TestBoardSnapshot:
         status, data = _get(api_server, f"/board/snapshot?workspace={target}", token=token)
         assert status == 200
         assert data["workspace"] == target
-        # counts 之和应等于该项目任务数
+        # counts 与 columns 同步；已关闭 cap 10 → counts 之和 ≤ 项目总数
+        for state, count in data["counts"].items():
+            assert count == len(data["columns"].get(state, []))
         total = sum(data["counts"].values())
-        assert total == proj_rows[0]["count"]
+        assert total <= proj_rows[0]["count"]
+        assert data.get("closed_capped") is True
+        assert data.get("closed_limit") == 10
+        if data["counts"].get("已关闭", 0) < 10:
+            assert total == proj_rows[0]["count"]
 
     def test_counts_match_columns(self, api_server):
         token = _get_token(api_server)
@@ -1436,7 +1442,7 @@ class TestTasksRunning:
         wd.clear_dirty_cache()
 
     def test_only_running_included(self, api_server, monkeypatch):
-        """非执行中卡不进入 /tasks/running。"""
+        """/tasks/running：执行中 + 机审（已回写且未过机审）；其它列不进。"""
         from server.web import server as srv
         from server.board.models import BoardItem
 
@@ -1444,12 +1450,29 @@ class TestTasksRunning:
             srv, "_load_board_items",
             lambda: [
                 BoardItem(id="T1", title="待分派", state="待分派"),
-                BoardItem(id="T2", title="已回写", state="已回写"),
+                BoardItem(
+                    id="T2",
+                    title="已回写过审",
+                    state="已回写",
+                    machine_audit_passed=True,
+                ),
+                BoardItem(
+                    id="T3",
+                    title="机审中",
+                    state="已回写",
+                    machine_audit_passed=False,
+                ),
+                BoardItem(id="T4", title="跑着", state="执行中"),
+                BoardItem(id="T5", title="已关闭", state="已关闭"),
             ],
         )
         status, data = _get(api_server, "/tasks/running")
         assert status == 200
-        assert data["tasks"] == []
+        ids = {t["work_id"] for t in data["tasks"]}
+        assert ids == {"T3", "T4"}
+        by_id = {t["work_id"]: t for t in data["tasks"]}
+        assert by_id["T3"]["board_column"] == "机审"
+        assert by_id["T4"]["board_column"] == "执行中"
 
     def test_no_log_dir_still_returns_cards(self, api_server, monkeypatch):
         """EXECUTOR_LOG_DIR 未配置 → 仍返回执行中卡（日志字段空）。"""

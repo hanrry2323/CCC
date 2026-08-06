@@ -231,6 +231,7 @@ class TestStateNormalization:
     """带括号状态变体：按基础态归桶；明细保留全串；未知归未知桶。"""
 
     def test_variant_buckets_to_base_state(self) -> None:
+        """变体归基础态；已回写且无机审通过 → 看板「机审」栏（非「已回写」）。"""
         items = [
             _item("a", state="待分派（实现）"),
             _item("b", state="打回（原因）"),
@@ -239,7 +240,23 @@ class TestStateNormalization:
         view = view_realtime(items)
         assert len(view["待分派"]) == 1
         assert len(view["打回"]) == 1
-        assert len(view["已回写"]) == 1
+        assert len(view.get("机审", [])) == 1
+        assert "已回写" not in view
+
+        passed = BoardItem(
+            id="d",
+            title="示例任务",
+            state="已回写（有条件）",
+            project="PRJ-X",
+            executor="执行体",
+            dispatched_at="2026-08-02",
+            written_at="未知",
+            reject_count=0,
+            machine_audit_passed=True,
+        )
+        view2 = view_realtime([passed])
+        assert len(view2["已回写"]) == 1
+        assert "机审" not in view2
 
     def test_detail_keeps_full_state(self) -> None:
         items = [_item("b", state="打回（原因）")]
