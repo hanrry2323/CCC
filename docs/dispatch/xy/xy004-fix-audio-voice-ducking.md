@@ -1,6 +1,6 @@
 # 任务卡 xy004 · 音频处理：修复语音闪避(ducking)功能异常（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -52,4 +52,21 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 还原现状与根因分析
+- **异常原因**：通过排查，原 dynamic ducking 基于 ffmpeg `sidechaincompress` 滤镜，但在 TTS 和 BGM 混音组合中，参数为硬编码，未向管线上层公开配置。同时，因为没有对 `get_audio_duration` 在测试中进行良好隔离/Mock，或者未全面测试各种极端短视频时间区间下的 fade in/out 表现，导致集成运行报错。
+
+### 2. 重构与修复方案
+- **参数配置化**：在 `mix_audio` 和 `build_bgm_filter_chain` 中增加了 `ducking_threshold` (默认 0.02)、`ducking_attack` (默认 50.0 ms) 和 `ducking_release` (默认 400.0 ms) 关键字参数。
+- **管线透传**：在 `src/xianyu/content/video.py` 中，将上述新增的可配参数从 `ctx`（上下文）完美获取并顺延传递至 `process()` 及降级 fallback 路径的 `_run_ffmpeg_progressive()`。
+- **淡入淡出与安全逻辑**：保留并优化了有人声区间对 BGM 音量的 sidechaincompress 级联淡入/淡出；并对极短音频提供了稳健的 st/d 边界防护。
+
+### 3. 测试结果
+- **测试覆盖**：重构并新增了 3 个单测，覆盖了自定义阈值、极短音频边界、带有 custom parameter 的 filter complex 构建。
+- **测试执行**：在 `tests/video/test_bgm.py` 中运行 44 个单测 100% 通过（跑测命令：`.venv/bin/pytest tests/video/test_bgm.py --no-cov`）。
+- **Ruff Lint**：`ruff check src/xianyu` 100% 通过。
+
+### 4. Push 证据
+- **Commit Hash**：`593e3871ee270295da9be657e3ebce255cf08fe2`
+- **推送分支**：`codex/xy004-fix-audio-voice-ducking`
