@@ -1,0 +1,51 @@
+# 任务卡 ccc007 · M5 audit dogfood rebase hint（OpenCode 执行）
+
+> 关联：M5 真机审狗粮 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-07
+
+## 目标
+
+在 `scripts/new-card.sh` 出卡模板加一行 rebase 提醒（减 `--close-only`），并走 Engine `--audit` 真机审落盘（不经 `first-audit-evidence`）。
+
+## 红线（先看）
+
+1. 只改 `scripts/new-card.sh` 模板步骤文案（≤3 行净增）；不写新 SOP、不改席位/Hub/Desktop。
+2. 不直推 main 业务码；走分支 `codex/ccc007-m5-audit-dogfood-rebase-hint`。
+3. 禁止自写 `## 机审区` / `## 验收区` / 置「已关闭」。
+
+## 范围
+
+- `scripts/new-card.sh`：步骤区加合入前 rebase 提醒。
+- 本卡：已回写 → 等 2017 Engine `--audit` → 合入批准。
+
+## 步骤
+
+1. 改 `new-card.sh` 步骤：回写 push 后、合入前 `git fetch origin && git rebase origin/main`。
+2. commit+push 到卡内分支（勿直推 main）；卡头改为「已回写」。
+3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+
+## 验收标准
+
+1. `scripts/new-card.sh --dry-run`（任意标题）生成正文含 `rebase origin/main`。
+2. 2017 存在 `~/.ccc/logs/exec/ccc007.audit.log`，且生产卡出现 `## 机审区` + `机审：通过`（Engine 真机审，非 evidence 补录）。
+3. 未新增 SOP / 席位文档。
+
+## 回写要求
+
+卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
+机审由卡头「验收」方自动写 `## 机审区`；人审 diff 后听「合入批准」写 `## 验收区`+已关闭。
+
+## 回写区
+
+**执行体**：Cursor（M5 地基）· 日期：2026-08-07
+
+### 实现说明
+- `scripts/new-card.sh` 步骤 2 增加合入前 rebase 一行（对齐 `docs/product/north-star-slice.md` 分支卫生）。
+
+### 测试结果
+```
+./scripts/new-card.sh --title "dry" --project cd --dry-run | grep -F 'rebase origin/main'
+```
+
+### push 证据
+- 分支：`codex/ccc007-m5-audit-dogfood-rebase-hint`
+- commit：774dd92
