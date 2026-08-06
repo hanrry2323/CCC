@@ -71,7 +71,16 @@
 |----|------|------|
 | **机审自动落盘 ccc006** | 机审通过但未写卡 → Engine 落盘 ## 机审区 | ✅ |
 | **Console 文案对齐** | 「待验收」→「待合入批准」 | ✅ |
-| **下一程方案落盘** | M3 方案进 notes | ✅ [`notes/m3-next-plan.md`](notes/m3-next-plan.md) 待批 |
+| **下一程方案落盘** | M3 方案进 notes | ✅ |
+
+### M3 ✅（ready→合入批准闭环 · 2026-08-07 · `649afe6`）
+
+| 项 | 意图 | 备注 |
+|----|------|------|
+| **假滞留清账** | audit 判定 + 索引 audit 旗标 + backfill 脚本 | ✅ |
+| **Console ready** | 待合入接 `/board/ready_for_merge` | ✅ |
+| **合入批准狗粮** | `approve-merge --close-only xy001` | ✅ |
+| 里程碑 | [`notes/m3-milestone-2026-08-07.md`](notes/m3-milestone-2026-08-07.md) | ✅ |
 
 | 项 | 意图 | 备注 |
 |----|------|------|
