@@ -168,6 +168,8 @@ export async function refreshBoardPanel(opts = {}) {
         if (t.log_bytes != null) c.log_bytes = t.log_bytes;
         if (t.tool_calls != null) c.tool_calls = t.tool_calls;
         if (t.shell_calls != null) c.shell_calls = t.shell_calls;
+        if (t.metrics_live != null) c.metrics_live = t.metrics_live;
+        else if (t.live != null) c.metrics_live = t.live;
       }
     } catch (_) { /* dirty 可选 */ }
     _toastTrackedTaskProgress(all);

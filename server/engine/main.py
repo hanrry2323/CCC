@@ -318,6 +318,29 @@ def _sync_machine_audit_from_worktree(work: Work, worktree_path: str) -> bool:
         return False
 
 
+def _archive_executor_log(log_path: Path) -> Path | None:
+    """覆盖写之前归档已有日志，避免机审/重派抹掉开发阶段「调用」证据。"""
+    try:
+        if not log_path.is_file() or log_path.stat().st_size <= 0:
+            return None
+    except OSError:
+        return None
+    stem = log_path.stem
+    parent = log_path.parent
+    for i in range(1, 64):
+        dest = parent / f"{stem}.run{i}.log"
+        if dest.exists():
+            continue
+        try:
+            log_path.rename(dest)
+            logger.info("执行日志已归档: %s → %s", log_path.name, dest.name)
+            return dest
+        except OSError as exc:
+            logger.warning("归档执行日志失败: %s (%s)", log_path, exc)
+            return None
+    return None
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
@@ -327,12 +350,14 @@ def _dispatch_and_collect(
     *,
     entry_override: ExecutorEntry | None = None,
     skip_product_gate: bool = False,
+    log_phase: str = "run",
 ) -> tuple[bool, list[str]]:
     """真实派发单个 work + 同步收单。
 
     Args:
         entry_override: 指定注册表行（机审复用派发时传入验收席 CLI，避免命中开发模板）。
         skip_product_gate: 机审路径跳过「新 commit+diff」门禁（机审不改业务码）。
+        log_phase: ``run`` → ``{id}.log``（覆盖前归档）；``audit`` → ``{id}.audit.log``（不碰开发日志）。
 
     Returns:
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
@@ -393,9 +418,21 @@ def _dispatch_and_collect(
     except ValueError as exc:
         return False, [f"命令构造失败: {exc}"]
 
-    log_path = log_dir / f"{work.id}.log"
+    phase = (log_phase or "run").strip().lower() or "run"
+    if phase == "audit":
+        log_path = log_dir / f"{work.id}.audit.log"
+    else:
+        log_path = log_dir / f"{work.id}.log"
+        _archive_executor_log(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("拉起执行体: work=%s role=%s cmd=%s log=%s", work.id, work.role, cmd, log_path)
+    logger.info(
+        "拉起执行体: work=%s role=%s phase=%s cmd=%s log=%s",
+        work.id,
+        work.role,
+        phase,
+        cmd,
+        log_path,
+    )
 
     logf = None
     try:
@@ -405,7 +442,7 @@ def _dispatch_and_collect(
         # 日志句柄必须保持到 wait 结束：过早 close 会导致子进程 stdout 断开、看板 log_tail 空白
         logf = log_path.open("w", encoding="utf-8", buffering=1)
         logf.write(
-            f"[ccc.engine] start work={work.id} pid_pending cmd={' '.join(cmd)}\n"
+            f"[ccc.engine] start work={work.id} phase={phase} pid_pending cmd={' '.join(cmd)}\n"
         )
         logf.flush()
         proc = subprocess.Popen(  # noqa: S603 - 命令来自注册表配置，非用户输入
@@ -643,6 +680,7 @@ def _run_machine_audit_after_writeback(
             timeout,
             entry_override=entry,
             skip_product_gate=True,
+            log_phase="audit",
         )
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")

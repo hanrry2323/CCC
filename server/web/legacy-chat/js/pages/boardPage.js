@@ -334,14 +334,14 @@ function renderActiveView() {
 
     if (!host.querySelector('#board-flow')) {
       host.innerHTML = `
-        <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(220px, 1fr); grid-auto-flow: column; gap: 10px; height: 100%; overflow-x: auto; padding: 10px 0;">
+        <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(278px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
           ${FLOW_COLS.map(col => `
-            <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%;">
+            <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 278px;">
               <div class="board-col-h">
                 <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
                 <span class="ct" id="ct-${col}">0</span>
               </div>
-              <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 6px; gap: 4px;"></div>
+              <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
             </div>
           `).join('')}
         </div>
@@ -352,6 +352,7 @@ function renderActiveView() {
         const colEl = host.querySelector(`#col-list-${col}`);
         if (colEl) {
           _colLists[col] = new TaskCardList(colEl, {
+            itemHeight: 118,
             onCardClick: (card, id) => showDetail(id),
             onCopyClick: async (btn, id) => {
               const t = _allCards.find(x => x.id === id) || { id, title: '' };
@@ -365,6 +366,22 @@ function renderActiveView() {
           });
           _colLists[col].enableVirtualScroll(true);
         }
+      }
+    } else {
+      const flow = host.querySelector('#board-flow');
+      if (flow) {
+        flow.style.gridAutoColumns = 'minmax(278px, 1fr)';
+        flow.style.gap = '12px';
+      }
+      host.querySelectorAll('.board-col').forEach((el) => {
+        el.style.minWidth = '278px';
+      });
+      host.querySelectorAll('.board-col-body').forEach((el) => {
+        el.style.padding = '8px';
+        el.style.gap = '6px';
+      });
+      for (const col of FLOW_COLS) {
+        if (_colLists[col]) _colLists[col].itemHeight = 118;
       }
     }
 
@@ -623,6 +640,8 @@ async function mergeDirtyFromRunning(cards) {
       if (t.log_bytes != null) c.log_bytes = t.log_bytes;
       if (t.tool_calls != null) c.tool_calls = t.tool_calls;
       if (t.shell_calls != null) c.shell_calls = t.shell_calls;
+      if (t.metrics_live != null) c.metrics_live = t.metrics_live;
+      else if (t.live != null) c.metrics_live = t.live;
     }
   } catch (_) { /* 徽章可选；失败不挡看板 */ }
   return cards;

@@ -52,7 +52,7 @@ function fmtElapsed(sec) {
 }
 
 /**
- * 卡片运行徽章（执行中优先展示）：
+ * 卡片运行徽章（各列都展示，调用数只增不减）：
  * 调用 N · ⏱时长 · Δ文件 · +/−行
  */
 export function renderWorktreeBadges(t) {
@@ -61,16 +61,19 @@ export function renderWorktreeBadges(t) {
   const calls = t.tool_calls;
   if (calls != null && calls !== '' && Number(calls) >= 0) {
     parts.push(
-      `<span class="board-card-badge badge-calls" title="工具调用次数（执行日志中 → 行：Read/Write/Bash 等；近似交互轮次，非账单 API 次数）">调用 ${escapeHtml(String(Number(calls)))}</span>`
+      `<span class="board-card-badge badge-calls" title="累计工具调用（开发+机审各阶段日志汇总；高水位跟卡走，不因换列归零）">调用 ${escapeHtml(String(Number(calls)))}</span>`
     );
   }
 
   const elapsed = t.elapsed_s;
   if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
+    const liveFlag = t.metrics_live === true || t.metrics_live === 'true';
     const recent =
-      t.last_activity_at && (Date.now() - new Date(t.last_activity_at).getTime()) < 45000;
+      liveFlag &&
+      t.last_activity_at &&
+      (Date.now() - new Date(t.last_activity_at).getTime()) < 45000;
     parts.push(
-      `<span class="board-card-badge ${recent ? 'badge-live' : 'badge-elapsed'}" title="${recent ? '近期有日志输出 · 已运行时长' : '已运行时长（自派发标记创建）'}">⏱ ${escapeHtml(fmtElapsed(elapsed))}</span>`
+      `<span class="board-card-badge ${recent ? 'badge-live' : 'badge-elapsed'}" title="${recent ? '执行中/机审中 · 已运行时长' : '累计运行时长（结束后冻结，随卡进机审/回写）'}">⏱ ${escapeHtml(fmtElapsed(elapsed))}</span>`
     );
   }
 
@@ -110,6 +113,9 @@ export function renderTaskCard(t) {
     : '';
 
   const statsHtml = renderWorktreeBadges(t);
+  const metricsBlock = statsHtml
+    ? `<div class="board-card-metrics" aria-label="运行指标">${statsHtml}</div>`
+    : '';
 
   const executor = t.executor && t.executor !== '未知'
     ? `<span class="board-card-badge badge-exec" title="执行体">@${escapeHtml(t.executor)}</span>`
@@ -137,9 +143,9 @@ export function renderTaskCard(t) {
         </div>
       </div>
       <div class="board-card-title ti">${escapeHtml(t.title || t.id)}</div>
+      ${metricsBlock}
       <div class="board-card-meta">
         ${executor}
-        <span class="board-card-stats">${statsHtml}</span>
         ${rejectHtml}
       </div>
       ${updatedHtml ? `<div class="board-card-foot">${updatedHtml}</div>` : ''}

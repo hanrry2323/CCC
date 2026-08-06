@@ -768,14 +768,15 @@ def _tail_lines(path: Path, n: int = 5) -> list[str]:
 
 
 def _load_running_tasks() -> dict[str, Any]:
-    """GET /tasks/running：执行中任务进程视图 + worktree / 日志指标。
+    """GET /tasks/running：执行中 + 机审中任务进程视图 + worktree / 日志指标。
 
-    - 数据源：docs/dispatch 卡头状态 == 执行中；
-    - 时长：``.running`` birthtime（勿用日志 ctime——macOS 写入会刷新）；
-    - 调用：解析 OpenCode 日志 ``→`` 工具行；
+    - 数据源：卡头「执行中」，或看板列「机审」（已回写待审）；
+    - 时长：``.running`` / ``-audit.running`` birthtime；
+    - 调用：汇总各阶段日志 ``→`` 等 + metrics sidecar 高水位；
     - dirty / lines：worktree 落盘改动（force 刷新）。
     """
-    from server.web.exec_metrics import parse_log_call_counts, running_timing
+    from server.board.models import board_column as _board_column
+    from server.web.exec_metrics import parse_work_call_counts, running_timing
     from server.web.worktree_dirty import get_worktree_metrics
 
     items = _load_board_items()
@@ -783,13 +784,21 @@ def _load_running_tasks() -> dict[str, Any]:
     now = time.time()
     tasks: list[dict[str, Any]] = []
     for item in items:
-        if base_state(item.state) != "执行中":
+        base = base_state(item.state)
+        col = _board_column(item.state, bool(getattr(item, "machine_audit_passed", False)))
+        live_marker = False
+        if log_dir is not None:
+            live_marker = (log_dir / f"{item.id}.running").is_file() or (
+                log_dir / f"{item.id}-audit.running"
+            ).is_file()
+        if base != "执行中" and col != "机审" and not live_marker:
             continue
         metrics = get_worktree_metrics(item.id, force=True)
         task: dict[str, Any] = {
             "work_id": item.id,
             "title": item.title,
             "executor": item.executor,
+            "board_column": col,
             "started_at": None,
             "elapsed_s": None,
             "log_tail": [],
@@ -806,12 +815,19 @@ def _load_running_tasks() -> dict[str, Any]:
         if log_dir is not None:
             timing = running_timing(log_dir, item.id, now=now)
             task.update(timing)
-            log_path = log_dir / f"{item.id}.log"
-            if log_path.is_file():
-                counts = parse_log_call_counts(log_path)
-                task["tool_calls"] = counts["tool_calls"]
-                task["shell_calls"] = counts["shell_calls"]
-                task["log_tail"] = _tail_lines(log_path, 5)
+            task["metrics_live"] = bool(timing.get("live"))
+            counts = parse_work_call_counts(log_dir, item.id)
+            task["tool_calls"] = counts["tool_calls"]
+            task["shell_calls"] = counts["shell_calls"]
+            # 尾部：优先当前阶段（audit 进行中看 audit.log，否则主 log）
+            audit_log = log_dir / f"{item.id}.audit.log"
+            main_log = log_dir / f"{item.id}.log"
+            if (log_dir / f"{item.id}-audit.running").is_file() and audit_log.is_file():
+                task["log_tail"] = _tail_lines(audit_log, 5)
+            elif main_log.is_file():
+                task["log_tail"] = _tail_lines(main_log, 5)
+            elif audit_log.is_file():
+                task["log_tail"] = _tail_lines(audit_log, 5)
         tasks.append(task)
     tasks.sort(key=lambda t: (t["elapsed_s"] is None, -(t["elapsed_s"] or 0)))
     return {"tasks": tasks}
@@ -1189,8 +1205,9 @@ class _APIHandler(BaseHTTPRequestHandler):
         end_idx = start_idx + page_size
         paginated = filtered[start_idx:end_idx]
 
-        from server.web.worktree_dirty import get_worktree_metrics
+        from server.web.exec_metrics import card_wants_runtime, enrich_card_runtime
 
+        log_dir = _executor_log_dir()
         cards_out: list[dict[str, Any]] = []
         for c in paginated:
             row = dict(c)
@@ -1201,13 +1218,13 @@ class _APIHandler(BaseHTTPRequestHandler):
                     row.get("state", ""),
                     bool(row.get("machine_audit_passed", False)),
                 )
-            if base_state(c.get("state", "")) == "执行中":
-                metrics = get_worktree_metrics(c["id"], force=True)
-                row["dirty_files"] = metrics.get("dirty_files")
-                row["lines_insert"] = metrics.get("lines_insert")
-                row["lines_delete"] = metrics.get("lines_delete")
-                row["branch_insert"] = metrics.get("branch_insert")
-                row["branch_delete"] = metrics.get("branch_delete")
+            # 调用/时长/Δ 跟卡走：执行中·机审·已回写·打回·已关闭（有日志或 worktree 才有数）
+            if card_wants_runtime(row):
+                enrich_card_runtime(
+                    row,
+                    log_dir,
+                    force=base_state(c.get("state", "")) == "执行中",
+                )
             cards_out.append(row)
 
         self._send_json({
