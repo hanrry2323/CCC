@@ -80,6 +80,59 @@ sys.exit(0 if ok else 1)
 " "$path"
 }
 
+# 外仓提示：registry.mac2017 非 CCC 本仓时打印分支/HEAD/是否已在业务 main（不自动 push）
+print_external_repo_hint() {
+  local path="$1" branch="$2"
+  "$PYTHON_BIN" - "$path" "$branch" <<'PY' || true
+import re, subprocess, sys
+from pathlib import Path
+
+sys.path.insert(0, ".")
+from server.board.registry import load_projects
+
+card = Path(sys.argv[1])
+branch = sys.argv[2]
+text = card.read_text(encoding="utf-8")
+m = re.search(r"项目：([^·\n]+)", text)
+prefix = m.group(1).strip() if m else ""
+if not prefix:
+    sys.exit(0)
+projects = load_projects()
+by_prefix = {p.prefix: p for p in projects if p.prefix}
+entry = by_prefix.get(prefix)
+ccc = by_prefix.get("ccc")
+if entry is None or not entry.path_mac2017:
+    sys.exit(0)
+if ccc and entry.path_mac2017 == ccc.path_mac2017:
+    sys.exit(0)
+repo = entry.path_mac2017
+if not repo.startswith("/") or ".." in repo:
+    print(f"[外仓] project={prefix} path={repo} (路径非法，跳过探测)")
+    sys.exit(0)
+remote = "origin/" + branch
+cmd = (
+    f"git -C {repo} fetch -q origin >/dev/null 2>&1; "
+    f"h=$(git -C {repo} rev-parse --short {remote} 2>/dev/null || echo missing); "
+    f"in_main=$(git -C {repo} merge-base --is-ancestor {remote} origin/main >/dev/null 2>&1 && echo yes || echo no); "
+    'echo "$h $in_main"'
+)
+try:
+    out = subprocess.check_output(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "fan@192.168.3.116", cmd],
+        text=True,
+        stderr=subprocess.DEVNULL,
+        timeout=25,
+    ).strip()
+except (subprocess.SubprocessError, OSError):
+    print(f"[外仓] project={prefix} path={repo} branch={branch} (ssh 不可达，请人工核对)")
+    sys.exit(0)
+parts = out.split()
+head = parts[0] if parts else "missing"
+in_main = parts[1] if len(parts) > 1 else "?"
+print(f"[外仓] project={prefix} path={repo} branch={branch} HEAD={head} in_main={in_main}")
+PY
+}
+
 close_card() {
   local path="$1"
   local today
@@ -117,6 +170,7 @@ approve_one() {
   branch="codex/${stem}"
 
   echo "== 合入批准 ${id} (${branch}) =="
+  print_external_repo_hint "$path" "$branch"
 
   # 优先 2017 ready；本地机审区也可
   local api_ok=false
