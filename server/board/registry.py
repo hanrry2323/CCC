@@ -1,4 +1,7 @@
-"""Load docs/projects/registry.yaml — project prefix SSOT (ccc005 / north-star S2b)."""
+"""Load docs/projects/registry.yaml — project prefix SSOT (ccc005 / north-star S2b).
+
+Stdlib only (no PyYAML): production web-server is zero-dependency.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +9,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = _PROJECT_ROOT / "docs" / "projects" / "registry.yaml"
@@ -29,11 +30,92 @@ class ProjectEntry:
 
 
 def _as_bool(v: Any) -> bool:
-    return bool(v) if not isinstance(v, str) else v.strip().lower() in {"1", "true", "yes"}
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    return str(v).strip().lower() in {"1", "true", "yes"}
+
+
+def _parse_scalar(raw: str) -> Any:
+    s = raw.strip()
+    if s in ("null", "~", ""):
+        return None
+    if s in ("true", "false"):
+        return s == "true"
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        return s[1:-1]
+    return s
+
+
+def _parse_registry_yaml(text: str) -> dict[str, Any]:
+    """Minimal YAML for registry.yaml (mapping + list of mappings + nested paths)."""
+    lines = text.splitlines()
+    root: dict[str, Any] = {}
+    projects: list[dict[str, Any]] = []
+    i = 0
+    n = len(lines)
+    in_projects = False
+    current: dict[str, Any] | None = None
+    in_paths = False
+
+    def indent_of(line: str) -> int:
+        return len(line) - len(line.lstrip(" "))
+
+    while i < n:
+        line = lines[i]
+        i += 1
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        ind = indent_of(line)
+        stripped = line.strip()
+
+        if not in_projects:
+            if stripped.startswith("projects:"):
+                in_projects = True
+                root["projects"] = projects
+                continue
+            if ":" in stripped and ind == 0:
+                key, _, val = stripped.partition(":")
+                root[key.strip()] = _parse_scalar(val) if val.strip() else None
+            continue
+
+        if stripped.startswith("- "):
+            current = {}
+            projects.append(current)
+            in_paths = False
+            rest = stripped[2:].strip()
+            if rest and ":" in rest:
+                key, _, val = rest.partition(":")
+                current[key.strip()] = _parse_scalar(val)
+            continue
+
+        if current is None:
+            continue
+
+        if stripped.startswith("paths:"):
+            in_paths = True
+            current["paths"] = {}
+            continue
+
+        # paths children are indented deeper than project fields (typically 6 spaces)
+        if in_paths and ind >= 6 and ":" in stripped:
+            key, _, val = stripped.partition(":")
+            current.setdefault("paths", {})[key.strip()] = _parse_scalar(val)
+            continue
+
+        if ":" in stripped:
+            in_paths = False
+            key, _, val = stripped.partition(":")
+            current[key.strip()] = _parse_scalar(val)
+
+    return root
 
 
 def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
     paths = raw.get("paths") or {}
+    if not isinstance(paths, dict):
+        paths = {}
     prefix = raw.get("prefix")
     if prefix is not None:
         prefix = str(prefix).strip() or None
@@ -62,7 +144,7 @@ def load_projects(registry_path: str | None = None) -> tuple[ProjectEntry, ...]:
     path = Path(registry_path) if registry_path else DEFAULT_REGISTRY_PATH
     if not path.is_file():
         raise FileNotFoundError(f"project registry missing: {path}")
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data = _parse_registry_yaml(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("registry root must be a mapping")
     projects = data.get("projects")
