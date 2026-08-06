@@ -37,7 +37,7 @@ SSOT 正文见根目录 [`CLAUDE.md`](../../CLAUDE.md)「开仓作战卡片」�
 
 工作区铁律：cwd 必须是 CCC 写源；发现 `qx-map` 等其它仓须当面点破。
 
-**大方案 → 多卡**：见 [`CLAUDE.md`](../../CLAUDE.md)「大方案切片 SOP」——先切片表与 dry-run，老板确认后再真写；Engine 只拾取已入库卡（`EXECUTOR_MAX_CONCURRENT` 控制并行）。
+**大方案 → 多卡**：见 [`CLAUDE.md`](../../CLAUDE.md)「大方案切片 SOP」——切片表 → dry-run → 老板确认 → 真写 push → **2017 pull** → Engine 拾取。并行以 2017 `EXECUTOR_MAX_CONCURRENT` 为准（常为 1）。禁止静默批量拆卡。
 
 ---
 
