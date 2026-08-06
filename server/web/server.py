@@ -768,14 +768,14 @@ def _tail_lines(path: Path, n: int = 5) -> list[str]:
 
 
 def _load_running_tasks() -> dict[str, Any]:
-    """GET /tasks/running：执行中任务进程视图（T53）+ worktree 改动指标。
+    """GET /tasks/running：执行中任务进程视图 + worktree / 日志指标。
 
-    - 数据源：docs/dispatch 卡头状态 == 执行中（真实队列语义，manual 卡不在此列）；
-    - 日志尾部读 ``EXECUTOR_LOG_DIR/<work_id>.log``（存在时）；
-      开始时间用日志文件 ctime，最近活动用 mtime，已用时 = now - ctime；
-    - 无日志文件（如历史遗留/无进程）→ 仅卡信息，日志为空、已用时未知。
-    - dirty_files / lines_*：worktree 未提交文件数与行变更（短缓存；非 LLM 调用次数）。
+    - 数据源：docs/dispatch 卡头状态 == 执行中；
+    - 时长：``.running`` birthtime（勿用日志 ctime——macOS 写入会刷新）；
+    - 调用：解析 OpenCode 日志 ``→`` 工具行；
+    - dirty / lines：worktree 落盘改动（force 刷新）。
     """
+    from server.web.exec_metrics import parse_log_call_counts, running_timing
     from server.web.worktree_dirty import get_worktree_metrics
 
     items = _load_board_items()
@@ -795,6 +795,8 @@ def _load_running_tasks() -> dict[str, Any]:
             "log_tail": [],
             "last_activity_at": None,
             "log_bytes": None,
+            "tool_calls": None,
+            "shell_calls": None,
             "dirty_files": metrics.get("dirty_files"),
             "lines_insert": metrics.get("lines_insert"),
             "lines_delete": metrics.get("lines_delete"),
@@ -802,23 +804,15 @@ def _load_running_tasks() -> dict[str, Any]:
             "branch_delete": metrics.get("branch_delete"),
         }
         if log_dir is not None:
+            timing = running_timing(log_dir, item.id, now=now)
+            task.update(timing)
             log_path = log_dir / f"{item.id}.log"
-            try:
-                st = log_path.stat()
-            except OSError:
-                pass  # 无日志文件 → 保留卡信息
-            else:
-                task["started_at"] = datetime.fromtimestamp(
-                    st.st_ctime, tz=timezone.utc
-                ).isoformat(timespec="seconds")
-                task["last_activity_at"] = datetime.fromtimestamp(
-                    st.st_mtime, tz=timezone.utc
-                ).isoformat(timespec="seconds")
-                task["elapsed_s"] = max(0, int(now - st.st_ctime))
-                task["log_bytes"] = int(st.st_size)
+            if log_path.is_file():
+                counts = parse_log_call_counts(log_path)
+                task["tool_calls"] = counts["tool_calls"]
+                task["shell_calls"] = counts["shell_calls"]
                 task["log_tail"] = _tail_lines(log_path, 5)
         tasks.append(task)
-    # 无日志（未知已用时）置底；其余按已用时长倒序（跑得久的在上）
     tasks.sort(key=lambda t: (t["elapsed_s"] is None, -(t["elapsed_s"] or 0)))
     return {"tasks": tasks}
 

@@ -1377,6 +1377,7 @@ class TestTasksRunning:
         log_dir = tmp_path / "exec-logs"
         log_dir.mkdir()
         (log_dir / "T999.log").write_text("l1\nl2\nl3\nl4\nl5\nl6\nl7\n", encoding="utf-8")
+        (log_dir / "T999.running").write_text("pid=1\n", encoding="utf-8")
         monkeypatch.setenv("EXECUTOR_LOG_DIR", str(log_dir))
         monkeypatch.setattr(
             srv, "_load_board_items",
@@ -1475,7 +1476,8 @@ class TestTasksRunning:
 
         log_dir = tmp_path / "exec-from-cfg"
         log_dir.mkdir()
-        (log_dir / "T77.log").write_text("a\nb\nc\n", encoding="utf-8")
+        (log_dir / "T77.log").write_text("a\nb\nc\n→ Read x\n", encoding="utf-8")
+        (log_dir / "T77.running").write_text("pid=9\n", encoding="utf-8")
         cfg = tmp_path / "config.env"
         cfg.write_text(f"EXECUTOR_LOG_DIR={log_dir}\n", encoding="utf-8")
         monkeypatch.delenv("EXECUTOR_LOG_DIR", raising=False)
@@ -1490,7 +1492,8 @@ class TestTasksRunning:
         t = data["tasks"][0]
         assert t["work_id"] == "T77"
         assert t["elapsed_s"] is not None
-        assert t["log_tail"] == ["a", "b", "c"]
+        assert t["tool_calls"] == 1
+        assert "→ Read x" in t["log_tail"] or t["log_tail"][-1].endswith("Read x")
         assert t.get("log_bytes", 0) > 0
 
 

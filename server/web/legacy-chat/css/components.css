@@ -2549,6 +2549,13 @@
   font-family: var(--ccc-font-mono);
   color: var(--ccc-text-muted);
 }
+.board-card-badge.badge-calls {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--ccc-font-mono);
+  color: #5a6a8a;
+  border-color: color-mix(in srgb, #5a6a8a 35%, transparent);
+  background: color-mix(in srgb, #5a6a8a 8%, transparent);
+}
 .board-card-badge.badge-live {
   font-variant-numeric: tabular-nums;
   font-family: var(--ccc-font-mono);

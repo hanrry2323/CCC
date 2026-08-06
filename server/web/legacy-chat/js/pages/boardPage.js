@@ -621,6 +621,8 @@ async function mergeDirtyFromRunning(cards) {
       if (t.elapsed_s != null) c.elapsed_s = t.elapsed_s;
       if (t.last_activity_at != null) c.last_activity_at = t.last_activity_at;
       if (t.log_bytes != null) c.log_bytes = t.log_bytes;
+      if (t.tool_calls != null) c.tool_calls = t.tool_calls;
+      if (t.shell_calls != null) c.shell_calls = t.shell_calls;
     }
   } catch (_) { /* 徽章可选；失败不挡看板 */ }
   return cards;

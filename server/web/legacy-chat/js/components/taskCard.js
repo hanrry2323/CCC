@@ -37,14 +37,47 @@ export function escapeHtml(s) {
   return d.innerHTML;
 }
 
-/** 卡片进度徽章：Δ=未提交文件数（非 LLM 调用）；+/- = 行变更；执行中可显已用时。 */
+/** 格式化已运行秒数 → 12s / 3m20s / 1h05m */
+function fmtElapsed(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return r ? `${m}m${String(r).padStart(2, '0')}s` : `${m}m`;
+  }
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return m ? `${h}h${String(m).padStart(2, '0')}m` : `${h}h`;
+}
+
+/**
+ * 卡片运行徽章（执行中优先展示）：
+ * 调用 N · ⏱时长 · Δ文件 · +/−行
+ */
 export function renderWorktreeBadges(t) {
   const parts = [];
+
+  const calls = t.tool_calls;
+  if (calls != null && calls !== '' && Number(calls) >= 0) {
+    parts.push(
+      `<span class="board-card-badge badge-calls" title="工具调用次数（执行日志中 → 行：Read/Write/Bash 等；近似交互轮次，非账单 API 次数）">调用 ${escapeHtml(String(Number(calls)))}</span>`
+    );
+  }
+
+  const elapsed = t.elapsed_s;
+  if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
+    const recent =
+      t.last_activity_at && (Date.now() - new Date(t.last_activity_at).getTime()) < 45000;
+    parts.push(
+      `<span class="board-card-badge ${recent ? 'badge-live' : 'badge-elapsed'}" title="${recent ? '近期有日志输出 · 已运行时长' : '已运行时长（自派发标记创建）'}">⏱ ${escapeHtml(fmtElapsed(elapsed))}</span>`
+    );
+  }
 
   const dirty = t.dirty_files;
   if (dirty != null && dirty !== '' && Number(dirty) > 0) {
     parts.push(
-      `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数（不是模型调用次数）">Δ${escapeHtml(String(dirty))}</span>`
+      `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数">Δ${escapeHtml(String(dirty))}</span>`
     );
   }
 
@@ -59,23 +92,7 @@ export function renderWorktreeBadges(t) {
   const lineDel = Number(del) || 0;
   if (lineIns + lineDel > 0) {
     parts.push(
-      `<span class="board-card-badge badge-lines" title="代码行变更（工作区优先；干净时用相对 main 的已提交 diff）"><span class="lines-ins">+${escapeHtml(String(lineIns))}</span><span class="lines-del">−${escapeHtml(String(lineDel))}</span></span>`
-    );
-  }
-
-  // 执行中：日志在长、文件尚未落地时也给实时信号（已用时 / 最近活动）
-  const elapsed = t.elapsed_s;
-  if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
-    const sec = Number(elapsed);
-    const label = sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h`;
-    const recent =
-      t.last_activity_at && (Date.now() - new Date(t.last_activity_at).getTime()) < 45000;
-    const tone = recent ? 'badge-live' : 'badge-elapsed';
-    const tip = recent
-      ? '执行体日志近期有输出（模型在跑；Δ 仅在落盘改文件后变）'
-      : '已用时（自执行日志创建起）';
-    parts.push(
-      `<span class="board-card-badge ${tone}" title="${tip}">⏱${escapeHtml(label)}</span>`
+      `<span class="board-card-badge badge-lines" title="代码行变更（工作区优先；否则相对 main）"><span class="lines-ins">+${escapeHtml(String(lineIns))}</span><span class="lines-del">−${escapeHtml(String(lineDel))}</span></span>`
     );
   }
 
