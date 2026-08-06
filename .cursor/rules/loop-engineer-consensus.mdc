@@ -23,10 +23,11 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 ## 席位与工具（硬 · 唯一事实源 /Users/apple/qx-map/ide/tool-roles.md）
 
-- **开发 / 维护执行体** = 注册表「可后台 CLI」：`Claude Code`（flash / 6100）与 `OpenCode`（code / 6102）并列；卡头绑定优先；Engine 自动拉起
+- **日常开发 / 维护执行体** = 注册表「可后台 CLI」：`OpenCode`（code / 6102，默认日常）与 `Claude Code`（flash / 6100，W2 点名顶替）；卡头绑定优先；Engine 自动拉起
+- **难度突击** = `Cursor`（W7）：硬骨头写码、复杂根因+修复、跨模块收口、老板点名；不抢日常队列；终验仍归 Codex
 - **Codex** = 自研驱动者 + 系统总维护 + 验收席（出卡 / 把控 / 独立验收 / 冲突仲裁）
 - **M1 IDE** = 开发智能中枢（打开 CCC 仓 + 已注册能力即可开发；与 HTTP 看板配合）
-- **Trae** = 方案讨论 / 知识维护入口
+- **Trae** = 停用（历史）
 - **Desktop** = 任意设备壳之一，**暂缓**（功能对齐 HTTP，不优先自研）
 - **双轨独立**：QuantHive 与 CCC 完全独立（开发通道、知识库、决策互不混）
 
@@ -51,4 +52,4 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 - 结论先行、人话汇报；改代码前先读 `docs/INDEX.md` §0 与相关卡
 - 分步提交（每块 commit+push），禁止 `git add -A` 全量提交；提交前 `git status` 核对无他人改动混入
-- 本机 Cursor/Trae 属于「了解/讨论」，**不代替** 2017 Claude Code 做主线开发合入
+- 本机 Cursor = **难度开发突击手**（有难度/点名硬任务）；日常主线仍优先 OpenCode / 注册表 CLI + Codex 验收

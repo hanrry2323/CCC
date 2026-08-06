@@ -1,12 +1,12 @@
 # CCC 项目背景介绍（给 Cursor 的入口 · 2026-08-06）
 
-> 你在本项目里是**了解/讨论/排查**角色（明确测试卡 / 老板点名突击除外）。先读本文 + `.cursor/rules/loop-engineer-consensus.mdc` + `docs/INDEX.md` §0，再动手。
+> 你在本项目里是**难度开发突击手**（qx-map W7）：有难度写码/修 bug、复杂排查收口、老板点名硬任务。日常开发默认 OpenCode / 注册表 CLI；你不抢日常队列。先读本文 + `.cursor/rules/loop-engineer-consensus.mdc` + `docs/INDEX.md` §0，再动手。
 
 ## 一、这是什么项目
 
-**CCC = 自动化任务编排平台**：Markdown 任务卡 = 唯一事实源；薄驱动 Engine 按注册表派发执行体（Claude Code / OpenCode）；**人机实时面 = HTTP 看板/运维**（`:7788`）。自研期 Codex 出卡、验收。
+**CCC = 自动化任务编排平台**：Markdown 任务卡 = 唯一事实源；薄驱动 Engine 按注册表派发执行体（Claude Code / OpenCode）；**人机实时面 = HTTP 看板/运维**（`:7788`）。自研期 Codex 出卡、验收。Cursor 在明确突击卡 / 老板点名时直接开发，终验仍归 Codex。
 
-**主路径**：M1 上任意已注册能力的 IDE（Claude Code / OpenCode）= 开发中枢；打开 CCC 仓即可开发。**Desktop 暂缓**，功能以 HTTP 页为准。
+**主路径**：M1 上任意已注册能力的 IDE（Claude Code / OpenCode / Cursor 突击）= 开发中枢；打开 CCC 仓即可开发。**Desktop 暂缓**，功能以 HTTP 页为准。
 
 ## 二、当前架构（2026-08-06，v0.70.0）
 

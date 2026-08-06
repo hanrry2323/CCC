@@ -45,10 +45,11 @@ grep -A 15 "## 红线 11" references/red-lines.md
 
 | 席位 | 绑定 |
 |------|------|
-| 开发 / 维护执行体 | **Claude Code**（flash/6100）与 **OpenCode**（code/6102），卡头绑定 |
+| 日常开发 / 维护执行体 | **OpenCode**（code/6102，默认）与 **Claude Code**（flash/6100，点名），卡头绑定 |
+| 难度突击 | **Cursor**（W7）：硬骨头写码 / 复杂排查修复 / 点名硬任务 |
 | 管理 / 验收 | **Codex** |
 | M1 IDE | 开发中枢（打开 CCC 仓即可） |
-| Cursor / Trae | 了解 / 讨论 / 排查 / 文档对齐 |
+| Trae | 停用（历史） |
 | HTTP 看板/运维 | 人机实时面（主路径） |
 | Desktop | 壳，**暂缓** |
 

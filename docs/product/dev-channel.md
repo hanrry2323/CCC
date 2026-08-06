@@ -10,11 +10,12 @@
 
 | 席位 | 谁干 | 说明 |
 |------|------|------|
-| **Claude Code** | 可后台 CLI 执行体 | Engine 拉起；中继 **6100 flash**；worktree |
-| **OpenCode** | 可后台 CLI 执行体 | Engine 拉起；中继 **6102 code**；与 Claude Code 并列，卡头绑定优先 |
+| **Claude Code** | 可后台 CLI 执行体（W2 点名） | Engine 拉起；中继 **6100 flash**；worktree |
+| **OpenCode** | 可后台 CLI 执行体（日常默认） | Engine 拉起；中继 **6102 code**；与 Claude Code 并列，卡头绑定优先 |
+| **Cursor** | **难度开发突击手**（W7） | 硬骨头写码 / 复杂排查修复 / 点名硬任务；不抢日常队列；终验归 Codex |
 | **Codex** | 自研驱动者 + 验收席 | 出卡、把控、独立验收、冲突仲裁；不抢业务执行 |
 | **M1 IDE** | 开发智能中枢 | 打开 CCC 仓 + 已注册能力即可开发（主路径） |
-| **Cursor / Trae** | 了解 / 讨论 / 排查 / 文档对齐 | 正式合入以执行体+验收为准（明确测试卡除外） |
+| **Trae** | 停用（历史） | 角色已移交 |
 | **HTTP 看板/运维** | 人机实时面 | `:7788` 看板五态 + 执行中 dirty 数；主看路径 |
 | **Desktop** | 壳（**暂缓**） | 代码保留；不优先自研；功能以 HTTP 为准 |
 | **Engine** | 薄驱动编排 | 读任务卡 + `executors.json` → 派发 / 收单 |
@@ -49,7 +50,8 @@ Codex 出卡（docs/dispatch/TNN-*.md）→ push main
 
 ## 禁止混淆
 
-1. 合入主线 = **注册表 CLI 执行体 + Codex 验收**，不是 Cursor 日常代劳。  
+1. 日常合入主线 = **注册表 CLI 执行体（默认 OpenCode）+ Codex 验收**；Cursor 专打难度突击，不默认代劳全部开发。  
 2. HTTP 看板 = 人看流程的主面；Desktop ≠ 必经控制面。  
 3. Engine 拉起的会话 ≠ 本机闲聊。  
 4. OpenCode **可用**；与 Claude Code 差别主要在模型档（code vs flash），不是「禁用」。
+5. Cursor = **难度开发突击手**（qx-map 决策 `Cursor难度开发突击手定位-2026-08-06.md`）。
