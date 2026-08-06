@@ -3,7 +3,7 @@
  *
  * T30：新服务端（server/web/server.py）不提供 /api/runtime-status 端点；
  * 本组件统一改为 no-op，避免无谓请求与误导性显示。
- * 队列摘要请用看板页（/board/states）查看；工作区改动请用桌面端。
+ * 队列摘要请用看板页（/board/states）查看；执行中卡的 worktree 改动数见看板 Δ 徽章。
  */
 
 let _timer = null;

@@ -218,15 +218,15 @@ export async function getBoardTaskEvents(taskId, workspace) {
 }
 
 export async function createBoardTask(task) {
-  throw new Error('创建任务已禁用，请使用桌面端或编排口');
+  throw new Error('创建任务已禁用，请走任务卡（docs/dispatch）由 Engine 派发');
 }
 
 export async function moveBoardTask(payload) {
-  throw new Error('移动任务已禁用，请使用桌面端或编排口');
+  throw new Error('移动任务已禁用，请改卡头状态或走 Engine / 编排口');
 }
 
 export async function desktopTransfer(payload) {
-  throw new Error('文档流转已禁用，请在桌面端操作');
+  throw new Error('文档流转已禁用，请走任务卡 / Engine');
 }
 
 export async function nudgeOutboxFlush() {

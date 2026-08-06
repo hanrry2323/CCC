@@ -43,6 +43,12 @@ export function renderTaskCard(t) {
     ? `<span class="board-card-badge badge-reject" title="打回次数">↩ ${reject}</span>`
     : '';
 
+  const dirty = t.dirty_files;
+  const dirtyHtml =
+    dirty != null && dirty !== '' && Number(dirty) >= 0
+      ? `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数">Δ ${escapeHtml(String(dirty))}</span>`
+      : '';
+
   const executor = t.executor && t.executor !== '未知'
     ? `<span class="board-card-badge badge-exec" title="执行体">@${escapeHtml(t.executor)}</span>`
     : '';
@@ -66,6 +72,7 @@ export function renderTaskCard(t) {
       <div class="board-card-title ti">${escapeHtml(t.title || t.id)}</div>
       <div class="board-card-meta">
         ${executor}
+        ${dirtyHtml}
         ${rejectHtml}
         ${updatedHtml}
         <button type="button" class="board-card-copy card-copy-btn" data-id="${escapeHtml(t.id)}" title="复制 ID" aria-label="复制 ID">

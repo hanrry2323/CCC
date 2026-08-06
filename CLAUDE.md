@@ -8,19 +8,19 @@ Guidance for agents editing CCC as **platform developer**. 合入主线执行体
 > **事实权威**：`docs/INDEX.md` §0（最高优先级）· 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.70.0**）  
 > **叙事**：`docs/VISION.md` 仍含 Hub 时期段落（标待核）——**冲突时以 §0 / CURSOR / 本文件 2026-08-05 席位为准**。
 
-> **开发方向（唯一基线 · 2026-08-05）**：
-> **自研期（当前）**：Codex 出卡 → push → 2017 pull → Engine 自动派发 **Claude Code**（worktree `ccc-dev-ws-tNN`）→ Codex 验收 → 合入部署。  
-> **业务期（自研成熟后）**：老板用壳直聊大脑 Agent；业务任务走 Engine 派发 2017 执行体。  
-> **OpenCode 已禁用**（不接主线）。Codex = 自研驱动者 + 系统总维护 + 外脑，不抢业务执行。  
-> 决策留痕：qx-map 双阶段定稿（2026-08-04）+ tool-roles / CURSOR（2026-08-05 OpenCode 禁用）。
+> **开发方向（唯一基线 · 2026-08-06）**：
+> **自研期（当前）**：Codex 出卡 → push → 2017 pull → Engine 按卡头绑定派发 **Claude Code 或 OpenCode**（worktree）→ Codex 验收 → 合入部署。  
+> **业务期（自研成熟后）**：老板用壳直聊大脑 Agent；业务任务走 Engine 派发。  
+> **OpenCode 可用**（与 Claude Code 并列；模型档 code / 6102 vs flash / 6100）。Codex = 驱动/验收。  
+> **人机面**：HTTP 看板/运维为主；Desktop 暂缓。
 
 **路径一句话**：人定意图 → 写任务卡到 `docs/dispatch/` → 2017 Engine 派发执行体 → 收单回写看板 → 验收闭环。
 
 **共识落盘**：新共识先改权威链（`docs/INDEX.md` §0 + `CURSOR.md` / `.cursor/rules/`），禁止只留在聊天。
 
-**勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；OpenCode 主线写码；把运维/知识席当成开发席。
+**勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；「OpenCode 已禁用」；把运维/知识席当成开发席；Desktop 必经。
 
-**席位**：Claude Code（2017）= 开发执行 · Codex = 驱动/验收 · Cursor/Trae = 了解/排查 · Desktop = 壳。
+**席位**：Claude Code / OpenCode = 可后台 CLI · Codex = 驱动/验收 · M1 IDE = 开发中枢 · HTTP 看板 = 实时面 · Desktop = 暂缓壳。
 
 ---
 
@@ -76,12 +76,12 @@ curl -s http://192.168.3.116:7788/health
 
 | 语义 | 分类 | 当前绑定 |
 |------|------|----------|
-| 开发 / 写码 | 可后台 CLI | **Claude Code** |
-| 维护 | 可后台 CLI | Claude Code |
+| 开发 / 写码 | 可后台 CLI | **Claude Code** / **OpenCode** |
+| 维护 | 可后台 CLI | Claude Code（或 OpenCode，按卡头） |
 | 管理 / 验收 | — | Codex |
 | ops | 手动 GUI | — |
 
-OpenCode 主线绑定已退役。注册表模板见 `server/config/executors.example.json`；生产以 2017 实机 `executors.json` 为准。
+Claude Code（flash/6100）与 OpenCode（code/6102）并列可后台 CLI。注册表模板见 `server/config/executors.example.json`；生产以 2017 实机 `executors.json` 为准。
 
 ### 入口
 
@@ -138,7 +138,7 @@ launchd(com.ccc.board-scheduler) → server/board/scheduler.py
 | 对话 + 执行体（Claude Code） | 2017 via **6100** |
 | Relay 上游路由 | **6102** |
 
-写码槽不再默认 OpenCode。详见 `docs/deploy/topology.md`。
+写码槽经注册表绑定 Claude Code 或 OpenCode。详见 `docs/deploy/topology.md`。
 
 ---
 

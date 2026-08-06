@@ -79,7 +79,7 @@ function html() {
   return `
 <div class="console-page hub-page" style="padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
   <div class="console-banner" style="flex-shrink: 0; margin-bottom: 12px;">
-    控制台为简化看板；详细运维请用 <strong>桌面端</strong> 或 <a href="#/ops">运维页</a>。
+    控制台为简化看板；详细运维请用 <a href="#/ops">运维页</a> 或任务卡 / Engine。
   </div>
   <div class="console-bar" style="flex-shrink: 0; margin-bottom: 16px;">
     <h2>控制台</h2>
@@ -125,7 +125,7 @@ function html() {
     <div class="console-section" style="margin-bottom: 12px;">
       <h3 style="margin: 0 0 12px 0;">最近失败 / 今日动态</h3>
       <div class="console-feed">
-        <p class="ops-hint">旧 <code>/api/failures</code> / <code>/api/dashboard</code> 端点已下线。请用桌面端失败账本（<code>ccc-failure-report.py</code>）或 SSH 查 <code>~/.ccc/stats/failures.jsonl</code>。</p>
+        <p class="ops-hint">旧 <code>/api/failures</code> / <code>/api/dashboard</code> 端点已下线。请 SSH 查 <code>~/.ccc/stats/failures.jsonl</code> 或看运维页 / 任务卡状态。</p>
       </div>
     </div>
   </div>
@@ -168,6 +168,10 @@ function runningCard(t) {
   const active = t.last_activity_at ? recent : (t.elapsed_s != null);
   const label = t.last_activity_at ? (active ? '活动' : '空闲') : '运行中';
   const color = '#2f7dd1'; // Blue tone for running background processes
+  const dirty =
+    t.dirty_files != null && t.dirty_files !== '' && Number(t.dirty_files) >= 0
+      ? `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数">Δ ${esc(String(t.dirty_files))}</span>`
+      : '';
 
   return `
     <div class="board-task-card board-card board-card-work state-running running"
@@ -181,6 +185,7 @@ function runningCard(t) {
 
       <div style="font-size: 11px; color: var(--ccc-text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
         <span>@${esc(t.executor || '')}</span>
+        ${dirty}
         <span>·</span>
         <span>已用时 ${fmtElapsed(t.elapsed_s)}</span>
         <span style="flex:1"></span>

@@ -15,27 +15,28 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（Claude Code CLI via 6100）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
 
-**席位（硬，2026-08-05）**：
-- **Claude Code**（2017）= 开发 / 维护 / 合入执行体（Engine 自动拉起，中继 6100）
+**席位（硬，2026-08-06）**：
+- **Claude Code** / **OpenCode**（2017）= 可后台 CLI 执行体（flash/6100 vs code/6102；卡头绑定）
 - **Codex** = 自研驱动者 + 系统总维护 + 验收席（出卡 / 把控 / 独立验收）
-- **OpenCode** = **已禁用**（不接主线；仅历史 M1 打包类先例）
-- **Cursor / Trae** = 了解 / 讨论 / 排查 / 文档对齐；不代替主线合入（明确测试卡除外）
-- **Desktop** = 任意设备壳（业务期直聊大脑），**不是**控制面
+- **M1 IDE** = 开发智能中枢（打开 CCC 仓 + 已注册能力）
+- **Cursor / Trae** = 了解 / 讨论 / 排查 / 文档对齐
+- **HTTP 看板/运维** = 人机实时面（主路径）
+- **Desktop** = 壳（**暂缓**，非主路径）
 
 SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.md`](CURSOR.md) · qx-map `ide/tool-roles.md`。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图；共识必须写入权威链文档（`docs/INDEX.md` §0）再应用。
 
-**勿再说**：「接很多 IDE」「先选 7 角色」「Hub :7777 / Board :7775 / sidecar」「旧 scripts/ccc-engine」「能力包 / 角色分层」「OpenCode 主线写码」「M1 跑 7788/Engine」。
+**勿再说**：「接很多 IDE」「先选 7 角色」「Hub :7777 / Board :7775 / sidecar」「旧 scripts/ccc-engine」「能力包 / 角色分层」「OpenCode 已禁用」「M1 跑 7788/Engine」「Desktop 必经」。
 
 **4 个数字**：
 
 | | |
 |--|--|
 | **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（默认免登录，`CCC_WEB_AUTH_REQUIRED=0`） |
-| **大脑 / 执行体 `:6100`** | Anthropic 出口：/conversation + Engine 拉起的 Claude Code |
-| **Relay `:6102`** | 模型出口上游路由（中转站 flash/code 档） |
+| **大脑 / Claude Code `:6100`** | Anthropic 出口 flash：对话 + Claude Code 执行体 |
+| **Relay / OpenCode `:6102`** | code 档上游路由（OpenCode 等） |
 | **3 个 launchd 服务** | `com.ccc.web-server` + `com.ccc.engine` + `com.ccc.board-scheduler`（仅 2017） |
 
 ---
@@ -62,12 +63,12 @@ SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.
 
 ## 3. 编排面：薄驱动 Engine（契约 §7）
 
-> 按 `server/config/executors.json` 派发。**现行生产绑定以 2017 实机为准**；仓内 example 已按 2026-08-05 基线（Claude Code / OpenCode 禁用）对齐。
+> 按 `server/config/executors.json` 派发。**现行生产绑定以 2017 实机为准**；仓内 example 含 Claude Code + OpenCode 双 CLI。
 
 | 角色语义 | 分类 | 现行绑定 | 干 |
 |----------|------|----------|-----|
-| 开发 / 写码 | 可后台 CLI | **Claude Code** | 按任务卡改仓 → commit/push |
-| 维护 | 可后台 CLI | Claude Code | 运维/修复类 |
+| 开发 / 写码 | 可后台 CLI | **Claude Code** / **OpenCode** | 按任务卡改仓 → commit/push |
+| 维护 | 可后台 CLI | Claude Code（或 OpenCode） | 运维/修复类 |
 | 管理席 | — | Codex | 出卡 / 裁决（不执行） |
 | 验收席 | — | Codex | 独立验收（不执行） |
 | ops | 手动 GUI | — | 健康检查（挂起等人） |
@@ -125,7 +126,7 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:6100 ANTHROPIC_MODEL=flash \
   claude -p "<msg>" --output-format text
 ```
 
-OpenCode 主线写码槽已退役，勿再默认调用 `opencode run`。
+OpenCode 与 Claude Code 均为可后台 CLI；按卡头绑定与注册表拉起（勿写「已禁用」）。
 
 ---
 

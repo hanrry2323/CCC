@@ -19,8 +19,8 @@ alwaysApply: true
 | 角色 | 开发副本（写代码、出卡、验收） | 生产运行 + Engine 派发 + 执行体工作树 |
 | 访问方式 | 当前终端 | `ssh fan@192.168.3.116` |
 | CCC 源码 | `/Users/apple/program/CCC/`（git 开发副本，push 到 GitHub） | `/Users/fan/program/CCC/`（生产副本，只 pull --ff-only） |
-| 跑什么 | CCCDesktop.app（连 2017 :7788）、开发工具 | web-server :7788 + engine + board-scheduler（三 launchd）+ 中继 6100/6102 |
-| 开发怎么走 | Codex 出卡 → push main → 2017 pull → Engine 派发 Claude Code 在 worktree 开发 | 执行体按卡在 `ccc-dev-ws-tNN` 分支开发 → push → Codex 验收 → 合入 |
+| 跑什么 | M1 IDE（Claude/OpenCode）+ 浏览器看 2017 看板；Desktop 暂缓 | web-server :7788 + engine + board-scheduler（三 launchd）+ 中继 6100/6102 |
+| 开发怎么走 | 出卡 → push → 2017 Engine 派发 CLI 执行体（worktree） | 执行体按卡在 worktree 开发 → push → 验收 → 合入 |
 | 你怎么查 | `ssh fan@192.168.3.116` 连过去看 | 日志 `/Users/fan/.ccc/logs/`、看板 :7788 |
 
 ## 你每次启动要做的事

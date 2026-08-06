@@ -41,15 +41,16 @@ grep -A 15 "## 红线 11" references/red-lines.md
 
 ---
 
-## 席位与执行体（2026-08-05）
+## 席位与执行体（2026-08-06）
 
 | 席位 | 绑定 |
 |------|------|
-| 开发 / 维护 / 合入执行体 | **Claude Code**（2017，Engine 拉起，6100） |
+| 开发 / 维护执行体 | **Claude Code**（flash/6100）与 **OpenCode**（code/6102），卡头绑定 |
 | 管理 / 验收 | **Codex** |
-| OpenCode | **已禁用**（不接主线） |
+| M1 IDE | 开发中枢（打开 CCC 仓即可） |
 | Cursor / Trae | 了解 / 讨论 / 排查 / 文档对齐 |
-| Desktop / HTTP | 壳，非控制面 |
+| HTTP 看板/运维 | 人机实时面（主路径） |
+| Desktop | 壳，**暂缓** |
 
 Engine 按 `server/config/executors.json` 派发——用户**不**需要选择角色。
 
@@ -77,7 +78,7 @@ Engine 按 `server/config/executors.json` 派发——用户**不**需要选择�
 
 全文：`references/red-lines.md`
 
-**已退役勿提**：Hub :7777 · Board :7775 · sidecar · scripts/ccc-engine · 6+1 列 · OpenCode 主线写码。
+**已退役勿提**：Hub :7777 · Board :7775 · sidecar · scripts/ccc-engine · 6+1 列 ·「OpenCode 已禁用」误判。
 
 ---
 

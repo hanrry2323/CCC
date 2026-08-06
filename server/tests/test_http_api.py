@@ -1402,6 +1402,37 @@ class TestTasksRunning:
         t998 = next(t for t in tasks if t["work_id"] == "T998")
         assert t998["log_tail"] == []
         assert t998["elapsed_s"] is None
+        # dirty_files 字段始终存在（无 worktree → null）
+        assert "dirty_files" in t999
+        assert "dirty_files" in t998
+        assert t999["dirty_files"] is None
+        assert t998["dirty_files"] is None
+
+    def test_dirty_files_from_worktree(self, api_server, tmp_path, monkeypatch):
+        """有 worktree 且 porcelain 有改动 → dirty_files 为文件数。"""
+        import subprocess
+        from server.web import server as srv
+        from server.web import worktree_dirty as wd
+        from server.board.models import BoardItem
+
+        wd.clear_dirty_cache()
+        base = tmp_path / "ccc-dev-ws"
+        monkeypatch.setenv("CCC_WORKTREE_BASE", str(base))
+        wt = tmp_path / "ccc-dev-ws-t777"
+        wt.mkdir()
+        subprocess.run(["git", "init"], cwd=wt, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@ex.com"], cwd=wt, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=wt, check=True, capture_output=True)
+        (wt / "a.txt").write_text("a\n", encoding="utf-8")
+        monkeypatch.setattr(
+            srv, "_load_board_items",
+            lambda: [BoardItem(id="T777", title="脏", state="执行中", executor="Claude Code")],
+        )
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        t = data["tasks"][0]
+        assert t["dirty_files"] == 1
+        wd.clear_dirty_cache()
 
     def test_only_running_included(self, api_server, monkeypatch):
         """非执行中卡不进入 /tasks/running。"""

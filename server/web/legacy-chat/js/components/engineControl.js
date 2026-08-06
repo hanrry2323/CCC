@@ -3,7 +3,7 @@
  *
  * T30：新服务端（server/web/server.py）不提供 /api/runtime-status / /api/engine/*
  * 端点；本组件统一改为 no-op，避免页面误显「Engine 断开 / 启动」按钮误导用户。
- * Engine 状态请用桌面端或运维页 /ops/summary（集群节点 + 服务运行态）查看。
+ * Engine 状态请用运维页 /ops/summary（集群节点 + 服务运行态）或任务卡 / Engine 日志查看。
  */
 
 let _last = { running: false, allowed: false, mode: '?', git: {}, counts: {} };

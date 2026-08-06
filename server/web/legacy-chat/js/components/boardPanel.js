@@ -7,7 +7,7 @@
  * 自动打开：首次进入对话视图且 localStorage 标记未关闭时打开（T40）。
  */
 import { state } from '../state.js';
-import { getCards, getBoardTask } from '../api.js';
+import { getCards, getBoardTask, apiGet } from '../api.js';
 import { STATE_TONE, escapeHtml, fmtTaskCopy } from './taskCard.js';
 import { TaskCardList } from './taskCardList.js';
 import { renderTaskCardDetail } from './taskCardDetail.js';
@@ -149,6 +149,19 @@ export async function refreshBoardPanel(opts = {}) {
   try {
     const res = await getCards({ project: ws === 'all' ? '' : ws, page_size: 1000 });
     const all = res.cards || [];
+    try {
+      const running = await apiGet('/tasks/running');
+      const byId = new Map();
+      for (const t of running.tasks || []) {
+        if (t && t.work_id) byId.set(t.work_id, t.dirty_files);
+      }
+      for (const c of all) {
+        if (byId.has(c.id)) {
+          const d = byId.get(c.id);
+          if (d != null) c.dirty_files = d;
+        }
+      }
+    } catch (_) { /* dirty 可选 */ }
     _toastTrackedTaskProgress(all);
 
     // Sort: 打回 > 执行中 > 待分派 > 已回写 > 已关闭; same state sorted by update time desc

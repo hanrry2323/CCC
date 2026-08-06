@@ -1,6 +1,6 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表模板（2026-08-05 基线 · 契约 §7 五角色形状）。复制为 executors.json 后按 2017 实机填写。开发执行体保留「手动 GUI」+「可后台 CLI」两行（卡头绑定优先）。现行 CLI 默认 = Claude Code；OpenCode 主线已禁用，勿再配为默认写码槽。",
+  "description": "CCC 执行体注册表模板（契约 §7）。复制为 executors.json 后按 2017 实机填写。开发执行体可挂多条「可后台 CLI」（Claude Code / OpenCode）；卡头绑定优先。模型档：Claude Code 走 flash（6100），OpenCode 走 code（6102）——以实机中继为准。",
   "executors": [
     {
       "角色": "开发执行体",
@@ -19,7 +19,17 @@
       "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "现行主线写码执行器（2026-08-05）；Engine 自动拉起；中继 6100；OpenCode 已禁用"
+      "备注": "可后台 CLI；中继 6100 flash 档；Engine 按卡头绑定自动拉起"
+    },
+    {
+      "角色": "开发执行体",
+      "分类": "可后台 CLI",
+      "当前绑定": "OpenCode",
+      "命令": "opencode",
+      "参数模板": "run \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
+      "工作目录": "",
+      "worktree_base": "",
+      "备注": "可后台 CLI；中继 6102 code 档；与 Claude Code 并列，卡头绑定优先"
     },
     {
       "角色": "维护执行体",

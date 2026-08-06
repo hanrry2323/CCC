@@ -2518,6 +2518,12 @@
   border-color: color-mix(in srgb, #a33a2c 35%, transparent);
   background: color-mix(in srgb, #a33a2c 8%, transparent);
 }
+.board-card-badge.badge-dirty {
+  color: #c47a2c;
+  border-color: color-mix(in srgb, #c47a2c 40%, transparent);
+  background: color-mix(in srgb, #c47a2c 10%, transparent);
+  font-variant-numeric: tabular-nums;
+}
 .board-card-time {
   font-family: var(--ccc-font-mono);
   font-size: 10px;

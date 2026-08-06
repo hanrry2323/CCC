@@ -80,7 +80,7 @@
 | 文档 | 状态 | 怎么用 |
 |------|------|--------|
 | **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.70 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
-| [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-05：Claude Code 执行体 · OpenCode 禁用 |
+| [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-06：Claude Code + OpenCode 可后台 CLI · HTTP 看板主路径 · Desktop 暂缓 |
 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
 | [`roadmap.md`](roadmap.md) 历史正文 | 半归档 | v0.19 等史实，勿覆盖「当前方向」 |
 | [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | **不是** CCC 产品北星 |

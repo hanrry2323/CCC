@@ -55,7 +55,7 @@ function html() {
     <h3>说明</h3>
     <div class="ops-card">
       <p class="ops-hint">本页只读 · 数据源 <code>/ops/summary</code>。</p>
-      <p class="ops-hint">旧 Hub 大字段（risks / workspaces / daily / quality / docs / kb / deploy / ports / auto / relay 等）已下线；运维详情请用桌面端或 SSH。</p>
+      <p class="ops-hint">旧 Hub 大字段（risks / workspaces / daily / quality / docs / kb / deploy / ports / auto / relay 等）已下线；运维详情请用本页摘要、任务卡 / Engine，或 SSH 查 2017 日志。</p>
       <p class="ops-hint">写操作（adopt / daily-review / run）已禁用：服务端不暴露。</p>
     </div>
   </div>

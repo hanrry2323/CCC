@@ -130,7 +130,7 @@ function html() {
     <h2>看板</h2>
     <div class="board-toolbar-actions">
       <button type="button" class="hub-btn" id="board-refresh" title="刷新">刷新</button>
-      <span class="board-write-hint" title="写操作请用桌面端">读视图 · 写操作请用桌面端</span>
+      <span class="board-write-hint" title="写操作走任务卡 / Engine">读视图 · 写操作走任务卡 / Engine</span>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
     <span class="st" id="board-st">·</span>
@@ -590,11 +590,28 @@ async function loadConfig() {
   }
 }
 
+async function mergeDirtyFromRunning(cards) {
+  try {
+    const data = await apiGet('/tasks/running');
+    const byId = new Map();
+    for (const t of data.tasks || []) {
+      if (t && t.work_id) byId.set(t.work_id, t.dirty_files);
+    }
+    for (const c of cards) {
+      if (byId.has(c.id)) {
+        const d = byId.get(c.id);
+        if (d != null) c.dirty_files = d;
+      }
+    }
+  } catch (_) { /* 徽章可选；失败不挡看板 */ }
+  return cards;
+}
+
 async function loadBoard() {
   try {
     const project = _ws === 'all' ? '' : _ws;
     const r = await getCards({ project, page_size: 1000 });
-    _allCards = r.cards || [];
+    _allCards = await mergeDirtyFromRunning(r.cards || []);
 
     populateFilterOptions();
     renderActiveView();
@@ -708,7 +725,7 @@ export async function mountBoard(el) {
       syncWsButtons();
     }
     await loadBoard();
-    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
+    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 8000);
     return;
   }
   _root = el;
@@ -717,7 +734,7 @@ export async function mountBoard(el) {
   bind();
   await loadConfig();
   await loadBoard();
-  _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
+  _timer = setInterval(() => loadBoard().catch(() => {}), 8000);
 }
 
 export function unmountBoard() {

@@ -712,13 +712,16 @@ def _tail_lines(path: Path, n: int = 5) -> list[str]:
 
 
 def _load_running_tasks() -> dict[str, Any]:
-    """GET /tasks/running：执行中任务进程视图（T53）。
+    """GET /tasks/running：执行中任务进程视图（T53）+ worktree dirty 文件数。
 
     - 数据源：docs/dispatch 卡头状态 == 执行中（真实队列语义，manual 卡不在此列）；
     - 日志尾部读 ``EXECUTOR_LOG_DIR/<work_id>.log``（存在时）；
       开始时间用日志文件 ctime，最近活动用 mtime，已用时 = now - ctime；
     - 无日志文件（如历史遗留/无进程）→ 仅卡信息，日志为空、已用时未知。
+    - dirty_files：对应 Engine worktree 的 ``git status --porcelain`` 行数（短缓存）。
     """
+    from server.web.worktree_dirty import get_dirty_files
+
     items = _load_board_items()
     log_dir = _executor_log_dir()
     now = time.time()
@@ -734,6 +737,7 @@ def _load_running_tasks() -> dict[str, Any]:
             "elapsed_s": None,
             "log_tail": [],
             "last_activity_at": None,
+            "dirty_files": get_dirty_files(item.id),
         }
         if log_dir is not None:
             log_path = log_dir / f"{item.id}.log"
@@ -1113,8 +1117,17 @@ class _APIHandler(BaseHTTPRequestHandler):
         end_idx = start_idx + page_size
         paginated = filtered[start_idx:end_idx]
 
+        from server.web.worktree_dirty import get_dirty_files
+
+        cards_out: list[dict[str, Any]] = []
+        for c in paginated:
+            row = dict(c)
+            if base_state(c.get("state", "")) == "执行中":
+                row["dirty_files"] = get_dirty_files(c["id"])
+            cards_out.append(row)
+
         self._send_json({
-            "cards": paginated,
+            "cards": cards_out,
             "total": total,
             "page": page,
             "page_size": page_size,
