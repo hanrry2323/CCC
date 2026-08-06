@@ -75,10 +75,11 @@ class TestLoadRegistry:
         cc = reg.cli_entry_for_binding("Claude Code")
         assert cc is not None
         assert cc.role == "开发执行体"
-        # 验收席绑定存在且为「—」
+        # 验收席绑定为可后台 CLI（机审）
         acc_rows = [e for e in reg.entries if e.role == "验收席"]
         assert {e.binding for e in acc_rows} == {"Claude Code", "OpenCode"}
-        assert all(e.category == "—" for e in acc_rows)
+        assert all(e.category == "可后台 CLI" for e in acc_rows)
+        assert all(e.command for e in acc_rows)
 
     def test_missing_fields_rejected(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.json"
@@ -198,10 +199,10 @@ class TestDecide:
         assert decide("开发执行体", reg) is DispatchDecision.MANUAL
 
     def test_not_dispatchable_for_staff(self) -> None:
-        """管理席 / 验收席（分类「—」）→ 不派发。"""
+        """管理席（分类「—」）→ 不派发；验收席现为可后台 CLI（机审）→ AUTO。"""
         reg = load_registry(REGISTRY_PATH)
         assert decide("管理席", reg) is DispatchDecision.NONE
-        assert decide("验收席", reg) is DispatchDecision.NONE
+        assert decide("验收席", reg) is DispatchDecision.AUTO
 
     def test_not_dispatchable_unknown_role(self) -> None:
         """未知角色 → 不派发。"""

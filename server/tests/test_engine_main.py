@@ -1151,7 +1151,7 @@ class TestRunOnceFakeSuccessGuard:
         return run_once(reg, store, cfg), store, worktree_base
 
     def test_exit_zero_no_product_rejected(self, tmp_path: Path, monkeypatch) -> None:
-        """① returncode 0 + worktree 无新 commit + 卡头非已回写 → 打回（疑似 sandbox 假成功）。"""
+        """① returncode 0 + worktree 无新 commit → 打回（机械门禁）。"""
         monkeypatch.chdir(tmp_path)
         summary, store, wt = self._run_worktree_dispatch(tmp_path, "echo")
         assert summary["dispatched"] == 1
@@ -1159,10 +1159,10 @@ class TestRunOnceFakeSuccessGuard:
         rejected = store.list_work(state=State.REJECTED)
         assert len(rejected) == 1
         assert rejected[0].id == "T-fake"
-        assert any("exit 0 但无产物" in p for p in rejected[0].problems)
+        assert any("无有效产物" in p or "无产物" in p for p in rejected[0].problems)
 
     def test_exit_zero_with_new_commit_collected(self, tmp_path: Path, monkeypatch) -> None:
-        """② returncode 0 + worktree 内新增 commit → 已回写（产物 = git log 新 commit）。"""
+        """② returncode 0 + worktree 内新增 commit 且非空 diff → 已回写。"""
         monkeypatch.chdir(tmp_path)
         # 执行体在 worktree 内落盘并提交 → 产物存在
         cmd = "sh"
@@ -1187,18 +1187,19 @@ class TestRunOnceFakeSuccessGuard:
         done = store.list_work(state=State.DONE)
         assert [w.id for w in done] == ["T-fake2"]
 
-    def test_exit_zero_card_written_back_collected(self, tmp_path: Path, monkeypatch) -> None:
-        """③ returncode 0 + worktree 无新 commit 但卡头已「已回写」→ 已回写（第二个产物证据）。"""
+    def test_exit_zero_empty_commit_rejected(self, tmp_path: Path, monkeypatch) -> None:
+        """③ returncode 0 + 空 commit（无文件 diff）→ 打回。"""
         monkeypatch.chdir(tmp_path)
+        cmd = "sh"
+        _script = "-c 'git commit --allow-empty -m empty'"
         _init_src_repo(tmp_path)
         worktree_base = tmp_path / "wt"
-        reg_path = self._make_worktree_registry(tmp_path, "echo", worktree_base)
+        reg_path = _write_demo_registry(tmp_path, command=cmd, args_template=_script, worktree_base=str(worktree_base))
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         card_path = tmp_path / "T-fake3.md"
-        # 卡头已在磁盘回写为「已回写」（模拟执行体在 worktree 内回落状态）
         card_path.write_text(
-            "# 任务卡 T-fake3\n> 关联：TEST · 执行体：demo · 状态：已回写 · 日期：2026-08-06\n\n## 回写区\n",
+            "# 任务卡 T-fake3\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n\n## 回写区\n",
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake3", role="开发执行体", card_path=str(card_path)))
@@ -1206,7 +1207,29 @@ class TestRunOnceFakeSuccessGuard:
                "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
                "EXECUTOR_PROBE_URL": ""}
         summary = run_once(reg, store, cfg)
-        assert summary["collected"] == 1
-        done = store.list_work(state=State.DONE)
-        assert [w.id for w in done] == ["T-fake3"]
+        assert summary["collected"] == 0
+        rejected = store.list_work(state=State.REJECTED)
+        assert len(rejected) == 1
+        assert any("无有效产物" in p for p in rejected[0].problems)
+
+    def test_exit_zero_card_only_no_longer_collected(self, tmp_path: Path, monkeypatch) -> None:
+        """④ 仅卡头已回写、无新 commit → 打回（取消卡头单独过门）。"""
+        monkeypatch.chdir(tmp_path)
+        _init_src_repo(tmp_path)
+        worktree_base = tmp_path / "wt"
+        reg_path = self._make_worktree_registry(tmp_path, "echo", worktree_base)
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_path = tmp_path / "T-fake4.md"
+        card_path.write_text(
+            "# 任务卡 T-fake4\n> 关联：TEST · 执行体：demo · 状态：已回写 · 日期：2026-08-06\n\n## 回写区\n",
+            encoding="utf-8",
+        )
+        store.seed(Work(id="T-fake4", role="开发执行体", card_path=str(card_path)))
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
+               "EXECUTOR_PROBE_URL": ""}
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 0
+        assert store.list_work(state=State.REJECTED)
 

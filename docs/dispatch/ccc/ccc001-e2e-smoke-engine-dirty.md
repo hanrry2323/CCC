@@ -1,6 +1,6 @@
 # 任务卡 ccc001 · E2E smoke: Engine dispatch + worktree + board dirty（Claude Code 执行）
 
-> 关联：E2E联调 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调 2026-08-06 · 执行体：Claude Code · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
 > 变更记录：2026-08-06 Cursor 独立取证验收通过；分支 `codex/ccc001-e2e-smoke-engine-dirty`（`1e13c538`）已 ff 合入 `main`。
 
 ## 目标

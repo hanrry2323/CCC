@@ -166,14 +166,14 @@ class TestExecutorsExample:
     NOT_APPLICABLE_CATEGORY = "—"
     REQUIRED_FIELDS = frozenset({"角色", "分类", "当前绑定", "备注"})
 
-    # 契约 §7：OpenCode 开发默认 + Claude 点名开发 + 维护 + 管理 + 双验收席
+    # 契约：OpenCode/Claude 开发 + 维护 + 管理 + 双机审 CLI（验收席）
     CONTRACT_ROLES: list[dict[str, str]] = [
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "维护执行体", "分类": "可后台 CLI"},
         {"角色": "管理席", "分类": NOT_APPLICABLE_CATEGORY},
-        {"角色": "验收席", "分类": NOT_APPLICABLE_CATEGORY},
-        {"角色": "验收席", "分类": NOT_APPLICABLE_CATEGORY},
+        {"角色": "验收席", "分类": "可后台 CLI"},
+        {"角色": "验收席", "分类": "可后台 CLI"},
     ]
     EXECUTOR_ROLES = frozenset({"开发执行体", "维护执行体"})
     STAFF_ROLES = frozenset({"管理席", "验收席"})
@@ -206,22 +206,33 @@ class TestExecutorsExample:
         )
 
     def test_executor_category_valid(self, executors_data) -> None:
-        """执行体行（开发/维护）分类 ∈ {可后台 CLI, 手动 GUI}。"""
+        """开发/维护/验收（可后台）分类 ∈ {可后台 CLI, 手动 GUI}；管理席为 —。"""
         for idx, entry in enumerate(executors_data["executors"]):
-            if entry["角色"] in self.EXECUTOR_ROLES:
+            if entry["角色"] in self.STAFF_ROLES and entry["角色"] != "验收席":
+                continue
+            if entry["角色"] == "管理席":
+                continue
+            if entry["角色"] in self.EXECUTOR_ROLES or (
+                entry["角色"] == "验收席" and entry["分类"] == "可后台 CLI"
+            ):
                 assert entry["分类"] in self.VALID_CATEGORIES, (
                     f"executor[{idx}] 分类 '{entry['分类']}' 非法 "
                     f"(allowed: {sorted(self.VALID_CATEGORIES)})"
                 )
 
     def test_staff_category_not_applicable(self, executors_data) -> None:
-        """席行（管理/验收）分类为「—」；且不得使用可后台 CLI / 手动 GUI。"""
+        """管理席分类为「—」；验收席可为可后台 CLI（机审）。"""
         for idx, entry in enumerate(executors_data["executors"]):
-            if entry["角色"] in self.STAFF_ROLES:
+            if entry["角色"] == "管理席":
                 assert entry["分类"] == self.NOT_APPLICABLE_CATEGORY, (
                     f"staff[{idx}] 分类应为 '{self.NOT_APPLICABLE_CATEGORY}'，"
                     f"实际 '{entry['分类']}'"
                 )
+            if entry["角色"] == "验收席":
+                assert entry["分类"] in (
+                    self.NOT_APPLICABLE_CATEGORY,
+                    "可后台 CLI",
+                ), f"验收席分类非法: {entry['分类']}"
 
     def test_binding_non_empty(self, executors_data) -> None:
         """当前绑定非空（绑定具体值按环境配置，不锁死）。"""

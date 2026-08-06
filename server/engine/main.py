@@ -34,6 +34,7 @@ from typing import Any
 from server.config.loader import ConfigError, load_config
 from server.engine.dispatch import (
     DispatchDecision,
+    ExecutorEntry,
     ExecutorRegistry,
     build_command,
     decide_work,
@@ -41,6 +42,7 @@ from server.engine.dispatch import (
 )
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
+from server.board.roles import normalize_tool
 
 logger = logging.getLogger("ccc.engine")
 
@@ -196,11 +198,26 @@ def _worktree_has_new_commit(worktree_path: str) -> bool:
     return bool(res.stdout.strip())
 
 
-def _card_is_written_back(card_path: str) -> bool:
-    """卡头「状态」段是否已为「已回写」（另一个产物证据）。
+def _worktree_has_nonempty_diff(worktree_path: str) -> bool:
+    """worktree 相对 origin/main 是否有非空文件 diff（防空 commit / 只改消息冒充写码）。"""
+    if not worktree_path or not os.path.isdir(worktree_path):
+        return False
+    try:
+        res = subprocess.run(
+            ["git", "-C", worktree_path, "diff", "--stat", "origin/main...HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return False
+    if res.returncode != 0:
+        return False
+    return bool(res.stdout.strip())
 
-    OpenCode/Claude Code 在 worktree 内回写共享任务卡到「已回写」即视为有产物。
-    """
+
+def _card_is_written_back(card_path: str) -> bool:
+    """卡头「状态」段是否已为「已回写」（状态观测用；不再单独充当产物证据）。"""
     if not card_path:
         return False
     try:
@@ -218,20 +235,49 @@ def _card_is_written_back(card_path: str) -> bool:
     return False
 
 
+def _card_machine_audit_passed(card_path: str) -> bool:
+    """卡正文 ``## 机审区`` 后 20 行内是否含通过标记（``机审：通过`` / ``✅`` / ``判定：通过``）。"""
+    if not card_path:
+        return False
+    try:
+        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    idx = -1
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## 机审区"):
+            idx = i
+            break
+    if idx == -1:
+        return False
+    for j in range(idx + 1, min(idx + 21, len(lines))):
+        line = lines[j]
+        if "机审：通过" in line or "✅" in line or "判定：通过" in line:
+            return True
+    return False
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
     cfg: dict[str, Any],
     log_dir: Path,
     timeout: int,
+    *,
+    entry_override: ExecutorEntry | None = None,
+    skip_product_gate: bool = False,
 ) -> tuple[bool, list[str]]:
     """真实派发单个 work + 同步收单。
+
+    Args:
+        entry_override: 指定注册表行（机审复用派发时传入验收席 CLI，避免命中开发模板）。
+        skip_product_gate: 机审路径跳过「新 commit+diff」门禁（机审不改业务码）。
 
     Returns:
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
     """
-    entry = None
-    if work.executor:
+    entry = entry_override
+    if entry is None and work.executor:
         entry = registry.cli_entry_for_binding(work.executor, project=work.project)
     if entry is None:
         entry = registry.cli_entry_for_role(work.role, project=work.project)
@@ -335,22 +381,20 @@ def _dispatch_and_collect(
                 pass
 
     if returncode == 0:
-        # ccc003 收单防假成功：exit 0 后追加产物核验（worktree 派发路径）。
-        # sandbox 假成功 —— OpenCode exit 0 却无产物，不得回写。产物证据二选一：
-        #   · worktree 内相对 origin/main 有 ≥1 新 commit；
-        #   · 卡头已回写为「已回写」。
-        # 仅 worktree 存在时核验（Claude Code/OpenCode 派发必经 worktree）；无 worktree
-        # 的简单执行体不回写卡头，走旧行为，避免误伤。
-        if worktree_path:
-            has_product = _worktree_has_new_commit(worktree_path) or _card_is_written_back(work.card_path)
-            if not has_product:
+        # 机械门禁（worktree 派发）：必须有新 commit 且相对 origin/main 非空 diff。
+        # 不再承认「仅卡头已回写」为产物（防未写码假成功）。机审路径 skip_product_gate。
+        if worktree_path and not skip_product_gate:
+            has_commit = _worktree_has_new_commit(worktree_path)
+            has_diff = _worktree_has_nonempty_diff(worktree_path)
+            if not (has_commit and has_diff):
                 logger.warning(
-                    "exit 0 但无产物（疑似 sandbox 假成功）: work=%s worktree=%s → 打回",
-                    work.id, worktree_path,
+                    "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
+                    work.id, worktree_path, has_commit, has_diff,
                 )
                 return False, [
-                    f"exit 0 但无产物（疑似 sandbox 假成功）: worktree {worktree_path} 无新 commit "
-                    f"（git log origin/main..HEAD 为空）且卡头未回写为已回写"
+                    f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
+                    f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
+                    f"(commit={has_commit}, diff={has_diff})"
                 ]
         return True, []
     return False, [f"退出码非 0: {returncode}（日志: {log_path}）"]
@@ -485,6 +529,65 @@ def _clear_running_marker(log_dir: Path, work_id: str) -> None:
         pass
 
 
+def _audit_cli_entry(registry: ExecutorRegistry, acceptor: str) -> ExecutorEntry | None:
+    """验收席可后台 CLI 行（机审）；按绑定名匹配。"""
+    name = normalize_tool(acceptor)
+    if not name:
+        return None
+    for e in registry.entries:
+        if (
+            e.role == "验收席"
+            and e.category == "可后台 CLI"
+            and normalize_tool(e.binding) == name
+        ):
+            return e
+    return None
+
+
+def _run_machine_audit_after_writeback(
+    work: Work,
+    registry: ExecutorRegistry,
+    cfg: dict[str, Any],
+    log_dir: Path,
+    timeout: int,
+) -> tuple[bool, list[str]]:
+    """开发收单已回写后：拉起卡头验收方做机审（写 ## 机审区）；已通过则跳过。
+
+    注册表无验收席 CLI → 跳过机审（仅打日志），不阻断已回写。
+    """
+    if _card_machine_audit_passed(work.card_path):
+        logger.info("机审已通过，跳过: work=%s", work.id)
+        return True, []
+    acceptor = normalize_tool(work.acceptance) or "Claude Code"
+    entry = _audit_cli_entry(registry, acceptor)
+    if entry is None:
+        logger.warning(
+            "机审跳过（无验收席可后台 CLI 绑定 %s）: work=%s",
+            acceptor,
+            work.id,
+        )
+        return True, []
+    logger.info("拉起机审: work=%s acceptor=%s", work.id, acceptor)
+    _claim_running_marker(log_dir, f"{work.id}-audit")
+    try:
+        ok, problems = _dispatch_and_collect(
+            work,
+            registry,
+            cfg,
+            log_dir,
+            timeout,
+            entry_override=entry,
+            skip_product_gate=True,
+        )
+    finally:
+        _clear_running_marker(log_dir, f"{work.id}-audit")
+    if not ok:
+        return False, problems or ["机审执行失败"]
+    if not _card_machine_audit_passed(work.card_path):
+        return False, ["机审结束但卡上无 ## 机审区 通过标记（机审：通过 / ✅ / 判定：通过）"]
+    return True, []
+
+
 def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
     """父卡未关闭则阻断 AUTO 派发（保持待分派）；无父卡/父卡已关闭 → None。"""
     parent_id = (work.parent or "").strip()
@@ -573,8 +676,16 @@ def run_once(
                         if ok:
                             w.transition(State.DONE)
                             store.save_work(w)
-                            results["collected"] += 1
                             logger.info("收单成功: work=%s → 已回写", w.id)
+                            audit_ok, audit_problems = _run_machine_audit_after_writeback(
+                                w, registry, cfg, log_dir, timeout
+                            )
+                            if audit_ok:
+                                results["collected"] += 1
+                            else:
+                                w.transition(State.REJECTED, problems=audit_problems)
+                                store.save_work(w)
+                                logger.warning("机审失败: work=%s → 打回 %s", w.id, audit_problems)
                         else:
                             retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
                             is_retryable = False
@@ -676,8 +787,16 @@ def run_once(
                     if ok:
                         work.transition(State.DONE)
                         store.save_work(work)
-                        collected += 1
                         logger.info("收单成功: work=%s → 已回写", work.id)
+                        audit_ok, audit_problems = _run_machine_audit_after_writeback(
+                            work, registry, cfg, log_dir, timeout
+                        )
+                        if audit_ok:
+                            collected += 1
+                        else:
+                            work.transition(State.REJECTED, problems=audit_problems)
+                            store.save_work(work)
+                            logger.warning("机审失败: work=%s → 打回 %s", work.id, audit_problems)
                     else:
                         retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
                         is_retryable = False

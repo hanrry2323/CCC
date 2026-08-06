@@ -16,11 +16,11 @@ alwaysApply: true
 
 | | M1（当前机器） | Mac2017（生产节点） |
 |---|---|---|
-| 角色 | 开发副本（写代码、出卡、验收） | 生产运行 + Engine 派发 + 执行体工作树 |
+| 角色 | 开发副本（写代码、出卡、终验入口） | 生产运行 + Engine 派发 + 机审 |
 | 访问方式 | 当前终端 | `ssh fan@192.168.3.116` |
 | CCC 源码 | `/Users/apple/program/CCC/`（git 开发副本，push 到 GitHub） | `/Users/fan/program/CCC/`（生产副本，只 pull --ff-only） |
 | 跑什么 | M1 IDE（Claude/OpenCode）+ 浏览器看 2017 看板；Desktop 暂缓 | web-server :7788 + engine + board-scheduler（三 launchd）+ 中继 6100/6102 |
-| 开发怎么走 | 出卡 → push → 2017 Engine 派发 CLI 执行体（worktree） | 执行体按卡在 worktree 开发 → push → 验收 → 合入 |
+| 开发怎么走 | 出卡 → push → 2017 Engine；老板说「验收看板」终验 | OpenCode 开发 → 机审 → 等人终验 → 合入 |
 | 你怎么查 | `ssh fan@192.168.3.116` 连过去看 | 日志 `/Users/fan/.ccc/logs/`、看板 :7788 |
 
 ## 你每次启动要做的事
@@ -48,8 +48,8 @@ ssh fan@192.168.3.116 "cd /Users/fan/program/CCC && git log --oneline -1 && laun
 
 ```
 出卡（docs/dispatch/）→ push main → 2017 自动 pull（CCC_AUTO_PULL）
-  → Engine 按卡头派发 OpenCode（默认开发）/ Claude Code（点名）
-  → 分步 commit+push → **交叉验收**（对家）→ 合入 main → 2017 pull + 重启部署 → 关卡
+  → Engine 派发 OpenCode（默认）→ 机械门禁 → 已回写 → Claude 机审
+  → 老板「验收看板」终验 → 合入 main → 2017 pull + 重启部署 → 关卡
 ```
 
-你的改动到达 2017 生产必须经过「出卡 → 执行 → 验收 → 合入 → 部署」全链，不是直通。
+你的改动到达 2017 生产必须经过「出卡 → 执行 → 机审 → 终验 → 合入 → 部署」全链，不是直通。

@@ -1,41 +1,34 @@
-# 开发通道 — 谁改 CCC（2026-08-06 交叉验收）
+# 开发通道 — 谁改 CCC（2026-08-06 两层验收）
 
 > **老板面**：M1 IDE 聊意图 + 看板/中继/Δ；中间自动。  
-> **Mac2017 区分**：**OpenCode = 开发**；**Claude Code = 验收**（默认对）。  
-> **交叉验收**：谁开发，对家验收（OpenCode↔Claude Code）。**Codex / Cursor 取消验收资格。**
+> **Mac2017**：**OpenCode = 开发**；回写后 **Claude（或交叉对家）= 机审**。  
+> **M1**：「验收看板」= **人工终验**（写验收区 + 已关闭）。  
+> SOP：[`accept-board-sop.md`](accept-board-sop.md)
 
 ## 席位
 
 | 席位 | 绑定 | 做什么 |
 |------|------|--------|
-| **OpenCode** | 2017 默认可后台开发（6102） | 按卡写码 → 已回写；**不自验** |
-| **Claude Code** | 2017 默认验收席（6100）；亦可点名开发 | OpenCode 卡 → Claude 验收；Claude 开发卡 → OpenCode 验收 |
-| **Codex** | 管理席 | 出卡 / 裁决 / 仲裁；**不验收** |
-| **Cursor** | 难度突击写码 | 硬骨头开发；**不验收** |
-| **M1 IDE** | 开发中枢 + 交叉验收入口 | 聊意图出卡；已回写后由**对家**写 `## 验收区` |
-
-## 交叉规则（硬）
-
-```text
-执行体 OpenCode  → 验收必须 Claude Code
-执行体 Claude Code → 验收必须 OpenCode
-禁止：自验、Codex 验收、Cursor 验收
-```
-
-机器门禁：`server/board/roles.py` + `validate.py`（新卡 error）。出卡默认：`scripts/new-card.sh` → OpenCode / Claude Code。
+| **OpenCode** | 2017 默认开发（6102） | 写码 → 已回写；不自验、不写机审/验收区 |
+| **Claude Code** | 2017 默认机审（6100）；可点名开发 | 机审写 `## 机审区`；终验听「验收看板」 |
+| **Codex** | 管理席 | 出卡/裁决；**不验收** |
+| **Cursor** | 难度突击 | 写码；**不响应验收看板** |
+| **M1 IDE** | 中枢 + 终验入口 | 出卡；说「验收看板」关卡 |
 
 ## 主路径
 
 ```text
-M1 IDE 出卡（执行体 OpenCode · 验收 Claude Code）→ push
-  → 2017 自动 pull → Engine 派发 OpenCode → worktree → 已回写
-  → M1 上 Claude Code 交叉验收（写验收区 + 已关闭）→ 合入部署
+出卡（执行体 OpenCode · 验收 Claude Code）→ push
+  → 2017 自动 pull → Engine 派发 OpenCode → worktree
+  → 机械门禁（新 commit + 非空 diff）→ 已回写
+  → Engine 拉 Claude 机审 → ## 机审区 通过
+  → 老板说「验收看板」→ M1 Claude 终验 → ## 验收区 + 已关闭 → 合入
 ```
 
-点名 Claude 开发时：卡头 `执行体：Claude Code · 验收：OpenCode`，由 OpenCode 验收。
+Claude 点名开发时：机审/终验均为 OpenCode（交叉）。
 
 ## 红线
 
-1. 执行体禁止写验收区 / 置已关闭。  
-2. 验收席独立取证，不采信执行摘要。  
-3. Codex 可出卡不可终验；Cursor 可突击写码不可终验。
+1. 开发禁止写机审区/验收区/已关闭。  
+2. 机审禁止改业务码、禁止已关闭。  
+3. 终验独立取证；Codex/Cursor 无终验资格。

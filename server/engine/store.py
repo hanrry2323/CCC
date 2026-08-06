@@ -148,6 +148,7 @@ class FileBoardStore:
                 type=entry.get("card_type", "task"),
                 project=entry.get("project", ""),
                 parent=entry.get("parent_card", "") or "",
+                acceptance=entry.get("acceptance", "") or "",
                 thread_id=entry.get("thread_id", ""),
                 retry_count=retry_count,
             )
@@ -222,6 +223,7 @@ class FileBoardStore:
             project=item.project,
             parent=item.parent or "",
             thread_id=item.thread_id,
+            acceptance=(item.acceptance or "") if item.acceptance != "未知" else "",
         )
 
 

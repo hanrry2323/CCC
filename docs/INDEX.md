@@ -19,7 +19,8 @@
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
 | 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
 | 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
-| 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC：开发工具（Claude/OpenCode）合入 · Desktop 禁改仓 |
+| 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC；两层验收 |
+| 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | M1「验收看板」终验 SOP |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |
 | 8 | [`../CLAUDE.md`](../CLAUDE.md) | 平台开发硬规则 + **开仓双模式（中枢/执行体）** + 开发命令 |
@@ -40,6 +41,7 @@
 | 文档 | 说明 |
 |------|------|
 | [`product/dev-channel.md`](product/dev-channel.md) | **现行** 开发通道 / 老板面 |
+| [`product/accept-board-sop.md`](product/accept-board-sop.md) | **现行** M1「验收看板」终验 |
 | [`../.ccc/infrastructure.md`](../.ccc/infrastructure.md) | **现行** 机器/端口总览 |
 | [`deploy/topology.md`](deploy/topology.md) | **现行** 短拓扑 |
 | [`automation-base.md`](automation-base.md) | 出卡/门禁基建 |

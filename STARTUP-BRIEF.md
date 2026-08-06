@@ -15,14 +15,12 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（Claude Code CLI via 6100）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
 
-**席位（硬，2026-08-06 · 交叉验收）**：
-- **OpenCode** = 2017 默认可后台**开发**（6102）
-- **Claude Code** = 默认**验收**（亦可点名开发 → 则 OpenCode 验收）
-- **交叉验收**：OpenCode↔Claude Code；禁止自验
-- **Codex** = 出卡/裁决；**不验收**
-- **Cursor** = 难度突击写码；**不验收**
-- **M1 IDE** = 开发中枢 + 交叉验收入口（见 [`CLAUDE.md`](CLAUDE.md)）
-- **HTTP 看板/运维** = 人机实时面；**Desktop** 暂缓；**Trae** 停用
+**席位（硬，2026-08-06 · 两层验收）**：
+- **OpenCode** = 2017 默认**开发**（6102）
+- **Claude Code** = 2017 默认**机审**；亦可点名开发（则 OpenCode 机审）
+- **M1「验收看板」** = 人工**终验**（[`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md)）
+- **Codex** = 出卡/裁决；**不验收** · **Cursor** = 突击；**不验收**
+- **HTTP 看板** = 实时面；Desktop 暂缓
 
 SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md) · qx-map `ide/tool-roles.md`。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话。  
@@ -69,10 +67,10 @@ SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.
 
 | 角色语义 | 分类 | 现行绑定 | 干 |
 |----------|------|----------|-----|
-| 开发 / 写码 | 可后台 CLI | **OpenCode**（默认）/ Claude Code（点名） | 改仓 → 已回写；不自验 |
-| 维护 | 可后台 CLI | OpenCode | 运维/修复 |
-| 管理席 | — | Codex | 出卡/裁决；**不验收** |
-| 验收席 | — | Claude Code ↔ OpenCode | **交叉验收**；Codex/Cursor 无资格 |
+| 开发 / 写码 | 可后台 CLI | **OpenCode**（默认） | 改仓 → 已回写 |
+| 机审 | 可后台 CLI | Claude Code ↔ OpenCode | 写 `## 机审区`（回写后自动） |
+| 管理席 | — | Codex | 出卡；不验收 |
+| 终验 | M1 SOP | Claude / OpenCode | 「验收看板」→ 已关闭 |
 
 **派发规则**：`可后台 CLI` → Engine 自动拉起；`手动 GUI` → 挂起等人。  
 **状态机**：`待分派 → 执行中 → 已回写 → 已关闭`；失败 `→ 打回 → 待分派`。非法转移抛 `IllegalTransitionError`。
@@ -147,7 +145,7 @@ python -m server.board.validate docs/dispatch
 
 ## 9. 调用链（1 行）
 
-任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 **OpenCode**（默认）→ 收单回写 → **交叉验收** → 已关闭。
+任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 OpenCode → 机审 → 老板「验收看板」→ 已关闭。
 
 ---
 

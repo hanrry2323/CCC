@@ -1,26 +1,26 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表模板（契约 §7）。Mac2017：OpenCode=开发，Claude Code=验收；交叉验收 OpenCode↔Claude Code。Codex 只管出卡/裁决（不验收）；Cursor 不验收。复制为 executors.json 后按实机填路径。",
+  "description": "CCC 执行体注册表：OpenCode=开发；回写后 Claude/OpenCode 机审（验收席可后台 CLI）；M1「验收看板」终验。Codex/Cursor 不验收。",
   "executors": [
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
       "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭、禁止写验收区。\"",
+      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭、禁止写验收区/机审区。\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "2017 默认可后台开发 CLI（6102 code）。卡头执行体=OpenCode 时拉起；验收须 Claude Code（交叉）。"
+      "备注": "2017 默认开发（6102）。停在已回写；机审由验收席 Claude 自动拉起。"
     },
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
       "当前绑定": "Claude Code",
       "命令": "claude",
-      "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。只做开发回写，禁止写验收区/置已关闭。\"",
+      "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。只做开发回写，禁止写验收区/机审区/置已关闭。\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "点名 Claude 开发时拉起（6100 flash）；此时验收须 OpenCode（交叉）。2017 默认日常仍优先 OpenCode。"
+      "备注": "点名 Claude 开发（6100）；机审须 OpenCode。"
     },
     {
       "角色": "维护执行体",
@@ -30,7 +30,7 @@
       "参数模板": "run --auto --model loop/code --dir {worktree} \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "运维/维护类；默认 OpenCode"
+      "备注": "维护默认 OpenCode"
     },
     {
       "角色": "管理席",
@@ -39,25 +39,27 @@
       "命令": "",
       "参数模板": "",
       "工作目录": "",
-      "备注": "出卡/裁决/冲突仲裁；不执行；不验收"
+      "备注": "出卡/裁决；不执行；不验收"
     },
     {
       "角色": "验收席",
-      "分类": "—",
+      "分类": "可后台 CLI",
       "当前绑定": "Claude Code",
-      "命令": "",
-      "参数模板": "",
+      "命令": "claude",
+      "参数模板": "-p \"你是 2017 机审席。任务卡 {card_path}（work {work_id}）已由开发执行体回写。请：1) Read 卡全文与验收标准；2) 在 worktree {worktree} 核对 git log origin/main..HEAD 与 git diff --stat origin/main...HEAD；3) 独立取证，不采信回写区摘要。通过则在卡末追加「## 机审区」并写「机审：通过」+简要证据；不通过则写「机审：不通过」+问题清单，退出码非0。禁止改业务代码、禁止写 ## 验收区、禁止置已关闭。\"",
       "工作目录": "",
-      "备注": "交叉验收：OpenCode 开发 → Claude Code 验收（M1 IDE 取证写验收区）；禁止自验"
+      "worktree_base": "",
+      "备注": "OpenCode 开发后自动机审；只写 ## 机审区；终验归 M1「验收看板」"
     },
     {
       "角色": "验收席",
-      "分类": "—",
+      "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
-      "命令": "",
-      "参数模板": "",
+      "命令": "opencode",
+      "参数模板": "run --auto --model loop/code --dir {worktree} \"你是 2017 机审席。任务卡 {card_path}（work {work_id}）已回写。核对 git log/diff 与验收标准；通过则追加 ## 机审区 写 机审：通过；不通过写 机审：不通过 并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。\"",
       "工作目录": "",
-      "备注": "交叉验收：Claude Code 开发 → OpenCode 验收；Codex/Cursor 无验收资格"
+      "worktree_base": "",
+      "备注": "Claude 开发后自动机审；终验仍 M1「验收看板」"
     }
   ]
 }

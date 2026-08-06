@@ -47,9 +47,7 @@
 ## 自动链（人不管中间）
 
 ```text
-IDE 出卡（执行体 OpenCode · 验收 Claude Code）→ push main → 2017 自动 ff-only
-  → Engine 派发 OpenCode → worktree Δ → 已回写
-  → Claude Code 交叉验收（写验收区+已关闭）→ 合入部署
+IDE 出卡（OpenCode · 验收 Claude）→ push → 2017 自动 pull
+  → OpenCode 开发 → 机械门禁（commit+diff）→ 已回写
+  → Claude 机审（## 机审区）→ 老板说「验收看板」→ 终验已关闭
 ```
-
-交叉：Claude 开发卡 → OpenCode 验收。Codex/Cursor 不验收。

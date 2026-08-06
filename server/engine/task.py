@@ -77,6 +77,7 @@ class Work:
     type: str = "task"
     project: str = ""
     parent: str = ""
+    acceptance: str = ""
     thread_id: str = ""
     retry_count: int = 0
 
