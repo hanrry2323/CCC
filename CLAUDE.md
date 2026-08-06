@@ -43,15 +43,15 @@ Guidance for agents editing CCC as **platform developer**.
 
 ### 老板常问速查（少绕路）
 
-**「哪些项目已注册、能自动开发？」**（结论先行，少 ssh）
+**「哪些项目已注册、能自动开发？」**（结论先行；了解路径见 [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)）
 
 1. **可出卡前缀 / 路径 / taskable**：只认 [`docs/projects/registry.yaml`](docs/projects/registry.yaml)（摘要见 `T-mapping.md`；档案见 `docs/projects/<prefix>/README.md`）。  
 2. **QuantHive（qh）禁止**：registry `forbidden: true`；不得经 CCC 出卡或 Engine 派发。老板说禁止 → **直接改 registry + 门禁，勿三连追问**。  
-3. **2017 业务仓路径**：以 registry `paths.mac2017` 为准（常见 `/Users/fan/program/apps/{qb,hp,medio-0,xianyu}`）。M1 无 `~/program/apps/` 属正常。  
-4. **待分派卡**：卡头 `状态：` 或 `GET …/board/states`；禁全文 grep「待分派」；无 `GET /board` 根路径。  
+3. **2017 业务仓路径**：以 registry `paths.mac2017` 为准（常见 `/Users/fan/program/apps/{qb,hp,medio-0,xianyu}`）。M1 无 `~/program/apps/` 属正常——**不要为了「写准卡」去 ssh 翻业务仓**。  
+4. **待分派卡 / 进度**：卡头 `状态：` 或 `GET …/board/states`；禁全文 grep「待分派」；无 `GET /board` 根路径。  
 5. **改项目/写文档**：先读 [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md)；禁止落点外新建。
 
-**中枢禁令续**：老板指令已可执行时 **禁止** 拆成「问题1/2/3」等选择题；缺唯一关键信息最多问 **一句**，否则直接落卡或改门禁。
+**中枢禁令续**：老板指令已可执行时 **禁止** 拆成「问题1/2/3」等选择题；缺的是业务意图时最多问 **一句**，否则直接落卡或改门禁。本仓代码长什么样 → 按 hub-context-sop **本地读**，别问老板。
 
 ### 工作区铁律
 
@@ -71,7 +71,15 @@ Guidance for agents editing CCC as **platform developer**.
 3. validate 绿 → **只提交任务卡文件** → `push origin main`。  
 4. **停手盯板**——不要让老板去 pull / 重启 / 选串并行。
 
-**中枢禁令（硬）**：出卡 ≠ 代执行。禁止为了「把卡写准」去业务仓 ssh 深挖 / 代跑 pytest / 代 commit·push。步骤与探针写进卡，交给 Engine 执行体。老板已点头 → 几乎立刻落卡；缺关键信息只问老板一句。
+**中枢禁令（硬）**：出卡 ≠ 代执行。**了解 ≠ 代执行。**
+
+| 对象 | 允许 | 禁止 |
+|------|------|------|
+| **CCC 本仓**（M1） | 本地读码、`pytest`/`ruff`、图谱、看板 API、KB——**扫 bug 出卡不需要 ssh** | 代执行体分支 commit/push；手改 2017 运行面 |
+| **2017 平台** | 只读 ssh（进程/日志/`git log -1`/health） | 手改生产副本；非部署 SOP 代操作 |
+| **业务仓** | 档案 README + KB；核实写进**卡内探针** | ssh 连环侦察；代跑业务 pytest；代 commit/push；「先做完再出卡」 |
+
+步骤与探针写进卡，交给 Engine 执行体。老板已点头 → 几乎立刻落卡；缺业务意图只问一句。完整路径：[`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)。
 
 系统自动（2017）：`CCC_AUTO_PULL`（默认开）→ Engine / 看板扫描前对齐 `origin/main` → 拾取「待分派」→ 派发 → 已回写。
 

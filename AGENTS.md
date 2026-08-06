@@ -39,22 +39,32 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 
 ## 中枢出卡（硬 · 别把自己当执行体）
 
-老板说「出卡 / 先做 X / 自动开发」后，你的全部动作只有：
+出卡前怎么了解项目 → [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)（固定 6 步，禁止满仓漫游）。
 
-1. 口头收敛：目标一句 + 红线 + 验收点（缺信息 → **只问老板一句**，禁止 ssh 深挖、禁止「问题1/2/3」问卷）。  
-2. 指令已可执行（含「禁止某项目」「清理记录」）→ **直接改/直接出卡**，勿复述选项等确认。  
-3. `new-card.sh`（可先 `--dry-run`）→ validate → **只 git 提交任务卡** → `push`。  
-4. **停手盯板**。
+老板说「出卡 / 先做 X / 自动开发」后：
 
-**禁止（中枢）**：ssh 业务仓连环侦察；代跑 pytest；代 commit/push 业务仓；「先帮你把卫生做了再出卡」。  
-**禁止出卡前缀**：`qh`（QuantHive）——独立轨道，见 `registry.yaml` / `T-mapping.md`。
+1. **先了解（只读）**：按 hub-context-sop；**扫 CCC bug = 本仓本地侦察**（`rg` / pytest / 图谱 / 看板），**不需要 ssh**。  
+2. 口头收敛：目标一句 + 红线 + 验收点。缺的是**业务意图/红线** → **只问老板一句**；禁止「问题1/2/3」问卷。本仓文件长什么样 → 自己读，别问老板。  
+3. 指令已可执行 → **直接改/直接出卡**，勿复述选项等确认。  
+4. `new-card.sh`（可先 `--dry-run`）→ validate → **只 git 提交任务卡** → `push`。  
+5. **停手盯板**。
+
+### 中枢允许 / 禁止（了解 ≠ 代执行）
+
+| 对象 | 允许 | 禁止 |
+|------|------|------|
+| **CCC 本仓**（M1 写源） | 本地读码、`pytest`/`ruff`、`git log`、codebase-memory、看板 API、KB | 代执行体 commit/push 分支；手改 2017 运行面 |
+| **2017 平台核验** | **只读** ssh（`ps`/`lsof`/`ls`/`cat` 日志、`git log -1`、`:7788/health`） | 手改 2017；非部署 SOP 代 pull/重启 |
+| **业务仓**（qb/xy/mx…） | 读 `docs/projects/<prefix>/README.md` + KB；核实步骤**写进卡内探针** | **ssh 连环侦察**；代跑业务 pytest；代 commit/push 业务仓；「先做完再出卡」 |
+
+**禁止出卡前缀**：`qh`（QuantHive）——见 `registry.yaml`。
 
 步骤与探针**写进卡**，交给 Engine 执行体。
 
 ## 卫生类意图
 
 出**极窄维护卡**即可（卡内写：权威路径、禁新建 worktree、探针=git 对齐）。  
-仍禁止中枢自己下场收口。qb 反模式：`references/transfer-playbook-qb.md`。
+仍禁止中枢自己下场收口（ssh 清脏/代 push）。qb 反模式：`references/transfer-playbook-qb.md`。
 
 ## 流程（人问才展开）
 
@@ -67,4 +77,4 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 - Codex / Cursor 不终验。  
 - **读写文档必须按 DOC-PROTOCOL**（见上节）。
 
-详情：`CLAUDE.md` · `docs/DOC-PROTOCOL.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md`。
+详情：`CLAUDE.md` · `docs/DOC-PROTOCOL.md` · `docs/product/hub-context-sop.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md`。

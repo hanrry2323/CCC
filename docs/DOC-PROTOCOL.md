@@ -30,6 +30,7 @@
 ### 现行产品 SOP 白名单（入口级）
 
 - [`product/dev-channel.md`](product/dev-channel.md)
+- [`product/hub-context-sop.md`](product/hub-context-sop.md)（中枢出卡前了解项目 · 允许/禁止表）
 - [`product/accept-board-sop.md`](product/accept-board-sop.md)
 - [`product/machine-audit-flow.md`](product/machine-audit-flow.md)
 - [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)（Desktop 恢复时）

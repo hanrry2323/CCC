@@ -23,6 +23,7 @@
 | 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
 | 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC；两层验收 |
+| 5b2 | [`product/hub-context-sop.md`](product/hub-context-sop.md) | 中枢出卡前了解项目（本仓本地 / 禁业务 ssh 深挖） |
 | 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | M1「验收看板」终验 SOP |
 | 5d | [`product/machine-audit-flow.md`](product/machine-audit-flow.md) | 2017 机审流程 + 看板「机审」栏 |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
@@ -45,6 +46,7 @@
 | 文档 | 说明 |
 |------|------|
 | [`product/dev-channel.md`](product/dev-channel.md) | **现行** 开发通道 / 老板面 |
+| [`product/hub-context-sop.md`](product/hub-context-sop.md) | **现行** 中枢了解项目 / 出卡前 6 步 |
 | [`product/accept-board-sop.md`](product/accept-board-sop.md) | **现行** M1「验收看板」终验 |
 | [`../.ccc/infrastructure.md`](../.ccc/infrastructure.md) | **现行** 机器/端口总览 |
 | [`deploy/topology.md`](deploy/topology.md) | **现行** 短拓扑 |

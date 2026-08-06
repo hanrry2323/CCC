@@ -16,6 +16,7 @@
 - **前缀**：`ccc` → 卡在 `docs/dispatch/ccc/`
 - **taskable**：是（平台自身开发）
 - **出卡**：`scripts/new-card.sh --project ccc --title "..."`
+- **出卡前了解**：按 [`../../product/hub-context-sop.md`](../../product/hub-context-sop.md) **本仓本地**读码/图谱/看板即可，**无需 ssh**
 
 ## 线路 / 近况
 

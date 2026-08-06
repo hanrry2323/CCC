@@ -23,9 +23,10 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 - **Codex** = 出卡/裁决；**不验收** · **Cursor** = 突击；**不验收**
 - **HTTP 看板** = 实时面；Desktop 暂缓
 
-SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md) · qx-map `ide/tool-roles.md`。  
+SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)（出卡前了解） · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md) · qx-map `ide/tool-roles.md`。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话。  
-**cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`，勿把 `qx-map` 等其它仓当成写源。
+**cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`，勿把 `qx-map` 等其它仓当成写源。  
+**了解 ≠ ssh**：扫本仓 bug = 本地读码/图谱/看板；禁的是 ssh **业务仓**连环侦察（见 hub-context-sop）。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图；共识必须写入权威链文档（`docs/INDEX.md` §0）再应用。
 
