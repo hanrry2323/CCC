@@ -113,7 +113,7 @@ python -m server.board.validate docs/dispatch
 - **1** 不动系统文件 / 密钥  
 - **11** Verdict 必须落文件  
 - **12** 禁止 agent 自主启用 CCC  
-- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 OpenCode 开发 + Claude Code 交叉验收）  
+- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 OpenCode 开发 → 机审 → 「验收看板」终验）  
 
 ---
 
