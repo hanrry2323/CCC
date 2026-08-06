@@ -1,15 +1,16 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表模板（契约 §7）。复制为 executors.json 后按 2017 实机填写。开发执行体可挂多条「可后台 CLI」（Claude Code / OpenCode）；卡头绑定优先。模型档：Claude Code 走 flash（6100），OpenCode 走 code（6102）——以实机中继为准。",
+  "description": "CCC 执行体注册表模板（契约 §7）。复制为 executors.json 后按 2017 实机填写。开发执行体可挂多条「可后台 CLI」（OpenCode 日常默认 / Claude Code 点名）；卡头绑定优先。模型档：Claude Code 走 flash（6100），OpenCode 走 code（6102）——以实机中继为准。Trae 已停用，勿再绑。",
   "executors": [
     {
       "角色": "开发执行体",
-      "分类": "手动 GUI",
-      "当前绑定": "Trae",
-      "命令": "",
-      "参数模板": "",
+      "分类": "可后台 CLI",
+      "当前绑定": "OpenCode",
+      "命令": "opencode",
+      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭。\"",
       "工作目录": "",
-      "备注": "人工接单行；卡头绑定 Trae/人工时 Engine 挂起等人（T39 绑定优先）"
+      "worktree_base": "",
+      "备注": "日常默认可后台 CLI；中继 6102 code 档。须 --auto + --dir {worktree}：卡在生产仓、执行在 worktree，否则易 exit0 假成功。命令在 launchd 下建议写绝对路径。"
     },
     {
       "角色": "开发执行体",
@@ -19,17 +20,7 @@
       "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "可后台 CLI；中继 6100 flash 档；Engine 按卡头绑定自动拉起"
-    },
-    {
-      "角色": "开发执行体",
-      "分类": "可后台 CLI",
-      "当前绑定": "OpenCode",
-      "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭。\"",
-      "工作目录": "",
-      "worktree_base": "",
-      "备注": "可后台 CLI；中继 6102 code 档；与 Claude Code 并列。须 --auto + --dir {worktree}：卡在生产仓、执行在 worktree，否则易 exit0 假成功。命令在 launchd 下建议写绝对路径。"
+      "备注": "可后台 CLI；中继 6100 flash 档；卡头点名时 Engine 自动拉起"
     },
     {
       "角色": "维护执行体",

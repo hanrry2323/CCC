@@ -603,15 +603,42 @@ def _build_ops_summary() -> dict[str, Any]:
     except OSError:
         pass
 
+    # Engine 管道静默故障（探活跳过 / git sync）并入运维人话
+    pipeline_alerts: list[str] = []
+    try:
+        from server.engine.pipeline_status import read_pipeline_status
+
+        pipe = read_pipeline_status()
+    except Exception:
+        pipe = None
+    if pipe:
+        if pipe.get("git_sync_ok") is False:
+            pipeline_alerts.append("git sync 失败")
+            if severity == "green":
+                severity = "amber"
+        ps = int(pipe.get("probe_skips") or 0)
+        if ps > 0:
+            pipeline_alerts.append(f"探活跳过 {ps}")
+            if severity == "green":
+                severity = "amber"
+        ns = int(pipe.get("none_skips") or 0)
+        if ns > 0:
+            pipeline_alerts.append(f"未派发绑定 {ns}")
+            if severity == "green":
+                severity = "amber"
+        if pipeline_alerts:
+            human_line += " · " + " · ".join(pipeline_alerts)
+
     return {
         "overview": {
             "machines": machines,
-            "alert_count": len(down_ports),
+            "alert_count": len(down_ports) + len(pipeline_alerts),
             "down_ports": down_ports,
             "generated_at": collected_at,
         },
         "severity": severity,
         "human_line": human_line,
+        "pipeline": pipe,
         # 旧 Hub 大字段置空，桌面端容错（OpsView 只读区降级显示）
         "risks": None,
         "workspaces": None,
@@ -787,9 +814,13 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         T23：浏览器直开 7788 看页面，静态资源（HTML/CSS/JS/data）放行。
         非白名单路径不处理，由 do_GET 继续走鉴权 + API 路由。
+        白名单路径但文件尚未生成（如 board.js 未 export）→ 404，勿掉进 401。
         """
         resolved = _resolve_static_file(path)
         if resolved is None:
+            if path in _STATIC_WHITELIST:
+                self._send_404()
+                return True
             return False
         target, ctype = resolved
         try:

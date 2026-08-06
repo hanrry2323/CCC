@@ -1,9 +1,9 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-31（**最小可跑通 v1** + 席位 + 双轨 qb∥QuantHive + Relay 付费-only + 三层/loop-code + Hub 隧道 `:17777`）
-> **谁读**：老板 / Desktop Agent / Hub·sidecar / 开发工具（Claude/OpenCode）改平台。  
-> **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
-> **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
+> **状态：史（已废）· 2026-08-06**  
+> 本文描述 Hub `:7777` / sidecar 时期口径，**不得再当现行权威**。  
+> **现行**：`docs/INDEX.md` §0 · `CURSOR.md` · `CLAUDE.md` · `product/dev-channel.md` · `.ccc/infrastructure.md`  
+> 下文整篇仅作历史追溯；冲突一律以 §0 为准。
 
 ---
 

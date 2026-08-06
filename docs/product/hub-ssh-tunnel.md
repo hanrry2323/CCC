@@ -1,14 +1,18 @@
 # Hub SSH 隧道（M1 稳定性主路径）
 
-> **状态**：现行 · 2026-07-22  
-> **共识入口**：[`loop-engineer-authority.md`](loop-engineer-authority.md) · 连接契约：[`desktop-connection.md`](desktop-connection.md)  
-> **拓扑**：[`../deploy/topology.md`](../deploy/topology.md)
+> **状态：史（已废）· 2026-08-06** — Hub `:7777` / 隧道 `:17777` 已退役。  
+> 现行：浏览器直连 **2017 `:7788`**。权威：`docs/INDEX.md` §0 · `.ccc/infrastructure.md`
 
-## 一句话
+## 一句话（历史）
+
+**Mac2017 上 Hub 曾听 `127.0.0.1:7777`；M1 曾走本机 `17777` SSH 转发。** 已不再使用。
+
+---
+
+<details><summary>历史正文（勿按此操作）</summary>
 
 **Mac2017 上 Hub 默认听 `127.0.0.1:7777`（隧道主路径；`install-hub-plist.sh` SSOT）。**  
-M1 客户端默认不直连 LAN，而走本机 SSH 本地转发 `127.0.0.1:17777` → 2017 `127.0.0.1:7777`。  
-若需手机/LAN 直连，在 2017 用 `CCC_CHAT_HOST=0.0.0.0 bash scripts/install-hub-plist.sh --start` 显式放开（非 Desktop 默认）。
+M1 客户端默认不直连 LAN，而走本机 SSH 本地转发 `127.0.0.1:17777` → 2017 `127.0.0.1:7777`。
 
 这不是「Hub 搬到 M1」，也不是改 transfer/flow 契约；只换 **M1→Hub 的传输层**，解决 LAN 对 `:7777` 偶发/整段 HTTP 卡死。
 

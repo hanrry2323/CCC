@@ -33,47 +33,26 @@
 
 ---
 
-## 1. 契约与热路径（按需，仍现行）
+## 1. 契约与热路径（按需）
+
+> **Hub / sidecar / 旧 releases 条目均为史**；现行热路径：任务卡 + `server/` + 2017 `:7788` 看板/运维 + M1 IDE。
 
 | 文档 | 说明 |
 |------|------|
-| [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门** |
-| [`releases/v0.64.0.md`](releases/v0.64.0.md) | **现行** 意图卡供给（含原计划 0.65/0.66） |
-| [`references/intent-card-sop.md`](../references/intent-card-sop.md) | **转意图卡 SOP** |
-| [`product/desktop-flow-rail-ux.md`](product/desktop-flow-rail-ux.md) | 右栏：看板计数 + 意图卡链 |
-| [`releases/v0.63.0.md`](releases/v0.63.0.md) | bg nudge + KPI 缩小 |
-| [`releases/v0.62.0.md`](releases/v0.62.0.md) | reviewer `--bg` + bg_sessions + Hub/Desktop |
-| [`releases/v0.61.0.md`](releases/v0.61.0.md) | 三档契约 + fleet + 双机门禁 |
-| [`releases/v0.60.1.md`](releases/v0.60.1.md) | Desktop 发版 + 运维后勤对齐 + 产线闸门 |
-| [`releases/v0.60.0.md`](releases/v0.60.0.md) | LPSN 发布说明 |
-| [`product/hub-api-v1.md`](product/hub-api-v1.md) | **Hub API v1 契约**（transfer 幂等 / 投递三态） |
-| [`product/hub-remote-management.md`](product/hub-remote-management.md) | **双口远程（史）**：旧 M1 对话 `:7788` 已退役；现行 **2017 单端 `:7788`** 唯一入口 |
-| [`product/hub-ssh-tunnel.md`](product/hub-ssh-tunnel.md) | **Hub SSH 隧道（史）**：旧 M1 稳定性路径；现行统一 2017 直连 |
-| [`product/transfer-gate.md`](product/transfer-gate.md) | 转意图卡 → transfer_gate |
-| [`product/flow-events.md`](product/flow-events.md) | 右栏 / SSE |
-| [`product/desktop-connection.md`](product/desktop-connection.md) | 连接与本机会话 SSOT |
-| [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | Hub-Shell 分阶段状态板（现行） |
-| [`product/hub-shell-phase6-qb.md`](product/hub-shell-phase6-qb.md) | Phase6 qb 绿通（仍放 product） |
-| [`archive/hub-shell-phases/`](archive/hub-shell-phases/) | **phase8+ / wave / fluency 等已归档**（product 仅 stub） |
-| [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | sidecar / loop-code 热路径 |
-| [`product/loop-code-ownership-cut.md`](product/loop-code-ownership-cut.md) | M1 Desktop 独占 loop-code / 配置切割（切割决策现行；**定位 SSOT 已移** authority「三层架构与 loop-code 槽位化」） |
-| [`product/desktop-agent-identity.md`](product/desktop-agent-identity.md) | **Desktop 对话 Agent 身份与心智** |
-| [`product/project-as-conversation.md`](product/project-as-conversation.md) | 一项目一对话 |
-| [`deploy/desktop.md`](deploy/desktop.md) | 打包与多端版本核对 |
-| [`runbooks/pre-test-dual-host-sync.md`](runbooks/pre-test-dual-host-sync.md) | **测前**双机对齐 + 清右栏/Engine 干扰 |
-| [`../references/authority-patrol.jsonl`](../references/authority-patrol.jsonl) | **权威巡查硬卡**（机读；人话报警由 `scripts/ccc-authority-patrol.py`） |
-| [`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) | 业务仓接入操作 |
-| [`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md) | Agent 短交接 |
-| [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | 事实权威 + Hub 只读透镜 |
-| [`product/m1-no-second-tree-closeout.md`](product/m1-no-second-tree-closeout.md) | **M1 无业务第二树清扫收口**（2026-07-21） |
-| [`workspace-binding.md`](workspace-binding.md) | 多项目绑定 |
-| [`ccc-hub-ports.md`](ccc-hub-ports.md) | 端口账密 |
-| [`architecture-core.md`](architecture-core.md) | Engine/Board 代码分层（改脚本时） |
-| [`briefs/_TEMPLATE.md`](briefs/_TEMPLATE.md) | **执行 brief 模板**（定稿后另三窗只认 brief） |
-| [`briefs/PASTE-OPS.md`](briefs/PASTE-OPS.md) | **工厂派单板**（用户只复制粘贴） |
-| [`briefs/`](briefs/) | 进行中 / 已验收 brief（勿散落到仓外） |
+| [`product/dev-channel.md`](product/dev-channel.md) | **现行** 开发通道 / 老板面 |
+| [`../.ccc/infrastructure.md`](../.ccc/infrastructure.md) | **现行** 机器/端口总览 |
+| [`deploy/topology.md`](deploy/topology.md) | **现行** 短拓扑 |
+| [`automation-base.md`](automation-base.md) | 出卡/门禁基建 |
+| [`references/intent-card-sop.md`](../references/intent-card-sop.md) | 转意图卡 SOP |
+| [`product/hub-api-v1.md`](product/hub-api-v1.md) | **史** Hub API |
+| [`product/hub-ssh-tunnel.md`](product/hub-ssh-tunnel.md) | **史** Hub 隧道 |
+| [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | **史** Hub-Shell |
+| [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | **史** sidecar（Desktop 暂缓） |
+| [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **史**（已被 §0 取代） |
+| [`briefs/_TEMPLATE.md`](briefs/_TEMPLATE.md) | 执行 brief 模板 |
+| [`briefs/`](briefs/) | brief 目录 |
 
----
+其余 Hub 时期 releases / flow-rail / Desktop 打包文 → 仅 Desktop 恢复时查阅；日常勿当现行。
 
 ## 2. 路线图谁说了算（重要）
 

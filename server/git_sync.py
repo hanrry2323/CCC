@@ -145,10 +145,16 @@ def sync_origin_main(
 
 
 def auto_pull_enabled(cfg: dict[str, Any] | None = None) -> bool:
-    """``CCC_AUTO_PULL``：缺省开启（1/true/yes/on）；显式 0/false/off 关闭。"""
-    raw = ""
-    if cfg:
-        raw = str(cfg.get("CCC_AUTO_PULL", "")).strip()
-    if not raw:
-        raw = os.environ.get("CCC_AUTO_PULL", "1").strip()
-    return raw.lower() in ("1", "true", "yes", "on", "")
+    """``CCC_AUTO_PULL``：``1/true/yes/on`` 开启。
+
+    - ``cfg`` 含键 → 只看 cfg（生产 ``load_config`` 默认 1）
+    - ``cfg`` 传入但不含键 → **关**（单测残缺 cfg，避免误 fetch 开发仓）
+    - ``cfg is None`` → 看环境变量，缺省 1
+    """
+    if cfg is not None:
+        if "CCC_AUTO_PULL" not in cfg:
+            return False
+        raw = str(cfg.get("CCC_AUTO_PULL") or "").strip().lower()
+        return raw in ("1", "true", "yes", "on")
+    raw = os.environ.get("CCC_AUTO_PULL", "1").strip().lower()
+    return raw in ("1", "true", "yes", "on")

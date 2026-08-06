@@ -1,7 +1,6 @@
 # Hub-Shell 分阶段状态板
 
-> 对齐 [`hub-shell-roadmap.md`](hub-shell-roadmap.md) · Wave1–4  
-> 更新规则：每阶段验收绿后改状态并随该阶段 commit。
+> **状态：史（已废）· 2026-08-06** — Hub-Shell 路线已退役。现行：`docs/INDEX.md` §0 · HTTP 看板。
 
 | 阶段 | 状态 | 说明 | Commit |
 |------|------|------|--------|

@@ -564,6 +564,25 @@ class TestFileBoardStore:
         assert (log_dir / "live1.running").is_file()
         assert not (log_dir / "dead1.running").exists()
 
+    def test_reclaim_skips_live_child_pid(self, tmp_path: Path) -> None:
+        """标记 child_pid 存活、engine_pid 已死 → 不打回（防 Engine 重启假打回）。"""
+        import os
+
+        from server.engine.main import reclaim_orphaned_running
+
+        store = InMemoryBoardStore()
+        live = Work(id="child1", role="开发执行体", state=State.RUNNING)
+        store.seed(live)
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "child1.running").write_text(
+            f"engine_pid=99999998\npid={os.getpid()}\nchild_pid={os.getpid()}\n",
+            encoding="utf-8",
+        )
+        n = reclaim_orphaned_running(store, log_dir)
+        assert n == 0
+        assert store.list_work(state=State.RUNNING)[0].id == "child1"
+
     def test_claim_running_marker_writes_pid(self, tmp_path: Path) -> None:
         import os
 
@@ -572,6 +591,17 @@ class TestFileBoardStore:
         marker = _claim_running_marker(tmp_path / "logs", "w1")
         raw = marker.read_text(encoding="utf-8")
         assert _parse_running_marker_pid(raw) == os.getpid()
+        assert f"engine_pid={os.getpid()}" in raw
+
+    def test_parent_blocks_dispatch(self) -> None:
+        from server.engine.main import _parent_blocks_dispatch
+
+        parent = Work(id="P1", role="开发执行体", state=State.DONE)
+        child = Work(id="C1", role="开发执行体", state=State.TODO, parent="P1")
+        by_id = {"P1": parent, "C1": child}
+        assert _parent_blocks_dispatch(child, by_id)
+        parent.state = State.CLOSED
+        assert _parent_blocks_dispatch(child, by_id) is None
 
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
         """list_work(state=X) 只返回匹配状态的卡。"""

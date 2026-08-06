@@ -76,6 +76,7 @@ class Work:
     dispatch: str = "engine"
     type: str = "task"
     project: str = ""
+    parent: str = ""
     thread_id: str = ""
     retry_count: int = 0
 

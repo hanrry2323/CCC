@@ -64,20 +64,21 @@ class TestLoadRegistry:
 
     def test_example_registry_loads(self) -> None:
         reg = load_registry(REGISTRY_PATH)
-        # ccc003：开发执行体含 手动GUI(Trae) + 两条可后台 CLI(Claude Code + OpenCode)，
-        # 加 维护执行体 / 管理席 / 验收席 = 6 行。
-        assert len(reg.entries) == 6
-        # 开发执行体可后台 CLI 行走角色回退时命中 Claude Code（模板先行者）
+        # 开发执行体两条可后台 CLI（OpenCode 日常默认 + Claude Code）+ 维护 / 管理 / 验收 = 5 行。
+        # Trae 手动 GUI 已从模板移除（产品面停用，避免卡永久挂「执行中」）。
+        assert len(reg.entries) == 5
+        # 角色回退命中首条可后台 CLI = OpenCode
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
-        assert cli.command == "claude"
-        assert cli.binding == "Claude Code"
+        assert cli.command == "opencode"
+        assert cli.binding == "OpenCode"
         assert "{work_id}" in cli.args_template
-        # 另一条开发 CLI 走绑定名 OpenCode → 模板须含 --auto 与 --dir {worktree}（防 exit0 假成功）
-        oc = reg.cli_entry_for_binding("OpenCode")
-        assert oc is not None
-        assert "run --auto" in oc.args_template
-        assert "--dir {worktree}" in oc.args_template
+        assert "run --auto" in cli.args_template
+        assert "--dir {worktree}" in cli.args_template
+        # Claude Code 走绑定名
+        cc = reg.cli_entry_for_binding("Claude Code")
+        assert cc is not None
+        assert cc.command == "claude"
 
     def test_missing_fields_rejected(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.json"
@@ -217,14 +218,40 @@ class TestDecideWork:
     ⑤ 未知 executor → 回退角色决策；⑥+ 现有回归。
     """
 
-    def test_trae_manual_gui_even_if_role_has_cli(self) -> None:
-        """① 卡头 Trae（手动 GUI）但角色「开发执行体」含 Claude Code CLI 行 → MANUAL。
-
-        这是 T38 插曲的核心场景：卡头指定手动 GUI 执行体时，不应因角色含 CLI 行而 AUTO。
-        """
-        reg = load_registry(REGISTRY_PATH)  # 含 Trae(手动 GUI) + Claude Code(可后台 CLI)
+    def test_trae_manual_gui_even_if_role_has_cli(self, tmp_path: Path) -> None:
+        """① 卡头 Trae（手动 GUI）但角色含 CLI 行 → MANUAL（本地注册表；模板已停用 Trae）。"""
+        reg_path = _write_registry(
+            tmp_path,
+            [
+                {
+                    "角色": "开发执行体",
+                    "分类": "手动 GUI",
+                    "当前绑定": "Trae",
+                    "命令": "",
+                    "参数模板": "",
+                    "工作目录": "",
+                    "备注": "测试用",
+                },
+                {
+                    "角色": "开发执行体",
+                    "分类": "可后台 CLI",
+                    "当前绑定": "Claude Code",
+                    "命令": "claude",
+                    "参数模板": "-p {card_path}",
+                    "工作目录": "",
+                    "备注": "",
+                },
+            ],
+        )
+        reg = load_registry(reg_path)
         work = Work(id="t39-1", role="开发执行体", executor="Trae")
         assert decide_work(work, reg) is DispatchDecision.MANUAL
+
+    def test_unknown_trae_falls_back_without_example_row(self) -> None:
+        """模板无 Trae 行时，卡头绑 Trae → 未知绑定回退角色（开发执行体仍 AUTO）。"""
+        reg = load_registry(REGISTRY_PATH)
+        work = Work(id="t39-1b", role="开发执行体", executor="Trae")
+        assert decide_work(work, reg) is DispatchDecision.AUTO
 
     def test_claude_code_binding_auto(self) -> None:
         """② 卡头 Claude Code（可后台 CLI）→ AUTO（真实拉起）。"""

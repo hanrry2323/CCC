@@ -50,12 +50,12 @@ SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.
   → HTTP 直连 2017:7788（默认免登录）
   → /conversation 聊意图（大脑 Agent）
   → 写任务卡到 docs/dispatch/T<n>-*.md
-  → Engine 派发 Claude Code（可后台 CLI）/ 手动 GUI 挂起等人
+  → Engine 按卡头派发 OpenCode / Claude Code（可后台 CLI）
   → 收单 → 五态流转（待分派 → 执行中 → 已回写 → 已关闭）
   → 看板/线路图视图实时反映进度
 ```
 
-自研期标准链路：Codex 出卡 → push main → 2017 pull → Engine 派发 → worktree `ccc-dev-ws-tNN` → Codex 验收 → 合入部署。
+自研期标准链路：IDE/Codex 出卡 → push main → 2017 自动 pull → Engine 派发 → worktree → 验收 → 合入部署。
 
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
 架构：[`docs/architecture.md`](docs/architecture.md)  
@@ -148,7 +148,7 @@ python -m server.board.validate docs/dispatch
 
 ## 9. 调用链（1 行）
 
-任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 **Claude Code** → 收单回写 → 已关闭。
+任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 **OpenCode / Claude Code** → 收单回写 → 已关闭。
 
 ---
 

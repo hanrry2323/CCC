@@ -1,116 +1,54 @@
 # CCC Infrastructure — 机器 / 端口 / 服务总览
 
-> 本文档是 CCC 基础设施的权威来源。Claude Code 启动时强制读取。  
-> 部署拓扑 SSOT：[`docs/deploy/topology.md`](../docs/deploy/topology.md)  
-> 服务端目录：[`docs/deploy/server-layout.md`](../docs/deploy/server-layout.md)  
-> 变更端口或拓扑后同步更新本文件。  
-> 更新日期：2026-08-01（ai-loop-router 单实例 M1 现行；端口 4100/4102）
+> **现行（2026-08-06）**。旧 Hub `:7777` / Board `:7775` / sidecar / hub-tunnel 已退役。  
+> 权威链：`docs/INDEX.md` §0 · `CURSOR.md` · `.cursor/rules/location-truth.mdc`  
+> 老板面：M1 IDE 中枢聊意图 + 浏览器看 2017 看板/运维；中间 pull/派发自动。
 
 ---
 
 ## 机器清单
 
-| 主机 | IP | 角色 | OS | 说明 |
-|------|-----|------|-----|------|
-| **Mac 2017** | 192.168.3.116 | **CCC Server** | macOS | Hub / Board / Engine / 业务仓（唯一编排生产） |
-| **M1** | 192.168.3.140 | **Client** | macOS | Desktop + sidecar + ai-loop-router + hub-tunnel；编排连 2017 |
-| feiniu | 192.168.3.131 | 生产机 | Ubuntu | HP、medio-0 等（非 CCC 控制面） |
+| 主机 | IP | 角色 | 说明 |
+|------|-----|------|------|
+| **M1** | 192.168.3.140 | 开发副本（唯一写源） | git → GitHub `main`；IDE（Claude/OpenCode）开仓；**不跑** `:7788` / Engine |
+| **Mac 2017** | 192.168.3.116 | 生产 / 执行节点 | 只 `pull --ff-only`；`:7788` + Engine + board-scheduler + 中继 |
 
 ---
 
-## Mac 2017 (192.168.3.116) — CCC Server（编排面）
+## Mac 2017（生产）
 
-根目录：`/Users/fan/program`（规范见 server-layout）
+根目录：`/Users/fan/program/CCC`
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **7777** | CCC Hub | 编排 API + 看板 UI |
-| **7775** | CCC Board API | 任务看板；优先本机；Hub 反代 |
-| **4100** | ai-loop-router | M1 | Anthropic 协议，flash/pro 档；Engine product/reviewer 出口 |
-| **4102** | ai-loop-router | M1 | openai-chat 协议，code 档；OpenCode dev 写码出口 |
+| **7788** | `com.ccc.web-server` | HTTP：看板 / 运维 / 对话 / API |
+| **6100** | ai-loop-router（Anthropic） | 大脑 + Claude Code 执行体 |
+| **6102** | ai-loop-router（openai-chat） | OpenCode code 档 |
 
-| 路径 | 用途 |
-|------|------|
-| `/Users/fan/program/CCC` | 主产品 + orch + `relay/` CCC Relay 子系统（现行） |
-| `/Users/fan/program/apps/ccc-demo` | 默认 demo app |
-| `/Users/fan/program/apps/<name>` | register 的业务仓 |
-| `/Users/fan/program/infra/ai-loop-router` | 旧中转站归档（RETIRED；功能已由 M1 现行 ai-loop-router 接管） |
+| launchd | 进程 |
+|---------|------|
+| `com.ccc.web-server` | `server/web/server.py` |
+| `com.ccc.engine` | `server/engine/main.py`（`CCC_AUTO_PULL=1`） |
+| `com.ccc.board-scheduler` | `server/board/scheduler.py` |
+| `com.ccc.ai-loop-router` | 中继 6100/6102 |
 
-**live agent 上限：4**
-
-SSH（从 M1）：`ssh mac2017`（user `fan`）
-
-**模型出口（三档契约）**：
-- Claude product/reviewer → M1 ai-loop-router `:4100` `flash` 档（主路径）→ OpenCode / MiniMax（fail-open）
-- OpenCode dev → M1 ai-loop-router `:4102` `code` 档（主路径）→ 讯飞/智谱（fail-open）
+日志：`/Users/fan/.ccc/logs/`（含 `engine-pipeline.json` 管道状态）。
 
 ---
 
-## M1 (192.168.3.140) — Client（对话面）
+## M1（开发）
 
-| 端口 | 服务 | 说明 |
-|------|------|------|
-| **7788** | CCC Agent Sidecar | Desktop 对话热路径；`com.ccc.agent-sidecar` |
-| **4100** | ai-loop-router M1 | M1 | Anthropic 协议；对话面模型路由 flash 档 |
-| **17777** | Hub SSH 隧道 | `com.ccc.hub-tunnel`；转发到 Mac2017 Hub :7777 |
-| 788 | (未使用) | 历史端口，当前不在用 |
+- 开仓：`/Users/apple/program/CCC`
+- 看生产：浏览器 → `http://192.168.3.116:7788/#/board` · `#/ops`
+- Desktop 壳：**暂缓**
 
-**默认路径**：Desktop → sidecar `:7788` → loop-code → **M1 ai-loop-router `:4100`**（主路径）→ MiniMax（fail-open 兜底）  
-**Hub 访问**：`http://127.0.0.1:17777`（SSH 隧道 → Mac2017 Hub :7777）  
+---
 
-客户端环境变量示例（排障用）：
+## 自动链（人不管中间）
 
-```bash
-# 对话面模型出口（默认已走 ai-loop-router :4100；设此值强制直连）
-export ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic
-export ANTHROPIC_MODEL=MiniMax-M3
+```text
+IDE 出卡 → push main → 2017 Engine/scheduler 自动 ff-only
+  → 派发 OpenCode/Claude Code（卡头）→ worktree Δ
+  → 看板五态 · /ops · 中继调用 · dirty_files
+  → 已回写 → 验收席关「已关闭」→ 合入部署
 ```
-
-M1 不跑 Engine、Board、Hub — 这些是 Mac2017 专属（编排面）。
-
-其他本机服务（HP / qb 等）与 CCC Server 无关，各自配置。
-
----
-
-## feiniu (192.168.3.131) — 生产机
-
-| 端口 | 服务 | 说明 |
-|------|------|------|
-| 3000 | medio-0 Web | 本地媒体中心 |
-| 11434 | ollama bge-m3 | 向量模型（CPU） |
-| 18080 | Money Printer Turbo | xianyu 视频生成 |
-
----
-
-## 各项目端口汇总（CCC）
-
-| 项目 | 生产入口 | 说明 |
-|------|----------|------|
-| CCC Hub | `http://192.168.3.116:7777`（或 M1 tunnel `:17777`） | Server |
-| ai-loop-router | `http://127.0.0.1:4100`（Anthropic）/ `:4102`（openai-chat） | M1 出口 |
-| Desktop sidecar | `http://127.0.0.1:7788` | M1 本机对话 |
-| ccc-demo | Server `apps/ccc-demo` | 默认唯一 engine app |
-
----
-
-## 产品默认注册（Server）
-
-| name | role | engine |
-|------|------|--------|
-| CCC | orch | false |
-| ccc-demo | app | true |
-
-详见 [`docs/product/reset-demo-fleet.md`](../docs/product/reset-demo-fleet.md)。
-
----
-
-## CCC Hub 架构（摘要）
-
-```
-scripts/ccc-chat-server.py          # 入口 → Hub :7777
-scripts/chat_server/                # 模块化包
-└── frontend/                       # Hub SPA（过渡客户端；桌面为主线）
-```
-
-- 启动账密默认见 `docs/ccc-hub-ports.md`
-- 运维：Hub `#/ops`；自检：`python3 scripts/verify-ccc-hub.py`

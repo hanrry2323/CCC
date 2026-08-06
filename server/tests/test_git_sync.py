@@ -36,13 +36,19 @@ class TestResolveRepoRoot:
 
 
 class TestAutoPullEnabled:
-    def test_default_on(self, monkeypatch) -> None:
+    def test_none_cfg_default_on(self, monkeypatch) -> None:
         monkeypatch.delenv("CCC_AUTO_PULL", raising=False)
-        assert auto_pull_enabled({}) is True
+        assert auto_pull_enabled(None) is True
 
-    def test_explicit_off(self, monkeypatch) -> None:
-        monkeypatch.setenv("CCC_AUTO_PULL", "0")
+    def test_partial_cfg_off(self) -> None:
+        """单测残缺 cfg（无键）→ 关，避免误 fetch。"""
         assert auto_pull_enabled({}) is False
+
+    def test_explicit_on(self) -> None:
+        assert auto_pull_enabled({"CCC_AUTO_PULL": "1"}) is True
+
+    def test_explicit_off(self) -> None:
+        assert auto_pull_enabled({"CCC_AUTO_PULL": "0"}) is False
 
 
 class TestSyncOriginMain:

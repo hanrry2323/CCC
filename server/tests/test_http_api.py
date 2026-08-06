@@ -1050,11 +1050,11 @@ class TestStaticHosting:
         assert status == 200
 
     def test_board_page_still_accessible(self, api_server):
-        """看板数据静态文件仍可访问（T34：孤儿 css/style.css 已归档，改测 legacy-chat css）。"""
+        """看板静态资源免鉴权；board.js 未 export 时 404（勿 401）。"""
         status, _ = _get_raw(api_server, "/css/base.css")
         assert status == 200
         status, _ = _get_raw(api_server, "/data/board.js")
-        assert status == 200
+        assert status in (200, 404)
 
     def test_static_no_auth_required(self, api_server):
         """静态路径无 token 仍 200（页面本身是登录入口）。"""

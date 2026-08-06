@@ -42,14 +42,14 @@ ssh fan@192.168.3.116 "cd /Users/fan/program/CCC && git log --oneline -1 && laun
 - ❌ 说「M1 上跑 7788/Engine」— 生产服务只在 2017
 - ❌ 说「2017 直接手改」— 2017 生产副本只 pull；开发走 Codex 出卡 → Claude Code worktree
 - ❌ 臆测 2017 代码状态 — ssh 看，或查 git log（`ssh fan@192.168.3.116 "git -C /Users/fan/program/CCC log --oneline -1"`）
-- ❌ 提旧拓扑（Hub :7777 / Board :7775 / relay.m1 / hub-tunnel / OpenCode 槽）— 已全部退役
+- ❌ 提旧拓扑（Hub :7777 / Board :7775 / relay.m1 / hub-tunnel / **Hub 写码槽**）— 已全部退役（**OpenCode CLI 执行体仍可用**，勿与旧 Hub「OpenCode 槽」混称）
 
 ## 改代码的流向
 
 ```
-Codex 出卡（docs/dispatch/TNN-*.md）→ push main → 2017 pull
-  → Engine 自动派发 Claude Code（2017 worktree ccc-dev-ws-tNN，分支 codex/tNN-*）
-  → 分步 commit+push → Codex 验收 → 合入 main → 2017 pull + 重启部署 → 关卡
+出卡（docs/dispatch/）→ push main → 2017 自动 pull（CCC_AUTO_PULL）
+  → Engine 按卡头派发 OpenCode / Claude Code（worktree）
+  → 分步 commit+push → 验收 → 合入 main → 2017 pull + 重启部署 → 关卡
 ```
 
 你的改动到达 2017 生产必须经过「出卡 → 执行 → 验收 → 合入 → 部署」全链，不是直通。

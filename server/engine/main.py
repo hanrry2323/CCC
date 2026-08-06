@@ -290,21 +290,35 @@ def _dispatch_and_collect(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("拉起执行体: work=%s role=%s cmd=%s log=%s", work.id, work.role, cmd, log_path)
 
+    logf = None
     try:
         child_env = os.environ.copy()
         # 减轻 Python 类执行体块缓冲；Node/Claude 仍可能块缓冲（非 TTY），见日志延迟。
         child_env.setdefault("PYTHONUNBUFFERED", "1")
-        with log_path.open("w", encoding="utf-8", buffering=1) as logf:
-            proc = subprocess.Popen(  # noqa: S603 - 命令来自注册表配置，非用户输入
-                cmd,
-                stdout=logf,
-                stderr=subprocess.STDOUT,
-                cwd=worktree_path or entry.workdir or default_workdir or None,
-                env=child_env,
-            )
+        # 日志句柄必须保持到 wait 结束：过早 close 会导致子进程 stdout 断开、看板 log_tail 空白
+        logf = log_path.open("w", encoding="utf-8", buffering=1)
+        logf.write(
+            f"[ccc.engine] start work={work.id} pid_pending cmd={' '.join(cmd)}\n"
+        )
+        logf.flush()
+        proc = subprocess.Popen(  # noqa: S603 - 命令来自注册表配置，非用户输入
+            cmd,
+            stdout=logf,
+            stderr=subprocess.STDOUT,
+            cwd=worktree_path or entry.workdir or default_workdir or None,
+            env=child_env,
+        )
+        # 标记写入子进程 PID：Engine 重启时若 CLI 仍活，不得假打回
+        _refresh_running_marker_child(log_dir, work.id, proc.pid)
+        logf.write(f"[ccc.engine] child_pid={proc.pid}\n")
+        logf.flush()
     except FileNotFoundError as exc:
+        if logf is not None:
+            logf.close()
         return False, [f"启动失败（命令不存在）: {exc}"]
     except OSError as exc:
+        if logf is not None:
+            logf.close()
         return False, [f"启动失败: {exc}"]
 
     try:
@@ -313,6 +327,12 @@ def _dispatch_and_collect(
         proc.kill()
         proc.wait()
         return False, [f"执行超时（{timeout}s 已 kill）"]
+    finally:
+        if logf is not None:
+            try:
+                logf.close()
+            except OSError:
+                pass
 
     if returncode == 0:
         # ccc003 收单防假成功：exit 0 后追加产物核验（worktree 派发路径）。
@@ -351,26 +371,45 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def _parse_running_marker_pid(raw: str) -> int | None:
-    """解析 ``.running`` 标记中的派发进程 PID。
+def _parse_running_marker_pids(raw: str) -> list[int]:
+    """解析 ``.running`` 中所有 PID（``pid=`` / ``engine_pid=`` / ``child_pid=``）。
 
-    新格式：``pid=<int>``。旧格式纯 ``1`` / 空 / 非 pid= → 返回 None（按遗留孤儿处理）。
+    旧格式纯 ``1`` / 空 → 空列表（按遗留孤儿处理）。
     """
+    pids: list[int] = []
+    for line in (raw or "").splitlines():
+        text = line.strip()
+        for prefix in ("pid=", "engine_pid=", "child_pid="):
+            if not text.startswith(prefix):
+                continue
+            rest = text[len(prefix) :].strip().split()[0] if text[len(prefix) :].strip() else ""
+            if rest.isdigit():
+                pid = int(rest)
+                if pid > 1 and pid not in pids:
+                    pids.append(pid)
+            break
+    return pids
+
+
+def _parse_running_marker_pid(raw: str) -> int | None:
+    """兼容旧测试：返回标记中的主 ``pid=``（或首个解析到的 PID）。"""
     text = (raw or "").strip()
-    if not text.startswith("pid="):
-        return None
-    rest = text[4:].splitlines()[0].strip().split()[0] if text[4:].strip() else ""
-    if not rest.isdigit():
-        return None
-    return int(rest)
+    for line in text.splitlines():
+        ln = line.strip()
+        if ln.startswith("pid="):
+            rest = ln[4:].strip().split()[0] if ln[4:].strip() else ""
+            if rest.isdigit():
+                return int(rest)
+    pids = _parse_running_marker_pids(raw)
+    return pids[0] if pids else None
 
 
 def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     """回收带 ``{work_id}.running`` 标记的「执行中」残留（AUTO 崩溃未收单）。
 
     manual 挂起等人不会写标记，故不被误打回。
-    若标记含 ``pid=`` 且该 PID 仍存活（另一 Engine ``--once`` / 持续进程正在收单），
-    **跳过回收**——避免 launchd 与手动 ``--once`` 撞车误打回（ccc001/ccc003）。
+    若标记含任一存活 PID（Engine 收单进程 **或** 子 CLI），**跳过回收**——
+    避免 launchd KeepAlive / 手动 ``--once`` / Engine 重启误打回仍在跑的 CLI。
     返回打回张数。
     """
     n = 0
@@ -382,12 +421,14 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
             raw = marker.read_text(encoding="utf-8")
         except OSError:
             raw = ""
-        owner_pid = _parse_running_marker_pid(raw)
-        if owner_pid is not None and _pid_alive(owner_pid):
+        owner_pids = _parse_running_marker_pids(raw)
+        alive = [p for p in owner_pids if _pid_alive(p)]
+        if alive:
             logger.info(
-                "跳过孤儿回收: work=%s 派发进程 pid=%s 仍存活",
+                "跳过孤儿回收: work=%s 存活 pid=%s（标记=%s）",
                 w.id,
-                owner_pid,
+                alive,
+                owner_pids,
             )
             continue
         try:
@@ -407,12 +448,34 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     return n
 
 
-def _claim_running_marker(log_dir: Path, work_id: str) -> Path:
-    """AUTO 派发起写运行标记（含本进程 PID）；收单/异常后清除。"""
+def _write_running_marker(
+    log_dir: Path,
+    work_id: str,
+    *,
+    engine_pid: int,
+    child_pid: int | None = None,
+) -> Path:
+    """写运行标记：主 ``pid=`` 优先子进程，否则 Engine；并保留 engine/child 字段。"""
     log_dir.mkdir(parents=True, exist_ok=True)
     marker = log_dir / f"{work_id}.running"
-    marker.write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+    primary = child_pid if child_pid is not None else engine_pid
+    lines = [f"engine_pid={engine_pid}\n", f"pid={primary}\n"]
+    if child_pid is not None:
+        lines.append(f"child_pid={child_pid}\n")
+    marker.write_text("".join(lines), encoding="utf-8")
     return marker
+
+
+def _claim_running_marker(log_dir: Path, work_id: str) -> Path:
+    """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。"""
+    return _write_running_marker(log_dir, work_id, engine_pid=os.getpid())
+
+
+def _refresh_running_marker_child(log_dir: Path, work_id: str, child_pid: int) -> None:
+    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）。"""
+    _write_running_marker(
+        log_dir, work_id, engine_pid=os.getpid(), child_pid=child_pid
+    )
 
 
 def _clear_running_marker(log_dir: Path, work_id: str) -> None:
@@ -420,6 +483,19 @@ def _clear_running_marker(log_dir: Path, work_id: str) -> None:
         (log_dir / f"{work_id}.running").unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
+    """父卡未关闭则阻断 AUTO 派发（保持待分派）；无父卡/父卡已关闭 → None。"""
+    parent_id = (work.parent or "").strip()
+    if not parent_id:
+        return None
+    parent = by_id.get(parent_id)
+    if parent is None:
+        return None
+    if parent.state is State.CLOSED:
+        return None
+    return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭后才派发）"
 
 
 def run_once(
@@ -451,20 +527,32 @@ def run_once(
     # 回收上次崩溃残留的 AUTO「执行中」（有 .running 标记；manual 挂起无标记）
     reclaimed = reclaim_orphaned_running(store, log_dir)
 
+    git_sync_ok = True
+    git_sync_detail = ""
     # 生产仓自动对齐 origin/main（人只 push；2017 自 pull，老板不参与中间运维）
     try:
         from server.git_sync import auto_pull_enabled, resolve_repo_root, sync_origin_main
 
         if auto_pull_enabled(cfg):
             dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
-            sync_origin_main(resolve_repo_root(dispatch_dir))
-    except Exception:
+            sync_res = sync_origin_main(resolve_repo_root(dispatch_dir))
+            git_sync_ok = bool(sync_res.get("ok"))
+            git_sync_detail = str(sync_res.get("detail") or sync_res.get("method") or "")
+            if not git_sync_ok:
+                logger.warning("自动 git sync 未成功: %s", sync_res)
+    except Exception as exc:
+        git_sync_ok = False
+        git_sync_detail = str(exc)
         logger.exception("自动 git sync 失败，本轮继续用本地卡视图")
 
     pending = store.list_work(state=State.TODO)
+    by_id = {w.id: w for w in store.list_work()}
     dispatched = 0
     collected = 0
     timed_out = 0
+    probe_skips = 0
+    parent_skips = 0
+    none_skips = 0
 
     if parallel_enabled:
         threads = []
@@ -521,9 +609,15 @@ def run_once(
             if is_card_accepted(work.card_path):
                 logger.warning("已验收卡不派发: work=%s", work.id)
                 continue
+            block = _parent_blocks_dispatch(work, by_id)
+            if block:
+                parent_skips += 1
+                logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
+                continue
             decision = decide_work(work, registry)
             if decision is DispatchDecision.AUTO:
                 if probe_url and not probe_relay(probe_url):
+                    probe_skips += 1
                     logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
                     continue
 
@@ -540,6 +634,7 @@ def run_once(
                 store.save_work(work)
                 dispatched += 1
             else:
+                none_skips += 1
                 logger.warning(
                     "不参与派发: work=%s role=%s executor=%s",
                     work.id, work.role, work.executor or "(未指定)",
@@ -559,9 +654,15 @@ def run_once(
             if is_card_accepted(work.card_path):
                 logger.warning("已验收卡不派发: work=%s", work.id)
                 continue
+            block = _parent_blocks_dispatch(work, by_id)
+            if block:
+                parent_skips += 1
+                logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
+                continue
             decision = decide_work(work, registry)
             if decision is DispatchDecision.AUTO:
                 if probe_url and not probe_relay(probe_url):
+                    probe_skips += 1
                     logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
                     continue
 
@@ -614,6 +715,7 @@ def run_once(
                 store.save_work(work)
                 dispatched += 1
             else:
+                none_skips += 1
                 logger.warning(
                     "不参与派发: work=%s role=%s executor=%s",
                     work.id, work.role, work.executor or "(未指定)",
@@ -628,7 +730,30 @@ def run_once(
         "collected": collected,
         "timed_out": timed_out,
         "reclaimed": reclaimed,
+        "probe_skips": probe_skips,
+        "parent_skips": parent_skips,
+        "none_skips": none_skips,
     }
+    try:
+        from server.engine.pipeline_status import write_pipeline_status
+
+        write_pipeline_status(
+            log_dir,
+            {
+                "ok": git_sync_ok and probe_skips == 0,
+                "git_sync_ok": git_sync_ok,
+                "git_sync_detail": git_sync_detail,
+                "probe_skips": probe_skips,
+                "parent_skips": parent_skips,
+                "none_skips": none_skips,
+                "reclaimed": reclaimed,
+                "dispatched": dispatched,
+                "in_flight": in_flight,
+                "scanned": len(pending),
+            },
+        )
+    except Exception:
+        logger.exception("写管道状态失败（不影响本轮）")
     return summary
 
 

@@ -166,10 +166,8 @@ class TestExecutorsExample:
     NOT_APPLICABLE_CATEGORY = "—"
     REQUIRED_FIELDS = frozenset({"角色", "分类", "当前绑定", "备注"})
 
-    # 契约 §7 五角色（角色 / 分类规则；绑定只断言非空，不锁具体工具）
-    # ccc003 对齐：开发执行体「可后台 CLI」两条 = Claude Code + OpenCode（并列开发 CLI）
+    # 契约 §7：开发执行体可后台 CLI×2（OpenCode 日常默认 + Claude Code）+ 维护 + 管理/验收
     CONTRACT_ROLES: list[dict[str, str]] = [
-        {"角色": "开发执行体", "分类": "手动 GUI"},
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "维护执行体", "分类": "可后台 CLI"},

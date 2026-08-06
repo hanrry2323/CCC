@@ -147,6 +147,7 @@ class FileBoardStore:
                 dispatch=entry.get("dispatch", "engine"),
                 type=entry.get("card_type", "task"),
                 project=entry.get("project", ""),
+                parent=entry.get("parent_card", "") or "",
                 thread_id=entry.get("thread_id", ""),
                 retry_count=retry_count,
             )
@@ -219,6 +220,7 @@ class FileBoardStore:
             dispatch=item.dispatch or "engine",
             type=item.type,
             project=item.project,
+            parent=item.parent or "",
             thread_id=item.thread_id,
         )
 
