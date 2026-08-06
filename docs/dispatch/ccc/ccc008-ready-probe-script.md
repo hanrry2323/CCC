@@ -1,6 +1,6 @@
 # 任务卡 ccc008 · ready-probe 脚本（OpenCode 执行）
 
-> 关联：ccc-plan: M7 ready-probe dogfood · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-07
+> 关联：ccc-plan: M7 ready-probe dogfood · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 
@@ -32,4 +32,12 @@ ready-probe 脚本（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+- 实现说明：新建了 `scripts/ready-probe.sh` 脚本，具备执行权限，通过调用板端 API `/board/ready_for_merge` 获取待合入卡片数量，提取 count 并以 `ready_count=N` 格式进行输出。
+- 测试结果：
+  ```
+  $ scripts/ready-probe.sh
+  ready_count=0
+  ```
+  符合格式验证。
+- push 证据：`666dcd5fcde6068a2dec3b5d3b428e3c446e4540`
