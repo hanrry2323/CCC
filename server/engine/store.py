@@ -35,6 +35,9 @@ logger = logging.getLogger("ccc.engine.store")
 # lookahead 保留 `·` 前的空格，不消费
 _STATE_PAIR_RE = re.compile(r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)")
 
+# 待分派（重试2/3：原因）或 待分派（重试2：原因）→ 持久化 retry_count
+_RETRY_IN_STATE_RE = re.compile(r"待分派（重试(\d+)")
+
 # 卡头状态字符串 → State 枚举
 _STR_TO_STATE: dict[str, State] = {
     "待分派": State.TODO,
@@ -43,6 +46,22 @@ _STR_TO_STATE: dict[str, State] = {
     "已关闭": State.CLOSED,
     "打回": State.REJECTED,
 }
+
+
+def _retry_count_from_state_str(raw_state: str) -> int:
+    """从卡头状态串解析重试次数。"""
+    if not raw_state:
+        return 0
+    m = _RETRY_IN_STATE_RE.search(raw_state)
+    if m:
+        try:
+            return max(0, int(m.group(1)))
+        except ValueError:
+            return 0
+    # 兼容旧式「待分派（原因）」：至少记 1 次已回炉
+    if "待分派（" in raw_state:
+        return 1
+    return 0
 
 
 def _state_from_str(s: str) -> State:
@@ -132,10 +151,8 @@ class FileBoardStore:
             rel_path = entry.get("path", "")
             abs_path = project_root / rel_path
 
-            retry_count = 0
             raw_state = entry.get("state", "")
-            if raw_state and "待分派（" in raw_state:
-                retry_count = 1
+            retry_count = _retry_count_from_state_str(str(raw_state or ""))
 
             work = Work(
                 id=entry["id"],
@@ -169,13 +186,16 @@ class FileBoardStore:
             return
         text = path.read_text(encoding="utf-8")
         new_state_str = work.state.value
-        # 打回时附首个问题（截断）作为状态行注释
+        # 打回 / 待分派重试：附首个问题（截断）；重试带 n/max 便于跨心跳恢复
         if work.state is State.REJECTED and work.problems:
             reason = work.problems[0][:40]
             new_state_str = f"打回（{reason}）"
-        elif work.state is State.TODO and work.problems:
-            reason = work.problems[0][:40]
-            new_state_str = f"待分派（{reason}）"
+        elif work.state is State.TODO and (work.problems or work.retry_count > 0):
+            reason = (work.problems[0] if work.problems else "重试")[:32]
+            if work.retry_count > 0:
+                new_state_str = f"待分派（重试{work.retry_count}：{reason}）"
+            else:
+                new_state_str = f"待分派（{reason}）"
 
         try:
             new_text = _replace_state_in_metadata(text, new_state_str)
@@ -224,6 +244,7 @@ class FileBoardStore:
             parent=item.parent or "",
             thread_id=item.thread_id,
             acceptance=(item.acceptance or "") if item.acceptance != "未知" else "",
+            retry_count=_retry_count_from_state_str(item.state or ""),
         )
 
 

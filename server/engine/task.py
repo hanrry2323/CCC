@@ -1,7 +1,8 @@
 """work 数据结构 + 契约 §2 状态机。
 
 契约 §2 五态：`待分派 → 执行中 → 已回写 → 已关闭`；
-失败路径 `执行中/已回写 → 打回（附问题清单）`，人工处理后 `打回 → 待分派` 重新派发。
+失败路径：先附原因回 `待分派` 自动重试（最多 N 次）；用尽后才 `打回`。
+人工仍可 `打回 → 待分派`。
 非法状态转移一律抛 `IllegalTransitionError`。
 
 用法：
@@ -39,7 +40,8 @@ class State(StrEnum):
 _LEGAL_TRANSITIONS: dict[State, frozenset[State]] = {
     State.TODO: frozenset({State.RUNNING}),
     State.RUNNING: frozenset({State.DONE, State.REJECTED, State.TODO}),
-    State.DONE: frozenset({State.CLOSED, State.REJECTED}),
+    # 机审失败：已回写 → 待分派（带原因自动重试），用尽后才打回
+    State.DONE: frozenset({State.CLOSED, State.REJECTED, State.TODO}),
     State.REJECTED: frozenset({State.TODO}),
     State.CLOSED: frozenset(),
 }

@@ -150,13 +150,13 @@ class TestRunOnceRealDispatch:
         assert [w.id for w in done] == ["w1"]
 
     def test_exit_nonzero_collected_as_rejected(self, tmp_path: Path) -> None:
-        """false 命令退出码 1 → work 收单为「打回」+ 问题清单。"""
+        """false 命令退出码 1 → 关闭重试时收单为「打回」+ 问题清单。"""
         reg_path = _write_demo_registry(tmp_path, command="false", args_template="")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="w2", role="开发执行体"))
         cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_RETRY_ONCE": "false"}
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -165,8 +165,30 @@ class TestRunOnceRealDispatch:
         assert rejected[0].id == "w2"
         assert any("退出码非 0" in p for p in rejected[0].problems)
 
+    def test_exit_nonzero_retries_to_todo(self, tmp_path: Path) -> None:
+        """默认最多重试 3 次：首次失败回待分派并写原因，不进打回。"""
+        reg_path = _write_demo_registry(tmp_path, command="false", args_template="")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(Work(id="w2r", role="开发执行体"))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_RETRIES": "3",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 0
+        assert not store.list_work(state=State.REJECTED)
+        pending = store.list_work(state=State.TODO)
+        assert len(pending) == 1
+        assert pending[0].retry_count == 1
+        assert any("退出码非 0" in p for p in pending[0].problems)
+
     def test_launch_failure_collected_as_rejected(self, tmp_path: Path) -> None:
-        """命令不存在 → 启动失败 → work 收单为「打回」。"""
+        """命令不存在 → 启动失败 → 关闭重试时打回。"""
         reg_path = _write_demo_registry(
             tmp_path, command="/nonexistent/command/xyz", args_template=""
         )
@@ -174,7 +196,7 @@ class TestRunOnceRealDispatch:
         store = InMemoryBoardStore()
         store.seed(Work(id="w3", role="开发执行体"))
         cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_RETRY_ONCE": "false"}
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -531,10 +553,7 @@ class TestFileBoardStore:
         assert "Tarch" not in ids
 
     def test_reclaim_orphaned_running_with_marker(self, tmp_path: Path) -> None:
-        """有 .running 标记的执行中 → 打回；无标记（manual 挂起）保留。
-
-        遗留标记纯 ``1``（无 pid=）仍按孤儿回收。
-        """
+        """有 .running 标记的执行中 → 回待分派重派；无标记（manual 挂起）保留。"""
         from server.engine.main import reclaim_orphaned_running
 
         reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
@@ -548,12 +567,12 @@ class TestFileBoardStore:
         (log_dir / "auto1.running").write_text("1", encoding="utf-8")
         n = reclaim_orphaned_running(store, log_dir)
         assert n == 1
-        assert store.list_work(state=State.REJECTED)[0].id == "auto1"
+        assert store.list_work(state=State.TODO)[0].id == "auto1"
         assert store.list_work(state=State.RUNNING)[0].id == "man1"
         assert not (log_dir / "auto1.running").exists()
 
     def test_reclaim_skips_live_owner_pid(self, tmp_path: Path) -> None:
-        """标记 pid=<本进程> 且进程存活 → 不打回（防双 Engine 撞车）。"""
+        """标记 pid=<本进程> 且进程存活 → 不回收（防双 Engine 撞车）。"""
         import os
 
         from server.engine.main import reclaim_orphaned_running
@@ -569,7 +588,7 @@ class TestFileBoardStore:
         n = reclaim_orphaned_running(store, log_dir)
         assert n == 1
         assert [w.id for w in store.list_work(state=State.RUNNING)] == ["live1"]
-        assert store.list_work(state=State.REJECTED)[0].id == "dead1"
+        assert store.list_work(state=State.TODO)[0].id == "dead1"
         assert (log_dir / "live1.running").is_file()
         assert not (log_dir / "dead1.running").exists()
 
@@ -927,32 +946,38 @@ class TestParallelAndRelayGuard:
         assert any("执行超时" in p for p in w.problems)
 
     def test_reject_after_retry_fails_again(self, tmp_path: Path) -> None:
-        """重派仍失败：最终打回并附原问题。"""
+        """已重试满 3 次仍失败 → 打回并附原因。"""
         reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="10")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
-        # Seed a work that has already been retried once! (retry_count=1)
-        store.seed(Work(id="ret2", role="开发执行体", card_path=str(tmp_path / "ret2.md"), retry_count=1))
+        store.seed(
+            Work(
+                id="ret2",
+                role="开发执行体",
+                card_path=str(tmp_path / "ret2.md"),
+                retry_count=3,
+            )
+        )
         cfg = {
             "DATA_DIR": str(tmp_path),
             "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-            "EXECUTOR_TIMEOUT_SECONDS": "1",  # Force timeout
+            "EXECUTOR_TIMEOUT_SECONDS": "1",
             "EXECUTOR_MAX_CONCURRENT": "1",
-            "EXECUTOR_PROBE_URL": "",  # Disable probe
-            "EXECUTOR_RETRY_ONCE": "true",
+            "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_MAX_RETRIES": "3",
         }
 
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
-        assert summary["timed_out"] == 1  # Incremented
+        assert summary["timed_out"] == 1
 
         rejected = store.list_work(state=State.REJECTED)
         assert len(rejected) == 1
         w = rejected[0]
         assert w.id == "ret2"
         assert w.state is State.REJECTED
-        assert any("执行超时" in p for p in w.problems)
+        assert any("超时" in p for p in w.problems)
 
 
 class TestEngineWorktree:
@@ -1200,11 +1225,11 @@ class TestRunOnceFakeSuccessGuard:
         store.seed(Work(id="T-fake", role="开发执行体", card_path=str(card_path)))
         cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
                "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": ""}
+               "EXECUTOR_PROBE_URL": "", "EXECUTOR_RETRY_ONCE": "false"}
         return run_once(reg, store, cfg), store, worktree_base
 
     def test_exit_zero_no_product_rejected(self, tmp_path: Path, monkeypatch) -> None:
-        """① returncode 0 + worktree 无新 commit → 打回（机械门禁）。"""
+        """① returncode 0 + worktree 无新 commit → 打回（机械门禁，重试关闭）。"""
         monkeypatch.chdir(tmp_path)
         summary, store, wt = self._run_worktree_dispatch(tmp_path, "echo")
         assert summary["dispatched"] == 1
@@ -1258,7 +1283,7 @@ class TestRunOnceFakeSuccessGuard:
         store.seed(Work(id="T-fake3", role="开发执行体", card_path=str(card_path)))
         cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
                "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": ""}
+               "EXECUTOR_PROBE_URL": "", "EXECUTOR_RETRY_ONCE": "false"}
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 0
         rejected = store.list_work(state=State.REJECTED)
@@ -1266,7 +1291,7 @@ class TestRunOnceFakeSuccessGuard:
         assert any("无有效产物" in p for p in rejected[0].problems)
 
     def test_exit_zero_card_only_no_longer_collected(self, tmp_path: Path, monkeypatch) -> None:
-        """④ 仅卡头已回写、无新 commit → 打回（取消卡头单独过门）。"""
+        """④ 仅卡头已回写、无新 commit → 打回（取消卡头单独过门，重试关闭）。"""
         monkeypatch.chdir(tmp_path)
         _init_src_repo(tmp_path)
         worktree_base = tmp_path / "wt"
@@ -1281,7 +1306,7 @@ class TestRunOnceFakeSuccessGuard:
         store.seed(Work(id="T-fake4", role="开发执行体", card_path=str(card_path)))
         cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
                "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": ""}
+               "EXECUTOR_PROBE_URL": "", "EXECUTOR_RETRY_ONCE": "false"}
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 0
         assert store.list_work(state=State.REJECTED)

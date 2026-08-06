@@ -32,6 +32,13 @@ class TestWorkStateMachine:
         work.transition(State.REJECTED, problems=["硬编码未清零"])
         assert work.state is State.REJECTED
 
+    def test_done_to_todo_for_audit_retry(self) -> None:
+        """已回写 → 待分派（机审失败自动重试，附原因）。"""
+        work = Work(id="w3b", role="开发执行体", state=State.DONE)
+        work.transition(State.TODO, problems=["机审：不通过"])
+        assert work.state is State.TODO
+        assert work.problems == ["机审：不通过"]
+
     def test_rejected_redispatch_to_todo(self) -> None:
         """打回 → 待分派（人工处理问题后重新派发）。"""
         work = Work(id="w4", role="开发执行体", state=State.REJECTED)

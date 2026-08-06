@@ -125,7 +125,7 @@ def probe_relay(url: str, timeout: int = 5) -> bool:
 
 
 def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tuple[bool, str]:
-    """判断执行体是否因上游问题非正常结束（退出码非 0 且日志含超时/网络特征，或执行超时）。"""
+    """历史辅助：识别超时/网络特征（现失败默认均可回待分派重试，本函数仅供摘要）。"""
     if any("超时" in p for p in problems) or any("timeout" in p.lower() for p in problems):
         return True, "执行超时"
 
@@ -147,6 +147,54 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tu
             logger.warning("读取日志判断重试失败: %s (%s)", log_path, exc)
 
     return False, ""
+
+
+def max_retries_from_cfg(cfg: dict[str, Any]) -> int:
+    """失败回待分派上限。``EXECUTOR_RETRY_ONCE=false`` → 0（首次即打回）。"""
+    retry_enabled = str(cfg.get("EXECUTOR_RETRY_ONCE", "true")).lower() in ("true", "1", "yes")
+    if not retry_enabled:
+        return 0
+    try:
+        return max(0, int(cfg.get("EXECUTOR_MAX_RETRIES") or 3))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _fail_retry_or_reject(
+    work: Work,
+    store: BoardStore,
+    problems: list[str],
+    cfg: dict[str, Any],
+) -> bool:
+    """失败：写原因；未达上限 → 待分派并 ``retry_count+=1``；否则打回。
+
+    Returns:
+        True 若已回待分派（将再派）；False 若已打回。
+    """
+    max_r = max_retries_from_cfg(cfg)
+    reasons = list(problems) if problems else ["失败（未附原因）"]
+    if work.retry_count < max_r:
+        work.retry_count += 1
+        work.transition(State.TODO, problems=reasons)
+        store.save_work(work)
+        logger.info(
+            "失败回待分派重试: work=%s retry=%d/%d problems=%s",
+            work.id,
+            work.retry_count,
+            max_r,
+            reasons[:2],
+        )
+        return True
+    work.transition(State.REJECTED, problems=reasons)
+    store.save_work(work)
+    logger.warning(
+        "重试用尽打回: work=%s retry=%d/%d problems=%s",
+        work.id,
+        work.retry_count,
+        max_r,
+        reasons[:2],
+    )
+    return False
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -626,10 +674,10 @@ def _parse_running_marker_pid(raw: str) -> int | None:
 def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     """回收带 ``{work_id}.running`` 标记的「执行中」残留（AUTO 崩溃未收单）。
 
-    manual 挂起等人不会写标记，故不被误打回。
+    manual 挂起等人不会写标记，故不被误回收。
     若标记含任一存活 PID（Engine 收单进程 **或** 子 CLI），**跳过回收**——
-    避免 launchd KeepAlive / 手动 ``--once`` / Engine 重启误打回仍在跑的 CLI。
-    返回打回张数。
+    避免 launchd KeepAlive / 手动 ``--once`` / Engine 重启误杀仍在跑的 CLI。
+    死标记 → 回「待分派」自动重派（不进打回）。返回重派张数。
     """
     n = 0
     for w in store.list_work(state=State.RUNNING):
@@ -651,13 +699,14 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
             )
             continue
         try:
+            # 不进打回：回待分派自动再派（避免 kickstart 误杀长任务）
             w.transition(
-                State.REJECTED,
-                problems=["Engine 中断未收单，自动打回"],
+                State.TODO,
+                problems=["Engine 中断未收单，自动重派"],
             )
             store.save_work(w)
             n += 1
-            logger.warning("回收孤儿执行中: work=%s → 打回", w.id)
+            logger.warning("回收孤儿执行中: work=%s → 待分派（重派）", w.id)
         except Exception:
             logger.exception("回收孤儿执行中失败: work=%s", w.id)
         try:
@@ -827,40 +876,27 @@ def _run_auto_worker(
             if audit_ok:
                 outcome["collected"] = 1
             else:
-                work.transition(State.REJECTED, problems=audit_problems)
-                store.save_work(work)
-                logger.warning("机审失败: work=%s → 打回 %s", work.id, audit_problems)
+                # 机审已写失败原因 → 回待分派重试；用尽才打回（不改 validate/NG）
+                reasons = list(audit_problems) if audit_problems else ["机审：不通过"]
+                _fail_retry_or_reject(work, store, reasons, cfg)
+                logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
         else:
-            retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
-            is_retryable = False
-            retry_reason = ""
-            if retry_enabled and work.retry_count == 0:
-                is_retryable, retry_reason = is_retryable_failure(work.id, problems, log_dir)
-
-            if is_retryable:
-                logger.info(
-                    "自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派",
-                    work.id,
-                    work.retry_count,
-                    retry_reason,
-                )
-                work.retry_count = 1
-                work.transition(State.TODO, problems=[retry_reason])
-                store.save_work(work)
-            else:
-                if any("超时" in p for p in problems):
-                    outcome["timed_out"] = 1
-                work.transition(State.REJECTED, problems=problems)
-                store.save_work(work)
-                logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
+            # 补一句可读原因（超时/网络特征优先）
+            _, hint = is_retryable_failure(work.id, problems, log_dir)
+            reasons = list(problems) if problems else ["执行失败"]
+            if hint and hint not in reasons[0]:
+                reasons = [hint, *reasons]
+            retried = _fail_retry_or_reject(work, store, reasons, cfg)
+            # 催单计数：仅最终打回时记 timed_out（回待分派不算）
+            if (not retried) and any("超时" in p for p in reasons):
+                outcome["timed_out"] = 1
     except Exception as exc:
         logger.exception("Worker 异常: work=%s: %s", work.id, exc)
         try:
-            if work.state is State.RUNNING:
-                work.transition(State.REJECTED, problems=[f"worker 异常: {exc}"])
-                store.save_work(work)
+            if work.state in (State.RUNNING, State.DONE):
+                _fail_retry_or_reject(work, store, [f"worker 异常: {exc}"], cfg)
         except Exception:
-            logger.exception("Worker 异常后打回失败: work=%s", work.id)
+            logger.exception("Worker 异常后失败流转失败: work=%s", work.id)
     finally:
         _clear_running_marker(log_dir, work.id)
     return outcome

@@ -49,6 +49,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     "EXECUTOR_MAX_CONCURRENT": "2",
     "EXECUTOR_PROBE_URL": "http://127.0.0.1:6100/",
     "EXECUTOR_RETRY_ONCE": "true",
+    # 失败回待分派自动重试上限；用尽才打回。RETRY_ONCE=false 时视为 0
+    "EXECUTOR_MAX_RETRIES": "3",
     # 生产仓自动 git 对齐（人只 push；2017 Engine/看板自 pull）
     "CCC_AUTO_PULL": "1",
     "CCC_AUTO_PULL_REMOTE": "origin",
