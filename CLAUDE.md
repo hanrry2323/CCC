@@ -14,7 +14,7 @@ Guidance for agents editing CCC as **platform developer**.
 > **事实权威**：`docs/INDEX.md` §0（最高优先级）· **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.70.0**）  
 > **叙事**：`docs/VISION.md` 仍含 Hub 时期段落（标待核）——**冲突时以 §0 / CURSOR / 本文件 2026-08-06 席位为准**。
 
-> **文档硬约束（读写必遵）**：读或写项目文档 / 注册项目 / 改前缀与路径 → 必须先按 `docs/DOC-PROTOCOL.md`；项目真值只认 `docs/projects/registry.yaml` + `docs/projects/<prefix>/README.md`。禁止落点表外新建文档、禁止双写 PREFIXES/kb-seed。
+> **文档硬约束（读写必遵）**：读或写项目文档 / 注册项目 / 改前缀与路径 / **出卡命名** → 必须先按 `docs/DOC-PROTOCOL.md`（§2 命名定死）；项目真值只认 `docs/projects/registry.yaml`。禁止落点表外新建、禁止口头起卡号、禁止双写 PREFIXES/kb-seed。
 
 > **开发方向（唯一基线 · 2026-08-06）**：
 > 出卡 → 2017 **OpenCode 开发** → 机械门禁 → 已回写 → **Claude 机审**（`## 机审区`）→ 老板说 **「验收看板」** → M1 终验关卡。  

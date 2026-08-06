@@ -1,12 +1,12 @@
-# T 卡 → 项目前缀映射表（T54 命名规则落地）
+# T 卡 → 项目前缀映射表（历史对照）
 
-> **用途**：历史 T1–T54 卡**不批量重命名**（保持 git 历史），本表是「全局编号 → 新规则命名」的唯一参考。
-> 旧卡引用仍写 `T<N>`（如 `T39`）；**新卡一律** `<前缀><三位序号>-<slug>.md` 且放 `docs/dispatch/<前缀>/` 子目录。
-> 规则配套：`server/board/validate.py`（命名门禁）· `scripts/new-card.sh`（新卡生成）· `server/board/loader.py`（子目录扫描）。
-> 本文件为说明文档（无 `# 任务卡` 卡头），loader/Engine 不把它当任务卡。
+> **用途**：历史 T1–T54 卡**不批量重命名**（保持 git 历史），本表是「全局编号 → 新规则命名」的对照。  
+> **新卡命名已定死**：见 [`docs/DOC-PROTOCOL.md`](../DOC-PROTOCOL.md) **§2**（唯一口径）。  
+> 旧卡引用仍写 `T<N>`；**新卡一律** `<前缀><三位序号>-<slug>.md` 且放 `docs/dispatch/<前缀>/`。  
+> 门禁：`server/board/validate.py` · `scripts/new-card.sh` · `server/board/loader.py`。  
+> 本文件无 `# 任务卡` 卡头，loader/Engine 不当任务卡。  
 >
-> **前缀表唯一事实源**：[`docs/projects/registry.yaml`](../projects/registry.yaml)（见 [`DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)）。  
-> 下表为 registry 的**可读摘要**；增删前缀只改 registry（+ 档案 README），勿只改本文件。
+> **前缀表唯一事实源**：[`docs/projects/registry.yaml`](../projects/registry.yaml)。下表仅为可读摘要。
 
 ## 前缀表
 

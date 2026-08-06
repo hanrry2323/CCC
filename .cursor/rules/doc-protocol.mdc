@@ -1,31 +1,36 @@
 ---
-description: 文档与项目注册硬规范——读写项目文档必须按 DOC-PROTOCOL / registry
+description: 文档与项目注册 + 任务卡命名硬规范（始终应用）
 alwaysApply: true
 ---
 
-# 文档与项目注册（硬 · 始终应用）
+# 文档 / 注册 / 卡命名（硬 · 始终应用）
 
-读写项目文档、注册/改项目、改出卡前缀或路径时，**必须**遵守：
+权威全文：`docs/DOC-PROTOCOL.md`（尤其 **§2 任务卡命名定死**）。
 
-1. `docs/DOC-PROTOCOL.md` — 写哪里 / 怎么写 / 禁写哪里  
-2. `docs/projects/registry.yaml` — 项目唯一事实源  
-3. `docs/projects/<prefix>/README.md` — 每项目一页（五节封顶）
+## 任务卡命名（定死 · 不许发明）
 
-## 落点（摘要）
+```
+docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md
+卡 ID = <prefix><NNN>
+分支  = codex/<文件名去.md>
+```
+
+- 前缀：registry 里 2–4 位小写；= 子目录 = 卡头「项目」
+- 序号：恰好三位，同前缀唯一自增
+- slug：`[a-z0-9]+(-[a-z0-9]+)*`
+- **只**用 `scripts/new-card.sh` 出卡；禁根目录新卡；禁新 `T*.md`；禁 `qh`
+
+## 落点
 
 | 意图 | 只写这里 |
 |------|----------|
-| 共识/权威 | 先 `docs/INDEX.md` §0 |
-| 下一程 | `docs/roadmap.md`「下一程挂账」一行 |
-| 注册项目 | `registry.yaml` + 对应 README |
-| 开发任务 | `docs/dispatch/<prefix>/` 出卡 |
-| 临时 | `docs/notes/`（7 天内处理） |
+| 共识 | 先 `docs/INDEX.md` §0 |
+| 下一程 | `docs/roadmap.md` 挂账一行 |
+| 注册项目 | `docs/projects/registry.yaml` + README |
+| 开发任务 | `new-card.sh` → `docs/dispatch/<prefix>/` |
+| 临时 | `docs/notes/`（7 天） |
 | 史 | `docs/archive/` |
 
 ## 禁止
 
-- 落点表外新建说明/设计文或 `docs/qb/` 类业务深文档树  
-- 只改 `PREFIXES` / `_is_taskable` / `kb-seed` 而不改 registry  
-- 口头注册项目；把 Hub 史文、`docs/kb-seed/` 当现行  
-
-最短路径：`INDEX §0` → `DOC-PROTOCOL` → 档案或出卡。
+落点外新建文档；双写 PREFIXES/kb-seed；口头注册或口头起卡号。

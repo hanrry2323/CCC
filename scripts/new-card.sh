@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# ── CCC 出卡模板：生成标准任务卡骨架（T52 基建 + T54 命名规则） ──
+# ── CCC 出卡模板：生成标准任务卡骨架（命名定死 · 见 docs/DOC-PROTOCOL.md §2） ──
 #
 # 生成 `<前缀><三位序号>-<slug>.md` 到 `<dispatch-dir>/<前缀>/` 子目录，
 # 包含标准卡头字段与 目标/红线/范围/步骤/验收标准/回写要求/回写区 七节；
 # 前缀序号自增（同前缀最大序号 +1，三位补零）+ 同名/同编号查重 + slug 校验；
 # 写卡后自动联动 `server/board/validate.py` 门禁（不合规卡直接删除报错）。
+#
+# 命名公式（硬）：docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md
+#   prefix = registry 前缀 = 子目录 = 卡头「项目」（2-4 位小写）
+#   NNN    = 三位数字，同前缀唯一
+#   slug   = [a-z0-9]+(-[a-z0-9]+)*
+# 分支惯例：codex/<文件名去.md>；禁止新 T*.md；禁止前缀 qh。
 #
 # 用法：
 #   scripts/new-card.sh [选项]
@@ -96,7 +102,7 @@ fi
 
 # ── T54：前缀 = 子目录名 = 卡头「项目」；粗校验（2-4 位小写字母），未知前缀由 validate 拦截 ──
 if [[ ! "$PROJECT_PREFIX" =~ ^[a-z]{2,4}$ ]]; then
-  echo "[ERROR] 前缀非法: ${PROJECT_PREFIX}（须 2-4 位小写字母，如 ccc/qb/hp/tst，见 T-mapping.md 前缀表）" >&2
+  echo "[ERROR] 前缀非法: ${PROJECT_PREFIX}（须 2-4 位小写字母；合法表见 docs/projects/registry.yaml · DOC-PROTOCOL §2）" >&2
   exit 2
 fi
 # QuantHive 禁止走 CCC（双轨独立）

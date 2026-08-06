@@ -2,7 +2,7 @@
 
 > **先读本页再进别的文件。** `docs/` 约 100+ 篇，多数是历史/烟测/专项；**不要按文件名新旧猜权威。**  
 > 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **VISION** → 专题 SSOT → 其余（旧 `loop-engineer-authority.md` 等已被重构方案取代，仅作史实）。  
-> **怎么写文档 / 怎么注册项目**：[`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) · [`projects/registry.yaml`](projects/registry.yaml)。
+> **怎么写文档 / 怎么注册项目 / 卡怎么命名**：[`DOC-PROTOCOL.md`](DOC-PROTOCOL.md)（§2 命名定死）· [`projects/registry.yaml`](projects/registry.yaml)。
 
 ---
 
@@ -17,7 +17,7 @@
 | **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（v0.70.0 架构重构） |
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
-| 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入规范**：写哪里 / 怎么写 / 禁写哪里；项目档案规则 |
+| 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；`<prefix><NNN>-<slug>`；只许 `new-card.sh` |
 | 2c | [`projects/registry.yaml`](projects/registry.yaml) | **项目注册唯一事实源**（前缀 / 路径 / taskable）；每项目一页见 `projects/<prefix>/README.md` |
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
 | 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |

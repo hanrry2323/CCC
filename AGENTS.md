@@ -6,9 +6,18 @@
 
 **读/写任何项目文档、注册项目、改路径/出卡前缀之前，必须先遵守：**
 
-1. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / 怎么写 / 禁写哪里  
+1. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **§2 卡命名定死** / 禁写哪里  
 2. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源  
-3. 对应 [`docs/projects/<prefix>/README.md`](docs/projects/) — 每项目一页档案（五节，禁止再长）
+3. 对应 [`docs/projects/<prefix>/README.md`](docs/projects/) — 每项目一页档案
+
+### 卡命名（定死 · 不许发明）
+
+```
+docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md
+ID=<prefix><NNN>  分支=codex/<文件名去.md>
+```
+
+只许 `scripts/new-card.sh`；禁根目录新卡；禁新 `T*.md`；禁 `qh`。
 
 | 意图 | 落点 |
 |------|------|
@@ -19,9 +28,7 @@
 | 临时笔记 | `docs/notes/`（7 天内进权威或归档） |
 | 史 | `docs/archive/`（文首标「史」） |
 
-**禁止**：落点表外新建「说明.md」/业务深文档树（如 `docs/qb/`）；双写 PREFIXES 与 registry；口头注册项目；把 `docs/kb-seed/` 当现行真值。
-
-Agent 最短路径：`INDEX §0` → `DOC-PROTOCOL` → 档案 README 或 `new-card.sh`。
+**禁止**：落点表外新建文档；双写 PREFIXES 与 registry；口头注册或口头起卡号。
 
 ## 双模式
 

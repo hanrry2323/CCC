@@ -51,5 +51,6 @@
 | 项 | 意图 | 备注 |
 |----|------|------|
 | **任务卡退役 / 高效管理** | 历史开发卡（尤其已关闭）不能无限堆在 `docs/dispatch/` 与 IDE agent 上下文里，否则扫卡/读仓会拖慢执行体效率 | 候选：关闭卡归档、看板已关闭 cap=10（已做）、scheduler 汇总退役、agent 只读活跃工作集 |
-| **文档与项目注册统一治理** | 少入口、单注册表、每项目一页；PREFIXES / KB seed / taskable 收成同一事实源 | 阶段 A（规范+骨架）已落盘：`DOC-PROTOCOL` + `projects/registry.yaml`；阶段 B 见卡 `ccc005`（代码单源 + 校验） |
+| **文档与项目注册统一治理** | 少入口、单注册表、每项目一页；PREFIXES / KB seed / taskable 收成同一事实源 | 阶段 A 已落盘；**卡命名已定死**见 `DOC-PROTOCOL` §2；阶段 B 卡 `ccc005` |
+
 | **product Hub 史减噪** | `product/hub-*` 等文首统一「史」或迁 archive，避免 agent 当现行 | 分期；白名单见 DOC-PROTOCOL |
