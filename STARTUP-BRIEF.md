@@ -19,7 +19,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 - **OpenCode**（日常）/ **Claude Code**（W2 点名）= 可后台 CLI 执行体（code/6102 vs flash/6100；卡头绑定）
 - **Cursor** = **难度开发突击手**（硬骨头 / 复杂排查修复 / 点名硬任务；不抢日常队列）
 - **Codex** = 自研驱动者 + 系统总维护 + 验收席（出卡 / 把控 / 独立验收）
-- **M1 IDE** = 开发智能中枢（打开 CCC 仓 + 已注册能力；Claude Code / OpenCode **开仓剧本**见 [`CLAUDE.md`](CLAUDE.md)「开仓作战卡片 / 双模式」）
+- **M1 IDE** = 开发智能中枢（打开 CCC 仓 + 已注册能力；Claude Code / OpenCode **开仓剧本**见 [`CLAUDE.md`](CLAUDE.md)「开仓作战卡片 / 双模式 / 大方案切片 SOP」）
 - **HTTP 看板/运维** = 人机实时面（主路径）
 - **Desktop** = 壳（**暂缓**，非主路径）
 - **Trae** = 停用（历史）
