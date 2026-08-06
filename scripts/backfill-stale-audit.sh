@@ -34,7 +34,10 @@ done
 cd "$PROJECT_ROOT"
 
 if [[ "$FROM_BOARD" == true ]]; then
-  mapfile -t IDS < <(
+  IDS=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && IDS+=("$line")
+  done < <(
     curl -sf --max-time 10 "${BOARD_URL}/board/snapshot" \
       | "$PYTHON_BIN" -c "
 import json,sys
