@@ -7,7 +7,7 @@ export function renderTaskCardDetail(t) {
   const flowHtml = `
     <div class="board-detail-section">
       <div class="board-detail-h">状态流转</div>
-      <div class="board-detail-flow">待分派 → 执行中 → 已回写 → 已关闭；打回 → 待分派（附问题清单）</div>
+      <div class="board-detail-flow">待分派 → 执行中 → 机审 → 已回写 → 已关闭；打回 → 待分派</div>
     </div>
   `;
 

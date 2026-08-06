@@ -29,8 +29,11 @@ PREFIXES: dict[str, str] = {
 # CCC 禁止出卡/派发的前缀（双轨独立 · 2026-08-06）：QuantHive 不走 CCC Engine
 FORBIDDEN_CARD_PREFIXES: frozenset[str] = frozenset({"qh"})
 
-# 契约 §2 五态
+# 契约 §2 五态（卡头唯一合法状态；校验用）
 STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")
+
+# 看板列（派生视图）：「已回写」且无机审通过 → 落入「机审」栏
+BOARD_COLUMNS: tuple[str, ...] = ("待分派", "执行中", "机审", "已回写", "已关闭", "打回")
 
 # P3 线路图桶（占位；已验收待确认 为预留空桶）
 ROADMAP_BUCKETS: tuple[str, ...] = (
@@ -66,6 +69,35 @@ def base_state(state: str) -> str:
     return base or UNKNOWN
 
 
+def machine_audit_passed_text(text: str) -> bool:
+    """卡正文 ``## 机审区`` 后 20 行内是否含通过标记。"""
+    if not text:
+        return False
+    lines = text.splitlines()
+    idx = -1
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## 机审区"):
+            idx = i
+            break
+    if idx == -1:
+        return False
+    for j in range(idx + 1, min(idx + 21, len(lines))):
+        line = lines[j]
+        if "机审：通过" in line or "✅" in line or "判定：通过" in line:
+            return True
+    return False
+
+
+def board_column(state: str, machine_audit_ok: bool) -> str:
+    """看板列：卡头五态派生；已回写且无机审通过 →「机审」。"""
+    base = base_state(state)
+    if base == "已回写" and not machine_audit_ok:
+        return "机审"
+    if base in BOARD_COLUMNS:
+        return base
+    return UNKNOWN
+
+
 @dataclass(frozen=True)
 class BoardItem:
     """一张任务卡派生出的看板视图行。
@@ -97,13 +129,17 @@ class BoardItem:
     thread_id: str = ""
     acceptance: str = UNKNOWN
     archived: bool = False
+    machine_audit_passed: bool = False
 
     def to_dict(self) -> dict[str, str | int | bool]:
         """转纯字典（JSON 可序列化）。"""
+        col = board_column(self.state, self.machine_audit_passed)
         return {
             "id": self.id,
             "title": self.title,
             "state": self.state,
+            "board_column": col,
+            "machine_audit_passed": self.machine_audit_passed,
             "project": self.project,
             "executor": self.executor,
             "dispatched_at": self.dispatched_at,

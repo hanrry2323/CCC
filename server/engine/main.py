@@ -19,6 +19,7 @@ Engine 职责（契约 §2/§7）：读取执行体注册表 → 派发（可后
 from __future__ import annotations
 
 import argparse
+import re
 import json
 import logging
 import os
@@ -236,25 +237,85 @@ def _card_is_written_back(card_path: str) -> bool:
 
 
 def _card_machine_audit_passed(card_path: str) -> bool:
-    """卡正文 ``## 机审区`` 后 20 行内是否含通过标记（``机审：通过`` / ``✅`` / ``判定：通过``）。"""
+    """卡正文 ``## 机审区`` 后是否含通过标记。"""
     if not card_path:
         return False
     try:
-        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
+        text = Path(card_path).read_text(encoding="utf-8")
     except OSError:
         return False
-    idx = -1
+    from server.board.models import machine_audit_passed_text
+
+    return machine_audit_passed_text(text)
+
+
+def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
+    """worktree 内与生产卡相对路径对应的副本（机审常写在这里）。"""
+    if not worktree_path or not card_path:
+        return None
+    prod = Path(card_path)
+    # 常见：…/CCC/docs/dispatch/... → worktree/docs/dispatch/...
+    parts = prod.parts
+    for marker in ("docs", "dispatch"):
+        if marker in parts:
+            idx = parts.index(marker)
+            rel = Path(*parts[idx:])
+            cand = Path(worktree_path) / rel
+            if cand.is_file():
+                return cand
+    # 回退：同名文件
+    cand = Path(worktree_path) / "docs" / "dispatch" / prod.parent.name / prod.name
+    return cand if cand.is_file() else None
+
+
+def _extract_machine_audit_section(text: str) -> str:
+    """取出 ``## 机审区`` 起至下一 ``## `` 或文末。"""
+    lines = text.splitlines()
+    start = -1
     for i, line in enumerate(lines):
         if line.strip().startswith("## 机审区"):
-            idx = i
+            start = i
             break
-    if idx == -1:
+    if start < 0:
+        return ""
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## ") and not lines[j].strip().startswith("## 机审区"):
+            end = j
+            break
+    return "\n".join(lines[start:end]).rstrip() + "\n"
+
+
+def _sync_machine_audit_from_worktree(work: Work, worktree_path: str) -> bool:
+    """若生产卡无机审通过、worktree 卡有 → 把 ## 机审区 合并进生产卡。"""
+    if not work.card_path or _card_machine_audit_passed(work.card_path):
+        return _card_machine_audit_passed(work.card_path)
+    wt_card = _worktree_card_candidate(worktree_path, work.card_path)
+    if wt_card is None or not _card_machine_audit_passed(str(wt_card)):
         return False
-    for j in range(idx + 1, min(idx + 21, len(lines))):
-        line = lines[j]
-        if "机审：通过" in line or "✅" in line or "判定：通过" in line:
-            return True
-    return False
+    try:
+        section = _extract_machine_audit_section(wt_card.read_text(encoding="utf-8"))
+        if not section.strip():
+            return False
+        prod = Path(work.card_path)
+        prod_text = prod.read_text(encoding="utf-8")
+        # 仅当存在「标题行」机审区才替换；正文「禁止写 ## 机审区」不算
+        if re.search(r"^##\s*机审区\s*$", prod_text, flags=re.MULTILINE):
+            prod_text = re.sub(
+                r"^##\s*机审区[^\n]*\n.*?(?=^##\s|\Z)",
+                section,
+                prod_text,
+                count=1,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+        else:
+            prod_text = prod_text.rstrip() + "\n\n" + section
+        prod.write_text(prod_text, encoding="utf-8")
+        logger.info("机审区已从 worktree 同步到生产卡: %s ← %s", work.card_path, wt_card)
+        return _card_machine_audit_passed(work.card_path)
+    except OSError as exc:
+        logger.warning("同步机审区失败: %s", exc)
+        return False
 
 
 def _dispatch_and_collect(
@@ -569,6 +630,10 @@ def _run_machine_audit_after_writeback(
         return True, []
     logger.info("拉起机审: work=%s acceptor=%s", work.id, acceptor)
     _claim_running_marker(log_dir, f"{work.id}-audit")
+    worktree_hint = ""
+    wt_base = getattr(entry, "worktree_base", "") or ""
+    if wt_base:
+        worktree_hint = get_worktree_path(wt_base, work.id)
     try:
         ok, problems = _dispatch_and_collect(
             work,
@@ -582,10 +647,16 @@ def _run_machine_audit_after_writeback(
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
     if not ok:
+        # 退出非0也可能已写机审区到 worktree：先尝试同步
+        if worktree_hint and _sync_machine_audit_from_worktree(work, worktree_hint):
+            logger.info("机审进程失败但 worktree 机审区已同步通过: work=%s", work.id)
+            return True, []
         return False, problems or ["机审执行失败"]
-    if not _card_machine_audit_passed(work.card_path):
-        return False, ["机审结束但卡上无 ## 机审区 通过标记（机审：通过 / ✅ / 判定：通过）"]
-    return True, []
+    if _card_machine_audit_passed(work.card_path):
+        return True, []
+    if worktree_hint and _sync_machine_audit_from_worktree(work, worktree_hint):
+        return True, []
+    return False, ["机审结束但卡上无 ## 机审区 通过标记（机审：通过 / ✅ / 判定：通过）"]
 
 
 def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:

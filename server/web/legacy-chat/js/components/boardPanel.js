@@ -13,7 +13,7 @@ import { TaskCardList } from './taskCardList.js';
 import { renderTaskCardDetail } from './taskCardDetail.js';
 
 // 契约 §2 五态（与新栈 models.STATES 对齐；旧 backlog/planned/... 已退役）
-const STATES = ['待分派', '执行中', '已回写', '已关闭', '打回'];
+const STATES = ['待分派', '执行中', '机审', '已回写', '已关闭', '打回'];
 
 const PANEL_KEY = 'ccc_board_panel_open';
 const DETAIL_KEY = 'ccc_board_panel_detail';
@@ -164,11 +164,11 @@ export async function refreshBoardPanel(opts = {}) {
     } catch (_) { /* dirty 可选 */ }
     _toastTrackedTaskProgress(all);
 
-    // Sort: 打回 > 执行中 > 待分派 > 已回写 > 已关闭; same state sorted by update time desc
-    const order = { '打回': 0, '执行中': 1, '待分派': 2, '已回写': 3, '已关闭': 4 };
+    // Sort: 打回 > 执行中 > 机审 > 待分派 > 已回写 > 已关闭
+    const order = { '打回': 0, '执行中': 1, '机审': 2, '待分派': 3, '已回写': 4, '已关闭': 5 };
     all.sort((a, b) => {
-      const stateA = a.state || a.status || '待分派';
-      const stateB = b.state || b.status || '待分派';
+      const stateA = a.board_column || a.state || a.status || '待分派';
+      const stateB = b.board_column || b.state || b.status || '待分派';
       const oa = order[stateA] ?? 9;
       const ob = order[stateB] ?? 9;
       if (oa !== ob) return oa - ob;
@@ -187,9 +187,9 @@ export async function refreshBoardPanel(opts = {}) {
     });
 
     // Calculate counts for each state
-    const counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
+    const counts = { '待分派': 0, '执行中': 0, '机审': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
     for (const c of filtered) {
-      const st = c.state || c.status;
+      const st = c.board_column || c.state || c.status;
       if (counts[st] !== undefined) {
         counts[st]++;
       }

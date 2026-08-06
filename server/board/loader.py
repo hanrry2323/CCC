@@ -21,7 +21,7 @@ import json
 import re
 from pathlib import Path
 
-from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state
+from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state, board_column, machine_audit_passed_text
 from server.board.roles import normalize_tool
 
 logger = logging.getLogger("ccc.board.loader")
@@ -145,6 +145,7 @@ def parse_card(path: Path | str) -> BoardItem:
         acceptance=normalize_tool(_strip_parenthetical(meta.get("验收", UNKNOWN)))
         or UNKNOWN,
         archived=is_archived,
+        machine_audit_passed=machine_audit_passed_text(text),
     )
 
 
@@ -262,6 +263,8 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "thread_id": item.thread_id,
         "acceptance": item.acceptance,
         "archived": item.archived,
+        "machine_audit_passed": item.machine_audit_passed,
+        "board_column": board_column(item.state, item.machine_audit_passed),
     }
 
 

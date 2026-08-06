@@ -46,7 +46,7 @@
       "分类": "可后台 CLI",
       "当前绑定": "Claude Code",
       "命令": "claude",
-      "参数模板": "-p \"你是 2017 机审席。任务卡 {card_path}（work {work_id}）已由开发执行体回写。请：1) Read 卡全文与验收标准；2) 在 worktree {worktree} 核对 git log origin/main..HEAD 与 git diff --stat origin/main...HEAD；3) 独立取证，不采信回写区摘要。通过则在卡末追加「## 机审区」并写「机审：通过」+简要证据；不通过则写「机审：不通过」+问题清单，退出码非0。禁止改业务代码、禁止写 ## 验收区、禁止置已关闭。\"",
+      "参数模板": "-p \"你是 2017 机审席。任务卡绝对路径 {card_path}（work {work_id}）已由开发回写。请：1) Read 该绝对路径卡全文与验收标准；2) 在 worktree {worktree} 核对 git log/diff；3) 独立取证。通过则必须把「## 机审区」+「机审：通过」写进绝对路径卡文件 {card_path}（不要只改 worktree 相对副本）；不通过写「机审：不通过」并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。\"",
       "工作目录": "",
       "worktree_base": "",
       "备注": "OpenCode 开发后自动机审；只写 ## 机审区；终验归 M1「验收看板」"

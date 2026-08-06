@@ -1,7 +1,8 @@
 # 验收看板 SOP（M1 人工终验）
 
 > **状态：现行 · 2026-08-06**  
-> 两层验收：① 2017 机审（Engine 拉 Claude/OpenCode 写 `## 机审区`）② **本 SOP = M1 人工终验**（写 `## 验收区` + `已关闭`）。  
+> 两层验收：① 2017 机审（Engine 拉 Claude/OpenCode 写 `## 机审区`；看板「机审」栏）② **本 SOP = M1 人工终验**（写 `## 验收区` + `已关闭`）。  
+> 机审流程详述：[`machine-audit-flow.md`](machine-audit-flow.md)
 > 权威链：[`dev-channel.md`](dev-channel.md) · [`CLAUDE.md`](../../CLAUDE.md) · [`../INDEX.md`](../INDEX.md) §0
 
 ## 一句话

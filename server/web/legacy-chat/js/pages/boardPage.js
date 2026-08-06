@@ -15,11 +15,12 @@ import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
 import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
 
-/** 契约 §2 五态（与 server/board/models.py STATES 对齐）。 */
-const FLOW_COLS = ['待分派', '执行中', '已回写', '已关闭', '打回'];
+/** 看板列：五态派生，增加「机审」（已回写且无机审通过）。 */
+const FLOW_COLS = ['待分派', '执行中', '机审', '已回写', '已关闭', '打回'];
 const COLORS = {
   待分派: '#a39e93',
   执行中: '#c47a2c',
+  机审: '#8b6cc1',
   已回写: '#3d9a5f',
   已关闭: '#5a7a9a',
   打回: '#c44',
@@ -150,6 +151,7 @@ function html() {
         <option value="all">全部</option>
         <option value="待分派">待分派</option>
         <option value="执行中">执行中</option>
+        <option value="机审">机审</option>
         <option value="已回写">已回写</option>
         <option value="已关闭">已关闭</option>
         <option value="打回">打回</option>
@@ -366,7 +368,10 @@ function renderActiveView() {
     }
 
     for (const col of FLOW_COLS) {
-      const stateCards = filteredCards.filter(c => (c.state || c.status || '待分派') === col);
+      const stateCards = filteredCards.filter(c => {
+        const colKey = c.board_column || c.state || c.status || '待分派';
+        return colKey === col;
+      });
 
       const countEl = _root.querySelector(`#ct-${col}`);
       if (countEl) countEl.textContent = stateCards.length;

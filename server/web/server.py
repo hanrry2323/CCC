@@ -85,7 +85,7 @@ from server.board.queries import (
     view_recent,
     view_realtime,
 )
-from server.board.models import STATES, UNKNOWN, BoardItem, base_state
+from server.board.models import BOARD_COLUMNS, STATES, UNKNOWN, BoardItem, base_state, board_column
 from server.engine.cluster import (
     check_service_status,
     check_tcp_reachable,
@@ -300,6 +300,9 @@ def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
         "card_kind": card_kind,
         "parent_id": item.parent,
         "status": item.state,
+        "state": item.state,
+        "board_column": board_column(item.state, item.machine_audit_passed),
+        "machine_audit_passed": item.machine_audit_passed,
         "note": note,
         "executor": item.executor,
         "split_status": split_status,
@@ -307,18 +310,14 @@ def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
 
 
 def _build_snapshot(items: list[BoardItem], workspace: str = "") -> dict[str, Any]:
-    """构造 BoardSnapshot 兼容结构：columns（状态→BoardTask 列表）+ counts + workspace。
-
-    workspace 非空时按 project 过滤；include_hidden 参数接受但任务卡无 hidden 标记，
-    看板是派生视图（契约 §4），不另行过滤。
-    """
+    """构造 BoardSnapshot：columns 按看板列（含「机审」）分组。"""
     filtered = [i for i in items if not workspace or i.project == workspace]
-    columns: dict[str, list[dict]] = {}
+    columns: dict[str, list[dict]] = {col: [] for col in BOARD_COLUMNS}
     for item in filtered:
-        b = base_state(item.state)
-        bucket = b if b in STATES else UNKNOWN
+        col = board_column(item.state, item.machine_audit_passed)
+        bucket = col if col in columns else UNKNOWN
         columns.setdefault(bucket, []).append(_item_to_board_task(item))
-    counts = {state: len(columns.get(state, [])) for state in STATES}
+    counts = {col: len(columns.get(col, [])) for col in BOARD_COLUMNS}
     return {
         "columns": columns,
         "counts": counts,
@@ -1132,7 +1131,18 @@ class _APIHandler(BaseHTTPRequestHandler):
         if project:
             filtered = [c for c in filtered if c["project"].lower() == project.lower()]
         if state:
-            filtered = [c for c in filtered if c["state"] == state or base_state(c["state"]) == state]
+            from server.board.models import board_column as _board_column
+
+            def _match_col(c: dict, want: str = state) -> bool:
+                audit_ok = bool(c.get("machine_audit_passed", False))
+                col = c.get("board_column") or _board_column(c.get("state", ""), audit_ok)
+                return (
+                    c.get("state") == want
+                    or base_state(c.get("state", "")) == want
+                    or col == want
+                )
+
+            filtered = [c for c in filtered if _match_col(c)]
         if executor:
             filtered = [c for c in filtered if executor.lower() in c.get("executor", "").lower()]
         if dispatched_at:
@@ -1152,6 +1162,13 @@ class _APIHandler(BaseHTTPRequestHandler):
         cards_out: list[dict[str, Any]] = []
         for c in paginated:
             row = dict(c)
+            if "board_column" not in row:
+                from server.board.models import board_column as _bc
+
+                row["board_column"] = _bc(
+                    row.get("state", ""),
+                    bool(row.get("machine_audit_passed", False)),
+                )
             if base_state(c.get("state", "")) == "执行中":
                 row["dirty_files"] = get_dirty_files(c["id"])
             cards_out.append(row)
@@ -1228,7 +1245,18 @@ class _APIHandler(BaseHTTPRequestHandler):
         if project:
             filtered = [c for c in filtered if c["project"].lower() == project.lower()]
         if state:
-            filtered = [c for c in filtered if c["state"] == state or base_state(c["state"]) == state]
+            from server.board.models import board_column as _board_column
+
+            def _match_col_search(c: dict, want: str = state) -> bool:
+                audit_ok = bool(c.get("machine_audit_passed", False))
+                col = c.get("board_column") or _board_column(c.get("state", ""), audit_ok)
+                return (
+                    c.get("state") == want
+                    or base_state(c.get("state", "")) == want
+                    or col == want
+                )
+
+            filtered = [c for c in filtered if _match_col_search(c)]
         if executor:
             filtered = [c for c in filtered if executor.lower() in c.get("executor", "").lower()]
         if dispatched_at:

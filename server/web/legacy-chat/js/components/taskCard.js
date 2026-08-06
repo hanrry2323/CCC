@@ -1,12 +1,14 @@
 export const STATE_TONE = {
   '待分派': 'pending',
   '执行中': 'running',
+  '机审': 'audit',
   '已回写': 'written',
   '已关闭': 'closed',
   '打回': 'returned',
 
   'pending': 'pending',
   'running': 'running',
+  'audit': 'audit',
   'written': 'written',
   'closed': 'closed',
   'returned': 'returned'
@@ -15,12 +17,14 @@ export const STATE_TONE = {
 export const STATE_COLORS = {
   '待分派': '#a39e93',
   '执行中': '#c47a2c',
+  '机审': '#8b6cc1',
   '已回写': '#3d9a5f',
   '已关闭': '#5a7a9a',
   '打回': '#c44',
 
   'pending': '#a39e93',
   'running': '#c47a2c',
+  'audit': '#8b6cc1',
   'written': '#3d9a5f',
   'closed': '#5a7a9a',
   'returned': '#c44'

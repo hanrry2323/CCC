@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from server.board.models import (
+    BOARD_COLUMNS,
     ROADMAP_BUCKETS,
     STATE_TO_ROADMAP,
     STATES,
@@ -18,6 +19,7 @@ from server.board.models import (
     UNKNOWN,
     BoardItem,
     base_state,
+    board_column,
 )
 
 
@@ -38,14 +40,14 @@ def _parse_date(value: str) -> date | None:
 
 
 def view_realtime(items: list[BoardItem]) -> dict[str, list[dict]]:
-    """实时视图：按基础态分组（只含非空组；未知状态归入「未知」）。
+    """实时视图：按看板列分组（已回写且无机审通过 →「机审」栏）。
 
-    组键用 `base_state`（括号前基础态）；组内明细的 `state` 保留原文全串。
+    组内明细的 `state` 保留卡头原文；另含 `board_column`。
     """
-    grouped: dict[str, list[dict]] = {state: [] for state in STATES}
+    grouped: dict[str, list[dict]] = {col: [] for col in BOARD_COLUMNS}
     for item in items:
-        base = base_state(item.state)
-        bucket = base if base in grouped else UNKNOWN
+        col = board_column(item.state, item.machine_audit_passed)
+        bucket = col if col in grouped else UNKNOWN
         grouped.setdefault(bucket, []).append(item.to_dict())
     return {state: entries for state, entries in grouped.items() if entries}
 

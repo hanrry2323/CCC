@@ -1,6 +1,6 @@
 # 任务卡 ccc004 · register ccc-demo prefix cd（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -45,3 +45,17 @@
 ## 回写区
 
 **执行体**：OpenCode · 日期：
+
+## 机审区
+
+**机审：通过** · Claude Code（2017 机审席）· 2026-08-06
+
+独立取证（不采信回写区摘要），证据如下：
+- 分支 `codex/ccc004-register-ccc-demo-prefix`，`git log origin/main..HEAD` 恰 2 commit（`7ae942b1` feat + `4b26f0c3` 回写补记）。
+- `git diff origin/main...HEAD --stat` 仅 3 文件：两个白名单文件 + 本卡自身（状态/回写区）；无越界改动（符合范围/红线）。
+- `server/board/models.py` `PREFIXES` 含 `"cd": "ccc-demo"` ✔（验收 1）
+- `docs/dispatch/T-mapping.md` 含 `cd | ccc-demo | ccc-demo 项目（对应 ~/program/apps/ccc-demo）` ✔（验收 2）
+- `python3 -m server.board.validate docs/dispatch` 复跑无 error，仅既有 T 前缀提示 ✔（验收 3）
+- `bash scripts/new-card.sh --project cd --title probe --slug probe --dry-run` 复跑 exit 0，生成 `docs/dispatch/cd/cd001-probe.md`，命名门禁认可 `cd` ✔（验收 4）
+
+备注（不阻塞本卡）：`/Users/fan/program/CCC` 主仓工作树遗留未跟踪 `server/config/executors.json.bak-two-tier`（2547B，21:39），为部署配置备份、与本卡无关，请中枢另行清理。

@@ -21,6 +21,7 @@
 | 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC；两层验收 |
 | 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | M1「验收看板」终验 SOP |
+| 5d | [`product/machine-audit-flow.md`](product/machine-audit-flow.md) | 2017 机审流程 + 看板「机审」栏 |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |
 | 8 | [`../CLAUDE.md`](../CLAUDE.md) | 平台开发硬规则 + **开仓双模式（中枢/执行体）** + 开发命令 |
