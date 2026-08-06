@@ -451,6 +451,16 @@ def run_once(
     # 回收上次崩溃残留的 AUTO「执行中」（有 .running 标记；manual 挂起无标记）
     reclaimed = reclaim_orphaned_running(store, log_dir)
 
+    # 生产仓自动对齐 origin/main（人只 push；2017 自 pull，老板不参与中间运维）
+    try:
+        from server.git_sync import auto_pull_enabled, resolve_repo_root, sync_origin_main
+
+        if auto_pull_enabled(cfg):
+            dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
+            sync_origin_main(resolve_repo_root(dispatch_dir))
+    except Exception:
+        logger.exception("自动 git sync 失败，本轮继续用本地卡视图")
+
     pending = store.list_work(state=State.TODO)
     dispatched = 0
     collected = 0

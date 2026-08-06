@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 项目一句话
 
-CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯一事实源）+ HTTP 看板/运维实时面 + 2017 单端生产。M1 IDE（Claude Code / OpenCode）= 开发中枢（陪聊意图可出卡）；Desktop 壳暂缓。自研期可 M1/Codex 出卡，执行体按注册表派发，验收席关「已关闭」。开仓双模式 + 大方案切片 SOP SSOT：`CLAUDE.md`「开仓作战卡片」（禁止静默批量拆卡）。
+CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯一事实源）+ HTTP 看板/运维实时面 + 2017 单端生产。M1 IDE = 开发中枢（老板只聊意图+出卡，只看板/中继/Δ）；中间 pull/派发默认自动（`CCC_AUTO_PULL`）。Desktop 壳暂缓。开仓 SSOT：`CLAUDE.md`「开仓作战卡片」。
 
 ## 当前架构（2026-08-06 基线）
 

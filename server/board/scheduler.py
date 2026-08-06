@@ -40,8 +40,17 @@ def export_safe(
     """安全导出：先写临时文件，成功再 rename 覆盖旧文件。
 
     失败时保留旧 board.js + 记日志；不中断、不产生脏数据。
+    导出前尝试自动 git sync（与 Engine 同策略），使看板尽快看见新 push 的卡。
     """
     try:
+        try:
+            from server.git_sync import auto_pull_enabled, resolve_repo_root, sync_origin_main
+
+            if auto_pull_enabled():
+                sync_origin_main(resolve_repo_root(dispatch_dir))
+        except Exception:
+            logger.exception("export 前 git sync 失败，继续用本地卡导出")
+
         # 定时执行自动归档：关闭 >6 个月卡自动移入 docs/archive/ccc-tasks/<project>/
         try:
             from server.board.archive import archive_old_cards

@@ -49,6 +49,10 @@ OPTIONAL_KEYS: dict[str, str] = {
     "EXECUTOR_MAX_CONCURRENT": "2",
     "EXECUTOR_PROBE_URL": "http://127.0.0.1:6100/",
     "EXECUTOR_RETRY_ONCE": "true",
+    # 生产仓自动 git 对齐（人只 push；2017 Engine/看板自 pull）
+    "CCC_AUTO_PULL": "1",
+    "CCC_AUTO_PULL_REMOTE": "origin",
+    "CCC_AUTO_PULL_BRANCH": "main",
     # 大脑知识库检索（T37：/conversation 回答前检索 CCC 自建知识库）
     "CCC_BRAIN_KB": "0",
     "CCC_KB_INDEX_DIR": "",

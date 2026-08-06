@@ -32,12 +32,12 @@ SSOT 正文见根目录 [`CLAUDE.md`](../../CLAUDE.md)「开仓作战卡片」�
 
 | 模式 | 触发 | 做什么 | 禁止 |
 |------|------|--------|------|
-| **开发中枢** | 人在 M1 打开 `/Users/apple/program/CCC`（Claude Code / OpenCode） | 聊意图 →（大方案先走切片 SOP）→ `new-card.sh` → push main → 盯 `:7788` 到「已回写」 | 自写验收区、自置已关闭、跨仓当 CCC、**静默批量拆卡** |
+| **开发中枢** | 人在 M1 打开 `/Users/apple/program/CCC`（Claude Code / OpenCode） | 聊意图 → 出卡 push；**老板只看板/中继/Δ** | 自写验收区、自置已关闭、跨仓、把 pull/重启甩给老板 |
 | **产线执行体** | 2017 Engine `-p` | 白名单改动 → `codex/<id>-*` 分支 → 卡头「已回写」 | 重出卡、改验收区、置已关闭、直推 main、手改 2017 |
 
 工作区铁律：cwd 必须是 CCC 写源；发现 `qx-map` 等其它仓须当面点破。
 
-**大方案 → 多卡**：见 [`CLAUDE.md`](../../CLAUDE.md)「大方案切片 SOP」——切片表 → dry-run → 老板确认 → 真写 push → **2017 pull** → Engine 拾取。并行以 2017 `EXECUTOR_MAX_CONCURRENT` 为准（常为 1）。禁止静默批量拆卡。
+**自动链（老板不管）**：push → 2017 `CCC_AUTO_PULL`（Engine/看板扫描前对齐）→ 派发 → 已回写。大方案切片见 [`CLAUDE.md`](../../CLAUDE.md)；禁止静默批量拆卡，切片表在对话里点头即可。
 
 ---
 
