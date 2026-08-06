@@ -159,3 +159,34 @@ class TestResolveAndGet:
         # 缓存命中 → 仍为 0
         assert wd.get_dirty_files("T1") == 0
         assert wd.get_dirty_files("T1", force=True) == 1
+
+
+class TestLineChurn:
+    def test_clean_repo_zero(self, tmp_path: Path) -> None:
+        repo = tmp_path / "clean"
+        _init_git_repo(repo)
+        assert wd.count_line_churn(repo) == (0, 0)
+
+    def test_modified_and_new_tracked(self, tmp_path: Path) -> None:
+        repo = tmp_path / "churn"
+        _init_git_repo(repo)
+        (repo / "seed.txt").write_text("ok\nline2\n", encoding="utf-8")
+        (repo / "new.txt").write_text("a\nb\n", encoding="utf-8")
+        subprocess.run(["git", "add", "new.txt"], cwd=repo, check=True, capture_output=True)
+        ins, dele = wd.count_line_churn(repo) or (None, None)
+        assert ins is not None and dele is not None
+        assert ins >= 3  # seed +1 line, new.txt 2 lines
+        assert dele >= 0
+
+    def test_metrics_includes_lines(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        base = tmp_path / "ccc-dev-ws"
+        monkeypatch.setenv("CCC_WORKTREE_BASE", str(base))
+        monkeypatch.delenv("EXECUTOR_REGISTRY_PATH", raising=False)
+        wt = tmp_path / "ccc-dev-ws-t7"
+        _init_git_repo(wt)
+        (wt / "seed.txt").write_text("changed\n", encoding="utf-8")
+        m = wd.get_worktree_metrics("T7", force=True)
+        assert m["dirty_files"] == 1
+        assert m["lines_insert"] is not None
+        assert m["lines_delete"] is not None
+        assert (m["lines_insert"] or 0) + (m["lines_delete"] or 0) >= 1

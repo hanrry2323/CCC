@@ -13,7 +13,7 @@ import { TaskCardList } from './taskCardList.js';
 import { renderTaskCardDetail } from './taskCardDetail.js';
 
 // 契约 §2 五态（与新栈 models.STATES 对齐；旧 backlog/planned/... 已退役）
-const STATES = ['待分派', '执行中', '机审', '已回写', '已关闭', '打回'];
+const STATES = ['待分派', '执行中', '机审', '已回写', '打回', '已关闭'];
 
 const PANEL_KEY = 'ccc_board_panel_open';
 const DETAIL_KEY = 'ccc_board_panel_detail';
@@ -153,13 +153,16 @@ export async function refreshBoardPanel(opts = {}) {
       const running = await apiGet('/tasks/running');
       const byId = new Map();
       for (const t of running.tasks || []) {
-        if (t && t.work_id) byId.set(t.work_id, t.dirty_files);
+        if (t && t.work_id) byId.set(t.work_id, t);
       }
       for (const c of all) {
-        if (byId.has(c.id)) {
-          const d = byId.get(c.id);
-          if (d != null) c.dirty_files = d;
-        }
+        const t = byId.get(c.id);
+        if (!t) continue;
+        if (t.dirty_files != null) c.dirty_files = t.dirty_files;
+        if (t.lines_insert != null) c.lines_insert = t.lines_insert;
+        if (t.lines_delete != null) c.lines_delete = t.lines_delete;
+        if (t.branch_insert != null) c.branch_insert = t.branch_insert;
+        if (t.branch_delete != null) c.branch_delete = t.branch_delete;
       }
     } catch (_) { /* dirty 可选 */ }
     _toastTrackedTaskProgress(all);
@@ -187,7 +190,7 @@ export async function refreshBoardPanel(opts = {}) {
     });
 
     // Calculate counts for each state
-    const counts = { '待分派': 0, '执行中': 0, '机审': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
+    const counts = { '待分派': 0, '执行中': 0, '机审': 0, '已回写': 0, '打回': 0, '已关闭': 0 };
     for (const c of filtered) {
       const st = c.board_column || c.state || c.status;
       if (counts[st] !== undefined) {

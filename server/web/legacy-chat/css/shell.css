@@ -1647,3 +1647,29 @@ body.ro-viewer [data-write] {
   font-size: 11px;
   color: var(--ccc-text-muted);
 }
+
+.roadmap-backlog {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--ccc-border-subtle);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ccc-bg-layer) 70%, transparent);
+}
+.roadmap-backlog-h {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ccc-text-secondary);
+}
+.roadmap-backlog-item {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ccc-text-muted);
+}
+.board-col-cap {
+  margin-left: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ccc-text-faint);
+}

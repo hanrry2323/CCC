@@ -32,8 +32,8 @@ FORBIDDEN_CARD_PREFIXES: frozenset[str] = frozenset({"qh"})
 # 契约 §2 五态（卡头唯一合法状态；校验用）
 STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")
 
-# 看板列（派生视图）：「已回写」且无机审通过 → 落入「机审」栏
-BOARD_COLUMNS: tuple[str, ...] = ("待分派", "执行中", "机审", "已回写", "已关闭", "打回")
+# 看板列（派生视图）：「已回写」且无机审通过 →「机审」；已关闭置末
+BOARD_COLUMNS: tuple[str, ...] = ("待分派", "执行中", "机审", "已回写", "打回", "已关闭")
 
 # P3 线路图桶（占位；已验收待确认 为预留空桶）
 ROADMAP_BUCKETS: tuple[str, ...] = (

@@ -15,7 +15,7 @@
 
 import { apiGet } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
-import { fmtTaskCopy } from '../components/taskCard.js';
+import { fmtTaskCopy, renderWorktreeBadges } from '../components/taskCard.js';
 
 let _root = null;
 let _timer = null;   // 看板快照轮询（15s）
@@ -168,10 +168,7 @@ function runningCard(t) {
   const active = t.last_activity_at ? recent : (t.elapsed_s != null);
   const label = t.last_activity_at ? (active ? '活动' : '空闲') : '运行中';
   const color = '#2f7dd1'; // Blue tone for running background processes
-  const dirty =
-    t.dirty_files != null && t.dirty_files !== '' && Number(t.dirty_files) >= 0
-      ? `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数">Δ ${esc(String(t.dirty_files))}</span>`
-      : '';
+  const dirty = renderWorktreeBadges(t);
 
   return `
     <div class="board-task-card board-card board-card-work state-running running"
@@ -183,9 +180,9 @@ function runningCard(t) {
       </div>
       <div class="board-card-title ti" style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${esc(t.title || t.work_id)}</div>
 
-      <div style="font-size: 11px; color: var(--ccc-text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+      <div style="font-size: 11px; color: var(--ccc-text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <span>@${esc(t.executor || '')}</span>
-        ${dirty}
+        <span class="board-card-stats">${dirty}</span>
         <span>·</span>
         <span>已用时 ${fmtElapsed(t.elapsed_s)}</span>
         <span style="flex:1"></span>

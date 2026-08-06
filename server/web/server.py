@@ -310,18 +310,28 @@ def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
 
 
 def _build_snapshot(items: list[BoardItem], workspace: str = "") -> dict[str, Any]:
-    """构造 BoardSnapshot：columns 按看板列（含「机审」）分组。"""
+    """构造 BoardSnapshot：columns 按看板列（含「机审」）分组；已关闭最多 10 条最近。"""
     filtered = [i for i in items if not workspace or i.project == workspace]
     columns: dict[str, list[dict]] = {col: [] for col in BOARD_COLUMNS}
     for item in filtered:
         col = board_column(item.state, item.machine_audit_passed)
         bucket = col if col in columns else UNKNOWN
         columns.setdefault(bucket, []).append(_item_to_board_task(item))
+    # 已关闭：按回写/关闭时间倒序，最多 10 条（避免历史卡淹没看板）
+    closed = columns.get("已关闭") or []
+    if closed:
+        def _closed_key(row: dict) -> str:
+            return str(row.get("written_at") or row.get("closed_at") or row.get("dispatched_at") or "")
+
+        closed_sorted = sorted(closed, key=_closed_key, reverse=True)
+        columns["已关闭"] = closed_sorted[:10]
     counts = {col: len(columns.get(col, [])) for col in BOARD_COLUMNS}
     return {
         "columns": columns,
         "counts": counts,
         "workspace": workspace or "all",
+        "closed_capped": True,
+        "closed_limit": 10,
     }
 
 
@@ -737,15 +747,15 @@ def _tail_lines(path: Path, n: int = 5) -> list[str]:
 
 
 def _load_running_tasks() -> dict[str, Any]:
-    """GET /tasks/running：执行中任务进程视图（T53）+ worktree dirty 文件数。
+    """GET /tasks/running：执行中任务进程视图（T53）+ worktree 改动指标。
 
     - 数据源：docs/dispatch 卡头状态 == 执行中（真实队列语义，manual 卡不在此列）；
     - 日志尾部读 ``EXECUTOR_LOG_DIR/<work_id>.log``（存在时）；
       开始时间用日志文件 ctime，最近活动用 mtime，已用时 = now - ctime；
     - 无日志文件（如历史遗留/无进程）→ 仅卡信息，日志为空、已用时未知。
-    - dirty_files：对应 Engine worktree 的 ``git status --porcelain`` 行数（短缓存）。
+    - dirty_files / lines_*：worktree 未提交文件数与行变更（短缓存；非 LLM 调用次数）。
     """
-    from server.web.worktree_dirty import get_dirty_files
+    from server.web.worktree_dirty import get_worktree_metrics
 
     items = _load_board_items()
     log_dir = _executor_log_dir()
@@ -754,6 +764,7 @@ def _load_running_tasks() -> dict[str, Any]:
     for item in items:
         if base_state(item.state) != "执行中":
             continue
+        metrics = get_worktree_metrics(item.id)
         task: dict[str, Any] = {
             "work_id": item.id,
             "title": item.title,
@@ -762,7 +773,11 @@ def _load_running_tasks() -> dict[str, Any]:
             "elapsed_s": None,
             "log_tail": [],
             "last_activity_at": None,
-            "dirty_files": get_dirty_files(item.id),
+            "dirty_files": metrics.get("dirty_files"),
+            "lines_insert": metrics.get("lines_insert"),
+            "lines_delete": metrics.get("lines_delete"),
+            "branch_insert": metrics.get("branch_insert"),
+            "branch_delete": metrics.get("branch_delete"),
         }
         if log_dir is not None:
             log_path = log_dir / f"{item.id}.log"
@@ -1157,7 +1172,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         end_idx = start_idx + page_size
         paginated = filtered[start_idx:end_idx]
 
-        from server.web.worktree_dirty import get_dirty_files
+        from server.web.worktree_dirty import get_worktree_metrics
 
         cards_out: list[dict[str, Any]] = []
         for c in paginated:
@@ -1170,7 +1185,12 @@ class _APIHandler(BaseHTTPRequestHandler):
                     bool(row.get("machine_audit_passed", False)),
                 )
             if base_state(c.get("state", "")) == "执行中":
-                row["dirty_files"] = get_dirty_files(c["id"])
+                metrics = get_worktree_metrics(c["id"])
+                row["dirty_files"] = metrics.get("dirty_files")
+                row["lines_insert"] = metrics.get("lines_insert")
+                row["lines_delete"] = metrics.get("lines_delete")
+                row["branch_insert"] = metrics.get("branch_insert")
+                row["branch_delete"] = metrics.get("branch_delete")
             cards_out.append(row)
 
         self._send_json({

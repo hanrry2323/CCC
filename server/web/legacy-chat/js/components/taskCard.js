@@ -37,8 +37,33 @@ export function escapeHtml(s) {
   return d.innerHTML;
 }
 
+/** 卡片进度徽章：Δ=未提交文件数（非 LLM 调用）；+/- = 行变更。 */
+export function renderWorktreeBadges(t) {
+  const dirty = t.dirty_files;
+  const dirtyHtml =
+    dirty != null && dirty !== '' && Number(dirty) >= 0
+      ? `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数（不是模型调用次数）">Δ${escapeHtml(String(dirty))}</span>`
+      : '';
+
+  let ins = t.lines_insert;
+  let del = t.lines_delete;
+  const wtChurn = (Number(ins) || 0) + (Number(del) || 0);
+  if (wtChurn === 0 && (t.branch_insert != null || t.branch_delete != null)) {
+    ins = t.branch_insert;
+    del = t.branch_delete;
+  }
+  const hasLines =
+    (ins != null && ins !== '' && Number(ins) >= 0) ||
+    (del != null && del !== '' && Number(del) >= 0);
+  const linesHtml = hasLines
+    ? `<span class="board-card-badge badge-lines" title="代码行变更（工作区优先；干净时用相对 main 的已提交 diff）"><span class="lines-ins">+${escapeHtml(String(Number(ins) || 0))}</span><span class="lines-del">−${escapeHtml(String(Number(del) || 0))}</span></span>`
+    : '';
+
+  return dirtyHtml + linesHtml;
+}
+
 export function renderTaskCard(t) {
-  const state = t.state || t.status || '待分派';
+  const state = t.board_column || t.state || t.status || '待分派';
   const tone = STATE_TONE[state] || 'pending';
   const color = STATE_COLORS[state] || '#a39e93';
 
@@ -47,11 +72,7 @@ export function renderTaskCard(t) {
     ? `<span class="board-card-badge badge-reject" title="打回次数">↩ ${reject}</span>`
     : '';
 
-  const dirty = t.dirty_files;
-  const dirtyHtml =
-    dirty != null && dirty !== '' && Number(dirty) >= 0
-      ? `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数">Δ ${escapeHtml(String(dirty))}</span>`
-      : '';
+  const statsHtml = renderWorktreeBadges(t);
 
   const executor = t.executor && t.executor !== '未知'
     ? `<span class="board-card-badge badge-exec" title="执行体">@${escapeHtml(t.executor)}</span>`
@@ -76,12 +97,11 @@ export function renderTaskCard(t) {
       <div class="board-card-title ti">${escapeHtml(t.title || t.id)}</div>
       <div class="board-card-meta">
         ${executor}
-        ${dirtyHtml}
+        <span class="board-card-stats">${statsHtml}</span>
         ${rejectHtml}
         ${updatedHtml}
         <button type="button" class="board-card-copy card-copy-btn" data-id="${escapeHtml(t.id)}" title="复制 ID" aria-label="复制 ID">
           <span class="card-copy-ico" aria-hidden="true">⧉</span>
-          <span class="card-copy-txt" style="font-size:10px;margin-left:2px">复制</span>
         </button>
       </div>
       <div class="board-card-detail" hidden></div>

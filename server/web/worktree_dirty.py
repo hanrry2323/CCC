@@ -1,7 +1,13 @@
-"""执行中卡 worktree 未提交改动计数（HTTP 看板徽章用）。
+"""执行中卡 worktree 改动指标（HTTP 看板徽章用）。
 
-对 Engine worktree 跑 ``git status --porcelain``，短超时 + 进程内短缓存，
-避免看板 8s 轮询打爆磁盘。无 worktree / 非 git / 失败 → 返回 None（前端不显示）。
+对 Engine worktree 跑 ``git status --porcelain`` 与 ``git diff --numstat``，
+短超时 + 进程内短缓存，避免看板轮询打爆磁盘。
+
+前端徽章：
+- ΔN = 未提交改动**文件数**（不是大模型调用次数）
+- +X/−Y = 行变更（工作区优先；干净时可用相对 origin/main 的已提交 diff）
+
+无 worktree / 非 git / 失败 → 对应字段 None（前端不显示）。
 
 注册表路径解析顺序：
 1. 环境变量 ``EXECUTOR_REGISTRY_PATH``（可相对仓根）
@@ -172,28 +178,110 @@ def count_dirty_files(worktree: Path, timeout: float = 2.0) -> int | None:
     return sum(1 for ln in proc.stdout.splitlines() if ln.strip())
 
 
-def get_dirty_files(work_id: str, *, force: bool = False) -> int | None:
-    """带 TTL 缓存的 dirty 文件数。"""
-    wid = (work_id or "").strip()
-    if not wid:
+def _numstat_sum(worktree: Path, args: list[str], timeout: float = 2.0) -> tuple[int, int] | None:
+    """解析 ``git diff --numstat`` 的 +/- 行合计。"""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(worktree), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return None
+    if proc.returncode != 0:
+        return None
+    ins = dele = 0
+    for ln in proc.stdout.splitlines():
+        parts = ln.split("\t")
+        if len(parts) < 3:
+            continue
+        a, b = parts[0], parts[1]
+        if a.isdigit():
+            ins += int(a)
+        if b.isdigit():
+            dele += int(b)
+    return ins, dele
+
+
+def count_line_churn(worktree: Path, timeout: float = 2.0) -> tuple[int, int] | None:
+    """工作区相对 HEAD 的行变更（暂存+未暂存）。返回 (insertions, deletions)。
+
+    ``git diff --numstat`` = WT vs index；``git diff --cached --numstat`` = index vs HEAD；
+    两者相加 = WT vs HEAD（未跟踪文件不计行）。
+    """
+    wt = _numstat_sum(worktree, ["diff", "--numstat"], timeout=timeout)
+    staged = _numstat_sum(worktree, ["diff", "--numstat", "--cached"], timeout=timeout)
+    if wt is None and staged is None:
+        return None
+    wi, wd = wt or (0, 0)
+    si, sd = staged or (0, 0)
+    return wi + si, wd + sd
+
+
+def count_branch_line_churn(worktree: Path, timeout: float = 2.0) -> tuple[int, int] | None:
+    """相对 origin/main 的分支行变更（已提交 diff）。"""
+    return _numstat_sum(
+        worktree,
+        ["diff", "--numstat", "origin/main...HEAD"],
+        timeout=timeout,
+    )
+
+
+# work_id → (monotonic_ts, metrics)
+_metrics_cache: dict[str, tuple[float, dict[str, int | None]]] = {}
+
+
+def get_worktree_metrics(work_id: str, *, force: bool = False) -> dict[str, int | None]:
+    """dirty 文件数 + 行变更（工作区 / 分支）。
+
+    返回键：dirty_files, lines_insert, lines_delete, branch_insert, branch_delete。
+    """
+    wid = (work_id or "").strip()
+    empty = {
+        "dirty_files": None,
+        "lines_insert": None,
+        "lines_delete": None,
+        "branch_insert": None,
+        "branch_delete": None,
+    }
+    if not wid:
+        return empty
     now = time.monotonic()
     if not force:
-        hit = _dirty_cache.get(wid)
+        hit = _metrics_cache.get(wid)
         if hit is not None and now - hit[0] < _CACHE_TTL_S:
             return hit[1]
     root = resolve_worktree_dir(wid)
     if root is None:
-        val: int | None = None
+        val = empty
     else:
-        val = count_dirty_files(root)
-    _dirty_cache[wid] = (now, val)
+        dirty = count_dirty_files(root)
+        churn = count_line_churn(root)
+        branch = count_branch_line_churn(root)
+        val = {
+            "dirty_files": dirty,
+            "lines_insert": None if churn is None else churn[0],
+            "lines_delete": None if churn is None else churn[1],
+            "branch_insert": None if branch is None else branch[0],
+            "branch_delete": None if branch is None else branch[1],
+        }
+        # 与旧缓存对齐
+        _dirty_cache[wid] = (now, dirty)
+    _metrics_cache[wid] = (now, val)
     return val
+
+
+def get_dirty_files(work_id: str, *, force: bool = False) -> int | None:
+    """带 TTL 缓存的 dirty 文件数。"""
+    return get_worktree_metrics(work_id, force=force).get("dirty_files")
 
 
 def clear_dirty_cache() -> None:
     """测试用：清空缓存。"""
     global _bases_cache, _config_fallback_cache
     _dirty_cache.clear()
+    _metrics_cache.clear()
     _bases_cache = None
     _config_fallback_cache = None

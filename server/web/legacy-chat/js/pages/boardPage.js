@@ -16,15 +16,16 @@ import { renderTaskCardDetail } from '../components/taskCardDetail.js';
 import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
 
 /** 看板列：五态派生，增加「机审」（已回写且无机审通过）。 */
-const FLOW_COLS = ['待分派', '执行中', '机审', '已回写', '已关闭', '打回'];
+const FLOW_COLS = ['待分派', '执行中', '机审', '已回写', '打回', '已关闭'];
 const COLORS = {
   待分派: '#a39e93',
   执行中: '#c47a2c',
   机审: '#8b6cc1',
   已回写: '#3d9a5f',
-  已关闭: '#5a7a9a',
   打回: '#c44',
+  已关闭: '#5a7a9a',
 };
+const CLOSED_COL_LIMIT = 10;
 
 let _root = null;
 let _timer = null;
@@ -153,8 +154,8 @@ function html() {
         <option value="执行中">执行中</option>
         <option value="机审">机审</option>
         <option value="已回写">已回写</option>
-        <option value="已关闭">已关闭</option>
         <option value="打回">打回</option>
+        <option value="已关闭">已关闭</option>
       </select>
     </div>
 
@@ -337,7 +338,7 @@ function renderActiveView() {
           ${FLOW_COLS.map(col => `
             <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%;">
               <div class="board-col-h">
-                <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span>
+                <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
                 <span class="ct" id="ct-${col}">0</span>
               </div>
               <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 6px; gap: 4px;"></div>
@@ -368,10 +369,17 @@ function renderActiveView() {
     }
 
     for (const col of FLOW_COLS) {
-      const stateCards = filteredCards.filter(c => {
+      let stateCards = filteredCards.filter(c => {
         const colKey = c.board_column || c.state || c.status || '待分派';
         return colKey === col;
       });
+      if (col === '已关闭') {
+        stateCards = stateCards
+          .slice()
+          .sort((a, b) => String(b.written_at || b.closed_at || b.dispatched_at || '')
+            .localeCompare(String(a.written_at || a.closed_at || a.dispatched_at || '')))
+          .slice(0, CLOSED_COL_LIMIT);
+      }
 
       const countEl = _root.querySelector(`#ct-${col}`);
       if (countEl) countEl.textContent = stateCards.length;
@@ -600,13 +608,16 @@ async function mergeDirtyFromRunning(cards) {
     const data = await apiGet('/tasks/running');
     const byId = new Map();
     for (const t of data.tasks || []) {
-      if (t && t.work_id) byId.set(t.work_id, t.dirty_files);
+      if (t && t.work_id) byId.set(t.work_id, t);
     }
     for (const c of cards) {
-      if (byId.has(c.id)) {
-        const d = byId.get(c.id);
-        if (d != null) c.dirty_files = d;
-      }
+      const t = byId.get(c.id);
+      if (!t) continue;
+      if (t.dirty_files != null) c.dirty_files = t.dirty_files;
+      if (t.lines_insert != null) c.lines_insert = t.lines_insert;
+      if (t.lines_delete != null) c.lines_delete = t.lines_delete;
+      if (t.branch_insert != null) c.branch_insert = t.branch_insert;
+      if (t.branch_delete != null) c.branch_delete = t.branch_delete;
     }
   } catch (_) { /* 徽章可选；失败不挡看板 */ }
   return cards;
