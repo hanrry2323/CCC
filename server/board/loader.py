@@ -339,7 +339,13 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
             continue
 
         entry = index_by_path.get(repo_path)
-        if entry is not None and entry.get("mtime") == mtime:
+        # 缺 machine_audit_passed 的旧索引视为失效（M3：否则机审通过卡一直停在「机审」列）
+        cache_ok = (
+            entry is not None
+            and entry.get("mtime") == mtime
+            and "machine_audit_passed" in entry
+        )
+        if cache_ok:
             item = BoardItem(
                 id=entry["id"],
                 title=entry["title"],
@@ -355,6 +361,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                 thread_id=entry.get("thread_id", ""),
                 acceptance=entry.get("acceptance", UNKNOWN),
                 archived=entry.get("archived", False),
+                machine_audit_passed=bool(entry.get("machine_audit_passed", False)),
             )
             items.append(item)
             updated_entries[entry["id"]] = entry
@@ -384,6 +391,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                         thread_id=entry.get("thread_id", ""),
                         acceptance=entry.get("acceptance", UNKNOWN),
                         archived=entry.get("archived", False),
+                        machine_audit_passed=bool(entry.get("machine_audit_passed", False)),
                     )
                     items.append(item)
                     updated_entries[entry["id"]] = entry

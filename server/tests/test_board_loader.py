@@ -215,3 +215,21 @@ class TestSubdirScan:
         items2 = load_dispatch_cards(tmp_path)
         assert [i.id for i in items2] == ["T99"]
         assert "T99" in load_index_file(tmp_path)
+
+    def test_index_missing_audit_flag_forces_reparse(self, tmp_path: Path) -> None:
+        """旧索引无 machine_audit_passed 时必须重扫，否则机审通过卡假滞留。"""
+        import json
+
+        from server.board.loader import get_index_path, load_dispatch_cards, save_index_file
+
+        audited = SAMPLE.replace("状态：执行中", "状态：已回写") + "\n## 机审区\n\n机审：通过\n"
+        _write(tmp_path, "T99.md", audited)
+        items = load_dispatch_cards(tmp_path)
+        assert items[0].machine_audit_passed is True
+        idx = get_index_path(tmp_path)
+        entries = {json.loads(line)["id"]: json.loads(line) for line in idx.read_text().splitlines() if line.strip()}
+        entries["T99"].pop("machine_audit_passed", None)
+        save_index_file(entries, tmp_path)
+        items2 = load_dispatch_cards(tmp_path)
+        assert items2[0].machine_audit_passed is True
+
