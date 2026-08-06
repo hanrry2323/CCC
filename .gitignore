@@ -165,10 +165,10 @@ server/web/data/cluster.js
 server/web/data/*.js
 
 # 运行时卡片索引 / 本地会话缓存（可重建，勿提交）
-data/
+/data/
 docs/dispatch/cards.index.jsonl
 
 # Desktop Swift 本地编译产物
-desktop/.build/
+/desktop/.build/
 
 .venv-t54/
