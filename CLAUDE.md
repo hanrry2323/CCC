@@ -65,11 +65,22 @@ Guidance for agents editing CCC as **platform developer**.
 3. validate 绿 → 只提交任务卡 → `push origin main`。  
 4. **停手盯板**——不要让老板去 pull / 重启 / 选串并行。
 
+**防绕晕**：老板已点头「出卡 / 先做卫生」→ 最多 1 轮侦察 → 立刻出卡或当面分流（见下）；禁止连环 ssh 深挖半小时。
+
 系统自动（2017）：`CCC_AUTO_PULL`（默认开）→ Engine / 看板扫描前对齐 `origin/main` → 拾取「待分派」→ 派发 → 已回写。
 
 必须交给终验席（老板说「验收看板」后，不是日常闲聊）：
 
 - 写 `## 验收区`（含 `✅` / `判定：通过`）并置「已关闭」（成对）；合入执行体分支。
+
+### 卫生欠账分流（开发中枢 · 硬）
+
+`main ahead origin` + 脏树 **不是**普通 Engine 写码卡：
+
+- 新建 worktree 从 `origin/main` 拉起 → **看不到**权威仓未提交脏文件，也带不走「已在 main 未 push」的历史。  
+- 正确：① 当面收口（权威路径 commit+push），或 ② 极窄维护卡，步骤写死 `cwd=<权威仓>`、`禁止 git worktree add`、探针用 git 对齐而非全量 pytest。  
+- qb：见 `references/transfer-playbook-qb.md`（禁卫生 epic；脏 `.ccc` ≠ 业务失败）。  
+- 侦察禁用系统 `python3 -m pytest`（qb 必须 `.venv`/`uv run`，否则 ImportError 假红）。
 
 ### 大方案切片 SOP（开发中枢）
 
