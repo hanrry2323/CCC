@@ -621,6 +621,52 @@ class TestFileBoardStore:
         assert _parse_running_marker_pid(raw) == os.getpid()
         assert f"engine_pid={os.getpid()}" in raw
 
+    def test_running_marker_rewrite_no_false_reclaim(self, tmp_path: Path) -> None:
+        """原子写回归：并发重写 .running 不得出现半截文件被误回收。
+
+        曾发生：worker 重写标记（非原子 write_text）与回收器读取竞态 →
+        读到空/半截内容 → 把仍在执行的卡假孤儿回收 → 收单丢 + 下轮重复派发。
+        """
+        import os
+        import threading
+
+        from server.engine.main import (
+            _write_running_marker,
+            reclaim_orphaned_running,
+        )
+
+        store = InMemoryBoardStore()
+        store.seed(Work(id="race1", role="开发执行体", state=State.RUNNING))
+        log_dir = tmp_path / "logs"
+        stop = threading.Event()
+        false_reclaims: list[int] = []
+
+        def writer() -> None:
+            while not stop.is_set():
+                _write_running_marker(
+                    log_dir,
+                    "race1",
+                    engine_pid=os.getpid(),
+                    child_pid=os.getpid(),
+                )
+
+        w = threading.Thread(target=writer)
+        w.start()
+        try:
+            for _ in range(300):
+                n = reclaim_orphaned_running(store, log_dir)
+                if n:
+                    false_reclaims.append(n)
+                    break
+        finally:
+            stop.set()
+            w.join(timeout=5)
+
+        assert not false_reclaims, f"并发重写标记期间误回收 {false_reclaims}"
+        assert store.list_work(state=State.RUNNING)[0].id == "race1"
+        raw = (log_dir / "race1.running").read_text(encoding="utf-8")
+        assert f"engine_pid={os.getpid()}" in raw
+
     def test_parent_blocks_dispatch(self) -> None:
         from server.engine.main import _parent_blocks_dispatch
 
@@ -1310,4 +1356,3 @@ class TestRunOnceFakeSuccessGuard:
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 0
         assert store.list_work(state=State.REJECTED)
-

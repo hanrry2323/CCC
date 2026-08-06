@@ -723,14 +723,20 @@ def _write_running_marker(
     engine_pid: int,
     child_pid: int | None = None,
 ) -> Path:
-    """写运行标记：主 ``pid=`` 优先子进程，否则 Engine；并保留 engine/child 字段。"""
+    """写运行标记：主 ``pid=`` 优先子进程，否则 Engine；并保留 engine/child 字段。
+
+    原子写（tmp → rename）：``reclaim_orphaned_running`` 每轮心跳读取标记，
+    非原子写入的半截文件会被误判为无存活 PID → 把仍在执行的卡假孤儿回收。
+    """
     log_dir.mkdir(parents=True, exist_ok=True)
     marker = log_dir / f"{work_id}.running"
     primary = child_pid if child_pid is not None else engine_pid
     lines = [f"engine_pid={engine_pid}\n", f"pid={primary}\n"]
     if child_pid is not None:
         lines.append(f"child_pid={child_pid}\n")
-    marker.write_text("".join(lines), encoding="utf-8")
+    tmp = marker.with_suffix(marker.suffix + ".tmp")
+    tmp.write_text("".join(lines), encoding="utf-8")
+    os.replace(tmp, marker)
     return marker
 
 
