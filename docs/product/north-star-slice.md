@@ -59,6 +59,11 @@ scripts/approve-merge.sh ccc123
 | 因「流程不懂」找人 | 0 |
 | 质量门红找人 | 允许（打回自动再跑） |
 
+## 分支卫生（减分叉 · 少用 --close-only）
+
+回写 push 后、合入前：在卡内分支定期 `git fetch origin && git rebase origin/main`（或 merge main），保持可 ff。  
+`approve-merge` 遇分叉会提示 `--close-only`——那是兜底，不是常态。
+
 ## 冻结
 
 见 [`../roadmap.md`](../roadmap.md)「冻结清单」。缺口挂账，禁止新增席位表/同义句/AGENTS 长禁令。

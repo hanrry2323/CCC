@@ -103,20 +103,20 @@ projects:
     dossier: docs/projects/qh/README.md
     role: 独立轨道；禁止经 CCC Engine 出卡/派发
 
-  # ── 目录有、前缀未定/待注册（避免口头注册）──
-  - prefix: null
+  # ── 可出卡前缀（续）──
+  - prefix: cd
     id: ccc-demo
     name: ccc-demo
     display: ccc-demo
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-demo
-    taskable: false
+    taskable: true
     forbidden: false
-    status: pending
+    status: active
     dossier: docs/projects/_catalog/ccc-demo.md
     role: CCC 演示项目
-    notes: seed 已有路径；PREFIXES 尚无 cd；出卡前须先定前缀并改本表
+    notes: 前缀 cd（ccc004 意图经 registry 单源落地 · M4）
 
   - prefix: null
     id: ai-loop-router

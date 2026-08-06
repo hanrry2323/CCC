@@ -158,20 +158,19 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
   git pull --ff-only origin main
 
-  if ! git merge-base --is-ancestor origin/main "origin/${branch}"; then
-    echo "[ERROR] ${branch} 无法 ff 合入 main（非快进）" >&2
-    return 1
-  fi
-
-  # 若 tip 已含相对 main 的提交则 merge；若已合入则只关卡
-  if [[ "$(git rev-parse origin/main)" != "$(git rev-parse "origin/${branch}")" ]]; then
-    if git merge-base --is-ancestor "origin/${branch}" origin/main; then
-      echo "[INFO] ${branch} 已在 main 历史中，仅关卡"
-    else
-      git merge --ff-only "origin/${branch}"
-    fi
-  else
+  # 合入策略：ff / 已在 main 仅关卡 / 分叉时须 --close-only（ready 狗粮）
+  if [[ "$(git rev-parse origin/main)" == "$(git rev-parse "origin/${branch}")" ]]; then
     echo "[INFO] tip 与 main 相同，仅关卡"
+  elif git merge-base --is-ancestor "origin/${branch}" origin/main; then
+    echo "[INFO] ${branch} 已在 main 历史中，仅关卡"
+  elif git merge-base --is-ancestor origin/main "origin/${branch}"; then
+    git merge --ff-only "origin/${branch}"
+  elif [[ "$CLOSE_ONLY" == true ]]; then
+    echo "[WARN] ${branch} 与 main 分叉 → --close-only 仅关卡（业务 diff 已人工确认在 main/外仓）"
+  else
+    echo "[ERROR] ${branch} 无法 ff 合入 main（非快进）。" >&2
+    echo "  建议：卡内分支 git rebase origin/main 后再合入；若代码已在 main 可加 --close-only" >&2
+    return 1
   fi
 
   close_card "$path"

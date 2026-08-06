@@ -18,6 +18,7 @@
 | `xy` | xianyu | 2017 `/Users/fan/program/apps/xianyu` |
 | `hp` | 知识库 | 2017 `/Users/fan/program/apps/hp` |
 | `tst` | 临时测试 | 临时/验收占位卡，**禁止合入 main** |
+| `cd` | ccc-demo | 2017 `/Users/fan/program/apps/ccc-demo`（registry 单源） |
 
 ### 禁止走 CCC（硬 · 2026-08-06）
 

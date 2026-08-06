@@ -157,6 +157,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--config", required=True, help="config.env 路径（必填）")
     parser.add_argument("--once", action="store_true", help="单次扫描 + 派发 + 收单后退出")
     parser.add_argument(
+        "--audit",
+        metavar="CARD_ID",
+        action="append",
+        default=[],
+        help="对已回写卡重跑机审后退出（可重复；M4 首跑机审）",
+    )
+    parser.add_argument(
         "--heartbeat-interval",
         type=int,
         default=DEFAULT_HEARTBEAT_SECONDS,
@@ -1106,6 +1113,32 @@ def main(argv: list[str] | None = None) -> int:
 
     dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
     store: BoardStore = FileBoardStore(dispatch_dir, registry)
+    if args.audit:
+        timeout = int(cfg.get("EXECUTOR_TIMEOUT_SECONDS") or DEFAULT_EXECUTOR_TIMEOUT)
+        log_dir_str = cfg.get("EXECUTOR_LOG_DIR", "").strip()
+        if not log_dir_str:
+            print("[FATAL] EXECUTOR_LOG_DIR 未配置", file=sys.stderr)
+            return 2
+        log_dir = Path(log_dir_str)
+        by_id = {w.id: w for w in store.list_work()}
+        results: dict[str, Any] = {"audited": [], "failed": [], "skipped": []}
+        for cid in args.audit:
+            work = by_id.get(cid)
+            if work is None:
+                results["failed"].append({"id": cid, "error": "not_found"})
+                continue
+            if _card_machine_audit_passed(work.card_path):
+                results["skipped"].append(cid)
+                continue
+            ok, problems = _run_machine_audit_after_writeback(
+                work, registry, cfg, log_dir, timeout
+            )
+            if ok:
+                results["audited"].append(cid)
+            else:
+                results["failed"].append({"id": cid, "error": problems})
+        print(json.dumps(results, ensure_ascii=False))
+        return 0 if not results["failed"] else 1
     if args.once:
         summary = run_once(registry, store, cfg)
         print(json.dumps(summary, ensure_ascii=False))
