@@ -302,7 +302,8 @@ def enrich_card_runtime(
         or timing.get("live")
     )
     if has_trace:
-        row["tool_calls"] = counts["tool_calls"]
+        # 看板「调用」= 工具 → + shell $（都是执行体动作，跟卡累计）
+        row["tool_calls"] = int(counts["tool_calls"] or 0) + int(counts["shell_calls"] or 0)
         row["shell_calls"] = counts["shell_calls"]
 
 
