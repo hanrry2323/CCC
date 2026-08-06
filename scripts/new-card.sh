@@ -99,6 +99,11 @@ if [[ ! "$PROJECT_PREFIX" =~ ^[a-z]{2,4}$ ]]; then
   echo "[ERROR] 前缀非法: ${PROJECT_PREFIX}（须 2-4 位小写字母，如 ccc/qb/hp/tst，见 T-mapping.md 前缀表）" >&2
   exit 2
 fi
+# QuantHive 禁止走 CCC（双轨独立）
+if [[ "$PROJECT_PREFIX" == "qh" ]]; then
+  echo "[ERROR] 前缀 qh（QuantHive）禁止走 CCC Engine 出卡；QuantHive 独立轨道开发" >&2
+  exit 2
+fi
 
 # 解析目标目录（相对路径按仓库根解析）
 case "$DISPATCH_DIR" in

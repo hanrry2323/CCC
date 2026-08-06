@@ -42,7 +42,7 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 ## 硬红线
 
-1. **不写 QuantHive 业务代码**（独立轨道）；不把双轨混成一个项目
+1. **不写 QuantHive 业务代码**；**禁止**经 CCC 为 QuantHive 出卡/Engine 派发（`qh` 已移出 PREFIXES）
 2. 2017 生产副本只 pull 不手改；远程 worktree 不随意删
 3. 中继只走 6100/6102；不碰旧端口/旧服务（7777/7775/7788-M1/4000/4100）
 4. 回写前 push 成功；机械门禁卡 commit/diff；终验独立取证；Codex/Cursor 不验收

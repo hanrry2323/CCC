@@ -411,12 +411,11 @@ def _load_project_metadata() -> list[dict[str, Any]]:
 
 
 def _is_taskable_projects() -> set[str]:
-    """可下达任务的项目名单（T47：qb/CCC/QuantHive/medio-0 等真实业务仓）。
+    """可下达任务的项目名单（挂 CCC Engine 的业务仓）。
 
-    依据 02-project-metadata.json 的 role/nature/last_activity 推导：活跃、可下达
-    开发/自动化任务的项目才 taskable；旧项目/学习资料/退役产物不是。
+    QuantHive 双轨独立，禁止经 CCC 出卡/派发（2026-08-06）。
     """
-    return {"CCC", "qb", "QuantHive", "medio-0", "ai-loop-router"}
+    return {"CCC", "qb", "medio-0", "xianyu", "hp", "ai-loop-router"}
 
 
 def _build_public_projects() -> list[dict[str, Any]]:

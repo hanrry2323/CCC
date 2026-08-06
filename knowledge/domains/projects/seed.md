@@ -36,7 +36,7 @@
 | 项目 | 路径 | 机器 | 性质 | 访问方式 |
 |------|------|------|------|---------|
 | **qx-map** | `/Users/apple/qx-map/` | M1 | 知识地图/权威解析（git 仓，无 remote） | 本地直接访问（M4 移交后 CCC 独立运行，不再读写） |
-| **QuantHive** | `/Users/apple/ZCodeProject/QuantHive/` | M1 | 独立轨道，git 仓 | 本地直接开发 |
+| **QuantHive** | `/Users/apple/ZCodeProject/QuantHive/` | M1 | 独立轨道；**禁止 CCC Engine** | 本地直接开发（不经 CCC） |
 | **ai-loop-router** | `/Users/apple/program/ai-loop-router/` | M1 | loop-router 源码，git 仓 | 本地直接开发 |
 | **ccc-relay-runtime** | `/Users/apple/.ccc/relay-runtime/` | M1 | ccc-relay 副本 | 本地直接访问（已离线，与双轨决议无关） |
 | **medio-0** | `/Users/fan/program/apps/medio-0/` | Mac2017 | git 仓 | SMB 或 ssh |
@@ -53,7 +53,7 @@
 
 ## 关键独立性纪律
 
-- **QuantHive 独立轨道**：禁止与 CCC/qb 合并表述。
+- **QuantHive 独立轨道**：禁止与 CCC/qb 合并表述；**禁止经 CCC Engine 出卡/派发**（2026-08-06）。
 - **CCC 与 QXMAP 绝对独立**（D2）：运行时零依赖。
 - **CCC 自建知识库独立运行**（D3）：M4 移植后不再读写 qx-map / hp-kb。
 

@@ -3,7 +3,7 @@
   "section": "02-project-metadata",
   "updated_at": "2026-08-03",
   "source": "qx-map cluster/path-authority.md (2026-08-01) + docs/architecture.md (v0.70.0) + ccc-refactor-方案-定稿-2026-08-02.md",
-  "note": "所有项目路径以 path-authority.md 为准，过3天先重验再信。2026-08-03 按 docs/architecture.md v0.70.0 终态对齐：CCC 主仓在 M1、qb 真身在 Mac2017、QuantHive 独立轨道禁止合并表述。",
+  "note": "路径过3天先重验。CCC 主仓 M1；qb/medio-0/xianyu/hp 真身 Mac2017 apps。QuantHive 独立轨道——禁止经 CCC Engine 出卡/派发（2026-08-06）。",
   "priority": {
     "primary": "CCC（底座 · 主体 · 主仓）",
     "ccc_projects": [
@@ -40,9 +40,10 @@
       "name": "QuantHive",
       "path": "M1 /Users/apple/ZCodeProject/QuantHive/",
       "nature": "独立轨道，git 仓",
-      "role": "Claude Code 独立开发（Cursor 已停用 2026-08-01）",
-      "access": "本地直接开发",
-      "independence_note": "独立轨道，禁止与 CCC/qb 合并表述",
+      "role": "独立开发（Claude/OpenCode）；**禁止 CCC Engine 出卡/派发**（2026-08-06）",
+      "access": "本地直接开发，不经 CCC 看板",
+      "independence_note": "双轨硬独立；PREFIXES 已移除 qh；FORBIDDEN_CARD_PREFIXES 含 qh",
+      "ccc_taskable": false,
       "last_activity": "ongoing"
     },
     {

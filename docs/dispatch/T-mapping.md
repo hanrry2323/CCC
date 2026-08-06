@@ -9,13 +9,18 @@
 
 | 前缀 | 项目 | 说明 |
 |------|------|------|
-| `qb` | qb | QB 项目（对应 `~/program/apps/qb`） |
-| `qh` | QuantHive | QuantHive 项目 |
-| `ccc` | CCC | 本仓（Connect–Claude Code） |
-| `mx` | medio-0 | medio-0 项目（对应 `~/program/apps/medio-0`） |
-| `xy` | xianyu | xianyu 项目（对应 `~/program/apps/xianyu`） |
-| `hp` | 知识库 | HP 知识库（对应 `~/program/apps/hp`） |
+| `qb` | qb | QB（2017 `/Users/fan/program/apps/qb`） |
+| `ccc` | CCC | 本仓 |
+| `mx` | medio-0 | 2017 `/Users/fan/program/apps/medio-0` |
+| `xy` | xianyu | 2017 `/Users/fan/program/apps/xianyu` |
+| `hp` | 知识库 | 2017 `/Users/fan/program/apps/hp` |
 | `tst` | 临时测试 | 临时/验收占位卡，**禁止合入 main** |
+
+### 禁止走 CCC（硬 · 2026-08-06）
+
+| 前缀 | 项目 | 说明 |
+|------|------|------|
+| ~~`qh`~~ | QuantHive | **禁止** CCC 出卡 / Engine 派发 / 看板自动开发。独立轨道（M1 `ZCodeProject/QuantHive`）。门禁：`FORBIDDEN_CARD_PREFIXES` + `new-card.sh` 拒 `qh` |
 
 > 前缀=子目录名=文件名前缀，三者一致；编号在同一前缀内唯一（`<前缀><NNN>` 全目录唯一）。
 

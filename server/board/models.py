@@ -19,13 +19,15 @@ UNCLASSIFIED = "未分类"
 # 展示名与缩写并存的项以前缀为准（`项目` 字段 = 前缀，与旧卡 `项目：ccc` 一致）。
 PREFIXES: dict[str, str] = {
     "qb": "qb",
-    "qh": "QuantHive",
     "ccc": "ccc",
     "mx": "medio-0",
     "xy": "xianyu",
     "hp": "知识库",
     "tst": "临时测试",
 }
+
+# CCC 禁止出卡/派发的前缀（双轨独立 · 2026-08-06）：QuantHive 不走 CCC Engine
+FORBIDDEN_CARD_PREFIXES: frozenset[str] = frozenset({"qh"})
 
 # 契约 §2 五态
 STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")

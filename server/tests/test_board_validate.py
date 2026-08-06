@@ -269,3 +269,18 @@ def test_cross_acceptance_new_card(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert _errors(validate_cards(tmp_path)) == []
+
+
+def test_qh_prefix_forbidden(tmp_path: Path) -> None:
+    """QuantHive 前缀 qh 禁止新卡走 CCC。"""
+    sub = tmp_path / "qh"
+    sub.mkdir()
+    card = sub / "qh001-banned.md"
+    card.write_text(
+        "# 任务卡 qh001 · 禁止\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 项目：qh · 日期：2026-08-06\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8",
+    )
+    errs = _errors(validate_cards(tmp_path))
+    assert any("禁止" in i.reason or "QuantHive" in i.reason for i in errs)

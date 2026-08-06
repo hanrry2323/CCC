@@ -1,19 +1,20 @@
 {
   "schema": "ccc-kb-seed-v1",
   "section": "02-project-metadata",
-  "updated_at": "2026-08-02",
-  "source": "qx-map cluster/path-authority.md (2026-08-01) + cluster/cluster.json (2026-08-02) + projects/manifest.md",
-  "note": "所有项目路径以 path-authority.md 为准，过3天先重验再信。",
+  "updated_at": "2026-08-03",
+  "source": "qx-map cluster/path-authority.md (2026-08-01) + docs/architecture.md (v0.70.0) + ccc-refactor-方案-定稿-2026-08-02.md",
+  "note": "路径过3天先重验。CCC 主仓 M1；qb/medio-0/xianyu/hp 真身 Mac2017 apps。QuantHive 独立轨道——禁止经 CCC Engine 出卡/派发（2026-08-06）。",
   "priority": {
-    "primary": "CCC（底座 · 主体）",
+    "primary": "CCC（底座 · 主体 · 主仓）",
     "ccc_projects": [
       {
         "name": "CCC",
         "path": "M1 /Users/apple/program/CCC/",
-        "nature": "CCC 底座 · 主仓（git 仓）",
-        "role": "自动化平台底座",
-        "access": "本地直接开发",
-        "last_activity": "ongoing"
+        "nature": "CCC 底座 · 主仓（git 仓，主副本）",
+        "role": "自动化平台底座（薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端）",
+        "access": "本地直接开发（开发期）+ HTTP 直连 2017:7788（运行期）",
+        "last_activity": "ongoing",
+        "version": "v0.70.0（2026-08-02 重构定稿）"
       },
       {
         "name": "qb",
@@ -21,7 +22,7 @@
         "nature": "CCC 自动化开发测试项目（git 仓）",
         "role": "CCC 自动化开发测试项目",
         "access": "SMB 挂载或 ssh fan@192.168.3.116",
-        "m1_note": "M1 无本机 qb 代码",
+        "m1_note": "M1 无本机 qb 代码（曾用错误路径 /Users/apple/program/projects/qb/ 是 171B 文本文件，非目录）",
         "last_activity": "2026-07-29"
       }
     ]
@@ -31,7 +32,7 @@
       "name": "qx-map",
       "path": "M1 /Users/apple/qx-map/",
       "nature": "知识地图/权威解析（git 仓，无 remote）",
-      "role": "外脑权威源·CCC 知识种子来源",
+      "role": "外脑权威源·CCC 知识种子来源（M4 移交后 CCC 独立运行，不再读写）",
       "access": "本地直接访问",
       "last_activity": "2026-08-02"
     },
@@ -39,15 +40,17 @@
       "name": "QuantHive",
       "path": "M1 /Users/apple/ZCodeProject/QuantHive/",
       "nature": "独立轨道，git 仓",
-      "role": "Claude Code 独立开发（Cursor 已停用 2026-08-01）",
-      "access": "本地直接开发",
+      "role": "独立开发（Claude/OpenCode）；**禁止 CCC Engine 出卡/派发**（2026-08-06）",
+      "access": "本地直接开发，不经 CCC 看板",
+      "independence_note": "双轨硬独立；PREFIXES 已移除 qh；FORBIDDEN_CARD_PREFIXES 含 qh",
+      "ccc_taskable": false,
       "last_activity": "ongoing"
     },
     {
       "name": "ai-loop-router",
       "path": "M1 /Users/apple/program/ai-loop-router/",
       "nature": "loop-router 源码，git 仓",
-      "role": "CCC 基建配属（模型出口路由）",
+      "role": "CCC 基建配属（模型出口路由，M1 4100/4102 + Mac2017 6100/6102）",
       "access": "本地直接开发",
       "last_activity": "ongoing"
     },
@@ -55,9 +58,9 @@
       "name": "ccc-relay-runtime",
       "path": "M1 /Users/apple/.ccc/relay-runtime/",
       "nature": "ccc-relay 副本",
-      "role": "CCC 产线中转",
+      "role": "CCC 产线中转（已离线，与双轨决议无关）",
       "access": "本地直接访问",
-      "last_activity": "ongoing"
+      "last_activity": "retired"
     },
     {
       "name": "medio-0",
@@ -148,5 +151,22 @@
       "last_activity": "unknown"
     }
   ],
+  "cleaned_paths_history": {
+    "note": "历史误导源，仅作记录；新文档禁止引用这些路径",
+    "entries": [
+      {
+        "wrong_path": "/Users/apple/program/projects/qb/",
+        "truth": "不是目录，是 171B 文本文件；qb 真实在 Mac2017"
+      },
+      {
+        "wrong_path": "/Users/apple/program/qb/",
+        "truth": "曾是空状态目录，2026-08-01 已删"
+      },
+      {
+        "wrong_path": "/Users/apple/program/qx-observer/",
+        "truth": "是 4K MOVED 指引文件（指向 Mac2017），不是项目目录"
+      }
+    ]
+  },
   "note_projects": "非 git 散装目录（M1）见 path-authority.md 原文，本种子包仅含 git 仓项目。"
 }

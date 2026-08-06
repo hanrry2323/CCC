@@ -28,7 +28,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from server.board.models import PREFIXES, base_state, BoardItem
+from server.board.models import PREFIXES, FORBIDDEN_CARD_PREFIXES, base_state, BoardItem
 from server.board.roles import acceptance_issue
 
 VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
@@ -188,7 +188,15 @@ def _validate_new_naming(
         )
         return issues
     prefix, num, slug = m.group("prefix"), m.group("num"), m.group("slug")
-    if prefix not in PREFIXES:
+    if prefix in FORBIDDEN_CARD_PREFIXES:
+        issues.append(
+            CardIssue(
+                card_id,
+                str(path),
+                f"前缀 {prefix!r} 禁止走 CCC（QuantHive 独立轨道，不得 Engine 出卡/派发）",
+            )
+        )
+    elif prefix not in PREFIXES:
         issues.append(
             CardIssue(card_id, str(path), f"未知前缀 {prefix!r}（合法前缀: {sorted(PREFIXES)}）")
         )

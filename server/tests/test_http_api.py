@@ -1600,7 +1600,7 @@ class TestProjectsEndpoint:
         projects = data["projects"]
         assert isinstance(projects, list)
         names = {p["name"] for p in projects}
-        # 核心业务项目必须在列
+        # 核心业务项目必须在列（QuantHive 可列示，但不可 taskable）
         for required in ("CCC", "qb", "QuantHive", "medio-0"):
             assert required in names, f"缺少业务项目 {required}"
         # 验收标准：左栏禁止出现任何任务卡分组名（如 INT-120、新阶段等）
@@ -1617,12 +1617,13 @@ class TestProjectsEndpoint:
             assert p["is_taskable"] in (True, False)
 
     def test_taskable_flags(self, api_server):
-        """可下达任务的项目 is_taskable=True（CCC/qb/QuantHive/medio-0）。"""
+        """可下达任务：CCC/qb/medio-0；QuantHive 禁止经 CCC 派发。"""
         status, data = _get(api_server, "/projects")
         assert status == 200
-        taskable = {p["name"] for p in data["projects"] if p["is_taskable"]}
-        for required in ("CCC", "qb", "QuantHive", "medio-0"):
-            assert required in taskable, f"{required} 应可下达任务"
+        by_name = {p["name"]: p for p in data["projects"]}
+        for required in ("CCC", "qb", "medio-0"):
+            assert by_name[required]["is_taskable"] is True, f"{required} 应可下达任务"
+        assert by_name["QuantHive"]["is_taskable"] is False, "QuantHive 禁止 CCC taskable"
 
 
 class TestThreadPersistence:

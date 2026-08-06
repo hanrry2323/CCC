@@ -41,11 +41,14 @@ Guidance for agents editing CCC as **platform developer**.
 
 ### 老板常问速查（少绕路）
 
-**「哪些项目已注册、能自动开发？」**
+**「哪些项目已注册、能自动开发？」**（结论先行，少 ssh）
 
-1. **命名已注册（前缀）** ≠ 已接产线：看 `docs/dispatch/T-mapping.md` / `server/board/models.py` 的 `PREFIXES`（`ccc`/`qb`/`qh`/`mx`/`xy`/`hp`/`tst`）。  
-2. **真正能 Engine 自动跑**：当前产线主路径是 **CCC 本仓**（2017 `:7788` + `executors.json` + worktree）。其它前缀=出卡命名可用；是否有业务仓路径、是否在 2017 可写，**先核目录/注册表再承诺**，别把映射表当成「全自动清单」。  
-3. **待分派卡**：只认卡头 `状态：…`（或 `GET http://192.168.3.116:7788/board/states` · `/board/by_project` · `/board/realtime`）。**禁止**对全文 grep「待分派」（正文会误伤）。**没有** `GET /board` 根路径。
+1. **可出卡前缀**：`docs/dispatch/T-mapping.md` / `PREFIXES` = `ccc`/`qb`/`mx`/`xy`/`hp`/`tst`。  
+2. **QuantHive（qh）禁止**：不得经 CCC 出卡或 Engine 派发（双轨独立）。老板说禁止 → **直接改门禁/文档，勿三连追问「移除还是标记」**。  
+3. **2017 已落盘、可挂产线的业务仓（权威）**：`/Users/fan/program/apps/{qb,hp,medio-0,xianyu,...}` + CCC `/Users/fan/program/CCC`。M1 无 `~/program/apps/` 属正常（仓在 2017）。  
+4. **待分派卡**：卡头 `状态：` 或 `GET …/board/states`；禁全文 grep「待分派」；无 `GET /board` 根路径。
+
+**中枢禁令续**：老板指令已可执行时 **禁止** 拆成「问题1/2/3」等选择题；缺唯一关键信息最多问 **一句**，否则直接落卡或改门禁。
 
 ### 工作区铁律
 
