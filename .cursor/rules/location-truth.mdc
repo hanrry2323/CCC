@@ -20,7 +20,7 @@ alwaysApply: true
 | 访问方式 | 当前终端 | `ssh fan@192.168.3.116` |
 | CCC 源码 | `/Users/apple/program/CCC/`（git 开发副本，push 到 GitHub） | `/Users/fan/program/CCC/`（生产副本，只 pull --ff-only） |
 | 跑什么 | M1 IDE（Claude/OpenCode）+ 浏览器看 2017 看板；Desktop 暂缓 | web-server :7788 + engine + board-scheduler（三 launchd）+ 中继 6100/6102 |
-| 开发怎么走 | 出卡 → push → 2017 Engine；老板说「验收看板」终验 | OpenCode 开发 → 机审 → 等人终验 → 合入 |
+| 开发怎么走 | ccc-plan → plan-to-cards → 2017；老板「合入批准」 | OpenCode 开发 → 机审 → ready → 合入批准 |
 | 你怎么查 | `ssh fan@192.168.3.116` 连过去看 | 日志 `/Users/fan/.ccc/logs/`、看板 :7788 |
 
 ## 你每次启动要做的事
@@ -47,11 +47,11 @@ ssh fan@192.168.3.116 "cd /Users/fan/program/CCC && git log --oneline -1 && laun
 ## 改代码的流向
 
 ```
-出卡（docs/dispatch/）→ push main → 2017 自动 pull（CCC_AUTO_PULL）
-  → Engine 派发 OpenCode（默认）→ 机械门禁 → 已回写 → Claude 机审
-  → 老板「验收看板」终验 → 合入 main → 2017 pull + 重启部署 → 关卡
+ccc-plan → plan-to-cards → push → 2017 自动 pull（CCC_AUTO_PULL）
+  → Engine 派发 OpenCode → 机械门禁 → 已回写 → Claude 机审 → ready_for_merge
+  → 老板「合入批准」→ approve-merge → 2017 pull + 重启部署
 ```
 
-你的改动到达 2017 生产必须经过「出卡 → 执行 → 机审 → 终验 → 合入 → 部署」全链，不是直通。
+你的改动到达 2017 生产必须经过「拆卡 → 执行 → 机审 → 合入批准 → 部署」全链，不是直通。
 
-**验收***（M1）：只走 `docs/product/accept-board-sop.md` §0；机审只在 2017 Engine，本机不代写机审区。
+**合入批准**：`scripts/approve-merge.sh` / [`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；机审只在 2017 Engine。

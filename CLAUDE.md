@@ -26,7 +26,7 @@ Guidance for agents editing CCC as **platform developer**.
 
 **勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；「OpenCode 已禁用」；把运维/知识席当成开发席；Desktop 必经。
 
-**席位**：OpenCode=开发 · Claude=机审/终验（交叉）· Codex=出卡（不验收）· Cursor=突击（不验收）· M1「验收看板」=终验入口。
+**席位**：OpenCode=开发 · Claude=机审（交叉）· Codex=出卡 · Cursor=突击 · 人侧「合入批准」=审 diff 关卡。
 
 ---
 
@@ -60,16 +60,16 @@ Guidance for agents editing CCC as **platform developer**.
 
 ### 双模式警示（粘贴级）
 
-> **双模式：** 陪聊 = **开发中枢**（出卡；默认 OpenCode 开发 / Claude 验收字段）。`## 验收区` / 「已关闭」只在老板说 **「验收看板」** 后由终验席写（须已有 `## 机审区` 通过）。Engine `-p` = **产线执行体**——禁止写机审区/验收区/已关闭。
+> **双模式：** 陪聊 = **开发中枢**（`ccc-plan` → plan-to-cards）。`## 验收区` / 「已关闭」只在老板说 **「合入批准」** 后由 `approve-merge.sh` 写（须机审通过）。Engine `-p` = **产线执行体**——禁止写机审区/验收区/已关闭。
 
 ### 开发中枢模式（M1 IDE 陪聊）
 
 可主动做（对老板仍只体现为「对话里确认」）：
 
 1. 把闲聊收敛成：一句话目标 + 红线 + 可观察验收点。  
-2. 大方案先出**切片表**（口头），老板点头后再 `new-card.sh`（可先 `--dry-run`）；默认 `--dispatch engine`。  
-3. validate 绿 → **只提交任务卡文件** → `push origin main`。  
-4. **停手盯板**——不要让老板去 pull / 重启 / 选串并行。
+2. 大方案收敛为 **`ccc-plan`**，老板确认后 `plan-to-cards.sh`（禁止一张张聊着出卡）。  
+3. validate 绿 → 一次 commit+push 多卡。  
+4. **停手盯板**（2017 `:7788`）——不要让老板去 pull / 重启。
 
 **中枢禁令（硬）**：出卡 ≠ 代执行。**了解 ≠ 代执行。**
 
@@ -83,9 +83,9 @@ Guidance for agents editing CCC as **platform developer**.
 
 系统自动（2017）：`CCC_AUTO_PULL`（默认开）→ Engine / 看板扫描前对齐 `origin/main` → 拾取「待分派」→ 派发 → 已回写。
 
-必须交给终验席（老板说「验收看板」后，不是日常闲聊）：
+必须「合入批准」（老板说后，不是日常闲聊）：
 
-- 写 `## 验收区`（含 `✅` / `判定：通过`）并置「已关闭」（成对）；合入执行体分支。
+- `scripts/approve-merge.sh <id>`（ff-merge + 验收区 + 已关闭）。
 
 ### 卫生欠账分流（开发中枢 · 硬）
 
@@ -119,7 +119,7 @@ Guidance for agents editing CCC as **platform developer**.
             打回 → 待分派（人工重派）
 ```
 
-建议闭环：执行体分支 push →「已回写」→ 2017 机审 → 老板「验收看板」→（合入 `main`）→ **同次**写验收区 +「已关闭」。
+建议闭环：执行体分支 push →「已回写」→ 2017 机审 → ready_for_merge → 老板「合入批准」→ approve-merge。
 「已回写」≠ 结束；「已关闭」= 结束。
 
 人看进度：`http://192.168.3.116:7788/#/board`。
@@ -184,7 +184,7 @@ scripts/new-card.sh --title "example" --slug example --executor "Claude Code" --
 | 维护 | 可后台 CLI | OpenCode |
 | 管理 | — | Codex（出卡/裁决，**不验收**） |
 | 机审 | 可后台 CLI | **Claude Code** ↔ **OpenCode**（回写后 Engine 自动；写 `## 机审区`） |
-| 终验 | M1 SOP | 听「验收看板」；写 `## 验收区`+已关闭 |
+| 合入批准 | 人审 diff | `approve-merge.sh`；写 `## 验收区`+已关闭 |
 | ops | 手动 GUI | — |
 
 Claude Code（flash/6100）与 OpenCode（code/6102）并列可后台 CLI。注册表模板见 `server/config/executors.example.json`；生产以 2017 实机 `executors.json` 为准。
@@ -227,7 +227,7 @@ launchd(com.ccc.board-scheduler) → server/board/scheduler.py
 | 3 | 任务卡是唯一事实源 |
 | 4 | 不超出任务卡范围 |
 | 5 | 回写前 push 成功并附证据 |
-| 6 | 机械门禁（commit+diff）+ 机审 + M1「验收看板」终验；Codex/Cursor 不验收 |
+| 6 | 机械门禁（commit+diff）+ 机审 = 质量门；人侧「合入批准」 |
 | 7 | 零硬编码（D10） |
 | 8 | 运行时零依赖 qx-map/hp-kb（D2） |
 | 9 | 免登录仅限局域网配置 |

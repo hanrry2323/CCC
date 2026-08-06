@@ -61,7 +61,8 @@
 |------|------|
 | [`product/dev-channel.md`](product/dev-channel.md) | **现行** 开发通道 / 老板面 |
 | [`product/hub-context-sop.md`](product/hub-context-sop.md) | **现行** 中枢了解项目 / 出卡前 6 步 |
-| [`product/accept-board-sop.md`](product/accept-board-sop.md) | **现行** M1「验收看板」终验 |
+| [`product/accept-board-sop.md`](product/accept-board-sop.md) | **现行**「验收看板」= 合入批准别名 |
+| [`product/north-star-slice.md`](product/north-star-slice.md) | **现行** 北星竖切入口 |
 | [`../.ccc/infrastructure.md`](../.ccc/infrastructure.md) | **现行** 机器/端口总览 |
 | [`deploy/topology.md`](deploy/topology.md) | **现行** 短拓扑 |
 | [`automation-base.md`](automation-base.md) | 出卡/门禁基建 |

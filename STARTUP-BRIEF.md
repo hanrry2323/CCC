@@ -16,18 +16,17 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（Claude Code CLI via 6100）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
 
-**席位（硬，2026-08-06 · 两层验收）**：
+**席位（硬，2026-08-07 · 北星）**：
 - **OpenCode** = 2017 默认**开发**（6102）
 - **Claude Code** = 2017 默认**机审**；亦可点名开发（则 OpenCode 机审）
-- **M1「验收看板」** = 人工**终验**（[`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md)）
-- **Codex** = 出卡/裁决；**不验收** · **Cursor** = 突击；**不验收**
+- **合入批准** = 人审 diff 后唯一常规动作（[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；旧称「验收看板」）
+- **Codex** = 出卡/裁决 · **Cursor** = 突击（均不响应合入口令代关卡）
 - **HTTP 看板** = 实时面；Desktop 暂缓
 
-SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)（出卡前了解） · [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md)（终验 §0） · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md) · qx-map `ide/tool-roles.md`。  
-**人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话。  
-**cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`，勿把 `qx-map` 等其它仓当成写源。  
-**了解 ≠ ssh**：扫本仓 bug = 本地读码/图谱/看板；禁的是 ssh **业务仓**连环侦察（见 hub-context-sop）。  
-**验收*硬路由**：听到「验收看板 / 验收回写 / 验收已回写*」→ **只走** accept-board-sop **§0**（先 snapshot/cards 看板列）；= 终验，**禁止**代写机审区。
+SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md)。  
+**cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`。  
+**北星命令**：`scripts/plan-to-cards.sh` · `GET /board/ready_for_merge` · `scripts/approve-merge.sh` / `scripts/card-evidence.sh`。  
+**合入硬路由**：听到「合入批准」（旧称「验收看板」等同义）→ approve-merge / north-star-slice；质量靠机审 exit code，**禁止**代写机审区。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图；共识必须写入权威链文档（`docs/INDEX.md` §0）再应用。
 
@@ -73,7 +72,7 @@ SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/pr
 | 开发 / 写码 | 可后台 CLI | **OpenCode**（默认） | 改仓 → 已回写 |
 | 机审 | 可后台 CLI | Claude Code ↔ OpenCode | 写 `## 机审区`（回写后自动） |
 | 管理席 | — | Codex | 出卡；不验收 |
-| 终验 | M1 SOP | Claude / OpenCode | 「验收看板」→ 已关闭 |
+| 合入批准 | 人审 diff | 主 IDE | `approve-merge.sh` → 已关闭 |
 
 **派发规则**：`可后台 CLI` → Engine 自动拉起；`手动 GUI` → 挂起等人。  
 **状态机**：`待分派 → 执行中 → 已回写 → 已关闭`；失败 `→ 打回 → 待分派`。非法转移抛 `IllegalTransitionError`。
@@ -116,7 +115,7 @@ python -m server.board.validate docs/dispatch
 - **1** 不动系统文件 / 密钥  
 - **11** Verdict 必须落文件  
 - **12** 禁止 agent 自主启用 CCC  
-- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 OpenCode 开发 → 机审 → 「验收看板」终验）  
+- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 OpenCode 开发 → 机审 → 「合入批准」）  
 
 ---
 
@@ -149,7 +148,7 @@ python -m server.board.validate docs/dispatch
 
 ## 9. 调用链（1 行）
 
-任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 OpenCode → 机审 → 老板「验收看板」→ 已关闭。
+主 IDE → `ccc-plan` → plan-to-cards → 2017 Engine+机审静默 → ready_for_merge → 人审 diff →「合入批准」。
 
 ---
 

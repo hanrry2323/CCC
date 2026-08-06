@@ -24,23 +24,24 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 - **代码分布**：M1 `/Users/apple/program/CCC` = 开发副本（git → GitHub main）；2017 `/Users/fan/program/CCC` = 生产副本（只 pull、不手改）
 - **单端生产**：2017 `:7788`（web-server / engine / board-scheduler 三 launchd 服务）；大脑对话走 2017 中继 6100/6102；**M1 不跑 7788，无 Hub :7777、无 sidecar**
 - **任务卡 = 唯一事实源**：`docs/dispatch/TNN-*.md`；卡头五态：待分派 / 执行中 / 已回写 / 已关闭 / 打回；看板是派生视图（loader 扫描卡 → /board API），不存数据不做决策
-- **开发流程**：出卡（OpenCode）→ 已回写 → 机审 → 老板「验收看板」→ 已关闭 → 合入部署
+- **北星流程**：`ccc-plan` → plan-to-cards → Engine+机审静默 → ready_for_merge → 人审 diff →「合入批准」→ 合入部署
 - **人机实时面**：HTTP `:7788` 看板 + 运维（主路径）；**Desktop 暂缓、非主路径**
 - **cwd 铁律（M1）**：做 CCC 必须打开 `/Users/apple/program/CCC`；禁止把 `qx-map` 等其它仓静默当写源
 - **免登录**：`CCC_WEB_AUTH_REQUIRED=0`（单用户局域网直连，全端点免鉴权）
-- **验收*硬路由**：同义「验收回写 / 验收已回写*」→ 只走 [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0**（snapshot/cards 看板列）；= 终验，禁止代写机审区。`/board/states.columns` = 看板列计数
+- **合入硬路由**：「合入批准」（旧称「验收看板」）→ `scripts/approve-merge.sh` / [`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；质量靠机审，禁止代写机审区。进度认 2017 API。
 
 ## 席位与工具（硬 · 唯一事实源 /Users/apple/qx-map/ide/tool-roles.md）
 
 - **2017 开发** = **OpenCode**（默认）；点名 Claude 可开发
-- **2017 机审** = 卡头验收方（默认 Claude）写 `## 机审区`（Engine 回写后自动拉起）
-- **M1 终验** = 老板说「验收看板」等验收* → Claude/OpenCode 按 accept-board-sop **§0**
-- **难度突击** = `Cursor`：写码；**不验收、不响应验收***
-- **Codex** = 出卡/裁决；**不验收**
-- **M1 IDE** = 中枢 + 终验入口
+- **2017 机审** = 卡头验收方（默认 Claude）写 `## 机审区`（Engine 回写后自动拉起）= **质量门**
+- **合入批准** = 人审 diff 后 `approve-merge.sh`（旧称验收看板）
+- **难度突击** = `Cursor`：写码；不代关卡
+- **Codex** = 出卡/裁决
+- **主 IDE** = 中枢（plan-to-cards + 合入批准）
 - **Trae** = 停用；**Desktop** = 暂缓
 - **双轨独立**：QuantHive 与 CCC 完全独立
 - **出卡前了解**：[`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)
+- **冻结**：禁止新增 Agent 心智补丁 SOP（INDEX §0）
 ## 任务卡体系（T54+ 规则，本仓代码实现在 server/board/）
 
 - 命名：`<前缀><三位序号>-<slug>.md`（前缀以 `docs/projects/registry.yaml` 为准；代码 `PREFIXES` 派生）；旧卡保持原名不迁移
@@ -61,4 +62,4 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 - 结论先行、人话汇报；改代码前先读 `docs/INDEX.md` §0；读写文档先读 `docs/DOC-PROTOCOL.md`
 - 分步提交（每块 commit+push），禁止 `git add -A` 全量提交；提交前 `git status` 核对无他人改动混入
-- 本机 Cursor = **难度突击**（不验收、不响应「验收看板」）；终验走 Claude/OpenCode + accept-board-sop
+- 本机 Cursor = **难度突击**（不代关卡）；合入批准走 `approve-merge.sh` / north-star-slice

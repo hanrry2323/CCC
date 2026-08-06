@@ -51,12 +51,12 @@
 
 | 项 | 意图 | 备注 |
 |----|------|------|
-| **W1 plan-to-cards** | `ccc-plan` → 自动多卡 push | `scripts/plan-to-cards.sh` |
-| **W1 ready_for_merge** | 机审通过即可合入队列；质量不靠口头「验收看板」 | `GET /board/ready_for_merge` |
-| **W2 合入批准** | 人审 diff 后单口令 ff-merge+关卡 | `scripts/approve-merge.sh` |
-| **W2 取证单轨** | 进度认 2017 API；分支 tip 取证 | `scripts/card-evidence.sh` |
+| **北星竖切 W0–W2** | plan-to-cards / ready_for_merge / 合入批准 | ✅ 已落盘 `1e78caa` + 2017 |
+| **S1 权威入口反漂移** | STARTUP/CURSOR/rules/dev-channel 对齐合入批准 | 本程 |
+| **S2a ops 旧端口去红** | opsRed 去掉 7775/7777 | 本程 |
+| **S2b registry 单源接线** | PREFIXES/validate ← registry.yaml | ccc005 / 本程 |
+| **S3 现网狗粮度量** | 调度≤2；禁新 SOP | 本程 |
 | **任务卡退役 / 高效管理** | 已关闭卡不拖垮扫卡 | 看板已关闭 cap=10（已做）；其余挂账 |
-| **文档与项目注册统一治理** | registry 单源 | 阶段 A 已落盘；ccc005 接线中 |
 | **product Hub 史减噪** | hub-* 标史或迁 archive | 分期；白名单见 DOC-PROTOCOL |
 
 ### 冻结清单（非阻塞绿路径不修）
