@@ -10,24 +10,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from server.board.registry import card_prefixes as _card_prefixes
+from server.board.registry import forbidden_prefixes as _forbidden_prefixes
+
 # 字段缺失时的容错值
 UNKNOWN = "未知"
 # 无「项目」字段且推导不出项目名时的归类（T53：旧卡兼容）
 UNCLASSIFIED = "未分类"
 
-# T54 命名规则：项目前缀表（前缀 = 子目录名 = 文件名前缀；T-mapping.md 有完整映射）
-# 展示名与缩写并存的项以前缀为准（`项目` 字段 = 前缀，与旧卡 `项目：ccc` 一致）。
-PREFIXES: dict[str, str] = {
-    "qb": "qb",
-    "ccc": "ccc",
-    "mx": "medio-0",
-    "xy": "xianyu",
-    "hp": "知识库",
-    "tst": "临时测试",
-}
-
-# CCC 禁止出卡/派发的前缀（双轨独立 · 2026-08-06）：QuantHive 不走 CCC Engine
-FORBIDDEN_CARD_PREFIXES: frozenset[str] = frozenset({"qh"})
+# T54：PREFIXES / FORBIDDEN ← docs/projects/registry.yaml（禁止手维第二份）
+PREFIXES: dict[str, str] = _card_prefixes()
+FORBIDDEN_CARD_PREFIXES: frozenset[str] = _forbidden_prefixes()
 
 # 契约 §2 五态（卡头唯一合法状态；校验用）
 STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")

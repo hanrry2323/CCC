@@ -424,10 +424,11 @@ def _load_project_metadata() -> list[dict[str, Any]]:
 def _is_taskable_projects() -> set[str]:
     """可下达任务的项目名单（挂 CCC Engine 的业务仓）。
 
-    QuantHive 双轨独立，禁止经 CCC 出卡/派发（2026-08-06）。
+    真值：docs/projects/registry.yaml（taskable=true 且非 forbidden）。
     """
-    return {"CCC", "qb", "medio-0", "xianyu", "hp", "ai-loop-router"}
+    from server.board.registry import taskable_names
 
+    return set(taskable_names())
 
 def _build_public_projects() -> list[dict[str, Any]]:
     """构造 GET /projects 响应：真实业务项目清单。

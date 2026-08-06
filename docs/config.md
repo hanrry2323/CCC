@@ -1,96 +1,31 @@
-# CCC 配置系统
+# CCC 配置系统（现行）
 
-## 配置文件
+> **权威拓扑**：[`deploy/topology.md`](deploy/topology.md) · INDEX §0。  
+> Hub `:7777` / Board `:7775` / 旧 `ccc-board-server.py` 角色 plist **已退役**（下文不再当默认）。
 
-- **默认模板**: `templates/ccc-config.sh` — CCC 仓库自带，提供所有默认值
-- **项目配置**: `<workspace>/.ccc/config.sh` — 每个项目可自定义覆盖
+## 现行生产（2017）
 
-## 加载顺序
+| 面 | 端口 / 入口 | 配置 |
+|----|-------------|------|
+| HTTP 看板 / API / 对话 | **7788** | `server/config/config.env` · launchd `com.ccc.web-server` |
+| Anthropic / Claude Code | **6100** | 中继 |
+| Relay flash/code | **6102** | 中继 |
+| Engine | launchd `com.ccc.engine` | `server/config/executors.json`（生产实机） |
+| 看板调度 | launchd `com.ccc.board-scheduler` | `server/board/scheduler.py` |
 
-```
-1. CCC 默认模板 templates/ccc-config.sh
-2. 项目 .ccc/config.sh（如果存在，覆盖默认值）
-3. 环境变量（如果有，运行时覆盖）
-```
+模板见 `server/config/config.env.example`、`server/config/executors.example.json`。  
+免登录：`CCC_WEB_AUTH_REQUIRED=0`（局域网单用户）。
 
-`install-ccc-roles.sh` 安装 plist 时自动按此顺序加载。
-`ccc-board-server.py` 读取 `BOARD_PORT` / `BOARD_HOST` 环境变量。
+## 仓库内配置落点
 
-## 完整变量表
+| 路径 | 用途 |
+|------|------|
+| `server/config/config.env` | 端口、路径、上游（零硬编码 D10） |
+| `server/config/executors.json` | 执行体注册表（2017 实机为准） |
+| `docs/projects/registry.yaml` | 项目前缀 / taskable 唯一事实源 |
+| `templates/` · `.ccc/` | 历史项目级覆盖（业务仓）；平台核以 server/config 为准 |
 
-### 路径
+## 史（勿当现行）
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `CCC_HOME` | `/Users/apple/program/CCC` | CCC 项目家目录 |
-| `CCC_CONTRACT_DIR` | `.ccc` | 契约文件目录（plan/phases/verdict/report） |
-
-### 看板 HTTP 服务
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `BOARD_PORT` | `7775` | 看板 API 端口（Hub UI 在 7777） |
-| `BOARD_HOST` | `127.0.0.1` | 绑定地址（默认仅本机；由 Hub 反代） |
-
-### 角色频率（interval-based）
-
-| 角色 | 变量 | 默认值（秒） | 实际 |
-|------|------|-------------|------|
-| product | `PRODUCT_INTERVAL` | 14400 | 4h |
-| dev | `DEV_INTERVAL` | 600 | 10min |
-| reviewer | `REVIEWER_INTERVAL` | 7200 | 2h |
-| tester | `TESTER_INTERVAL` | 14400 | 4h |
-| ops | `OPS_INTERVAL` | 1800 | 30min |
-
-### 角色频率（calendar-based）
-
-| 角色 | 变量 | 默认值 | 说明 |
-|------|------|--------|------|
-| kb | `KB_HOUR` / `KB_MINUTE` | `23` / `0` | 每晚 23:00 |
-
-### 角色定义
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ROLES` | `(product dev reviewer tester ops kb regress)` | 7 个角色的 bash 数组 |
-
-### 后端 agent
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `OPENCODE_BIN` | `opencode` | opencode CLI 路径 |
-| `OPENCODE_MODEL` | `loop/flash` | opencode 使用的模型 |
-
-### 重试
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DEV_MAX_RETRY` | `3` | dev 角色最大重试次数 |
-
-### Agent planner
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `AGENT_PLANNER` | `claude` | planner 使用的 CLI |
-| `AGENT_PLANNER_BASE_URL` | `http://127.0.0.1:4100` | **ai-loop-router 地址**(M1 中转站) — 编排面模型出口唯一;`com.ai-loop-router` 监听本机;fail-open 时客户端直连兜底 |
-
-## 自定义示例
-
-创建 `<project>/.ccc/config.sh`：
-
-```bash
-# ── 自定义频率 ──
-export DEV_INTERVAL=1200          # 改为 20min
-export PRODUCT_INTERVAL=21600     # 改为 6h
-export KB_HOUR=22                 # kb 改为 22:00
-export KB_MINUTE=0
-
-# ── 自定义角色（可选）──
-ROLES=(product dev reviewer)
-```
-
-## 提示
-
-- 不改 `templates/ccc-config.sh`，覆盖请用项目 `.ccc/config.sh`
-- 改 plist 后需重跑 `install-ccc-roles.sh` 生效
-- 看板端口改完后重启 `ccc-board-server` 即可，不需重装 plist
+旧文曾写 `BOARD_PORT=7775`、Hub UI `7777`、`install-ccc-roles.sh` 七角色 interval、`AGENT_PLANNER_BASE_URL :4100`。  
+那些属于 Hub 时期；冲突时以 topology + `server/config/` 为准。

@@ -1,6 +1,6 @@
 # 任务卡 ccc005 · 项目注册表单源接线（PREFIXES /projects /taskable + 校验）
 
-> 关联：文档与项目注册统一治理 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：文档与项目注册统一治理 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -51,4 +51,17 @@
 
 ## 回写区
 
-（执行后填写）
+**执行体**：Cursor（基座加固 S2b · 2026-08-07）· 日期：2026-08-07
+
+### 实现说明
+- 新增 `server/board/registry.py`：加载 `docs/projects/registry.yaml`
+- `models.PREFIXES` / `FORBIDDEN_CARD_PREFIXES` 运行时派生自 registry
+- `GET /projects` 的 `_is_taskable_projects` 改读 `taskable_names()`
+- 单测 `server/tests/test_project_registry.py`
+
+### 测试结果
+- `pytest server/tests/test_project_registry.py -q` 绿
+- `python3 -m server.board.validate docs/dispatch` 通过
+
+### push 证据
+- 见合入 commit（foundation anti-drift S2）

@@ -51,11 +51,19 @@
 
 | 项 | 意图 | 备注 |
 |----|------|------|
-| **北星竖切 W0–W2** | plan-to-cards / ready_for_merge / 合入批准 | ✅ 已落盘 `1e78caa` + 2017 |
-| **S1 权威入口反漂移** | STARTUP/CURSOR/rules/dev-channel 对齐合入批准 | 本程 |
-| **S2a ops 旧端口去红** | opsRed 去掉 7775/7777 | 本程 |
-| **S2b registry 单源接线** | PREFIXES/validate ← registry.yaml | ccc005 / 本程 |
-| **S3 现网狗粮度量** | 调度≤2；禁新 SOP | 本程 |
+| **北星竖切 W0–W2** | plan-to-cards / ready_for_merge / 合入批准 | ✅ `1e78caa` + 2017 |
+| **S1 权威入口反漂移** | STARTUP/CURSOR/rules/dev-channel 对齐合入批准 | ✅ |
+| **S2a ops 旧端口去红** | opsRed 去掉 7775/7777；config.md 对齐 topology | ✅ |
+| **S2b registry 单源接线** | PREFIXES/taskable ← registry.yaml | ✅ ccc005 已回写 |
+| **S3 现网狗粮度量** | 调度≤2；禁新 SOP | ✅ 见下「度量」 |
+
+### 度量（S3 · 2026-08-07 foundation anti-drift）
+
+| 指标 | 结果 |
+|------|------|
+| 老板调度次数 | 2（①确认 foundation 计划 ②本程合入/部署） |
+| 因流程不懂找人 | 0 |
+| 新增 Agent SOP 文件 | 0（只改现行入口 + 脚本/API） |
 | **任务卡退役 / 高效管理** | 已关闭卡不拖垮扫卡 | 看板已关闭 cap=10（已做）；其余挂账 |
 | **product Hub 史减噪** | hub-* 标史或迁 archive | 分期；白名单见 DOC-PROTOCOL |
 

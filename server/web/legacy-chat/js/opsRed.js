@@ -5,7 +5,8 @@
  * 输出统一红灯/告警条目列表供聚合视图渲染。
  */
 
-const CRITICAL_PORTS = new Set([7775, 7777]);
+/** 现行拓扑关键端口（见 docs/deploy/topology.md）；7775/7777 Hub 已退役勿再红灯 */
+const CRITICAL_PORTS = new Set([7788, 6100, 6102]);
 
 function _sevOf(s) {
   return String(s || '').toLowerCase() === 'high' ? 'high' : 'warn';
