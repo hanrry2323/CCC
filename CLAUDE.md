@@ -54,6 +54,19 @@ Guidance for agents editing CCC as **platform developer**.
 - 写 `## 验收区`（含 `✅` 或 `判定：通过`）并置「已关闭」（与标记**成对**，否则 validate/T67 报错）。
 - 合入 `main`（若执行体只推了 `codex/<id>-*` 分支）、2017 `pull`、必要时重启三服务。
 
+### 大方案切片 SOP（开发中枢 · 硬）
+
+> **禁止**：聊完大方案就静默拆多张卡推进「待分派」。拆卡是产品判断，须老板确认后才落盘。  
+> **Engine 只拾取已入库的卡**（串行/并行由 `EXECUTOR_MAX_CONCURRENT` 决定，默认 2）；不负责理解大方案。
+
+1. **压成可判意图**：一句话目标 + 红线 + 可观察验收点（大方案先瘦身，勿直接开写码）。
+2. **输出切片表（先口头/表，不写卡）**：每行至少含——小目标 · 白名单路径 · 建议执行体（Claude Code / OpenCode）· 依赖（可并行？必须先完成哪张？）。卡要小、可单独验收。
+3. **逐张 dry-run**：`scripts/new-card.sh ... --dry-run`（默认 `--dispatch engine`）；把路径与卡头摘要给老板看。
+4. **老板点头后再真写**：去掉 `--dry-run` → `python -m server.board.validate docs/dispatch` 绿 → **只**提交新卡相关文件 → `push origin main`。
+5. **盯板到已回写**：`http://192.168.3.116:7788/#/board`、`/tasks/running`（执行中可看 Δ dirty）；催回写区三要素。关卡 / 合入 / 2017 pull **不自做**，交验收席。
+
+切片原则（摘要）：一张卡一个可观察交付；有文件冲突的卡标「串行」；无冲突可并行。勿一张吞完大方案。
+
 ### 产线执行体模式（Engine `-p`）
 
 - 白名单内改动 → 分步 commit+push 到 `codex/<卡id>-<slug>`（不直推 `main`）。
