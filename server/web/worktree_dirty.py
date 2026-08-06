@@ -2,6 +2,11 @@
 
 对 Engine worktree 跑 ``git status --porcelain``，短超时 + 进程内短缓存，
 避免看板 8s 轮询打爆磁盘。无 worktree / 非 git / 失败 → 返回 None（前端不显示）。
+
+注册表路径解析顺序：
+1. 环境变量 ``EXECUTOR_REGISTRY_PATH``（可相对仓根）
+2. ``CCC_CONFIG_ENV`` → ``load_config`` 取同名键（web-server 通常只注入 CCC_CONFIG_ENV）
+``CCC_WORKTREE_BASE`` 同样可从 config.env 回落。
 """
 
 from __future__ import annotations
@@ -22,15 +27,86 @@ _CACHE_TTL_S = 4.0
 _dirty_cache: dict[str, tuple[float, int | None]] = {}
 # registry path → (mtime, bases)
 _bases_cache: tuple[str, float, list[str]] | None = None
+# config.env mtime 缓存，避免每请求 load_config
+_config_fallback_cache: tuple[str, float, str, str] | None = None
+
+
+def _project_root_from_config(cfg_path: Path) -> Path:
+    """``…/server/config/config.env`` → 仓根 ``…/``。"""
+    return cfg_path.resolve().parent.parent.parent
+
+
+def _config_fallback() -> tuple[str, str]:
+    """从 CCC_CONFIG_ENV 回落 registry 路径与 worktree_base（空串表示未配）。"""
+    global _config_fallback_cache
+    raw_cfg = os.environ.get("CCC_CONFIG_ENV", "").strip()
+    if not raw_cfg:
+        return "", ""
+    cfg_path = Path(raw_cfg).expanduser()
+    try:
+        mtime = cfg_path.stat().st_mtime
+    except OSError:
+        return "", ""
+    if (
+        _config_fallback_cache is not None
+        and _config_fallback_cache[0] == str(cfg_path.resolve())
+        and _config_fallback_cache[1] == mtime
+    ):
+        return _config_fallback_cache[2], _config_fallback_cache[3]
+    registry = ""
+    wt_base = ""
+    try:
+        from server.config.loader import load_config
+
+        cfg = load_config(cfg_path)
+        registry = (cfg.get("EXECUTOR_REGISTRY_PATH") or "").strip()
+        wt_base = (cfg.get("CCC_WORKTREE_BASE") or "").strip()
+        root = _project_root_from_config(cfg_path)
+        if registry and not Path(registry).expanduser().is_absolute():
+            registry = str((root / registry).resolve())
+    except Exception as exc:
+        logger.warning("从 CCC_CONFIG_ENV 回落 worktree 配置失败: %s", exc)
+        registry, wt_base = "", ""
+    _config_fallback_cache = (str(cfg_path.resolve()), mtime, registry, wt_base)
+    return registry, wt_base
+
+
+def _registry_file() -> Path | None:
+    """解析执行体注册表绝对路径；不存在返回 None。"""
+    raw = os.environ.get("EXECUTOR_REGISTRY_PATH", "").strip()
+    cfg_registry, _ = _config_fallback()
+    if not raw:
+        raw = cfg_registry
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        cfg_env = os.environ.get("CCC_CONFIG_ENV", "").strip()
+        if cfg_env:
+            path = _project_root_from_config(Path(cfg_env).expanduser()) / path
+        else:
+            path = Path.cwd() / path
+    try:
+        path = path.resolve()
+    except OSError:
+        return None
+    return path if path.is_file() else None
+
+
+def _worktree_base_env() -> str:
+    raw = os.environ.get("CCC_WORKTREE_BASE", "").strip()
+    if raw:
+        return raw
+    _, wt = _config_fallback()
+    return wt
 
 
 def _load_worktree_bases() -> list[str]:
-    """从 EXECUTOR_REGISTRY_PATH 收集非空 worktree_base（可后台 CLI 行）。"""
+    """从执行体注册表收集非空 worktree_base（可后台 CLI 行）。"""
     global _bases_cache
-    raw = os.environ.get("EXECUTOR_REGISTRY_PATH", "").strip()
-    if not raw:
+    path = _registry_file()
+    if path is None:
         return []
-    path = Path(raw).expanduser()
     try:
         mtime = path.stat().st_mtime
     except OSError:
@@ -68,7 +144,7 @@ def resolve_worktree_dir(work_id: str) -> Path | None:
         if candidate.is_dir():
             return candidate
     # 兼容常见默认命名（注册表未配 worktree_base 时）
-    env_base = os.environ.get("CCC_WORKTREE_BASE", "").strip()
+    env_base = _worktree_base_env()
     if env_base:
         try:
             candidate = Path(get_worktree_path(env_base, wid)).expanduser().resolve()
@@ -117,6 +193,7 @@ def get_dirty_files(work_id: str, *, force: bool = False) -> int | None:
 
 def clear_dirty_cache() -> None:
     """测试用：清空缓存。"""
-    global _bases_cache
+    global _bases_cache, _config_fallback_cache
     _dirty_cache.clear()
     _bases_cache = None
+    _config_fallback_cache = None

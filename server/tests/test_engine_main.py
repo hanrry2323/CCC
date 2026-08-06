@@ -522,7 +522,10 @@ class TestFileBoardStore:
         assert "Tarch" not in ids
 
     def test_reclaim_orphaned_running_with_marker(self, tmp_path: Path) -> None:
-        """有 .running 标记的执行中 → 打回；无标记（manual 挂起）保留。"""
+        """有 .running 标记的执行中 → 打回；无标记（manual 挂起）保留。
+
+        遗留标记纯 ``1``（无 pid=）仍按孤儿回收。
+        """
         from server.engine.main import reclaim_orphaned_running
 
         reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
@@ -539,6 +542,36 @@ class TestFileBoardStore:
         assert store.list_work(state=State.REJECTED)[0].id == "auto1"
         assert store.list_work(state=State.RUNNING)[0].id == "man1"
         assert not (log_dir / "auto1.running").exists()
+
+    def test_reclaim_skips_live_owner_pid(self, tmp_path: Path) -> None:
+        """标记 pid=<本进程> 且进程存活 → 不打回（防双 Engine 撞车）。"""
+        import os
+
+        from server.engine.main import reclaim_orphaned_running
+
+        store = InMemoryBoardStore()
+        live = Work(id="live1", role="开发执行体", state=State.RUNNING)
+        dead = Work(id="dead1", role="开发执行体", state=State.RUNNING)
+        store.seed(live, dead)
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "live1.running").write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+        (log_dir / "dead1.running").write_text("pid=99999999\n", encoding="utf-8")
+        n = reclaim_orphaned_running(store, log_dir)
+        assert n == 1
+        assert [w.id for w in store.list_work(state=State.RUNNING)] == ["live1"]
+        assert store.list_work(state=State.REJECTED)[0].id == "dead1"
+        assert (log_dir / "live1.running").is_file()
+        assert not (log_dir / "dead1.running").exists()
+
+    def test_claim_running_marker_writes_pid(self, tmp_path: Path) -> None:
+        import os
+
+        from server.engine.main import _claim_running_marker, _parse_running_marker_pid
+
+        marker = _claim_running_marker(tmp_path / "logs", "w1")
+        raw = marker.read_text(encoding="utf-8")
+        assert _parse_running_marker_pid(raw) == os.getpid()
 
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
         """list_work(state=X) 只返回匹配状态的卡。"""

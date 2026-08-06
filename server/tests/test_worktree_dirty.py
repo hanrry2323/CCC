@@ -63,6 +63,7 @@ class TestResolveAndGet:
     def test_no_worktree_returns_none(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.delenv("EXECUTOR_REGISTRY_PATH", raising=False)
         monkeypatch.delenv("CCC_WORKTREE_BASE", raising=False)
+        monkeypatch.delenv("CCC_CONFIG_ENV", raising=False)
         assert wd.resolve_worktree_dir("T99") is None
         assert wd.get_dirty_files("T99") is None
 
@@ -99,6 +100,55 @@ class TestResolveAndGet:
         _init_git_repo(wt)
         (wt / "x.md").write_text("x\n", encoding="utf-8")
         assert wd.get_dirty_files("T7") == 1
+
+    def test_config_env_fallback_registry(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """web 仅有 CCC_CONFIG_ENV 时，从 config.env 回落 registry + 相对路径。"""
+        root = tmp_path / "CCC"
+        cfg_dir = root / "server" / "config"
+        cfg_dir.mkdir(parents=True)
+        reg = cfg_dir / "executors.json"
+        reg.write_text(
+            json.dumps(
+                {
+                    "executors": [
+                        {
+                            "角色": "开发执行体",
+                            "分类": "可后台 CLI",
+                            "当前绑定": "OpenCode",
+                            "worktree_base": str(tmp_path / "ws-<task>"),
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        # 最小可加载 config（必填键齐全）
+        cfg = cfg_dir / "config.env"
+        cfg.write_text(
+            "\n".join(
+                [
+                    "ENGINE_PORT=1",
+                    "BOARD_PORT=1",
+                    "WEB_PORT=1",
+                    "RELAY_PORT=1",
+                    "DATA_DIR=/tmp",
+                    "LOG_DIR=/tmp",
+                    "RELAY_UPSTREAM_URL=http://127.0.0.1:9",
+                    "EXECUTOR_REGISTRY_PATH=server/config/executors.json",
+                    f"CCC_WORKTREE_BASE={tmp_path / 'ws-<task>'}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("EXECUTOR_REGISTRY_PATH", raising=False)
+        monkeypatch.delenv("CCC_WORKTREE_BASE", raising=False)
+        monkeypatch.setenv("CCC_CONFIG_ENV", str(cfg))
+        wt = tmp_path / "ws-ccc9"
+        _init_git_repo(wt)
+        (wt / "n.md").write_text("n\n", encoding="utf-8")
+        assert wd.resolve_worktree_dir("ccc9") == wt.resolve()
+        assert wd.get_dirty_files("ccc9") == 1
 
     def test_cache_ttl(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("CCC_WORKTREE_BASE", str(tmp_path / "ccc-dev-ws"))

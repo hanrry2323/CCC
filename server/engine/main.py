@@ -291,12 +291,16 @@ def _dispatch_and_collect(
     logger.info("拉起执行体: work=%s role=%s cmd=%s log=%s", work.id, work.role, cmd, log_path)
 
     try:
-        with log_path.open("w", encoding="utf-8") as logf:
+        child_env = os.environ.copy()
+        # 减轻 Python 类执行体块缓冲；Node/Claude 仍可能块缓冲（非 TTY），见日志延迟。
+        child_env.setdefault("PYTHONUNBUFFERED", "1")
+        with log_path.open("w", encoding="utf-8", buffering=1) as logf:
             proc = subprocess.Popen(  # noqa: S603 - 命令来自注册表配置，非用户输入
                 cmd,
                 stdout=logf,
                 stderr=subprocess.STDOUT,
                 cwd=worktree_path or entry.workdir or default_workdir or None,
+                env=child_env,
             )
     except FileNotFoundError as exc:
         return False, [f"启动失败（命令不存在）: {exc}"]
@@ -332,15 +336,59 @@ def _dispatch_and_collect(
     return False, [f"退出码非 0: {returncode}（日志: {log_path}）"]
 
 
+def _pid_alive(pid: int) -> bool:
+    """``os.kill(pid, 0)`` 探测进程是否仍存在（权限不足也视为存活）。"""
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _parse_running_marker_pid(raw: str) -> int | None:
+    """解析 ``.running`` 标记中的派发进程 PID。
+
+    新格式：``pid=<int>``。旧格式纯 ``1`` / 空 / 非 pid= → 返回 None（按遗留孤儿处理）。
+    """
+    text = (raw or "").strip()
+    if not text.startswith("pid="):
+        return None
+    rest = text[4:].splitlines()[0].strip().split()[0] if text[4:].strip() else ""
+    if not rest.isdigit():
+        return None
+    return int(rest)
+
+
 def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     """回收带 ``{work_id}.running`` 标记的「执行中」残留（AUTO 崩溃未收单）。
 
-    manual 挂起等人不会写标记，故不被误打回。返回打回张数。
+    manual 挂起等人不会写标记，故不被误打回。
+    若标记含 ``pid=`` 且该 PID 仍存活（另一 Engine ``--once`` / 持续进程正在收单），
+    **跳过回收**——避免 launchd 与手动 ``--once`` 撞车误打回（ccc001/ccc003）。
+    返回打回张数。
     """
     n = 0
     for w in store.list_work(state=State.RUNNING):
         marker = log_dir / f"{w.id}.running"
         if not marker.is_file():
+            continue
+        try:
+            raw = marker.read_text(encoding="utf-8")
+        except OSError:
+            raw = ""
+        owner_pid = _parse_running_marker_pid(raw)
+        if owner_pid is not None and _pid_alive(owner_pid):
+            logger.info(
+                "跳过孤儿回收: work=%s 派发进程 pid=%s 仍存活",
+                w.id,
+                owner_pid,
+            )
             continue
         try:
             w.transition(
@@ -360,10 +408,10 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
 
 
 def _claim_running_marker(log_dir: Path, work_id: str) -> Path:
-    """AUTO 派发起写运行标记；收单/异常后清除。"""
+    """AUTO 派发起写运行标记（含本进程 PID）；收单/异常后清除。"""
     log_dir.mkdir(parents=True, exist_ok=True)
     marker = log_dir / f"{work_id}.running"
-    marker.write_text("1", encoding="utf-8")
+    marker.write_text(f"pid={os.getpid()}\n", encoding="utf-8")
     return marker
 
 
@@ -584,6 +632,7 @@ def run_loop(
     logger.info("Engine 持续模式启动（真实派发/收单）")
     while True:
         summary = run_once(registry, store, cfg)
+        summary = {**summary, "mode": "loop"}
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
         if summary["timed_out"] > 0:
             logger.warning("催单: 本轮 %d 个任务超时未回写", summary["timed_out"])
