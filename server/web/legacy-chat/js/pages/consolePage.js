@@ -3,7 +3,7 @@
  *
  * 数据源（全部走新服务端）：
  *   - 状态计数 KPI：GET /board/states → {状态: count} 或 GET /cards?project=X 聚合
- *   - 需注意清单：复用 TaskCard/TaskCardList (打回 / 执行中 / 已回写待验收)
+ *   - 需注意清单：复用 TaskCard/TaskCardList (打回 / 执行中 / 已回写待合入)
  *   - 后台任务进程面板 (T53)
  *   - 运维告警数：GET /ops/summary → overview.alert_count
  *   - 项目列表：GET /board/summaries → {summaries: {项目: snapshot}}
@@ -111,7 +111,7 @@ function html() {
 
     <div class="console-section">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">已回写待验收 <span class="badge" id="console-written-n">0</span></h3>
+        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">已回写待合入 <span class="badge" id="console-written-n">0</span></h3>
         <a class="hub-btn text" href="#/board" style="font-size: 11px; text-decoration: none; color: var(--ccc-text-accent);">去看板看全部 &raquo;</a>
       </div>
       <div class="console-tasks-wrapper" id="console-written-wrapper"></div>
@@ -137,7 +137,7 @@ function renderKPI(counts) {
   const values = [
     { k: '待分派', label: '待分派', desc: '尚未执行' },
     { k: '执行中', label: '执行中', desc: '正在跑' },
-    { k: '已回写', label: '已回写', desc: '待验收' },
+    { k: '已回写', label: '已回写', desc: '待合入批准' },
     { k: '已关闭', label: '已关闭', desc: '已归档' },
     { k: '打回', label: '打回', desc: '需介入' },
   ];

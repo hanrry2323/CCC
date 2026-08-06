@@ -19,16 +19,17 @@ Engine 职责（契约 §2/§7）：读取执行体注册表 → 派发（可后
 from __future__ import annotations
 
 import argparse
-import re
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -316,6 +317,67 @@ def _sync_machine_audit_from_worktree(work: Work, worktree_path: str) -> bool:
     except OSError as exc:
         logger.warning("同步机审区失败: %s", exc)
         return False
+
+
+def _audit_output_indicates_pass(text: str) -> bool:
+    """从机审席 stdout/audit.log 判断是否已给出通过结论（ccc006）。
+
+    不通过优先：尾部含「机审：不通过」则 False。
+    通过：正文已有合格机审区，或尾部出现「机审：通过」/「机审通过」/「判定：通过」。
+    """
+    if not text or not text.strip():
+        return False
+    from server.board.models import machine_audit_passed_text
+
+    if machine_audit_passed_text(text):
+        return True
+    tail = "\n".join(text.splitlines()[-120:])
+    if "机审：不通过" in tail or "机审不通过" in tail:
+        return False
+    return ("机审：通过" in tail) or ("机审通过" in tail) or ("判定：通过" in tail)
+
+
+def _read_text_best_effort(path: Path) -> str:
+    try:
+        if path.is_file():
+            return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return ""
+
+
+def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) -> bool:
+    """生产卡尚无 ## 机审区时，写入通过机审区（已有机审区则不覆盖）。"""
+    if not card_path:
+        return False
+    if _card_machine_audit_passed(card_path):
+        return True
+    prod = Path(card_path)
+    try:
+        text = prod.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("读取生产卡失败，无法落盘机审区: %s (%s)", card_path, exc)
+        return False
+    if re.search(r"^##\s*机审区\s*$", text, flags=re.MULTILINE):
+        # 已有机审区：不覆盖（可能是不通过或其他结论）
+        return _card_machine_audit_passed(card_path)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    snippet = re.sub(r"\s+", " ", (evidence or "").strip())[:400]
+    section = (
+        "\n\n## 机审区\n\n"
+        "机审：通过\n"
+        f"来源：engine 自动落盘（{source}）· {stamp}\n"
+        f"证据：{snippet or '见 audit.log'}\n"
+    )
+    try:
+        prod.write_text(text.rstrip() + section, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("写入机审区失败: %s (%s)", card_path, exc)
+        return False
+    ok = _card_machine_audit_passed(card_path)
+    if ok:
+        logger.info("机审区已自动落盘到生产卡: %s (%s)", card_path, source)
+    return ok
 
 
 def _archive_executor_log(log_path: Path) -> Path | None:
@@ -684,15 +746,33 @@ def _run_machine_audit_after_writeback(
         )
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
-    if not ok:
-        # 退出非0也可能已写机审区到 worktree：先尝试同步
+
+    audit_log = log_dir / f"{work.id}.audit.log"
+    audit_text = _read_text_best_effort(audit_log)
+
+    def _try_backfill(reason: str) -> bool:
+        """worktree 同步失败后：若 audit 输出判定通过则自动落盘（ccc006）。"""
         if worktree_hint and _sync_machine_audit_from_worktree(work, worktree_hint):
-            logger.info("机审进程失败但 worktree 机审区已同步通过: work=%s", work.id)
+            logger.info("机审区已从 worktree 同步通过: work=%s (%s)", work.id, reason)
+            return True
+        if _card_machine_audit_passed(work.card_path):
+            return True
+        if not _audit_output_indicates_pass(audit_text):
+            return False
+        return _append_machine_audit_pass(
+            work.card_path,
+            source=reason,
+            evidence=audit_text[-800:],
+        )
+
+    if not ok:
+        # 退出非0也可能已写机审区到 worktree / 或日志已判定通过
+        if _try_backfill("audit-exit-nonzero"):
             return True, []
         return False, problems or ["机审执行失败"]
     if _card_machine_audit_passed(work.card_path):
         return True, []
-    if worktree_hint and _sync_machine_audit_from_worktree(work, worktree_hint):
+    if _try_backfill("audit-log-pass"):
         return True, []
     return False, ["机审结束但卡上无 ## 机审区 通过标记（机审：通过 / ✅ / 判定：通过）"]
 

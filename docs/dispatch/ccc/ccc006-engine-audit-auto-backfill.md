@@ -1,6 +1,6 @@
 # 任务卡 ccc006 · engine机审通过自动落盘机审区（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 
@@ -49,4 +49,15 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：Cursor（M2 阻塞绿路径 · 基座续跑）· 日期：2026-08-07
+
+### 实现说明
+- `_audit_output_indicates_pass`：从 `{id}.audit.log` / 输出尾部判定通过（不通过优先）
+- `_append_machine_audit_pass`：生产卡无 `## 机审区` 时自动写入通过区；已有机审区不覆盖
+- `_run_machine_audit_after_writeback`：worktree 同步失败后走 audit-log 落盘（ccc006）
+
+### 测试结果
+- `pytest server/tests/test_engine_audit_backfill.py -q` 绿
+
+### push 证据
+- 见 main 合入 commit（M2 ccc006）
