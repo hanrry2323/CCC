@@ -202,7 +202,7 @@ read -r -d '' CARD_BODY <<EOF || true
 ## 步骤
 
 1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；卡头改为「已回写」。
+2. commit+push 到卡内分支（勿直推 main）；合入前 \`git fetch origin && git rebase origin/main\`（减 --close-only）；卡头改为「已回写」。
 3. **停手**：禁止写 \`## 机审区\` / \`## 验收区\` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
