@@ -1,6 +1,7 @@
 # 任务卡 ccc001 · E2E smoke: Engine dispatch + worktree + board dirty（Claude Code 执行）
 
-> 关联：E2E联调 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 变更记录：2026-08-06 Cursor 独立取证验收通过；分支 `codex/ccc001-e2e-smoke-engine-dirty`（`1e13c538`）已 ff 合入 `main`。
 
 ## 目标
 
@@ -53,4 +54,18 @@
 - 本文件新栈唯一改动 ≤20 行；白名单范围校验通过；`git diff` 仅含 notes 文件 + 本卡卡头/回写区。
 
 ### push 证据
-- 分支 `codex/ccc001-e2e-smoke-engine-dirty`，commit 见 push 后 `git log --oneline -1`。
+- 分支 `codex/ccc001-e2e-smoke-engine-dirty`，commit `1e13c538`；已合入 `main`。
+
+---
+
+## 验收区（Cursor 独立取证 · 2026-08-06）
+
+**判定：通过** ✅
+
+| # | 标准 | 取证 |
+|---|------|------|
+| 1 | notes 文件在分支并合入 main | `docs/notes/2026-08-06-e2e-smoke.md` @ `1e13c538`，main ff 含该提交 |
+| 2 | 卡头已回写 + 回写区齐全 | Engine 收单日志 `收单成功: work=ccc001 → 已回写`；回写区有实现/测试/push |
+| 3 | 看板曾执行中 | `:7788/board/states` 观测到 执行中:1 → 已回写:2；worktree `ccc-dev-ws-ccc001` 创建成功 |
+
+补充观测：首次 `--once` 曾因 kickstart 窗口误回收打回，复位待分派后自动派发成功；执行体日志 stdout 缓冲延迟，但产物与状态机正确。
