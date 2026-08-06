@@ -3,10 +3,11 @@
 #
 # 用法：
 #   scripts/approve-merge.sh <card-id> [<card-id>...]
-#   scripts/approve-merge.sh --ready   # 批处理 2017 ready_for_merge 队列
+#   scripts/approve-merge.sh --ready              # 批处理 2017 ready_for_merge 队列
+#   scripts/approve-merge.sh --close-only <id>    # 分支已分叉/已合入时仅关卡（ready 必需）
 #
-# 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在 + ff-only 可合。
-# 动作：ff-merge → 卡头已关闭 + 验收区「合入批准」→ push。
+# 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
+# 动作：能 ff 则 ff-merge；否则 --close-only / 分支已在 main → 只关卡。
 # 合入前 main 卡头允许滞后；本脚本写关闭态。
 
 set -euo pipefail
@@ -16,15 +17,17 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
 USE_READY=false
+CLOSE_ONLY=false
 IDS=()
 
 usage() {
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ready) USE_READY=true; shift ;;
+    --close-only) CLOSE_ONLY=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) IDS+=("$1"); shift ;;
   esac
@@ -33,7 +36,10 @@ done
 cd "$PROJECT_ROOT"
 
 if [[ "$USE_READY" == true ]]; then
-  mapfile -t IDS < <(
+  IDS=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && IDS+=("$line")
+  done < <(
     curl -sf --max-time 10 "${BOARD_URL}/board/ready_for_merge" \
       | "$PYTHON_BIN" -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(c['id'] for c in d.get('cards') or []))"
   )
