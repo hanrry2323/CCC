@@ -89,7 +89,16 @@
 | **cd 前缀** | ccc004 意图经 registry | ✅ |
 | **ccc005/006 首跑机审** | first-audit-evidence → ready | ✅ |
 | **合入批准三卡** | ccc004/005/006 已关闭 | ✅ |
-| 里程碑 / 下一程 | [`notes/m4-milestone-2026-08-07.md`](notes/m4-milestone-2026-08-07.md) · [`notes/m5-next-plan.md`](notes/m5-next-plan.md) | ✅ / 待批 |
+| 里程碑 / 下一程 | [`notes/m4-milestone-2026-08-07.md`](notes/m4-milestone-2026-08-07.md) · [`notes/m5-next-plan.md`](notes/m5-next-plan.md) | ✅ / ✅已批 |
+
+### M5 ✅（Engine 真机审狗粮 · 2026-08-07 · `bdc7044` + 分支 `4c93d9f`）
+
+| 项 | 意图 | 备注 |
+|----|------|------|
+| **真机审 ccc007** | Engine `--audit` → audit.log + 机审区 | ✅ ready |
+| **rebase 提醒** | new-card 模板一行（减 close-only） | ✅ |
+| **xy002** | 执行中消化 | 挂账 → M6 |
+| 里程碑 / 下一程 | [`notes/m5-milestone-2026-08-07.md`](notes/m5-milestone-2026-08-07.md) · [`notes/m6-next-plan.md`](notes/m6-next-plan.md) | ✅ / 待批 |
 
 | 项 | 意图 | 备注 |
 |----|------|------|
