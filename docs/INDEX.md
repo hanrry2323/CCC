@@ -12,19 +12,33 @@
 > 旧 [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) 等已被重构方案取代（史），仅作历史追溯；若与重构决策冲突，以重构决策为准。  
 > **共识落盘**：你我达成共识 → 先改本 §0 权威链 → 再改代码；禁止只留在聊天。
 
+### 北星双核心（2026-08-07 · 冲突以此为准）
+
+> **一句话**：一个主 IDE 谈意图 → `ccc-plan` 确认后自动拆卡入队 → Engine+硬门禁静默跑 → 只在 RED 或待合入时找人 → 人审 diff 后「合入批准」。
+
+| # | 核心 | 成功标准 |
+|---|------|----------|
+| **A** | 只跟一个主 IDE 谈方案 | 确认 `ccc-plan` → `plan-to-cards` 自动多卡；禁止一张张聊着出卡 |
+| **B** | CCC = 代码质量门 | 绿静默；质量靠机械门禁/CI/机审 exit code；人只审 diff /「合入批准」 |
+
+**反目标（禁止当产品演进）**：新增验收同义句、席位表、AGENTS 长禁令、看板列解释文、为教 Agent 堆 SOP。缺口进 [`roadmap.md`](roadmap.md) 挂账，不写心智补丁。  
+**进度真值**：只认 2017 `:7788` board API；取证认 `origin/codex/<stem>`（见 `scripts/card-evidence.sh`）。  
+**竖切入口**：[`product/north-star-slice.md`](product/north-star-slice.md)。
+
 | 优先级 | 文档 | 管什么 |
 |--------|------|--------|
 | **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（v0.70.0 架构重构） |
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
-| 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；`<prefix><NNN>-<slug>`；只许 `new-card.sh` |
+| 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；优先 `plan-to-cards`；单卡 `new-card.sh` |
+| 2b2 | [`product/north-star-slice.md`](product/north-star-slice.md) | **北星竖切**：ccc-plan → 入队 → ready_for_merge → 合入批准 |
 | 2c | [`projects/registry.yaml`](projects/registry.yaml) | **项目注册唯一事实源**（前缀 / 路径 / taskable）；每项目一页见 `projects/<prefix>/README.md` |
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
 | 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
 | 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC；两层验收 |
 | 5b2 | [`product/hub-context-sop.md`](product/hub-context-sop.md) | 中枢出卡前了解项目（本仓本地 / 禁业务 ssh 深挖） |
-| 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | M1「验收看板」终验 SOP |
+| 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | 「验收看板」= **合入批准** 别名（人审 diff） |
 | 5d | [`product/machine-audit-flow.md`](product/machine-audit-flow.md) | 2017 机审流程 + 看板「机审」栏 |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |

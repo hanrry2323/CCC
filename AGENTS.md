@@ -17,7 +17,7 @@ docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md
 ID=<prefix><NNN>  分支=codex/<文件名去.md>
 ```
 
-只许 `scripts/new-card.sh`；禁根目录新卡；禁新 `T*.md`；禁 `qh`。
+方案确认后只许 `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡例外才用 `new-card.sh`。禁根目录新卡；禁新 `T*.md`；禁 `qh`。
 
 | 意图 | 落点 |
 |------|------|
@@ -46,8 +46,8 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 1. **先了解（只读）**：按 hub-context-sop；**扫 CCC bug = 本仓本地侦察**（`rg` / pytest / 图谱 / 看板），**不需要 ssh**。  
 2. 口头收敛：目标一句 + 红线 + 验收点。缺的是**业务意图/红线** → **只问老板一句**；禁止「问题1/2/3」问卷。本仓文件长什么样 → 自己读，别问老板。  
 3. 指令已可执行 → **直接改/直接出卡**，勿复述选项等确认。  
-4. `new-card.sh`（可先 `--dry-run`）→ validate → **只 git 提交任务卡** → `push`。  
-5. **停手盯板**。
+4. 确认 `ccc-plan` → `plan-to-cards.sh`（一次多卡 push）；禁止一张张聊着出卡。  
+5. **停手盯板**（进度只认 2017 `:7788`）。
 
 ### 中枢允许 / 禁止（了解 ≠ 代执行）
 
@@ -68,12 +68,12 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 
 ## 流程（人问才展开）
 
-出卡 → push → 2017 pull → 执行体开发 → 机审 → 「验收看板」终验。
+出卡 → push → 2017 pull → 执行体开发 → 机审静默 → 人审 diff → **「合入批准」**。
 
-## 验收*（硬路由 · 只走终验）
+## 合入批准（硬路由 · 人唯一常规动作）
 
-老板说 **「验收看板 / 验收回写 / 终验看板 / 验收已回写 / 验收已回写卡片」** → **只打开** [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0**（snapshot/cards，禁止全仓 grep）。  
-= M1 **终验**（写 `## 验收区` / 关卡）。**禁止**自认机审席、禁止写/改 `## 机审区`、禁止 /tmp merge 考古。机审只属 2017 Engine。
+老板说 **「合入批准」**（旧称「验收看板」等同义 → 同一动作）→ `scripts/approve-merge.sh` / [`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)。  
+取证：`scripts/card-evidence.sh`；ready：`GET /board/ready_for_merge`。**禁止**自认机审席、禁止 /tmp merge 考古。
 
 ## 红线
 

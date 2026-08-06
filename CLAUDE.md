@@ -4,9 +4,9 @@ Guidance for agents editing CCC as **platform developer**.
 
 - **人在 M1 打开本仓** = **开发中枢**（陪聊意图 → 出卡 → 盯看板到已回写；不自关卡）。
 - **被 2017 Engine `-p` 拉起** = **产线执行体**（只干卡头绑定范围）。
-- 日常可后台开发 = **OpenCode**（2017 默认）；回写后 **Claude Code 机审**；M1「验收看板」= 人工终验。
-- **交叉**：OpenCode 开发→Claude 机审/终验；Claude 开发→OpenCode 机审/终验。**Codex / Cursor 不验收。**
-- Desktop Plan “no write” does **not** apply here. See `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md` · `CURSOR.md`。
+- 日常可后台开发 = **OpenCode**（2017 默认）；回写后 **Claude Code 机审**；人侧只 **「合入批准」**（审 diff）。
+- 方案确认后只许 `plan-to-cards`（`ccc-plan`）；见 `docs/product/north-star-slice.md`。
+- Desktop Plan “no write” does **not** apply here. See `docs/product/dev-channel.md` · `CURSOR.md`。
 
 # CCC — Connect–Claude Code · Loop Engineer
 
@@ -17,10 +17,10 @@ Guidance for agents editing CCC as **platform developer**.
 > **文档硬约束（读写必遵）**：读或写项目文档 / 注册项目 / 改前缀与路径 / **出卡命名** → 必须先按 `docs/DOC-PROTOCOL.md`（§2 命名定死）；项目真值只认 `docs/projects/registry.yaml`。禁止落点表外新建、禁止口头起卡号、禁止双写 PREFIXES/kb-seed。
 
 > **开发方向（唯一基线 · 2026-08-06）**：
-> 出卡 → 2017 **OpenCode 开发** → 机械门禁 → 已回写 → **Claude 机审**（`## 机审区`）→ 老板说 **「验收看板」** → M1 终验关卡。  
-> **Codex/Cursor 不验收。** Desktop 暂缓。SOP：`docs/product/accept-board-sop.md`。
+> `ccc-plan` → **plan-to-cards** → 2017 OpenCode 开发 → 机械门禁 → 机审静默 → 老板 **「合入批准」**（`approve-merge.sh`）。  
+> 进度只认 2017 `:7788`。竖切：`docs/product/north-star-slice.md`。
 
-**路径一句话**：人定意图 → 写任务卡到 `docs/dispatch/` → 2017 Engine 派发执行体 → 收单回写看板 → 验收闭环。
+**路径一句话**：主 IDE 谈意图 → 自动拆卡入队 → Engine+硬门禁静默 → 人审 diff 合入批准。
 
 **共识落盘**：新共识先改权威链（`docs/INDEX.md` §0 + `docs/DOC-PROTOCOL.md` + `CURSOR.md` / `.cursor/rules/`），禁止只留在聊天。
 
@@ -35,13 +35,11 @@ Guidance for agents editing CCC as **platform developer**.
 ### 老板人机面（唯一要管的）
 
 1. **在 `/Users/apple/program/CCC` 打开 IDE 中枢**（Claude Code / OpenCode），把意图聊清。  
-2. **中枢出卡** → push。  
-3. **只看板**：流转 / Δ / ops。  
-4. 卡已回写且机审通过后，说 **「验收看板」**（同义：`验收回写` / `终验看板` / `验收已回写` / `验收已回写卡片`）→ **只走** [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0 终验**；禁止代写机审区。  
+2. 确认 `ccc-plan` → **`plan-to-cards.sh`** → push（禁止一张张聊着出卡）。  
+3. **只看板**（2017 `:7788`）：流转 / Δ / ops。  
+4. ready 后审 diff，说 **「合入批准」** → `scripts/approve-merge.sh`。  
 
-中间（pull、派发、worktree、机审）**默认自动**。
-
-**验收*硬路由**：听到上列验收句 → 先 `GET /board/snapshot` 或 `/cards` 看 **看板列**（机审 vs 已回写），再终验；**禁止**全仓 grep、禁止自认 2017 机审席。
+中间（pull、派发、worktree、机审）**默认自动**。质量靠机审 exit code，不靠口头流程。
 
 ### 老板常问速查（少绕路）
 

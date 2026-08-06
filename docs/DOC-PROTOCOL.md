@@ -11,6 +11,7 @@
 2. **先问落点再写**：下表没有的路径 = **禁止新建**；应归档或并入现有页。
 3. **项目档案一页封顶**：每个可出卡前缀在 CCC 仓只维护 `docs/projects/<prefix>/README.md`；业务深文写在业务仓，不在 CCC 复制。
 4. **卡 ≠ 文档**：开发工作只出 [`dispatch/`](dispatch/) 任务卡；项目存档 / 线路意向不进卡正文堆历史。
+5. **冻结 Agent 心智补丁（2026-08-07）**：北星 = 一个主 IDE 谈意图 → `ccc-plan` 确认后自动拆卡入队 → Engine+硬门禁静默跑 → 只在 RED 或待合入时找人 → 人审 diff 后「合入批准」。禁止为「教 Agent 少迷路」新建/扩写 SOP、验收同义句、席位表、AGENTS 长禁令。缺口只记 [`roadmap.md`](roadmap.md) 挂账；改流程须先改 [`INDEX.md`](INDEX.md) §0。竖切见 [`product/north-star-slice.md`](product/north-star-slice.md)。
 
 ---
 
@@ -21,8 +22,8 @@
 | 平台共识 / 权威裁决 | 先改 [`INDEX.md`](INDEX.md) §0，再改被引用文 | 短、可裁决冲突；禁止只留在聊天 |
 | 下一程意向（未出卡） | [`roadmap.md`](roadmap.md)「下一程挂账」 | **一行**意图 + 备注；未出卡不写长文 |
 | 注册 / 改项目 | [`projects/registry.yaml`](projects/registry.yaml) + 对应 [`projects/<prefix>/README.md`](projects/) | 改完跑校验；禁止只改 `PREFIXES` 或只改 KB seed |
-| 开发任务 | **只** `scripts/new-card.sh` → `docs/dispatch/<prefix>/` | 命名见 §2；卡头五态；不做第二份设计长文 |
-| 平台现行 SOP | [`product/`](product/) **白名单**（须进 INDEX §0/§1） | 新 SOP 必须同时改 INDEX |
+| 开发任务 | **优先** `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡仍可用 `new-card.sh` | 命名见 §2；方案确认后禁止一张张聊着出卡 |
+| 平台现行 SOP | [`product/`](product/) **白名单**（须进 INDEX §0/§1） | 新 SOP 必须同时改 INDEX；**禁止**心智补丁类新建（原则 #5） |
 | 部署 / 拓扑 | [`deploy/`](deploy/) | 短、可执行 |
 | 临时笔记 | [`notes/`](notes/) | **7 天内**并入权威、删或迁 `archive/` |
 | 史实 / 烟测 / 旧协议 | [`archive/`](archive/) | 文首标「史」 |
@@ -30,8 +31,9 @@
 ### 现行产品 SOP 白名单（入口级）
 
 - [`product/dev-channel.md`](product/dev-channel.md)
+- [`product/north-star-slice.md`](product/north-star-slice.md)（北星竖切 · plan-to-cards / 合入批准）
 - [`product/hub-context-sop.md`](product/hub-context-sop.md)（中枢出卡前了解项目 · 允许/禁止表）
-- [`product/accept-board-sop.md`](product/accept-board-sop.md)
+- [`product/accept-board-sop.md`](product/accept-board-sop.md)（别名指向合入批准，见 north-star-slice）
 - [`product/machine-audit-flow.md`](product/machine-audit-flow.md)
 - [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)（Desktop 恢复时）
 

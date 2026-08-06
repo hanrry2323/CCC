@@ -184,3 +184,18 @@ def states_response(items: list[BoardItem]) -> dict:
     payload["columns"] = board_column_counts(items)
     payload["note"] = "顶层键=卡头五态；columns=看板列（机审为派生）"
     return payload
+
+
+def ready_for_merge(items: list[BoardItem]) -> dict:
+    """GET /board/ready_for_merge：看板列「已回写」且机审通过（可合入批准）。"""
+    cards = [
+        item.to_dict()
+        for item in items
+        if board_column(item.state, item.machine_audit_passed) == "已回写"
+        and item.machine_audit_passed
+    ]
+    return {
+        "cards": cards,
+        "count": len(cards),
+        "note": "质量门=机审通过+机械门禁；人侧口令=合入批准（非验收考古）",
+    }

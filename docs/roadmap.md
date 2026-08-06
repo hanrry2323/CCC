@@ -46,11 +46,22 @@
 
 ## 下一程挂账（产品）
 
-> 记录意向，未出卡；出卡前再拆验收标准。
+> **北星**：一个主 IDE 谈意图 → `ccc-plan` 确认后自动拆卡入队 → Engine+硬门禁静默跑 → 只在 RED 或待合入时找人 → 人审 diff 后「合入批准」。  
+> **2026-08-07**：下一程只挂北星竖切。冻结：不再挂「同义句/席位/Agent SOP」类项。竖切：[`product/north-star-slice.md`](product/north-star-slice.md)。
 
 | 项 | 意图 | 备注 |
 |----|------|------|
-| **任务卡退役 / 高效管理** | 历史开发卡（尤其已关闭）不能无限堆在 `docs/dispatch/` 与 IDE agent 上下文里，否则扫卡/读仓会拖慢执行体效率 | 候选：关闭卡归档、看板已关闭 cap=10（已做）、scheduler 汇总退役、agent 只读活跃工作集 |
-| **文档与项目注册统一治理** | 少入口、单注册表、每项目一页；PREFIXES / KB seed / taskable 收成同一事实源 | 阶段 A 已落盘；**卡命名已定死**见 `DOC-PROTOCOL` §2；阶段 B 卡 `ccc005` |
+| **W1 plan-to-cards** | `ccc-plan` → 自动多卡 push | `scripts/plan-to-cards.sh` |
+| **W1 ready_for_merge** | 机审通过即可合入队列；质量不靠口头「验收看板」 | `GET /board/ready_for_merge` |
+| **W2 合入批准** | 人审 diff 后单口令 ff-merge+关卡 | `scripts/approve-merge.sh` |
+| **W2 取证单轨** | 进度认 2017 API；分支 tip 取证 | `scripts/card-evidence.sh` |
+| **任务卡退役 / 高效管理** | 已关闭卡不拖垮扫卡 | 看板已关闭 cap=10（已做）；其余挂账 |
+| **文档与项目注册统一治理** | registry 单源 | 阶段 A 已落盘；ccc005 接线中 |
+| **product Hub 史减噪** | hub-* 标史或迁 archive | 分期；白名单见 DOC-PROTOCOL |
 
-| **product Hub 史减噪** | `product/hub-*` 等文首统一「史」或迁 archive，避免 agent 当现行 | 分期；白名单见 DOC-PROTOCOL |
+### 冻结清单（非阻塞绿路径不修）
+
+- 禁止新增：验收同义句、席位表、AGENTS 长禁令、看板列解释文、了解类 SOP 扩写  
+- 禁止平行：第二套拆卡 LLM 服务（拆卡 = 结构化 plan + 脚本）  
+- Desktop/Hub 主对话面：暂缓维持  
+- Agent 误读非阻塞 → 记债，不写心智补丁 |
