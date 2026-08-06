@@ -25,7 +25,6 @@ import os
 import re
 import subprocess
 import sys
-import threading
 import time
 import urllib.error
 import urllib.request
@@ -42,6 +41,7 @@ from server.engine.dispatch import (
     decide_work,
     load_registry,
 )
+from server.engine.pool import get_dispatch_pool
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
@@ -805,17 +805,78 @@ def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
     return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭后才派发）"
 
 
+def _run_auto_worker(
+    work: Work,
+    registry: ExecutorRegistry,
+    store: BoardStore,
+    cfg: dict[str, Any],
+    log_dir: Path,
+    timeout: int,
+) -> dict[str, int]:
+    """单卡 AUTO：派发 → 回写/打回 → 机审。调用方已标执行中+marker。"""
+    outcome = {"collected": 0, "timed_out": 0}
+    try:
+        ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
+        if ok:
+            work.transition(State.DONE)
+            store.save_work(work)
+            logger.info("收单成功: work=%s → 已回写", work.id)
+            audit_ok, audit_problems = _run_machine_audit_after_writeback(
+                work, registry, cfg, log_dir, timeout
+            )
+            if audit_ok:
+                outcome["collected"] = 1
+            else:
+                work.transition(State.REJECTED, problems=audit_problems)
+                store.save_work(work)
+                logger.warning("机审失败: work=%s → 打回 %s", work.id, audit_problems)
+        else:
+            retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
+            is_retryable = False
+            retry_reason = ""
+            if retry_enabled and work.retry_count == 0:
+                is_retryable, retry_reason = is_retryable_failure(work.id, problems, log_dir)
+
+            if is_retryable:
+                logger.info(
+                    "自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派",
+                    work.id,
+                    work.retry_count,
+                    retry_reason,
+                )
+                work.retry_count = 1
+                work.transition(State.TODO, problems=[retry_reason])
+                store.save_work(work)
+            else:
+                if any("超时" in p for p in problems):
+                    outcome["timed_out"] = 1
+                work.transition(State.REJECTED, problems=problems)
+                store.save_work(work)
+                logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
+    except Exception as exc:
+        logger.exception("Worker 异常: work=%s: %s", work.id, exc)
+        try:
+            if work.state is State.RUNNING:
+                work.transition(State.REJECTED, problems=[f"worker 异常: {exc}"])
+                store.save_work(work)
+        except Exception:
+            logger.exception("Worker 异常后打回失败: work=%s", work.id)
+    finally:
+        _clear_running_marker(log_dir, work.id)
+    return outcome
+
+
 def run_once(
     registry: ExecutorRegistry,
     store: BoardStore,
     cfg: dict[str, Any] | None = None,
+    *,
+    wait: bool = True,
 ) -> dict[str, int]:
-    """单次扫描 + 派发 + 收单。
+    """收割 + 补位：扫待分派，按空位派发。
 
-    1. 扫描「待分派」work；
-    2. 按卡头执行体绑定优先决策（T39）：可后台 CLI → 真实拉起执行体 + 同步/并发收单；
-       手动 GUI → 挂起等人；管理席/验收席/未知角色 → 不派发；
-    3. 收单：按退出码 + 输出判定 → 状态机流转（执行中 → 已回写/打回/待分派重试）。
+    ``wait=True``（``--once`` / 测试默认）：本轮 submit 后 drain 池再返回。
+    ``wait=False``（持续心跳）：立即返回，不阻塞下一轮扫卡。
     """
     cfg = cfg or {}
     timeout = int(cfg.get("EXECUTOR_TIMEOUT_SECONDS") or DEFAULT_EXECUTOR_TIMEOUT)
@@ -823,20 +884,17 @@ def run_once(
     if not log_dir_str:
         raise ConfigError("EXECUTOR_LOG_DIR 未配置（必填，执行体日志目录）")
     log_dir = Path(log_dir_str)
-    default_workdir = cfg.get("DATA_DIR", "")
 
     max_concurrent = int(cfg.get("EXECUTOR_MAX_CONCURRENT") or 2)
-    parallel_enabled = max_concurrent > 1
     probe_url = cfg.get("EXECUTOR_PROBE_URL")
     if probe_url is None:
         probe_url = os.environ.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
 
-    # 回收上次崩溃残留的 AUTO「执行中」（有 .running 标记；manual 挂起无标记）
+    pool = get_dispatch_pool()
     reclaimed = reclaim_orphaned_running(store, log_dir)
 
     git_sync_ok = True
     git_sync_detail = ""
-    # 生产仓自动对齐 origin/main（人只 push；2017 自 pull，老板不参与中间运维）
     try:
         from server.git_sync import auto_pull_enabled, resolve_repo_root, sync_origin_main
 
@@ -852,198 +910,88 @@ def run_once(
         git_sync_detail = str(exc)
         logger.exception("自动 git sync 失败，本轮继续用本地卡视图")
 
+    reaped = pool.reap()
+    collected = reaped["collected"]
+    timed_out = reaped["timed_out"]
+
     pending = store.list_work(state=State.TODO)
     by_id = {w.id: w for w in store.list_work()}
     dispatched = 0
-    collected = 0
-    timed_out = 0
     probe_skips = 0
     parent_skips = 0
     none_skips = 0
+    slots = pool.free_slots(max_concurrent, store, log_dir)
 
-    if parallel_enabled:
-        threads = []
-        results = {"collected": 0, "timed_out": 0}
-        semaphore = threading.Semaphore(max_concurrent)
-        lock = threading.Lock()
+    for work in pending:
+        if is_card_accepted(work.card_path):
+            logger.warning("已验收卡不派发: work=%s", work.id)
+            continue
+        block = _parent_blocks_dispatch(work, by_id)
+        if block:
+            parent_skips += 1
+            logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
+            continue
+        decision = decide_work(work, registry)
+        if decision is DispatchDecision.MANUAL:
+            logger.info(
+                "挂起等人接单: work=%s role=%s executor=%s",
+                work.id,
+                work.role,
+                work.executor or "(未指定)",
+            )
+            work.transition(State.RUNNING)
+            store.save_work(work)
+            dispatched += 1
+            continue
+        if decision is not DispatchDecision.AUTO:
+            none_skips += 1
+            logger.warning(
+                "不参与派发: work=%s role=%s executor=%s",
+                work.id,
+                work.role,
+                work.executor or "(未指定)",
+            )
+            continue
+        if slots <= 0:
+            continue
+        if probe_url and not probe_relay(probe_url):
+            probe_skips += 1
+            logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
+            continue
 
-        def worker(w: Work):
-            marker: Path | None = None
+        # 占槽：先标执行中 + marker，再 submit（空位已按 occupancy 核算）
+        work.transition(State.RUNNING)
+        store.save_work(work)
+        _claim_running_marker(log_dir, work.id)
+
+        def _make_fn(w: Work = work) -> Any:
+            def _fn() -> dict[str, int]:
+                return _run_auto_worker(w, registry, store, cfg, log_dir, timeout)
+
+            return _fn
+
+        try:
+            pool.submit(work.id, _make_fn())
+        except RuntimeError as exc:
+            logger.warning("submit 跳过: work=%s (%s)", work.id, exc)
+            # 回滚占槽
             try:
-                with semaphore:
-                    # 获锁后再标执行中，避免排队期虚高「执行中」
-                    w.transition(State.RUNNING)
-                    store.save_work(w)
-                    marker = _claim_running_marker(log_dir, w.id)
-                    ok, problems = _dispatch_and_collect(w, registry, cfg, log_dir, timeout)
-                    with lock:
-                        if ok:
-                            w.transition(State.DONE)
-                            store.save_work(w)
-                            logger.info("收单成功: work=%s → 已回写", w.id)
-                            audit_ok, audit_problems = _run_machine_audit_after_writeback(
-                                w, registry, cfg, log_dir, timeout
-                            )
-                            if audit_ok:
-                                results["collected"] += 1
-                            else:
-                                w.transition(State.REJECTED, problems=audit_problems)
-                                store.save_work(w)
-                                logger.warning("机审失败: work=%s → 打回 %s", w.id, audit_problems)
-                        else:
-                            retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
-                            is_retryable = False
-                            retry_reason = ""
-                            if retry_enabled and w.retry_count == 0:
-                                is_retryable, retry_reason = is_retryable_failure(w.id, problems, log_dir)
-
-                            if is_retryable:
-                                logger.info("自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派", w.id, w.retry_count, retry_reason)
-                                w.retry_count = 1
-                                w.transition(State.TODO, problems=[retry_reason])
-                                store.save_work(w)
-                            else:
-                                if any("超时" in p for p in problems):
-                                    results["timed_out"] += 1
-                                w.transition(State.REJECTED, problems=problems)
-                                store.save_work(w)
-                                logger.warning("收单失败: work=%s → 打回 %s", w.id, problems)
-            except Exception as exc:
-                logger.exception("Worker thread encountered unexpected error for work %s: %s", w.id, exc)
-                try:
-                    if w.state is State.RUNNING:
-                        w.transition(State.REJECTED, problems=[f"worker 异常: {exc}"])
-                        store.save_work(w)
-                except Exception:
-                    logger.exception("Worker 异常后打回失败: work=%s", w.id)
-            finally:
-                _clear_running_marker(log_dir, w.id)
-
-        for work in pending:
-            # T67 防线 2：已验收卡（## 验收区 后 20 行内 ✅/判定：通过）不派发，保持原状态
-            if is_card_accepted(work.card_path):
-                logger.warning("已验收卡不派发: work=%s", work.id)
-                continue
-            block = _parent_blocks_dispatch(work, by_id)
-            if block:
-                parent_skips += 1
-                logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
-                continue
-            decision = decide_work(work, registry)
-            if decision is DispatchDecision.AUTO:
-                if probe_url and not probe_relay(probe_url):
-                    probe_skips += 1
-                    logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
-                    continue
-
-                dispatched += 1
-                t = threading.Thread(target=worker, args=(work,))
-                threads.append(t)
-                t.start()
-            elif decision is DispatchDecision.MANUAL:
-                logger.info(
-                    "挂起等人接单: work=%s role=%s executor=%s",
-                    work.id, work.role, work.executor or "(未指定)",
-                )
-                work.transition(State.RUNNING)
+                work.transition(State.TODO, problems=[str(exc)])
                 store.save_work(work)
-                dispatched += 1
-            else:
-                none_skips += 1
-                logger.warning(
-                    "不参与派发: work=%s role=%s executor=%s",
-                    work.id, work.role, work.executor or "(未指定)",
-                )
+            except Exception:
+                logger.exception("submit 失败回滚待分派失败: work=%s", work.id)
+            _clear_running_marker(log_dir, work.id)
+            continue
 
-        # Wait for all threads to complete
-        for t in threads:
-            t.join()
+        dispatched += 1
+        slots -= 1
 
-        collected = results["collected"]
-        timed_out = results["timed_out"]
+    if wait:
+        drained = pool.drain()
+        collected += drained["collected"]
+        timed_out += drained["timed_out"]
 
-    else:
-        # Serial Mode (max_concurrent <= 1)
-        for work in pending:
-            # T67 防线 2：已验收卡（## 验收区 后 20 行内 ✅/判定：通过）不派发，保持原状态
-            if is_card_accepted(work.card_path):
-                logger.warning("已验收卡不派发: work=%s", work.id)
-                continue
-            block = _parent_blocks_dispatch(work, by_id)
-            if block:
-                parent_skips += 1
-                logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
-                continue
-            decision = decide_work(work, registry)
-            if decision is DispatchDecision.AUTO:
-                if probe_url and not probe_relay(probe_url):
-                    probe_skips += 1
-                    logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
-                    continue
-
-                work.transition(State.RUNNING)
-                store.save_work(work)
-                dispatched += 1
-                _claim_running_marker(log_dir, work.id)
-
-                try:
-                    ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
-                    if ok:
-                        work.transition(State.DONE)
-                        store.save_work(work)
-                        logger.info("收单成功: work=%s → 已回写", work.id)
-                        audit_ok, audit_problems = _run_machine_audit_after_writeback(
-                            work, registry, cfg, log_dir, timeout
-                        )
-                        if audit_ok:
-                            collected += 1
-                        else:
-                            work.transition(State.REJECTED, problems=audit_problems)
-                            store.save_work(work)
-                            logger.warning("机审失败: work=%s → 打回 %s", work.id, audit_problems)
-                    else:
-                        retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
-                        is_retryable = False
-                        retry_reason = ""
-                        if retry_enabled and work.retry_count == 0:
-                            is_retryable, retry_reason = is_retryable_failure(work.id, problems, log_dir)
-
-                        if is_retryable:
-                            logger.info("自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派", work.id, work.retry_count, retry_reason)
-                            work.retry_count = 1
-                            work.transition(State.TODO, problems=[retry_reason])
-                            store.save_work(work)
-                        else:
-                            if any("超时" in p for p in problems):
-                                timed_out += 1
-                            work.transition(State.REJECTED, problems=problems)
-                            store.save_work(work)
-                            logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
-                except Exception as exc:
-                    logger.exception("串行派发异常: work=%s: %s", work.id, exc)
-                    try:
-                        if work.state is State.RUNNING:
-                            work.transition(State.REJECTED, problems=[f"派发异常: {exc}"])
-                            store.save_work(work)
-                    except Exception:
-                        logger.exception("串行异常后打回失败: work=%s", work.id)
-                finally:
-                    _clear_running_marker(log_dir, work.id)
-            elif decision is DispatchDecision.MANUAL:
-                logger.info(
-                    "挂起等人接单: work=%s role=%s executor=%s",
-                    work.id, work.role, work.executor or "(未指定)",
-                )
-                work.transition(State.RUNNING)
-                store.save_work(work)
-                dispatched += 1
-            else:
-                none_skips += 1
-                logger.warning(
-                    "不参与派发: work=%s role=%s executor=%s",
-                    work.id, work.role, work.executor or "(未指定)",
-                )
-
+    # 看板 in_flight = 全部执行中（含 manual 挂起）；CLI 空位另用 pool.occupancy
     in_flight = len(store.list_work(state=State.RUNNING))
     summary: dict[str, int] = {
         "mode": "once",
@@ -1086,10 +1034,10 @@ def run_loop(
     cfg: dict[str, Any],
     heartbeat_interval: int,
 ) -> None:
-    """持续模式：每轮扫描 + 派发 + 收单，心跳 + 催单日志（超时未回写任务）。"""
-    logger.info("Engine 持续模式启动（真实派发/收单）")
+    """持续模式：收割 + 补位心跳（不等待在途收单）。"""
+    logger.info("Engine 持续模式启动（收割+补位，真实派发/收单）")
     while True:
-        summary = run_once(registry, store, cfg)
+        summary = run_once(registry, store, cfg, wait=False)
         summary = {**summary, "mode": "loop"}
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
         if summary["timed_out"] > 0:

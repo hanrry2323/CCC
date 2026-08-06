@@ -11,8 +11,17 @@ import pytest
 from server.config.loader import ConfigError
 from server.engine.dispatch import load_registry
 from server.engine.main import main, run_once
+from server.engine.pool import reset_dispatch_pool
 from server.engine.store import FileBoardStore, InMemoryBoardStore
 from server.engine.task import State, Work
+
+
+@pytest.fixture(autouse=True)
+def _reset_engine_dispatch_pool() -> None:
+    """避免跨用例残留在途线程/占槽。"""
+    reset_dispatch_pool()
+    yield
+    reset_dispatch_pool()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = PROJECT_ROOT / "server" / "config" / "executors.example.json"
@@ -779,7 +788,7 @@ class TestParallelAndRelayGuard:
         }
 
         start_time = time.time()
-        summary = run_once(reg, store, cfg)
+        summary = run_once(reg, store, cfg)  # wait=True 默认 drain
         end_time = time.time()
 
         # Parallel: both sleeps run concurrently, so total time is close to 1 second, definitely < 1.8 seconds.
@@ -794,6 +803,50 @@ class TestParallelAndRelayGuard:
         done = store.list_work(state=State.DONE)
         assert len(done) == 2
         assert {w.id for w in done} == {"p1", "p2"}
+
+    def test_cross_round_slot_fill_no_batch_join(self, tmp_path: Path) -> None:
+        """MAX=1：wait=False 不阻塞下一轮；槽满时后到卡不派；收单后下一轮补位。"""
+        import time
+
+        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="1")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(id="c1", role="开发执行体", card_path=str(tmp_path / "c1.md")),
+            Work(id="c2", role="开发执行体", card_path=str(tmp_path / "c2.md")),
+        )
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        t0 = time.time()
+        r1 = run_once(reg, store, cfg, wait=False)
+        assert time.time() - t0 < 0.8, "wait=False 不得等 sleep 收单"
+        assert r1["dispatched"] == 1
+        assert r1["in_flight"] == 1
+        assert len(store.list_work(state=State.TODO)) == 1
+
+        r2 = run_once(reg, store, cfg, wait=False)
+        assert r2["dispatched"] == 0, "槽满时不得再派"
+        assert len(store.list_work(state=State.TODO)) == 1
+
+        deadline = time.time() + 3.0
+        r3 = None
+        while time.time() < deadline:
+            r3 = run_once(reg, store, cfg, wait=False)
+            if r3["dispatched"] == 1:
+                break
+            time.sleep(0.15)
+        assert r3 is not None and r3["dispatched"] == 1, "前卡结束后应补派第二张"
+
+        # drain 收干净
+        run_once(reg, store, cfg, wait=True)
+        assert len(store.list_work(state=State.DONE)) == 2
+        assert {w.id for w in store.list_work(state=State.DONE)} == {"c1", "c2"}
 
     def test_probe_success_dispatches_work(self, tmp_path: Path, monkeypatch) -> None:
         """探活成功：正常派发。"""
