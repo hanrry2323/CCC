@@ -162,4 +162,13 @@ vendor/loop-code/cli-dev
 # ── 派生产物（scheduler/export 重写，不跟踪） ──
 server/web/data/board.js
 server/web/data/cluster.js
+server/web/data/*.js
+
+# 运行时卡片索引 / 本地会话缓存（可重建，勿提交）
+data/
+docs/dispatch/cards.index.jsonl
+
+# Desktop Swift 本地编译产物
+desktop/.build/
+
 .venv-t54/
