@@ -10,7 +10,7 @@
  * 状态命名：契约 §2 五态（中文）：待分派 / 执行中 / 已回写 / 已关闭 / 打回。
  */
 
-import { apiGet, getCards } from '../api.js';
+import { apiGet, apiPost, getCards } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
 import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
@@ -194,6 +194,7 @@ function html() {
       <div id="board-dacc" style="border-top:none;padding-top:6px;margin-top:6px"></div>
     </div>
     <div class="btns" style="margin-top:10px">
+      <button type="button" class="hub-btn" id="board-rd" style="display:none">重新分派</button>
       <button type="button" class="hub-btn" id="board-dclose">关闭</button>
     </div>
   </div>
@@ -679,6 +680,12 @@ async function showDetail(id) {
     if (accEl) {
       accEl.innerHTML = renderTaskCardDetail(r);
     }
+    const rdBtn = _root.querySelector('#board-rd');
+    if (rdBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      rdBtn.style.display = base === '打回' ? 'inline-block' : 'none';
+      rdBtn.disabled = false;
+    }
     _root.querySelector('#board-dm').classList.add('open');
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载详情失败', 'error');
@@ -697,6 +704,23 @@ function bind() {
     if (btn) btn.disabled = true;
     await loadBoard();
     if (btn) btn.disabled = false;
+  });
+
+  _root.querySelector('#board-rd').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-rd');
+    if (!id || !btn) return;
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/tasks/' + encodeURIComponent(id) + '/transition', { status: '待分派' });
+      window.showToast?.((r && r.id ? `${r.id} 已重新分派 → 待分派（重试计数归零）` : '已重新分派'), 'success');
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '重新分派失败', 'error');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   _root.querySelector('#board-dclose').addEventListener('click', () => {
