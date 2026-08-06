@@ -26,10 +26,10 @@
       "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
       "命令": "opencode",
-      "参数模板": "run \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
+      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭。\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "可后台 CLI；中继 6102 code 档；与 Claude Code 并列，卡头绑定优先"
+      "备注": "可后台 CLI；中继 6102 code 档；与 Claude Code 并列。须 --auto + --dir {worktree}：卡在生产仓、执行在 worktree，否则易 exit0 假成功。命令在 launchd 下建议写绝对路径。"
     },
     {
       "角色": "维护执行体",

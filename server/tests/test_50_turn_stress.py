@@ -163,8 +163,8 @@ def main():
             leaked = check_process_leak()
             print(f"[CHECK] 本轮结束进程泄露状态：在途泄露进程数 = {len(leaked)}")
             if leaked:
-                for l in leaked:
-                    print(f"  [LEAK_PROCESS]: {l}", file=sys.stderr)
+                for leaked_proc in leaked:
+                    print(f"  [LEAK_PROCESS]: {leaked_proc}", file=sys.stderr)
                 raise AssertionError(f"在 Round {round_idx} 结束后发现有未被回收的孤儿进程泄露！")
             else:
                 print(f"[PASS] Round {round_idx} 完美回收 0 泄露！")
