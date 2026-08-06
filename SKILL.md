@@ -7,8 +7,9 @@ description: "CCC — Connect–Claude Code. Loop Engineer: 任意设备壳经 H
 
 > **Loop Engineer。** 人定意图，系统自动编排与自主执行。  
 > **任意设备壳**经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）。  
-> 权威链：`docs/INDEX.md` §0 · 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 版本：`VERSION`（**v0.70.0**）  
-> **注意**：`docs/VISION.md` 仍含 Hub 时期段落（标待核），**勿当现行架构**。
+> 权威链：`docs/INDEX.md` §0 · **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 版本：`VERSION`（**v0.70.0**）  
+> **注意**：`docs/VISION.md` 仍含 Hub 时期段落（标待核），**勿当现行架构**。  
+> **硬**：读写项目文档必须按 DOC-PROTOCOL；禁止落点外新建、禁止双写 registry。
 
 **含义**：**C**onnect–**C**laude **C**ode。
 
@@ -20,6 +21,8 @@ description: "CCC — Connect–Claude Code. Loop Engineer: 任意设备壳经 H
 cat CURSOR.md                 # Cursor 角色（若在 Cursor）
 cat STARTUP-BRIEF.md          # 必读
 cat docs/INDEX.md             # §0 权威链
+cat docs/DOC-PROTOCOL.md      # 文档落点 / 项目注册（读写必遵）
+cat docs/projects/registry.yaml
 cat docs/product/accept-board-sop.md   # 「验收看板」终验
 cat docs/architecture.md      # 架构概览
 grep -A 15 "## 红线 11" references/red-lines.md

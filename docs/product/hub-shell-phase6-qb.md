@@ -1,3 +1,5 @@
+> **状态：史（Hub 时期 · 2026-08-06 标注）。** 现行见 [`../INDEX.md`](../INDEX.md) §0 · [`../DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)。
+>
 # Hub-Shell Phase6 — 第一笔真实业务仓
 
 > 日期：2026-07-20 · 对齐 [`hub-shell-roadmap.md`](hub-shell-roadmap.md) §8「通过后再覆盖真实仓」

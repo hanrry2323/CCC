@@ -1,3 +1,5 @@
+> **状态：史（Hub 时期 · 2026-08-06 标注）。** 现行见 [`../INDEX.md`](../INDEX.md) §0 · [`../DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)。
+>
 # Desktop 本机 Agent Sidecar
 
 > 目标：方案 Agent 热路径在本机（launchd + loop-code）；**编排面在中心机**。  

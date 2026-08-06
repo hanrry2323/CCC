@@ -1,0 +1,186 @@
+# CCC 项目注册表（唯一事实源）
+# 权威：docs/DOC-PROTOCOL.md · docs/INDEX.md §0
+# 派生（阶段 B 后）：PREFIXES / FORBIDDEN_* / GET /projects / is_taskable / knowledge/seed
+# 禁止手维第二份真值。
+
+schema: ccc-project-registry-v1
+updated_at: "2026-08-06"
+
+projects:
+  # ── 可出卡前缀（PREFIXES）──
+  - prefix: ccc
+    id: CCC
+    name: CCC
+    display: ccc
+    paths:
+      m1: /Users/apple/program/CCC
+      mac2017: /Users/fan/program/CCC
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/ccc/README.md
+    role: 自动化平台底座（薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端）
+
+  - prefix: qb
+    id: qb
+    name: qb
+    display: qb
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/qb
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/qb/README.md
+    role: CCC 自动化开发测试项目
+    notes: M1 无本机 qb 代码；勿用 /Users/apple/program/projects/qb/
+
+  - prefix: mx
+    id: medio-0
+    name: medio-0
+    display: medio-0
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/medio-0
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/mx/README.md
+    role: 独立业务仓（经 CCC 出卡）
+
+  - prefix: xy
+    id: xianyu
+    name: xianyu
+    display: xianyu
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/xianyu
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/xy/README.md
+    role: 独立业务仓（经 CCC 出卡）
+
+  - prefix: hp
+    id: hp
+    name: hp 服务仓
+    display: 知识库
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/hp
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/hp/README.md
+    role: HP 知识库服务端
+    notes: UI 展示名「hp 服务仓」；卡头项目字段用前缀 hp
+
+  - prefix: tst
+    id: tst
+    name: 临时测试
+    display: 临时测试
+    paths:
+      m1: null
+      mac2017: null
+    taskable: false
+    forbidden: false
+    status: placeholder
+    dossier: docs/projects/tst/README.md
+    role: 临时/验收占位卡
+    notes: 禁止合入 main；无真实业务仓
+
+  # ── 硬禁前缀（FORBIDDEN_CARD_PREFIXES）──
+  - prefix: qh
+    id: QuantHive
+    name: QuantHive
+    display: QuantHive
+    paths:
+      m1: /Users/apple/ZCodeProject/QuantHive
+      mac2017: null
+    taskable: false
+    forbidden: true
+    status: active
+    dossier: docs/projects/qh/README.md
+    role: 独立轨道；禁止经 CCC Engine 出卡/派发
+
+  # ── 目录有、前缀未定/待注册（避免口头注册）──
+  - prefix: null
+    id: ccc-demo
+    name: ccc-demo
+    display: ccc-demo
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/ccc-demo
+    taskable: false
+    forbidden: false
+    status: pending
+    dossier: docs/projects/_catalog/ccc-demo.md
+    role: CCC 演示项目
+    notes: seed 已有路径；PREFIXES 尚无 cd；出卡前须先定前缀并改本表
+
+  - prefix: null
+    id: ai-loop-router
+    name: ai-loop-router
+    display: ai-loop-router
+    paths:
+      m1: /Users/apple/program/ai-loop-router
+      mac2017: null
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/_catalog/ai-loop-router.md
+    role: 模型出口路由基建（6100/6102）
+    notes: UI 可 taskable；无卡前缀——平台改动仍走 ccc 卡，勿口头加前缀
+
+  - prefix: null
+    id: qx-map
+    name: qx-map
+    display: qx-map
+    paths:
+      m1: /Users/apple/qx-map
+      mac2017: null
+    taskable: false
+    forbidden: false
+    status: active
+    dossier: docs/projects/_catalog/qx-map.md
+    role: 外脑/知识地图；CCC 运行时不依赖（D2）
+
+  # ── 目录可见、非 CCC 主线（archived / catalog）──
+  - prefix: null
+    id: qx-observer
+    name: qx-observer
+    display: qx-observer
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/qx-observer
+    taskable: false
+    forbidden: false
+    status: archived
+    dossier: null
+    role: 独立项目（未挂 Engine）
+
+  - prefix: null
+    id: clawmed-ccc
+    name: clawmed-ccc
+    display: clawmed-ccc
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/clawmed-ccc
+    taskable: false
+    forbidden: false
+    status: archived
+    dossier: null
+    role: 独立项目（未挂 Engine）
+
+  - prefix: null
+    id: ccc-relay-runtime
+    name: ccc-relay-runtime
+    display: ccc-relay-runtime
+    paths:
+      m1: /Users/apple/.ccc/relay-runtime
+      mac2017: null
+    taskable: false
+    forbidden: false
+    status: archived
+    dossier: null
+    role: 旧中转副本（已离线）

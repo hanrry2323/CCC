@@ -2,6 +2,27 @@
 
 > 打开本仓时生效。全局 `~/.config/opencode/AGENTS.md` 应保持中性；**这里**才是 CCC 心智。
 
+## 文档与项目注册（硬 · 读写必遵）
+
+**读/写任何项目文档、注册项目、改路径/出卡前缀之前，必须先遵守：**
+
+1. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / 怎么写 / 禁写哪里  
+2. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源  
+3. 对应 [`docs/projects/<prefix>/README.md`](docs/projects/) — 每项目一页档案（五节，禁止再长）
+
+| 意图 | 落点 |
+|------|------|
+| 共识/权威 | 先改 `docs/INDEX.md` §0 |
+| 下一程意向 | `docs/roadmap.md`「下一程挂账」一行 |
+| 注册/改项目 | **只**改 `registry.yaml` + 档案 README |
+| 开发任务 | `docs/dispatch/<prefix>/` 出卡 |
+| 临时笔记 | `docs/notes/`（7 天内进权威或归档） |
+| 史 | `docs/archive/`（文首标「史」） |
+
+**禁止**：落点表外新建「说明.md」/业务深文档树（如 `docs/qb/`）；双写 PREFIXES 与 registry；口头注册项目；把 `docs/kb-seed/` 当现行真值。
+
+Agent 最短路径：`INDEX §0` → `DOC-PROTOCOL` → 档案 README 或 `new-card.sh`。
+
 ## 双模式
 
 | 场景 | 你是谁 | 干什么 |
@@ -19,7 +40,7 @@
 4. **停手盯板**。
 
 **禁止（中枢）**：ssh 业务仓连环侦察；代跑 pytest；代 commit/push 业务仓；「先帮你把卫生做了再出卡」。  
-**禁止出卡前缀**：`qh`（QuantHive）——独立轨道，见 `T-mapping.md`。
+**禁止出卡前缀**：`qh`（QuantHive）——独立轨道，见 `registry.yaml` / `T-mapping.md`。
 
 步骤与探针**写进卡**，交给 Engine 执行体。
 
@@ -36,6 +57,7 @@
 
 - 产线：不直推 `main`；不写机审区/验收区/已关闭。  
 - 禁 `git add -A`；不手改 2017 运行面/密钥。  
-- Codex / Cursor 不终验。
+- Codex / Cursor 不终验。  
+- **读写文档必须按 DOC-PROTOCOL**（见上节）。
 
-详情：`CLAUDE.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md`。
+详情：`CLAUDE.md` · `docs/DOC-PROTOCOL.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md`。

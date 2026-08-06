@@ -1,7 +1,8 @@
 # CCC 文档索引
 
 > **先读本页再进别的文件。** `docs/` 约 100+ 篇，多数是历史/烟测/专项；**不要按文件名新旧猜权威。**  
-> 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **VISION** → 专题 SSOT → 其余（旧 `loop-engineer-authority.md` 等已被重构方案取代，仅作史实）。
+> 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **VISION** → 专题 SSOT → 其余（旧 `loop-engineer-authority.md` 等已被重构方案取代，仅作史实）。  
+> **怎么写文档 / 怎么注册项目**：[`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) · [`projects/registry.yaml`](projects/registry.yaml)。
 
 ---
 
@@ -16,6 +17,8 @@
 | **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（v0.70.0 架构重构） |
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
+| 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入规范**：写哪里 / 怎么写 / 禁写哪里；项目档案规则 |
+| 2c | [`projects/registry.yaml`](projects/registry.yaml) | **项目注册唯一事实源**（前缀 / 路径 / taskable）；每项目一页见 `projects/<prefix>/README.md` |
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
 | 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
 | 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
@@ -30,8 +33,8 @@
 
 **重构收口任务卡**：[`dispatch/T31`](dispatch/T31-refactor-closeout-docs-baseline.md)～[`T35`](dispatch/T35-refactor-closeout-hangover-regression.md)（文档基线 / Engine 真派发 / 硬编码 / 死码 / 回归）。  
 **自动化基建（T52）**：[`automation-base.md`](automation-base.md)（出卡模板 / 一键放行 / 壳复验 / 卡头门禁 CI+pre-commit）。  
-**现行开发方向（2026-08-04 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）与前端四板块架构见 qx-map `__archive__/decisions/`（双阶段运行模型 / 任务卡体系规则定稿 / 前端四板块架构定稿）。  
-**日常短读**：本 §0 → `architecture.md` → `STARTUP-BRIEF.md`。
+**现行开发方向（2026-08-04 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）与前端四板块架构见 qx-map `__archive__/decisions/`。  
+**日常短读**：本 §0 → [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) → `architecture.md` → `STARTUP-BRIEF.md`。
 
 ---
 
@@ -64,7 +67,7 @@
 | **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.70 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
 | [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-06：开仓双模式见 CLAUDE.md · HTTP 看板主路径 · Desktop 暂缓 |
 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
-| [`roadmap.md`](roadmap.md) 历史正文 | 半归档 | v0.19 等史实，勿覆盖「当前方向」 |
+| [`archive/roadmap-history-v0.19-v0.26.md`](archive/roadmap-history-v0.19-v0.26.md) | **史** | 从 roadmap.md 迁出的 v0.19 等长史；勿覆盖「当前方向」 |
 | [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | **不是** CCC 产品北星 |
 | [`archive/next-upgrade-roadmap.md`](archive/next-upgrade-roadmap.md) | **过时** | v0.21→v0.23 |
 

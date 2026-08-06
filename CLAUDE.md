@@ -11,8 +11,10 @@ Guidance for agents editing CCC as **platform developer**.
 # CCC — Connect–Claude Code · Loop Engineer
 
 > **人定意图，系统自动编排与自主执行。** 任意设备壳经 HTTP 直连 2017 单端服务；对话口接大脑 Agent；编排面（薄驱动 Engine + 文档流转 + 看板/HTTP）远端开发。
-> **事实权威**：`docs/INDEX.md` §0（最高优先级）· 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.70.0**）  
+> **事实权威**：`docs/INDEX.md` §0（最高优先级）· **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.70.0**）  
 > **叙事**：`docs/VISION.md` 仍含 Hub 时期段落（标待核）——**冲突时以 §0 / CURSOR / 本文件 2026-08-06 席位为准**。
+
+> **文档硬约束（读写必遵）**：读或写项目文档 / 注册项目 / 改前缀与路径 → 必须先按 `docs/DOC-PROTOCOL.md`；项目真值只认 `docs/projects/registry.yaml` + `docs/projects/<prefix>/README.md`。禁止落点表外新建文档、禁止双写 PREFIXES/kb-seed。
 
 > **开发方向（唯一基线 · 2026-08-06）**：
 > 出卡 → 2017 **OpenCode 开发** → 机械门禁 → 已回写 → **Claude 机审**（`## 机审区`）→ 老板说 **「验收看板」** → M1 终验关卡。  
@@ -20,7 +22,7 @@ Guidance for agents editing CCC as **platform developer**.
 
 **路径一句话**：人定意图 → 写任务卡到 `docs/dispatch/` → 2017 Engine 派发执行体 → 收单回写看板 → 验收闭环。
 
-**共识落盘**：新共识先改权威链（`docs/INDEX.md` §0 + `CURSOR.md` / `.cursor/rules/`），禁止只留在聊天。
+**共识落盘**：新共识先改权威链（`docs/INDEX.md` §0 + `docs/DOC-PROTOCOL.md` + `CURSOR.md` / `.cursor/rules/`），禁止只留在聊天。
 
 **勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；「OpenCode 已禁用」；把运维/知识席当成开发席；Desktop 必经。
 
@@ -43,10 +45,11 @@ Guidance for agents editing CCC as **platform developer**.
 
 **「哪些项目已注册、能自动开发？」**（结论先行，少 ssh）
 
-1. **可出卡前缀**：`docs/dispatch/T-mapping.md` / `PREFIXES` = `ccc`/`qb`/`mx`/`xy`/`hp`/`tst`。  
-2. **QuantHive（qh）禁止**：不得经 CCC 出卡或 Engine 派发（双轨独立）。老板说禁止 → **直接改门禁/文档，勿三连追问「移除还是标记」**。  
-3. **2017 已落盘、可挂产线的业务仓（权威）**：`/Users/fan/program/apps/{qb,hp,medio-0,xianyu,...}` + CCC `/Users/fan/program/CCC`。M1 无 `~/program/apps/` 属正常（仓在 2017）。  
-4. **待分派卡**：卡头 `状态：` 或 `GET …/board/states`；禁全文 grep「待分派」；无 `GET /board` 根路径。
+1. **可出卡前缀 / 路径 / taskable**：只认 [`docs/projects/registry.yaml`](docs/projects/registry.yaml)（摘要见 `T-mapping.md`；档案见 `docs/projects/<prefix>/README.md`）。  
+2. **QuantHive（qh）禁止**：registry `forbidden: true`；不得经 CCC 出卡或 Engine 派发。老板说禁止 → **直接改 registry + 门禁，勿三连追问**。  
+3. **2017 业务仓路径**：以 registry `paths.mac2017` 为准（常见 `/Users/fan/program/apps/{qb,hp,medio-0,xianyu}`）。M1 无 `~/program/apps/` 属正常。  
+4. **待分派卡**：卡头 `状态：` 或 `GET …/board/states`；禁全文 grep「待分派」；无 `GET /board` 根路径。  
+5. **改项目/写文档**：先读 [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md)；禁止落点外新建。
 
 **中枢禁令续**：老板指令已可执行时 **禁止** 拆成「问题1/2/3」等选择题；缺唯一关键信息最多问 **一句**，否则直接落卡或改门禁。
 

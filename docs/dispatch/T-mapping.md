@@ -4,6 +4,9 @@
 > 旧卡引用仍写 `T<N>`（如 `T39`）；**新卡一律** `<前缀><三位序号>-<slug>.md` 且放 `docs/dispatch/<前缀>/` 子目录。
 > 规则配套：`server/board/validate.py`（命名门禁）· `scripts/new-card.sh`（新卡生成）· `server/board/loader.py`（子目录扫描）。
 > 本文件为说明文档（无 `# 任务卡` 卡头），loader/Engine 不把它当任务卡。
+>
+> **前缀表唯一事实源**：[`docs/projects/registry.yaml`](../projects/registry.yaml)（见 [`DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)）。  
+> 下表为 registry 的**可读摘要**；增删前缀只改 registry（+ 档案 README），勿只改本文件。
 
 ## 前缀表
 

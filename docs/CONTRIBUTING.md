@@ -1,8 +1,8 @@
 # CCC CONTRIBUTING — 开发流程与 Review Rules（详尽工程版）
 
-> **对外贡献入口请先读根目录 [`CONTRIBUTING.md`](../CONTRIBUTING.md) 与 [`VISION.md`](VISION.md)。**  
-> 本文保留历史详尽流程，供 maintainer 改引擎/看板时对照。  
-> 与 `docs/USAGE.md` §3 对应。
+> **状态：史（Hub / phases.json 协议 · 2026-08-06 标注）。** 现行开发走任务卡 + Engine，见 [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) · [`product/dev-channel.md`](product/dev-channel.md)。  
+> **对外贡献入口**请先读根目录 [`CONTRIBUTING.md`](../CONTRIBUTING.md) 与 [`VISION.md`](VISION.md)。  
+> 本文保留历史详尽流程，供对照；**勿**再按 `plan.md` / `phases.json` / `report.md` 当现行门禁。
 
 ---
 

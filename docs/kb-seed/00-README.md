@@ -1,6 +1,9 @@
 # CCC 知识种子包 · T9
 
-> 用途：供 T10（CCC 知识库初始化）一次性移植进 CCC 自建知识库。
+> **状态：史 / 废弃手维（2026-08-06）。** 运行时项目清单以 [`../projects/registry.yaml`](../projects/registry.yaml) 为唯一事实源；live seed 在仓根 [`../../knowledge/seed/`](../../knowledge/seed/)。  
+> **勿**继续手改本目录当作第二份真值。见 [`../DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)。
+>
+> 用途（历史）：供 T10（CCC 知识库初始化）一次性移植进 CCC 自建知识库。
 > 来源：外脑权威源（qx-map）提炼，只读不修改。
 > 移植后 CCC 独立运行，零外脑依赖（D3 契约）。
 > 日期：2026-08-02 · 关联：INT-120（CCC 重构）· P5 知识移植

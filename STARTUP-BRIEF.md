@@ -3,6 +3,7 @@
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
 > **版本**：`VERSION`（**v0.70.0**）  
 > **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）  
+> **文档怎么写 / 项目注册**：[`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) · [`docs/projects/registry.yaml`](docs/projects/registry.yaml)  
 > **Cursor 入口**：[`CURSOR.md`](CURSOR.md) · **仓内规则**：`.cursor/rules/`（2026-08-05 新栈）  
 > **索引**：[`docs/INDEX.md`](docs/INDEX.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)
 
@@ -135,6 +136,7 @@ OpenCode 与 Claude Code 均为可后台 CLI；按卡头绑定与注册表拉起
 cat CURSOR.md                    # Cursor 角色与现况
 cat docs/architecture.md
 cat docs/INDEX.md                # §0 权威链
+cat docs/DOC-PROTOCOL.md         # 写哪里 / 项目注册
 grep -A 15 "## 红线 11" references/red-lines.md
 python -m server.board.validate docs/dispatch
 ```

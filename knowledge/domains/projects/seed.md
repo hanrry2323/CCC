@@ -1,5 +1,8 @@
 # 项目元数据域
 
+> **项目注册唯一事实源（2026-08-06）**：[`docs/projects/registry.yaml`](../../../docs/projects/registry.yaml) · 规范 [`docs/DOC-PROTOCOL.md`](../../../docs/DOC-PROTOCOL.md)。  
+> 本页为可读摘要；增删/改路径/taskable **先改 registry**（阶段 B 后与本种子校验对齐）。
+>
 > 来源：种子包 `02-project-metadata.json`（qx-map `cluster/path-authority.md` + `docs/architecture.md` v0.70.0 + `ccc-refactor-方案-定稿-2026-08-02.md`）
 > 初始化：2026-08-02 · M4 刷新：2026-08-03 · 之后知识库独立维护在此标注变更
 

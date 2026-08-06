@@ -5,11 +5,18 @@ alwaysApply: true
 
 # CCC 开发共识（新栈 · 2026-08-05）
 
-> 旧版（v0.65/v0.66 Hub 口径）已归档：`docs/archive/ccc-cursor-legacy-2026-08-05/`。本文为当前基线；冲突一律以本文 + `docs/INDEX.md` §0 + `docs/roadmap.md` 为准。
+> 旧版（v0.65/v0.66 Hub 口径）已归档：`docs/archive/ccc-cursor-legacy-2026-08-05/`。本文为当前基线；冲突一律以本文 + `docs/INDEX.md` §0 + `docs/DOC-PROTOCOL.md` + `docs/roadmap.md` 为准。
 
 ## 项目一句话
 
 CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯一事实源）+ HTTP 看板/运维实时面 + 2017 单端生产。M1 IDE = 开发中枢（老板只聊意图+出卡，只看板/中继/Δ）；中间 pull/派发默认自动（`CCC_AUTO_PULL`）。Desktop 壳暂缓。开仓 SSOT：`CLAUDE.md`「开仓作战卡片」。
+
+## 文档与项目注册（硬）
+
+- 读写规范：`docs/DOC-PROTOCOL.md`（落点表外禁止新建）
+- 项目真值：`docs/projects/registry.yaml` + `docs/projects/<prefix>/README.md`
+- 禁止双写 PREFIXES / `_is_taskable` / `docs/kb-seed`；禁止口头注册项目
+- 详见始终规则 `.cursor/rules/doc-protocol.mdc`
 
 ## 当前架构（2026-08-06 基线）
 
@@ -35,7 +42,7 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 ## 任务卡体系（T54+ 规则，本仓代码实现在 server/board/）
 
-- 命名：`<前缀><三位序号>-<slug>.md`（前缀表 `server/board/models.py` PREFIXES）；旧卡保持原名不迁移
+- 命名：`<前缀><三位序号>-<slug>.md`（前缀以 `docs/projects/registry.yaml` 为准；代码 `PREFIXES` 派生）；旧卡保持原名不迁移
 - 卡头必含：关联 / 执行体 / 验收 / 状态 / 派发 / 项目 / 日期；**新卡验收须与执行体交叉（OpenCode↔Claude Code）**
 - **已验收卡门禁（T67）**：卡含 `## 验收区` 且 20 行内有 `✅` / `判定：通过` → 卡头状态必须 = 已关闭
 - 交叉验收门禁：`server/board/roles.py` + `validate.py`；出卡：`scripts/new-card.sh`（默认 OpenCode/Claude Code）
@@ -51,6 +58,6 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 ## 工作方式
 
-- 结论先行、人话汇报；改代码前先读 `docs/INDEX.md` §0 与相关卡
+- 结论先行、人话汇报；改代码前先读 `docs/INDEX.md` §0；读写文档先读 `docs/DOC-PROTOCOL.md`
 - 分步提交（每块 commit+push），禁止 `git add -A` 全量提交；提交前 `git status` 核对无他人改动混入
 - 本机 Cursor = **难度突击**（不验收、不响应「验收看板」）；终验走 Claude/OpenCode + accept-board-sop

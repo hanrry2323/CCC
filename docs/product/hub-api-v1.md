@@ -1,3 +1,5 @@
+> **状态：史（Hub 时期 · 2026-08-06 标注）。** 现行见 [`../INDEX.md`](../INDEX.md) §0 · [`../DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)。
+>
 # Hub API v1 — 编排契约（冻结草案）
 
 > **版本**：v1 · 对齐 [`hub-shell-roadmap.md`](hub-shell-roadmap.md) §7  

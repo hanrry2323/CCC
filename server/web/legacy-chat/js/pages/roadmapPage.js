@@ -40,6 +40,11 @@ function html() {
     </div>
     <span class="st" id="roadmap-st">·</span>
   </div>
+  <aside class="roadmap-backlog" aria-label="下一程挂账">
+    <h3 class="roadmap-backlog-h">下一程挂账</h3>
+    <p class="roadmap-backlog-item"><strong>文档与项目注册</strong> — 少入口、单注册表、每项目一页。规范：<code>docs/DOC-PROTOCOL.md</code> · 注册表：<code>docs/projects/registry.yaml</code> · 阶段 B 卡 <code>ccc005</code>。</p>
+    <p class="roadmap-backlog-item"><strong>任务卡退役 / 高效管理</strong> — 历史卡不能无限堆在 dispatch 与 IDE 上下文。看板已关闭已 cap=10。详见 <code>docs/roadmap.md</code>。</p>
+  </aside>
   <div class="roadmap-overview" id="roadmap-overview">
     <div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>
   </div>
