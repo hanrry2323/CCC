@@ -144,13 +144,10 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     fi
   fi
 
-  git fetch origin main "$branch"
-  if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
-    echo "[ERROR] 缺少 origin/${branch}" >&2
-    return 1
-  fi
+  git fetch origin main
+  git fetch origin "$branch" 2>/dev/null || true
 
-  # 工作树须在 main 且可 ff
+  # 工作树须在 main
   current="$(git rev-parse --abbrev-ref HEAD)"
   if [[ "$current" != "main" ]]; then
     echo "[ERROR] 请在 main 上执行合入批准（当前：${current}）" >&2
@@ -158,8 +155,15 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
   git pull --ff-only origin main
 
-  # 合入策略：ff / 已在 main 仅关卡 / 分叉时须 --close-only（ready 狗粮）
-  if [[ "$(git rev-parse origin/main)" == "$(git rev-parse "origin/${branch}")" ]]; then
+  # 合入策略：ff / 已在 main 仅关卡 / 无分支或分叉时须 --close-only
+  if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    if [[ "$CLOSE_ONLY" == true ]]; then
+      echo "[WARN] 无 origin/${branch} → --close-only 仅关卡（实现已在 main）"
+    else
+      echo "[ERROR] 缺少 origin/${branch}。若实现已在 main 可加 --close-only" >&2
+      return 1
+    fi
+  elif [[ "$(git rev-parse origin/main)" == "$(git rev-parse "origin/${branch}")" ]]; then
     echo "[INFO] tip 与 main 相同，仅关卡"
   elif git merge-base --is-ancestor "origin/${branch}" origin/main; then
     echo "[INFO] ${branch} 已在 main 历史中，仅关卡"
