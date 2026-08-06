@@ -98,7 +98,16 @@
 | **真机审 ccc007** | Engine `--audit` → audit.log + 机审区 | ✅ ready |
 | **rebase 提醒** | new-card 模板一行（减 close-only） | ✅ |
 | **xy002** | 执行中消化 | 挂账 → M6 |
-| 里程碑 / 下一程 | [`notes/m5-milestone-2026-08-07.md`](notes/m5-milestone-2026-08-07.md) · [`notes/m6-next-plan.md`](notes/m6-next-plan.md) | ✅ / 待批 |
+| 里程碑 / 下一程 | [`notes/m5-milestone-2026-08-07.md`](notes/m5-milestone-2026-08-07.md) · [`notes/m6-next-plan.md`](notes/m6-next-plan.md) | ✅ / ✅已批 |
+
+### M6 ✅（自动机审默认路径 · 2026-08-07 · `33f3eb0`）
+
+| 项 | 意图 | 备注 |
+|----|------|------|
+| **ccc007 合入** | 合入批准 ff | ✅ `7383e96` |
+| **xy002 自动机审** | 收单→Engine 自动 audit | ✅ ready |
+| **xy002 合入** | 人审合入批准 | 挂账 → M7 |
+| 里程碑 / 下一程 | [`notes/m6-milestone-2026-08-07.md`](notes/m6-milestone-2026-08-07.md) · [`notes/m7-next-plan.md`](notes/m7-next-plan.md) | ✅ / 待批 |
 
 | 项 | 意图 | 备注 |
 |----|------|------|
