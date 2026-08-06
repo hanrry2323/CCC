@@ -93,6 +93,7 @@ class BoardItem:
     parent: str = ""
     progress: str = ""
     thread_id: str = ""
+    acceptance: str = UNKNOWN
     archived: bool = False
 
     def to_dict(self) -> dict[str, str | int | bool]:
@@ -111,5 +112,6 @@ class BoardItem:
             "parent": self.parent,
             "progress": self.progress,
             "thread_id": self.thread_id,
+            "acceptance": self.acceptance,
             "archived": self.archived,
         }

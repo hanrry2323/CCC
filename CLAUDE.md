@@ -4,7 +4,8 @@ Guidance for agents editing CCC as **platform developer**.
 
 - **人在 M1 打开本仓** = **开发中枢**（陪聊意图 → 出卡 → 盯看板到已回写；不自关卡）。
 - **被 2017 Engine `-p` 拉起** = **产线执行体**（只干卡头绑定范围）。
-- 日常可后台 CLI = **OpenCode / Claude Code**（卡头绑定优先）；**Cursor** = 难度突击手；**Codex** = 出卡/验收。
+- 日常可后台开发 = **OpenCode**（2017 默认）；**Claude Code** = 默认验收（亦可点名开发，则 OpenCode 验收）。
+- **交叉验收**：OpenCode↔Claude Code；**Codex / Cursor 取消验收资格**（Codex 出卡/裁决；Cursor 难度突击写码）。
 - Desktop Plan “no write” does **not** apply here. See `docs/product/dev-channel.md` · `CURSOR.md` · `docs/INDEX.md` §0。
 
 # CCC — Connect–Claude Code · Loop Engineer
@@ -14,10 +15,9 @@ Guidance for agents editing CCC as **platform developer**.
 > **叙事**：`docs/VISION.md` 仍含 Hub 时期段落（标待核）——**冲突时以 §0 / CURSOR / 本文件 2026-08-06 席位为准**。
 
 > **开发方向（唯一基线 · 2026-08-06）**：
-> **自研期（当前）**：意图在 M1 IDE 聊清并可出卡 → push → 2017 pull → Engine 按卡头绑定派发 **Claude Code 或 OpenCode**（worktree）→ 执行体「已回写」→ Codex（或点名席）验收「已关闭」→ 合入部署。  
-> **业务期（自研成熟后）**：老板用壳直聊大脑 Agent；业务任务走 Engine 派发。  
-> **OpenCode 可用**（与 Claude Code 并列；模型档 code / 6102 vs flash / 6100）。Codex = 驱动/验收。  
-> **人机面**：HTTP 看板/运维为主；Desktop 暂缓。
+> **自研期**：意图在 M1 IDE 出卡 → push → 2017 自动 pull → Engine 默认派发 **OpenCode**（开发）→「已回写」→ **Claude Code** 交叉验收「已关闭」（若 Claude 开发则 OpenCode 验收）→ 合入部署。  
+> **Mac2017 区分**：OpenCode=开发；Claude Code=验收（默认对）。**Codex/Cursor 不验收。**  
+> **人机面**：HTTP 看板/运维；Desktop 暂缓。
 
 **路径一句话**：人定意图 → 写任务卡到 `docs/dispatch/` → 2017 Engine 派发执行体 → 收单回写看板 → 验收闭环。
 
@@ -25,7 +25,7 @@ Guidance for agents editing CCC as **platform developer**.
 
 **勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；「OpenCode 已禁用」；把运维/知识席当成开发席；Desktop 必经。
 
-**席位**：Claude Code / OpenCode = 可后台 CLI · Codex = 驱动/验收 · M1 IDE = 开发中枢 · HTTP 看板 = 实时面 · Desktop = 暂缓壳。
+**席位**：OpenCode=开发 · Claude Code=验收（交叉可互换）· Codex=出卡/裁决（不验收）· Cursor=难度突击（不验收）· M1 IDE=中枢 · HTTP 看板=实时面 · Desktop=暂缓。
 
 ---
 
@@ -46,7 +46,7 @@ Guidance for agents editing CCC as **platform developer**.
 
 ### 双模式警示（粘贴级）
 
-> **双模式：** 人打开 `/Users/apple/program/CCC` 陪聊 = **开发中枢**——收敛意图、出卡（`push main`）；系统自动对齐 2017 并派发；老板只盯看板/中继/Δ。`## 验收区` / 「已关闭」归验收席（默认 Codex/Cursor），**不自关**。被 2017 Engine `-p` 拉起 = **产线执行体**——只做卡头绑定范围，**禁止**重出卡、改验收区、置已关闭、直推 `main`、手改 2017。
+> **双模式：** 人打开 `/Users/apple/program/CCC` 陪聊 = **开发中枢**——出卡（默认执行体 OpenCode · 验收 Claude Code）；老板只盯看板。`## 验收区` / 「已关闭」归**交叉验收席**（对家：OpenCode↔Claude Code；Codex/Cursor 不验收），**不自关**。被 Engine `-p` 拉起 = **产线执行体**——禁止写验收区、置已关闭、直推 `main`。
 
 ### 开发中枢模式（M1 IDE 陪聊）
 
@@ -147,9 +147,10 @@ scripts/new-card.sh --title "example" --slug example --executor "Claude Code" --
 
 | 语义 | 分类 | 当前绑定 |
 |------|------|----------|
-| 开发 / 写码 | 可后台 CLI | **Claude Code** / **OpenCode** |
-| 维护 | 可后台 CLI | Claude Code（或 OpenCode，按卡头） |
-| 管理 / 验收 | — | Codex |
+| 开发 / 写码 | 可后台 CLI | **OpenCode**（默认）/ Claude Code（点名） |
+| 维护 | 可后台 CLI | OpenCode |
+| 管理 | — | Codex（出卡/裁决，**不验收**） |
+| 验收 | — | **Claude Code** ↔ **OpenCode**（交叉；禁止 Codex/Cursor） |
 | ops | 手动 GUI | — |
 
 Claude Code（flash/6100）与 OpenCode（code/6102）并列可后台 CLI。注册表模板见 `server/config/executors.example.json`；生产以 2017 实机 `executors.json` 为准。
@@ -192,7 +193,7 @@ launchd(com.ccc.board-scheduler) → server/board/scheduler.py
 | 3 | 任务卡是唯一事实源 |
 | 4 | 不超出任务卡范围 |
 | 5 | 回写前 push 成功并附证据 |
-| 6 | Codex 验收，不采信执行摘要 |
+| 6 | 交叉验收（OpenCode↔Claude Code）独立取证；Codex/Cursor 不验收 |
 | 7 | 零硬编码（D10） |
 | 8 | 运行时零依赖 qx-map/hp-kb（D2） |
 | 9 | 免登录仅限局域网配置 |

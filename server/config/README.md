@@ -6,37 +6,26 @@
 
 | 文件 | 职责 |
 |------|------|
-| `config.example.env` | 全部运行参数占位：端口（engine/board/web/relay）、`PYTHON_BIN`、数据/日志路径、上游与密钥引用、注册表路径 |
-| `loader.py` | env 加载器：缺项/空值/文件缺失报错（`ConfigError`）；可选键给默认值 |
-| `executors.example.json` | 契约 §7 五角色执行体注册表 |
+| `config.example.env` | 全部运行参数占位 |
+| `loader.py` | env 加载器 |
+| `executors.example.json` | 契约 §7 执行体注册表模板 |
 
-## 执行体注册表（契约 §7 五角色）
+## 执行体注册表（2026-08-06 交叉验收）
 
 | 角色 | 分类 | 当前绑定 | 说明 |
 |------|------|---------|------|
-| 开发执行体 | 可后台 CLI | OpenCode | 日常默认；Engine 自动拉起（6102） |
-| 开发执行体 | 可后台 CLI | Claude Code | 卡头点名；Engine 自动拉起（6100） |
-| 维护执行体 | 可后台 CLI | Claude Code | Engine 自动拉起 |
-| 管理席 | — | Codex | 方案/拆卡/裁决，不执行 |
-| 验收席 | — | Codex | 验收，不执行 |
+| 开发执行体 | 可后台 CLI | **OpenCode** | 2017 默认可后台开发（6102） |
+| 开发执行体 | 可后台 CLI | Claude Code | 点名开发（6100）；此时验收须 OpenCode |
+| 维护执行体 | 可后台 CLI | OpenCode | 维护默认 OpenCode |
+| 管理席 | — | Codex | 出卡/裁决；**不验收** |
+| 验收席 | — | Claude Code | OpenCode 开发 → Claude 验收 |
+| 验收席 | — | OpenCode | Claude 开发 → OpenCode 验收 |
 
-- Trae / 手动 GUI 已从模板移除（产品面停用）。
-- 分类只允许「可后台 CLI」/「手动 GUI」；管理席/验收席分类为「—」。
-- 工具名是**配置值**、允许出现在注册表；业务代码禁止散落硬编码路径/端口。
+**交叉规则**：执行体与验收必须互为 `OpenCode` ↔ `Claude Code`。`Codex` / `Cursor` 取消验收资格。  
+机器校验：`server/board/roles.py` + `validate.py`（新卡 error）。
 
 ## 关键约定
 
-- 新增配置：`config.example.env` 加占位 + `loader.py` 加键（必填 → `REQUIRED_KEYS`，可选 → `OPTIONAL_KEYS`）。
-- 各模块只经 `load_config()` 读配置，禁止散落读环境变量。
+- 新增配置：`config.example.env` 加占位 + `loader.py` 加键。
+- 各模块只经 `load_config()` 读配置。
 - 密钥只允许占位引用。
-
-## 与相邻模块关系
-
-| 模块 | 关系 |
-|------|------|
-| 所有模块 | 经 `loader.load_config` 取运行参数 |
-| `engine/` | 读 `EXECUTOR_REGISTRY_PATH` 指向的注册表 |
-
-## 施工入口
-
-- T2：engine 接 `loader.load_config` 与注册表读取。

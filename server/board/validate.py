@@ -29,9 +29,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from server.board.models import PREFIXES, base_state, BoardItem
+from server.board.roles import acceptance_issue
 
 VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
+# 新卡强制含「验收」；交叉对由 roles.acceptance_issue 校验
 REQUIRED_HEADER_KEYS = ("关联", "执行体", "状态", "日期")
+REQUIRED_HEADER_KEYS_NEW = ("关联", "执行体", "验收", "状态", "日期")
 
 # T54 新卡文件名：`<前缀><三位序号>-<slug>.md`（前缀 2-4 位小写字母；slug 小写字母数字 + 单连字符）
 NEW_CARD_RE = re.compile(
@@ -316,6 +319,27 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             issues.append(CardIssue(card_id, str(path), f"卡头缺字段: {missing}"))
         state_raw = meta.get("状态", "")
         base = base_state(state_raw)
+        # 交叉验收：新卡 error；旧卡未关闭 warn（历史 Codex 验收不阻断）
+        exe_raw = meta.get("执行体", "")
+        acc_raw = meta.get("验收", "")
+        if ctype == "new":
+            miss_new = [k for k in REQUIRED_HEADER_KEYS_NEW if not meta.get(k, "").strip()]
+            if miss_new:
+                issues.append(CardIssue(card_id, str(path), f"新卡卡头缺字段: {miss_new}"))
+            issue = acceptance_issue(exe_raw, acc_raw)
+            if issue:
+                issues.append(CardIssue(card_id, str(path), issue))
+        elif base not in ("已关闭",) and acc_raw.strip():
+            issue = acceptance_issue(exe_raw, acc_raw)
+            if issue:
+                issues.append(
+                    CardIssue(
+                        card_id,
+                        str(path),
+                        f"{issue}（旧卡提示：新卡须 OpenCode↔Claude Code 交叉验收；Codex/Cursor 已取消验收资格）",
+                        severity="warn",
+                    )
+                )
         if base not in VALID_STATES:
             issues.append(CardIssue(card_id, str(path), f"状态值非法: {state_raw!r}（合法={sorted(VALID_STATES)}）"))
         if _is_accepted(path) and base != "已关闭":

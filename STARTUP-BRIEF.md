@@ -15,14 +15,14 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（Claude Code CLI via 6100）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
 
-**席位（硬，2026-08-06）**：
-- **OpenCode**（日常）/ **Claude Code**（W2 点名）= 可后台 CLI 执行体（code/6102 vs flash/6100；卡头绑定）
-- **Cursor** = **难度开发突击手**（硬骨头 / 复杂排查修复 / 点名硬任务；不抢日常队列）
-- **Codex** = 自研驱动者 + 系统总维护 + 验收席（出卡 / 把控 / 独立验收）
-- **M1 IDE** = 开发智能中枢（打开 CCC 仓 + 已注册能力；Claude Code / OpenCode **开仓剧本**见 [`CLAUDE.md`](CLAUDE.md)「开仓作战卡片 / 双模式 / 大方案切片 SOP」）
-- **HTTP 看板/运维** = 人机实时面（主路径）
-- **Desktop** = 壳（**暂缓**，非主路径）
-- **Trae** = 停用（历史）
+**席位（硬，2026-08-06 · 交叉验收）**：
+- **OpenCode** = 2017 默认可后台**开发**（6102）
+- **Claude Code** = 默认**验收**（亦可点名开发 → 则 OpenCode 验收）
+- **交叉验收**：OpenCode↔Claude Code；禁止自验
+- **Codex** = 出卡/裁决；**不验收**
+- **Cursor** = 难度突击写码；**不验收**
+- **M1 IDE** = 开发中枢 + 交叉验收入口（见 [`CLAUDE.md`](CLAUDE.md)）
+- **HTTP 看板/运维** = 人机实时面；**Desktop** 暂缓；**Trae** 停用
 
 SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md) · qx-map `ide/tool-roles.md`。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话。  
@@ -69,11 +69,10 @@ SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`CURSOR.
 
 | 角色语义 | 分类 | 现行绑定 | 干 |
 |----------|------|----------|-----|
-| 开发 / 写码 | 可后台 CLI | **Claude Code** / **OpenCode** | 按任务卡改仓 → commit/push |
-| 维护 | 可后台 CLI | Claude Code（或 OpenCode） | 运维/修复类 |
-| 管理席 | — | Codex | 出卡 / 裁决（不执行） |
-| 验收席 | — | Codex | 独立验收（不执行） |
-| ops | 手动 GUI | — | 健康检查（挂起等人） |
+| 开发 / 写码 | 可后台 CLI | **OpenCode**（默认）/ Claude Code（点名） | 改仓 → 已回写；不自验 |
+| 维护 | 可后台 CLI | OpenCode | 运维/修复 |
+| 管理席 | — | Codex | 出卡/裁决；**不验收** |
+| 验收席 | — | Claude Code ↔ OpenCode | **交叉验收**；Codex/Cursor 无资格 |
 
 **派发规则**：`可后台 CLI` → Engine 自动拉起；`手动 GUI` → 挂起等人。  
 **状态机**：`待分派 → 执行中 → 已回写 → 已关闭`；失败 `→ 打回 → 待分派`。非法转移抛 `IllegalTransitionError`。
@@ -116,7 +115,7 @@ python -m server.board.validate docs/dispatch
 - **1** 不动系统文件 / 密钥  
 - **11** Verdict 必须落文件  
 - **12** 禁止 agent 自主启用 CCC  
-- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 Claude Code 执行体 + Codex 验收）  
+- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 OpenCode 开发 + Claude Code 交叉验收）  
 
 ---
 
@@ -148,7 +147,7 @@ python -m server.board.validate docs/dispatch
 
 ## 9. 调用链（1 行）
 
-任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 **OpenCode / Claude Code** → 收单回写 → 已关闭。
+任意设备壳 → HTTP 直连 2017:7788 → /conversation → 写任务卡 `docs/dispatch/` → Engine 派发 **OpenCode**（默认）→ 收单回写 → **交叉验收** → 已关闭。
 
 ---
 

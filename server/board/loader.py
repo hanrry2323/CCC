@@ -22,6 +22,7 @@ import re
 from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state
+from server.board.roles import normalize_tool
 
 logger = logging.getLogger("ccc.board.loader")
 
@@ -141,6 +142,8 @@ def parse_card(path: Path | str) -> BoardItem:
         type=card_type,
         parent=parent_card,
         thread_id=meta.get("会话", "").strip() or meta.get("thread_id", "").strip(),
+        acceptance=normalize_tool(_strip_parenthetical(meta.get("验收", UNKNOWN)))
+        or UNKNOWN,
         archived=is_archived,
     )
 
@@ -257,6 +260,7 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "card_type": item.type,
         "parent_card": item.parent,
         "thread_id": item.thread_id,
+        "acceptance": item.acceptance,
         "archived": item.archived,
     }
 
@@ -346,6 +350,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                 type=entry.get("card_type", "task"),
                 parent=entry.get("parent_card", ""),
                 thread_id=entry.get("thread_id", ""),
+                acceptance=entry.get("acceptance", UNKNOWN),
                 archived=entry.get("archived", False),
             )
             items.append(item)
@@ -374,6 +379,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                         type=entry.get("card_type", "task"),
                         parent=entry.get("parent_card", ""),
                         thread_id=entry.get("thread_id", ""),
+                        acceptance=entry.get("acceptance", UNKNOWN),
                         archived=entry.get("archived", False),
                     )
                     items.append(item)
@@ -432,6 +438,7 @@ def derive_epic_states_and_progress(items: list[BoardItem]) -> list[BoardItem]:
                     parent=item.parent,
                     progress=progress_str,
                     thread_id=item.thread_id,
+                    acceptance=item.acceptance,
                 )
                 derived_items.append(new_item)
             else:

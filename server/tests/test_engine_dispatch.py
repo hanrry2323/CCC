@@ -64,21 +64,21 @@ class TestLoadRegistry:
 
     def test_example_registry_loads(self) -> None:
         reg = load_registry(REGISTRY_PATH)
-        # 开发执行体两条可后台 CLI（OpenCode 日常默认 + Claude Code）+ 维护 / 管理 / 验收 = 5 行。
-        # Trae 手动 GUI 已从模板移除（产品面停用，避免卡永久挂「执行中」）。
-        assert len(reg.entries) == 5
-        # 角色回退命中首条可后台 CLI = OpenCode
+        # OpenCode/Claude 开发 CLI + 维护 + 管理 + Claude/OpenCode 双验收席 = 6 行
+        assert len(reg.entries) == 6
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
-        assert cli.command == "opencode"
         assert cli.binding == "OpenCode"
-        assert "{work_id}" in cli.args_template
+        assert cli.command == "opencode"
         assert "run --auto" in cli.args_template
         assert "--dir {worktree}" in cli.args_template
-        # Claude Code 走绑定名
         cc = reg.cli_entry_for_binding("Claude Code")
         assert cc is not None
-        assert cc.command == "claude"
+        assert cc.role == "开发执行体"
+        # 验收席绑定存在且为「—」
+        acc_rows = [e for e in reg.entries if e.role == "验收席"]
+        assert {e.binding for e in acc_rows} == {"Claude Code", "OpenCode"}
+        assert all(e.category == "—" for e in acc_rows)
 
     def test_missing_fields_rejected(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.json"

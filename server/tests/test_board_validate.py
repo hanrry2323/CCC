@@ -23,7 +23,7 @@ def _write_card(
     body = "\n## 目标\nx\n\n## 验收标准\nx\n\n## 回写区\n**执行体**：X · 日期：\n" if with_body else "\n## 目标\nx\n"
     p.write_text(
         f"# 任务卡 {hdr_id or name.split('.')[0]} · 测试\n"
-        f"> 关联：TEST · 执行体：X · 验收：Codex · 状态：{state} · 日期：2026-08-04\n"
+        f"> 关联：TEST · 执行体：OpenCode · 验收：Claude Code · 状态：{state} · 日期：2026-08-04\n"
         f"{body}",
         encoding="utf-8",
     )
@@ -244,3 +244,28 @@ def test_acceptance_consistency(tmp_path: Path) -> None:
     )
     issues = validate_cards(tmp_path)
     assert _errors(issues) == []
+
+
+def test_cross_acceptance_new_card(tmp_path: Path) -> None:
+    """新卡（ccc/ 子目录）须 OpenCode↔Claude Code 交叉；Codex 验收 = error。"""
+    sub = tmp_path / "ccc"
+    sub.mkdir()
+    bad = sub / "ccc900-cross-bad.md"
+    bad.write_text(
+        "# 任务卡 ccc900 · 交叉坏\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：Codex · 状态：待分派 · 项目：ccc · 日期：2026-08-06\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8",
+    )
+    errs = _errors(validate_cards(tmp_path))
+    assert any("Codex" in i.reason or "交叉验收" in i.reason for i in errs)
+
+    bad.unlink()
+    good = sub / "ccc901-cross-ok.md"
+    good.write_text(
+        "# 任务卡 ccc901 · 交叉好\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 项目：ccc · 日期：2026-08-06\n"
+        "## 目标\nx\n\n## 验收标准\nx\n",
+        encoding="utf-8",
+    )
+    assert _errors(validate_cards(tmp_path)) == []

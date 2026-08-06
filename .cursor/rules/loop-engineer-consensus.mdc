@@ -17,35 +17,34 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 - **代码分布**：M1 `/Users/apple/program/CCC` = 开发副本（git → GitHub main）；2017 `/Users/fan/program/CCC` = 生产副本（只 pull、不手改）
 - **单端生产**：2017 `:7788`（web-server / engine / board-scheduler 三 launchd 服务）；大脑对话走 2017 中继 6100/6102；**M1 不跑 7788，无 Hub :7777、无 sidecar**
 - **任务卡 = 唯一事实源**：`docs/dispatch/TNN-*.md`；卡头五态：待分派 / 执行中 / 已回写 / 已关闭 / 打回；看板是派生视图（loader 扫描卡 → /board API），不存数据不做决策
-- **开发流程**：意图聊清并可出卡（M1 IDE 或 Codex）→ push main → 2017 pull → Engine 派发（Claude Code 或 OpenCode，卡头绑定）→ worktree → 分步 commit+push →「已回写」→ 验收「已关闭」→ 合入 → 2017 pull 部署
+- **开发流程**：出卡（默认执行体 OpenCode · 验收 Claude Code）→ push → 2017 自动 pull → Engine 派发 OpenCode → 已回写 → **交叉验收**（对家）→ 已关闭 → 合入部署
 - **人机实时面**：HTTP `:7788` 看板 + 运维（主路径）；**Desktop 暂缓、非主路径**
 - **cwd 铁律（M1）**：做 CCC 必须打开 `/Users/apple/program/CCC`；禁止把 `qx-map` 等其它仓静默当写源
 - **免登录**：`CCC_WEB_AUTH_REQUIRED=0`（单用户局域网直连，全端点免鉴权）
 
 ## 席位与工具（硬 · 唯一事实源 /Users/apple/qx-map/ide/tool-roles.md）
 
-- **日常开发 / 维护执行体** = 注册表「可后台 CLI」：`OpenCode`（code / 6102，默认日常）与 `Claude Code`（flash / 6100，W2 点名顶替）；卡头绑定优先；Engine 自动拉起
-- **难度突击** = `Cursor`（W7）：硬骨头写码、复杂根因+修复、跨模块收口、老板点名；不抢日常队列；终验仍归 Codex
-- **Codex** = 自研驱动者 + 系统总维护 + 验收席（出卡 / 把控 / 独立验收 / 冲突仲裁）
-- **M1 IDE** = 开发智能中枢（打开 CCC 仓陪聊意图/出卡/盯板；与 HTTP 看板配合；双模式见 `CLAUDE.md`）
-- **Trae** = 停用（历史）
-- **Desktop** = 任意设备壳之一，**暂缓**（功能对齐 HTTP，不优先自研）
-- **双轨独立**：QuantHive 与 CCC 完全独立（开发通道、知识库、决策互不混）
+- **2017 开发执行体** = **OpenCode**（code/6102，默认）；点名时 Claude Code 可开发（则 OpenCode 验收）
+- **2017 / M1 验收** = **交叉**：OpenCode 开发→Claude Code 验收；Claude 开发→OpenCode 验收
+- **难度突击** = `Cursor`：硬骨头写码；**不验收**
+- **Codex** = 出卡 / 裁决 / 仲裁；**不验收**
+- **M1 IDE** = 开发中枢 + 交叉验收入口（打开 CCC 仓）
+- **Trae** = 停用；**Desktop** = 暂缓
+- **双轨独立**：QuantHive 与 CCC 完全独立
 
 ## 任务卡体系（T54+ 规则，本仓代码实现在 server/board/）
 
 - 命名：`<前缀><三位序号>-<slug>.md`（前缀表 `server/board/models.py` PREFIXES）；旧卡保持原名不迁移
-- 卡头必含：关联 / 执行体 / 验收 / 状态 / 派发 / 项目 / 日期；状态五态
-- **已验收卡门禁（T67）**：卡含 `## 验收区` 且 20 行内有 `✅` / `判定：通过` → 卡头状态必须 = 已关闭，否则 validate 报 error；Engine 对已验收卡不派发
-- 出卡模板：`scripts/new-card.sh`；卡头门禁：`server/board/validate.py`（CI + pre-commit 双闸）
-- 运行时索引：`data/cards/cards.index.jsonl`（增量生成，勿提交）；`docs/dispatch/cards.index.jsonl` 为测试路径产物，勿提交
+- 卡头必含：关联 / 执行体 / 验收 / 状态 / 派发 / 项目 / 日期；**新卡验收须与执行体交叉（OpenCode↔Claude Code）**
+- **已验收卡门禁（T67）**：卡含 `## 验收区` 且 20 行内有 `✅` / `判定：通过` → 卡头状态必须 = 已关闭
+- 交叉验收门禁：`server/board/roles.py` + `validate.py`；出卡：`scripts/new-card.sh`（默认 OpenCode/Claude Code）
 
 ## 硬红线
 
 1. **不写 QuantHive 业务代码**（独立轨道）；不把双轨混成一个项目
 2. 2017 生产副本只 pull 不手改；远程 worktree 不随意删
 3. 中继只走 6100/6102；不碰旧端口/旧服务（7777/7775/7788-M1/4000/4100）
-4. 回写/提交前 push 成功；验收依赖 Codex 独立取证（不采信执行摘要）
+4. 回写/提交前 push 成功；**交叉验收**独立取证（不采信执行摘要）；Codex/Cursor 不验收
 5. **旧栈已退役**——不要按旧文档/旧规则行事：`scripts/`（已归档 docs/archive/ccc-legacy-2026-08-02/scripts/）、Hub :7777、6+1 列 jsonl、能力包、角色分层
 6. 无授权不删改归档目录；历史文档带「待核/历史归档」标记的按红线 #4 不扩写
 
@@ -53,4 +52,4 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 
 - 结论先行、人话汇报；改代码前先读 `docs/INDEX.md` §0 与相关卡
 - 分步提交（每块 commit+push），禁止 `git add -A` 全量提交；提交前 `git status` 核对无他人改动混入
-- 本机 Cursor = **难度开发突击手**（有难度/点名硬任务）；日常主线仍优先 OpenCode / 注册表 CLI + Codex 验收
+- 本机 Cursor = **难度开发突击手**（不验收）；日常主线 OpenCode 开发 + Claude Code 交叉验收

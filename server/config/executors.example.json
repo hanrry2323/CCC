@@ -1,36 +1,36 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表模板（契约 §7）。复制为 executors.json 后按 2017 实机填写。开发执行体可挂多条「可后台 CLI」（OpenCode 日常默认 / Claude Code 点名）；卡头绑定优先。模型档：Claude Code 走 flash（6100），OpenCode 走 code（6102）——以实机中继为准。Trae 已停用，勿再绑。",
+  "description": "CCC 执行体注册表模板（契约 §7）。Mac2017：OpenCode=开发，Claude Code=验收；交叉验收 OpenCode↔Claude Code。Codex 只管出卡/裁决（不验收）；Cursor 不验收。复制为 executors.json 后按实机填路径。",
   "executors": [
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
       "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭。\"",
+      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；完成后 commit+push 到卡内指定分支（勿直推 main）；更新卡头为已回写并填回写区。禁止自置已关闭、禁止写验收区。\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "日常默认可后台 CLI；中继 6102 code 档。须 --auto + --dir {worktree}：卡在生产仓、执行在 worktree，否则易 exit0 假成功。命令在 launchd 下建议写绝对路径。"
+      "备注": "2017 默认可后台开发 CLI（6102 code）。卡头执行体=OpenCode 时拉起；验收须 Claude Code（交叉）。"
     },
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
       "当前绑定": "Claude Code",
       "命令": "claude",
-      "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
+      "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。只做开发回写，禁止写验收区/置已关闭。\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "可后台 CLI；中继 6100 flash 档；卡头点名时 Engine 自动拉起"
+      "备注": "点名 Claude 开发时拉起（6100 flash）；此时验收须 OpenCode（交叉）。2017 默认日常仍优先 OpenCode。"
     },
     {
       "角色": "维护执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "Claude Code",
-      "命令": "claude",
-      "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
+      "当前绑定": "OpenCode",
+      "命令": "opencode",
+      "参数模板": "run --auto --model loop/code --dir {worktree} \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "运维/维护类；Engine 可后台自动执行"
+      "备注": "运维/维护类；默认 OpenCode"
     },
     {
       "角色": "管理席",
@@ -39,16 +39,25 @@
       "命令": "",
       "参数模板": "",
       "工作目录": "",
-      "备注": "出卡/裁决；不执行"
+      "备注": "出卡/裁决/冲突仲裁；不执行；不验收"
     },
     {
       "角色": "验收席",
       "分类": "—",
-      "当前绑定": "Codex",
+      "当前绑定": "Claude Code",
       "命令": "",
       "参数模板": "",
       "工作目录": "",
-      "备注": "独立验收；失败打回附问题清单；不执行"
+      "备注": "交叉验收：OpenCode 开发 → Claude Code 验收（M1 IDE 取证写验收区）；禁止自验"
+    },
+    {
+      "角色": "验收席",
+      "分类": "—",
+      "当前绑定": "OpenCode",
+      "命令": "",
+      "参数模板": "",
+      "工作目录": "",
+      "备注": "交叉验收：Claude Code 开发 → OpenCode 验收；Codex/Cursor 无验收资格"
     }
   ]
 }

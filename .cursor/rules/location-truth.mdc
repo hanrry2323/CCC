@@ -48,8 +48,8 @@ ssh fan@192.168.3.116 "cd /Users/fan/program/CCC && git log --oneline -1 && laun
 
 ```
 出卡（docs/dispatch/）→ push main → 2017 自动 pull（CCC_AUTO_PULL）
-  → Engine 按卡头派发 OpenCode / Claude Code（worktree）
-  → 分步 commit+push → 验收 → 合入 main → 2017 pull + 重启部署 → 关卡
+  → Engine 按卡头派发 OpenCode（默认开发）/ Claude Code（点名）
+  → 分步 commit+push → **交叉验收**（对家）→ 合入 main → 2017 pull + 重启部署 → 关卡
 ```
 
 你的改动到达 2017 生产必须经过「出卡 → 执行 → 验收 → 合入 → 部署」全链，不是直通。

@@ -12,8 +12,8 @@
 # 选项：
 #   --title "标题"            卡标题（必填；slug 由标题 ASCII 词派生，空则用 --slug）
 #   --project <前缀>          项目前缀 = 子目录名 = 卡头「项目」（默认 ccc；见 T-mapping.md）
-#   --executor "Claude Code"  卡头「执行体」字段（默认 $CCC_CARD_EXECUTOR 或 Claude Code）
-#   --acceptance "Codex"      卡头「验收」字段（默认 $CCC_CARD_ACCEPTANCE 或 Codex）
+#   --executor "OpenCode"     卡头「执行体」（默认 $CCC_CARD_EXECUTOR 或 OpenCode）
+#   --acceptance "Claude Code" 卡头「验收」（默认按执行体交叉；OpenCode→Claude Code）
 #   --related "关联文本"       卡头「关联」字段（默认 "阶段 3 P1"）
 #   --dispatch engine|manual  卡头「派发」字段（默认 engine）
 #   --dispatch-dir <目录>     任务卡目录（默认 docs/dispatch；测试可用临时目录）
@@ -33,8 +33,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── 默认值（可用环境变量覆盖） ──
 DISPATCH_DIR="${CCC_DISPATCH_DIR:-docs/dispatch}"
 PROJECT_PREFIX="${CCC_CARD_PROJECT:-ccc}"
-EXECUTOR="${CCC_CARD_EXECUTOR:-Claude Code}"
-ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-Codex}"
+EXECUTOR="${CCC_CARD_EXECUTOR:-OpenCode}"
+ACCEPTANCE_EXPLICIT=false
+ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-}"
 RELATED="${CCC_CARD_RELATED:-阶段 3 P1}"
 DISPATCH="${CCC_CARD_DISPATCH:-engine}"
 PYTHON_BIN="${CCC_PYTHON_BIN:-}"
@@ -54,7 +55,7 @@ while [[ $# -gt 0 ]]; do
     --title) TITLE="$2"; shift 2 ;;
     --project) PROJECT_PREFIX="$2"; shift 2 ;;
     --executor) EXECUTOR="$2"; shift 2 ;;
-    --acceptance) ACCEPTANCE="$2"; shift 2 ;;
+    --acceptance) ACCEPTANCE="$2"; ACCEPTANCE_EXPLICIT=true; shift 2 ;;
     --related) RELATED="$2"; shift 2 ;;
     --dispatch) DISPATCH="$2"; shift 2 ;;
     --dispatch-dir) DISPATCH_DIR="$2"; shift 2 ;;
@@ -71,6 +72,15 @@ if [[ -z "$TITLE" ]]; then
   echo "[ERROR] 缺少 --title（卡标题必填）" >&2
   usage
   exit 2
+fi
+
+# 交叉验收默认：未显式 --acceptance 时按执行体配对（OpenCode↔Claude Code）
+if [[ "$ACCEPTANCE_EXPLICIT" != true ]]; then
+  case "$EXECUTOR" in
+    "OpenCode"|"opencode") ACCEPTANCE="Claude Code" ;;
+    "Claude Code"|"Claude"|"claude") ACCEPTANCE="OpenCode" ;;
+    *) ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-Claude Code}" ;;
+  esac
 fi
 
 # 解析 python 解释器（写卡后联动 validate 需要）
