@@ -68,4 +68,4 @@
 
 - 分支：`codex/ccc003-engine-anti-fake-success-and-template-align`
 - 改动文件：`server/engine/main.py`、`server/tests/test_skeleton.py`、`server/tests/test_engine_dispatch.py`、`server/tests/test_engine_main.py`、`scripts/new-card.sh`、本卡（卡头状态 + 回写区）
-- commit：见本次 push 记录（后续补充 commit id）
+- commit：`7cf9cf91` feat(engine): ccc003 收单防假成功 + OpenCode 模板对齐 + 出卡先刷新索引
