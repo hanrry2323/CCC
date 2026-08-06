@@ -4,6 +4,7 @@
  * 数据源（全部走新服务端）：
  *   - 状态计数 KPI：GET /board/states → {状态: count} 或 GET /cards?project=X 聚合
  *   - 需注意清单：复用 TaskCard/TaskCardList (打回 / 执行中 / 已回写待合入)
+ *   - 待合入列表优先 GET /board/ready_for_merge（机审通过可合入批准）
  *   - 后台任务进程面板 (T53)
  *   - 运维告警数：GET /ops/summary → overview.alert_count
  *   - 项目列表：GET /board/summaries → {summaries: {项目: snapshot}}
@@ -271,7 +272,18 @@ async function poll() {
     // Filter cards for lists (slice each to ≤10)
     const abnCards = _allCards.filter(c => getBaseState(c.state || c.status) === '打回');
     const activeCards = _allCards.filter(c => getBaseState(c.state || c.status) === '执行中');
-    const writtenCards = _allCards.filter(c => getBaseState(c.state || c.status) === '已回写');
+    // 待合入：优先 ready_for_merge（质量门已过）；失败则回退看板列「已回写」
+    let writtenCards = [];
+    try {
+      const ready = await apiGet('/board/ready_for_merge', { signal });
+      writtenCards = (ready && ready.cards) || [];
+    } catch (_) {
+      writtenCards = _allCards.filter(
+        (c) => (c.board_column || '') === '已回写' || (
+          getBaseState(c.state || c.status) === '已回写' && c.machine_audit_passed
+        )
+      );
+    }
 
     // Update section badges
     const abnBadge = _root.querySelector('#console-abn-n');

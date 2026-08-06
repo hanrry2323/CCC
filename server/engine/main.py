@@ -322,19 +322,27 @@ def _sync_machine_audit_from_worktree(work: Work, worktree_path: str) -> bool:
 def _audit_output_indicates_pass(text: str) -> bool:
     """从机审席 stdout/audit.log 判断是否已给出通过结论（ccc006）。
 
-    不通过优先：尾部含「机审：不通过」则 False。
-    通过：正文已有合格机审区，或尾部出现「机审：通过」/「机审通过」/「判定：通过」。
+    只看 child 启动后的模型输出，避免 prompt 里「不通过写…」误判为失败（xy001）。
+    不通过优先：输出区含「机审：不通过」/「机审不通过」。
+    通过：合格机审区，或出现「机审：通过」/「机审通过」/「判定：通过」。
     """
     if not text or not text.strip():
         return False
     from server.board.models import machine_audit_passed_text
 
-    if machine_audit_passed_text(text):
+    body = text
+    for marker in ("[ccc.engine] child_pid=", "child_pid="):
+        idx = text.rfind(marker)
+        if idx >= 0:
+            nl = text.find("\n", idx)
+            body = text[nl + 1 :] if nl >= 0 else text[idx:]
+            break
+
+    if machine_audit_passed_text(body):
         return True
-    tail = "\n".join(text.splitlines()[-120:])
-    if "机审：不通过" in tail or "机审不通过" in tail:
+    if "机审：不通过" in body or "机审不通过" in body:
         return False
-    return ("机审：通过" in tail) or ("机审通过" in tail) or ("判定：通过" in tail)
+    return ("机审：通过" in body) or ("机审通过" in body) or ("判定：通过" in body)
 
 
 def _read_text_best_effort(path: Path) -> str:

@@ -18,6 +18,17 @@ def test_audit_output_pass_and_fail() -> None:
     assert not _audit_output_indicates_pass("")
 
 
+def test_audit_output_ignores_prompt_fail_wording() -> None:
+    """prompt 含「不通过写机审：不通过」不得盖过 child 后的「机审通过」。"""
+    text = (
+        "[ccc.engine] start work=xy001 phase=audit "
+        "cmd=claude -p …不通过写「机审：不通过」并以非0退出…\n"
+        "[ccc.engine] child_pid=9091\n"
+        "各项一致，**机审通过**。现在把机审区写进绝对路径卡文件。\n"
+    )
+    assert _audit_output_indicates_pass(text)
+
+
 def test_append_machine_audit_pass(tmp_path: Path) -> None:
     card = tmp_path / "ccc999-demo.md"
     card.write_text("# 卡\n\n> 状态：已回写\n\n## 回写区\n\nok\n", encoding="utf-8")
