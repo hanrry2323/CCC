@@ -1187,9 +1187,29 @@ class TestBoardStates:
         status, data = _get(api_server, "/board/states", token=token)
         assert status == 200
         assert isinstance(data, dict)
+        assert "columns" in data
+        assert isinstance(data["columns"], dict)
+        assert "机审" in data["columns"]
+        assert data.get("note")
         for state, count in data.items():
+            if state in ("columns", "note"):
+                continue
             assert isinstance(state, str)
             assert isinstance(count, int)
+        for col, count in data["columns"].items():
+            assert isinstance(col, str)
+            assert isinstance(count, int)
+
+    def test_columns_match_snapshot_counts(self, api_server):
+        """columns 与 snapshot.counts 同看板列语义；已关闭 snapshot 有 cap 10。"""
+        token = _get_token(api_server)
+        status_s, states = _get(api_server, "/board/states", token=token)
+        status_p, snap = _get(api_server, "/board/snapshot", token=token)
+        assert status_s == 200 and status_p == 200
+        for col in ("待分派", "执行中", "机审", "已回写", "打回"):
+            assert states["columns"].get(col, 0) == snap["counts"].get(col, 0)
+        # snapshot 已关闭最多展示 10；states.columns 为全量列计数
+        assert states["columns"].get("已关闭", 0) >= snap["counts"].get("已关闭", 0)
 
 
 class DataShape:

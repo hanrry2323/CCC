@@ -70,6 +70,11 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 
 出卡 → push → 2017 pull → 执行体开发 → 机审 → 「验收看板」终验。
 
+## 验收*（硬路由 · 只走终验）
+
+老板说 **「验收看板 / 验收回写 / 终验看板 / 验收已回写 / 验收已回写卡片」** → **只打开** [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0**（snapshot/cards，禁止全仓 grep）。  
+= M1 **终验**（写 `## 验收区` / 关卡）。**禁止**自认机审席、禁止写/改 `## 机审区`、禁止 /tmp merge 考古。机审只属 2017 Engine。
+
 ## 红线
 
 - 产线：不直推 `main`；不写机审区/验收区/已关闭。  

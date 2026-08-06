@@ -15,7 +15,7 @@ API:
     GET  /board/recent        → 7 天回写视图（需 Bearer token）
     GET  /board/by_project    → 按项目分类（需 Bearer token）
     GET  /board/roadmap       → 线路图聚合（需 Bearer token）
-    GET  /board/states        → 状态统计（需 Bearer token）
+    GET  /board/states        → 卡头五态计数 + columns 看板列计数（需 Bearer token）
     POST /conversation        → 对话（调用 2017 Claude Code 大脑 Agent，需 Bearer token）
     GET  /conversation        → 对话历史（需 Bearer token；T43 支持长轮询增量同步）
 
@@ -80,7 +80,7 @@ from server.board.loader import load_dispatch_cards
 from server.board.queries import (
     roadmap_overview,
     roadmap_by_project,
-    state_counts,
+    states_response,
     view_by_project,
     view_recent,
     view_realtime,
@@ -1560,7 +1560,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                 }
             )
         elif path == "/board/states":
-            self._send_json(state_counts(items))
+            self._send_json(states_response(items))
         elif path == "/board/snapshot":
             self._handle_board_snapshot(items)
         elif path == "/board/summaries":

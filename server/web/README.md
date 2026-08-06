@@ -55,7 +55,7 @@ python3 -m server.web.server --port 9999
 | GET | `/board/recent` | `[明细...]` | 7 天回写视图（按回写时间倒序，需 Bearer token） |
 | GET | `/board/by_project` | `[{project, count, states}]` | 按项目分类（需 Bearer token） |
 | GET | `/board/roadmap` | `{overview, by_project}` | 线路图聚合（需 Bearer token） |
-| GET | `/board/states` | `{状态名: 计数}` | 状态徽章计数（需 Bearer token） |
+| GET | `/board/states` | `{五态计数…, columns:{看板列}, note}` | 卡头五态 + 看板列（含机审）；需 Bearer token |
 | POST | `/conversation` | `{reply}` | 对话回声占位（需 Bearer token，接大脑留接口） |
 | GET | `/conversation` | `{messages: [...]}` | 对话历史（需 Bearer token） |
 

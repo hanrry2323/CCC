@@ -46,3 +46,11 @@
 - 机审常在 worktree 改卡副本；Engine 必须把 `## 机审区` **同步回生产卡路径**再判定通过（否则会误打回）。  
 - 注册表验收席须为「可后台 CLI」+ 机审参数模板（见 `executors.example.json`）。  
 - 卡头五态不变；「机审」只是看板派生列。
+
+## 代理易错（终验前必读）
+
+1. **回写真值在分支**：开发回写常先落在 `codex/<卡文件名去.md>`；`main` 未合入前，M1 本机 `docs/dispatch` 卡头可能仍是「待分派」。  
+   - **进度以** 2017 `:7788` `/board/snapshot`（看板列）**或** 分支 tip 为准，不以未 `fetch` 的本地 main 卡头为准。  
+   - 终验取证：`git fetch origin codex/<stem>` → `git diff origin/main...origin/codex/<stem>`（见 [`accept-board-sop.md`](accept-board-sop.md) §0）。  
+2. **五态 ≠ 看板列**：`/board/states` 顶层「已回写」= 卡头基础态计数（含仍在「机审」列的卡）；真正可终验看 `columns.已回写` 或 snapshot「已回写」列。  
+3. **机审只属 2017 Engine**：M1 听到「验收*」走终验 SOP，**禁止**代写 `## 机审区`。机审通过后正文须在**将要终验的那份卡**（生产路径 / 已同步内容）可见。

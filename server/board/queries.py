@@ -164,3 +164,23 @@ def state_counts(items: list[BoardItem]) -> dict[str, int]:
     return {
         state: sum(1 for i in items if base_state(i.state) == state) for state in STATES
     }
+
+
+def board_column_counts(items: list[BoardItem]) -> dict[str, int]:
+    """看板列计数（含派生「机审」）：与 snapshot.columns 同语义。"""
+    counts = {col: 0 for col in BOARD_COLUMNS}
+    for item in items:
+        col = board_column(item.state, item.machine_audit_passed)
+        if col in counts:
+            counts[col] += 1
+        else:
+            counts[col] = counts.get(col, 0) + 1
+    return counts
+
+
+def states_response(items: list[BoardItem]) -> dict:
+    """GET /board/states 载荷：顶层=卡头五态；columns=看板列；防「已回写=2」与「机审列」混淆。"""
+    payload: dict = dict(state_counts(items))
+    payload["columns"] = board_column_counts(items)
+    payload["note"] = "顶层键=卡头五态；columns=看板列（机审为派生）"
+    return payload

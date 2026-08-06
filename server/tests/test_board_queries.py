@@ -6,11 +6,13 @@ from datetime import date
 
 from server.board.models import BoardItem
 from server.board.queries import (
+    board_column_counts,
     roadmap_aggregate,
     roadmap_by_project,
     roadmap_overview,
     roadmap_project_detail,
     state_counts,
+    states_response,
     view_by_project,
     view_realtime,
     view_recent,
@@ -225,6 +227,29 @@ class TestStateCounts:
             "已关闭": 0,
             "打回": 0,
         }
+
+    def test_column_counts_split_audit(self) -> None:
+        """卡头已回写且无机审通过 → columns.机审；通过 → columns.已回写。"""
+        pending = _item("a", state="已回写")
+        passed = BoardItem(
+            id="b",
+            title="示例任务",
+            state="已回写",
+            project="PRJ-X",
+            executor="执行体",
+            dispatched_at="2026-08-02",
+            written_at="未知",
+            reject_count=0,
+            machine_audit_passed=True,
+        )
+        cols = board_column_counts([pending, passed])
+        assert cols["机审"] == 1
+        assert cols["已回写"] == 1
+        payload = states_response([pending, passed])
+        assert payload["已回写"] == 2  # 卡头五态
+        assert payload["columns"]["机审"] == 1
+        assert payload["columns"]["已回写"] == 1
+        assert "columns" in payload and "note" in payload
 
 
 class TestStateNormalization:

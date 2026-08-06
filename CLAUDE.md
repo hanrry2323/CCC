@@ -37,9 +37,11 @@ Guidance for agents editing CCC as **platform developer**.
 1. **在 `/Users/apple/program/CCC` 打开 IDE 中枢**（Claude Code / OpenCode），把意图聊清。  
 2. **中枢出卡** → push。  
 3. **只看板**：流转 / Δ / ops。  
-4. 卡已回写且机审通过后，说 **「验收看板」** → 按 [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) 终验关卡。  
+4. 卡已回写且机审通过后，说 **「验收看板」**（同义：`验收回写` / `终验看板` / `验收已回写` / `验收已回写卡片`）→ **只走** [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0 终验**；禁止代写机审区。  
 
 中间（pull、派发、worktree、机审）**默认自动**。
+
+**验收*硬路由**：听到上列验收句 → 先 `GET /board/snapshot` 或 `/cards` 看 **看板列**（机审 vs 已回写），再终验；**禁止**全仓 grep、禁止自认 2017 机审席。
 
 ### 老板常问速查（少绕路）
 
