@@ -1,6 +1,6 @@
 # 任务卡 xy001 · 一键生成短视频脚本命令与产出流程（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -45,4 +45,48 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 现状分析
+
+xianyu 仓（`/Users/fan/program/apps/xianyu`）侦察结论：
+
+- **文件生产流程**：CLI `xianyu run`（typer）端到端跑「话题 → 内容生成 → 路由 → 多平台发布」；内容生产在 `src/xianyu/content/`（writer/rewriter/tts/image/video），调本地 Ollama（`core/llm.chat_json`，qwen2.5:7b），失败回 mock 骨架。
+- **既有产出目录**：`workspace/outputs/{audio,images,video}`（gitignored 运行时产物）——已有一套「统一产出文件夹」机制；脚本类无独立目录。本卡**沿用**该机制，新增 `workspace/outputs/scripts/`。
+- **既有产出记录**：仅 `scripts/batch_generate.py` / `generate_10.py` 有批量 `batch-report.json`，无逐条脚本产出记录。本卡**补齐** `records.csv`（时间/主题/文件名/结果）逐条可追溯。
+- **技术栈**：Python 3.12 · typer CLI · pytest(pytest-asyncio) · ruff · mypy strict。
+
+### 实现说明
+
+- 新增 `src/xianyu/content/video_script.py`：`generate_and_save(topic, duration_sec)` 一键入口 = 生成脚本（标题 + 分镜正文，LLM 失败骨架兜底保产物）→ 写入统一产出目录 → 落产出记录。复用了既有 `core/llm.chat_json` 与 `workspace/outputs/` 产出机制，未重复造轮子。
+- 新增 CLI 命令 `xianyu video-script <主题> [--duration]`（`src/xianyu/cli.py`），默认 55s。
+- 新增测试：`tests/content/test_video_script.py`（9 例，覆盖 ollama 成功 / 失败兜底 / 解析规整 / 写文件 / 记录 / 一键入口）+ `tests/test_cli.py` 2 条 CLI 用例。
+
+### 测试结果
+
+- 全量 pytest：**669 passed / 10 skipped / 3 failed**，覆盖率 **82.43%**（≥80 门禁过）。3 个失败（openclaw 插件集成 2 + bgm_tags 1）已在干净 `origin/main` 上复现，**与本卡改动无关**。
+- `ruff check` 通过（涉改 4 文件）。
+- **探针实测**（本机 Ollama 未启 → 走 mock 兜底路径，仍真产出）：
+  - 命令：`.venv/bin/python -m xianyu.cli video-script "卖二手相机"`
+  - 产物：`workspace/outputs/scripts/20260806-164350-卖二手相机.md` —— 含标题 `# 卖二手相机速成指南` + `## 分镜正文`（4 个分镜，各含标题/时长/正文）
+  - 记录：`workspace/outputs/scripts/records.csv` 有对应行（timestamp / topic / file / result）
+  - 同命令第二次运行进同一目录 → **路径可复现**。
+
+### Push 证据
+
+- 分支：`codex/xy001-write-video-script-command`（xianyu 仓，已推 `origin/codex/xy001-write-video-script-command`）
+- commit：`bde76c3 feat(cli): add video-script one-key short video script generator`
+
+## 机审区
+
+**机审：通过** · Claude Code（2017 机审席）· 2026-08-07 00:53
+
+> 机审结论已由 2017 机审席产出（`~/.ccc/logs/exec/xy001.audit.log`），但机审席未把 `## 机审区` 落盘到生产卡，engine 后置检查误判打回。本区由中枢按 audit.log 真实结论人工补录，不改变判定内容。
+
+机审席独立取证（不采信回写区摘要），证据如下：
+- 验收 1：敲 `video-script "卖二手相机"` 生成脚本文件，含标题 `# 卖二手相机速成指南` + `## 分镜正文`（4 个分镜各含标题/时长/正文）——独立实测复现。
+- 验收 2：落统一产出文件夹 `workspace/outputs/scripts/`，路径可复现（同命令第二次跑进同一目录）。
+- 验收 3：产出记录 `records.csv` 有本条（时间/主题/文件名/结果）——独立实测已追加。
+- 验收 4：现状分析写清（复用 `workspace/outputs/` 机制沿用 + 补 `records.csv`）。
+- 红线核对：只动 xianyu 仓；代码走 `codex/xy001-write-video-script-command` 分支未直推 main；探针真跑通；CCC 仓无业务深文档。
+- 边界核查：2 个失败全在 `tests/openclaw/test_plugin_integration.py`（插件环境集成），与本卡无关；target 22 个测试全通过。
