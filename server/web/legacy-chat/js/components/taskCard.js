@@ -37,13 +37,16 @@ export function escapeHtml(s) {
   return d.innerHTML;
 }
 
-/** 卡片进度徽章：Δ=未提交文件数（非 LLM 调用）；+/- = 行变更。 */
+/** 卡片进度徽章：Δ=未提交文件数（非 LLM 调用）；+/- = 行变更；执行中可显已用时。 */
 export function renderWorktreeBadges(t) {
+  const parts = [];
+
   const dirty = t.dirty_files;
-  const dirtyHtml =
-    dirty != null && dirty !== '' && Number(dirty) >= 0
-      ? `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数（不是模型调用次数）">Δ${escapeHtml(String(dirty))}</span>`
-      : '';
+  if (dirty != null && dirty !== '' && Number(dirty) > 0) {
+    parts.push(
+      `<span class="board-card-badge badge-dirty" title="worktree 未提交改动文件数（不是模型调用次数）">Δ${escapeHtml(String(dirty))}</span>`
+    );
+  }
 
   let ins = t.lines_insert;
   let del = t.lines_delete;
@@ -52,14 +55,31 @@ export function renderWorktreeBadges(t) {
     ins = t.branch_insert;
     del = t.branch_delete;
   }
-  const hasLines =
-    (ins != null && ins !== '' && Number(ins) >= 0) ||
-    (del != null && del !== '' && Number(del) >= 0);
-  const linesHtml = hasLines
-    ? `<span class="board-card-badge badge-lines" title="代码行变更（工作区优先；干净时用相对 main 的已提交 diff）"><span class="lines-ins">+${escapeHtml(String(Number(ins) || 0))}</span><span class="lines-del">−${escapeHtml(String(Number(del) || 0))}</span></span>`
-    : '';
+  const lineIns = Number(ins) || 0;
+  const lineDel = Number(del) || 0;
+  if (lineIns + lineDel > 0) {
+    parts.push(
+      `<span class="board-card-badge badge-lines" title="代码行变更（工作区优先；干净时用相对 main 的已提交 diff）"><span class="lines-ins">+${escapeHtml(String(lineIns))}</span><span class="lines-del">−${escapeHtml(String(lineDel))}</span></span>`
+    );
+  }
 
-  return dirtyHtml + linesHtml;
+  // 执行中：日志在长、文件尚未落地时也给实时信号（已用时 / 最近活动）
+  const elapsed = t.elapsed_s;
+  if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
+    const sec = Number(elapsed);
+    const label = sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h`;
+    const recent =
+      t.last_activity_at && (Date.now() - new Date(t.last_activity_at).getTime()) < 45000;
+    const tone = recent ? 'badge-live' : 'badge-elapsed';
+    const tip = recent
+      ? '执行体日志近期有输出（模型在跑；Δ 仅在落盘改文件后变）'
+      : '已用时（自执行日志创建起）';
+    parts.push(
+      `<span class="board-card-badge ${tone}" title="${tip}">⏱${escapeHtml(label)}</span>`
+    );
+  }
+
+  return parts.join('');
 }
 
 export function renderTaskCard(t) {

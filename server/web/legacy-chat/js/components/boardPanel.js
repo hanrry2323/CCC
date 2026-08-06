@@ -104,7 +104,7 @@ function startBoardAutoRefresh() {
     if (document.getElementById('board-panel')?.classList.contains('open')) {
       refreshBoardPanel({ quiet: true });
     }
-  }, 8000);
+  }, 5000);
 }
 
 function stopBoardAutoRefresh() {
@@ -163,6 +163,9 @@ export async function refreshBoardPanel(opts = {}) {
         if (t.lines_delete != null) c.lines_delete = t.lines_delete;
         if (t.branch_insert != null) c.branch_insert = t.branch_insert;
         if (t.branch_delete != null) c.branch_delete = t.branch_delete;
+        if (t.elapsed_s != null) c.elapsed_s = t.elapsed_s;
+        if (t.last_activity_at != null) c.last_activity_at = t.last_activity_at;
+        if (t.log_bytes != null) c.log_bytes = t.log_bytes;
       }
     } catch (_) { /* dirty 可选 */ }
     _toastTrackedTaskProgress(all);

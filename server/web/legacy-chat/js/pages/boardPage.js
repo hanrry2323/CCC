@@ -618,6 +618,9 @@ async function mergeDirtyFromRunning(cards) {
       if (t.lines_delete != null) c.lines_delete = t.lines_delete;
       if (t.branch_insert != null) c.branch_insert = t.branch_insert;
       if (t.branch_delete != null) c.branch_delete = t.branch_delete;
+      if (t.elapsed_s != null) c.elapsed_s = t.elapsed_s;
+      if (t.last_activity_at != null) c.last_activity_at = t.last_activity_at;
+      if (t.log_bytes != null) c.log_bytes = t.log_bytes;
     }
   } catch (_) { /* 徽章可选；失败不挡看板 */ }
   return cards;
@@ -741,7 +744,7 @@ export async function mountBoard(el) {
       syncWsButtons();
     }
     await loadBoard();
-    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 8000);
+    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
     return;
   }
   _root = el;
@@ -750,7 +753,7 @@ export async function mountBoard(el) {
   bind();
   await loadConfig();
   await loadBoard();
-  _timer = setInterval(() => loadBoard().catch(() => {}), 8000);
+  _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
 }
 
 export function unmountBoard() {

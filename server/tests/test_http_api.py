@@ -1456,6 +1456,7 @@ class TestTasksRunning:
         from server.board.models import BoardItem
 
         monkeypatch.delenv("EXECUTOR_LOG_DIR", raising=False)
+        monkeypatch.delenv("CCC_CONFIG_ENV", raising=False)
         monkeypatch.setattr(
             srv, "_load_board_items",
             lambda: [BoardItem(id="T5", title="跑着", state="执行中", executor="X")],
@@ -1466,6 +1467,31 @@ class TestTasksRunning:
         assert t["work_id"] == "T5"
         assert t["log_tail"] == []
         assert t["elapsed_s"] is None
+
+    def test_log_dir_from_ccc_config_env(self, api_server, tmp_path, monkeypatch):
+        """web-server 仅有 CCC_CONFIG_ENV 时也能读到 EXECUTOR_LOG_DIR（生产 launchd 形态）。"""
+        from server.web import server as srv
+        from server.board.models import BoardItem
+
+        log_dir = tmp_path / "exec-from-cfg"
+        log_dir.mkdir()
+        (log_dir / "T77.log").write_text("a\nb\nc\n", encoding="utf-8")
+        cfg = tmp_path / "config.env"
+        cfg.write_text(f"EXECUTOR_LOG_DIR={log_dir}\n", encoding="utf-8")
+        monkeypatch.delenv("EXECUTOR_LOG_DIR", raising=False)
+        monkeypatch.setenv("CCC_CONFIG_ENV", str(cfg))
+        monkeypatch.setattr(
+            srv,
+            "_load_board_items",
+            lambda: [BoardItem(id="T77", title="cfg日志", state="执行中", executor="OpenCode")],
+        )
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        t = data["tasks"][0]
+        assert t["work_id"] == "T77"
+        assert t["elapsed_s"] is not None
+        assert t["log_tail"] == ["a", "b", "c"]
+        assert t.get("log_bytes", 0) > 0
 
 
 # ── T21 运维兼容接口：/ops/summary ──

@@ -723,9 +723,30 @@ def _load_board_items():
 
 
 def _executor_log_dir() -> Path | None:
-    """执行体日志目录（EXECUTOR_LOG_DIR）；未配置返回 None。"""
+    """执行体日志目录（EXECUTOR_LOG_DIR）；未配置返回 None。
+
+    解析顺序与 worktree 指标一致：
+    1. 环境变量 ``EXECUTOR_LOG_DIR``
+    2. ``CCC_CONFIG_ENV`` 文件内同名键（web-server launchd 通常只注入 CCC_CONFIG_ENV）
+    """
     raw = os.environ.get("EXECUTOR_LOG_DIR", "").strip()
-    return Path(raw).expanduser().resolve() if raw else None
+    if not raw:
+        cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip()
+        if cfg_path:
+            try:
+                for line in Path(cfg_path).expanduser().read_text(encoding="utf-8").splitlines():
+                    s = line.strip()
+                    if not s or s.startswith("#") or "=" not in s:
+                        continue
+                    k, _, v = s.partition("=")
+                    if k.strip() == "EXECUTOR_LOG_DIR":
+                        raw = v.strip().strip('"').strip("'")
+                        break
+            except OSError:
+                raw = ""
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
 
 
 def _tail_lines(path: Path, n: int = 5) -> list[str]:
@@ -764,7 +785,7 @@ def _load_running_tasks() -> dict[str, Any]:
     for item in items:
         if base_state(item.state) != "执行中":
             continue
-        metrics = get_worktree_metrics(item.id)
+        metrics = get_worktree_metrics(item.id, force=True)
         task: dict[str, Any] = {
             "work_id": item.id,
             "title": item.title,
@@ -773,6 +794,7 @@ def _load_running_tasks() -> dict[str, Any]:
             "elapsed_s": None,
             "log_tail": [],
             "last_activity_at": None,
+            "log_bytes": None,
             "dirty_files": metrics.get("dirty_files"),
             "lines_insert": metrics.get("lines_insert"),
             "lines_delete": metrics.get("lines_delete"),
@@ -793,6 +815,7 @@ def _load_running_tasks() -> dict[str, Any]:
                     st.st_mtime, tz=timezone.utc
                 ).isoformat(timespec="seconds")
                 task["elapsed_s"] = max(0, int(now - st.st_ctime))
+                task["log_bytes"] = int(st.st_size)
                 task["log_tail"] = _tail_lines(log_path, 5)
         tasks.append(task)
     # 无日志（未知已用时）置底；其余按已用时长倒序（跑得久的在上）
@@ -1185,7 +1208,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                     bool(row.get("machine_audit_passed", False)),
                 )
             if base_state(c.get("state", "")) == "执行中":
-                metrics = get_worktree_metrics(c["id"])
+                metrics = get_worktree_metrics(c["id"], force=True)
                 row["dirty_files"] = metrics.get("dirty_files")
                 row["lines_insert"] = metrics.get("lines_insert")
                 row["lines_delete"] = metrics.get("lines_delete")
