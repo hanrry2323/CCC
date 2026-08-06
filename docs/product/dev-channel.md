@@ -26,14 +26,28 @@
 
 ---
 
+## 双模式（M1 打开仓 vs Engine 拉起）
+
+SSOT 正文见根目录 [`CLAUDE.md`](../../CLAUDE.md)「开仓作战卡片」。摘要：
+
+| 模式 | 触发 | 做什么 | 禁止 |
+|------|------|--------|------|
+| **开发中枢** | 人在 M1 打开 `/Users/apple/program/CCC`（Claude Code / OpenCode） | 聊意图 → `new-card.sh` → push main → 盯 `:7788` 到「已回写」 | 自写验收区、自置已关闭、跨仓当 CCC |
+| **产线执行体** | 2017 Engine `-p` | 白名单改动 → `codex/<id>-*` 分支 → 卡头「已回写」 | 重出卡、改验收区、置已关闭、直推 main、手改 2017 |
+
+工作区铁律：cwd 必须是 CCC 写源；发现 `qx-map` 等其它仓须当面点破。
+
+---
+
 ## 自研期标准链路
 
 ```text
-Codex 出卡（docs/dispatch/TNN-*.md）→ push main
+（可选）M1 IDE 聊清意图并出卡 → push main
+  或 Codex 出卡（docs/dispatch/*.md）→ push main
   → 2017 pull → Engine 按卡头绑定派发（Claude Code 或 OpenCode）
-  → 独立 worktree + 分支 codex/tNN-*
-  → 分步 commit+push → Codex 独立验收
-  → 合入 main → 2017 pull + 三服务重启 → 关卡
+  → 独立 worktree + 分支 codex/<id>-*
+  → 分步 commit+push → 卡头「已回写」
+  → 验收席独立取证 → 「已关闭」+ 合入 main → 2017 pull + 必要时重启
 ```
 
 业务期（自研成熟后）：老板用壳直聊大脑 Agent；业务任务仍走 Engine 派发。

@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 项目一句话
 
-CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯一事实源）+ HTTP 看板/运维实时面 + 2017 单端生产。M1 IDE（Claude Code / OpenCode）= 开发中枢；Desktop 壳暂缓。自研期 Codex 出卡，执行体按注册表派发，Codex 验收放行。
+CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯一事实源）+ HTTP 看板/运维实时面 + 2017 单端生产。M1 IDE（Claude Code / OpenCode）= 开发中枢（陪聊意图可出卡）；Desktop 壳暂缓。自研期可 M1/Codex 出卡，执行体按注册表派发，验收席关「已关闭」。开仓双模式 SSOT：`CLAUDE.md`「开仓作战卡片」。
 
 ## 当前架构（2026-08-06 基线）
 
@@ -17,8 +17,9 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 - **代码分布**：M1 `/Users/apple/program/CCC` = 开发副本（git → GitHub main）；2017 `/Users/fan/program/CCC` = 生产副本（只 pull、不手改）
 - **单端生产**：2017 `:7788`（web-server / engine / board-scheduler 三 launchd 服务）；大脑对话走 2017 中继 6100/6102；**M1 不跑 7788，无 Hub :7777、无 sidecar**
 - **任务卡 = 唯一事实源**：`docs/dispatch/TNN-*.md`；卡头五态：待分派 / 执行中 / 已回写 / 已关闭 / 打回；看板是派生视图（loader 扫描卡 → /board API），不存数据不做决策
-- **开发流程**：Codex 出卡 → push main → 2017 pull → Engine 派发（Claude Code 或 OpenCode，卡头绑定）→ worktree → 分步 commit+push → Codex 验收 → 合入 → 2017 pull 部署
+- **开发流程**：意图聊清并可出卡（M1 IDE 或 Codex）→ push main → 2017 pull → Engine 派发（Claude Code 或 OpenCode，卡头绑定）→ worktree → 分步 commit+push →「已回写」→ 验收「已关闭」→ 合入 → 2017 pull 部署
 - **人机实时面**：HTTP `:7788` 看板 + 运维（主路径）；**Desktop 暂缓、非主路径**
+- **cwd 铁律（M1）**：做 CCC 必须打开 `/Users/apple/program/CCC`；禁止把 `qx-map` 等其它仓静默当写源
 - **免登录**：`CCC_WEB_AUTH_REQUIRED=0`（单用户局域网直连，全端点免鉴权）
 
 ## 席位与工具（硬 · 唯一事实源 /Users/apple/qx-map/ide/tool-roles.md）
@@ -26,7 +27,7 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 - **日常开发 / 维护执行体** = 注册表「可后台 CLI」：`OpenCode`（code / 6102，默认日常）与 `Claude Code`（flash / 6100，W2 点名顶替）；卡头绑定优先；Engine 自动拉起
 - **难度突击** = `Cursor`（W7）：硬骨头写码、复杂根因+修复、跨模块收口、老板点名；不抢日常队列；终验仍归 Codex
 - **Codex** = 自研驱动者 + 系统总维护 + 验收席（出卡 / 把控 / 独立验收 / 冲突仲裁）
-- **M1 IDE** = 开发智能中枢（打开 CCC 仓 + 已注册能力即可开发；与 HTTP 看板配合）
+- **M1 IDE** = 开发智能中枢（打开 CCC 仓陪聊意图/出卡/盯板；与 HTTP 看板配合；双模式见 `CLAUDE.md`）
 - **Trae** = 停用（历史）
 - **Desktop** = 任意设备壳之一，**暂缓**（功能对齐 HTTP，不优先自研）
 - **双轨独立**：QuantHive 与 CCC 完全独立（开发通道、知识库、决策互不混）

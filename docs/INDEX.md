@@ -22,7 +22,7 @@
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC：开发工具（Claude/OpenCode）合入 · Desktop 禁改仓 |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |
-| 8 | [`../CLAUDE.md`](../CLAUDE.md) | 平台开发硬规则 + 开发命令（已按新栈重写） |
+| 8 | [`../CLAUDE.md`](../CLAUDE.md) | 平台开发硬规则 + **开仓双模式（中枢/执行体）** + 开发命令 |
 
 部署拓扑：[`deploy/topology.md`](deploy/topology.md)。2017 布局：[`deploy/server-layout.md`](deploy/server-layout.md)。
 
@@ -80,7 +80,7 @@
 | 文档 | 状态 | 怎么用 |
 |------|------|--------|
 | **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.70 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
-| [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-06：Claude Code + OpenCode 可后台 CLI · HTTP 看板主路径 · Desktop 暂缓 |
+| [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-06：开仓双模式见 CLAUDE.md · HTTP 看板主路径 · Desktop 暂缓 |
 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
 | [`roadmap.md`](roadmap.md) 历史正文 | 半归档 | v0.19 等史实，勿覆盖「当前方向」 |
 | [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | **不是** CCC 产品北星 |

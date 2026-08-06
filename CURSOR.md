@@ -6,7 +6,8 @@
 
 **CCC = 自动化任务编排平台**：Markdown 任务卡 = 唯一事实源；薄驱动 Engine 按注册表派发执行体（Claude Code / OpenCode）；**人机实时面 = HTTP 看板/运维**（`:7788`）。自研期 Codex 出卡、验收。Cursor 在明确突击卡 / 老板点名时直接开发，终验仍归 Codex。
 
-**主路径**：M1 上任意已注册能力的 IDE（Claude Code / OpenCode / Cursor 突击）= 开发中枢；打开 CCC 仓即可开发。**Desktop 暂缓**，功能以 HTTP 页为准。
+**主路径**：M1 上任意已注册能力的 IDE（Claude Code / OpenCode / Cursor 突击）= 开发中枢；打开 CCC 仓即可开发。**Desktop 暂缓**，功能以 HTTP 页为准。  
+Claude Code / OpenCode 开仓双模式（中枢陪聊 vs Engine 执行体）SSOT：[`CLAUDE.md`](CLAUDE.md)「开仓作战卡片」；工作区必须是 `/Users/apple/program/CCC`。
 
 ## 二、当前架构（2026-08-06，v0.70.0）
 
