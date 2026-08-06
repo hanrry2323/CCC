@@ -39,6 +39,14 @@ Guidance for agents editing CCC as **platform developer**.
 
 中间（pull、派发、worktree、机审）**默认自动**。
 
+### 老板常问速查（少绕路）
+
+**「哪些项目已注册、能自动开发？」**
+
+1. **命名已注册（前缀）** ≠ 已接产线：看 `docs/dispatch/T-mapping.md` / `server/board/models.py` 的 `PREFIXES`（`ccc`/`qb`/`qh`/`mx`/`xy`/`hp`/`tst`）。  
+2. **真正能 Engine 自动跑**：当前产线主路径是 **CCC 本仓**（2017 `:7788` + `executors.json` + worktree）。其它前缀=出卡命名可用；是否有业务仓路径、是否在 2017 可写，**先核目录/注册表再承诺**，别把映射表当成「全自动清单」。  
+3. **待分派卡**：只认卡头 `状态：…`（或 `GET http://192.168.3.116:7788/board/states` · `/board/by_project` · `/board/realtime`）。**禁止**对全文 grep「待分派」（正文会误伤）。**没有** `GET /board` 根路径。
+
 ### 工作区铁律
 
 - **必须**在 `/Users/apple/program/CCC`（M1 写源，git → GitHub `main`）打开本项目。
