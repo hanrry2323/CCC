@@ -13,7 +13,7 @@
 | 脏树=.ccc/lessons 当业务失败 | `ccc_hygiene`；**禁卫生 epic** | 脏计数吓人 |
 | **卫生欠账走 Engine worktree 写码卡**（ahead+脏 main） | 权威仓 main 当面 commit+push，或维护卡写死 `cwd=权威路径`、禁 `worktree add`；探针=git 对齐 | OpenCode 连环 ssh / pytest 假红绕死（2026-08-06） |
 | 侦察用系统 `python3 -m pytest` | qb 用 `./.venv/bin/python` / `uv run`；卫生卡甚至可只验 git | ImportError(redis) 假红 |
-| 老板已说「出卡」仍 5+ 轮侦察 | 1 轮摸清 ahead/脏/无密钥 → 立刻出卡或分流 | hang |
+| 老板已说「出卡」仍 5+ 轮侦察 / **中枢代跑执行** | 落卡即停；步骤留给执行体；缺信息只问老板一句 | hang / 串台执行席 |
 | `## 验收清单` 当验收 | 精确 `## 验收` + 白名单命令 | 假绿 |
 | 验收已绿仍重构 | 立即 commit（含 `task_id`）并停 | revert↔restore 噪音 |
 | 耗尽后原样重下 | 读 `optimize_hint` 缩小/修探针再 `ccc-transfer` | 死循环 |
