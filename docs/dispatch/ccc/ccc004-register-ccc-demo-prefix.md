@@ -1,6 +1,6 @@
 # 任务卡 ccc004 · register ccc-demo prefix cd（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -10,7 +10,11 @@
 
 1. 只改下述**两个**白名单文件，不碰其它文件（含不迁移/不重命名任何历史卡）。
 2. 不直推 `main`；只 push 到分支 `codex/ccc004-register-ccc-demo-prefix`。
-3. 禁止写 `## 机审区` / `## 验收区` / 置「已关闭」；不手改 2017 运行面。
+3. 禁止写 `## 机审区` / `## 验收区
+
+**合入批准** · 日期：2026-08-07
+- 判定：通过
+` / 置「已关闭」；不手改 2017 运行面。
 4. 探针用 `server.board.validate` + `new-card.sh --dry-run`，不代跑全量业务 pytest。
 
 ## 范围
