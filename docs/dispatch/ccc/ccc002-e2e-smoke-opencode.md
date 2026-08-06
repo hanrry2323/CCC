@@ -1,6 +1,6 @@
 # 任务卡 ccc002 · E2E smoke: OpenCode channel + worktree（OpenCode 执行）
 
-> 关联：E2E联调 OpenCode 2026-08-06 · 执行体：OpenCode · 验收：Codex · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调 OpenCode 2026-08-06 · 执行体：OpenCode · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -43,4 +43,10 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-06
+
+**实现说明**：OpenCode 执行体在 Engine 所建 worktree `ccc-dev-ws-ccc002` 内，按白名单新增 `docs/notes/2026-08-06-e2e-smoke-opencode.md`（≤20 行，写明烟雾目的与验证链路），并将本卡卡头「状态」更新为「已回写」。
+
+**测试结果**：改动范围仅白名单内 2 项（新说明文件 + 本卡卡头/回写区），未触碰 server/、desktop/、权威短读及其它任务卡；git 状态确认无越界改动。
+
+**push 证据**：分支 `codex/ccc002-e2e-smoke-opencode`（未直推 main）· 提交见回写后 commit，`git log --oneline -1` 该分支可见。
