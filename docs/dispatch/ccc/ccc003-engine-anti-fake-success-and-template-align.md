@@ -1,6 +1,7 @@
 # 任务卡 ccc003 · E2E 派发收单防假成功与技术债收口（Claude Code 执行）
 
-> 关联：E2E联调技术债 2026-08-06 · 执行体：Claude Code · 验收：Codex · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：E2E联调技术债 2026-08-06 · 执行体：Claude Code · 验收：Cursor 代 Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 变更记录：2026-08-06 Cursor 独立取证验收通过；分支 `codex/ccc003-engine-anti-fake-success-and-template-align`（`7cf9cf91`/`833122a`）已 ff 合入 `main`。
 
 ## 目标
 
@@ -68,4 +69,20 @@
 
 - 分支：`codex/ccc003-engine-anti-fake-success-and-template-align`
 - 改动文件：`server/engine/main.py`、`server/tests/test_skeleton.py`、`server/tests/test_engine_dispatch.py`、`server/tests/test_engine_main.py`、`scripts/new-card.sh`、本卡（卡头状态 + 回写区）
-- commit：`7cf9cf91` feat(engine): ccc003 收单防假成功 + OpenCode 模板对齐 + 出卡先刷新索引
+- commit：`7cf9cf91` feat(engine): ccc003 收单防假成功 + OpenCode 模板对齐 + 出卡先刷新索引；回写补记 `833122a`；已合入 `main`。
+
+---
+
+## 验收区（Cursor 独立取证 · 代 Codex 关卡 · 2026-08-06）
+
+**判定：通过** ✅
+
+| # | 标准 | 取证 |
+|---|------|------|
+| 1 | OpenCode 模板含 `--auto` + `--dir {worktree}` + 防回归断言 | example 已含；`test_opencode_cli_requires_auto_and_dir_worktree` 合入；2017 生产核对在回写区登记为一致 |
+| 2 | exit 0 产物核验 + 单测 | `main.py` `_worktree_has_new_commit` / `_card_is_written_back`；`TestRunOnceFakeSuccessGuard` 本地复跑绿 |
+| 3 | new-card 先刷新索引 | `scripts/new-card.sh` 在 validate 前调 `load_dispatch_cards` |
+| 4 | 门禁 | 聚焦 pytest 绿；白名单外既有 `board.js`/`UP038` 不否决 |
+| 5 | push + 已回写 | 分支 `833122a`；Engine `收单成功: work=ccc003 → 已回写` |
+
+补充：首次派发曾因手动 `--once` 与 launchd Engine 撞车被孤儿回收打回；停 launchd 后单次 `--once` 真通（~27min）。
