@@ -28,18 +28,19 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 - **人机实时面**：HTTP `:7788` 看板 + 运维（主路径）；**Desktop 暂缓、非主路径**
 - **cwd 铁律（M1）**：做 CCC 必须打开 `/Users/apple/program/CCC`；禁止把 `qx-map` 等其它仓静默当写源
 - **免登录**：`CCC_WEB_AUTH_REQUIRED=0`（单用户局域网直连，全端点免鉴权）
+- **验收*硬路由**：同义「验收回写 / 验收已回写*」→ 只走 [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0**（snapshot/cards 看板列）；= 终验，禁止代写机审区。`/board/states.columns` = 看板列计数
 
 ## 席位与工具（硬 · 唯一事实源 /Users/apple/qx-map/ide/tool-roles.md）
 
 - **2017 开发** = **OpenCode**（默认）；点名 Claude 可开发
 - **2017 机审** = 卡头验收方（默认 Claude）写 `## 机审区`（Engine 回写后自动拉起）
-- **M1 终验** = 老板说「验收看板」→ Claude/OpenCode 按 [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md)
-- **难度突击** = `Cursor`：写码；**不验收**
+- **M1 终验** = 老板说「验收看板」等验收* → Claude/OpenCode 按 accept-board-sop **§0**
+- **难度突击** = `Cursor`：写码；**不验收、不响应验收***
 - **Codex** = 出卡/裁决；**不验收**
 - **M1 IDE** = 中枢 + 终验入口
 - **Trae** = 停用；**Desktop** = 暂缓
 - **双轨独立**：QuantHive 与 CCC 完全独立
-
+- **出卡前了解**：[`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)
 ## 任务卡体系（T54+ 规则，本仓代码实现在 server/board/）
 
 - 命名：`<前缀><三位序号>-<slug>.md`（前缀以 `docs/projects/registry.yaml` 为准；代码 `PREFIXES` 派生）；旧卡保持原名不迁移

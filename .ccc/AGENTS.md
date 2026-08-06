@@ -1,7 +1,9 @@
 # CCC Agent Guide
 
 > 仓内心智以根目录 [`../AGENTS.md`](../AGENTS.md) / [`../CLAUDE.md`](../CLAUDE.md) 为准。  
-> **读写文档硬约束**：[`../docs/DOC-PROTOCOL.md`](../docs/DOC-PROTOCOL.md) · [`../docs/projects/registry.yaml`](../docs/projects/registry.yaml)。
+> **读写文档硬约束**：[`../docs/DOC-PROTOCOL.md`](../docs/DOC-PROTOCOL.md) · [`../docs/projects/registry.yaml`](../docs/projects/registry.yaml)。  
+> **验收***：[`../docs/product/accept-board-sop.md`](../docs/product/accept-board-sop.md) **§0**（终验；禁止代机审）。  
+> **出卡前了解**：[`../docs/product/hub-context-sop.md`](../docs/product/hub-context-sop.md)。
 
 ## Project
 

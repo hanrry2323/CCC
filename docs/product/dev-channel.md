@@ -22,8 +22,10 @@
   → 2017 自动 pull → Engine 派发 OpenCode → worktree
   → 机械门禁（新 commit + 非空 diff）→ 已回写
   → Engine 拉 Claude 机审 → ## 机审区 通过
-  → 老板说「验收看板」→ M1 Claude 终验 → ## 验收区 + 已关闭 → 合入
+  → 老板说「验收看板」→ M1 终验 → ## 验收区 + 已关闭 → 合入
 ```
+
+**验收* = 终验口令**（同义：`验收回写` / `终验看板` / `验收已回写*`）→ [`accept-board-sop.md`](accept-board-sop.md) **§0**；机审只属 2017 Engine，M1 不代写机审区。
 
 Claude 点名开发时：机审/终验均为 OpenCode（交叉）。
 
@@ -31,4 +33,5 @@ Claude 点名开发时：机审/终验均为 OpenCode（交叉）。
 
 1. 开发禁止写机审区/验收区/已关闭。  
 2. 机审禁止改业务码、禁止已关闭。  
-3. 终验独立取证；Codex/Cursor 无终验资格。
+3. 终验独立取证；Codex/Cursor 无终验资格。  
+4. 听到「验收*」禁止当机审席满仓考古；先看看板**列**（`/board/states` 的 `columns` 或 snapshot）。

@@ -1,12 +1,13 @@
 # CCC 项目背景介绍（给 Cursor 的入口 · 2026-08-06）
 
-> 你是**难度开发突击手**。日常开发默认 OpenCode；**你不验收、不响应「验收看板」**。  
-> 终验 SOP：[`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md)。  
+> 你是**难度开发突击手**。日常开发默认 OpenCode；**你不验收、不响应「验收看板 / 验收回写 / 验收已回写*」**。  
+> 终验只走 Claude/OpenCode + [`docs/product/accept-board-sop.md`](docs/product/accept-board-sop.md) **§0**（先 snapshot/cards 看板列，禁止代写机审区）。  
 > **读写文档硬约束**：[`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) · 项目注册 [`docs/projects/registry.yaml`](docs/projects/registry.yaml)。
 
 ## 一、项目
 
-CCC = 任务卡编排平台。两层验收：2017 机审（Claude/OpenCode）→ M1「验收看板」终验。Codex/Cursor **不验收**。
+CCC = 任务卡编排平台。两层验收：2017 **机审**（Engine）→ M1「验收看板」**终验**。Codex/Cursor **不验收**。  
+进度看看板**列**（机审 vs 已回写），勿把 `/board/states` 顶层「已回写」当成可终验。
 
 ### 文档 / 项目注册（硬）
 
@@ -22,4 +23,4 @@ M1 = 写源 + IDE（出卡 / 终验话术）
 ## 三、Cursor 做什么
 
 - 做：难度写码、排查、点名硬任务。
-- **不做**：写 `## 机审区` / `## 验收区`、置已关闭、响应「验收看板」。
+- **不做**：写 `## 机审区` / `## 验收区`、置已关闭、响应任何「验收*」口令。

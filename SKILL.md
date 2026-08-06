@@ -23,10 +23,13 @@ cat STARTUP-BRIEF.md          # 必读
 cat docs/INDEX.md             # §0 权威链
 cat docs/DOC-PROTOCOL.md      # 文档落点 / 项目注册（读写必遵）
 cat docs/projects/registry.yaml
-cat docs/product/accept-board-sop.md   # 「验收看板」终验
+cat docs/product/accept-board-sop.md   # 「验收*」→ §0 终验快通道（禁止代机审）
+cat docs/product/hub-context-sop.md    # 出卡前了解
 cat docs/architecture.md      # 架构概览
 grep -A 15 "## 红线 11" references/red-lines.md
 ```
+
+**触发「验收看板 / 验收回写 / 验收已回写*」**：只读 accept-board-sop **§0**（`/board/snapshot` 或 `/cards`），看看板列机审 vs 已回写；禁止全仓 grep、禁止写 `## 机审区`。
 
 ---
 
