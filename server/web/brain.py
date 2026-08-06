@@ -475,17 +475,27 @@ def _normalize_stream_event(event: dict[str, Any]) -> tuple[str, dict[str, Any]]
 
 
 def _terminate_proc(proc: subprocess.Popen) -> None:
-    """确保子进程及整个进程组结束：运行中则 killpg + wait（超时/断连兜底）。"""
+    """确保子进程及整个进程组结束：运行中则 killpg + wait（超时/断连兜底）。
+
+    自我误杀隔离：``preexec_fn=os.setsid`` 的 fork→setsid 竞态窗口内，子进程仍可能
+    属于本服务端进程组，直接 killpg 会连 Web 自身一起 SIGKILL。故 killpg 前校验
+    ``pgid > 1`` 且 ``pgid != os.getpgrp()``；无 pid / 非法 pgid / 取 pgid 失败一律
+    退化为 ``proc.kill()``。
+    """
     if proc.poll() is None:
         try:
             pid = getattr(proc, "pid", None)
-            if pid is not None:
+            if pid is None:
+                proc.kill()
+            else:
                 try:
-                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    pgid = os.getpgid(pid)
+                    if pgid > 1 and pgid != os.getpgrp():
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        proc.kill()
                 except OSError:
                     proc.kill()
-            else:
-                proc.kill()
         except OSError:
             try:
                 proc.kill()

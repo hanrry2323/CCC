@@ -133,7 +133,7 @@ def load_jsonl(jl_path: Path) -> list[dict[str, Any]]:
 
 
 def _load_index_unlocked(project: str) -> dict[str, dict[str, Any]]:
-    """读索引（调用方持锁或不关心并发读）。"""
+    """读索引（调用方须已持 ``_write_lock``，或仅用于不关心并发的只读兜底）。"""
     p = _index_path(project)
     if not p.is_file():
         return {}
@@ -145,8 +145,12 @@ def _load_index_unlocked(project: str) -> dict[str, dict[str, Any]]:
 
 
 def load_index(project: str) -> dict[str, dict[str, Any]]:
-    """读取项目下会话索引：{thread_id: {title, created_at, updated_at, message_count}}。"""
-    return _load_index_unlocked(project)
+    """读取项目下会话索引：{thread_id: {title, created_at, updated_at, message_count}}。
+
+    持锁返回一致快照；事务内请用 ``_load_index_unlocked``，避免不可重入锁死锁。
+    """
+    with _write_lock:
+        return _load_index_unlocked(project)
 
 
 def _write_index_unlocked(project: str, index: dict[str, dict[str, Any]]) -> None:

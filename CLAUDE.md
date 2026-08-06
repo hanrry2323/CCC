@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for agents editing CCC as **platform developer**. 合入主线执行体 = **2017 Claude Code**（Codex 出卡 / 验收）；Cursor = 了解/讨论/排查/文档对齐（明确测试卡除外）。人格独立 — Desktop Plan “no write” does **not** apply to 开发工具席。See `docs/product/dev-channel.md` · `CURSOR.md` · `docs/INDEX.md` §0。
+Guidance for agents editing CCC as **platform developer**. 开发执行体 = 注册表可后台 CLI（**Claude Code / OpenCode**）；Codex = 出卡/验收；Cursor = 了解/讨论/排查/文档对齐（明确测试卡除外）。人格独立 — Desktop Plan “no write” does **not** apply to 开发工具席。See `docs/product/dev-channel.md` · `CURSOR.md` · `docs/INDEX.md` §0。
 
 # CCC — Connect–Claude Code · Loop Engineer
 
