@@ -1552,9 +1552,14 @@ final class AppModel: ObservableObject {
     /// 兼容旧调用
     var canChat: Bool { serverLoggedIn }
 
-    func isThreadStreaming(_ threadId: String) -> Bool { false }
+    func isThreadStreaming(_ threadId: String) -> Bool {
+        streamChatTasks[threadId] != nil
+    }
     func isThreadUnread(_ threadId: String) -> Bool { false }
-    func streamStatus(for threadId: String?) -> String { "" }
+    func streamStatus(for threadId: String?) -> String {
+        guard let tid = threadId, !tid.isEmpty else { return "" }
+        return threadStreamStatus[tid] ?? ""
+    }
 
     func openBoardFromOps(workspace: String) {
         let ws = workspace.trimmingCharacters(in: .whitespacesAndNewlines)

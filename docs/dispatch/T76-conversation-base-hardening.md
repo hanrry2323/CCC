@@ -19,6 +19,14 @@
 1. 严禁改动 `desktop/`、`deploy/` 与 `server/tests/conftest.py`。
 2. 进程组垃圾回收与线程锁加固不产生性能与逻辑死锁。
 
+## 验收标准
+
+1. `session_store` 磁盘写路径有锁；并发写索引/消息不损坏。
+2. 切换项目/tab 时在途 SSE 与长轮询被 abort，无串台残留。
+3. 大脑子进程以进程组启动，终止时 `killpg` 回收，压测后孤儿进程数 = 0。
+4. 默认 `CCC_BRAIN_TIMEOUT` ≥ 300s。
+5. `test_50_turn_stress`（或等价 50×3 压测）连通错误=0、切片错位=0、泄露=0；pytest/ruff 绿；push 证据。
+
 ## 回写区
 
 **执行体**：Claude Code（2017）· 日期：2026-08-06

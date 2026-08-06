@@ -471,8 +471,8 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
     return {
         "id": item.id,
         "title": item.title,
-        "card_kind": "work",
-        "parent_id": "",
+        "card_kind": "epic" if item.type == "epic" else "work",
+        "parent_id": item.parent or "",
         "status": item.state,
         "note": "",
         "executor": item.executor,
@@ -1390,13 +1390,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             # T47：真实业务项目清单（免鉴权白名单，与 /config 同；非任务卡分组）
             self._send_json({"projects": _build_public_projects()})
             return
-        if path.startswith("/projects/") and path.endswith("/threads"):
-            # T47：项目下会话列表（来自会话存储，非本地 tabs）
-            from urllib.parse import unquote
-
-            project = unquote(path[len("/projects/") : -len("/threads")])
-            self._send_json({"threads": session_store.list_threads(project)})
-            return
         if path == "/tasks/running":
             # T53：执行中任务进程视图（免登录白名单，与 /projects 同组；须在 /tasks/{id} 之前）
             self._send_json(_load_running_tasks())
@@ -1408,6 +1401,13 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_cards_search()
             return
         if not self._check_auth():
+            return
+        if path.startswith("/projects/") and path.endswith("/threads"):
+            # 会话列表需鉴权（auth_required=0 时 _check_auth 直接放行）
+            from urllib.parse import unquote
+
+            project = unquote(path[len("/projects/") : -len("/threads")])
+            self._send_json({"threads": session_store.list_threads(project)})
             return
         if path == "/conversation":
             self._handle_conversation_get()

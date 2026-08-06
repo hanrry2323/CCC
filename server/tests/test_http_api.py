@@ -1620,8 +1620,8 @@ class TestThreadPersistence:
             {"message": "你好世界", "thread_id": "qb::abc", "project": "qb"}, token=token,
         )
         assert status == 200
-        # 线程列表（免鉴权）
-        status, data = _get(api_server, "/projects/qb/threads")
+        # 线程列表（鉴权开启时须带 token）
+        status, data = _get(api_server, "/projects/qb/threads", token=token)
         assert status == 200
         threads = data["threads"]
         assert len(threads) == 1
@@ -1640,8 +1640,8 @@ class TestThreadPersistence:
         token = _get_token(api_server)
         _post(api_server, "/conversation", {"message": "a", "thread_id": "qb::1", "project": "qb"}, token=token)
         _post(api_server, "/conversation", {"message": "b", "thread_id": "ccc::2", "project": "CCC"}, token=token)
-        _, qb = _get(api_server, "/projects/qb/threads")
-        _, ccc = _get(api_server, "/projects/CCC/threads")
+        _, qb = _get(api_server, "/projects/qb/threads", token=token)
+        _, ccc = _get(api_server, "/projects/CCC/threads", token=token)
         assert [t["thread_id"] for t in qb["threads"]] == ["qb::1"]
         assert [t["thread_id"] for t in ccc["threads"]] == ["ccc::2"]
 
@@ -1664,9 +1664,12 @@ class TestThreadPersistence:
         user_msgs = [m["message"] for m in data["messages"] if m["role"] == "user"]
         assert user_msgs == ["persist"]
 
-    def test_threads_no_auth(self, api_server):
-        """项目线程列表免鉴权可读（与 /projects 同白名单）。"""
+    def test_threads_requires_auth_when_enabled(self, api_server):
+        """鉴权开启时会话列表须登录（不再免鉴权白名单）。"""
         status, data = _get(api_server, "/projects/qb/threads")
+        assert status == 401
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/projects/qb/threads", token=token)
         assert status == 200
         assert "threads" in data
 
@@ -1685,12 +1688,12 @@ class TestThreadPersistence:
             {"title": "新标题"}, token=token,
         )
         assert status == 200
-        _, threads = _get(api_server, "/projects/qb/threads")
+        _, threads = _get(api_server, "/projects/qb/threads", token=token)
         assert threads["threads"][0]["title"] == "新标题"
         # 删除
         status, data = _delete(api_server, "/projects/qb/threads/qb%3A%3Ar1", token)
         assert status == 200
-        _, threads = _get(api_server, "/projects/qb/threads")
+        _, threads = _get(api_server, "/projects/qb/threads", token=token)
         assert threads["threads"] == []
 
     def test_delete_thread_401_without_auth(self, api_server):

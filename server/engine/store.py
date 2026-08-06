@@ -110,9 +110,17 @@ class FileBoardStore:
         project_root = Path(__file__).resolve().parents[2]
 
         for entry in index_entries.values():
+            # 归档卡不进 Engine 派发队列（看板 loader 已过滤；store 须对齐）
+            if entry.get("archived"):
+                continue
             st = _state_from_str(entry["state"])
             if st is None:
-                st = State.TODO
+                logger.warning(
+                    "跳过未知状态卡: id=%s state=%r",
+                    entry.get("id"),
+                    entry.get("state"),
+                )
+                continue
 
             if state is not None and st is not state:
                 continue
@@ -192,8 +200,9 @@ class FileBoardStore:
         # 状态映射
         st = _state_from_str(item.state)
         if st is None:
-            # 未知状态（如「未知」）→ 默认待分派，让 Engine 能看到
-            st = State.TODO
+            # 未知状态 → 跳过，禁止落入待分派被误派发
+            logger.warning("跳过未知状态卡: path=%s state=%r", path, item.state)
+            return None
         # 执行体 → 角色反查（卡头「执行体：X」）
         executor_name = _strip_parenthetical(item.executor)
         role = self._registry.role_for_binding(executor_name) or ""

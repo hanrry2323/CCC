@@ -492,6 +492,54 @@ class TestFileBoardStore:
         assert w.dispatch == "manual"
         assert w.state is State.TODO
 
+    def test_list_work_skips_unknown_state(self, tmp_path: Path) -> None:
+        """未知状态不落入待分派，直接跳过。"""
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T-bad.md", "Tbad", "demo", "乱七八糟")
+        self._write_card(tmp_path / "T-ok.md", "Tok", "demo", "待分派")
+        store = FileBoardStore(tmp_path, reg)
+        works = store.list_work()
+        assert [w.id for w in works] == ["Tok"]
+
+    def test_list_work_skips_archived(self, tmp_path: Path) -> None:
+        """索引 archived=true 的卡不进 Engine 队列。"""
+        from server.board.loader import build_index_entry, load_dispatch_cards, parse_card, save_index_file
+
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        self._write_card(tmp_path / "T-live.md", "Tlive", "demo", "待分派")
+        self._write_card(tmp_path / "T-arch.md", "Tarch", "demo", "待分派")
+        load_dispatch_cards(tmp_path)
+        from server.board.loader import load_index_file
+
+        entries = load_index_file(tmp_path)
+        entries["Tarch"]["archived"] = True
+        save_index_file(entries, tmp_path)
+        store = FileBoardStore(tmp_path, reg)
+        ids = [w.id for w in store.list_work()]
+        assert "Tlive" in ids
+        assert "Tarch" not in ids
+
+    def test_reclaim_orphaned_running_with_marker(self, tmp_path: Path) -> None:
+        """有 .running 标记的执行中 → 打回；无标记（manual 挂起）保留。"""
+        from server.engine.main import reclaim_orphaned_running
+
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        orphan = Work(id="auto1", role="开发执行体", state=State.RUNNING)
+        manual = Work(id="man1", role="开发执行体", state=State.RUNNING, dispatch="manual")
+        store.seed(orphan, manual)
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "auto1.running").write_text("1", encoding="utf-8")
+        n = reclaim_orphaned_running(store, log_dir)
+        assert n == 1
+        assert store.list_work(state=State.REJECTED)[0].id == "auto1"
+        assert store.list_work(state=State.RUNNING)[0].id == "man1"
+        assert not (log_dir / "auto1.running").exists()
+
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
         """list_work(state=X) 只返回匹配状态的卡。"""
         reg_path = _write_demo_registry(tmp_path)

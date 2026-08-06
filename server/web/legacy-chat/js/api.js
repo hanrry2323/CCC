@@ -429,9 +429,11 @@ export async function streamChat(
         processLine(buffer);
         flushBlock();
       }
-      // T45：EOF 且未收到 done/error → 流中断，统一按结束处理（UI 复位，避免假流式）
-      settleDone();
-      return 'settled';
+      // EOF 且未收到 done/error → 不完整流，按错误复位（避免假成功；服务端也可能未落盘）
+      if (!settled) {
+        settleError('连接中断，回复可能不完整');
+      }
+      return settled ? 'settled' : 'network';
     } catch (e) {
       if (e && e.name === 'AbortError') {
         settled = true;

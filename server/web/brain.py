@@ -478,8 +478,14 @@ def _terminate_proc(proc: subprocess.Popen) -> None:
     """确保子进程及整个进程组结束：运行中则 killpg + wait（超时/断连兜底）。"""
     if proc.poll() is None:
         try:
-            # 强力直接杀死整个进程组，防止拉起的子进程泄露成孤儿进程
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            pid = getattr(proc, "pid", None)
+            if pid is not None:
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except OSError:
+                    proc.kill()
+            else:
+                proc.kill()
         except OSError:
             try:
                 proc.kill()

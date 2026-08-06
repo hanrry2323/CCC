@@ -358,6 +358,26 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                 updated_entries[item.id] = new_entry
                 updated = True
             except Exception:
+                logger.exception("解析任务卡失败，保留旧索引项: %s", path)
+                if entry is not None:
+                    # 保留旧索引，避免静默丢卡并覆写索引
+                    item = BoardItem(
+                        id=entry["id"],
+                        title=entry["title"],
+                        state=entry["state"],
+                        project=entry["project"],
+                        executor=entry["executor"],
+                        dispatched_at=entry["dispatched_at"],
+                        written_at=entry["written_at"],
+                        reject_count=entry["reject_count"],
+                        dispatch=entry.get("dispatch", "engine"),
+                        type=entry.get("card_type", "task"),
+                        parent=entry.get("parent_card", ""),
+                        thread_id=entry.get("thread_id", ""),
+                        archived=entry.get("archived", False),
+                    )
+                    items.append(item)
+                    updated_entries[entry["id"]] = entry
                 continue
 
     if len(updated_entries) != len(index_entries) or updated:

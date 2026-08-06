@@ -272,6 +272,48 @@ def _dispatch_and_collect(
     return False, [f"退出码非 0: {returncode}（日志: {log_path}）"]
 
 
+def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
+    """回收带 ``{work_id}.running`` 标记的「执行中」残留（AUTO 崩溃未收单）。
+
+    manual 挂起等人不会写标记，故不被误打回。返回打回张数。
+    """
+    n = 0
+    for w in store.list_work(state=State.RUNNING):
+        marker = log_dir / f"{w.id}.running"
+        if not marker.is_file():
+            continue
+        try:
+            w.transition(
+                State.REJECTED,
+                problems=["Engine 中断未收单，自动打回"],
+            )
+            store.save_work(w)
+            n += 1
+            logger.warning("回收孤儿执行中: work=%s → 打回", w.id)
+        except Exception:
+            logger.exception("回收孤儿执行中失败: work=%s", w.id)
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return n
+
+
+def _claim_running_marker(log_dir: Path, work_id: str) -> Path:
+    """AUTO 派发起写运行标记；收单/异常后清除。"""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    marker = log_dir / f"{work_id}.running"
+    marker.write_text("1", encoding="utf-8")
+    return marker
+
+
+def _clear_running_marker(log_dir: Path, work_id: str) -> None:
+    try:
+        (log_dir / f"{work_id}.running").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def run_once(
     registry: ExecutorRegistry,
     store: BoardStore,
@@ -298,6 +340,9 @@ def run_once(
     if probe_url is None:
         probe_url = os.environ.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
 
+    # 回收上次崩溃残留的 AUTO「执行中」（有 .running 标记；manual 挂起无标记）
+    reclaimed = reclaim_orphaned_running(store, log_dir)
+
     pending = store.list_work(state=State.TODO)
     dispatched = 0
     collected = 0
@@ -310,8 +355,13 @@ def run_once(
         lock = threading.Lock()
 
         def worker(w: Work):
+            marker: Path | None = None
             try:
                 with semaphore:
+                    # 获锁后再标执行中，避免排队期虚高「执行中」
+                    w.transition(State.RUNNING)
+                    store.save_work(w)
+                    marker = _claim_running_marker(log_dir, w.id)
                     ok, problems = _dispatch_and_collect(w, registry, cfg, log_dir, timeout)
                     with lock:
                         if ok:
@@ -339,6 +389,14 @@ def run_once(
                                 logger.warning("收单失败: work=%s → 打回 %s", w.id, problems)
             except Exception as exc:
                 logger.exception("Worker thread encountered unexpected error for work %s: %s", w.id, exc)
+                try:
+                    if w.state is State.RUNNING:
+                        w.transition(State.REJECTED, problems=[f"worker 异常: {exc}"])
+                        store.save_work(w)
+                except Exception:
+                    logger.exception("Worker 异常后打回失败: work=%s", w.id)
+            finally:
+                _clear_running_marker(log_dir, w.id)
 
         for work in pending:
             # T67 防线 2：已验收卡（## 验收区 后 20 行内 ✅/判定：通过）不派发，保持原状态
@@ -351,10 +409,7 @@ def run_once(
                     logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
                     continue
 
-                work.transition(State.RUNNING)
-                store.save_work(work)
                 dispatched += 1
-
                 t = threading.Thread(target=worker, args=(work,))
                 threads.append(t)
                 t.start()
@@ -395,31 +450,43 @@ def run_once(
                 work.transition(State.RUNNING)
                 store.save_work(work)
                 dispatched += 1
+                _claim_running_marker(log_dir, work.id)
 
-                ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
-                if ok:
-                    work.transition(State.DONE)
-                    store.save_work(work)
-                    collected += 1
-                    logger.info("收单成功: work=%s → 已回写", work.id)
-                else:
-                    retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
-                    is_retryable = False
-                    retry_reason = ""
-                    if retry_enabled and work.retry_count == 0:
-                        is_retryable, retry_reason = is_retryable_failure(work.id, problems, log_dir)
-
-                    if is_retryable:
-                        logger.info("自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派", work.id, work.retry_count, retry_reason)
-                        work.retry_count = 1
-                        work.transition(State.TODO, problems=[retry_reason])
+                try:
+                    ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
+                    if ok:
+                        work.transition(State.DONE)
                         store.save_work(work)
+                        collected += 1
+                        logger.info("收单成功: work=%s → 已回写", work.id)
                     else:
-                        if any("超时" in p for p in problems):
-                            timed_out += 1
-                        work.transition(State.REJECTED, problems=problems)
-                        store.save_work(work)
-                        logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
+                        retry_enabled = cfg.get("EXECUTOR_RETRY_ONCE", "true").lower() in ("true", "1")
+                        is_retryable = False
+                        retry_reason = ""
+                        if retry_enabled and work.retry_count == 0:
+                            is_retryable, retry_reason = is_retryable_failure(work.id, problems, log_dir)
+
+                        if is_retryable:
+                            logger.info("自动续作重派: work=%s 上次重试=%d，发现上游/网络波动 (%s)，自动重回待分派", work.id, work.retry_count, retry_reason)
+                            work.retry_count = 1
+                            work.transition(State.TODO, problems=[retry_reason])
+                            store.save_work(work)
+                        else:
+                            if any("超时" in p for p in problems):
+                                timed_out += 1
+                            work.transition(State.REJECTED, problems=problems)
+                            store.save_work(work)
+                            logger.warning("收单失败: work=%s → 打回 %s", work.id, problems)
+                except Exception as exc:
+                    logger.exception("串行派发异常: work=%s: %s", work.id, exc)
+                    try:
+                        if work.state is State.RUNNING:
+                            work.transition(State.REJECTED, problems=[f"派发异常: {exc}"])
+                            store.save_work(work)
+                    except Exception:
+                        logger.exception("串行异常后打回失败: work=%s", work.id)
+                finally:
+                    _clear_running_marker(log_dir, work.id)
             elif decision is DispatchDecision.MANUAL:
                 logger.info(
                     "挂起等人接单: work=%s role=%s executor=%s",
@@ -442,6 +509,7 @@ def run_once(
         "in_flight": in_flight,
         "collected": collected,
         "timed_out": timed_out,
+        "reclaimed": reclaimed,
     }
     return summary
 

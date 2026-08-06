@@ -193,3 +193,25 @@ class TestSubdirScan:
         items = load_dispatch_cards(tmp_path)
         # 校验：仅有正常卡返回，非 UTF-8 损坏文件被安全跳过，不崩溃
         assert [i.id for i in items] == ["T99"]
+
+    def test_parse_failure_keeps_old_index_entry(self, tmp_path: Path, monkeypatch) -> None:
+        """增量解析失败时保留旧索引项，不静默丢卡。"""
+        from server.board import loader as loader_mod
+        from server.board.loader import load_dispatch_cards, load_index_file
+
+        card = _write(tmp_path, "Tkeep.md", SAMPLE)
+        items = load_dispatch_cards(tmp_path)
+        assert [i.id for i in items] == ["T99"]
+        #  bump mtime 并让 parse_card 抛错
+        card.write_text(SAMPLE + "\n# touched\n", encoding="utf-8")
+        real_parse = loader_mod.parse_card
+
+        def boom(path):
+            if path.name == "Tkeep.md":
+                raise RuntimeError("boom")
+            return real_parse(path)
+
+        monkeypatch.setattr(loader_mod, "parse_card", boom)
+        items2 = load_dispatch_cards(tmp_path)
+        assert [i.id for i in items2] == ["T99"]
+        assert "T99" in load_index_file(tmp_path)

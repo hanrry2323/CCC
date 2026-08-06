@@ -11,6 +11,7 @@
   （仅在部署未配置 DATA_DIR 时兜底，正常生产由 config.env 注入）。
 - 本模块不持有任何 HTTP/SSE 状态，纯磁盘读写；切项目/会话不中断活跃流
   （流在 server.py 内存历史里，落盘只做旁路持久化）。
+- 索引 load→mutate→write 与消息追加均走同一把 ``_write_lock``，避免并发丢条目。
 """
 
 from __future__ import annotations
@@ -98,18 +99,17 @@ def append_messages(project: str, thread_id: str, messages: list[dict[str, Any]]
 
 
 def delete_thread(project: str, thread_id: str) -> None:
-    """删除项目+thread 的消息文件与索引项。"""
+    """删除项目+thread 的消息文件与索引项（同锁，避免 RMW 竞态）。"""
     p = _thread_path(project, thread_id)
     with _write_lock:
         try:
             p.unlink(missing_ok=True)
         except OSError:
             pass
-    # 同步从索引移除（尽力而为）
-    index = load_index(project)
-    if thread_id in index:
-        index.pop(thread_id, None)
-        _write_index(project, index)
+        index = _load_index_unlocked(project)
+        if thread_id in index:
+            index.pop(thread_id, None)
+            _write_index_unlocked(project, index)
 
 
 # ── 会话元数据索引（标题/创建时间/最后活动/消息数） ──
@@ -132,8 +132,8 @@ def load_jsonl(jl_path: Path) -> list[dict[str, Any]]:
     return msgs
 
 
-def load_index(project: str) -> dict[str, dict[str, Any]]:
-    """读取项目下会话索引：{thread_id: {title, created_at, updated_at, message_count}}。"""
+def _load_index_unlocked(project: str) -> dict[str, dict[str, Any]]:
+    """读索引（调用方持锁或不关心并发读）。"""
     p = _index_path(project)
     if not p.is_file():
         return {}
@@ -144,14 +144,24 @@ def load_index(project: str) -> dict[str, dict[str, Any]]:
         return {}
 
 
-def _write_index(project: str, index: dict[str, dict[str, Any]]) -> None:
+def load_index(project: str) -> dict[str, dict[str, Any]]:
+    """读取项目下会话索引：{thread_id: {title, created_at, updated_at, message_count}}。"""
+    return _load_index_unlocked(project)
+
+
+def _write_index_unlocked(project: str, index: dict[str, dict[str, Any]]) -> None:
+    """写索引（调用方须已持 ``_write_lock``）。"""
     p = _index_path(project)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _write_index(project: str, index: dict[str, dict[str, Any]]) -> None:
     with _write_lock:
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError:
-            return
+        _write_index_unlocked(project, index)
 
 
 def _derive_title(messages: list[dict[str, Any]]) -> str:
@@ -167,32 +177,34 @@ def _derive_title(messages: list[dict[str, Any]]) -> str:
 
 def touch_thread(project: str, thread_id: str, title: str = "") -> None:
     """更新会话索引：标题（首条）/创建时间/最后活动/消息数。供 /conversation 落盘后调用。"""
-    index = load_index(project)
-    entry = index.get(thread_id, {})
-    existed = bool(entry)
-    if not existed:
-        entry["created_at"] = _now()
-    messages = load_thread(project, thread_id)
-    if title:
-        entry["title"] = title
-    else:
-        entry["title"] = entry.get("title") or _derive_title(messages)
-    entry["updated_at"] = _now()
-    entry["message_count"] = len(messages)
-    index[thread_id] = entry
-    _write_index(project, index)
+    with _write_lock:
+        index = _load_index_unlocked(project)
+        entry = index.get(thread_id, {})
+        existed = bool(entry)
+        if not existed:
+            entry["created_at"] = _now()
+        messages = load_thread(project, thread_id)
+        if title:
+            entry["title"] = title
+        else:
+            entry["title"] = entry.get("title") or _derive_title(messages)
+        entry["updated_at"] = _now()
+        entry["message_count"] = len(messages)
+        index[thread_id] = entry
+        _write_index_unlocked(project, index)
 
 
 def rename_thread(project: str, thread_id: str, title: str) -> None:
     """重命名会话标题（持久化索引）。"""
-    index = load_index(project)
-    entry = index.get(thread_id, {})
-    entry["title"] = title
-    if "created_at" not in entry:
-        entry["created_at"] = _now()
-    entry["updated_at"] = _now()
-    index[thread_id] = entry
-    _write_index(project, index)
+    with _write_lock:
+        index = _load_index_unlocked(project)
+        entry = index.get(thread_id, {})
+        entry["title"] = title
+        if "created_at" not in entry:
+            entry["created_at"] = _now()
+        entry["updated_at"] = _now()
+        index[thread_id] = entry
+        _write_index_unlocked(project, index)
 
 
 def list_threads(project: str) -> list[dict[str, Any]]:

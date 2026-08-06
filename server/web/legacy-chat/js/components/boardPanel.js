@@ -114,30 +114,25 @@ function stopBoardAutoRefresh() {
   }
 }
 
-/** Track a just-created task and toast on column changes / terminal. */
+/** Track a just-created task; column changes toast via board auto-refresh. */
 export function trackDispatchedTask(taskId, workspace) {
   trackedTask = { id: taskId, workspace, lastCol: '待分派' };
-  import('../api.js').then(({ pollTaskUntil }) => {
-    pollTaskUntil(taskId, workspace, {
-      intervalMs: 4000,
-      timeoutMs: 45 * 60 * 1000,
-      onTick: (snap, col) => {
-        if (!col || col === trackedTask?.lastCol) return;
-        trackedTask.lastCol = col;
-        window.showToast?.('任务 ' + taskId + ' → ' + col, 'info');
-        refreshBoardPanel({ quiet: true });
-      },
-    }).then((final) => {
-      const col = final?._column || final?.status;
-      if (col === '已关闭') {
-        window.showToast?.('任务完成: ' + taskId, 'success');
-      } else if (col === '打回') {
-        window.showToast?.('任务被打回: ' + taskId, 'error');
-      }
-      trackedTask = null;
-      refreshBoardPanel({ quiet: true });
-    });
-  });
+}
+
+function _toastTrackedTaskProgress(all) {
+  if (!trackedTask) return;
+  const hit = all.find((c) => c.id === trackedTask.id || c.card_id === trackedTask.id);
+  const col = hit?.state || hit?.status;
+  if (!col || col === trackedTask.lastCol) return;
+  trackedTask.lastCol = col;
+  window.showToast?.('任务 ' + trackedTask.id + ' → ' + col, 'info');
+  if (col === '已关闭') {
+    window.showToast?.('任务完成: ' + trackedTask.id, 'success');
+    trackedTask = null;
+  } else if (col === '打回') {
+    window.showToast?.('任务被打回: ' + trackedTask.id, 'error');
+    trackedTask = null;
+  }
 }
 
 export async function refreshBoardPanel(opts = {}) {
@@ -154,6 +149,7 @@ export async function refreshBoardPanel(opts = {}) {
   try {
     const res = await getCards({ project: ws === 'all' ? '' : ws, page_size: 1000 });
     const all = res.cards || [];
+    _toastTrackedTaskProgress(all);
 
     // Sort: 打回 > 执行中 > 待分派 > 已回写 > 已关闭; same state sorted by update time desc
     const order = { '打回': 0, '执行中': 1, '待分派': 2, '已回写': 3, '已关闭': 4 };

@@ -256,6 +256,7 @@ class _FakeProc:
         self.stderr = None
         self._rc = 0
         self.killed = False
+        self.pid = 424242  # 供 _terminate_proc / killpg 路径安全读取
 
     def poll(self):
         return self._rc if self.killed else None
