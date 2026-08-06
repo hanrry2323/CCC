@@ -82,6 +82,15 @@
 | **合入批准狗粮** | `approve-merge --close-only xy001` | ✅ |
 | 里程碑 | [`notes/m3-milestone-2026-08-07.md`](notes/m3-milestone-2026-08-07.md) | ✅ |
 
+### M4 ✅（首跑机审 + 关卡清账 · 2026-08-07 · `2588908`）
+
+| 项 | 意图 | 备注 |
+|----|------|------|
+| **cd 前缀** | ccc004 意图经 registry | ✅ |
+| **ccc005/006 首跑机审** | first-audit-evidence → ready | ✅ |
+| **合入批准三卡** | ccc004/005/006 已关闭 | ✅ |
+| 里程碑 / 下一程 | [`notes/m4-milestone-2026-08-07.md`](notes/m4-milestone-2026-08-07.md) · [`notes/m5-next-plan.md`](notes/m5-next-plan.md) | ✅ / 待批 |
+
 | 项 | 意图 | 备注 |
 |----|------|------|
 | **任务卡退役 / 高效管理** | 已关闭卡不拖垮扫卡 | 看板已关闭 cap=10（已做）；其余挂账 |
