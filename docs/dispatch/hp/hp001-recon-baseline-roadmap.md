@@ -77,3 +77,20 @@ hp 项目首次进 CCC 自动开发流程：在 Mac2017 `/Users/fan/program/apps
 - **分支**：`codex/hp001-recon-baseline-roadmap`
 - **Commit Hash**：`accc74270151ef82bba5ee9e057b7eff9080fa27`
 
+## 机审区
+
+**机审：通过** · 2017 Claude Code（机审席）· 日期：2026-08-07 · 卡 commit `a98107ae`
+
+### 机审证据（独立取证）
+
+- **验收标准 #1 README 五节 + 附A/B/C**：`docs/projects/hp/README.md` 五节（是什么/路径/CCC怎么动/线路近况/禁区）+ 附A 技术栈表 + 附B 深度3目录树 + 附C 业务线路梳理均完整，路径写清 `/Users/fan/program/apps/hp` ✅
+- **验收标准 #2 roadmap 业务线路（hp）段**：`docs/roadmap.md` 末尾含 `## 业务线路（hp）` 总览段（hp001-003 现状 + 下一程一行），与 README「线路 / 近况」一致 ✅
+- **验收标准 #3 业务仓零改动**：独立 `ssh fan@192.168.3.116 "cd /Users/fan/program/apps/hp && git status -sb"` → `## main...origin/main [ahead 1]`，clean，与回写说法一致 ✅
+- **验收标准 #4 validate**：内容层通过。卡头 `已回写`、回写区完整；fresh rescan（`load_dispatch_cards`）正确派生 `已回写`。审计时 exit=1 系运行时索引（`cards.index.jsonl`）快照滞后于写盘，Engine 增量扫描自愈；回写区「validate 通过」系自检时点，非内容缺陷（已备注）。
+- **人工批注核对**：本卡 `## 人工批注` 仅为模板占位（`_has_real_annotation=False`），无老板真实修订指令 → 无 `## 批注落实` 要求，无需核对。
+- **红线核查**：未写 `## 验收区`、未置「已关闭」、未改业务代码、未落点外新建文档。写盘范围仅卡 + `docs/projects/hp/README.md` + `docs/roadmap.md`，符合红线 1/2/3。
+
+### 备注（非阻断，供人审 approve-merge 参考）
+
+- 分支 `codex/hp001-recon-baseline-roadmap` 落后 origin/main 4 提交（13:06 回写后 origin/main 于 13:38-13:43 前进，含 `6f0da7c2` 机审信封协议）。`approve-merge.sh` 合入前已 `git pull --ff-only origin main`，届时 rebase 最新 main 即可 ff 合入。
+
