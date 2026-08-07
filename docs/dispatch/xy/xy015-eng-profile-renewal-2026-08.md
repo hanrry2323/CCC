@@ -57,4 +57,4 @@
 ### Push 证据
 
 - Xianyu 仓提交并推送至分支 `codex/xy015-eng-profile-renewal-2026-08`：
-  - Commit Hash: `19f7a4faab9af98181aee7f82623c43d0bed9f88`
+  - Commit Hash: `6311bac1d372a7b642666aecad3468588a76059c`
