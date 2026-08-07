@@ -100,3 +100,34 @@
 - **hp 仓库修改分支**：`codex/hp002-monitoring-git-probe`
 - **hp 仓库 Commit Hash**：`12d3159`
 - **hp 仓库推送状态**：成功推送至 `origin/codex/hp002-monitoring-git-probe`
+
+## 机审区
+
+**验收**：Claude Code（机审） · 日期：2026-08-07
+
+### 机审：通过
+
+### 审查摘要
+
+独立取证 hp 仓（`/Users/fan/program/apps/hp`，分支 `codex/hp002-monitoring-git-probe`）与 CCC worktree 卡文件：
+
+- **实现**：`local/scripts/cluster-health.sh` 新增 hp git 状态探针（dirty / ahead / behind / fetch 降级），`docs/knowledgebase/MONITORING.md` 记录探针清单、手动与 cron 运行方式、告警与退出码语义。commit `12d3159` 精确含且仅含这两文件，范围合规。
+- **验收①**：脚本含 `hp git: clean/ahead/behind/dirty` 状态段，汇总退出码 0/1 符合文档说明。
+- **验收②**：回写区已记录人工 `touch` 制造 dirty → 检出（退出码 1）→ `rm` 还原（porcelain 为空）的自测与还原证据。
+- **验收③**：监控文档含探针清单 + 手动/定时运行方式 + 告警行为；本 commit 未触碰任何 hp@ 节点文件（只读 ssh 探活）。
+- **CCC 侧**：worktree 卡文件状态「已回写」+ roadmap 同步到位；commit 范围仅卡文件 + roadmap 两文件。
+- **红线核对**：仅动 cluster-health.sh + 1 篇监控文档（≤1 篇合规）；未改 hp@ 节点、未装包、未改 qx-map、未直推 main；执行体停手未写验收区/已关闭。
+
+### 发现清单
+
+- **P0**：无
+- **P1**：无
+- **P2（观察项，非阻塞，未修改业务码）**：git dirty 探针用默认 `git status --porcelain`，会把 **untracked** 文件一并计为 dirty。当前 hp 工作树存在本卡之外的 untracked `docs/knowledgebase/BACKUP.md`（hp003 备份触碰面，本卡红线圈定不许改），导致探针现会持续报 `dirty` / 退出码 1。**判定**：卡内验收自测本身就用 untracked `touch` 制造 dirty，故统计 untracked 与卡定义一致、行为正确；永久 dirty 源头是平行卡遗留的 untracked 文件，非本卡逻辑缺陷，亦不在本卡允许改范围。待 hp003 收口（BACKUP.md 入仓或 ignore）后自动恢复正常。仅记录观察，不予业务码修复以防越界。
+
+### 修复记录
+
+- 本轮无 P0/P1，未产生就地修复 commit。
+
+### 复审结论
+
+无 P0/P1，范围合规，验收标准逐条满足。**机审通过**。待老板「合入批准」后收口为已关闭。
