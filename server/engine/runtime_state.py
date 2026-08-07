@@ -56,6 +56,7 @@ def write_card_state(
     retry_count: int | None = None,
     reason: str = "",
     redispatch: str | None = None,
+    infra_cooldown_until: str | None = None,
 ) -> None:
     """追加一条运行时状态（调用方给定字段；缺省保持历史不变）。"""
     rec: dict[str, Any] = {"id": card_id, "ts": _utcnow_iso()}
@@ -67,6 +68,8 @@ def write_card_state(
         rec["reason"] = reason[:200]
     if redispatch is not None:
         rec["redispatch"] = redispatch
+    if infra_cooldown_until is not None:
+        rec["infra_cooldown_until"] = infra_cooldown_until
     try:
         path = Path(log_dir) / STATE_REL
         path.parent.mkdir(parents=True, exist_ok=True)

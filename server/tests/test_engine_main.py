@@ -1070,10 +1070,124 @@ class TestParallelAndRelayGuard:
             "audit_pending",
             "audit_collected",
             "audit_failed",
+            "audit_failed_infra",
             "worktrees_cleaned",
         ):
             assert key in summary, f"摘要缺字段: {key}"
             assert isinstance(summary[key], int)
+
+    def test_audit_infra_failure_holds_not_reject(self, tmp_path: Path) -> None:
+        """上游 503：机审失败 → 冷却 + 自动续审，不打回、不计重试预算。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo \"API Error: 503 所有上游不可用\"; exit 1'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "i1.md"
+        card_file.write_text("# 任务卡 i1\n", encoding="utf-8")
+        store.seed(Work(id="i1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["audit_failed_infra"] == 1, summary
+        assert summary["audit_failed"] == 0
+        # 卡保持已回写，业务重试预算未消耗
+        assert store.list_work(state=State.DONE)[0].id == "i1"
+        assert store.list_work(state=State.DONE)[0].retry_count == 0
+        from server.engine.runtime_state import read_card_state
+
+        rt = read_card_state(tmp_path / "logs")
+        assert rt["i1"]["infra_cooldown_until"]
+        assert "基础设施特征" in rt["i1"]["reason"]
+        # 冷却内不再自动重审
+        summary2 = run_once(reg, store, cfg)
+        assert summary2["audit_dispatched"] == 0
+
+    def test_audit_business_failure_still_retries(self, tmp_path: Path) -> None:
+        """机审：不通过 → 业务失败，回待分派重试（不计 infra）。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo 机审：不通过; exit 1'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "b1.md"
+        card_file.write_text("# 任务卡 b1\n", encoding="utf-8")
+        store.seed(Work(id="b1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["audit_failed"] == 1, summary
+        assert summary["audit_failed_infra"] == 0
+        todo = store.list_work(state=State.TODO)
+        assert todo and todo[0].id == "b1"
+        assert todo[0].retry_count == 1
+
+    def test_exec_infra_failure_holds(self, tmp_path: Path) -> None:
+        """执行侧上游 503：回待分派 + 冷却，不计业务重试预算、不打回。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="sh",
+            args_template="-c 'echo \"API Error: 503 所有上游不可用\"; exit 1'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "e1.md"
+        card_file.write_text("# 任务卡 e1\n", encoding="utf-8")
+        store.seed(Work(id="e1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["dispatched"] == 1
+        assert summary["collected"] == 0
+        todo = store.list_work(state=State.TODO)
+        assert todo and todo[0].id == "e1"
+        assert todo[0].retry_count == 0
+        from server.engine.runtime_state import read_card_state
+
+        rt = read_card_state(tmp_path / "logs")
+        assert rt["e1"]["infra_cooldown_until"]
+        # 冷却内不再重派
+        summary2 = run_once(reg, store, cfg)
+        assert summary2["dispatched"] == 0
+
+    def test_persistence_failure_classified_infra(self) -> None:
+        from server.engine.main import _is_persistence_failure
+
+        assert _is_persistence_failure(["机审通过但机审区落盘到分支卡失败"])
+        assert _is_persistence_failure(["机审通过但分支证据未推送（ready 不可见）"])
+        assert not _is_persistence_failure(["机审：不通过 缺测试"])
 
     def test_slot_limits_hot_read(self, tmp_path: Path) -> None:
         """槽位上限热读 config.env：改配置免重启生效；非法值回退启动值。"""

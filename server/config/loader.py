@@ -54,6 +54,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     "EXECUTOR_RETRY_ONCE": "true",
     # 失败回待分派自动重试上限；用尽才打回。RETRY_ONCE=false 时视为 0
     "EXECUTOR_MAX_RETRIES": "3",
+    # 基础设施故障（上游/网络/超时）冷却秒数：冷却内不重试、不计业务重试预算、不打回
+    "EXECUTOR_INFRA_COOLDOWN_SECONDS": "60",
     # 生产仓自动 git 对齐（人只 push；2017 Engine/看板自 pull）
     "CCC_AUTO_PULL": "1",
     "CCC_AUTO_PULL_REMOTE": "origin",

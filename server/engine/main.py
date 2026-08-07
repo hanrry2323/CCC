@@ -126,28 +126,110 @@ def probe_relay(url: str, timeout: int = 5) -> bool:
 
 
 def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tuple[bool, str]:
-    """历史辅助：识别超时/网络特征（现失败默认均可回待分派重试，本函数仅供摘要）。"""
-    if any("超时" in p for p in problems) or any("timeout" in p.lower() for p in problems):
-        return True, "执行超时"
-
-    log_path = log_dir / f"{work_id}.log"
-    if log_path.is_file():
+    """识别基础设施故障（超时/网络/上游不可用）——这类失败不进业务重试预算、不打回。"""
+    keywords = [
+        "timeout", "timed out", "connection error", "network error",
+        "network unreachable", "host unreachable", "dns resolution",
+        "connection reset", "broken pipe", "bad gateway",
+        "service unavailable", "gateway timeout", "502", "503", "504",
+        "relay error", "read timeout", "connect timeout", "connection timed out",
+        "所有上游不可用", "upstream", "不可用（网络错误）", "上游不可用",
+        "inference gateway", "上游",
+    ]
+    for log_name in (f"{work_id}.log", f"{work_id}.audit.log"):
+        log_path = log_dir / log_name
+        if not log_path.is_file():
+            continue
         try:
             log_content = log_path.read_text(encoding="utf-8", errors="ignore").lower()
-            keywords = [
-                "timeout", "timed out", "connection error", "network error",
-                "network unreachable", "host unreachable", "dns resolution",
-                "connection reset", "broken pipe", "bad gateway",
-                "service unavailable", "gateway timeout", "502", "503", "504",
-                "relay error", "read timeout", "connect timeout", "connection timed out"
-            ]
             for kw in keywords:
                 if kw in log_content:
-                    return True, f"日志含网络或超时特征: {kw}"
+                    return True, f"日志含基础设施特征: {kw}"
         except Exception as exc:
             logger.warning("读取日志判断重试失败: %s (%s)", log_path, exc)
 
     return False, ""
+
+
+def _is_persistence_failure(reasons: list[str]) -> bool:
+    """机审已通过但证据落盘/推送失败 → 引擎侧故障（audit 日志无业务否定）。"""
+    return any(
+        ("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r)
+        for r in reasons
+    )
+
+
+def _infra_cooldown_seconds(cfg: dict[str, Any]) -> int:
+    try:
+        return max(0, int(cfg.get("EXECUTOR_INFRA_COOLDOWN_SECONDS") or 60))
+    except (TypeError, ValueError):
+        return 60
+
+
+def _hold_infra_failure(
+    store: BoardStore,
+    work: Work,
+    log_dir: Path,
+    reasons: list[str],
+    cfg: dict[str, Any],
+    *,
+    phase: str,
+) -> None:
+    """基础设施/引擎侧故障：不进业务重试预算、不打回；记冷却时间，冷却后自动续跑。
+
+    - phase=audit：卡保持「已回写」，机审队列冷却后自动续审。
+    - phase=run：卡回「待分派」，派发队列冷却后自动重派。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    cooldown = _infra_cooldown_seconds(cfg)
+    until = (
+        datetime.now(timezone.utc) + timedelta(seconds=cooldown)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    if phase == "run" and work.state is State.RUNNING:
+        try:
+            work.transition(State.TODO, problems=reasons)
+        except Exception:
+            pass
+    try:
+        store.save_work(work)
+    except Exception:
+        pass
+    from server.engine.runtime_state import write_card_state
+
+    write_card_state(
+        log_dir,
+        work.id,
+        state=work.state.value,
+        retry_count=work.retry_count,
+        reason=reasons[0] if reasons else "基础设施故障",
+        infra_cooldown_until=until,
+    )
+    logger.warning(
+        "基础设施失败（冷却 %ds 后自动续%s，不计重试预算）: work=%s reason=%s",
+        cooldown,
+        "审" if phase == "audit" else "派",
+        work.id,
+        reasons[0] if reasons else "",
+    )
+
+
+def _infra_cooldown_active(
+    runtime: dict,
+    card_id: str,
+    now_ts: float | None = None,
+) -> bool:
+    """运行时记录的 ``infra_cooldown_until`` 未到期 → 跳过本卡（防抖动风暴）。"""
+    cd = (runtime.get(card_id) or {}).get("infra_cooldown_until")
+    if not cd:
+        return False
+    try:
+        from datetime import datetime
+
+        parsed = datetime.fromisoformat(cd.replace("Z", "+00:00"))
+        return parsed.timestamp() > (time.time() if now_ts is None else now_ts)
+    except (ValueError, TypeError):
+        return False
 
 
 def max_retries_from_cfg(cfg: dict[str, Any]) -> int:
@@ -1129,14 +1211,19 @@ def _run_auto_worker(
             outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
-            _, hint = is_retryable_failure(work.id, problems, log_dir)
+            retryable, hint = is_retryable_failure(work.id, problems, log_dir)
             reasons = list(problems) if problems else ["执行失败"]
             if hint and hint not in reasons[0]:
                 reasons = [hint, *reasons]
-            retried = _fail_retry_or_reject(work, store, reasons, cfg)
-            # 催单计数：仅最终打回时记 timed_out（回待分派不算）
-            if (not retried) and any("超时" in p for p in reasons):
-                outcome["timed_out"] = 1
+            if retryable:
+                # 上游/网络/超时：基础设施故障 → 回待分派 + 冷却，不计业务重试预算、不打回
+                _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="run")
+                outcome["infra"] = 1
+            else:
+                retried = _fail_retry_or_reject(work, store, reasons, cfg)
+                # 催单计数：仅最终打回时记 timed_out（回待分派不算）
+                if (not retried) and any("超时" in p for p in reasons):
+                    outcome["timed_out"] = 1
     except Exception as exc:
         logger.exception("Worker 异常: work=%s: %s", work.id, exc)
         try:
@@ -1159,10 +1246,10 @@ def _run_audit_worker(
 ) -> dict[str, int]:
     """单卡机审（独立槽位池）：拉起验收席 CLI 写 ``## 机审区``。
 
-    通过/跳过 → ``collected=1``；不通过 → 清标记、走 ``_fail_retry_or_reject``
-    （回待分派重试，用尽才打回）→ ``failed=1``。
+    通过/跳过 → ``collected=1``；业务不通过 → 回待分派重试（用尽才打回）→ ``failed=1``；
+    基础设施失败（503/上游不可用/超时/证据落盘失败）→ 冷却后自动续审，不打回 → ``infra=1``。
     """
-    outcome = {"collected": 0, "failed": 0}
+    outcome = {"collected": 0, "failed": 0, "infra": 0}
     try:
         if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
             logger.info("机审证据已存在（分支/生产卡），跳过: work=%s", work.id)
@@ -1175,9 +1262,16 @@ def _run_audit_worker(
             outcome["collected"] = 1
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
-            _fail_retry_or_reject(work, store, reasons, cfg)
-            outcome["failed"] = 1
-            logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
+            retryable, hint = is_retryable_failure(work.id, reasons, log_dir)
+            if retryable or _is_persistence_failure(reasons):
+                if hint and hint not in reasons[0]:
+                    reasons = [hint, *reasons]
+                _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="audit")
+                outcome["infra"] = 1
+            else:
+                _fail_retry_or_reject(work, store, reasons, cfg)
+                outcome["failed"] = 1
+                logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
     except Exception as exc:
         logger.exception("机审 worker 异常: work=%s: %s", work.id, exc)
         try:
@@ -1244,6 +1338,10 @@ def run_once(
 
     pending = store.list_work(state=State.TODO)
     by_id = {w.id: w for w in store.list_work()}
+    from server.engine.runtime_state import read_card_state
+
+    runtime_for_dispatch = read_card_state(log_dir) if log_dir else {}
+    now_ts = time.time()
     dispatched = 0
     probe_skips = 0
     parent_skips = 0
@@ -1251,6 +1349,9 @@ def run_once(
     slots = pool.free_slots(max_concurrent, store, log_dir)
 
     for work in pending:
+        if _infra_cooldown_active(runtime_for_dispatch, work.id, now_ts):
+            logger.info("基础设施冷却中，跳过派发: work=%s", work.id)
+            continue
         if is_card_accepted(work.card_path):
             logger.warning("已验收卡不派发: work=%s", work.id)
             continue
@@ -1315,12 +1416,18 @@ def run_once(
         slots -= 1
 
     # ── 机审池（独立槽位）：扫「已回写 + 待机审标记 + 未通过」填槽 ──
-    def _audit_round() -> tuple[int, int, int, int, int]:
-        """一次机审扫描：返回 (dispatched, collected, failed, pending, in_flight)。"""
+    def _audit_round() -> tuple[int, int, int, int, int, int]:
+        """一次机审扫描：返回 (dispatched, collected, failed, infra, pending, in_flight)。"""
+        from server.engine.runtime_state import read_card_state
+
+        runtime = read_card_state(log_dir) if log_dir else {}
+        now_ts = time.time()
+
         audit_alive = audit_pool.alive_ids()
         reaped = audit_pool.reap()
         a_collected = reaped.get("collected", 0)
         a_failed = reaped.get("failed", 0)
+        a_infra = reaped.get("infra", 0)
         occupied = len(audit_alive)
         for w in store.list_work(state=State.DONE):
             if w.id not in audit_alive and _audit_marker_alive(log_dir, w.id):
@@ -1331,6 +1438,8 @@ def run_once(
         for work in store.list_work(state=State.DONE):
             if work.id in audit_alive or _audit_marker_alive(log_dir, work.id):
                 continue
+            if _infra_cooldown_active(runtime, work.id, now_ts):
+                continue  # 基础设施故障冷却中
             if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
                 continue
             candidates.append(work)
@@ -1353,11 +1462,16 @@ def run_once(
                 continue
             a_dispatched += 1
             a_slots -= 1
-        return a_dispatched, a_collected, a_failed, a_pending, len(audit_pool.alive_ids())
+        return a_dispatched, a_collected, a_failed, a_infra, a_pending, len(audit_pool.alive_ids())
 
-    audit_dispatched, audit_collected, audit_failed, audit_pending, audit_in_flight = (
-        _audit_round()
-    )
+    (
+        audit_dispatched,
+        audit_collected,
+        audit_failed,
+        audit_failed_infra,
+        audit_pending,
+        audit_in_flight,
+    ) = _audit_round()
 
     if wait:
         drained = pool.drain()
@@ -1368,11 +1482,13 @@ def run_once(
         audit_dispatched += extra[0]
         audit_collected += extra[1]
         audit_failed += extra[2]
-        audit_pending = extra[3]
-        audit_in_flight = extra[4]
+        audit_failed_infra += extra[3]
+        audit_pending = extra[4]
+        audit_in_flight = extra[5]
         audit_drained = audit_pool.drain()
         audit_collected += audit_drained.get("collected", 0)
         audit_failed += audit_drained.get("failed", 0)
+        audit_failed_infra += audit_drained.get("infra", 0)
         audit_in_flight = len(audit_pool.alive_ids())
 
     # 看板 in_flight = 全部执行中（含 manual 挂起）；CLI 空位另用 pool.occupancy
@@ -1394,6 +1510,7 @@ def run_once(
         "audit_pending": audit_pending,
         "audit_collected": audit_collected,
         "audit_failed": audit_failed,
+        "audit_failed_infra": audit_failed_infra,
         "worktrees_cleaned": worktrees_cleaned,
     }
     try:
@@ -1417,6 +1534,7 @@ def run_once(
                 "audit_pending": audit_pending,
                 "audit_collected": audit_collected,
                 "audit_failed": audit_failed,
+                "audit_failed_infra": audit_failed_infra,
                 "worktrees_cleaned": worktrees_cleaned,
             },
         )
@@ -1437,6 +1555,7 @@ def run_once(
             audit_dispatched=audit_dispatched,
             audit_collected=audit_collected,
             audit_failed=audit_failed,
+            audit_failed_infra=audit_failed_infra,
             reclaimed=reclaimed,
             worktrees_cleaned=worktrees_cleaned,
         )

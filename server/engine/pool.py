@@ -13,7 +13,7 @@ from typing import Any
 from server.engine.store import BoardStore
 from server.engine.task import State
 
-Outcome = dict[str, int]  # collected / timed_out / failed
+Outcome = dict[str, int]  # collected / timed_out / failed / infra
 
 
 class DispatchPool:
@@ -56,6 +56,8 @@ class DispatchPool:
                     outcome = {
                         "collected": int(result.get("collected", 0)),
                         "timed_out": int(result.get("timed_out", 0)),
+                        "failed": int(result.get("failed", 0)),
+                        "infra": int(result.get("infra", 0)),
                     }
             finally:
                 with self._lock:
@@ -74,10 +76,11 @@ class DispatchPool:
         thread.start()
 
     def reap(self) -> Outcome:
-        """回收已结束线程，返回本轮累计 collected / timed_out / failed。"""
+        """回收已结束线程，返回本轮累计 collected / timed_out / failed / infra。"""
         collected = 0
         timed_out = 0
         failed = 0
+        infra = 0
         with self._lock:
             finished = [wid for wid, t in self._threads.items() if not t.is_alive()]
             for wid in finished:
@@ -86,11 +89,17 @@ class DispatchPool:
                 collected += int(out.get("collected", 0))
                 timed_out += int(out.get("timed_out", 0))
                 failed += int(out.get("failed", 0))
-        return {"collected": collected, "timed_out": timed_out, "failed": failed}
+                infra += int(out.get("infra", 0))
+        return {
+            "collected": collected,
+            "timed_out": timed_out,
+            "failed": failed,
+            "infra": infra,
+        }
 
     def drain(self, join_slice: float = 0.5) -> Outcome:
         """阻塞直到池空，返回期间 reap 累计。"""
-        totals: Outcome = {"collected": 0, "timed_out": 0, "failed": 0}
+        totals: Outcome = {"collected": 0, "timed_out": 0, "failed": 0, "infra": 0}
         while True:
             with self._lock:
                 alive = [(wid, t) for wid, t in self._threads.items() if t.is_alive()]
@@ -99,6 +108,7 @@ class DispatchPool:
                 totals["collected"] += got["collected"]
                 totals["timed_out"] += got["timed_out"]
                 totals["failed"] += got["failed"]
+                totals["infra"] += got["infra"]
                 return totals
             for _wid, t in alive:
                 t.join(timeout=join_slice)
@@ -106,6 +116,7 @@ class DispatchPool:
             totals["collected"] += got["collected"]
             totals["timed_out"] += got["timed_out"]
             totals["failed"] += got["failed"]
+            totals["infra"] += got["infra"]
 
 
 _POOL = DispatchPool()
