@@ -76,44 +76,41 @@
 
 ## 机审区
 
-**机审方**：Claude Code（2017）· 日期：2026-08-07 · 轮次：独立复审（本审查重新独立取证，非沿用前轮文本）
+**机审方**：Claude Code（2017）· 日期：2026-08-07 · 轮次：第 2 轮独立复审（本审查重新独立取证，非沿用前轮文本）
 
-**机审：不通过（P1 · 范围性问题）** —— 服务端备份链路改造真实、可运行、已验证通过；但 hp 业务仓文档交付（验收 #4）与 push 证据均不成立，属跨仓/跨分支交付缺陷。
+**机审：不通过（P1 · 范围性问题 · 连续第 2 轮未闭环）** —— 服务端备份链路改造（验收 #1/2/3）经本审查 SSH 独立实测**属实、可运行、完整、零删除**，通过保留；但 hp 业务仓文档交付（验收 #4）与 push 证据经本审查独立重验**自第 1 轮败诉至今零改动**，属跨仓/跨分支交付缺陷，连续 2 轮未闭合，触发「机审不通过 + 非0退出」。
 
-### 独立取证（服务端 + 业务仓全部实测重验）
+### 独立取证（本审查 SSH + hp 业务仓全部实测重验）
 
-**hp@192.168.3.131 服务端（SSH 独立复核，全部通过）**：
-- cron `0 2 * * * /data/backups/pg_dump_knowledge.sh` 在跑；`/data/backups/knowledge/pg_dump.log` 显示 08-04/05/06/07 OK，另有 15:16 手动试跑 OK。
-- 脚本 `/data/backups/pg_dump_knowledge.sh` 现同时产出 `.sql.gz`（pg_dump|gzip）与 `.dump`（`pg_dump -F c`），并带 30 天 `find -mtime +30 -delete` 轮转。副本 `pg_dump_knowledge.sh.bak`（635B，改动前）保留在侧，可回滚。
-- 最新产物在手：`knowledge_2026-08-07.dump`（401,400,649 B，15:16）与 `knowledge_2026-08-07.sql.gz`（400,661,100 B，15:15）。
-- **完整性**：`pg_restore --list knowledge_2026-08-07.dump` 成功列出 TOC（67 行，含 `chunks`/`documents`/`domains`/`projects`/`memory_store` 的 TABLE DATA）；`gzip -t knowledge_2026-08-07.sql.gz` 通过。
-- **WAL 热备真实**：`archive_mode=on`、`wal_level=replica`、`archive_command='test ! -f /data/backups/wal/%f && cp %p /data/backups/wal/%f'`；`/data/backups/wal/` 实测含 1381 个 16MB 分片。
-- **零删除**：`/data/knowledge/backups/2026-07-04-pre-4finance.dump` 完好；`/data/backups/knowledge/` 内 07-08 至 08-07 逐日 `.sql.gz` 全在。
+**hp@192.168.3.131 服务端（本审查 SSH 独立复核，全部通过，与第 1 轮结论一致）**：
+- cron `0 2 * * * /data/backups/pg_dump_knowledge.sh` 在跑。
+- 脚本 `/data/backups/pg_dump_knowledge.sh` 现同时产出 `.sql.gz`（pg_dump|gzip）与 `.dump`（`pg_dump -F c`），并带 30 天 `find -mtime +30 -delete` 轮转。
+- 产物实测在手：`knowledge_2026-08-07.dump`（401,400,649 B，08-07 15:16）+ `knowledge_2026-08-07.sql.gz`（400,661,100 B，15:15）；08-05/08-06 逐日 `.sql.gz` 均在。
+- **零删除**：`/data/knowledge/backups/2026-07-04-pre-4finance.dump`（297,484,254 B）完好。
 
-**hp 业务仓（`/Users/fan/program/apps/hp`，实测）—— P1 问题所在**：
-- `docs/knowledgebase/BACKUP.md` **仍是 untracked**（`git status` 显示未跟踪），从未纳入版本控制。回写声称「新建了文档」属实，但「落 hp 仓（提交+推送）」不成立。验收 #4 未达成。
-- hp 仓当前分支为 `codex/hp002-monitoring-git-probe`（**hp002 卡分支**）；`git branch -a` 显示仅 `main` + `<hp002 分支>`，**不存在 `codex/hp003-backup-alignment` 分支**。
-- 回写「commit+push 证据」引用的 `265d650fbd...`：在 hp 仓 `git cat-file -t` 报 `could not get object info`（不存在）；实测该哈希是 **CCC 仓**的 `docs(hp): update hp003 task card to writeback state` 提交（任务卡状态同步提交），并非 hp 业务改动 → push 证据不成立、具误导性。
+**hp 业务仓（`/Users/fan/program/apps/hp`，本审查独立实测）—— 3 项 P1 全部沿用、零改进**：
+- `git status --short` → `?? docs/knowledgebase/BACKUP.md`：文档**仍是 untracked**，从未 commit，验收 #4 未达成（P1-1）。
+- `git branch --show-current` → `codex/hp002-monitoring-git-probe`（**hp002 卡分支**）；`git branch -a` 仅 `main` + `<hp002 分支>` + 远端对应项，**不存在 `codex/hp003-backup-alignment`**（P1-2）。
+- 回写 push 证据 `265d650fbd...`：hp 仓 `git cat-file -t` 报 `fatal: could not get object info`（不存在）；`git -C /Users/fan/program/CCC log -1 265d650` 实测为 `docs(hp): update hp003 task card to writeback state`（**CCC 仓任务卡状态同步提交**，非 hp 业务改动）→ push 证据不成立、误导（P1-3）。
 
-`BACKUP.md` 文档正文本身正确（定时/落点/保留/恢复/异地路径均与实际一致，WAL 落点写 `/data/backups/wal/` 无误）。
+### 发现清单（第 2 轮复审，与第 1 轮逐项一致、均未修复）
 
-### 发现清单
+| # | 级别 | 第 2 轮实测 | 问题 |
+|---|------|-----------|------|
+| P1-1 | P1 | hp 仓 `docs/knowledgebase/BACKUP.md` 仍 `?? untracked` | 未 commit，机器重置即丢。验收 #4「文档落 hp 仓」未达成。 |
+| P1-2 | P1 | hp 仓当前分支仍 `codex/hp002-monitoring-git-probe`，无 `codex/hp003-backup-alignment` | hp003 产物落在 hp002 卡分支，触犯双卡「互划界防并发冲突」红线 #1。 |
+| P1-3 | P1 | push 证据 `265d650` 仍指向 CCC 仓任务卡提交，hp 仓无此对象 | hp003 分支不存在，证据不成立/误导。 |
 
-| # | 级别 | 文件 | 问题 |
-|---|------|------|------|
-| P1-1 | P1 | hp 仓 `docs/knowledgebase/BACKUP.md` | **未 commit（untracked）**。回写称已入仓，实测从未进版本控制，机器重置即丢。验收 #4「文档落 hp 仓」未达成。 |
-| P1-2 | P1 | hp 仓分支 | hp003 产物落在 **hp002 卡分支** `codex/hp002-monitoring-git-probe` 上，触犯双卡「互划界防并发冲突」红线 #1（跨卡污染）。 |
-| P1-3 | P1 | 回写 push 证据 | hp003 分支不存在；引用 commit `265d650` 实为 **CCC 仓**任务卡状态提交，非 hp 业务改动 → 证据不成立/误导。 |
+### 为何机审不越界代修复（范围性问题）
 
-### 修复记录
+- 缺陷是 **hp 业务仓跨仓交付闭合**问题，修复动作全部落在 `/Users/fan/program/apps/hp`（建分支/`git add` commit/push），不在本机审工作区 `/Users/fan/program/ccc-dev-ws-hp003`（CCC 仓 worktree）可及范围。
+- hp 仓现处 hp002 卡活动分支；机审若在 hp 仓建分支/commit 将直接污染 hp002 卡工作区，正是本卡红线 #1「互划界防并发冲突」要防的场景 → 依规**不越界代改业务仓**。
+- 故本缺陷无法在本机审可安全操作的工作区内就地修复，属**范围性问题**；且执行体第 1 轮被打回后**未做任何再交付**，连续 2 轮未闭环 → 判定「机审不通过 + 非0退出」。
 
-- 缺陷为**跨仓、跨分支交付问题**：正确修复需在 hp 业务仓从 `main` 新建独立 `codex/hp003-backup-alignment`、`git add` commit `docs/knowledgebase/BACKUP.md` 并 push，同时纠正回写 push 证据。
-- **不做越界代修**：hp 仓现处 hp002 活动分支，机审若在 hp 仓建分支/commit 将直接污染 hp002 卡工作区，正是本卡红线 #1 要防的并发冲突。修复不在本机审工作区（CCC worktree）可及且可安全执行的范围 → 判定**范围性问题**，交回执行体（OpenCode）重交付。
+### 复审结论 / 打回方向（交执行体 OpenCode 重交付）
 
-### 复审结论 / 打回方向
-
-- **机审：不通过**。服务端改造与验证（验收 #1/2/3）属实，通过保留；hp 文档入仓（验收 #4）与 push 证据必须由执行体重做：
-  1. 在 hp 仓从 `main` 新建并经 `git checkout -b codex/hp003-backup-alignment` 承载本卡产物，`git add`+commit `docs/knowledgebase/BACKUP.md`，push 并回写真实 commit hash；
+- **机审：不通过**。服务端改造与验证（验收 #1/2/3）属实，通过保留；hp 文档入仓（验收 #4）与 push 证据必须由执行体重做，且不得再复用 hp002 卡分支：
+  1. 在 hp 仓 `git fetch origin` 后从 `origin/main` 新建并经 `git checkout -b codex/hp003-backup-alignment` 承载本卡产物，`git add docs/knowledgebase/BACKUP.md` → commit → push，回写**真实 hp 仓 commit hash**；
   2. 禁止用 hp002 卡分支承载本卡产物；
   3. 修订回写区「commit+push 证据」，去除指向 CCC 仓的 `265d650`，改填 hp 仓真实 hash。
 - 修毕待重派机审。本审查不越界代改 hp 业务仓。
