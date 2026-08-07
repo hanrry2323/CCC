@@ -1,6 +1,6 @@
 # 任务卡 xy011 · 字幕重构：引入双色卡拉OK高亮与高表现力ASS滤镜渲染（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
