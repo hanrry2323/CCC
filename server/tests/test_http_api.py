@@ -1632,8 +1632,8 @@ class TestOpsRelayStats:
         ]
         f = tmp_path / "usage.json"
         f.write_text(json.dumps(usage), encoding="utf-8")
+        monkeypatch.setenv("CCC_RELAY_USAGE_API", "")  # 显式空 = 跳过实时接口，走文件兜底
         monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(f))
-        monkeypatch.setenv("CCC_RELAY_HEALTH_URL", "")
 
         token = _get_token(api_server)
         status, data = _get(api_server, "/ops/relay-stats", token=token)
@@ -1642,13 +1642,69 @@ class TestOpsRelayStats:
         assert data["today"]["flash"] == 3
         assert data["today"]["code"] == 1
         assert data["today"]["pro"] == 1
-        assert data["delta_10s"]["total"] == 3
-        assert data["delta_10s"]["flash"] == 1
         assert data["healthy"] is True
 
+    def test_delta_after_snapshot_change(self, monkeypatch, tmp_path):
+        """增量 = 服务端上次读数差值（文件新增记录 → 下次 delta 反映）。"""
+        import json
+        import time
+
+        from server.web import server as srv
+
+        now_ms = int(time.time() * 1000)
+        f = tmp_path / "usage.json"
+        f.write_text(
+            json.dumps([{"timestamp": now_ms - 5000, "model": "flash"}]),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CCC_RELAY_USAGE_API", "")
+        monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(f))
+        monkeypatch.setattr(srv, "_RELAY_STATS_TTL_S", 0)
+        srv._RELAY_STATS_CACHE = None
+        srv._RELAY_LAST_SNAPSHOT = None
+
+        first = srv._compute_relay_stats()
+        assert first["delta_10s"]["total"] == 0
+
+        f.write_text(
+            json.dumps(
+                [
+                    {"timestamp": now_ms - 5000, "model": "flash"},
+                    {"timestamp": now_ms - 3000, "model": "code"},
+                    {"timestamp": now_ms - 2000, "model": "code"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        second = srv._compute_relay_stats()
+        assert second["delta_10s"]["total"] == 2
+        assert second["delta_10s"]["code"] == 2
+
+    def test_api_by_tier_bucketing(self):
+        from server.web.server import _relay_counts_from_api
+
+        d = {
+            "total": 100,
+            "by_tier": {
+                "flash": {"n": 30},
+                "code": {"n": 40},
+                "unknown": {"n": 25},
+                "pro": {"n": 5},
+            },
+        }
+        assert _relay_counts_from_api(d) == {
+            "total": 100,
+            "pro": 30,
+            "flash": 30,
+            "code": 40,
+        }
+
     def test_missing_file_unhealthy(self, api_server, monkeypatch, tmp_path):
+        from server.web import server as srv
+
+        srv._RELAY_STATS_CACHE = None
+        monkeypatch.setenv("CCC_RELAY_USAGE_API", "")
         monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(tmp_path / "nope.json"))
-        monkeypatch.setenv("CCC_RELAY_HEALTH_URL", "")
         token = _get_token(api_server)
         status, data = _get(api_server, "/ops/relay-stats", token=token)
         assert status == 200

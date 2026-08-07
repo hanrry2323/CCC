@@ -832,9 +832,10 @@ _ENRICHED_TTL_S = 10.0
 
 
 _RELAY_USAGE_FILE_DEFAULT = Path("/Users/fan/program/apps/ai-loop-router-ccc/logs/usage.json")
-_RELAY_HEALTH_URL_DEFAULT = "http://127.0.0.1:6100/health"
+_RELAY_USAGE_API_DEFAULT = "http://127.0.0.1:6100/admin/usage"
 _RELAY_STATS_CACHE: tuple[float, str, dict] | None = None
-_RELAY_STATS_TTL_S = 3.0
+_RELAY_STATS_TTL_S = 2.0
+_RELAY_LAST_SNAPSHOT: tuple[float, dict[str, int]] | None = None
 
 
 def _relay_usage_file() -> Path:
@@ -842,15 +843,31 @@ def _relay_usage_file() -> Path:
     return Path(raw).expanduser() if raw else _RELAY_USAGE_FILE_DEFAULT
 
 
-def _relay_health_url() -> str:
-    raw = os.environ.get("CCC_RELAY_HEALTH_URL")
+def _relay_usage_api() -> str:
+    raw = os.environ.get("CCC_RELAY_USAGE_API")
     if raw is None:
-        return _RELAY_HEALTH_URL_DEFAULT
-    return raw.strip()  # 显式设空 = 跳过健康探测
+        return _RELAY_USAGE_API_DEFAULT
+    return raw.strip()  # 显式设空 = 跳过 API，走用量文件
+
+
+def _relay_counts_from_api(d: dict) -> dict[str, int]:
+    """中转站 /admin/usage 实时响应 → pro/flash/code/total 分桶。
+
+    by_tier 的 ``unknown`` = 未标 tier 的 Premium/Claude 模型 → 归 Pro；
+    显式 ``pro`` tier 也归 Pro。
+    """
+    bt = d.get("by_tier") or {}
+    return {
+        "total": int(d.get("total") or 0),
+        "pro": int((bt.get("unknown") or {}).get("n") or 0)
+        + int((bt.get("pro") or {}).get("n") or 0),
+        "flash": int((bt.get("flash") or {}).get("n") or 0),
+        "code": int((bt.get("code") or {}).get("n") or 0),
+    }
 
 
 def _relay_bucket(model: str) -> str | None:
-    """用量 model → 分桶（pro / flash / code）；未知模型只计入 total。"""
+    """用量记录 model → 分桶（pro / flash / code）；未知模型只计入 total。"""
     m = (model or "").strip().lower()
     if not m:
         return None
@@ -863,78 +880,82 @@ def _relay_bucket(model: str) -> str | None:
     return None
 
 
-def _compute_relay_stats() -> dict:
-    """中转站今日请求 + 近 10s 增量 + 健康；TTL 缓存按文件 mtime。"""
-    global _RELAY_STATS_CACHE
-    now = time.time()
-    path = _relay_usage_file()
-    try:
-        mtime = path.stat().st_mtime
-    except OSError:
-        mtime = 0
-    key = f"{path}:{mtime}"
-    if (
-        _RELAY_STATS_CACHE is not None
-        and now - _RELAY_STATS_CACHE[0] < _RELAY_STATS_TTL_S
-        and _RELAY_STATS_CACHE[1] == key
-    ):
-        return _RELAY_STATS_CACHE[2]
-
-    from datetime import datetime as _dt
-
-    today_start_ms = int(
-        _dt.combine(_dt.now().date(), _dt.min.time()).timestamp() * 1000
-    )
-    now_ms = int(now * 1000)
-    ten_ago_ms = now_ms - 10_000
+def _relay_counts_from_records(records: list, now_ms: int, today_start_ms: int) -> dict[str, int]:
     counts = {"total": 0, "pro": 0, "flash": 0, "code": 0}
-    deltas = {"total": 0, "pro": 0, "flash": 0, "code": 0}
-    healthy = True
-    alert = ""
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-        records = data if isinstance(data, list) else []
-    except Exception as exc:
-        records = []
-        healthy = False
-        alert = f"中转站用量文件读取失败: {exc}"
-
     for r in records:
         ts = r.get("timestamp")
         if not isinstance(ts, (int, float)) or ts <= 0:
             continue
-        ts = int(ts)
-        if ts < today_start_ms:
+        if int(ts) < today_start_ms:
             continue
         counts["total"] += 1
         b = _relay_bucket(r.get("model"))
         if b:
             counts[b] += 1
-        if ts >= ten_ago_ms:
-            deltas["total"] += 1
-            if b:
-                deltas[b] += 1
+    return counts
 
-    url = _relay_health_url()
-    if url:
+
+def _compute_relay_stats() -> dict:
+    """中转站今日请求 + 近 10s 增量 + 健康（实时 API 优先，文件兜底）。"""
+    global _RELAY_STATS_CACHE, _RELAY_LAST_SNAPSHOT
+    now = time.time()
+    if (
+        _RELAY_STATS_CACHE is not None
+        and now - _RELAY_STATS_CACHE[0] < _RELAY_STATS_TTL_S
+    ):
+        return _RELAY_STATS_CACHE[1]
+
+    now_ms = int(now * 1000)
+    healthy = True
+    alert = ""
+    counts: dict[str, int] | None = None
+    error = ""
+
+    api = _relay_usage_api()
+    if api:
         try:
             import urllib.error
             import urllib.request
 
-            try:
-                with urllib.request.urlopen(
-                    urllib.request.Request(url, method="GET"), timeout=3
-                ) as resp:
-                    code = resp.status
-            except urllib.error.HTTPError as exc:
-                code = exc.code  # 404 等错误码也说明服务在响应
-            if code not in (200, 404):
-                healthy = False
-                alert = f"中转站健康探测异常（HTTP {code}）"
+            with urllib.request.urlopen(
+                urllib.request.Request(api, method="GET"), timeout=3
+            ) as resp:
+                d = json.loads(resp.read().decode("utf-8", errors="replace"))
+            counts = _relay_counts_from_api(d)
+        except Exception as exc:
+            error = f"{exc}"
+
+    if counts is None:
+        # 兜底：用量文件（记录级，60s 落盘；仅 API 不可用时用）
+        try:
+            from datetime import datetime as _dt
+
+            today_start_ms = int(
+                _dt.combine(_dt.now().date(), _dt.min.time()).timestamp() * 1000
+            )
+            data = json.loads(
+                _relay_usage_file().read_text(encoding="utf-8", errors="replace")
+            )
+            records = data if isinstance(data, list) else []
+            counts = _relay_counts_from_records(records, now_ms, today_start_ms)
         except Exception as exc:
             healthy = False
-            alert = f"中转站不可达: {exc}"
+            alert = f"中转站用量获取失败: {exc}"
+
+    if counts is None:
+        counts = {"total": 0, "pro": 0, "flash": 0, "code": 0}
+        if _RELAY_LAST_SNAPSHOT is not None:
+            counts = dict(_RELAY_LAST_SNAPSHOT[1])  # 保留上次数字
+    elif error:
+        healthy = False
+        alert = f"中转站实时接口不可达: {error}"
+
+    deltas = {"total": 0, "pro": 0, "flash": 0, "code": 0}
+    if healthy and _RELAY_LAST_SNAPSHOT is not None and now - _RELAY_LAST_SNAPSHOT[0] <= 30:
+        for k in counts:
+            deltas[k] = max(0, int(counts[k]) - int(_RELAY_LAST_SNAPSHOT[1].get(k) or 0))
+    if healthy:
+        _RELAY_LAST_SNAPSHOT = (now, dict(counts))
 
     out = {
         "today": counts,
@@ -943,7 +964,7 @@ def _compute_relay_stats() -> dict:
         "alert": alert or None,
         "ts": now,
     }
-    _RELAY_STATS_CACHE = (now, key, out)
+    _RELAY_STATS_CACHE = (now, out)
     return out
 
 

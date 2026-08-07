@@ -37,7 +37,7 @@ function render(data) {
     rows
       .map(
         ([label, total, delta]) =>
-          `<span class="relay-item" title="${label} 今日累计 ${fmt(total)} · 近10秒 +${fmt(delta)}">` +
+          `<span class="relay-item${Number(delta) > 0 ? ' relay-live' : ''}" title="${label} 今日累计 ${fmt(total)} · 近10秒 +${fmt(delta)}">` +
           `<b>${label}</b><span class="relay-num">${fmt(total)}</span>` +
           `<span class="relay-delta">+${fmt(delta)}</span></span>`
       )
