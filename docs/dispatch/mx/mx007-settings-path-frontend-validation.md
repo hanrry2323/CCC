@@ -67,3 +67,7 @@ medio-0 打磨第一批（按 mx005 清单第 6 项）：设置页路径输入�
 ### push 证据
 - **分支**：`codex/mx007-settings-path-frontend-validation`
 - **提交哈希**：`afe8e5194cd39eac42edb4004c803c8afaa8f99a`
+
+## 机审区
+
+机审：通过
