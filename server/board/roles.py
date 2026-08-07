@@ -1,20 +1,22 @@
-"""席位与交叉验收规则（2026-08-06）。
+"""席位与验收规则（2026-08-07 二改：自验收）。
 
 产品意图：
-- **Mac2017**：OpenCode = 开发；Claude Code = 验收（默认对）。
-- **交叉验收**：执行体与验收必须互为 Claude Code ↔ OpenCode；同工具自验禁止。
+- **自验收**：谁开发谁验收（OpenCode 开发 → OpenCode 验收；Claude Code 同理）。
+  日常单工具闭环，第二个工具可离线备用。
 - **Codex / Cursor**：取消验收资格（Codex 可出卡/裁决；Cursor 仅难度突击写码）。
+
+两条硬规则（不可省）：
+- **机审是独立步骤**：开发阶段禁止写 ``## 机审区``；验收席（即使与开发同工具）
+  须按 Code Review 技能独立审查、写机审区、过 ready 门禁。
+- **老板合入批准 = 人审最终 diff**：任何人/工具都不能绕过老板「合入批准」自行合入。
 
 卡头字段：``执行体`` / ``验收``。名称别名归一：``Claude`` → ``Claude Code``。
 """
 
 from __future__ import annotations
 
-# 可参与「开发 / 验收」交叉对的工具（归一后名）
-CROSS_PAIR: dict[str, str] = {
-    "OpenCode": "Claude Code",
-    "Claude Code": "OpenCode",
-}
+# 可参与「开发 / 验收」的工具（归一后名）；自验收合法
+ALLOWED_TOOLS: frozenset[str] = frozenset({"OpenCode", "Claude Code"})
 
 # 明确禁止出现在卡头「验收」的席位
 FORBIDDEN_ACCEPTORS: frozenset[str] = frozenset(
@@ -39,7 +41,7 @@ _ALIASES: dict[str, str] = {
 }
 
 DEFAULT_EXECUTOR = "OpenCode"
-DEFAULT_ACCEPTANCE = "Claude Code"  # OpenCode 开发 → Claude 验收
+DEFAULT_ACCEPTANCE = "OpenCode"  # 自验收：默认与执行体相同
 
 
 def normalize_tool(name: str) -> str:
@@ -54,46 +56,43 @@ def normalize_tool(name: str) -> str:
 
 
 def expected_acceptance(executor: str) -> str | None:
-    """给定执行体，返回唯一合法验收席；无法交叉则 None。"""
+    """自验收：给定执行体，返回同一工具作为验收席；不在白名单则 None。"""
     exe = normalize_tool(executor)
-    return CROSS_PAIR.get(exe)
+    return exe if exe in ALLOWED_TOOLS else None
 
 
 def cross_acceptance_ok(executor: str, acceptance: str) -> bool:
-    """执行体 / 验收是否构成合法交叉对。"""
+    """自验收是否合法（执行体与验收同工具且在白名单内）。"""
     exe = normalize_tool(executor)
     acc = normalize_tool(acceptance)
-    if not exe or not acc:
+    if exe not in ALLOWED_TOOLS or acc not in ALLOWED_TOOLS:
         return False
-    return CROSS_PAIR.get(exe) == acc
+    return exe == acc
 
 
 def acceptance_issue(executor: str, acceptance: str) -> str | None:
-    """校验卡头执行体×验收；合法返回 None，否则人话错误原因。"""
+    """校验卡头执行体×验收（自验收）；合法返回 None，否则人话错误原因。"""
     exe = normalize_tool(executor)
     acc = normalize_tool(acceptance)
     if not acc:
-        return "卡头缺「验收」字段（须 Claude Code 或 OpenCode，且与执行体交叉）"
+        return "卡头缺「验收」字段（自验收：须与执行体同工具）"
     if acc in FORBIDDEN_ACCEPTORS:
         return (
             f"验收席禁止绑定 {acc!r}（Codex/Cursor 已取消验收资格；"
-            f"须交叉：OpenCode 开发→Claude Code 验收，或 Claude Code 开发→OpenCode 验收）"
+            f"验收须为 OpenCode 或 Claude Code 自验收）"
         )
     if not exe or exe == "未知":
         return None  # 执行体另检；此处不重复
-    if exe not in CROSS_PAIR:
+    if exe not in ALLOWED_TOOLS:
+        return f"执行体 {exe!r} 不可开发（仅 OpenCode / Claude Code 可开发并自验收）"
+    if acc != exe:
         return (
-            f"执行体 {exe!r} 不在交叉验收对内（仅 OpenCode / Claude Code 可开发并交叉验收）"
-        )
-    expect = CROSS_PAIR[exe]
-    if acc != expect:
-        return (
-            f"交叉验收不匹配：执行体 {exe} 须由 {expect} 验收，"
-            f"当前验收={acc!r}（禁止自验 / Codex / Cursor）"
+            f"验收不匹配（自验收）：执行体 {exe} 须由 {exe} 验收，"
+            f"当前验收={acc!r}"
         )
     return None
 
 
 def default_acceptance_for(executor: str) -> str:
-    """出卡默认验收：按执行体交叉；未知执行体 → Claude Code。"""
+    """出卡默认验收：自验收（与执行体同工具）；未知执行体 → OpenCode。"""
     return expected_acceptance(executor) or DEFAULT_ACCEPTANCE

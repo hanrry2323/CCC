@@ -103,6 +103,9 @@ $PYTHON_BIN -m server.engine.main --config <config.env> --once  # 单次扫描 +
 - **合入前 Code Review（2026-08-07 三改）**：机审席加载 `code-review` 技能做完整审查
   （正确性/契约/健壮性/范围红线/验收/批注落实）；P0/P1 就地修复+复审闭环
   （连续 2 轮不过或范围性问题才打回），P2 记录不阻断；老板「合入批准」仍为人审兜底。
+- **自验收（2026-08-07 四改）**：谁开发谁验收（OpenCode↔OpenCode / Claude↔Claude），
+  日常单工具闭环；机审仍是独立步骤（开发禁止写机审区，验收席同工具也按独立审查执行），
+  老板「合入批准」人审 diff 不可省。
 - **主树干净化**：`FileBoardStore` 有 `log_dir` 时 `save_work` 只写运行时 sidecar
   （`state/cards.jsonl`：state/retry_count/reason/redispatch），不写卡文件；看板以
   「git 卡真相 + 运行时状态 + 分支信封证据」合成。git_sync 对卡文件强制以 main 为准。

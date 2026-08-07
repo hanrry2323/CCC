@@ -344,7 +344,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             issues.append(CardIssue(card_id, str(path), f"卡头缺字段: {missing}"))
         state_raw = meta.get("状态", "")
         base = base_state(state_raw)
-        # 交叉验收：新卡 error；旧卡未关闭 warn（历史 Codex 验收不阻断）
+        # 自验收：新卡 error；旧卡未关闭 warn（历史 Codex 验收不阻断）
         exe_raw = meta.get("执行体", "")
         acc_raw = meta.get("验收", "")
         if ctype == "new":
@@ -353,7 +353,23 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                 issues.append(CardIssue(card_id, str(path), f"新卡卡头缺字段: {miss_new}"))
             issue = acceptance_issue(exe_raw, acc_raw)
             if issue:
-                issues.append(CardIssue(card_id, str(path), issue))
+                from server.board.roles import FORBIDDEN_ACCEPTORS, normalize_tool
+
+                acc = normalize_tool(acc_raw)
+                if acc in FORBIDDEN_ACCEPTORS:
+                    # 禁止席（Codex/Cursor）任何时候都 error
+                    issues.append(CardIssue(card_id, str(path), issue))
+                else:
+                    # 自验收（2026-08-07 起）：交叉不匹配 → 提示不阻断
+                    # （存量卡与规则切换日卡仍交叉，历史验收席可继续工作）
+                    issues.append(
+                        CardIssue(
+                            card_id,
+                            str(path),
+                            f"{issue}（2026-08-07 起自验收：谁开发谁验收；历史交叉验收不阻断）",
+                            severity="warn",
+                        )
+                    )
         elif base not in ("已关闭",) and acc_raw.strip():
             issue = acceptance_issue(exe_raw, acc_raw)
             if issue:
@@ -361,7 +377,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                     CardIssue(
                         card_id,
                         str(path),
-                        f"{issue}（旧卡提示：新卡须 OpenCode↔Claude Code 交叉验收；Codex/Cursor 已取消验收资格）",
+                        f"{issue}（旧卡提示：新卡须自验收=执行体同工具；Codex/Cursor 已取消验收资格）",
                         severity="warn",
                     )
                 )
