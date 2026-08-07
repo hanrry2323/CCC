@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.71.0] — 2026-08-08
+
+### Added — 线路图升级为集群全景架构图（ARCH 体系 v1.0）
+
+- **ARCH 声明体系**（`server/web/data/arch/`）：每项目 `ARCH.json` + 集群级 `cluster.json` + 图库索引 `index.json`；`arch_version` 独立语义版本（内容演进）。
+- **看板 `#/roadmap` 改造**：从「卡状态统计」升级为「架构图库」——集群全景图 + 每项目图可展开（iframe 展示 Archify 产物）。
+- **后端 `GET /board/arch`**：返回图库索引（项目/版本/状态/HTML 路径），缺文件不 500。
+- **生成器 `scripts/gen_arch.py`**：ARCH → Archify 架构图一键生成（showcase 优先，过严自动降 standard）；运行时取自 HP 参考库，首次自动拉取。
+- **首批 6 张图**：集群全景 + CCC/qb/medio-0/QuantHive/qx-map（4 张 showcase + 2 张 standard）。
+- **版本**：ARCH 图 `arch_version=1.0.0`；本变更随 CCC `v0.71.0` 提交发布。
+
+### Docs
+
+- `server/web/data/arch/ARCH-SCHEMA.md`：ARCH 数据规范 + 维护机制。
+- 决策主档：qx-map `__archive__/decisions/线路图升级为集群全景架构图-2026-08-08.md`。
+
 ## [v0.70.0] — 2026-08-02
 
 ### Changed — 架构重构定稿（薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳）

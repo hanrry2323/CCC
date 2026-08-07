@@ -1673,3 +1673,83 @@ body.ro-viewer [data-write] {
   font-weight: 500;
   color: var(--ccc-text-faint);
 }
+
+/* ── Arch gallery（2026-08-08：线路图升级为集群全景架构图） ── */
+.arch-gallery {
+  padding: 10px 18px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.arch-gallery-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 8px;
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-base);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.arch-gallery-item:hover {
+  border-color: var(--ccc-accent);
+}
+
+.arch-gallery-item.is-active {
+  border-color: var(--ccc-accent);
+  background: color-mix(in srgb, var(--ccc-accent) 12%, var(--ccc-bg-layer));
+}
+
+.arch-gallery-title {
+  font-weight: 600;
+}
+
+.arch-gallery-ver {
+  font-size: 10px;
+  color: var(--ccc-text-faint);
+}
+
+.arch-gallery-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ccc-text-faint);
+}
+
+.arch-stage {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 18px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.arch-stage-head {
+  padding: 8px 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.arch-stage-head strong {
+  font-size: 14px;
+}
+
+.arch-stage-meta {
+  font-size: 11px;
+  color: var(--ccc-text-faint);
+}
+
+.arch-stage-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  background: #fff;
+}

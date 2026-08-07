@@ -1,0 +1,247 @@
+{
+  "arch_version": "1.0.0",
+  "project": "cluster",
+  "status": "active",
+  "owner": "OpenCode",
+  "updated_at": "2026-08-08",
+  "title": "集群全景",
+  "components": [
+    {
+      "id": "boss",
+      "type": "external",
+      "label": "老板",
+      "sublabel": "意图 + 合入批准",
+      "pos": [
+        40,
+        300
+      ]
+    },
+    {
+      "id": "m1",
+      "type": "backend",
+      "label": "M1",
+      "sublabel": "开发副本写源 / 中枢",
+      "pos": [
+        300,
+        300
+      ]
+    },
+    {
+      "id": "m2017",
+      "type": "backend",
+      "label": "Mac2017",
+      "sublabel": "执行节点 + 中继",
+      "pos": [
+        560,
+        300
+      ]
+    },
+    {
+      "id": "hp",
+      "type": "database",
+      "label": "HP",
+      "sublabel": "知识库节点",
+      "pos": [
+        300,
+        540
+      ]
+    },
+    {
+      "id": "hk",
+      "type": "cloud",
+      "label": "腾讯云香港",
+      "sublabel": "独立部署节点",
+      "pos": [
+        860,
+        540
+      ]
+    },
+    {
+      "id": "ccc",
+      "type": "backend",
+      "label": "CCC",
+      "sublabel": "自动化开发主体",
+      "pos": [
+        860,
+        120
+      ]
+    },
+    {
+      "id": "qb",
+      "type": "backend",
+      "label": "qb",
+      "sublabel": "CCC 产线项目",
+      "pos": [
+        1120,
+        300
+      ]
+    },
+    {
+      "id": "medio0",
+      "type": "backend",
+      "label": "medio-0",
+      "sublabel": "CCC 产线项目",
+      "pos": [
+        1120,
+        540
+      ]
+    },
+    {
+      "id": "quant",
+      "type": "backend",
+      "label": "QuantHive",
+      "sublabel": "独立轨道",
+      "pos": [
+        860,
+        300
+      ]
+    },
+    {
+      "id": "qxmap",
+      "type": "backend",
+      "label": "qx-map",
+      "sublabel": "知识地图/外脑",
+      "pos": [
+        300,
+        120
+      ]
+    },
+    {
+      "id": "github",
+      "type": "cloud",
+      "label": "GitHub",
+      "sublabel": "SSH 通道 / 权威源",
+      "pos": [
+        560,
+        540
+      ]
+    },
+    {
+      "id": "relay",
+      "type": "security",
+      "label": "模型中继",
+      "sublabel": "6100 / 6102 出口",
+      "pos": [
+        560,
+        110
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "boss",
+      "to": "m1",
+      "label": "意图/审批"
+    },
+    {
+      "from": "m1",
+      "to": "github",
+      "label": "出卡 push",
+      "variant": "emphasis"
+    },
+    {
+      "from": "github",
+      "to": "m2017",
+      "label": "pull"
+    },
+    {
+      "from": "m2017",
+      "to": "relay",
+      "label": "模型调用"
+    },
+    {
+      "from": "m1",
+      "to": "hp",
+      "label": "知识检索",
+      "variant": "dashed"
+    },
+    {
+      "from": "m2017",
+      "to": "hp",
+      "label": "教训回流",
+      "variant": "dashed"
+    },
+    {
+      "from": "hk",
+      "to": "quant",
+      "label": "部署",
+      "variant": "dashed"
+    }
+  ],
+  "projects": [
+    {
+      "id": "ccc",
+      "status": "active",
+      "relation": "主体",
+      "arch_version": "1.0.0"
+    },
+    {
+      "id": "qb",
+      "status": "active",
+      "relation": "in-ccc",
+      "arch_version": "1.0.0"
+    },
+    {
+      "id": "medio0",
+      "status": "active",
+      "relation": "in-ccc",
+      "arch_version": "1.0.0"
+    },
+    {
+      "id": "quant",
+      "status": "active",
+      "relation": "independent",
+      "arch_version": "1.0.0"
+    },
+    {
+      "id": "qxmap",
+      "status": "active",
+      "relation": "infra",
+      "arch_version": "1.0.0"
+    }
+  ],
+  "relations": [
+    {
+      "from": "qb",
+      "to": "ccc",
+      "type": "in-ccc",
+      "note": "已纳入 CCC 自动化开发"
+    },
+    {
+      "from": "medio0",
+      "to": "ccc",
+      "type": "in-ccc",
+      "note": "已纳入 CCC 自动化开发"
+    },
+    {
+      "from": "quant",
+      "to": "ccc",
+      "type": "independent",
+      "note": "独立轨道，禁 qh 出卡"
+    },
+    {
+      "from": "qxmap",
+      "to": "ccc",
+      "type": "infra",
+      "note": "知识地图/外脑，意图中枢"
+    },
+    {
+      "from": "hp",
+      "to": "ccc",
+      "type": "infra",
+      "note": "知识库：MCP 检索 + 向量 + 教训回流"
+    },
+    {
+      "from": "m2017",
+      "to": "ccc",
+      "type": "infra",
+      "note": "执行节点 + 中继 6100/6102"
+    },
+    {
+      "from": "github",
+      "to": "ccc",
+      "type": "infra",
+      "note": "git 权威源，一律走 SSH"
+    }
+  ]
+}

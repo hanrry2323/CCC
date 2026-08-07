@@ -1,0 +1,195 @@
+{
+  "arch_version": "1.0.0",
+  "project": "ccc",
+  "status": "active",
+  "owner": "OpenCode / 产线 Agent",
+  "updated_at": "2026-08-08",
+  "title": "CCC 自动化开发集群架构",
+  "components": [
+    {
+      "id": "boss",
+      "type": "external",
+      "label": "老板",
+      "sublabel": "意图 + 合入批准",
+      "pos": [
+        40,
+        300
+      ]
+    },
+    {
+      "id": "desktop",
+      "type": "frontend",
+      "label": "Desktop 壳",
+      "sublabel": "可视化看板",
+      "pos": [
+        40,
+        110
+      ]
+    },
+    {
+      "id": "m1-oc",
+      "type": "backend",
+      "label": "M1 中枢",
+      "sublabel": "OpenCode 出卡 + 心智",
+      "pos": [
+        280,
+        300
+      ]
+    },
+    {
+      "id": "qxmap",
+      "type": "backend",
+      "label": "qx-map",
+      "sublabel": "知识地图/意图中枢",
+      "pos": [
+        280,
+        110
+      ]
+    },
+    {
+      "id": "github",
+      "type": "cloud",
+      "label": "GitHub",
+      "sublabel": "SSH 通道 / 权威源",
+      "pos": [
+        560,
+        300
+      ]
+    },
+    {
+      "id": "m2017-engine",
+      "type": "backend",
+      "label": "2017 Engine",
+      "sublabel": "派发 + 看板调度",
+      "pos": [
+        840,
+        300
+      ]
+    },
+    {
+      "id": "relay",
+      "type": "security",
+      "label": "模型中继",
+      "sublabel": "6100 / 6102 出口",
+      "pos": [
+        840,
+        110
+      ]
+    },
+    {
+      "id": "worktree",
+      "type": "backend",
+      "label": "开发工作区",
+      "sublabel": "ccc-dev-ws 隔离",
+      "pos": [
+        1120,
+        300
+      ]
+    },
+    {
+      "id": "auditor",
+      "type": "security",
+      "label": "机审",
+      "sublabel": "W1 / W3 独立验证",
+      "pos": [
+        1400,
+        300
+      ]
+    },
+    {
+      "id": "hp-kb",
+      "type": "database",
+      "label": "HP 知识库",
+      "sublabel": "MCP + 向量 + PG",
+      "pos": [
+        560,
+        540
+      ]
+    },
+    {
+      "id": "hk",
+      "type": "cloud",
+      "label": "腾讯云香港",
+      "sublabel": "独立部署节点",
+      "pos": [
+        1120,
+        540
+      ]
+    },
+    {
+      "id": "quant",
+      "type": "backend",
+      "label": "QuantHive",
+      "sublabel": "量化独立轨道",
+      "pos": [
+        1400,
+        540
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "boss",
+      "to": "m1-oc",
+      "label": "意图",
+      "variant": "emphasis"
+    },
+    {
+      "from": "desktop",
+      "to": "m1-oc",
+      "variant": "dashed"
+    },
+    {
+      "from": "m1-oc",
+      "to": "qxmap",
+      "label": "读写知识卡",
+      "variant": "dashed"
+    },
+    {
+      "from": "m1-oc",
+      "to": "github",
+      "label": "出卡 push",
+      "variant": "emphasis"
+    },
+    {
+      "from": "github",
+      "to": "m2017-engine",
+      "label": "pull"
+    },
+    {
+      "from": "m2017-engine",
+      "to": "relay",
+      "label": "模型调用"
+    },
+    {
+      "from": "m2017-engine",
+      "to": "worktree",
+      "label": "派发",
+      "variant": "emphasis"
+    },
+    {
+      "from": "worktree",
+      "to": "auditor",
+      "label": "待审",
+      "variant": "security"
+    },
+    {
+      "from": "m1-oc",
+      "to": "hp-kb",
+      "label": "知识检索",
+      "variant": "dashed"
+    },
+    {
+      "from": "m2017-engine",
+      "to": "hp-kb",
+      "label": "教训回流",
+      "variant": "dashed"
+    },
+    {
+      "from": "hk",
+      "to": "quant",
+      "label": "部署",
+      "variant": "dashed"
+    }
+  ]
+}

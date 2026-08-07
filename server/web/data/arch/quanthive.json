@@ -1,0 +1,85 @@
+{
+  "arch_version": "1.0.0",
+  "project": "quanthive",
+  "status": "active",
+  "owner": "OpenCode（主导席）",
+  "updated_at": "2026-08-08",
+  "title": "QuantHive — 独立轨道",
+  "components": [
+    {
+      "id": "dev",
+      "type": "backend",
+      "label": "M1 开发树",
+      "sublabel": "ZCodeProject/QuantHive",
+      "pos": [
+        40,
+        300
+      ]
+    },
+    {
+      "id": "deploy",
+      "type": "cloud",
+      "label": "腾讯云香港",
+      "sublabel": "Docker 11 容器",
+      "pos": [
+        300,
+        300
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "quanthive-api",
+      "sublabel": ":8000 仅本机",
+      "pos": [
+        560,
+        300
+      ]
+    },
+    {
+      "id": "gw",
+      "type": "security",
+      "label": "Gateway",
+      "sublabel": "caddy :443",
+      "pos": [
+        560,
+        540
+      ]
+    },
+    {
+      "id": "hp-data",
+      "type": "database",
+      "label": "HP 数据层",
+      "sublabel": "backtest/questdb",
+      "pos": [
+        300,
+        540
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "dev",
+      "to": "deploy",
+      "label": "部署",
+      "variant": "emphasis"
+    },
+    {
+      "from": "deploy",
+      "to": "api",
+      "label": "容器"
+    },
+    {
+      "from": "api",
+      "to": "gw",
+      "label": "出口",
+      "variant": "security"
+    },
+    {
+      "from": "deploy",
+      "to": "hp-data",
+      "label": "数据回流",
+      "variant": "dashed"
+    }
+  ]
+}

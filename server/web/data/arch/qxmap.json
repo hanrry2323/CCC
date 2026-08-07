@@ -1,0 +1,21 @@
+{
+  "arch_version": "1.0.0",
+  "project": "qxmap",
+  "status": "active",
+  "owner": "OpenCode",
+  "updated_at": "2026-08-08",
+  "title": "qx-map — 知识地图 / 外脑",
+  "components": [
+    {"id": "repo", "type": "backend", "label": "qx-map 仓", "sublabel": "M1 知识地图"},
+    {"id": "mind", "type": "backend", "label": "心智席位", "sublabel": "OpenCode / Claude Code / Codex"},
+    {"id": "hp-kb", "type": "database", "label": "HP 知识库", "sublabel": "向量检索 + 记忆"},
+    {"id": "ccc", "type": "backend", "label": "CCC", "sublabel": "意图中枢消费"},
+    {"id": "github", "type": "cloud", "label": "GitHub", "sublabel": "SSH 仓"}
+  ],
+  "connections": [
+    {"from": "repo", "to": "mind", "label": "心智加载", "variant": "emphasis"},
+    {"from": "mind", "to": "hp-kb", "label": "查询/写入", "variant": "dashed"},
+    {"from": "mind", "to": "ccc", "label": "出卡/意图", "variant": "dashed"},
+    {"from": "repo", "to": "github", "label": "push"}
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "arch_version": "1.0.0",
+  "project": "medio-0",
+  "status": "active",
+  "owner": "产线 Agent",
+  "updated_at": "2026-08-08",
+  "title": "medio-0 — CCC 自动化开发项目",
+  "components": [
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "CCC Engine",
+      "sublabel": "2017 派发",
+      "pos": [
+        40,
+        300
+      ]
+    },
+    {
+      "id": "ws",
+      "type": "backend",
+      "label": "开发工作区",
+      "sublabel": "ccc-dev-ws-mx",
+      "pos": [
+        280,
+        300
+      ]
+    },
+    {
+      "id": "medio",
+      "type": "backend",
+      "label": "medio-0 本体",
+      "sublabel": "Mac2017 apps/medio-0",
+      "pos": [
+        520,
+        300
+      ]
+    },
+    {
+      "id": "auditor",
+      "type": "security",
+      "label": "机审",
+      "sublabel": "独立验证",
+      "pos": [
+        760,
+        110
+      ]
+    },
+    {
+      "id": "github",
+      "type": "cloud",
+      "label": "GitHub",
+      "sublabel": "hanrry2323/medio-0",
+      "pos": [
+        520,
+        540
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "engine",
+      "to": "ws",
+      "label": "派发",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ws",
+      "to": "medio",
+      "label": "开发"
+    },
+    {
+      "from": "medio",
+      "to": "github",
+      "label": "push",
+      "variant": "dashed"
+    },
+    {
+      "from": "ws",
+      "to": "auditor",
+      "label": "待审",
+      "variant": "security"
+    }
+  ]
+}

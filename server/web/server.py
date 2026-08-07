@@ -289,6 +289,7 @@ def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
     split_status = ""
     if item.type == "epic":
         from server.board.models import base_state
+
         base = base_state(item.state)
         if base == "已回写" or base == "已关闭":
             split_status = "done"
@@ -327,6 +328,7 @@ def _build_snapshot(items: list[BoardItem], workspace: str = "") -> dict[str, An
     # 已关闭：按回写/关闭时间倒序，最多 10 条（避免历史卡淹没看板）
     closed = columns.get("已关闭") or []
     if closed:
+
         def _closed_key(row: dict) -> str:
             return str(row.get("written_at") or row.get("closed_at") or row.get("dispatched_at") or "")
 
@@ -435,6 +437,7 @@ def _is_taskable_projects() -> set[str]:
 
     return set(taskable_names())
 
+
 def _build_public_projects() -> list[dict[str, Any]]:
     """构造 GET /projects 响应：真实业务项目清单。
 
@@ -476,6 +479,22 @@ def _build_public_projects() -> list[dict[str, Any]]:
     return projects
 
 
+_ARCH_INDEX_PATH = _PROJECT_ROOT / "server" / "web" / "data" / "arch" / "index.json"
+
+
+def _load_arch_index() -> dict[str, Any]:
+    """构造 GET /board/arch 响应：集群架构图图库（ARCH 体系）。
+
+    读取 ``server/web/data/arch/index.json``；文件缺失/损坏返回空图库，
+    不抛 500（图库为渐进式建设，看板不应因缺图崩溃）。
+    """
+    try:
+        data = json.loads(_ARCH_INDEX_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"version": 1, "updated_at": None, "gallery": []}
+    return data
+
+
 def _infer_project_kind(item: dict[str, Any]) -> str:
     """由元数据推断项目种类：base（底座）/ business（业务）/ legacy（旧/退役）。"""
     role = str(item.get("role") or "").lower()
@@ -483,8 +502,12 @@ def _infer_project_kind(item: dict[str, Any]) -> str:
     name = str(item.get("name") or "").lower()
     last_act = str(item.get("last_activity") or "").lower()
     if (
-        "退役" in role or "retired" in role or "旧" in role or "离线" in role
-        or last_act == "retired" or "unknown" in last_act
+        "退役" in role
+        or "retired" in role
+        or "旧" in role
+        or "离线" in role
+        or last_act == "retired"
+        or "unknown" in last_act
     ):
         return "legacy"
     if "底座" in role or "base" in name or name == "ccc":
@@ -740,11 +763,7 @@ def _load_board_items(include_archived: bool = False):
     global _BOARD_CACHE
     now = time.time()
     key = _board_cache_key() + ("|archived" if include_archived else "")
-    if (
-        _BOARD_CACHE is not None
-        and now - _BOARD_CACHE[0] < _BOARD_CACHE_TTL_S
-        and _BOARD_CACHE[1] == key
-    ):
+    if _BOARD_CACHE is not None and now - _BOARD_CACHE[0] < _BOARD_CACHE_TTL_S and _BOARD_CACHE[1] == key:
         return _BOARD_CACHE[2]
 
     items = load_dispatch_cards(_DISPATCH_DIR, include_archived=include_archived)
@@ -786,11 +805,7 @@ def _closed_at_map(repo_root, ttl: float = 60.0) -> dict[str, str]:
     global _CLOSED_AT_CACHE
     now = time.time()
     root_key = str(Path(repo_root).expanduser().resolve())
-    if (
-        _CLOSED_AT_CACHE is not None
-        and now - _CLOSED_AT_CACHE[0] < ttl
-        and _CLOSED_AT_CACHE[1] == root_key
-    ):
+    if _CLOSED_AT_CACHE is not None and now - _CLOSED_AT_CACHE[0] < ttl and _CLOSED_AT_CACHE[1] == root_key:
         return _CLOSED_AT_CACHE[2]
     out: dict[str, str] = {}
     try:
@@ -859,8 +874,7 @@ def _relay_counts_from_api(d: dict) -> dict[str, int]:
     bt = d.get("by_tier") or {}
     return {
         "total": int(d.get("total") or 0),
-        "pro": int((bt.get("unknown") or {}).get("n") or 0)
-        + int((bt.get("pro") or {}).get("n") or 0),
+        "pro": int((bt.get("unknown") or {}).get("n") or 0) + int((bt.get("pro") or {}).get("n") or 0),
         "flash": int((bt.get("flash") or {}).get("n") or 0),
         "code": int((bt.get("code") or {}).get("n") or 0),
     }
@@ -899,10 +913,7 @@ def _compute_relay_stats() -> dict:
     """中转站今日请求 + 近 10s 增量 + 健康（实时 API 优先，文件兜底）。"""
     global _RELAY_STATS_CACHE, _RELAY_LAST_SNAPSHOT
     now = time.time()
-    if (
-        _RELAY_STATS_CACHE is not None
-        and now - _RELAY_STATS_CACHE[0] < _RELAY_STATS_TTL_S
-    ):
+    if _RELAY_STATS_CACHE is not None and now - _RELAY_STATS_CACHE[0] < _RELAY_STATS_TTL_S:
         return _RELAY_STATS_CACHE[1]
 
     now_ms = int(now * 1000)
@@ -917,9 +928,7 @@ def _compute_relay_stats() -> dict:
             import urllib.error
             import urllib.request
 
-            with urllib.request.urlopen(
-                urllib.request.Request(api, method="GET"), timeout=3
-            ) as resp:
+            with urllib.request.urlopen(urllib.request.Request(api, method="GET"), timeout=3) as resp:
                 d = json.loads(resp.read().decode("utf-8", errors="replace"))
             counts = _relay_counts_from_api(d)
         except Exception as exc:
@@ -930,12 +939,8 @@ def _compute_relay_stats() -> dict:
         try:
             from datetime import datetime as _dt
 
-            today_start_ms = int(
-                _dt.combine(_dt.now().date(), _dt.min.time()).timestamp() * 1000
-            )
-            data = json.loads(
-                _relay_usage_file().read_text(encoding="utf-8", errors="replace")
-            )
+            today_start_ms = int(_dt.combine(_dt.now().date(), _dt.min.time()).timestamp() * 1000)
+            data = json.loads(_relay_usage_file().read_text(encoding="utf-8", errors="replace"))
             records = data if isinstance(data, list) else []
             counts = _relay_counts_from_records(records, now_ms, today_start_ms)
         except Exception as exc:
@@ -987,18 +992,9 @@ def _enriched_cards(include_archived: bool = False) -> list[dict]:
     global _ENRICHED_CACHE
     from server.web.exec_metrics import card_wants_runtime, enrich_card_runtime
 
-    key = (
-        _board_cache_key()
-        + ("|archived" if include_archived else "")
-        + "|"
-        + _log_activity_key(_executor_log_dir())
-    )
+    key = _board_cache_key() + ("|archived" if include_archived else "") + "|" + _log_activity_key(_executor_log_dir())
     now = time.time()
-    if (
-        _ENRICHED_CACHE is not None
-        and now - _ENRICHED_CACHE[0] < _ENRICHED_TTL_S
-        and _ENRICHED_CACHE[1] == key
-    ):
+    if _ENRICHED_CACHE is not None and now - _ENRICHED_CACHE[0] < _ENRICHED_TTL_S and _ENRICHED_CACHE[1] == key:
         return _ENRICHED_CACHE[2]
 
     cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
@@ -1006,11 +1002,7 @@ def _enriched_cards(include_archived: bool = False) -> list[dict]:
     log_dir = _executor_log_dir()
     # 富化收窄：非关闭卡 + 最新 10 张已关闭（看板只展示这 10 张的徽章），
     # 避免每轮对全部历史卡做日志/工作树计算（重建从 ~5s 降到 ~1s）。
-    enrich_ids = {
-        c["id"]
-        for c in cards_list
-        if base_state(c.get("state", "")) != "已关闭"
-    }
+    enrich_ids = {c["id"] for c in cards_list if base_state(c.get("state", "")) != "已关闭"}
     recent_closed = sorted(
         [c for c in cards_list if base_state(c.get("state", "")) == "已关闭"],
         key=lambda x: x.get("closed_at") or "",
@@ -1239,9 +1231,7 @@ def _load_running_tasks() -> dict[str, Any]:
         col = _board_column(item.state, bool(getattr(item, "machine_audit_passed", False)))
         live_marker = False
         if log_dir is not None:
-            live_marker = _marker_alive_web(log_dir, item.id) or _marker_alive_web(
-                log_dir, item.id, audit=True
-            )
+            live_marker = _marker_alive_web(log_dir, item.id) or _marker_alive_web(log_dir, item.id, audit=True)
         if base != "执行中" and col != "机审" and not live_marker:
             continue
         metrics = get_worktree_metrics(item.id, force=False)
@@ -1266,9 +1256,9 @@ def _load_running_tasks() -> dict[str, Any]:
         if log_dir is not None:
             timing = running_timing(log_dir, item.id, now=now)
             task.update(timing)
-            task["metrics_live"] = _marker_alive_web(
-                log_dir, item.id
-            ) or _marker_alive_web(log_dir, item.id, audit=True)
+            task["metrics_live"] = _marker_alive_web(log_dir, item.id) or _marker_alive_web(
+                log_dir, item.id, audit=True
+            )
             counts = parse_work_call_counts(log_dir, item.id)
             task["tool_calls"] = int(counts["tool_calls"] or 0) + int(counts["shell_calls"] or 0)
             task["shell_calls"] = counts["shell_calls"]
@@ -1424,9 +1414,12 @@ class _APIHandler(BaseHTTPRequestHandler):
             _conv_cond.notify_all()
         if thread_id and project:
             _persist_thread_messages(
-                project, thread_id,
-                [{"role": "user", "message": message, "timestamp": now},
-                 {"role": "assistant", "message": reply, "timestamp": now}],
+                project,
+                thread_id,
+                [
+                    {"role": "user", "message": message, "timestamp": now},
+                    {"role": "assistant", "message": reply, "timestamp": now},
+                ],
             )
         self._send_json({"reply": reply})
 
@@ -1478,9 +1471,12 @@ class _APIHandler(BaseHTTPRequestHandler):
                     _conv_cond.notify_all()
                 if thread_id and project:
                     _persist_thread_messages(
-                        project, thread_id,
-                        [{"role": "user", "message": message, "timestamp": now},
-                         {"role": "assistant", "message": reply, "timestamp": now}],
+                        project,
+                        thread_id,
+                        [
+                            {"role": "user", "message": message, "timestamp": now},
+                            {"role": "assistant", "message": reply, "timestamp": now},
+                        ],
                     )
 
     def _client_gone(self) -> bool:
@@ -1605,11 +1601,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             def _match_col(c: dict, want: str = state) -> bool:
                 audit_ok = bool(c.get("machine_audit_passed", False))
                 col = c.get("board_column") or _board_column(c.get("state", ""), audit_ok)
-                return (
-                    c.get("state") == want
-                    or base_state(c.get("state", "")) == want
-                    or col == want
-                )
+                return c.get("state") == want or base_state(c.get("state", "")) == want or col == want
 
             filtered = [c for c in filtered if _match_col(c)]
         if executor:
@@ -1638,13 +1630,15 @@ class _APIHandler(BaseHTTPRequestHandler):
                 )
             cards_out.append(row)
 
-        self._send_json({
-            "cards": cards_out,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "pages": (total + page_size - 1) // page_size if page_size > 0 else 1
-        })
+        self._send_json(
+            {
+                "cards": cards_out,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "pages": (total + page_size - 1) // page_size if page_size > 0 else 1,
+            }
+        )
 
     def _handle_cards_search(self):
         """GET /cards/search?q=&project=&state=&page="""
@@ -1684,11 +1678,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             def _match_col_search(c: dict, want: str = state) -> bool:
                 audit_ok = bool(c.get("machine_audit_passed", False))
                 col = c.get("board_column") or _board_column(c.get("state", ""), audit_ok)
-                return (
-                    c.get("state") == want
-                    or base_state(c.get("state", "")) == want
-                    or col == want
-                )
+                return c.get("state") == want or base_state(c.get("state", "")) == want or col == want
 
             filtered = [c for c in filtered if _match_col_search(c)]
         if executor:
@@ -1728,13 +1718,15 @@ class _APIHandler(BaseHTTPRequestHandler):
         end_idx = start_idx + page_size
         paginated = results[start_idx:end_idx]
 
-        self._send_json({
-            "cards": paginated,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "pages": (total + page_size - 1) // page_size if page_size > 0 else 1
-        })
+        self._send_json(
+            {
+                "cards": paginated,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "pages": (total + page_size - 1) // page_size if page_size > 0 else 1,
+            }
+        )
 
     def _handle_board_snapshot(self, items: list[BoardItem]):
         """GET /board/snapshot?workspace=X&include_hidden=0 → BoardSnapshot 兼容结构。"""
@@ -1813,11 +1805,7 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         from server.engine.runtime_state import write_card_state
 
-        ts = (
-            datetime.now(timezone.utc)
-            .isoformat(timespec="seconds")
-            .replace("+00:00", "Z")
-        )
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         write_card_state(
             log_dir,
             task_id,
@@ -1825,9 +1813,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             retry_count=0,
             redispatch=ts,
         )
-        self._send_json(
-            {"ok": True, "id": task_id, "from": cur, "to": "待分派", "runtime": True}
-        )
+        self._send_json({"ok": True, "id": task_id, "from": cur, "to": "待分派", "runtime": True})
 
     def _handle_ops_summary(self):
         """GET /ops/summary → OpsSummary 兼容子集（cluster 采集 + board 派生 severity）。
@@ -1976,6 +1962,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_board_snapshot(items)
         elif path == "/board/summaries":
             self._handle_board_summaries(items)
+        elif path == "/board/arch":
+            self._send_json(_load_arch_index())
         elif path.startswith("/tasks/"):
             task_id = path[len("/tasks/") :].strip("/")
             if not task_id:
@@ -2027,7 +2015,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         prefix = "/projects/"
         if not path.startswith(prefix):
             return None
-        rest = path[len(prefix):]
+        rest = path[len(prefix) :]
         if kind == "rename":
             if not rest.endswith("/rename"):
                 return None
@@ -2064,9 +2052,13 @@ def _notify_card_status_change(item: BoardItem, change_type: str, old_state: str
 
     state_desc = base_state(item.state)
     if change_type == "created":
-        msg_text = f"【系统通知】任务卡 **{item.id}** 已成功下达并创建：\n- **标题**: {item.title}\n- **状态**: {item.state}"
+        msg_text = (
+            f"【系统通知】任务卡 **{item.id}** 已成功下达并创建：\n- **标题**: {item.title}\n- **状态**: {item.state}"
+        )
     else:
-        msg_text = f"【系统通知】任务卡 **{item.id}** 状态发生变化：\n- **标题**: {item.title}\n- **最新状态**: {item.state}"
+        msg_text = (
+            f"【系统通知】任务卡 **{item.id}** 状态发生变化：\n- **标题**: {item.title}\n- **最新状态**: {item.state}"
+        )
         if old_state:
             msg_text += f" (原状态: {old_state})"
 

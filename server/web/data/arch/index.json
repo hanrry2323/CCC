@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-08",
+  "gallery": [
+    {
+      "project": "cluster",
+      "title": "集群全景",
+      "arch_version": "1.0.0",
+      "status": "active",
+      "html": "/arch/cluster-arch.html",
+      "updated_at": "2026-08-08"
+    },
+    {
+      "project": "ccc",
+      "title": "CCC 自动化开发平台",
+      "arch_version": "1.0.0",
+      "status": "active",
+      "html": "/arch/ccc-arch.html",
+      "updated_at": "2026-08-08"
+    },
+    {
+      "project": "qb",
+      "title": "qb",
+      "arch_version": "1.0.0",
+      "status": "active",
+      "html": "/arch/qb-arch.html",
+      "updated_at": "2026-08-08"
+    },
+    {
+      "project": "medio-0",
+      "title": "medio-0",
+      "arch_version": "1.0.0",
+      "status": "active",
+      "html": "/arch/medio-0-arch.html",
+      "updated_at": "2026-08-08"
+    },
+    {
+      "project": "quanthive",
+      "title": "QuantHive",
+      "arch_version": "1.0.0",
+      "status": "active",
+      "html": "/arch/quanthive-arch.html",
+      "updated_at": "2026-08-08"
+    },
+    {
+      "project": "qxmap",
+      "title": "qx-map 知识地图",
+      "arch_version": "1.0.0",
+      "status": "active",
+      "html": "/arch/qxmap-arch.html",
+      "updated_at": "2026-08-08"
+    }
+  ]
+}
