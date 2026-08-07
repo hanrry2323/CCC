@@ -13,7 +13,7 @@
 import { apiGet, apiPost, getCards } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
-import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
+import { fmtTaskCopy } from '../components/taskCard.js';
 
 /** 看板列：五态派生，增加「机审」（已回写且无机审通过）。 */
 const FLOW_COLS = ['待分派', '执行中', '机审', '已回写', '打回', '已关闭'];
@@ -35,18 +35,14 @@ let _wsNames = [];
 let _indicatorBusy = false;
 let _nameMap = {};
 
-// T58 state
-let _activeView = 'list'; // 'list' | 'kanban' | 'group-project' | 'group-executor'
+// T58 state（2026-08 视图收拢：只保留看板）
 let _filterProj = 'all';
 let _filterState = 'all';
 let _filterExec = 'all';
 let _filterQ = '';
 let _filterDebounce = null;
-let _listCurrentPage = 1;
-let _listCardList = null;
 let _colLists = {};
 let _kanbanPageSizes = {};
-const _collapsedGroups = new Set();
 
 function esc(s) {
   if (s == null) return '';
@@ -102,38 +98,16 @@ function wsFromHash() {
 function preferredWorkspace() {
   const fromHash = wsFromHash();
   if (fromHash) return fromHash;
-  try {
-    const cur = localStorage.getItem('ccc_hub_last_project');
-    if (cur) return cur;
-  } catch (_) {}
   return 'all';
-}
-
-function getPreferredView() {
-  try {
-    return localStorage.getItem('ccc_board_view') || 'list';
-  } catch (_) {
-    return 'list';
-  }
-}
-
-function setPreferredView(view) {
-  _activeView = view;
-  try {
-    localStorage.setItem('ccc_board_view', view);
-  } catch (_) {}
 }
 
 function html() {
   return `
 <div class="board-page hub-page" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-  <div class="orch-hint">看板 · 走新服务端协议（/board/snapshot）。2017 单端 :7788 四视图。</div>
-
   <div class="board-toolbar" style="flex-shrink: 0; padding-bottom: 5px;">
     <h2>看板</h2>
     <div class="board-toolbar-actions">
       <button type="button" class="hub-btn" id="board-refresh" title="刷新">刷新</button>
-      <span class="board-write-hint" title="写操作走任务卡 / Engine">读视图 · 写操作走任务卡 / Engine</span>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
     <span class="st" id="board-st">·</span>
@@ -171,16 +145,12 @@ function html() {
       <input type="search" id="board-filter-q" class="board-filter-input" placeholder="筛选关键词（标题/ID/执行体）" aria-label="筛选关键词" style="width: 100%;">
     </div>
 
-    <div class="view-switcher" style="display: flex; gap: 2px; background: var(--ccc-bg-base); padding: 2px; border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm);">
-      <button type="button" class="hub-btn view-switch-btn" data-view="list">列表</button>
-      <button type="button" class="hub-btn view-switch-btn" data-view="kanban">看板</button>
-      <button type="button" class="hub-btn view-switch-btn" data-view="group-project">项目分组</button>
-      <button type="button" class="hub-btn view-switch-btn" data-view="group-executor">执行体分组</button>
-    </div>
   </div>
 
   <div class="board-main" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
-    <div class="board-layout" id="board-layout" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;"></div>
+    <div class="board-layout" id="board-layout" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+      <div class="board-loading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ccc-text-muted); font-size: 12px;">加载看板中…</div>
+    </div>
   </div>
 </div>
 
@@ -279,237 +249,100 @@ function populateFilterOptions() {
   }
 }
 
-function renderActiveView() {
+function renderBoard() {
   const host = _root.querySelector('#board-layout');
   if (!host) return;
 
   const filteredCards = getFilteredCards();
 
-  // Sync active view switch button
-  _root.querySelectorAll('.view-switch-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === _activeView);
-  });
-
-  if (_activeView === 'list') {
-    // Clear other view-specific items from colLists
-    _colLists = {};
-
-    if (!host.querySelector('#board-list-container')) {
-      host.innerHTML = `<div class="board-list-density" id="board-list-container" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;"></div>`;
-
-      const listContainer = host.querySelector('#board-list-container');
-      _listCardList = new TaskCardList(listContainer, {
-        itemHeight: 36, // compact high density rows
-        pageSize: 50,
-        onCardClick: (card, id) => showDetail(id),
-        onCopyClick: async (btn, id) => {
-          const t = _allCards.find(x => x.id === id) || { id, title: '' };
-          const ok = await copyTextToClipboard(fmtTaskCopy(t, t.state || t.status));
-          if (ok) {
-            window.showToast?.('已复制任务块，可粘贴到对话', 'success');
-          } else {
-            window.showToast?.('复制失败：请长按选中后手动复制', 'error');
-          }
-        }
-      });
-      _listCardList.enableVirtualScroll(true);
-    }
-
-    const totalPages = Math.ceil(filteredCards.length / 50);
-    if (_listCurrentPage > totalPages) _listCurrentPage = Math.max(1, totalPages);
-
-    const startIndex = (_listCurrentPage - 1) * 50;
-    const pageCards = filteredCards.slice(startIndex, startIndex + 50);
-
-    _listCardList.setItems(pageCards);
-    _listCardList.setupPagination({
-      currentPage: _listCurrentPage,
-      totalPages,
-      onPageChange: (p) => {
-        _listCurrentPage = p;
-        renderActiveView();
-      }
-    });
-
-  } else if (_activeView === 'kanban') {
-    _listCardList = null;
-
-    if (!host.querySelector('#board-flow')) {
-      host.innerHTML = `
-        <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(278px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
-          ${FLOW_COLS.map(col => `
-            <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 278px;">
-              <div class="board-col-h">
-                <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
-                <span class="ct" id="ct-${col}">0</span>
-              </div>
-              <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
+  if (!host.querySelector('#board-flow')) {
+    host.innerHTML = `
+      <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(278px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
+        ${FLOW_COLS.map(col => `
+          <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 278px;">
+            <div class="board-col-h">
+              <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
+              <span class="ct" id="ct-${col}">0</span>
             </div>
-          `).join('')}
-        </div>
-      `;
+            <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
+          </div>
+        `).join('')}
+      </div>
+    `;
 
-      _colLists = {};
-      for (const col of FLOW_COLS) {
-        const colEl = host.querySelector(`#col-list-${col}`);
-        if (colEl) {
-          _colLists[col] = new TaskCardList(colEl, {
-            itemHeight: 118,
-            onCardClick: (card, id) => showDetail(id),
-            onCopyClick: async (btn, id) => {
-              const t = _allCards.find(x => x.id === id) || { id, title: '' };
-              const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
-              if (ok) {
-                window.showToast?.('已复制任务块，可粘贴到对话', 'success');
-              } else {
-                window.showToast?.('复制失败：请长按选中后手动复制', 'error');
-              }
-            }
-          });
-          _colLists[col].enableVirtualScroll(true);
-        }
-      }
-    } else {
-      const flow = host.querySelector('#board-flow');
-      if (flow) {
-        flow.style.gridAutoColumns = 'minmax(278px, 1fr)';
-        flow.style.gap = '12px';
-      }
-      host.querySelectorAll('.board-col').forEach((el) => {
-        el.style.minWidth = '278px';
-      });
-      host.querySelectorAll('.board-col-body').forEach((el) => {
-        el.style.padding = '8px';
-        el.style.gap = '6px';
-      });
-      for (const col of FLOW_COLS) {
-        if (_colLists[col]) _colLists[col].itemHeight = 118;
-      }
-    }
-
+    _colLists = {};
     for (const col of FLOW_COLS) {
-      let stateCards = filteredCards.filter(c => {
-        const colKey = c.board_column || c.state || c.status || '待分派';
-        return colKey === col;
-      });
-      if (col === '已关闭') {
-        stateCards = stateCards
-          .slice()
-          .sort((a, b) => String(b.written_at || b.closed_at || b.dispatched_at || '')
-            .localeCompare(String(a.written_at || a.closed_at || a.dispatched_at || '')))
-          .slice(0, CLOSED_COL_LIMIT);
-      }
-
-      const countEl = _root.querySelector(`#ct-${col}`);
-      if (countEl) countEl.textContent = stateCards.length;
-
-      if (!_kanbanPageSizes[col]) {
-        _kanbanPageSizes[col] = 30;
-      }
-
-      const visibleCards = stateCards.slice(0, _kanbanPageSizes[col]);
-
-      if (_colLists[col]) {
-        _colLists[col].setItems(visibleCards);
-      }
-
-      const paginationEl = _root.querySelector(`#col-list-${col} .task-card-list-pagination`);
-      if (paginationEl) {
-        if (stateCards.length > visibleCards.length) {
-          paginationEl.innerHTML = `
-            <div style="display: flex; justify-content: center; padding: 6px;">
-              <button type="button" class="hub-btn load-more-btn" style="width: 100%; font-size: 11px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-layer); color: var(--ccc-text-base); border-radius: 3px;">
-                加载更多 (${stateCards.length - visibleCards.length})
-              </button>
-            </div>
-          `;
-          paginationEl.querySelector('.load-more-btn').addEventListener('click', (ev) => {
-            ev.preventDefault();
-            _kanbanPageSizes[col] += 30;
-            renderActiveView();
-          });
-        } else {
-          paginationEl.innerHTML = '';
-        }
-      }
-    }
-
-  } else if (_activeView === 'group-project' || _activeView === 'group-executor') {
-    _listCardList = null;
-    _colLists = {};
-
-    if (!host.querySelector('.board-grouped-container')) {
-      host.innerHTML = `<div class="board-grouped-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px 0;"></div>`;
-    }
-
-    const groupBy = _activeView === 'group-project' ? 'project' : 'executor';
-    const grouped = {};
-    for (const card of filteredCards) {
-      const key = groupBy === 'project'
-        ? (card.project || '未知')
-        : (card.executor && card.executor !== '未知' ? card.executor : '未分配');
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(card);
-    }
-
-    const groupContainer = host.querySelector('.board-grouped-container');
-    if (Object.keys(grouped).length === 0) {
-      groupContainer.innerHTML = '<div class="board-empty">暂无分组任务</div>';
-      return;
-    }
-
-    groupContainer.innerHTML = Object.entries(grouped).map(([key, groupCards]) => {
-      const isCollapsed = _collapsedGroups.has(key);
-      const toggleIcon = isCollapsed ? '▶' : '▼';
-      const cardsHtml = isCollapsed ? '' : groupCards.map(renderTaskCard).join('');
-      const displayKey = groupBy === 'project' ? (_nameMap[key] || key) : key;
-      return `
-        <div class="board-group" data-group-key="${esc(key)}" style="border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); background: var(--ccc-bg-layer); overflow: hidden; margin-bottom: 4px;">
-          <div class="board-group-header" style="display: flex; align-items: center; padding: 8px 12px; background: var(--ccc-bg-base); cursor: pointer; user-select: none;">
-            <span class="board-group-toggle" style="margin-right: 8px; font-family: monospace; font-size: 11px; color: var(--ccc-text-muted);">${toggleIcon}</span>
-            <span style="font-weight: 600; font-size: 12px; color: var(--ccc-text-base);">${esc(displayKey)}</span>
-            <span class="board-group-count" style="margin-left: 8px; font-size: 10px; color: var(--ccc-text-muted); background: var(--ccc-border-subtle); padding: 1px 6px; border-radius: 10px;">${groupCards.length}</span>
-          </div>
-          <div class="board-group-body" style="display: ${isCollapsed ? 'none' : 'flex'}; flex-direction: column; gap: 4px; padding: 8px;" ${isCollapsed ? 'hidden' : ''}>
-            ${cardsHtml}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    groupContainer.querySelectorAll('.board-group').forEach(groupEl => {
-      const key = groupEl.dataset.groupKey;
-      const header = groupEl.querySelector('.board-group-header');
-      header.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        if (_collapsedGroups.has(key)) {
-          _collapsedGroups.delete(key);
-        } else {
-          _collapsedGroups.add(key);
-        }
-        renderActiveView();
-      });
-
-      const body = groupEl.querySelector('.board-group-body');
-      if (body) {
-        body.addEventListener('click', (ev) => {
-          const card = ev.target.closest('.board-task-card');
-          if (!card) return;
-          if (ev.target.closest('.board-card-copy') || ev.target.closest('.card-copy-btn')) {
-            ev.stopPropagation();
-            ev.preventDefault();
-            const id = card.dataset.id;
+      const colEl = host.querySelector(`#col-list-${col}`);
+      if (colEl) {
+        _colLists[col] = new TaskCardList(colEl, {
+          itemHeight: 118,
+          onCardClick: (card, id) => showDetail(id),
+          onCopyClick: async (btn, id) => {
             const t = _allCards.find(x => x.id === id) || { id, title: '' };
-            copyTextToClipboard(fmtTaskCopy(t, t.state || t.status)).then(ok => {
-              if (ok) window.showToast?.('已复制任务块，可粘贴到对话', 'success');
-            });
-            return;
+            const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
+            if (ok) {
+              window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+            } else {
+              window.showToast?.('复制失败：请长按选中后手动复制', 'error');
+            }
           }
-          const id = card.dataset.id;
-          showDetail(id);
         });
+        _colLists[col].enableVirtualScroll(true);
       }
+    }
+  }
+
+  for (const col of FLOW_COLS) {
+    let stateCards = filteredCards.filter(c => {
+      const colKey = c.board_column || c.state || c.status || '待分派';
+      return colKey === col;
     });
+    if (col === '已关闭') {
+      stateCards = stateCards
+        .slice()
+        .sort((a, b) => {
+          const ta = a.closed_at || '';
+          const tb = b.closed_at || '';
+          if (ta === tb) return 0;
+          if (!ta) return 1;
+          if (!tb) return -1;
+          return tb.localeCompare(ta);
+        })
+        .slice(0, CLOSED_COL_LIMIT);
+    }
+
+    const countEl = _root.querySelector(`#ct-${col}`);
+    if (countEl) countEl.textContent = stateCards.length;
+
+    if (!_kanbanPageSizes[col]) {
+      _kanbanPageSizes[col] = 30;
+    }
+
+    const visibleCards = stateCards.slice(0, _kanbanPageSizes[col]);
+
+    if (_colLists[col]) {
+      _colLists[col].setItems(visibleCards);
+    }
+
+    const paginationEl = _root.querySelector(`#col-list-${col} .task-card-list-pagination`);
+    if (paginationEl) {
+      if (stateCards.length > visibleCards.length) {
+        paginationEl.innerHTML = `
+          <div style="display: flex; justify-content: center; padding: 6px;">
+            <button type="button" class="hub-btn load-more-btn" style="width: 100%; font-size: 11px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-layer); color: var(--ccc-text-base); border-radius: 3px;">
+              加载更多 (${stateCards.length - visibleCards.length})
+            </button>
+          </div>
+        `;
+        paginationEl.querySelector('.load-more-btn').addEventListener('click', (ev) => {
+          ev.preventDefault();
+          _kanbanPageSizes[col] += 30;
+          renderBoard();
+        });
+      } else {
+        paginationEl.innerHTML = '';
+      }
+    }
   }
 
   updateSummary();
@@ -586,11 +419,8 @@ function setActiveWorkspace(name) {
   _ws = name;
   syncWsButtons();
   try {
-    const next = '#/board?ws=' + encodeURIComponent(_ws);
-    if (location.hash !== next) location.hash = next;
-    localStorage.setItem('ccc_hub_last_project', _ws);
+    localStorage.removeItem('ccc_hub_last_project');
   } catch (_) {}
-  _listCurrentPage = 1;
   loadBoard();
 }
 
@@ -614,7 +444,6 @@ async function loadConfig() {
   _wsNames = Object.keys(summaries).sort();
   const want = preferredWorkspace();
   if (want && summaries[want]) _ws = want;
-  else if (_wsNames.length) _ws = _wsNames[0];
   else _ws = 'all';
 
   const allBtn = document.createElement('button');
@@ -636,41 +465,41 @@ async function loadConfig() {
   }
 }
 
-async function mergeDirtyFromRunning(cards) {
-  try {
-    const data = await apiGet('/tasks/running');
-    const byId = new Map();
-    for (const t of data.tasks || []) {
-      if (t && t.work_id) byId.set(t.work_id, t);
-    }
-    for (const c of cards) {
-      const t = byId.get(c.id);
-      if (!t) continue;
-      if (t.dirty_files != null) c.dirty_files = t.dirty_files;
-      if (t.lines_insert != null) c.lines_insert = t.lines_insert;
-      if (t.lines_delete != null) c.lines_delete = t.lines_delete;
-      if (t.branch_insert != null) c.branch_insert = t.branch_insert;
-      if (t.branch_delete != null) c.branch_delete = t.branch_delete;
-      if (t.elapsed_s != null) c.elapsed_s = t.elapsed_s;
-      if (t.last_activity_at != null) c.last_activity_at = t.last_activity_at;
-      if (t.log_bytes != null) c.log_bytes = t.log_bytes;
-      if (t.tool_calls != null) c.tool_calls = t.tool_calls;
-      if (t.shell_calls != null) c.shell_calls = t.shell_calls;
-      if (t.metrics_live != null) c.metrics_live = t.metrics_live;
-      else if (t.live != null) c.metrics_live = t.live;
-    }
-  } catch (_) { /* 徽章可选；失败不挡看板 */ }
+function mergeDirtyFromRunning(cards, runningTasks) {
+  const byId = new Map();
+  for (const t of runningTasks || []) {
+    if (t && t.work_id) byId.set(t.work_id, t);
+  }
+  for (const c of cards) {
+    const t = byId.get(c.id);
+    if (!t) continue;
+    if (t.dirty_files != null) c.dirty_files = t.dirty_files;
+    if (t.lines_insert != null) c.lines_insert = t.lines_insert;
+    if (t.lines_delete != null) c.lines_delete = t.lines_delete;
+    if (t.branch_insert != null) c.branch_insert = t.branch_insert;
+    if (t.branch_delete != null) c.branch_delete = t.branch_delete;
+    if (t.elapsed_s != null) c.elapsed_s = t.elapsed_s;
+    if (t.last_activity_at != null) c.last_activity_at = t.last_activity_at;
+    if (t.log_bytes != null) c.log_bytes = t.log_bytes;
+    if (t.tool_calls != null) c.tool_calls = t.tool_calls;
+    if (t.shell_calls != null) c.shell_calls = t.shell_calls;
+    if (t.metrics_live != null) c.metrics_live = t.metrics_live;
+    else if (t.live != null) c.metrics_live = t.live;
+  }
   return cards;
 }
 
 async function loadBoard() {
   try {
     const project = _ws === 'all' ? '' : _ws;
-    const r = await getCards({ project, page_size: 1000 });
-    _allCards = await mergeDirtyFromRunning(r.cards || []);
+    const [r, running] = await Promise.all([
+      getCards({ project, page_size: 1000 }),
+      apiGet('/tasks/running').catch(() => ({ tasks: [] })),
+    ]);
+    _allCards = mergeDirtyFromRunning(r.cards || [], running.tasks || []);
 
     populateFilterOptions();
-    renderActiveView();
+    renderBoard();
     refreshAllWsIndicators().catch(() => {});
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载看板失败', 'error');
@@ -749,8 +578,7 @@ function bind() {
       clearTimeout(_filterDebounce);
       _filterDebounce = setTimeout(() => {
         _filterQ = qInput.value.trim();
-        _listCurrentPage = 1;
-        renderActiveView();
+        renderBoard();
       }, 150);
     });
   }
@@ -759,8 +587,7 @@ function bind() {
   if (projSelect) {
     projSelect.addEventListener('change', () => {
       _filterProj = projSelect.value;
-      _listCurrentPage = 1;
-      renderActiveView();
+      renderBoard();
     });
   }
 
@@ -768,8 +595,7 @@ function bind() {
   if (stateSelect) {
     stateSelect.addEventListener('change', () => {
       _filterState = stateSelect.value;
-      _listCurrentPage = 1;
-      renderActiveView();
+      renderBoard();
     });
   }
 
@@ -777,26 +603,13 @@ function bind() {
   if (execSelect) {
     execSelect.addEventListener('change', () => {
       _filterExec = execSelect.value;
-      _listCurrentPage = 1;
-      renderActiveView();
+      renderBoard();
     });
   }
-
-  _root.querySelector('.board-toolbar-filters').addEventListener('click', (ev) => {
-    const switchBtn = ev.target.closest('.view-switch-btn');
-    if (!switchBtn) return;
-    ev.preventDefault();
-    const targetView = switchBtn.dataset.view;
-    if (targetView && targetView !== _activeView) {
-      setPreferredView(targetView);
-      renderActiveView();
-    }
-  });
 }
 
 export async function mountBoard(el) {
   const want = preferredWorkspace();
-  _activeView = getPreferredView();
 
   if (_root) {
     if (want && want !== _ws) {
@@ -822,6 +635,5 @@ export function unmountBoard() {
     _timer = null;
   }
   _colLists = {};
-  _listCardList = null;
   _root = null;
 }

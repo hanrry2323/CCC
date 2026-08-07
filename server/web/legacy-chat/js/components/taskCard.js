@@ -68,10 +68,9 @@ export function renderWorktreeBadges(t) {
   const elapsed = t.elapsed_s;
   if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
     const liveFlag = t.metrics_live === true || t.metrics_live === 'true';
-    const recent =
-      liveFlag &&
-      t.last_activity_at &&
-      (Date.now() - new Date(t.last_activity_at).getTime()) < 45000;
+    // 以运行时 marker 驱动（{id}.running / {id}-audit.running 存在即 live），
+    // 不再依赖 45s 最近活动窗口——机审进行中同样显示动画指示。
+    const recent = liveFlag;
     parts.push(
       `<span class="board-card-badge ${recent ? 'badge-live' : 'badge-elapsed'}" title="${recent ? '执行中/机审中 · 已运行时长' : '累计运行时长（结束后冻结，随卡进机审/回写）'}">⏱ ${escapeHtml(fmtElapsed(elapsed))}</span>`
     );
@@ -113,9 +112,9 @@ export function renderTaskCard(t) {
     : '';
 
   const statsHtml = renderWorktreeBadges(t);
-  const metricsBlock = statsHtml
-    ? `<div class="board-card-metrics" aria-label="运行指标">${statsHtml}</div>`
-    : '';
+  const metricsBlock = `<div class="board-card-metrics" style="min-height:16px" aria-label="运行指标">${
+    statsHtml || '<span class="board-card-badge badge-none" title="暂无运行指标">—</span>'
+  }</div>`;
 
   const executor = t.executor && t.executor !== '未知'
     ? `<span class="board-card-badge badge-exec" title="执行体">@${escapeHtml(t.executor)}</span>`
@@ -142,7 +141,7 @@ export function renderTaskCard(t) {
           </button>
         </div>
       </div>
-      <div class="board-card-title ti">${escapeHtml(t.title || t.id)}</div>
+      <div class="board-card-title ti" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(t.title || t.id)}">${escapeHtml(t.title || t.id)}</div>
       ${metricsBlock}
       <div class="board-card-meta">
         ${executor}

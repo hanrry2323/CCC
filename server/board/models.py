@@ -123,6 +123,7 @@ class BoardItem:
     acceptance: str = UNKNOWN
     archived: bool = False
     machine_audit_passed: bool = False
+    closed_at: str = ""
 
     def to_dict(self) -> dict[str, str | int | bool]:
         """转纯字典（JSON 可序列化）。"""
@@ -145,4 +146,5 @@ class BoardItem:
             "thread_id": self.thread_id,
             "acceptance": self.acceptance,
             "archived": self.archived,
+            "closed_at": self.closed_at,
         }

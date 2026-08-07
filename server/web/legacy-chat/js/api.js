@@ -201,14 +201,6 @@ export async function loadBoard(workspace) {
   return apiGet('/board/snapshot' + _workspaceQs(workspace));
 }
 
-export async function loadBoardDashboard(workspace) {
-  return apiGet('/board/snapshot' + _workspaceQs(workspace));
-}
-
-export async function loadBoardTimeline(workspace) {
-  return apiGet('/board/roadmap' + _workspaceQs(workspace));
-}
-
 export async function getBoardTask(taskId, workspace) {
   return apiGet('/tasks/' + encodeURIComponent(taskId));
 }
@@ -248,10 +240,6 @@ export async function renameSession(id, project, title) {
 
 export async function fetchProjectBaseline(projectId) {
   return {};
-}
-
-export async function pollTaskUntil(taskId, workspace, options = {}) {
-  throw new Error('轮询已禁用');
 }
 
 export async function listProjectFiles(projectId, path = '') {

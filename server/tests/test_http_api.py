@@ -1660,6 +1660,48 @@ class TestTaskTransition:
         assert rt[task_id]["redispatch"]
 
 
+class TestCardsComposite:
+    """GET /cards 走合成视图（运行时状态 + 分支证据 + closed_at）。"""
+
+    def test_cards_reflects_runtime_state(self, api_server, monkeypatch, tmp_path):
+        monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+        token = _get_token(api_server)
+        status, snap = _get(api_server, "/board/snapshot", token=token)
+        assert status == 200
+        pending = [t["id"] for t in snap["columns"].get("待分派", [])]
+        if not pending:
+            pytest.skip("无待分派卡")
+
+        from server.engine.runtime_state import write_card_state
+        from urllib.parse import quote
+
+        write_card_state(tmp_path, pending[0], state="执行中", retry_count=0)
+        status, data = _get(
+            api_server,
+            "/cards?state=" + quote("执行中") + "&page_size=50",
+            token=token,
+        )
+        assert status == 200
+        ids = [c["id"] for c in data.get("cards", [])]
+        assert pending[0] in ids, "运行时状态应被 /cards 合成视图覆盖"
+
+    def test_closed_cards_have_closed_at(self, api_server, monkeypatch, tmp_path):
+        monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+        token = _get_token(api_server)
+        from urllib.parse import quote
+
+        status, data = _get(
+            api_server,
+            "/cards?state=" + quote("已关闭") + "&page_size=50",
+            token=token,
+        )
+        assert status == 200
+        closed = data.get("cards", [])
+        if not closed:
+            pytest.skip("无已关闭卡")
+        assert all(c.get("closed_at") for c in closed[:5]), "已关闭卡应带 closed_at（git 合入时间）"
+
+
 # ── T33 前端只读配置注入：/config ──
 
 
@@ -1880,20 +1922,25 @@ class TestThreadPersistence:
             conn.close()
 
     def test_cards_and_search_endpoints(self, api_server, monkeypatch, tmp_path):
-        """测试 GET /cards 与 GET /cards/search，含分页、过滤、搜索与免鉴权。"""
-        cards_dir = tmp_path / "cards"
-        cards_dir.mkdir(parents=True, exist_ok=True)
-        index_file = cards_dir / "cards.index.jsonl"
+        """GET /cards 与 /cards/search 走合成视图：真实卡文件 + 过滤/分页/搜索。"""
+        from server.web import server as srv_mod
 
-        import json
-        mock_cards = [
-            {"id": "ccc001", "project": "ccc", "title": "任务一", "state": "待分派", "executor": "Claude", "path": "docs/dispatch/ccc/ccc001.md"},
-            {"id": "ccc002", "project": "ccc", "title": "任务二", "state": "执行中", "executor": "OpenCode", "path": "docs/dispatch/ccc/ccc002.md"},
-            {"id": "qb001", "project": "qb", "title": "任务三", "state": "已回写", "executor": "Claude", "path": "docs/dispatch/qb/qb001.md"},
+        dispatch_dir = tmp_path / "dispatch"
+        rows = [
+            ("ccc001", "ccc", "待分派", "Claude", "任务一"),
+            ("ccc002", "ccc", "执行中", "OpenCode", "任务二"),
+            ("qb001", "qb", "已回写", "Claude", "任务三"),
         ]
-        with open(index_file, "w", encoding="utf-8") as f:
-            for c in mock_cards:
-                f.write(json.dumps(c, ensure_ascii=False) + "\n")
+        for cid, proj, state, execu, title in rows:
+            d = dispatch_dir / proj
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"{cid}-task.md").write_text(
+                f"# 任务卡 {cid} · {title}\n"
+                f"> 关联：{proj} · 执行体：{execu} · 验收：Claude Code · 状态：{state} · 日期：2026-08-07\n"
+                "\n## 目标\nx\n\n## 验收标准\nx\n",
+                encoding="utf-8",
+            )
+        monkeypatch.setattr(srv_mod, "_DISPATCH_DIR", dispatch_dir)
 
         # 1. Test GET /cards (no auth)
         status, data = _get(api_server, "/cards")

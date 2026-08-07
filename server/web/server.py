@@ -64,7 +64,9 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import select
+import subprocess
 import sys
 import threading
 import time
@@ -733,14 +735,96 @@ def _json_response(data: Any, status: int = 200) -> tuple[str, str, bytes]:
     return ("200 OK" if status == 200 else f"{status} Error", "application/json", body)
 
 
-def _load_board_items():
+def _load_board_items(include_archived: bool = False):
     """加载任务卡数据 + 运行时合成（git 真相 + 运行时状态 + 分支信封证据）。"""
-    items = load_dispatch_cards(_DISPATCH_DIR)
+    global _BOARD_CACHE
+    now = time.time()
+    key = _board_cache_key() + ("|archived" if include_archived else "")
+    if (
+        _BOARD_CACHE is not None
+        and now - _BOARD_CACHE[0] < _BOARD_CACHE_TTL_S
+        and _BOARD_CACHE[1] == key
+    ):
+        return _BOARD_CACHE[2]
+
+    items = load_dispatch_cards(_DISPATCH_DIR, include_archived=include_archived)
     try:
-        return _compose_board_items(items)
+        composed = _compose_board_items(items)
+        _BOARD_CACHE = (now, key, composed)
+        return composed
     except Exception:
         logger.exception("看板合成失败，回退 git 真相")
         return items
+
+
+_BOARD_CACHE_TTL_S = 2.5
+_BOARD_CACHE: tuple[float, str, list] | None = None
+
+
+def _board_cache_key() -> str:
+    """看板缓存键：dispatch 目录 + 索引 + 运行时状态文件的 mtime。"""
+    parts: list[str] = []
+    for p in (_DISPATCH_DIR, _DISPATCH_DIR / "cards.index.jsonl"):
+        try:
+            parts.append(str(p.stat().st_mtime_ns))
+        except OSError:
+            pass
+    log_dir = _executor_log_dir()
+    if log_dir:
+        try:
+            parts.append(str((log_dir / "state" / "cards.jsonl").stat().st_mtime_ns))
+        except OSError:
+            pass
+    return "|".join(parts)
+
+
+_CLOSED_AT_CACHE: tuple[float, str, dict[str, str]] | None = None
+
+
+def _closed_at_map(repo_root, ttl: float = 60.0) -> dict[str, str]:
+    """卡路径 → main 合入时间（ISO）。git log 一次取全表，TTL 缓存。"""
+    global _CLOSED_AT_CACHE
+    now = time.time()
+    root_key = str(Path(repo_root).expanduser().resolve())
+    if (
+        _CLOSED_AT_CACHE is not None
+        and now - _CLOSED_AT_CACHE[0] < ttl
+        and _CLOSED_AT_CACHE[1] == root_key
+    ):
+        return _CLOSED_AT_CACHE[2]
+    out: dict[str, str] = {}
+    try:
+        res = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "log",
+                "origin/main",
+                "--format=%cI",
+                "--name-only",
+                "--",
+                "docs/dispatch",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if res.returncode == 0:
+            current: str | None = None
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if re.match(r"^\d{4}-\d{2}-\d{2}T", line):
+                    current = line
+                elif current and line.startswith("docs/dispatch/"):
+                    out.setdefault(line, current)
+    except Exception:
+        pass
+    _CLOSED_AT_CACHE = (now, root_key, out)
+    return out
 
 
 def _compose_board_items(items):
@@ -770,10 +854,18 @@ def _compose_board_items(items):
         pass
 
     out = []
+    closed_map: dict[str, str] = {}
+    if repo_root is not None:
+        closed_map = _closed_at_map(repo_root)
     for item in items:
         rt = runtime.get(item.id) or {}
         new_state = str(rt["state"]) if rt.get("state") else item.state
         audited = item.machine_audit_passed
+        closed_at = item.closed_at
+        if not closed_at and base_state(new_state) == "已关闭":
+            rel = path_by_id.get(item.id)
+            if rel:
+                closed_at = closed_map.get(rel, "")
         if not audited and base_state(new_state) == "已回写":
             rel = path_by_id.get(item.id)
             if rel and repo_root is not None:
@@ -786,6 +878,7 @@ def _compose_board_items(items):
                 item,
                 state=new_state,
                 machine_audit_passed=audited,
+                closed_at=closed_at,
             )
         )
     return out
@@ -1213,7 +1306,6 @@ class _APIHandler(BaseHTTPRequestHandler):
     def _handle_cards_get(self):
         """GET /cards?project=&state=&page=&page_size="""
         from urllib.parse import parse_qs
-        from server.board.loader import load_index_file
         from server.board.models import base_state
 
         qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
@@ -1239,38 +1331,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         if page_size < 1:
             page_size = 50
 
-        try:
-            index_entries = load_index_file()
-            if not index_entries:
-                index_entries = load_index_file(_DISPATCH_DIR)
-            if not index_entries:
-                import sys
-                print(f"[web] 索引文件缺失或为空，自动回退全量扫描并重建索引: {_DISPATCH_DIR}", file=sys.stderr)
-                from server.board.loader import load_dispatch_cards
-                try:
-                    load_dispatch_cards(_DISPATCH_DIR, include_archived=True)
-                    index_entries = load_index_file()
-                    if not index_entries:
-                        index_entries = load_index_file(_DISPATCH_DIR)
-                except Exception as e:
-                    print(f"[web] 自动重建索引失败: {e}，回退至内存动态扫描", file=sys.stderr)
-                    from server.board.loader import scan_dispatch_files, parse_card, build_index_entry, get_archive_dir, scan_archive_files
-                    disk_files = scan_dispatch_files(_DISPATCH_DIR)
-                    archive_dir = get_archive_dir(_DISPATCH_DIR)
-                    archive_files = scan_archive_files(archive_dir)
-                    index_entries = {}
-                    for path in disk_files + archive_files:
-                        try:
-                            item = parse_card(path)
-                            entry = build_index_entry(path, item, 0.0)
-                            index_entries[item.id] = entry
-                        except Exception:
-                            continue
-        except Exception as e:
-            self._send_json({"error": f"index load failed: {e}"}, 500)
-            return
-
-        cards_list = list(index_entries.values())
+        # 合成视图：git 真相 + 运行时状态 + 分支信封证据（主树卡文件只读）
+        cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
         cards_list.sort(key=lambda x: x["id"])
 
         filtered = cards_list
@@ -1338,7 +1400,6 @@ class _APIHandler(BaseHTTPRequestHandler):
     def _handle_cards_search(self):
         """GET /cards/search?q=&project=&state=&page="""
         from urllib.parse import parse_qs
-        from server.board.loader import load_index_file
         from server.board.models import base_state
 
         qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
@@ -1360,38 +1421,8 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         page_size = 50
 
-        try:
-            index_entries = load_index_file()
-            if not index_entries:
-                index_entries = load_index_file(_DISPATCH_DIR)
-            if not index_entries:
-                import sys
-                print(f"[web] 索引文件缺失或为空，自动回退全量扫描并重建索引: {_DISPATCH_DIR}", file=sys.stderr)
-                from server.board.loader import load_dispatch_cards
-                try:
-                    load_dispatch_cards(_DISPATCH_DIR, include_archived=True)
-                    index_entries = load_index_file()
-                    if not index_entries:
-                        index_entries = load_index_file(_DISPATCH_DIR)
-                except Exception as e:
-                    print(f"[web] 自动重建索引失败: {e}，回退至内存动态扫描", file=sys.stderr)
-                    from server.board.loader import scan_dispatch_files, parse_card, build_index_entry, get_archive_dir, scan_archive_files
-                    disk_files = scan_dispatch_files(_DISPATCH_DIR)
-                    archive_dir = get_archive_dir(_DISPATCH_DIR)
-                    archive_files = scan_archive_files(archive_dir)
-                    index_entries = {}
-                    for path in disk_files + archive_files:
-                        try:
-                            item = parse_card(path)
-                            entry = build_index_entry(path, item, 0.0)
-                            index_entries[item.id] = entry
-                        except Exception:
-                            continue
-        except Exception as e:
-            self._send_json({"error": f"index load failed: {e}"}, 500)
-            return
-
-        cards_list = list(index_entries.values())
+        # 合成视图：git 真相 + 运行时状态 + 分支信封证据
+        cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
 
         filtered = cards_list
         if not include_archived:
