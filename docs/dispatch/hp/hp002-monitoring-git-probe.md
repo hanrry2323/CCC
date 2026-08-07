@@ -1,6 +1,6 @@
 # 任务卡 hp002 · 监控盲区：cluster-health 增强 hp git 状态探针与统一探活（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -49,8 +49,54 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 实现说明
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **HP Git 状态探针实现**：
+   - 增强了 Mac2017 `local/scripts/cluster-health.sh` 脚本，在原有本地服务及远程 HP 服务监控的基础上，全新加入了 hp 仓 Git 状态探针。
+   - 使用 `git status --porcelain` 检查工作区脏树状态 (dirty)。
+   - 使用 `git fetch origin` 同步远程并结合 `git rev-list --count @{u}..HEAD` / `git rev-list --count HEAD..@{u}` 检测 ahead/behind 提交差。
+   - 在远程不可达或 fetch 失败时，自动提示并降级为本地 ahead 检测，确保脚本具有鲁棒性。
+   - 适配 `set -e` 安全中断机制，确保命令替换及分支无 upstream 时的回退正确运行不崩溃。
+2. **统一探活覆盖**：
+   - 本地服务端口：`6100` (CCC engine)、`6102` (CCC engine flash)、`7788` (web-server)、`8091` (data_engine)
+   - HP 远程服务状态：CPU、MEM、chunks 数量、Ollama 响应及服务端口 (`5432`/`11434`/`8083`/`8082`/`8089`/`8090`)
+   - HP Git 仓状态：dirty 状态和 ahead/behind 差
+3. **监控说明文档**：
+   - 在 hp 仓中新建了 `docs/knowledgebase/MONITORING.md` 监控文档，详细列出各探针说明、手动/自动运行配置方法，以及退出码含义和告警逻辑。
+
+### 测试结果
+
+1. **工作区 Clean 时自检**：
+   - 运行：`bash local/scripts/cluster-health.sh`
+   - 输出：
+     ```text
+     ===== 集群健康监测 2026-08-07 15:16:26 =====
+     ========== Mac2017 本地服务 ==========
+       ✅ :6100 CCC engine
+       ...
+     ========== hp git 状态 ==========
+       ✅ hp git: clean
+     ========== 汇总 ==========
+       ✅ 全部正常
+     ```
+   - 退出码：`0` (验证通过)。
+2. **临时制造 dirty 测试**：
+   - 创建非 ignored 的临时文件：`touch docs/knowledgebase/temp-dirty`
+   - 运行：`bash local/scripts/cluster-health.sh`
+   - 输出：
+     ```text
+     ========== hp git 状态 ==========
+       ❌ hp git: dirty
+     ========== 汇总 ==========
+       ⚠️ 存在异常
+     ```
+   - 退出码：`1` (验证通过)。
+   - 还原工作区验证：`rm docs/knowledgebase/temp-dirty && git -C /Users/fan/program/apps/hp status --porcelain` 输出为空 (工作区完全还原，验证通过)。
+
+### push 证据
+
+- **hp 仓库修改分支**：`codex/hp002-monitoring-git-probe`
+- **hp 仓库 Commit Hash**：`12d3159`
+- **hp 仓库推送状态**：成功推送至 `origin/codex/hp002-monitoring-git-probe`
