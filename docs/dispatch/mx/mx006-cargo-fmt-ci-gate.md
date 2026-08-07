@@ -1,6 +1,6 @@
 # 任务卡 mx006 · CI 补后端 Rust 格式门禁（OpenCode 执行）
 
-> 关联：ccc-plan: mx 打磨第一批：后端格式门禁 + 设置页路径校验 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx 打磨第一批：后端格式门禁 + 设置页路径校验 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
