@@ -161,3 +161,73 @@
 - **人工批注**：本卡无 `## 人工批注` 段（无老板批注意见），无批注需核对落实，不构成拦点。✓
 
 **验收闭环达成，判机审通过。** 待老板审 diff 后执行「合入批准」。
+
+---
+
+**机审（轮次 5 · 独立复审）**：Claude Code（2017 机审席）· 日期：2026-08-07
+
+**结论：机审：通过**
+
+**独立取证（xianyu 业务仓 `/Users/fan/program/apps/xianyu`，分支 `codex/xy012-tts-multi-voice-emotion-selector`，分支极点在 `19f7a4f`）**
+
+前一至四轮打回项全部复核通过，无新回归，验收闭环完整：
+
+- **轮次 2 打回（config.json 探针残留）→ 已清**：`git diff origin/main..HEAD -- video-pipeline/config.json` 结果**为空**，config 与 production 完全一致；实测 `duration_sec: 80`、四场景各 `20.0`。回写区第 4 点陈述与事实一致。✓
+- **轮次 1 打回（分流未打通）→ 已清（git-ref 直读复核）**：`stages/script/generator.py` 依 style/topic 计算 `emotion_tag`（humorous/marketing/emotional/serious 四分支），写入 `ScriptOutput`（`contracts.py` `emotion_tag: str = "serious"`），`run()` 序列化 `emotion_tag` 至 script.json；TTS 端 `run()` 读 `script_data.get("emotion_tag","serious")` 传参，`generate_async` 经 `VOICE_MAP.get(emotion_tag)` 消费（`stages/tts/generator.py`）。链路端到端闭合。✓
+- **轮次 1 打回（测试不证分流）→ 已清**：`test_tts_emotion_selector.py` `from stages.tts.generator import VOICE_MAP` 引用**真实模块**；`test_emotion_to_voice_mapping` 断言四款声线映射，覆盖非 serious 全分支。✓
+- **红线 3（声线池 + fallback）→ 在**：`VOICE_MAP` 四款神经声线齐备；多候选重试 + 空文件守卫（`st_size > 0` 才判成功），杜绝卡死/0 字节。✓
+- **AC2（人声后期增强）→ 在**：`stages/compose/generator.py` `filter_str="highpass=f=80,treble=g=3:f=4000,compand=…,alimiter=limit=-1.5dB"`，带失败回退原始音频与临时文件清理。✓
+- **AC3（测试 100%）→ 独立实测**：`.venv` 实跑 `pytest video-pipeline/tests/ --no-cov` → **12 passed**（tts 6 + compose 6），通过率 100%，与回写区陈述一致。✓
+- **红线 2（不直推 main）→ 证实**：`git merge-base --is-ancestor HEAD origin/main` 判 **NOT MERGED**；分支极点在 `19f7a4f`，与回写区 Push 证据 commit 一致。✓
+- **范围合规（红线 1/4）→ 证实**：`git diff origin/main..HEAD` 仅 5 文件，无超范围改动；`pipeline.py` / `stages/scene/generator.py` 相对 main 为空 diff（超范围渲染逻辑已剔净）。✓
+- **人工批注**：本卡**无 `## 人工批注` 段**（无老板批注意见），无批注需核对落实，不构成拦点。✓
+
+**验收闭环达成，判机审通过。** 待老板审 diff 后执行「合入批准」。
+
+---
+
+**机审（轮次 6 · 独立复审）**：Claude Code（2017 机审席）· 日期：2026-08-07
+
+**结论：机审：通过**
+
+**独立取证（xianyu 业务仓 `/Users/fan/program/apps/xianyu`，分支 `codex/xy012-tts-multi-voice-emotion-selector`，分支极点在 `19f7a4f`）**
+
+对前几轮全部打回项与验收项作 git-ref 直读 + 独立复现，未发现 P0/P1 缺陷，无回归：
+
+- **红线 2（不直推 main）→ 证实**：`git merge-base --is-ancestor HEAD origin/main` 判 **NOT MERGED**；本地 HEAD 与 `origin/codex/xy012-…` 同指 `19f7a4faab9…ff8`，与回写区 Push 证据 commit 一致。✓
+- **范围合规（红线 1/4）→ 证实**：`git diff origin/main..HEAD` 仅 5 文件，全在卡内范围（`contracts.py` / `stages/compose/generator.py` / `stages/script/generator.py` / `stages/tts/generator.py` / `tests/test_tts_emotion_selector.py`）；`pipeline.py` 与 `stages/scene/generator.py` diff 为**空**（超范围 hyperframes/playwright 渲染逻辑已剔净）。✓
+- **config.json（轮次 2 打回项）→ 已清**：`git diff origin/main..HEAD -- video-pipeline/config.json` 结果**为空**，与 production 完全一致。✓
+- **分流链路（轮次 1 打回项）→ 已清（端到端闭合）**：`stages/script/generator.py:233-240` 依 style/topic 计算 emotion_tag 四分支，写入 `ScriptOutput`（`contracts.py:51 emotion_tag: str = "serious"`），`run()` 序列化 `emotion_tag` 至 script.json（`generator.py:262`）；TTS 端 `run()` 读 `script_data.get("emotion_tag","serious")`（`stages/tts/generator.py:167`）传参，`generate_async` 经 `VOICE_MAP.get(emotion_tag)` 消费（`generator.py:68`）。✓
+- **测试不证分流（轮次 1 打回项）→ 已清**：`test_tts_emotion_selector.py` `from stages.tts.generator import VOICE_MAP, generate_async` 引用**真实模块**；`test_emotion_to_voice_mapping` 断言四款声线映射（serious/humorous/marketing/emotional），`test_generate_async_voice_selection` 参数化覆盖非 serious 全分支。✓
+- **红线 3（声线池 + fallback）→ 在**：`VOICE_MAP` 四款神经声线齐备（`tts/generator.py:57-61`）；多候选重试（`:73-75`）+ 空文件守卫（`:98 st_size > 0` 才判成功），杜绝卡死/0 字节。✓
+- **AC2（人声后期增强）→ 在**：`stages/compose/generator.py:28` `filter_str="highpass=f=80,treble=g=3:f=4000,compand=…,alimiter=limit=-1.5dB"`，与规格一致；带失败回退原始音频 + 临时文件清理。✓
+- **AC3（测试 100%）→ 独立实测**：`.venv` 实跑 `pytest video-pipeline/tests/ --no-cov` → **12 passed**（compose 6 + tts 6），通过率 100%，与回写区陈述一致。✓
+- **人工批注**：本卡**无 `## 人工批注` 段**（无老板批注意见），无批注需核对落实，不构成拦点。✓
+
+排查共 9 项（红线 + 验收 + 打回项 + 回写证据 + 人工批注）全部通过，**未发现 P0/P1**。
+
+**验收闭环达成，判机审通过。** 待老板审 diff 后执行「合入批准」。
+
+---
+
+**机审（轮次 7 · 独立全量 Code Review）**：Claude Code（2017 机审席）· 日期：2026-08-07
+
+**结论：机审：通过**
+
+按 `code-review` 清单对 xianyu 业务仓 `/Users/fan/program/apps/xianyu`（分支 `codex/xy012-tts-multi-voice-emotion-selector`，提交 `19f7a4faab9af98181aee7f82623c43d0bed9f88`）做独立全量复审，此前各轮打回项与全部验收项逐一核验，未发现 P0/P1，无回归：
+
+- **红线 1/4（范围合规）→ 证实**：`git diff origin/main..HEAD --name-only` 仅 **5 文件**，全在卡内范围：`contracts.py` / `stages/compose/generator.py` / `stages/script/generator.py` / `stages/tts/generator.py` / `tests/test_tts_emotion_selector.py`；无业务深文档、无平台改动。✓
+- **红线 2（不直推 main）→ 证实**：`git merge-base --is-ancestor HEAD origin/main` 判 **NOT MERGED**；`origin/codex/xy012-…` 远程 ref 与本地 HEAD 同为 `19f7a4f`，push 证据属实。✓
+- **红线 3（声线池 + fallback · 不卡死/0字节）→ 在**：`VOICE_MAP` 四款神经声线齐备（`stages/tts/generator.py:57-61`）；候选队列 `[primary] + 3 备份`（`:66-76`），逐候选写入后以 `audio_path.exists() and st_size > 0` 判成功（`:98`），空文件/异常自动切下一候选，杜绝卡死与 0 字节产物。✓
+- **AC1（情绪声线分流不报错不卡死）→ 端到端闭合（git-ref 直读）**：`stages/script/generator.py` 依 style/topic 计算 `emotion_tag`（humorous/marketing/emotional/serious 四分支），写入 `ScriptOutput`（`contracts.py:51`），`run()` 序列化 `emotion_tag` 至 script.json；TTS 端 `run()` 读 `script_data.get("emotion_tag","serious")`（`tts/generator.py:167`）传参，`generate_async` 经 `VOICE_MAP.get(emotion_tag)` 消费（`generator.py:68`），未命中 key 回落 `input.voice`，恒有候选，不空转。✓
+- **AC2（人声后期增强）→ 在**：`stages/compose/generator.py:27-28` `filter_str="highpass=f=80,treble=g=3:f=4000,compand=attacks=0:…,alimiter=limit=-1.5dB"`，与规格逐项一致；带失败回退原始音频（`:38-44`）与成功后临时文件清理（`:153-157`）。✓
+- **AC3（测试 100%）→ 独立实测**：`.venv/bin/pytest video-pipeline/tests/ --no-cov -q` → **12 passed in 0.47s**（tts 6：含 `test_emotion_to_voice_mapping` 四款映射直断 + `test_generate_async_voice_selection` 参数化覆盖四分支 + 音频增强参数合规；compose 6），通过率 100%，与回写区一致。✓
+- **轮次 2 打回项（config.json 探针残留）→ 已清**：`git diff origin/main..HEAD -- video-pipeline/config.json` 为**空**，config 与 production 完全一致。✓
+- **轮次 1 打回项（分流未打通 / 测试不证分流）→ 已清**：分流链路如上闭环；`test_tts_emotion_selector.py` `from stages.tts.generator import VOICE_MAP, generate_async` 引用真实模块，参数化覆盖 serious/humorous/marketing/emotional 全分支，`test_generate_async_voice_selection` 断言 `mock_comm.call_args[0][1] == expected_voice`（真实验证所选声线）。✓
+- **人工批注**：本卡**无 `## 人工批注` 段**（无老板批注意见），无批注需核对落实，不构成拦点。✓
+
+附注（非拦点）：compose 增强失败分支不清理可能产生的残缺 `audio_enhanced.mp3`（成功分支已清理，`ffmpeg -y` 会覆盖），属 P2 卫生级，不影响合入。
+
+排查共 10 项（红线 3 + 验收 3 + 打回项 3 + 回写证据 + 人工批注）全部通过，**未发现 P0/P1**。
+
+**验收闭环达成，判机审通过。** 待老板审 diff 后执行「合入批准」。
