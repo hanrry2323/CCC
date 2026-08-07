@@ -1,6 +1,6 @@
 # 任务卡 xy017 · 存储路径统一规划与硬编码消除（OpenCode 执行）
 
-> 关联：ccc-plan: xy 审计问题修复：路径规划/漂移修复/生产补漏 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：ccc-plan: xy 审计问题修复：路径规划/漂移修复/生产补漏 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
