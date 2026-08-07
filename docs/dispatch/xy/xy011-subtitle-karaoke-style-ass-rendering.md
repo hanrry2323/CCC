@@ -1,6 +1,6 @@
 # 任务卡 xy011 · 字幕重构：引入双色卡拉OK高亮与高表现力ASS滤镜渲染（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -57,4 +57,25 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 实现说明
+- **Word-level 时间戳导出与持久化**：
+  在 `stages/tts/generator.py` 的 edge-tts 音频流事件流中，修正了 `sub_maker.feed(chunk)` 方法调用，精确捕获了每个中文/英文词的 WordBoundary 及其时间戳，并在 TTS 阶段将所有边界元数据持久化到了 `output/subs.words.json` 中。
+- **高品质 ASS 字幕生成**：
+  在 `stages/subtitle/generator.py` 中彻底移除旧的 `.srt` 拼字逻辑，重构为完整的 ASS 规范生成。样式预设支持：
+  - 双色描边高亮（White primary, Yellow secondary, Black outline, Bold style）。
+  - 支持多平台字体运行时自动检测机制（macOS fallback 为 `PingFang SC`，Linux fallback 为 `WenQuanYi Micro Hei`，其它 fallback 为 `HarmonyOS Sans SC`）。
+  - 解析 `subs.words.json` 做词对齐，将词/字边界精确转换为 ASS 标准 centisecond 卡拉OK高亮标签 `{\kf<duration>}`，实现了非常流畅的逐字逐词高亮动效。若无 word boundaries，支持完美的、均分微调的字符级降级估算，确保格式与表现绝对正确无杂乱。
+- **FFmpeg 渲染器无缝对接**：
+  更新 `stages/compose/generator.py` 逻辑，支持加载生成的 `.ass` 字幕并将其代入 FFmpeg 复合滤镜，渲染完美透明、无缝映射的卡拉OK高级视频流。
+
+### 2. 测试结果
+- **单元测试**：
+  在 `video-pipeline/tests/test_subtitle_ass.py` 中编写了 6 项完备的单元测试，包含 `format_ass_time`、`split_into_elements`、`make_karaoke_text_uniform`、`make_karaoke_text_weighted`、`parse_srt`、`build_ass_content`。测试 100% 成功通过。
+- **自测验证**：
+  运行 `pipeline.py`，全链路（script -> scene -> tts -> subtitle -> compose）完整编译跑通，最终视频 `final.mp4` 成功生成并具备精美的双色描边、大厂级流畅卡拉OK逐词/逐字渐变高亮高表现力字幕。
+
+### 3. Push 证据
+- 关联分支：`codex/xy011-subtitle-karaoke-style-ass-rendering`
+- 最新 Commit Hash：`a221df2`
