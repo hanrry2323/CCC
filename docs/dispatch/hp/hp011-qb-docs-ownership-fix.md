@@ -70,7 +70,7 @@ qb 文档错归属存量修正（ccc-plan 切片）。
 
 ### 3. Commit & Push 证据 (Commit Hash)
 - **CCC 仓 (本仓)**: 提交至 `codex/hp011-qb-docs-ownership-fix`
-- **业务仓 (hp)**: 提交并 push 至同名分支 `codex/hp011-qb-docs-ownership-fix` (Commit Hash: `c5257dc`)
+- **业务仓 (hp)**: 提交并 push 至同名分支 `codex/hp011-qb-docs-ownership-fix` (Commit Hash: `1e026f8`)
 - **部署机 (/data/knowledge)**: 本地 commit 至 `codex/hp011-qb-docs-ownership-fix` (Commit Hash: `518ab33`)
 
 ## 批注落实
