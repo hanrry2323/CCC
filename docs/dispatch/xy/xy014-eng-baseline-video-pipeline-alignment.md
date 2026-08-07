@@ -56,3 +56,9 @@
 - **xianyu 仓分支**：`codex/xy014-eng-baseline-video-pipeline-alignment`
 - **Commit Hash**：`6f41f4238e8ec672ee6b34af57a3e7ef9e289bc1` (short: `6f41f42`)
 - **Push 状态**：已成功推送至 `origin/codex/xy014-eng-baseline-video-pipeline-alignment`
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（engine-audit）· 2026-08-07 13:58
+证据：eline-alignment` tip `6f41f42`，仅 1 commit ahead origin/main，仅改 3 个 `.ccc/` 文档，零代码，未直推 main，已回写齐全，回写区证据、分支、commit hash 均属实。 **不通过原因（验收标准 1「哪条是生产路径」与生产事实不符）**： - 实际每日生产 runner 是 `scripts/daily/generate_video.py`（launchd `com.xianyu.daily-video` → `run_daily_video.sh` → generate_video.py）。该脚本自体标注「standalone，不依赖 xianyu 包内模块」，全 ffmpeg，**既不引用 video-pipeline，也不引用 src/xianyu.video/**（grep 实证）。 - `video-pi
