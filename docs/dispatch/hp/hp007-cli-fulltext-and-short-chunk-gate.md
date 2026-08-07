@@ -71,3 +71,7 @@
 ### 4. Push 证据 (Commit Hash)
 - **业务仓 (hp)**：`84153c493fe62deec4013dd9fe6fcf94f2ac8baf` (分支 `codex/hp007-cli-fulltext-and-short-chunk-gate`)
 - **远程部署节点 (/data/knowledge)**：`3fcff26c921f3b37cf56b4daa826915c50d50053` (本地 commit)
+
+## 机审区
+
+机审：通过
