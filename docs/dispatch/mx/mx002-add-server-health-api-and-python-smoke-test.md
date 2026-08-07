@@ -104,3 +104,17 @@
 ### 3. Push 证据
 - 业务仓 (medio-0) 提交至分支 `codex/mx002-add-server-health-api-and-python-smoke-test`：
   Commit Hash: `b3e24280c2fb46315a51fb74fb5999d6dae7424a`
+
+## 机审区
+
+**机审**：Claude Code · 日期：2026-08-07
+
+**机审：通过**
+
+独立取证（非依据回写区自述）：
+- diff（`b3e2428`）仅改白名单内 `src/backend/core/src/api/routes/mod.rs` 与 `tests/test_probe.py`，未触碰业务 API 逻辑或 DB 结构；既有 `/search` 端点实测仍 200。
+- `cargo check -p medio-server` 独立复验编译通过。
+- 实机拉起 `--port 3000` 后 `curl /api/v1/health` → HTTP 200，body `{"status":"ok","version":"0.9.0"}`（验收标准 1）。
+- 独立重建 venv 跑 `pytest tests/test_probe.py` 全量 11 passed（含 `test_health_endpoint`，验收标准 2）。
+- 业务仓与 CCC worktree 工作树均 clean，无残留（验收标准 3）。
+- `## 人工批注` 为空占位，无未落实批注。
