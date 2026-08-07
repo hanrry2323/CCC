@@ -59,6 +59,7 @@
 | **web CPU / 轮询优化（挂账）** | boardPanel 5s 轮询 + Edge 看板页（/cards 已缓存缓解，轮询源未收敛） | ⏳ 2026-08-08 |
 | **仓库归位搬迁（运维项）** | M1/2017 散落项目文件夹统一归位（registry location 已标注；搬迁需停机窗口一仓一验） | ⏳ 排期，非 SOP |
 | **M8 Loop 基线 100 卡** | 8/8 0:00 起 100 卡：50 卡验收点做架构修正 → 后 50 卡验证 → 数据定四大升级项顺序 | ⏳ 2026-08-08 定稿 v2 |
+| **daily-sync Phase 9 卡点（挂账）** | `sync/daily-sync.sh` 生成 manifest 段命令替换不返回 → manifest 清零风险；已手动补刷兜底（2026-08-08 INT-138） | ⏳ 排修，非 SOP |
 
 ### 度量（S3 · 2026-08-07 foundation anti-drift）
 
