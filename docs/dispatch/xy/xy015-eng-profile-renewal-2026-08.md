@@ -58,3 +58,20 @@
 
 - Xianyu 仓提交并推送至分支 `codex/xy015-eng-profile-renewal-2026-08`：
   - Commit Hash: `6311bac1d372a7b642666aecad3468588a76059c`
+
+## 机审区
+
+**机审方**：Claude Code（2017 机审席）· 日期：2026-08-07
+
+- **机审：通过**
+
+独立取证（未采信回写区自述，逐个核验）：
+
+1. 提交真实：`git show 6311bac1d372a7b642666aecad3468588a76059c` 存在，diff 仅改 `.ccc/profile.md` + `.ccc/roadmap.md`（2 文件 11+/11-），零业务代码。
+2. 不直推 main：该 commit 位于并已 push 到远端分支 `remotes/origin/codex/xy015-eng-profile-renewal-2026-08`，非 `main`。
+3. 验收1（profile 定位/近况）：`.ccc/profile.md` 分列分发通道 4 卡（xy004-007「已完成/已发布主线」）+ 视频质量 5 卡（xy009/011/013「已关闭」、xy010/012「执行中」），实况与当前 HEAD（xianyu 处于 xy012 分支开发中）一致。
+4. 验收2（roadmap 勾选 + 待办一致）：`v2.0 已实现`勾选了 xy004/005/006/007；`v2.1`勾选 xy009/011/013 并标 xy010/012「执行中」；v2.x 剩余待办（图文/HTML 内容、多平台对接、运营智能增强）与当前方向一致。
+5. 验收3（范围边界）：仅动 `.ccc/` 两个文档，无代码改动，未触碰卡外文件。
+6. 无 `## 人工批注`（批注节为空），无老板指令需核对落实。
+
+证据：xianyu 仓 `git show 6311bac...`；CCC 仓 worktree `codex/xy015-eng-profile-renewal-2026-08`。
