@@ -388,6 +388,20 @@ def _commit_and_push_worktree_card(
         if push.returncode != 0:
             logger.warning("机审证据 push 失败: work=%s (%s)", work_id, push.stderr.strip())
             return False
+        # 验证证据确实进了分支（commit 失败被吞 → 机审区只留工作区的死结洞）
+        check = subprocess.run(
+            ["git", "-C", worktree_path, "show", f"HEAD:{rel}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if check.returncode != 0 or "机审：通过" not in check.stdout:
+            logger.warning(
+                "机审证据未进分支（commit/push 空转，只留工作区）: work=%s → 走 infra 续审",
+                work_id,
+            )
+            return False
         logger.info("机审证据已提交并推送分支: work=%s", work_id)
         return True
     except Exception as exc:
@@ -616,56 +630,6 @@ def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
     # 回退：同名文件
     cand = Path(worktree_path) / "docs" / "dispatch" / prod.parent.name / prod.name
     return cand if cand.is_file() else None
-
-
-def _extract_machine_audit_section(text: str) -> str:
-    """取出 ``## 机审区`` 起至下一 ``## `` 或文末。"""
-    lines = text.splitlines()
-    start = -1
-    for i, line in enumerate(lines):
-        if line.strip().startswith("## 机审区"):
-            start = i
-            break
-    if start < 0:
-        return ""
-    end = len(lines)
-    for j in range(start + 1, len(lines)):
-        if lines[j].startswith("## ") and not lines[j].strip().startswith("## 机审区"):
-            end = j
-            break
-    return "\n".join(lines[start:end]).rstrip() + "\n"
-
-
-def _sync_machine_audit_from_worktree(work: Work, worktree_path: str) -> bool:
-    """若生产卡无机审通过、worktree 卡有 → 把 ## 机审区 合并进生产卡。"""
-    if not work.card_path or _card_machine_audit_passed(work.card_path):
-        return _card_machine_audit_passed(work.card_path)
-    wt_card = _worktree_card_candidate(worktree_path, work.card_path)
-    if wt_card is None or not _card_machine_audit_passed(str(wt_card)):
-        return False
-    try:
-        section = _extract_machine_audit_section(wt_card.read_text(encoding="utf-8"))
-        if not section.strip():
-            return False
-        prod = Path(work.card_path)
-        prod_text = prod.read_text(encoding="utf-8")
-        # 仅当存在「标题行」机审区才替换；正文「禁止写 ## 机审区」不算
-        if re.search(r"^##\s*机审区\s*$", prod_text, flags=re.MULTILINE):
-            prod_text = re.sub(
-                r"^##\s*机审区[^\n]*\n.*?(?=^##\s|\Z)",
-                section,
-                prod_text,
-                count=1,
-                flags=re.MULTILINE | re.DOTALL,
-            )
-        else:
-            prod_text = prod_text.rstrip() + "\n\n" + section
-        prod.write_text(prod_text, encoding="utf-8")
-        logger.info("机审区已从 worktree 同步到生产卡: %s ← %s", work.card_path, wt_card)
-        return _card_machine_audit_passed(work.card_path)
-    except OSError as exc:
-        logger.warning("同步机审区失败: %s", exc)
-        return False
 
 
 def _audit_output_indicates_pass(text: str) -> bool:

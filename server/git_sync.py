@@ -103,6 +103,7 @@ def sync_origin_main(
         return summary
 
     if merged.returncode == 0:
+        _force_align_dispatch(repo, ref, dispatch_subdir)
         summary["ok"] = True
         summary["method"] = "ff-only"
         summary["detail"] = (merged.stdout or "up to date").strip()[:300]
@@ -117,32 +118,9 @@ def sync_origin_main(
         logger.warning("git sync blocked: %s", summary["detail"])
         return summary
 
-    updated: list[str] = []
-    for rel in diff.stdout.splitlines():
-        rel = rel.strip()
-        if not rel:
-            continue
-        co = _run(repo, ["checkout", "-f", ref, "--", rel])
-        if co.returncode == 0:
-            updated.append(rel)
-        else:
-            logger.warning("git sync checkout %s failed: %s", rel, (co.stderr or "").strip()[:200])
-
-    # 未跟踪卡文件（曾以 `A` 状态阻断 merge）一并清掉
-    untracked = _run(
-        repo,
-        ["ls-files", "--others", "--exclude-standard", "--", dispatch_subdir],
-    )
-    removed_untracked = 0
-    for rel in untracked.stdout.splitlines():
-        rel = rel.strip()
-        if not rel:
-            continue
-        try:
-            (repo / rel).unlink(missing_ok=True)
-            removed_untracked += 1
-        except OSError:
-            logger.warning("git sync 清理未跟踪卡失败: %s", rel)
+    removed_untracked = _force_align_dispatch(repo, ref, dispatch_subdir)
+    updated = diff.stdout.splitlines()
+    updated = [rel.strip() for rel in updated if rel.strip()]
 
     # 清理后重试 ff-only（卡文件已对齐，剩余阻挡仅限非 dispatch 路径）
     merged_retry = _run(repo, ["merge", "--ff-only", ref], timeout=60.0)
@@ -156,6 +134,32 @@ def sync_origin_main(
     ).strip()[:300]
     logger.warning("git sync dispatch force-sync: %s", summary["detail"])
     return summary
+
+
+def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> int:
+    """强制让 dispatch 目录与 ref 完全一致（主树只做 main 镜像）。
+
+    清 staged 条目 → force checkout 全部 dispatch 路径 → 移除未跟踪文件。
+    返回移除的未跟踪文件数。
+    """
+    _run(repo, ["reset", "-q", "--", dispatch_subdir], timeout=30.0)
+    _run(repo, ["checkout", "-f", ref, "--", dispatch_subdir], timeout=60.0)
+    untracked = _run(
+        repo,
+        ["ls-files", "--others", "--exclude-standard", "--", dispatch_subdir],
+        timeout=30.0,
+    )
+    removed = 0
+    for rel in untracked.stdout.splitlines():
+        rel = rel.strip()
+        if not rel:
+            continue
+        try:
+            (repo / rel).unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            logger.warning("git sync 清理未跟踪卡失败: %s", rel)
+    return removed
 
 
 def auto_pull_enabled(cfg: dict[str, Any] | None = None) -> bool:
