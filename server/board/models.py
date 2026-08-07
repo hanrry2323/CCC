@@ -63,21 +63,25 @@ def base_state(state: str) -> str:
 
 
 def machine_audit_passed_text(text: str) -> bool:
-    """卡正文 ``## 机审区`` 后 20 行内是否含通过标记。"""
+    """卡正文任一个 ``## 机审区`` 节内是否含通过标记。
+
+    多轮机审会在同一节内追加多轮结论（历史不通过轮 + 通过轮），结论可远超
+    20 行。只认首个锚点 + 短窗口会把多轮卡误判为未通过 → approve-merge 拒绝
+    + 引擎反复重审（xy012 事故）。改为逐节检查至下一节标题，无行数上限。
+    """
     if not text:
         return False
     lines = text.splitlines()
-    idx = -1
+    n = len(lines)
     for i, line in enumerate(lines):
-        if line.strip().startswith("## 机审区"):
-            idx = i
-            break
-    if idx == -1:
-        return False
-    for j in range(idx + 1, min(idx + 21, len(lines))):
-        line = lines[j]
-        if "机审：通过" in line or "✅" in line or "判定：通过" in line:
-            return True
+        if not line.strip().startswith("## 机审区"):
+            continue
+        for j in range(i + 1, n):
+            cur = lines[j]
+            if cur.strip().startswith("## "):
+                break  # 下一节标题
+            if "机审：通过" in cur or "✅" in cur or "判定：通过" in cur:
+                return True
     return False
 
 
