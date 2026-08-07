@@ -2612,7 +2612,21 @@
 .badge-audit-审核中 {
   color: #c47a2c;
   background: color-mix(in srgb, #c47a2c 14%, transparent);
-  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.badge-audit-审核中::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  margin-right: 3px;
+  background: #c47a2c;
+  vertical-align: baseline;
+  animation: audit-blink 1.6s ease-in-out infinite;
+}
+@keyframes audit-blink {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 .badge-audit-冷却中 {
   color: var(--ccc-text-muted);
