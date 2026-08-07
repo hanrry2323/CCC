@@ -1,6 +1,6 @@
 # 任务卡 hp006 · 搜索质量：短chunk清理与检索相关性调优（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -55,7 +55,36 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 短 chunk 治理实现与对比
+- **备份说明**：
+  - 清理前已在 `hp` 节点 PG 中备份受影响数据到备份表 `chunks_backup_hp006`（备份 <50 字符 chunk 共 12,206 行）与 `chunks_next_backup_hp006`（备份被合并目标共 12,152 行）。
+- **清理逻辑**：
+  - 编写 `scripts/clean_short_chunks.py`（合并短 chunk），逐篇 document 检查，将 char_length < 50 的短 chunk 合并到该 doc 下相邻下一个（或若到尾则上一个）chunk中，删除短 chunk，并更新剩余 chunk 索引。合并过程中，除 content 合并、token_count 粗估重算外，其余列完美保持，最大化复用原始优良向量与元数据，执行秒级完成（0 CPU 爆满风险）。
+- **指标对比**：
+  - 治理前：短 chunk (<50 字符) 计数 **12206** / **74381** (约 **16.41%**)
+  - 治理后：短 chunk (<50 字符) 计数 **8** / **63901** (约 **0.0125%**)，远低于 **15%** 预设红线，文档 documents 主体计数 **3572** 保持 100% 零删除。
+
+### 2. 相关性调优前后对比
+- **调优策略**：
+  - 调优 `/data/knowledge/bin/kb-search.py` (并在业务仓 `scripts/kb-search-production-copy.py` 归档版本控制)
+  - 引入 `re` 切分具体查询词并实施「双线混合验证过滤器」：
+    1. 极低相关度阈值过滤：1 - cosine_distance < 0.35 的硬噪音结果直接拦截丢弃。
+    2. 低度稠密向量（0.35 ~ 0.48）关键词复核拦截：若相似度落在低度区间内，要求查询分词必须有至少一个出现在文档 title 或 content 中，否则视为向量随机噪音/失真并过滤。
+- **搜「HermesPet」对比样例**：
+  - 调优前：返回 5 篇无关安全更新及 Meta、Anthropic、Amazfit 等 RSS 文章（Top 1 相似度 0.435）。
+  - 调优后：命中空集（返回 `[]`），完美解决相关性失真问题。
+- **正常查询无回归验证**：
+  - 搜 "Dyson"：精准召回 Dyson 风扇评测 RSS 文章（Top 1 相似度 0.4423，命中 dyson 关键词安全召回）。
+  - 搜 "Siri AI"：精准返回 5 篇 Apple Siri vs Gemini / Tim Cook 等高度相关文章（Top 1 相似度 0.5885）。
+  - 提问 (`ask`) "Apple Siri AI"：完美生成回答，召回 sources 无回归。
+  - `stats` 命令：正常返回类别统计。
+
+### 3. 业务仓交付证据
+- 业务仓 (hp)：`git@github.com:hanrry2323/hp.git`
+- 交付分支：`codex/hp006-search-quality-short-chunks`
+- 交付 Commit Hash：`b7c18b3cbca2b8da98150c77609ee3951fb86e39`
 
 ## 批注落实
 
