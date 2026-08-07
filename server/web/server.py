@@ -923,7 +923,11 @@ def _compose_board_items(items):
         closed_map = _closed_at_map(repo_root)
     for item in items:
         rt = runtime.get(item.id) or {}
-        new_state = str(rt["state"]) if rt.get("state") else item.state
+        # 运行时状态仅覆盖非关闭卡；一旦卡在磁盘上已关闭，则不予覆盖
+        if base_state(item.state) == "已关闭":
+            new_state = item.state
+        else:
+            new_state = str(rt["state"]) if rt.get("state") else item.state
         audited = item.machine_audit_passed
         closed_at = item.closed_at
         if not closed_at and base_state(new_state) == "已关闭":
