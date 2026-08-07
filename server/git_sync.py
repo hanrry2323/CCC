@@ -139,9 +139,18 @@ def sync_origin_main(
 def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> int:
     """强制让 dispatch 目录与 ref 完全一致（主树只做 main 镜像）。
 
-    清 staged 条目 → force checkout 全部 dispatch 路径 → 移除未跟踪文件。
+    树已干净（无 tracked/untracked 变化）→ 零触碰直接返回（避免文件 mtime 抖动
+    导致看板缓存键每轮失效、/cards 反复全量重建吃 CPU）。
+    否则清 staged 条目 → force checkout 全部 dispatch 路径 → 移除未跟踪文件。
     返回移除的未跟踪文件数。
     """
+    dirty = _run(
+        repo,
+        ["status", "--porcelain", "--", dispatch_subdir],
+        timeout=30.0,
+    )
+    if dirty.returncode == 0 and not dirty.stdout.strip():
+        return 0
     _run(repo, ["reset", "-q", "--", dispatch_subdir], timeout=30.0)
     _run(repo, ["checkout", "-f", ref, "--", dispatch_subdir], timeout=60.0)
     untracked = _run(
