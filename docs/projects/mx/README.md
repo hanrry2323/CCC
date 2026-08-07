@@ -19,9 +19,9 @@ Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌�
 
 ## 线路 / 近况
 
-- 当前版本 v0.9.0；分支 `main` 领先 origin 1 个 commit（安全修复），工作区干净。
-- 活跃功能分支：`feature/library-management`、`feature/ui-upgrade-to-emby-level`、`fix/rss-bugs`。
-- 近况见看板未关闭 `mx*` 卡。
+- 版本 v0.9.0；本地 main 领先 origin 1 个 commit（安全修复 `2e093b5`），工作区干净。
+- 三条功能分支（`library-management`/`ui-upgrade`/`rss-bugs`）已 100% 合入 main（领先其 184~232 个 commit），集成风险为 0。
+- 近期重点：mx002（健康 API 与冒烟测试）就绪；后续推进 mx 业务线路高可用加固。
 
 ## 禁区
 
@@ -119,22 +119,23 @@ medio-0/
     └── perf/                     # 性能测试
 ```
 
-## 附 C：最近 15 条 commit
+## 附 C：业务线路梳理
 
-```
-2e093b5 fix(security): untrack HarmonyOS signing keys & sync project to v0.9.0
-8328aed fix(release): sync Cargo.toml workspace version to 0.9.0
-b100d53 fix(ci): rewrite harmony-build workflow as minimal valid placeholder
-9bb2a11 fix(ci): ignore 3 known-risk-accepted RUSTSEC IDs in cargo audit
-55befd7 fix(ci): cargo audit ignore unmaintained/unsound + grant checks:write
-f61e2ca fix(ux): replace native confirm/alert with ConfirmDialog/toast
-4f545a7 fix(theme): dark default + root-level theme init
-8498684 fix(ci): harmony-build workflow
-e2d8686 fix(ci): install ffmpeg for test fixtures (file_move test)
-826cdd7 fix(build): track Cargo.lock for reproducible builds + audit
-9f46c3c fix(ci): install Tauri system deps for backend+coverage jobs
-96a24c1 fix(deploy): sync VERSION to HP
-473932b docs(security): cert asset assessment + ledger entry
-ed18015 fix(ci): grant contents:read + fix harmony-build trigger
-aa1aa2f release: bump to v0.9.0
-```
+| 业务线路 | 核心功能/在飞分支 | 现状与最近提交 | 完成度 | 下一步意向 |
+| :--- | :--- | :--- | :--- | :--- |
+| **媒体库管理** | `feature/library-management` | 已合入 main (`5991b25`)；支持首页媒体库视图 MVP、按 library_id 筛选视频与媒体库管理 API/UI。 | 100% (已合入) | 推进多存储源挂载优化与扫描性能提升 |
+| **UI 体验升级** | `feature/ui-upgrade-to-emby-level` | 已合入 main (`dc94998`)；支持封面右下角删除快捷键、播放列表自动加载下一批（refill 机制）、Player/Settings CSS 提取与无障碍审计。 | 100% (已合入) | 优化大媒体库下的流畅度与封面加载速度 |
+| **RSS 订阅修复** | `fix/rss-bugs` | 已合入 main (`6c73e01`)；修复 RSS 双栏功能、修复 HTML tags 过滤 script 问题、增量扫描网络挂载抖动误删保护等。 | 100% (已合入) | 接入多 RSS 源容灾备份与爬虫防封策略 |
+| **基础能力与安全** | main 已发布能力 / `codex/mx002` | 支持 Rust/Axum + SQLite 服务端；最新分支 `codex/mx002` 新增 v1 health endpoint 及 Python 端到端冒烟测试。 | 100% (已合入) / mx002 待合入 | 对接 qx-map 实现健康探针自动巡检与监控 |
+
+### 附 D：关键架构决策与教训沉淀
+
+#### 1. 关键架构决策（ADR-001 ~ ADR-013）
+- **技术选型**：后端 Rust/Axum + SQLite (sqlx)（ADR-001/002）；前端 React SPA + Tailwind CSS 4（ADR-003）。
+- **部署架构**：支持 Web + Tauri Mac 桌面双模式部署（ADR-005/007）；HarmonyOS 移动端采用 ArkTS 构建（ADR-008）。
+- **特色功能**：具备 RSS 爬虫架构（ADR-006）、随机发现（ADR-011）及一键删除+回收站机制（ADR-012/013）。
+
+#### 2. 核心教训沉淀（lessons.md）
+- **网络存储误删保护**：增量扫描中使用 `Path::exists()` 会因网络挂载暂时断开导致误删。修复为增量扫描不进行删除，且全量扫描设置 10% 最小阈值守卫。
+- **iOS Safari 播放权限限制**：切换视频时重建 `<video>` 元素会导致 iOS Safari 丢失播放授权。修复为在切换时复用同一 `<video>` 元素，并保证播放触发在手势上下文内。
+- **播放列表 refill 状态丢失**：refill 自动加载下一批随机视频时，如果未保存 `randomContext` 会导致串文件夹。修复为在设置播放列表时同步写入 random context。

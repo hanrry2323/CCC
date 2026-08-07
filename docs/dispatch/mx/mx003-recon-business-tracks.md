@@ -1,6 +1,6 @@
 # 任务卡 mx003 · recon business tracks for in-flight branches（OpenCode 执行）
 
-> 关联：mx 业务线路摸底 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：mx 业务线路摸底 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -61,8 +61,33 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 业务仓只读侦察结果
+- **分支与提交状态**：medio-0 业务仓工作区干净，当前位于 `codex/mx002-add-server-health-api-and-python-smoke-test` 分支。
+- **本地与 origin 差异**：本地 `main` 领先 `origin/main` 1 个 commit（即安全修复 `2e093b5`）。
+- **三条在飞分支对齐**：
+  - `feature/library-management`（最新提交 `5991b25`）、`feature/ui-upgrade-to-emby-level`（最新提交 `dc94998`）、`fix/rss-bugs`（最新提交 `6c73e01`）相比 `origin/main` 的未合入提交数均为 0（它们均为 `origin/main` / `main` 的直接祖先，已 100% 合入 `main` 分支），无任何集成或冲突风险。
+- **业务资产与架构决策 (ADR-001 ~ 013)**：
+  - 后端：Rust Axum + SQLite (sqlx) 技术栈，支持一键删除+回收站与安全债务跟踪（ADR-001/002/012/013）。
+  - 前端：React SPA + Tailwind CSS 4（ADR-003），支持 Web 与 Tauri Mac 桌面双模式部署（ADR-005/007）。
+  - 移动端：HarmonyOS 客户端，支持分布式源（ADR-008）。
+- **教训沉淀总结**：
+  - 网络挂载定时增量扫描误删防护（修复为增量扫描跳过删除判定，且全量设置 10% 最小阈值守卫）。
+  - iOS Safari video 切歌 DOM 重建导致授权丢失（修复为同元素存活切换）。
+  - refill 自动加载状态 randomContext 同步（避免 refill 时追加全库随机视频）。
+
+### 2. 回写修改详情
+- **档案文件回写**：修改了 CCC 仓 `docs/projects/mx/README.md`，更新「线路 / 近况」为极简 3 行，并在「附 C」完整回写了《业务线路梳理》（媒体库管理、UI 体验升级、RSS 订阅修复、基础能力与安全等 4 条线路的状态、完成度与下一步意向），并在「附 D」整理了关键决策与教训沉淀。
+- **路线图回写**：更新了 `docs/roadmap.md`，在末尾新增了 `## 业务线路（mx）` 段，内容与 mx README 完全一致。
+
+### 3. 验证与探针结果
+- 业务仓零修改验证：`git -C /Users/fan/program/apps/medio-0 status -sb` 为 clean。
+- 卡头/看板一致性校验：运行 `python3 -m server.board.validate docs/dispatch` 成功，卡头无任何 error 阻塞，校验通过。
+- **Push 证据**：
+  - 分支：`codex/mx003-recon-business-tracks`
+  - 提交 Hash：`56c1b3c97db244a1e944fca8980b181db7a1923e`
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+无人工批注。
