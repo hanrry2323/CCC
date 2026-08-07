@@ -92,6 +92,30 @@
 
 ---
 
+**机审（轮次 3 · 复审）**：Claude Code（2017）· 日期：2026-08-07
+
+**结论：机审：通过**
+
+**独立取证（xianyu 业务仓，分支 `codex/xy012-tts-multi-voice-emotion-selector`，提交 `3a1bc66`，未合入 main）**
+
+前三轮打回项已全部兑现（逐项复核）：
+- **轮次 2 打回（config.json 探针残留）→ 已清**：`3a1bc66` 将 `config.json` 还原为 `duration_sec: 80`、各场景 `20.0`。回写区第 4 点陈述现与事实一致。✓
+- **轮次 1 打回（分流未打通）→ 已清**：`546591d` 在 `stages/script/generator.py` 依 `input.style`/`input.topic` 计算 `emotion_tag`（humorous/marketing/emotional/serious 四分支，`generator.py:233-240`），写入 `ScriptOutput`（`contracts.py:51 emotion_tag: str = "serious"`），序列化至 `script.json`（`generator.py:262`）；TTS 端经 `VOICE_MAP.get(emotion_tag, "serious")` 消费（`stages/tts/generator.py:68,167`）。✓
+- **轮次 1 打回（测试不证分流）→ 已清**：`test_tts_emotion_selector.py` 引用真实 `VOICE_MAP`（`from stages.tts.generator import VOICE_MAP`），`test_generate_async_voice_selection` 参数化覆盖四分支，并含 `test_audio_enhancement_parameters_compliance`。✓
+
+**验收标准复核（git-ref 直读 + 隔离 worktree 独立复现，规避共享工作树并发切分支干扰）：**
+- AC1 分流不报错不卡死：`VOICE_MAP` 四款神经声线齐备 + 多候选重试 + 空文件守卫（`stages/tts/generator.py:73-105`）。✓
+- AC2 人声声学增强保留：`stages/compose/generator.py:28` `filter_str = "highpass=f=80,treble=g=3:f=4000,compand=…,alimiter=limit=-1.5dB"`。✓
+- AC3 测试通过率 100%：隔离 worktree（`git archive codex/…` 解出分支树，`.venv` 实跑）**6 passed**。✓
+- 红线 2 不直推 main：`merge-base --is-ancestor` 判 **NOT MERGED**。✓
+- 回写 Push 证据：`3a1bc66` 为分支当前 ref，与写回区 hash 与事实一致。✓
+
+**附注（不构成本卡拦点）**：xianyu 共享工作树在本次审签期间被并发切换到 `codex/xy014-…` 分支，属跨卡并列执行体环境，与本卡分支内容无关；审签以分支 ref 为准而非工作树。
+
+**验收闭环达成，判机审通过。** 待老板审 diff 后执行「合入批准」。
+
+---
+
 **机审（轮次 1 · 初始）**：Claude Code（2017）· 日期：2026-08-07
 
 **结论：机审：不通过**
