@@ -83,3 +83,13 @@ medio-0 现网健康巡检落地：承接 mx002 的 `/api/v1/health` 接口，�
 
 ### 3. commit 记录
 - `medio-0` 仓 commit hash: `2050a16a6282a1c9abf1c56300601f04cffa0794`
+
+## 机审区
+
+机审：通过
+- **审查结论**：经 2017 独立机审席全面审查与实测验证，本卡各项指标与验收标准均完全通过，予以批准合入。
+- **验证详情**：
+  1. **功能取证**：在 `medio-0` 仓下成功实现健康巡检脚本 `scripts/health_probe.sh`，通过 curl 实现了完美的服务健康巡检探活（正常时退出码 0，人为停服能检出异常、退出码 1，支持 macOS 通知告警）。
+  2. **文档质量**：`docs/deployment.md` 新增了详尽的监控部署与运行说明、退出码约定和告警行为描述，行文规范清晰。
+  3. **红线校验**：修改严格限制在 `scripts/health_probe.sh` 和 `docs/deployment.md` 这两个白名单路径中。业务 API 代码、配置和数据库结构保持零修改。卡头已更新为 `已回写`。
+- **校验自检**：运行 `python3 -m server.board.validate docs/dispatch` 探针自检以退出码 0 完美通过。
