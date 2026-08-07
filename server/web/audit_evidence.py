@@ -16,7 +16,7 @@ from server.board.models import machine_audit_passed_text
 
 logger = logging.getLogger("ccc.web.audit_evidence")
 
-_CACHE_TTL_S = 20.0
+_CACHE_TTL_S = 45.0
 # branch → (monotonic_ts, passed|None)
 _branch_cache: dict[str, tuple[float, bool | None]] = {}
 
