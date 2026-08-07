@@ -1,6 +1,6 @@
 # 任务卡 mx010 · OPML 导出支持 Bearer 鉴权（OpenCode 执行）
 
-> 关联：ccc-plan: mx HTTP 页面修复第一批：RSS P0/P1 四项 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx HTTP 页面修复第一批：RSS P0/P1 四项 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -47,8 +47,27 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 实现说明
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **前端 RssSidebar.tsx 改造**：
+   - 导入 `adminToken` 管理工具。
+   - 将原生的 `<a>` 导出直链改为 `<button>`，使用 `onClick` 事件通过 `fetch` 获取 `rssApi.opml.export()`。
+   - `fetch` 选项中通过 Headers 自动注入 Bearer Authorization Token（如果存在 `adminToken`）。
+   - 提取响应文本，使用 `Blob` 包装并创建 Object URL，构建虚拟 `<a>` 标签模拟点击进行下载，下载完毕后及时清理。
+   - 发生 401 错误时派发 `medio:unauthorized` 事件以触发 token 输入浮层，且包含健壮的异常捕获与 Toast 提示。
+
+2. **后端鉴权中间件适配（src/backend/core/src/middleware/auth.rs）**：
+   - 调整 `requires_auth` 逻辑：对 `GET` 方法下的 `/rss/opml` 和 `/rss/opml/` 端点强制启用鉴权（有 admin_token 场景下）。
+   - 新增 `opml_export_requires_auth` 单元测试，确保 `GET /rss/opml` 的鉴权白名单防护符合预期。
+
+### 测试结果
+
+- 前端 Lint 检查（`npm run lint`）与 TypeScript 类型检查（`npx tsc -b`）顺利通过。
+- 前端全量单元测试（`npm run test`）363 项全部 Pass。
+- 后端新增 `opml_export_requires_auth` 单元测试。
+
+### Push 证据 (Commit Hash)
+
+- 业务仓 (`medio-0`) 同名分支 `codex/mx010-opml-export-bearer-auth` 提交哈希: `0eafdb7`
