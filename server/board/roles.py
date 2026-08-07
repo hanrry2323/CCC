@@ -1,8 +1,11 @@
-"""席位与验收规则（2026-08-07 二改：自验收）。
+"""席位与验收规则（2026-08-08 定稿：M1 自验收 / 2017 机审固定交叉）。
 
-产品意图：
-- **自验收**：谁开发谁验收（OpenCode 开发 → OpenCode 验收；Claude Code 同理）。
-  日常单工具闭环，第二个工具可离线备用。
+产品意图（双轨，老板 2026-08-08 澄清）：
+- **M1 端（出卡/合入验收）**：自验收——谁出卡谁验收。OpenCode 出卡 →
+  OpenCode 可验收合入；Claude Code 同理。卡头「验收」字段即此席。
+- **2017 端（产线机审）**：固定交叉——OpenCode 开发 → Claude Code 机审；
+  Claude Code 开发 → OpenCode 机审。机审工具不读卡头「验收」字段
+  （见 engine/main.py `_run_machine_audit_after_writeback`）。
 - **Codex / Cursor**：取消验收资格（Codex 可出卡/裁决；Cursor 仅难度突击写码）。
 
 两条硬规则（不可省）：
@@ -10,7 +13,7 @@
   须按 Code Review 技能独立审查、写机审区、过 ready 门禁。
 - **老板合入批准 = 人审最终 diff**：任何人/工具都不能绕过老板「合入批准」自行合入。
 
-卡头字段：``执行体`` / ``验收``。名称别名归一：``Claude`` → ``Claude Code``。
+名称别名归一：``Claude`` → ``Claude Code``。
 """
 
 from __future__ import annotations
