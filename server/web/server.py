@@ -1022,7 +1022,7 @@ def _enriched_cards(include_archived: bool = False) -> list[dict]:
             enrich_card_runtime(
                 c,
                 log_dir,
-                force=base_state(c.get("state", "")) == "执行中",
+                force=False,
             )
     _ENRICHED_CACHE = (now, key, cards_list)
     return cards_list
