@@ -919,6 +919,8 @@ def _compute_relay_stats() -> dict:
     url = _relay_health_url()
     if url:
         try:
+            import urllib.request
+
             req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 code = resp.status
