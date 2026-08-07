@@ -28,7 +28,7 @@ from server.engine.main import get_worktree_path
 
 logger = logging.getLogger("ccc.web.worktree_dirty")
 
-_CACHE_TTL_S = 4.0
+_CACHE_TTL_S = 8.0
 # work_id → (monotonic_ts, dirty_files|None)
 _dirty_cache: dict[str, tuple[float, int | None]] = {}
 # registry path → (mtime, bases)

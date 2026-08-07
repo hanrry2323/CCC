@@ -757,7 +757,7 @@ def _load_board_items(include_archived: bool = False):
         return items
 
 
-_BOARD_CACHE_TTL_S = 2.5
+_BOARD_CACHE_TTL_S = 8.0
 _BOARD_CACHE: tuple[float, str, list] | None = None
 
 
@@ -828,7 +828,7 @@ def _closed_at_map(repo_root, ttl: float = 60.0) -> dict[str, str]:
 
 
 _ENRICHED_CACHE: tuple[float, str, list[dict]] | None = None
-_ENRICHED_TTL_S = 3.5
+_ENRICHED_TTL_S = 10.0
 
 
 def _log_activity_key(log_dir) -> str:
