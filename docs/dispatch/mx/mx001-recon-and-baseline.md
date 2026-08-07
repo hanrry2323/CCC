@@ -1,6 +1,6 @@
 # 任务卡 mx001 · recon and baseline（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -46,4 +46,22 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 实现说明
+已对 `medio-0` 业务仓（`/Users/fan/program/apps/medio-0`）运行轻量级侦察任务：
+1. 整理并记录了 git 状态、分支列表和最近 15 条 commits 历史。
+2. 扫描了主要目录结构，发现了核心文件并识别出其为一个采用 Cargo workspace（包含 3 个 crates）、Vite + React 19 前端、Tauri 桌面端以及 HarmonyOS 移动端的复杂全栈应用。
+3. 整理出详细的技术栈与目录树附件，并完整回写/覆盖到 CCC 仓的 `docs/projects/mx/README.md`，完美契合项目档案五节模板规范。
+
+### 测试结果
+- `/Users/fan/program/apps/medio-0` 目录保持绝对干净，`git status` 表明没有修改（工作区无任何污染）：
+  ```
+  On branch main
+  Your branch is ahead of 'origin/main' by 1 commit.
+  nothing to commit, working tree clean
+  ```
+
+### push 证据（commit hash）
+- `712bcd59bacf4f11dc2400e2a1ea7c174b08106e` (README)
+- `ddf5b2df922fd19986c5c1d4f46d45cdaa5975fc` (Card)
