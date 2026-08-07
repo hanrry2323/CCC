@@ -1,6 +1,6 @@
 # 任务卡 mx004 · service health probe integration（OpenCode 执行）
 
-> 关联：ccc-plan: mx 打磨线启动：服务健康巡检 + 打磨盘点 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx 打磨线启动：服务健康巡检 + 打磨盘点 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -50,8 +50,36 @@ medio-0 现网健康巡检落地：承接 mx002 的 `/api/v1/health` 接口，�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 1. 实现说明
+- 在 `medio-0` 仓下新增了 `scripts/health_probe.sh` 健康巡检脚本，支持通过命令行参数或 `MEDIO_PORT` 环境变量传入运行端口或 URL。
+- 脚本使用 `curl -fsS` 请求 `/api/v1/health` 接口。
+- 支持使用 `jq` 或 `python3` 解析 JSON 响应体，验证 `status == "ok"` 且 `version` 字段存在。
+- 实现了 `osascript` 告警，在 macOS 运行环境发生错误时通过系统级通知框发出告警。
+- 增强了 `docs/deployment.md`，加入了「健康巡检与服务监控 (Monitoring & Probe)」一节，对探针脚本的功能、使用方法、退出码和告警行为进行了详尽阐述。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- **服务正常自测**：
+  ```bash
+  /Users/fan/program/apps/medio-0/scripts/health_probe.sh 3000
+  # 输出: health ok (version: 0.9.0)
+  # 退出码: 0
+  ```
+- **人为停服自测**：
+  ```bash
+  kill $(pgrep medio-server) && sleep 1
+  /Users/fan/program/apps/medio-0/scripts/health_probe.sh 3000
+  # 输出: ERROR: [Medio-0 Health Check Failed] curl request failed: curl: (7) Failed to connect to 127.0.0.1 port 3000 after 0 ms: Couldn't connect to server
+  # 退出码: 1
+  ```
+- **还原服务验证**：
+  ```bash
+  /Users/fan/program/apps/medio-0/target/debug/medio-server --config /Users/fan/program/apps/medio-0/config.toml --data-dir /Users/fan/program/apps/medio-0/data > /tmp/medio-server.log 2>&1 & sleep 2
+  /Users/fan/program/apps/medio-0/scripts/health_probe.sh 3000
+  # 输出: health ok (version: 0.9.0)
+  # 退出码: 0
+  ```
+
+### 3. commit 记录
+- `medio-0` 仓 commit hash: `2050a16a6282a1c9abf1c56300601f04cffa0794`
