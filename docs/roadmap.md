@@ -163,7 +163,61 @@
 | 卡号 | 意图 | 进度 |
 |------|------|------|
 | **mx003** | 首次摸底：在飞分支对齐、技术栈与业务线路梳理 | 已回写 |
+| **mx005** | 打磨盘点：摸底并盘点现有代码质量、功能细节与 UI 优化点 | 已回写 |
 
 > **下一程意向**：推进 mx 媒体库管理、UI 体验升级与 RSS 订阅等核心业务线路平稳合入与现网加固
+
+### 打磨点清单（mx005 盘点产出）
+
+#### 一、代码质量（Code Quality）
+
+1. **后端格式化 CI 与 Hook 缺失**
+   - **现状**：CI 配置准备了 `clippy, rustfmt`，但 backend steps 未执行 `cargo fmt --check`。且本地 Husky pre-commit hook 只对前端运行 prettier/eslint，无法拦截后端 Rust 格式化不规范的问题。
+   - **建议动作**：CI 中 backend 增加 `cargo fmt --all -- --check` 步骤；在 `package.json` 的 `lint-staged` 或 husky hook 中引入 Rust 代码格式化校验。
+   - **预估成本**：S
+
+2. **后端测试覆盖率关键服务被排除**
+   - **现状**：tarpaulin 针对 `medio-core` 设置了较多排除文件（如 `websub_service`、`scan_scheduler`、`rss_service` 等核心逻辑被排除在覆盖率统计外）。
+   - **建议动作**：收窄并移除不必要的 `exclude-files` 排除项，并补齐 `sqlite` 内存数据库下核心服务的单测，实现真实的整体覆盖率 ≥80%。
+   - **预估成本**：M
+
+3. **前端测试覆盖率未纳入 CI**
+   - **现状**：前端存在 `"test:coverage": "vitest run --coverage"` 脚本，但 CI `Frontend` 任务只跑了 `npm run test`，未进行覆盖率门禁校验。
+   - **建议动作**：在 CI 中引入前端覆盖率（vitest coverage）检查并与 `fail-under`（如 70%）绑定，防止质量退化。
+   - **预估成本**：S
+
+4. **历史依赖漏洞安全债务**
+   - **现状**：`cargo audit` 忽略了 quick-xml (0.36 DoS) 与 rsa (Marvin Attack) 漏洞，属于历史遗留的安全债，且 quick-xml 0.41 包含 API breaking changes 导致升级成本高。
+   - **建议动作**：后续迭代规划升级 quick-xml 至 0.41+ 并适配重构代码，对 rsa 依赖链路进行排查替代。
+   - **预估成本**：M
+
+#### 二、功能细节（Functional Details）
+
+5. **证书私钥历史泄露隐患**
+   - **现状**：鸿蒙签名私钥/证书 `medio.p7b.pem` 曾在 commit `e8bf66a` 误入库。虽已被 gitignore，但历史提交中依然存在，可被反向提取。
+   - **建议动作**：v1.0 前执行 `git filter-repo` 彻底清除历史痕迹，并重新签发并部署新版鸿蒙签名。
+   - **预估成本**：S
+
+6. **设置页路径输入缺失前端校验**
+   - **现状**：`SettingsPage.tsx` 路径输入框前端零校验，完全依赖后端 `validate_path` 进行安全兜底，可能造成安全和 UX 体验差的风险。
+   - **建议动作**：前端在输入框加入前置白名单与格式校验（防 `..` 或非法字符），提供实时反馈。
+   - **预估成本**：S
+
+7. **敏感端点缺乏速率限制与爆破防护**
+   - **现状**：`/auth` 登录及鉴权端点没有任何 IP 级的速率限制，白名单模型偏脆弱。
+   - **建议动作**：加入中间件限制登录和敏感端点的请求频率，提高暴破防御；重构 Auth 中间件机制，使其采用默认阻断的白名单设计。
+   - **预估成本**：S
+
+#### 三、UI 优化（UI Optimization）
+
+8. **CSS Tailwind 4 unsafe-inline CSP 限制**
+   - **现状**：由于对 Tailwind 4 / shadcn 的行内样式重度依赖，后端需开启 `style-src 'unsafe-inline'` 的 CSP 配置，这极大削弱了 CSP 防御 XSS 注入的效果。
+   - **建议动作**：重构并采用静态抽取 Tailwind 样式，或者对内联样式在编译期注入 `nonce` 进行校验。
+   - **预估成本**：M
+
+9. **移动端高危操作与 Toast/ConfirmDialog 适配**
+   - **现状**：在移动端，一键物理删除（F-04）按钮为防误触调大至 44px 且常驻显示，虽有 Trash 恢复机制，但在触屏上缺少防呆设计与撤销按钮。
+   - **建议动作**：强化 ConfirmDialog 安全防呆（特别是移动端），增加二次确认手势（如滑动删除或延迟动作），并在 Toast 提示中增加 "撤销" (Undo) 功能。
+   - **预估成本**：S
 
 
