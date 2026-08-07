@@ -1,6 +1,6 @@
 # 任务卡 mx005 · polish inventory for code and UI（OpenCode 执行）
 
-> 关联：ccc-plan: mx 打磨线启动：服务健康巡检 + 打磨盘点 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx 打磨线启动：服务健康巡检 + 打磨盘点 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
