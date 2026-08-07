@@ -1,6 +1,6 @@
 # 任务卡 hp008 · documents.project_id 与 chunks.project 映射规则方案（OpenCode 执行）
 
-> 关联：ccc-plan: HP 知识底座评估整改（CLI 检索复活/短 chunk 闸门/口径映射/文档回填） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：ccc-plan: HP 知识底座评估整改（CLI 检索复活/短 chunk 闸门/口径映射/文档回填） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -40,8 +40,31 @@ documents.project_id 与 chunks.project 映射规则方案（ccc-plan 切片）�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
+
+### 1. 实现说明
+已经产出完整的对账结果方案文档，包括：
+- `documents.project_id` ↔ `chunks.project` 全量映射对账及对齐矩阵。
+- 制定了强参照完整性映射规则。
+- 针对 30 个 `project_id` 为 NULL 且 chunk project 值为 `'rss'` 的文档提出了具体的归属归集方案：在 `general` 领域下新增 `rss` 项目进行双向对齐。
+- 设计了相应的落库 SQL 脚本和回滚 SQL 脚本。
+- 在 `hp` 业务仓创建了 `docs/knowledgebase/project-id-mapping-plan.md`（业务详文）和 `scripts/qa/verify_project_id_mapping.py`（自动化校验脚本）。
+
+### 2. 测试与验证结果
+在 `hp@hp` 生产数据库运行校验脚本，通过率为 **100%**：
+```text
+=== HP008 参照完整性校验 ===
+1. 字段一致性冲突数量 (chunks.project <> projects.name): 0
+2. 存在于 chunks 但在 projects 表中不存在的 project 值 (排除 rss): []
+3. project_id 为 NULL 的文档总数: 30
+4. project_id 为 NULL 的文档对应的 chunks project 唯一值: ['rss']
+
+✓ 校验通过：参照完整性正常，未发现非法对账冲突。
+```
+
+### 3. Push 证据 (Commit Hash)
+- 业务仓 `hp` 提交（分支 `codex/hp008-project-id-mapping-plan`）: `3ab463c`
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+（无人工批注）
