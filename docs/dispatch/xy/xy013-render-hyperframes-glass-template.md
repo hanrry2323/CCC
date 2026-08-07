@@ -1,6 +1,6 @@
 # 任务卡 xy013 · 画面渲染：激活并打通Hyperframes网页组件渲染引擎（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -57,4 +57,23 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 实现说明
+1. **实现 Headless 网页截图器**：在 `video-pipeline/hyperframes/renderer.py` 中，基于 Playwright 无头浏览器实现了 `render_html_to_image` 接口，支持动态注入选题标题、配图和文案段落到 CJK 暗黑科技、毛玻璃及极简白 3 大大厂质感动效网页模板中，排版完美。
+2. **连通合成阶段与性能优化**：修改 `pipeline.py` 与 `stages/scene/generator.py`，允许选用 `--renderer hyperframes` 选项。每个场景仅渲染一次截图，随后复制该截图用作视频帧，将截图频率降低了数个数量级，性能实现质的飞跃。
+3. **全局进度条与交叉过渡**：在 Hyperframes 截图之上保留并绘制了视频全局进度条，同时完美支持 `Image.blend` 的淡入淡出过渡混合。
+4. **硬超时与优雅降级**：网页截图设置 30 秒硬超时，若 Playwright 或 Chromium 未安装或运行异常，则优雅降级为原 PIL 静态图片，保证管道不卡死、不崩溃。
+
+### 2. 测试结果
+在 `video-pipeline/tests/test_hyperframes_renderer.py` 中编写了完整单元测试，覆盖：
+- 风格名称到模板名称映射测试。
+- 模板缺失场景的优雅降级。
+- Mocked Playwright 的完整成功渲染流程。
+- `stages/scene/generator.py` 在 Playwright 失败时的降级 fallback。
+
+使用 `uv run pytest video-pipeline/tests/ -o addopts="" -v` 在 `xianyu` 仓测试，全部 13 个单元测试顺利通过！
+
+### 3. push 证据
+- 推送分支：`codex/xy013-render-hyperframes-glass-template`
+- 最新 Commit Hash：`2b2495ae7c1f91b870a571b176fdbaf4cbfb7f9a`
