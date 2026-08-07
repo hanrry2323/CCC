@@ -1,6 +1,6 @@
 # 任务卡 mx015 · crawl_all 错误状态写回数据库（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 框架优化第一批：文档地基 + RSS 巡检链路补齐 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: medio-0 框架优化第一批：文档地基 + RSS 巡检链路补齐 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -45,8 +45,18 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · **日期**：2026-08-08
 
-## 批注落实
+### 实现说明
+1. 对齐 `crawl_all` 错误写回逻辑：单源抓取失败时写回 `last_error`（错误信息）、`last_error_at`（错误时间）并将 `retry_count` 递增。
+2. 统一 scheme 错误处理：对于不支持的 URL scheme，同样写回 `last_error` 和 `last_error_at`。
+3. 成功路径清理错误状态：在 `crawl_all` 和 `crawl_one` 的成功路径（包括 304 Not Modified）都会执行清理更新，将 `last_error = NULL`、`last_error_at = NULL` 且 `retry_count = 0`，确保恢复后状态对齐。
+4. 所有修改均限在白名单文件 `src/backend/core/src/service/rss/crawler/scheduler.rs`。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+- `cargo check` 零警告零错误。
+- 本地自测通过：对无效源进行 `crawl_all` 验证了错误信息被记录且 `retry_count` 逐次递增；正常源恢复后清理错误字段功能完美工作。
+
+### Push 证据
+- 业务仓分支：`codex/mx015-crawl-all-error-writeback`
+- 业务仓 Commit Hash：`3bc6d5dd3f4ad5b7d7c0de1c0862029505eb0588`
