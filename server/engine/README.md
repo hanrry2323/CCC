@@ -100,6 +100,9 @@ $PYTHON_BIN -m server.engine.main --config <config.env> --once  # 单次扫描 +
 - **分支即信封**：机审通过结果由 Engine 写进 worktree 分支卡并 commit+push（`## 机审区`），
   合入 = 纯快进合并完整信封；生产卡只读，`ready_for_merge`/approve-merge 以
   `git show origin/<分支>:<卡>` 含「机审：通过」为准（跨机可验，不再依赖 2017 本地脏状态）。
+- **合入前 Code Review（2026-08-07 三改）**：机审席加载 `code-review` 技能做完整审查
+  （正确性/契约/健壮性/范围红线/验收/批注落实）；P0/P1 就地修复+复审闭环
+  （连续 2 轮不过或范围性问题才打回），P2 记录不阻断；老板「合入批准」仍为人审兜底。
 - **主树干净化**：`FileBoardStore` 有 `log_dir` 时 `save_work` 只写运行时 sidecar
   （`state/cards.jsonl`：state/retry_count/reason/redispatch），不写卡文件；看板以
   「git 卡真相 + 运行时状态 + 分支信封证据」合成。git_sync 对卡文件强制以 main 为准。
