@@ -1,6 +1,6 @@
 # 任务卡 xy005 · 音频处理：重构BGM自动混音与音量标准化（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -54,4 +54,37 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 实现说明
+- **BGM 自动循环与 Crossfade**：
+  - 异步测量 BGM 音频时长。当 BGM 短于视频时，计算拼接循环次数，使用 FFmpeg `acrossfade` filter（淡入淡出参数 `d=min(2.0, bgm_duration/4.0)`）进行多路自动无缝循环拼接，防拼接点断音。
+  - 当 BGM 长于视频时，自动截断并在视频结尾进行平滑淡出。
+- **EBU R128/LUFS 标准音量归一化**：
+  - 彻底引入 EBU R128 限制标准规范。默认将综合响度限制调整为 `-14.0 LUFS`（`LOUDNORM_TARGET_I`）、最大响度范围 `11.0 LU`、峰值限制 `-1.5 dBTP`，确保混音、标准化后的视频响度极其均匀且防削波爆音。
+  - 归一化在 BGM 混入后（最终合成音轨时）一并执行，防止人声压制。
+
+### 2. 测试结果
+- 补充并更新了 tests 验证，`tests/video/test_bgm.py` 新增对 BGM 多路循环与交叉淡入淡出逻辑、`get_audio_duration` 功能测定的覆盖，全部 `44` 个音频相关单测 100% 成功通过。
+- 重跑 `tests/video/` 音视频及转码相关单测，通过率 100% (231/231)。
+
+### 3. push 证据 (Commit Hash)
+- 仓库：`xianyu`
+- 分支：`codex/xy005-fix-audio-bgm-and-level-norm`
+- Commit Hash：`d66e961bf271399538e2be532e1723bcfc9d7c70`
+
+## 机审区
+
+**审方**：Claude Code（2017 机审席）· 日期：2026-08-07 · 分支 `codex/xy005-fix-audio-bgm-and-level-norm` @ `d66e961bf271399538e2be532e1723bcfc9d7c70`
+
+### 机审：通过
+
+**独立取证（2017 实机）**：
+- 范围红线：diff 仅 4 文件（`src/xianyu/video/bgm.py`、`src/xianyu/video/__init__.py`、`src/xianyu/content/video.py`、`tests/video/test_bgm.py`）；只动 xianyu 音频/混音，未碰 CCC 仓。
+- 分支与 push 同步：本地与 `origin/codex/xy005-fix-audio-bgm-and-level-norm` HEAD 均 = 卡头 commit。
+- 单测：xy005 分支实跑 `tests/video/test_bgm.py` = **44 passed**；`tests/video/` = **231 passed, 3 skipped**（通过数 231 与卡称一致）。
+- 门禁：全量重跑 coverage **80.76%**（≥80 通过）；ruff 对改动文件全过。
+- 全量回归 3 fail 均为**既有/环境性、base main 同款复现**（2× openclaw 缺 `node`；1× `test_bgm_tags` 缺 BGM 样本），**非本次引入、无回归**。
+- 验收#2 满足：`normalize_audio` 两遍 EBU R128 `loudnorm=I=-14:LRA=11:tp=-1.5` 在 BGM 混入后（`video.py` 合成音轨时）执行；BGM acrossfade 循环 + 末尾淡出实现长短自适应。
+
+**非阻塞小瑕（不挡合入，可后续维护）**：`bgm.py` 残留调试 `print`（宜用 logger）；`normalize_audio` docstring 的 "default -23" 注释过期（实际常量现为 -14）。本机无 `ffmpeg/ffprobe`，无法实产"探针电平日志"（filter 图由单测 mock 验证构建正确；loudnorm 走成熟两遍法）。

@@ -1,6 +1,6 @@
 # 任务卡 xy006 · 平台适配：接入快手与微信视频号发布通道（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -52,6 +52,19 @@
 ## 人工批注
 
 （老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+
+## 机审区
+
+**机审方**：Claude Code · 日期：2026-08-07 · **机审：通过**
+
+独立取证（读 git 对象 + 临时 worktree checkout `origin/codex/xy006-platform-kuaishou-channels-bridge@56a6262`，未改业务代码）：
+
+1. **实现已 push**：commit `56a6262` 改 `sau_bridge.py`（+65：`channels:2` 映射、`check_platform_status`/`platform_status` action 路由）+ `test_sau_bridge.py`（+131：4 个 `test_xy006_*`）。未直推 main，合规。
+2. **协议一致**：`docs/06-平台适配器/视频号.md` 确认视频号走 SAU 腾讯通道（type 2），`channels:2` 与 `tencent:2` 同值属有意设计。
+3. **测试 100% 通过**：临时 checkout 远程分支运行，`tests/bridge/test_sau_bridge.py` 24/24 通过（含 `test_xy006_upload_video_channels_success` 验证 payload、`check_platform_status` kuaishou/channels 健康归一化）。
+4. **只动 xianyu 仓**：改动均限 xianyu `src/`+`tests/`。
+
+如实说明：kuaishou 发布桥接（type 4）main 分支已具备，本 commit 实质新增 = channels 发布通道 + 快手/视频号健康度核对路由；卡头达成，可进入人侧「合入批准」。
 
 ## 回写区
 

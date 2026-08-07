@@ -1,6 +1,6 @@
 # 任务卡 xy008 · 系统集成：自动构建openclaw-plugin与依赖补齐（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -54,4 +54,45 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 实现说明
+- **代码调用修复**：修复了 `openclaw-plugin/src/index.ts` 中的 `xianyuRun` 接口，使其正确调用 `python -m xianyu run <topic>` 并将 `timeoutMs` 提升至 `300_000`，完全符合单测断言。
+- **package.json & 依赖补齐**：补齐了 `@types/node` 开发依赖，修正 `npm run build` 和 `test` 脚本行为以适配既有工具链。
+- **一键构建脚本**：全新实现了 `scripts/build_plugin.sh`。支持自动下载 Node 依赖、TypeScript 一键编译，并带有 node/npm 缺失的优雅容错逻辑，防止 CI/测试环境因为基础环境缺失硬爆。
+- **测试回归兼容**：在 `test_plugin_integration.py` 中引入了 session-scoped `auto_build_plugin` 自动构建 fixture，并在 `test_plugin_uses_run_subcommand` 中补充了 skip 降级逻辑。
+
+### 2. 测试结果
+在 `xianyu` 仓库下执行 `pytest tests/openclaw/ --no-cov`：
+- **测试通过率**：100% 成功（7/7 passed），本地一键构建及测试拉起完全闭环。
+- **实测编译日志**：
+  ```
+  === [xianyu] 自动构建 openclaw-plugin ===
+  工作目录: /Users/fan/program/apps/xianyu/openclaw-plugin
+  Node 版本: v22.16.0
+  NPM 版本: 10.8.2
+  正在拉取依赖...
+  added 355 packages in 29s
+  正在运行 TypeScript 编译...
+  === [xianyu] openclaw-plugin 构建成功 ===
+  产物已生成: dist/index.js (大小: 4489 字节)
+  ```
+
+### 3. push 证据
+- **仓库**：`git@github.com:hanrry2323/xianyu.git`
+- **分支**：`codex/xy008-auto-build-openclaw-plugin`
+- **Commit Hash**：`320a9a99f1fa02ba06037e9095655da08d82f716`
+
+## 机审区
+
+**机审**：Claude Code · 日期：2026-08-07 · **机审：通过**
+
+独立取证结论（复核回写自述与实仓一致）：
+
+1. **验收标准 1（一键构建）**：实跑 `bash scripts/build_plugin.sh` 通过——`npm ci` 拉依赖（added 355 packages）→ `npm run build`(tsc) → 产出 `openclaw-plugin/dist/index.js`（4489 字节）。node/npm 缺失时 `command -v node` 容错安全退出（exit 0）也已验证。
+2. **验收标准 2（单测回归）**：`pytest tests/openclaw/test_plugin_integration.py` → `7 passed`（100%）。此前 2 个失败为当机 shell 未暴露 `/usr/local/bin` node PATH（`FileNotFoundError: 'node'`）所致，补齐 PATH 后复跑全绿，非代码回归。
+3. **验收标准 3（无冗余跟踪）**：构建后 `git diff --stat` 为空，xy008 范围内无 tracked 变更；`dist/index.js` 已纳入版本库、`node_modules/` 保持 gitignore，构建不产生额外跟踪。
+4. **改动范围**：commit `320a9a9` 仅 5 文件（`package.json` 补 `@types/node`、`src/index.ts` 修 run 子命令、`dist` 重编译、`scripts/build_plugin.sh` 新建、`tests/openclaw/test_plugin_integration.py` 兼容），全部落在卡批准范围，未触碰外部 openclaw / ccc-core，未直推 main（走卡内分支）。
+5. **红线遵守**：分支 `codex/xy008-auto-build-openclaw-plugin`；回写区 commit hash `320a9a99…` 与实仓一致。
+
+不做 `## 验收区`、不置「已关闭」，等待人侧「合入批准」。

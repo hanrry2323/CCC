@@ -55,18 +55,59 @@
 **执行体**：OpenCode · 日期：2026-08-07
 
 ### 1. 还原现状与根因分析
-- **异常原因**：通过排查，原 dynamic ducking 基于 ffmpeg `sidechaincompress` 滤镜，但在 TTS 和 BGM 混音组合中，参数为硬编码，未向管线上层公开配置。同时，因为没有对 `get_audio_duration` 在测试中进行良好隔离/Mock，或者未全面测试各种极端短视频时间区间下的 fade in/out 表现，导致集成运行报错。
-
+- **异常原因**：通过深度排查，发现不仅由于参数在管线上层未完全公开导致失败，还存在以下三项影响集成运行与闪避效果的实质性 Bug：
+  1. **FFmpeg 语法错误**：`dynaudnorm` 滤镜中存在 `[s=0.001]` 格式错误，被 FFmpeg 误识别为多余的输出 Label 从而报错 `More output link labels specified for filter 'dynaudnorm' than it has outputs: 2 > 1`。
+  2. **Sidechain 顺序反向**：在 `mix_audio` 中，`sidechaincompress` 输入流顺序错误（写成了 `[tts_norm][bgm_proc]`），导致 TTS 被当作主输入，而 BGM 被误作为侧链，使得 TTS 说话结束后的 BGM 区间全部静音。
+  3. **音频总长端点截断**：由于 `sidechaincompress` 在侧链控制流（TTS）到达 EOF 时会自动提前终止处理，导致整段混音输出强制被截断到 TTS 长度。
+  
 ### 2. 重构与修复方案
-- **参数配置化**：在 `mix_audio` 和 `build_bgm_filter_chain` 中增加了 `ducking_threshold` (默认 0.02)、`ducking_attack` (默认 50.0 ms) 和 `ducking_release` (默认 400.0 ms) 关键字参数。
-- **管线透传**：在 `src/xianyu/content/video.py` 中，将上述新增的可配参数从 `ctx`（上下文）完美获取并顺延传递至 `process()` 及降级 fallback 路径的 `_run_ffmpeg_progressive()`。
-- **淡入淡出与安全逻辑**：保留并优化了有人声区间对 BGM 音量的 sidechaincompress 级联淡入/淡出；并对极短音频提供了稳健的 st/d 边界防护。
+- **参数与管线修复**：在 `mix_audio` 和 `build_bgm_filter_chain` 中完全支持并向主管线透传配置 `ducking_threshold` (默认 0.02)、`ducking_attack` (默认 50.0) 和 `ducking_release` (默认 400.0) 参数。
+- **修复语法与输入顺序**：修正 `dynaudnorm` typo 为 `dynaudnorm=p=0.95:s=0.001`；修正 sidechain compress 的输入顺序为 `[bgm_proc][tts_norm]`，恢复正确的 BGM 控制流机制。
+- **引入 APAD 补齐**：在 `tts_norm` 上应用 `apad=whole_dur={duration}` 补齐静音并配合 `amix=duration=longest`，彻底消除了侧链提前 EOF 导致的视频尾部断音/截断问题。
 
-### 3. 测试结果
-- **测试覆盖**：重构并新增了 3 个单测，覆盖了自定义阈值、极短音频边界、带有 custom parameter 的 filter complex 构建。
-- **测试执行**：在 `tests/video/test_bgm.py` 中运行 44 个单测 100% 通过（跑测命令：`.venv/bin/pytest tests/video/test_bgm.py --no-cov`）。
+### 3. 测试结果与探针实测
+- **单元测试**：在 `tests/video/test_bgm.py` 中运行 44 个单测 100% 通过（跑测命令：`.venv/bin/pytest tests/video/test_bgm.py --no-cov`）。
 - **Ruff Lint**：`ruff check src/xianyu` 100% 通过。
+- **探针实测日志（带 TTS+BGM，15s 总长）**：
+  在 `apps/xianyu` 运行 `python3 probe_mix.py && python3 analyze_ducking.py` 得到以下实时波形分析：
+  ```
+  Analyzing WAV: /Users/fan/program/apps/xianyu/data/mixed_output.wav
+  Channels: 1, Sample Width: 2, Framerate: 44100, Frames: 661500 (Exactly 15.000s)
+
+  === Waveform Level Analysis (RMS dB over time) ===
+  Time: 00s - 01s | -26.98 dB | ██████████████████████████████████ (TTS active, BGM ducked smoothly)
+  Time: 01s - 02s | -26.76 dB | ██████████████████████████████████
+  Time: 02s - 03s | -26.76 dB | ██████████████████████████████████
+  Time: 03s - 04s | -26.76 dB | ██████████████████████████████████
+  Time: 04s - 05s | -26.76 dB | ██████████████████████████████████
+  Time: 05s - 06s | -36.72 dB | ███████████████████              (TTS ends, BGM release phase)
+  Time: 06s - 07s | -33.70 dB | ████████████████████████
+  Time: 07s - 08s | -31.98 dB | ███████████████████████████        (BGM recovered smoothly)
+  Time: 08s - 09s | -31.98 dB | ███████████████████████████
+  Time: 09s - 10s | -31.98 dB | ███████████████████████████
+  Time: 10s - 11s | -31.98 dB | ███████████████████████████
+  Time: 11s - 12s | -31.98 dB | ███████████████████████████
+  Time: 12s - 13s | -33.50 dB | ████████████████████████          (BGM starts fading out)
+  Time: 13s - 14s | -37.84 dB | ██████████████████
+  Time: 14s - 15s | -46.29 dB | █████                              (BGM faded out completely)
+  ```
 
 ### 4. Push 证据
-- **Commit Hash**：`593e3871ee270295da9be657e3ebce255cf08fe2`
+- **Commit Hash**：`c5710d5011268a6b2c8117ba843f2f8b4bb87fb6`
 - **推送分支**：`codex/xy004-fix-audio-voice-ducking`
+
+## 机审区
+
+（2017 机审席，2026-08-07 复审）
+
+**机审：通过**
+
+独立取证摘要（worktree `ccc-dev-ws-xy004` / xianyu 仓 `apps/xianyu`，分支 `codex/xy004-fix-audio-voice-ducking`）：
+
+1. **Push 证据 SHA 一致**：回写区 `c5710d5011268a6b2c8117ba843f2f8b4bb87fb6` == 本地 HEAD == `origin/codex/xy004-fix-audio-voice-ducking`（已推远端）；上轮「SHA 不符」整改闭环。
+2. **代码为真且修复三处实质 Bug**：`src/xianyu/video/bgm.py`——① `dynaudnorm=s=0.001`（原错 `[s=0.001]` typo）修复；② `sidechaincompress` 输入顺序改 `[bgm_proc][tts_norm]`（原 `[tts_norm][bgm_proc]` 致 TTS 结束区间全静音）；③ BGM 侧链经 `apad=whole_dur={duration}` 补齐 + `amix=duration=longest` 消除侧链提前 EOF 截断；另加 `get_audio_duration`/ffprobe 时长探测、短 BGM `acrossfade` 循环、threshold/attack/release 三参可配。三参经 `content/video.py` 由 `ctx` 贯通主/降级管线；`get_audio_duration` 已导出。
+3. **返工边界干净**：diff 仅触及 `src/xianyu/video/bgm.py`、`src/xianyu/content/video.py`、`src/xianyu/video/__init__.py`、`tests/video/test_bgm.py`，全部为音频/视频管线范围内；未碰平台，未直推 main。
+4. **单测独立复跑全过**：`.venv/bin/pytest tests/video/test_bgm.py --no-cov` → **44 passed**（与回写区一致），覆盖自定义 ducking 参数、极短音频、循环跨淡等边界。
+5. **探针实测佐证补齐**（上轮「缺实测」整改闭环）：`probe_mix.py`/`analyze_ducking.py` 为真实实测脚本，直接调用 `mix_audio(duration=15.0, ducking=True, …)` 产 `data/mixed_output.wav`；`analyze_ducking.py` 按 16-bit/44.1k/1s RMS 窗口输出 dB；回写区波形 44100×15.0 = 661500 frames（恰 15.000s）算术自洽，TTS 段 BGM 压低约 -26.8dB、释放恢复约 -32dB、尾段淡出，逻辑符合闪避预期。
+
+结论：核心实现为真为可用，push 证据与探针实测两处机器可验证入口均已满足本卡验收标准。机审通过。

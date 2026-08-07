@@ -1,6 +1,6 @@
 # 任务卡 xy007 · 登录流程：实现B站与头条自存Cookie扫码抓取工具（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -57,4 +57,35 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 实现说明
+
+- 基于 Playwright 编写 `scripts/cookie_collector.py`：支持 bilibili / toutiao 唤起有头 Chromium，加载登录页后 3 秒级轮询 `SESSDATA` / `sessionid` / `sid` 或跳转 URL 判定「已登录」，成功即 `context.cookies()` 落盘并关浏览器；支持终端 Enter 手动强制捕获。
+- `--dry-run` 不启动浏览器，落标准 playwright cookie JSON 数组 mock（探针已产出样本）。
+- 落盘路径 `data/cookies/{platform}.json` 与 `src/xianyu/core/config.py` 的 `publish_cookie_dir`/`bilibili_cookie_path`/`toutiao_cookie_path` 完全对齐，与既有 `scripts/capture_cookies.py` 同路径同格式。
+
+### 2. 测试结果
+
+- 新增 `tests/scripts/test_cookie_collector.py` 5 例（bilibili/toutiao dry-run 落盘、两平台登录检测分支、save_cookies），独立实测 **5 passed**。
+- 说明：全仓 pytest 的 80% 覆盖率门槛因既有仓未覆盖代码整体报 2% 失败，非本次改动引入；本卡涉及文件逻辑全覆盖。
+
+### 3. push 证据
+
+- xianyu 仓分支 `codex/xy007-bilibili-toutiao-cookie-collector`，commit `eb0d3b5`（Author Fan TT），仅改 `scripts/cookie_collector.py` (+130) 与 `tests/scripts/test_cookie_collector.py` (+92)。
+- 探针 dry-run 产物已在 `data/cookies/bilibili.json` / `toutiao.json`。
+
+## 机审区
+
+**机审：通过**（2017 Claude Code · 2026-08-07）
+
+独立取证与本卡验收标准对照：
+1. 验收1（唤起浏览器 B站/头条登录）——通过。`cookie_collector.py` 有头 launch + 两平台登录页 + 轮询检测逻辑成立。
+2. 验收2（data/cookies 自动生成 & 注入发文流程）——通过（实现侧）。落盘路径与格式与 `src/xianyu/core/config.py:74-76` `publish_cookie_dir`/`bilibili_cookie_path`/`toutiao_cookie_path` 完全一致，与既有 `capture_cookies.py` 同路径同格式，可被既有流程消费。
+3. 验收3（单测全过）——通过。5/5 passed。
+
+**必须记录的卡缺陷（非实现问题，请老板知悉）**：卡验收标准 2 / 红线 3 / 卡头均引用 `browser_base.py` 内部检测作基准，但该文件在 xianyu 仓**不存在**（全仓检索无此文件）。真实消费者是 `scripts/capture_cookies.py` + `src/xianyu/core/config.py` + `scripts/publish/*`，非 `browser_base.py`。开发实际对齐的是真实存在的 `config.py` 体系而非卡中过时引用。卡文档此处 `browser_base.py` 命名已过时，建议后续修卡时更正，不影响本卡实现验收结论。
+
+机械门禁核对：commit `eb0d3b5` 在指定分支、仅动 `scripts/`+`tests/`、未直推 main、未动安全/解密分工、未在 CCC 仓新建深文档、卡头已回写 —— 全过。
+
+**机审旁注**：绝对路径生产副本 `docs/dispatch/xy/xy007-bilibili-toutiao-cookie-collector.md` 回写区原本为空（未同步），分支 worktree 回写提交 `f80abe8c` 已含相同回写内容；本机审已将该回写内容同步补齐至生产副本并追加机审区。
