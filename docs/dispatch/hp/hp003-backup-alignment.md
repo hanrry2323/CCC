@@ -465,3 +465,42 @@
 - **hp 业务仓（验收 #4）**：P1-1/P1-2/P1-3 全数沿用、连续 9 轮零修复。
 - **范围属性**：跨仓/跨分支交付缺陷，机审工作区无法安全就地修复（避免污染 hp002）。
 - **人工批注**：卡内无实际老板批注，无批注落实义务。
+
+---
+
+## 机审区 · 第 10 轮
+
+**机审方**：Claude Code（2017）· 日期：2026-08-07 · 轮次：第 10 轮独立复审（第 9 轮后执行体已重交付，本审查重新独立取证、非同工具放水）
+
+**机审：通过** —— 第 9 轮打回的 3 项 P1（hp 业务仓跨仓/跨分支交付闭合）经本审查独立重验**全部闭合**；服务端备份链路（验收 #1/2/3）独立实测通过。4 项验收标准全达标，无 P0/P1 遗留。
+
+### 本审查独立取证（非沿用前轮文本）
+
+**hp 业务仓 `/Users/fan/program/apps/hp`（验收 #4 + push 证据，本审查独立实测）—— 3 项 P1 已全数闭环**：
+- P1-1（已修复）：`git ls-files docs/knowledgebase/BACKUP.md` 返回该路径，`git status --short` 干净；文档已在 hp 仓 `docs/knowledgebase/BACKUP.md` 提交（106 行：定时任务 / 落点 / 保留 30 天 / WAL 热备 / 异地 rsync / 恢复与完整性校验），验收 #4 达成。
+- P1-2（已修复）：`git branch --show-current` → `codex/hp003-backup-alignment`；`git branch -a` 存在本地同名分支，`git ls-remote --heads origin` 远端存在 `refs/heads/codex/hp003-backup-alignment`；`git merge-base 分支 origin/main` = `e6dee62` = `origin/main` tip → **该分支基于 origin/main，未混入 hp002 卡分支**，不再触犯红线 #1。
+- P1-3（已修复）：回写 push 证据 `63900403313d2c06c02df90780ca26d4a73a3b1c`：hp 仓 `git log -1 63900403313d2c06c02df90780ca26d4a73a3b1c` 实测 = `docs(backup): add pg backup alignment mechanism document`（**hp 仓真实业务 commit**，非 CCC 仓任务卡提交）→ 证据成立、与真实 hash 完全一致。
+
+**hp@192.168.3.131 服务端（SSH 独立复核，验收 #1/2/3 通过，保留）**：
+- 摸底结论有效：卡假设落点 `/data/knowledge/backups/`（仅 07-04 历史手动 dump），实际 cron 输出落 `/data/backups/knowledge/`（每日 02:00），链未断、系落点认知错位——writeback「现状分析」段成立，验收 #1 达成。
+- cron `0 2 * * * /data/backups/pg_dump_knowledge.sh >> /data/backups/knowledge/cron.log 2>&1` 在位；脚本（1006B，可执行）`set -eo pipefail` + 并行产出 `.sql.gz`（`pg_dump|gzip`）与 `.dump`（`pg_dump -F c`）+ `find -mtime +30 -delete` 30 天轮转。
+- 产物实测在手：`knowledge_2026-08-07.dump`（401,400,649 B）+ `.sql.gz`（400,661,100 B），逐日 `.sql.gz` 08-03→08-06 均在；`/home/hp/.local/pg18/bin/pg_restore --list knowledge_2026-08-07.dump` 成功读出 TOC（Format CUSTOM，TOC Entries 56，Dump 18.0）→ 完整性通过；`gzip -t knowledge_2026-08-07.sql.gz` 通过，验收 #2 达成。
+- 零删除：`/data/knowledge/backups/2026-07-04-pre-4finance.dump`（297,484,254 B）完好；WAL `/data/backups/wal/` 实测 1385 分片（较历轮 1378 自然增长，无删减），验收 #3 达成。
+
+**人工批注核对**：卡内 `## 人工批注` 仅含说明占位符，无实际老板批注，无「批注落实」义务项。
+
+### 发现清单（本轮）
+
+- **P0/P1：无**（第 9 轮 3 项 P1 已全部被执行体重交付关闭）。
+- **P2（建议，非阻断）**：
+  - P2-1：服务端 `/data/backups/` 出现空文件 `pg_dump.lognfind`（0 字节，疑似某次 find 误写），建议清理或忽略，无数据影响。
+  - P2-2：卡头状态字段本轮前曾长期「待分派」，本次由执行体更新为「已回写」；建议后续 watch 各字段一致性。
+
+### 修复记录
+
+- 本轮无可就地修复的 P0/P1（无缺陷）；3 项 P1 的修复均为执行体在 hp 业务仓完成的跨仓交付（建 `codex/hp003-backup-alignment` 分支 → `git add docs/knowledgebase/BACKUP.md` → commit `6390040` → push），不在本机审工作区代改，本审查仅独立复核确认真实闭环。
+
+### 复审结论（按清单复核）
+
+- **正确性 / 契约 / 健壮性 / 范围红线 / 验收标准 / 老板批注**：全部通过。hp 业务仓交付已闭合，push 证据真实，分支正确基于 origin/main，文档内容完整达标，服务端零删除可复现，无批注义务。
+- **机审：通过**。执行体第 10 轮前完成了 3 项 P1 的真实修复与 push 交付，跨 9 轮失败后首次闭环 → 准予转入人侧「合入批准」关卡（approve-merge 仅收口 hp 仓该分支产物）。
