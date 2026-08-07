@@ -91,3 +91,33 @@
 ## 批注落实
 
 无人工批注。
+
+## 机审区
+
+**机审**：Claude Code（2017 机审席）· 日期：2026-08-07 · 结论：**通过**
+
+经完整 Code Review 流程（读卡验收 → 独立只读取证业务仓 → 核对回写 diff → 看板一致性命中），本次 mx003 回写内容全部经独立核实，验收标准 1-4 满足，未发现 P0/P1。无就地修复。
+
+### 审查摘要
+- **结论**：mx003 业务线路摸底回写**通过**。无 P0/P1。
+- **独立取证通道**：均在 `/Users/fan/program/apps/medio-0` 业务仓只读执行（`git rev-list --count origin/main..<branch>`、`git merge-base --is-ancestor`、`git log -1`、`git status -sb`、`git branch -a`），未做任何 checkout/merge/写操作。
+
+### 发现清单（经独立核实的事实）
+| # | 声称 | 独立取证 | 结论 |
+|---|------|----------|------|
+| 1 | 三条在飞分支相对 origin/main 未合入提交数 0 | `rev-list --count origin/main..branch` 三条均 0 | ✅ 属实 |
+| 2 | 三条分支已 100% 合入 main、为 origin/main 直接祖先 | `merge-base --is-ancestor <branch> origin/main` 三条均 YES | ✅ 属实 |
+| 3 | main 领先 origin 1 commit（安全修复 2e093b5） | `rev-list --count origin/main..main`=1；`git log -1 main`=2e093b5 | ✅ 属实 |
+| 4 | 业务仓工作区 clean、零改动 | `git status -sb`=clean（当前 `codex/mx002` 分支） | ✅ 属实 |
+| 5 | 附 C 为业务线路梳理、附 A/B 技术栈与目录树完好 | README diff 核对：附 A/B 未动；「附 C：最近 15 条 commit」按卡 §5 替换为「附 C：业务线路梳理」+ 新增附 D | ✅ 符合卡结构 |
+| 6 | roadmap「业务线路（mx）」与 README「线路/近况」一致（≤3 行） | 两文件 diff 交叉核对一致 | ✅ 属实 |
+| 7 | 看板 validate 通过 | 索引同步后 `server.board.validate docs/dispatch` exit=0「卡头校验通过」(111 张卡) | ✅ 通过(条件) |
+
+### 修复记录
+- 无 P0/P1，**未做就地修复**。
+
+### 复审结论
+- **机审：通过**。未发现 P0/P1 阻断项；无需重新出卡或打回。
+
+### 附注（P2 级，非阻断，供后续参考）
+- 回写区 §3 对 `server.board.validate` 的表述「通过」严格成立的前提是**索引已同步**。该 CLI 的 `validate_cards` 仅在索引文件缺失时全量重建；索引陈旧时首次运行会报 `索引对账失败: 状态不一致`（旧索引=`待分派` vs 磁盘=`已回写`）并 exit 1，待 `load_dispatch_cards`（Engine/看板常规路径）增量刷新索引后即通过。此为本机 `~/.ccc/data/cards/cards.index.jsonl` 全局运行索引的时序特性，**非本次回写引入的代码/文档缺陷**，故不构成 P0/P1，未越界改动已回写区。
