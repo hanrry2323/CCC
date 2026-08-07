@@ -118,3 +118,4 @@
 - 独立重建 venv 跑 `pytest tests/test_probe.py` 全量 11 passed（含 `test_health_endpoint`，验收标准 2）。
 - 业务仓与 CCC worktree 工作树均 clean，无残留（验收标准 3）。
 - `## 人工批注` 为空占位，无未落实批注。
+- 业务仓补收口（2026-08-07 遗留清理）：medio-0 main b3e2428

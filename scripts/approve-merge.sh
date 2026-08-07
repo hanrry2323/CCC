@@ -7,7 +7,8 @@
 #   scripts/approve-merge.sh --close-only <id>    # 分支已分叉/已合入时仅关卡（ready 必需）
 #
 # 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
-# 动作：能 ff 则 ff-merge；否则 --close-only / 分支已在 main → 只关卡。
+# 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡）；
+#       CCC 仓能 ff 则 ff-merge；否则 --close-only / 分支已在 main → 只关卡。
 # 合入前 main 卡头允许滞后；本脚本写关闭态。
 
 set -euo pipefail
@@ -166,6 +167,69 @@ print(f"[外仓] project={prefix} path={repo} branch={branch} HEAD={head} in_mai
 PY
 }
 
+# 跨仓收口：业务仓分支 ff 合入业务 main + 删分支（分叉则阻断整卡合入）
+close_business_repo() {
+  local path="$1" branch="$2"
+  "$PYTHON_BIN" - "$path" "$branch" <<'PY'
+import re, subprocess, sys
+from pathlib import Path
+
+sys.path.insert(0, ".")
+from server.board.registry import load_projects
+
+card = Path(sys.argv[1])
+branch = sys.argv[2]
+text = card.read_text(encoding="utf-8")
+m = re.search(r"项目：([^·\n]+)", text)
+prefix = m.group(1).strip() if m else ""
+projects = load_projects()
+by_prefix = {p.prefix: p for p in projects if p.prefix}
+entry = by_prefix.get(prefix)
+ccc = by_prefix.get("ccc")
+if entry is None or not entry.path_mac2017:
+    print("[外仓] 无业务仓（平台卡），跳过")
+    sys.exit(0)
+if ccc and entry.path_mac2017 == ccc.path_mac2017:
+    print("[外仓] 同 CCC 仓，跳过")
+    sys.exit(0)
+repo = entry.path_mac2017
+if not repo.startswith("/") or ".." in repo:
+    print(f"[外仓] 业务仓路径非法: {repo}")
+    sys.exit(2)
+
+remote = "origin/" + branch
+cmd = (
+    f"cd {repo} && "
+    f"git fetch -q origin >/dev/null 2>&1; "
+    f"if ! git rev-parse --verify {remote} >/dev/null 2>&1; then echo 'NO_BRANCH'; exit 0; fi; "
+    f"if git merge-base --is-ancestor {remote} origin/main >/dev/null 2>&1; then "
+    f"  git push origin --delete {branch} >/dev/null 2>&1 && echo 'MERGED_DELETED' || echo 'MERGED_DELETE_FAIL'; "
+    f"elif git merge-base --is-ancestor origin/main {remote} >/dev/null 2>&1; then "
+    f"  git merge --ff-only {remote} >/dev/null 2>&1 && git push -q origin main >/dev/null 2>&1 "
+    f"    && git push origin --delete {branch} >/dev/null 2>&1 && echo 'FF_MERGED_DELETED' || echo 'FF_MERGE_FAIL'; "
+    f"else echo 'DIVERGED'; exit 3; fi"
+)
+try:
+    out = subprocess.check_output(
+        [
+            "ssh",
+            "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=5",
+            "fan@192.168.3.116",
+            cmd,
+        ],
+        text=True,
+        stderr=subprocess.DEVNULL,
+        timeout=90,
+    ).strip()
+except (subprocess.SubprocessError, OSError) as exc:
+    print(f"[外仓] 业务仓收口失败（ssh 不可达）: {exc}")
+    sys.exit(2)
+print(f"[外仓] {prefix} {repo}: {out}")
+sys.exit(0)
+PY
+}
+
 close_card() {
   local path="$1"
   local today
@@ -234,6 +298,13 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
   git pull --ff-only origin main
+
+  # 跨仓收口：业务仓分支先合业务 main + 删（分叉阻断整卡，杜绝「卡关闭≠代码落地」）
+  if ! close_business_repo "$path" "$branch"; then
+    echo "[ERROR] ${id}: 业务仓收口失败（业务分支分叉/不可达）→ 整卡不合入。" >&2
+    echo "  处理：让执行体把业务分支 rebase 到业务 main 后再「合入批准」。" >&2
+    return 1
+  fi
 
   # 合入策略：ff / 已在 main 仅关卡 / 无分支或分叉时须 --close-only
   if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
