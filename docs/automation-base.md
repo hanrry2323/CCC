@@ -1,7 +1,7 @@
 # CCC 自动化基建 · 出卡 / 放行 / 验收（T52）
 
 > 状态：现行（2026-08-04 T52 落地）· 关联：`scripts/new-card.sh` · `deploy/release.sh` · `scripts/verify-shell.sh`
-> 任务卡 = 唯一事实源（`docs/dispatch/T<n>-<slug>.md`）；本页是三条自动化链路的用法与门禁说明。
+> 任务卡 = 唯一事实源（`docs/dispatch/<prefix>/`）；本页是三条自动化链路的用法与门禁说明。
 
 ## 一、链路总览
 

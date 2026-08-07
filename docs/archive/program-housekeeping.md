@@ -1,4 +1,6 @@
-# program 目录整理（服务端规范优先）
+# program 目录整理（服务端规范优先） · 史
+
+> **状态：史**（过时/过期文档清理归档，归档日期：2026-08-07）
 
 > **服务端（Mac2017）布局以 [`deploy/server-layout.md`](deploy/server-layout.md) 为 SSOT。**  
 > 本文保留客户端/历史整理原则；与 server-layout 冲突时以 server-layout 为准。

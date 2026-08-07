@@ -148,7 +148,7 @@ CCC（Hub + Engine + 通用阶段包）
   = 垂直 AI 工具
 ```
 
-完整介绍与 QX 首样板：[`INTRO.md`](INTRO.md) · [`vertical-qx.md`](vertical-qx.md)。
+完整介绍与 QX 首样板：[`INTRO.md`](INTRO.md) · [`archive/vertical-qx.md`](archive/vertical-qx.md)。
 
 ---
 
@@ -167,14 +167,14 @@ CCC（Hub + Engine + 通用阶段包）
 | 本文 `VISION.md` | 产品叙事 SSOT |
 | [`INTRO.md`](INTRO.md) | **对外完整介绍** |
 | [`INTRO-WALKTHROUGH.md`](INTRO-WALKTHROUGH.md) | 截图分镜 |
-| [`vertical-qx.md`](vertical-qx.md) | QX 竖切蓝图 |
+| [`archive/vertical-qx.md`](archive/vertical-qx.md) | QX 竖切蓝图 |
 | [`../README.md`](../README.md) | 对外首页 |
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 陌生人 10 分钟跑通 |
 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent / 维护者启动（省 token） |
 | [`USAGE.md`](USAGE.md) | 三类用户用法 |
 | [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 架构与演进全景 |
 | [`CONTROL.md`](CONTROL.md) | 运行控制面 |
-| [`ccc-hub-ports.md`](ccc-hub-ports.md) | Hub 端口与账密 |
+| [`archive/ccc-hub-ports.md`](archive/ccc-hub-ports.md) | Hub 端口与账密 |
 | [`deploy/topology.md`](deploy/topology.md) | Server/Client 拓扑 |
 | [`deploy/server-layout.md`](deploy/server-layout.md) | 服务端目录规范 |
 | [`deploy/migration-m1-to-2017.md`](deploy/migration-m1-to-2017.md) | M1→2017 迁移清单 |

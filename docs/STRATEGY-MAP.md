@@ -47,7 +47,7 @@
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
 | [`USAGE.md`](USAGE.md) | 三类用户 |
 | [`CONTROL.md`](CONTROL.md) | 控制面 |
-| [`ccc-hub-ports.md`](ccc-hub-ports.md) | Hub 端口 |
+| [`archive/ccc-hub-ports.md`](archive/ccc-hub-ports.md) | Hub 端口 |
 
 ---
 

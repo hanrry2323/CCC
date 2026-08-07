@@ -1,7 +1,7 @@
 # Getting Started — CCC Hub + Loop Engineer
 
 > 目标：陌生人 **10 分钟内**打开 Desktop，走通「战略讨论 → Agent 自动投意图链 → 自动进代办」。  
-> 叙事见 [`VISION.md`](VISION.md)。端口权威：[`ccc-hub-ports.md`](ccc-hub-ports.md)。  
+> 叙事见 [`VISION.md`](VISION.md)。端口权威：[`archive/ccc-hub-ports.md`](archive/ccc-hub-ports.md)。  
 > v0.64 发布：[`releases/v0.64.0.md`](releases/v0.64.0.md)。
 
 ---
@@ -39,7 +39,7 @@ bash scripts/install-hub-plist.sh --start
 ```
 
 浏览器打开：**http://127.0.0.1:7777**  
-登录：**用户名 `ccc` / 密码 `ccc`**（可用环境变量覆盖，见 `ccc-hub-ports.md`）
+登录：**用户名 `ccc` / 密码 `ccc`**（可用环境变量覆盖，见 `archive/ccc-hub-ports.md`）
 
 前台开发（不碰 launchd）：
 
@@ -90,7 +90,7 @@ bash scripts/ccc-autostart-guard.sh disable
 
 ## 5. 接入新项目（已有仓 / 空仓）
 
-权威：[`workspace-binding.md`](workspace-binding.md)
+权威：[`archive/workspace-binding.md`](archive/workspace-binding.md)
 
 ```bash
 mkdir -p ~/program/myapp   # 若全新
@@ -123,10 +123,10 @@ python3 scripts/ccc-failure-report.py --last 5
 |------|------|
 | 手机整页要滑才能见输入框 | 硬刷新 Hub；≥ v0.42.1 已用 fixed+dvh 锁视口 |
 | 下达后任务不动 | 控制面是否 `enable`？Board/Engine 是否在跑？看控制台与 `docs/observability.md` |
-| Hub 选不到新项目 | 是否有 `.ccc/board`？是否在 `~/program/`？见 [`workspace-binding.md`](workspace-binding.md) |
+| Hub 选不到新项目 | 是否有 `.ccc/board`？是否在 `~/program/`？见 [`archive/workspace-binding.md`](archive/workspace-binding.md) |
 | 对话串到别的仓 | 确认侧栏选中的项目；Agent cwd = 该项目根 |
 | 登录失败 | 确认 `CCC_CHAT_USER` / `CCC_CHAT_PASS`；默认 `ccc`/`ccc` |
-| 端口冲突 | 见 `ccc-hub-ports.md`；勿再开废弃 8084 |
+| 端口冲突 | 见 `archive/ccc-hub-ports.md`；勿再开废弃 8084 |
 
 更多：[`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
 
@@ -137,7 +137,7 @@ python3 scripts/ccc-failure-report.py --last 5
 | 你是… | 读 |
 |-------|-----|
 | 想理解「为什么不是角色超市」 | [`VISION.md`](VISION.md) |
-| 多项目绑定 / 新项目接入 | [`workspace-binding.md`](workspace-binding.md) |
+| 多项目绑定 / 新项目接入 | [`archive/workspace-binding.md`](archive/workspace-binding.md) |
 | 日常怎么用 | [`USAGE.md`](USAGE.md) |
 | Agent 改本仓库 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) |
 | 贡献代码 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |

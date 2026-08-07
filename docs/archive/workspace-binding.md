@@ -1,4 +1,6 @@
-# 项目绑定与接入 — Workspace Binding
+# 项目绑定与接入 — Workspace Binding · 史
+
+> **状态：史**（过时/过期文档清理归档，归档日期：2026-08-07）
 
 > **SSOT**：Hub 对话 Agent / 看板 / Engine 与「哪个文件夹」的绑定规则。  
 > 版本对齐：v0.51.0+ · 相关实现：`scripts/chat_server/`、`scripts/ccc-init.py`、`scripts/_workspace_registry.py`、`scripts/ccc-workspace-doctor.py`

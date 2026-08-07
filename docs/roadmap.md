@@ -38,7 +38,7 @@
 |------------|------|
 | 文档口径 | 先读 [`INDEX.md`](INDEX.md) §0 + [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) |
 | 项目注册 | [`projects/registry.yaml`](projects/registry.yaml)（唯一事实源） |
-| 竖切蓝图 | [`vertical-qx.md`](vertical-qx.md)（业务向，非 CCC 骨架） |
+| 竖切蓝图 | [`archive/vertical-qx.md`](archive/vertical-qx.md)（业务向，非 CCC 骨架） |
 
 **业务双轨（归档，非产品北星）**：[`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md)。
 

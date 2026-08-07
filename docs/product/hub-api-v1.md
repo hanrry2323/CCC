@@ -3,7 +3,7 @@
 # Hub API v1 — 编排契约（冻结草案）
 
 > **版本**：v1 · 对齐 [`hub-shell-roadmap.md`](hub-shell-roadmap.md) §7  
-> **主机**：Mac2017 Hub `:7777`（Basic Auth，默认见 [`../ccc-hub-ports.md`](../ccc-hub-ports.md)）  
+> **主机**：Mac2017 Hub `:7777`（Basic Auth，默认见 [`../archive/ccc-hub-ports.md`](../archive/ccc-hub-ports.md)）  
 > **原则**：产品主对话热路径在 **M1 sidecar `:7788`**；Hub `:7777` **只做** transfer / flow / board / ops / 健康（编排口）。远程双口见 [`hub-remote-management.md`](hub-remote-management.md)。破坏性变更 → **v2**。
 
 ---
