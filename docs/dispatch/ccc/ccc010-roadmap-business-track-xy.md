@@ -1,6 +1,6 @@
 # 任务卡 ccc010 · 总线路图：roadmap 增业务线路（xy）总览段（OpenCode 执行）
 
-> 关联：ccc-plan: 文档卫生与业务总线路图 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-07
+> 关联：ccc-plan: 文档卫生与业务总线路图 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 
