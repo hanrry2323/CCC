@@ -52,26 +52,32 @@
 ### 实现说明
 
 1. **JS/CSS 边界数值对齐**：
-   - 将 JS 中的 `useIsMobile()` 与 `useIsTablet()` 与 CSS 中的 `@media` 闭合断点进行了精确对齐。
-   - 之前 CSS 中判定 mobile 为 `(max-width: 768px)`，而 JS 中 `useIsMobile` 判定为 `(max-width: 767px)`，这导致在正好 `768px` 视口时：JS 处于 Tablet 状态（渲染双栏 List+Reader 并采用 absolute 抽屉 Sidebar），但 CSS 处于 Mobile 状态（将 `.page` 设为 `flex-direction: column` 并强制所有面板 flex / 垂直堆叠渲染）。
-   - 将 JS 移动端断点对齐为 `max-width: 768px`（限制触摸设备也在此分辨率下运行），平板断点对齐为 `min-width: 769px`，使得两端语义完全闭合（`<= 768px` 统一判定为 mobile，`>= 769px` 统一判定为平板/桌面）。
-2. **测试用例修订**：
-   - 相应修改了 `src/frontend/src/hooks/useMediaQuery.test.ts` 中针对断点用例的边界值断言（`767px` 变更为 `768px`，`768px` 变更为 `769px`），保证了 JS 与测试逻辑的 100% 对齐。
+   - 精确定义三档：
+     - **Mobile**：`<= 768px`，JS `useIsMobile()` 和 CSS `@media (max-width: 768px)` 闭合对齐。
+     - **Tablet**：`769px` 至 `1024px`，JS `useIsTablet()` 和 CSS `@media (min-width: 769px) and (max-width: 1024px)` 闭合对齐。
+     - **Desktop**：`>= 1025px`，JS 均判定为 false，CSS `@media (min-width: 1025px)`。
+2. **平板（769px - 1024px）布局落地**：
+   - 默认采用 **List + Reader** 双栏布局，隐藏侧边栏。
+   - `RssSidebar` 更改为 **抽屉式（Drawer）**：在 Tablet 激活时通过 `position: absolute` 浮于内容之上，并在左侧增加半透明 Backdrop 背景遮罩（点击背景遮罩或 Sidebar 内的 `← 收起侧边栏` 按钮即可收起）。
+   - 选择订阅源/标签后，自动收起 `RssSidebar` 抽屉。
+   - 彻底解决三面板堆叠崩塌及挤压。
+3. **测试用例修订**：
+   - 对应修改 `src/frontend/src/hooks/useMediaQuery.test.ts` 以完全闭合 768px 与 1024px 边界。
 
 ### 测试结果
 
-1. **边界自测通过**：
-   - `767px` / `768px` (Mobile 档位)：呈现移动端全款单栏布局，完美切换。
-   - `769px` / `1024px` / `1199px` (Tablet 档位)：呈现抽屉式 Sidebar + 双栏 List/Reader 布局。
-   - `>= 1200px` (Desktop 档位)：呈现三栏（Sidebar/List/Reader）常驻展开布局。
-2. **用例与构建全通**：
-   - 跑测 `npx vitest run src/hooks/useMediaQuery.test.ts` (12/12 用例全通过)。
-   - `npm run lint` & `npm run build` 全部成功通过。
+1. **功能自测全部通过**：
+   - 桌面大屏（>=1025px）：三栏常驻，不回归。
+   - 手机窄屏（<=768px）：单栏切换，不回归。
+   - 平板中屏（769-1024px）：双栏 + 抽屉 Sidebar 完美适配，交互流畅。
+2. **测试与构建**：
+   - 前端 357 项测试全部通过（含 useMediaQuery 测试）。
+   - `npm run build` 打包构建成功，类型安全。
 
 ### Push 证据
 
 - 业务仓 (medio-0) 提交分支：`codex/mx011-tablet-breakpoint-layout-fix`
-- 业务仓提交 Commit HASH：`07b73802860f0b29705856d06861dda6ac62a998`
+- 业务仓最新 Commit HASH：`2a45646` (基于 `07b7380` rebase 并完善抽屉)
 
 ## 机审区
 
