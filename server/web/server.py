@@ -919,11 +919,16 @@ def _compute_relay_stats() -> dict:
     url = _relay_health_url()
     if url:
         try:
+            import urllib.error
             import urllib.request
 
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                code = resp.status
+            try:
+                with urllib.request.urlopen(
+                    urllib.request.Request(url, method="GET"), timeout=3
+                ) as resp:
+                    code = resp.status
+            except urllib.error.HTTPError as exc:
+                code = exc.code  # 404 等错误码也说明服务在响应
             if code not in (200, 404):
                 healthy = False
                 alert = f"中转站健康探测异常（HTTP {code}）"
