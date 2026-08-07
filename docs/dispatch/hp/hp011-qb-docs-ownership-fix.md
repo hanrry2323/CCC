@@ -1,6 +1,6 @@
 # 任务卡 hp011 · qb 文档错归属存量修正（OpenCode 执行）
 
-> 关联：ccc-plan: HP 知识底座落地推进（存量落库/采集管道固化/qb 归属修正） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 知识底座落地推进（存量落库/采集管道固化/qb 归属修正） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
@@ -41,8 +41,38 @@ qb 文档错归属存量修正（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
+
+### 1. 实现说明
+- **QB 归属错置摸底**:
+  在 `domain_id = 42` (qb 领域) 下，原有 5 个错置的项目（`harness`, `root`, `rules`, `commands`, `tests`）以及 `docs` (project_id = 42)，共计 **103** 篇错归属文档。
+- **数据库修正执行**:
+  1. 新增 `qb` 项目：在 `projects` 中创建了 `name = 'qb', domain_id = 42` 项目，系统分配主键 ID 为 **32311**。
+  2. 统一 `project_id` 归属：将上述 6 个项目原有的 103 篇错散文档的 `project_id` 统一更新为 `32311` (`qb`)。
+  3. 统一 `chunks.project`：将这 103 篇文档所对应的 **1003** 个 chunks 的 `project` 字段一并更新为 `'qb'`。
+  4. 清理旧有错置项目：在 `projects` 中安全删除了原 `docs`, `harness`, `root`, `commands`, `rules`, `tests` (domain_id=42) 6 个项目，实现了完美的数据闭环。
+- **备份方案**:
+  落库前执行了完整的行级备份：
+  - `backup_documents_hp011` (103 rows)
+  - `backup_chunks_hp011` (1003 rows)
+  并制定了详细的回滚 SQL，记录在 `docs/knowledgebase/project-id-mapping-plan.md` 中。
+
+### 2. 测试与验证结果
+1. **参照完整性校验**:
+   在 `hp@hp` 生产数据库运行 `scripts/qa/verify_project_id_mapping.py`，结果:
+   - 字段一致性冲突数量: 0
+   - 存在于 chunks 但在 projects 表中不存在的 project 值 (排除 rss): []
+   - project_id 为 NULL 的文档总数: 0
+   - project_id 为 NULL 的文档对应的 chunks project 唯一值: []
+   - **整体状态**: `✓ 校验通过：参照完整性正常，未发现非法对账冲突。` (100% Green)
+2. **检索测试 (kb-search)**:
+   在 Mac2017 端运行 `kb-search search "qb"` 成功命中了整合后属于 `qb` 的代表性文档（例如 `01-test-plan.md`, `CLAUDE.md`, `2026-07-27-qb-domain-ship-gate.md`），相似度介于 `0.54 - 0.56` 之间。
+
+### 3. Commit & Push 证据 (Commit Hash)
+- **CCC 仓 (本仓)**: 提交至 `codex/hp011-qb-docs-ownership-fix`
+- **业务仓 (hp)**: 提交并 push 至同名分支 `codex/hp011-qb-docs-ownership-fix` (Commit Hash: `c5257dc`)
+- **部署机 (/data/knowledge)**: 本地 commit 至 `codex/hp011-qb-docs-ownership-fix` (Commit Hash: `518ab33`)
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+（无人工批注）
