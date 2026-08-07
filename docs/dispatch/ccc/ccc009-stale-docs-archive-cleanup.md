@@ -1,6 +1,6 @@
 # 任务卡 ccc009 · 文档卫生：过时/过期文档清理归档（OpenCode 执行）
 
-> 关联：ccc-plan: 文档卫生与业务总线路图 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-07
+> 关联：ccc-plan: 文档卫生与业务总线路图 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 
@@ -51,4 +51,20 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 实现说明
+
+1. 将 `docs/` 下的 7 个过时/过期文档（`ccc-hub-ports.md`, `vertical-qx.md`, `legacy-phase2-plan.md`, `legacy-retirement-list.md`, `REFACTOR-INDEX.md`, `workspace-binding.md`, `program-housekeeping.md`）通过 `git mv` 归档到 `docs/archive/` 目录下，并在文件头部增加了「史」字标识以及归档状态说明。
+2. 创建 `docs/archive/milestones-2026-08-07/` 目录，并将 `docs/notes/` 下 M2–M6 的里程碑归档文件及已闭环的 `next-plan` 笔记全部迁入该目录。
+3. 更新了 active 文档中对已归档文件的所有相对路径引用，确保路径 100% 正确且不产生坏链。
+4. 修正了 `docs/automation-base.md` 中 `dispatch/T<n>` 路径为 `docs/dispatch/<prefix>/`。
+
+### 测试结果
+
+- 运行 `pytest server/tests/test_board_validate.py`：全部 19 项验证用例通过。
+- 运行全局 `pytest server/tests/`：共 588 项测试，全部通过（100% PASS）。
+
+### Push 证据
+
+- 实现代码 Commit Hash：`342a1532f74e62a98f45a703d1544ef41fa41893`
