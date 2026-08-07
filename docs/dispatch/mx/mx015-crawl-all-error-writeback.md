@@ -60,3 +60,14 @@
 ### Push 证据
 - 业务仓分支：`codex/mx015-crawl-all-error-writeback`
 - 业务仓 Commit Hash：`3bc6d5dd3f4ad5b7d7c0de1c0862029505eb0588`
+
+## 机审区
+
+机审：通过
+- 审查摘要：范围 = medio-0 业务分支 `codex/mx015-crawl-all-error-writeback` 卡片 `3bc6d5dd3f4ad5b7d7c0de1c0862029505eb0588`（仅改 `src/backend/core/src/service/rss/crawler/scheduler.rs`，白名单内，未直推 main，未动表结构/前端）；CCC 仓 worktree 分支 `codex/mx015-crawl-all-error-writeback` 仅改卡文件（无平台越界）。对照验收标准逐条独立取证。
+- 发现清单：
+  - P1-1（已修复）：派生看板索引未随回写刷新——`~/.ccc/data/cards/cards.index.jsonl` 中 mx015 仍为 `state=待分派`、`written_at=未知`，致 CCC 探针 `python3 -m server.board.validate docs/dispatch` 报「索引对账失败: 状态不一致/回写时间不一致」并退出码 1。修复：跑 `load_dispatch_cards` 重建索引 → mx015 更新为 `已回写`/`2026-08-08`/`board_column=机审`，validate 退出码 0（运行时数据层修复，非 git 产物，无需提交）。
+  - P2（不阻断）：scheduler.rs 无 `#[test]`，新写回分支无单测覆盖；回写区「既有测试通过」未附 `cargo test` 输出（仅 cargo check + 手工自测）。建议后续补 crawl 错误写回单测。
+  - P2（不阻断）：「语义与 crawl_one 完全一致」经代码 diff 逐分支核对成立——Err 分支写 last_error/last_error_at/retry_count+1、成功（含 304）清理 last_error=NULL/last_error_at=NULL/retry_count=0、无 crawler 分支与 crawl_one 一致。无 P0。
+- 修复记录：P1-1 → 索引重建（运行时文件，非 commit）。
+- 复审结论：核对清单——(1) 正确性：语义逐分支与 crawl_one 一致，sqlite 绑定类型安全，schema 字段（006/014 迁移）已存在；(2) 契约一致：卡头/回写区/验收标准互相吻合；(3) 健壮性：错误写回用 `let _` 忽略写库失败不阻断主流程，与 crawl_one 同式；(4) 范围红线：唯一改动文件 `scheduler.rs`，无表结构/前端/无关文件，未直推 main，未写验收区/未置已关闭；(5) 验收标准：四条逐条对照——① 写回+清理语义✔（diff 实证）② 自测已记录＋`cargo check` 0 警告（实跑 exit 0）✔ ③ 白名单＋不直推 main ✔；(6) 人工批注：本卡无批注，不涉及。
