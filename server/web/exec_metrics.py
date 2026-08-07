@@ -10,6 +10,7 @@ macOS 上普通文件的 st_ctime 会随内容写入刷新，不能当「开始�
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -29,6 +30,34 @@ _CLAUDE_TOOL_RE = re.compile(
 
 # path → (mtime, size, stats)
 _log_stats_cache: dict[str, tuple[float, int, dict[str, int]]] = {}
+
+
+def marker_pid_alive(log_dir: Path, work_id: str) -> bool:
+    """``{id}.running`` / ``{id}-audit.running`` 标记含存活 PID → 真在途。
+
+    只按文件存在判定会把引擎崩溃/部署后遗留的死标记点亮 live 徽章，
+    让看板把已关闭卡显示成「进行中」。PID 全死或文件不存在 → False。
+    """
+    if log_dir is None:
+        return False
+    for name in (f"{work_id}.running", f"{work_id}-audit.running"):
+        marker = Path(log_dir) / name
+        try:
+            raw = marker.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        pids = [int(m) for m in re.findall(r"(?:pid|engine_pid|child_pid)=(\d+)", raw)]
+        for pid in pids:
+            if pid <= 1:
+                continue
+            try:
+                os.kill(pid, 0)
+                return True
+            except ProcessLookupError:
+                continue
+            except OSError:
+                return True
+    return False
 
 
 def strip_ansi(text: str) -> str:
@@ -292,7 +321,7 @@ def enrich_card_runtime(
         row["last_activity_at"] = timing["last_activity_at"]
     if timing.get("log_bytes") is not None:
         row["log_bytes"] = timing["log_bytes"]
-    row["metrics_live"] = bool(timing.get("live"))
+    row["metrics_live"] = marker_pid_alive(log_dir, wid)
 
     counts = parse_work_call_counts(log_dir, wid, force=force)
     # 有过执行痕迹就挂数字（含 0），跟卡走；纯无日志无 sidecar 不挂

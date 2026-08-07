@@ -1052,6 +1052,38 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     return n
 
 
+def cleanup_dead_markers(log_dir: Path) -> int:
+    """清扫任意卡状态下的死标记（``*.running``，含 ``*-audit.running``）。
+
+    引擎崩溃/部署后，非「执行中」卡（已关闭/待分派/打回）上的残留标记不会被
+    ``reclaim_orphaned_running`` 回收，会污染看板「进行中」视图并让 web 每轮
+    对死卡做全套富化。此处按 PID 存活判定：标记内所有 PID 已死（或无 PID）→
+    删除；任一 PID 存活（可能刚写完、子进程刚拉起）→ 保留，绝不误删在途任务。
+    """
+    n = 0
+    try:
+        markers = list(log_dir.glob("*.running"))
+    except OSError:
+        return 0
+    for marker in markers:
+        if not marker.is_file():
+            continue
+        try:
+            raw = marker.read_text(encoding="utf-8")
+        except OSError:
+            raw = ""
+        pids = _parse_running_marker_pids(raw)
+        if any(_pid_alive(p) for p in pids):
+            continue
+        try:
+            marker.unlink(missing_ok=True)
+            n += 1
+            logger.info("清理死标记: %s", marker.name)
+        except OSError:
+            pass
+    return n
+
+
 def _write_running_marker(
     log_dir: Path,
     work_id: str,
@@ -1368,6 +1400,7 @@ def run_once(
     pool = get_dispatch_pool()
     audit_pool = get_audit_pool()
     reclaimed = reclaim_orphaned_running(store, log_dir)
+    dead_markers_cleaned = cleanup_dead_markers(log_dir)
 
     git_sync_ok = True
     git_sync_detail = ""
@@ -1556,6 +1589,7 @@ def run_once(
         "collected": collected,
         "timed_out": timed_out,
         "reclaimed": reclaimed,
+        "dead_markers_cleaned": dead_markers_cleaned,
         "probe_skips": probe_skips,
         "parent_skips": parent_skips,
         "none_skips": none_skips,
@@ -1583,6 +1617,7 @@ def run_once(
                 "dispatched": dispatched,
                 "in_flight": in_flight,
                 "scanned": len(pending),
+                "dead_markers_cleaned": dead_markers_cleaned,
                 "audit_dispatched": audit_dispatched,
                 "audit_in_flight": audit_in_flight,
                 "audit_pending": audit_pending,
@@ -1611,6 +1646,7 @@ def run_once(
             audit_failed=audit_failed,
             audit_failed_infra=audit_failed_infra,
             reclaimed=reclaimed,
+            dead_markers_cleaned=dead_markers_cleaned,
             worktrees_cleaned=worktrees_cleaned,
         )
     except Exception:

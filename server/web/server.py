@@ -1075,7 +1075,7 @@ def _compose_board_items(items):
                 closed_at = closed_map.get(rel, "")
         if not audited and base_state(new_state) == "已回写":
             # 机审列状态标签：审核中 / 冷却中 / 修复中 / 待审
-            if log_dir and _audit_marker_alive_web(log_dir, item.id):
+            if log_dir and _marker_alive_web(log_dir, item.id, audit=True):
                 audit_status = "审核中"
             elif _infra_cooldown_active_web(rt, now_ts):
                 audit_status = "冷却中"
@@ -1101,9 +1101,14 @@ def _compose_board_items(items):
     return out
 
 
-def _audit_marker_alive_web(log_dir, card_id: str) -> bool:
-    """``{id}-audit.running`` 标记含存活 PID → 机审进行中。"""
-    marker = Path(log_dir) / f"{card_id}-audit.running"
+def _marker_alive_web(log_dir, card_id: str, *, audit: bool = False) -> bool:
+    """``{id}.running`` / ``{id}-audit.running`` 标记含存活 PID → 在途。
+
+    只按文件存在判定会把引擎崩溃/部署后遗留的死标记当成「进行中」，
+    污染 /tasks/running 与看板 live 徽章，并让每轮轮询对死卡做全套富化。
+    """
+    name = f"{card_id}-audit.running" if audit else f"{card_id}.running"
+    marker = Path(log_dir) / name
     try:
         raw = marker.read_text(encoding="utf-8")
     except OSError:
@@ -1234,12 +1239,12 @@ def _load_running_tasks() -> dict[str, Any]:
         col = _board_column(item.state, bool(getattr(item, "machine_audit_passed", False)))
         live_marker = False
         if log_dir is not None:
-            live_marker = (log_dir / f"{item.id}.running").is_file() or (
-                log_dir / f"{item.id}-audit.running"
-            ).is_file()
+            live_marker = _marker_alive_web(log_dir, item.id) or _marker_alive_web(
+                log_dir, item.id, audit=True
+            )
         if base != "执行中" and col != "机审" and not live_marker:
             continue
-        metrics = get_worktree_metrics(item.id, force=True)
+        metrics = get_worktree_metrics(item.id, force=False)
         task: dict[str, Any] = {
             "work_id": item.id,
             "title": item.title,
@@ -1261,7 +1266,9 @@ def _load_running_tasks() -> dict[str, Any]:
         if log_dir is not None:
             timing = running_timing(log_dir, item.id, now=now)
             task.update(timing)
-            task["metrics_live"] = bool(timing.get("live"))
+            task["metrics_live"] = _marker_alive_web(
+                log_dir, item.id
+            ) or _marker_alive_web(log_dir, item.id, audit=True)
             counts = parse_work_call_counts(log_dir, item.id)
             task["tool_calls"] = int(counts["tool_calls"] or 0) + int(counts["shell_calls"] or 0)
             task["shell_calls"] = counts["shell_calls"]

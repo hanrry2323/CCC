@@ -626,6 +626,34 @@ class TestFileBoardStore:
         assert n == 0
         assert store.list_work(state=State.RUNNING)[0].id == "child1"
 
+    def test_cleanup_dead_markers_removes_only_dead(self, tmp_path: Path) -> None:
+        """死标记（PID 全死/无 PID）删除，活标记保留——不依赖卡状态。"""
+        import os
+
+        from server.engine.main import cleanup_dead_markers
+
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "dead1.running").write_text(
+            "engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
+            encoding="utf-8",
+        )
+        (log_dir / "nopid.running").write_text("garbage\n", encoding="utf-8")
+        (log_dir / "live1.running").write_text(
+            f"engine_pid={os.getpid()}\npid={os.getpid()}\n",
+            encoding="utf-8",
+        )
+        (log_dir / "live1-audit.running").write_text(
+            f"pid={os.getpid()}\n",
+            encoding="utf-8",
+        )
+        n = cleanup_dead_markers(log_dir)
+        assert n == 2
+        assert not (log_dir / "dead1.running").exists()
+        assert not (log_dir / "nopid.running").exists()
+        assert (log_dir / "live1.running").is_file()
+        assert (log_dir / "live1-audit.running").is_file()
+
     def test_claim_running_marker_writes_pid(self, tmp_path: Path) -> None:
         import os
 

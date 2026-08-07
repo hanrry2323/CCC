@@ -1539,6 +1539,44 @@ class TestTasksRunning:
         assert "→ Read x" in t["log_tail"] or t["log_tail"][-1].endswith("Read x")
         assert t.get("log_bytes", 0) > 0
 
+    def test_stale_dead_pid_marker_not_treated_as_running(self, api_server, tmp_path, monkeypatch):
+        """死 PID 残留标记不点亮进行中：已关闭卡不进 /tasks/running、live 徽章为 False。
+
+        引擎崩溃/部署后遗留的死标记不应让看板把死卡当「进行中」并每轮富化。
+        """
+        import os
+
+        from server.web import server as srv
+        from server.board.models import BoardItem
+
+        log_dir = tmp_path / "exec-logs"
+        log_dir.mkdir()
+        # 死 PID 标记（已关闭卡残留）
+        (log_dir / "Tdead.running").write_text(
+            f"engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
+            encoding="utf-8",
+        )
+        # 活 PID 标记
+        (log_dir / "Talive.running").write_text(
+            f"pid={os.getpid()}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("EXECUTOR_LOG_DIR", str(log_dir))
+        monkeypatch.setattr(
+            srv,
+            "_load_board_items",
+            lambda: [
+                BoardItem(id="Tdead", title="残留死标记", state="已关闭", executor="OpenCode"),
+                BoardItem(id="Talive", title="活标记", state="已回写", executor="OpenCode"),
+            ],
+        )
+        status, data = _get(api_server, "/tasks/running")
+        assert status == 200
+        ids = {t["work_id"] for t in data["tasks"]}
+        assert ids == {"Talive"}
+        by_id = {t["work_id"]: t for t in data["tasks"]}
+        assert by_id["Talive"]["metrics_live"] is True
+
 
 # ── T21 运维兼容接口：/ops/summary ──
 
@@ -1723,14 +1761,14 @@ class TestAuditStatusTag:
     def test_audit_marker_alive_web(self, tmp_path):
         import os
 
-        from server.web.server import _audit_marker_alive_web
+        from server.web.server import _marker_alive_web
 
         marker = tmp_path / "x1-audit.running"
         marker.write_text(f"engine_pid={os.getpid()}\npid={os.getpid()}\n", encoding="utf-8")
-        assert _audit_marker_alive_web(tmp_path, "x1") is True
+        assert _marker_alive_web(tmp_path, "x1", audit=True) is True
         marker.write_text("pid=99999999\n", encoding="utf-8")
-        assert _audit_marker_alive_web(tmp_path, "x1") is False
-        assert _audit_marker_alive_web(tmp_path, "nope") is False
+        assert _marker_alive_web(tmp_path, "x1", audit=True) is False
+        assert _marker_alive_web(tmp_path, "nope", audit=True) is False
 
     def test_infra_cooldown_active_web(self):
         from server.web.server import _infra_cooldown_active_web

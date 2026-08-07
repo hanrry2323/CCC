@@ -64,6 +64,27 @@ def test_running_timing_freezes_without_marker(tmp_path: Path) -> None:
     assert em.parse_log_call_counts(log, force=True)["tool_calls"] == 1
 
 
+def test_marker_pid_alive_only_true_for_live_pid(tmp_path: Path) -> None:
+    """死 PID 残留标记不点亮 live；活 PID（本进程）点亮；audit 标记同规则。"""
+    import os
+
+    em.clear_exec_metrics_cache()
+    wid = "Tmark"
+    (tmp_path / f"{wid}.running").write_text(
+        "engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
+        encoding="utf-8",
+    )
+    assert em.marker_pid_alive(tmp_path, wid) is False
+
+    (tmp_path / f"{wid}.running").write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+    assert em.marker_pid_alive(tmp_path, wid) is True
+
+    # audit 标记：活 PID 也点亮；不存在的标记 → False
+    (tmp_path / f"{wid}-audit.running").write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+    assert em.marker_pid_alive(tmp_path, wid) is True
+    assert em.marker_pid_alive(tmp_path, "Tmissing") is False
+
+
 def test_card_wants_runtime_columns() -> None:
     assert em.card_wants_runtime({"state": "已回写"}) is True
     assert em.card_wants_runtime({"state": "执行中"}) is True
