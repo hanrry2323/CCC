@@ -1,6 +1,6 @@
 # 任务卡 mx007 · 设置页路径输入前端校验（OpenCode 执行）
 
-> 关联：ccc-plan: mx 打磨第一批：后端格式门禁 + 设置页路径校验 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx 打磨第一批：后端格式门禁 + 设置页路径校验 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -48,8 +48,22 @@ medio-0 打磨第一批（按 mx005 清单第 6 项）：设置页路径输入�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 实现说明
+1. 实现了前端路径安全校验函数 `validatePath`（位于 `src/frontend/src/lib/pathValidation.ts`），其规则与后端 `validate_path` 保持完全一致：
+   - 拦截空值；
+   - 拦截长度超过 1024 字节的路径；
+   - 拦截含有 `..` 相对穿越的路径；
+   - 拦截包含 NUL 字符与控制字符（除 `\t` 外）的路径；
+   - 拦截非绝对路径（必须以 `/` 开头）。
+2. 在 `LibrariesSection.tsx` 的 `handleAddPathClick` 函数中引入该校验，对非法路径即时拦截，并使用已有的 `addToast` 进行体验良好的错误提示（且不清除输入框内容以便用户修正），合法路径则正常提交。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+- 补充了 Vitest 测试用例 `src/frontend/src/lib/pathValidation.test.ts`，覆盖了合法路径、空值、`..` 穿越、非法字符及边界路径。
+- 在 `medio-0` 前端运行 `npm run test`，全部 28 个测试文件（363 个测试用例）均通过。
+- 运行 `npm run lint` 与 `npm run build`，类型检查与打包完全零警告、零错误通过。
+
+### push 证据
+- **分支**：`codex/mx007-settings-path-frontend-validation`
+- **提交哈希**：`afe8e5194cd39eac42edb4004c803c8afaa8f99a`
