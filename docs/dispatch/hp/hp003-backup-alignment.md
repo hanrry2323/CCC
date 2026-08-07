@@ -261,3 +261,47 @@
 - **服务端（验收 #1/2/3）**：独立实测通过，保留。
 - **hp 业务仓（验收 #4）**：P1-1/P1-2/P1-3 全数沿用、零修复。
 - **范围属性**：跨仓/跨分支交付缺陷，机审工作区无法安全就地修复（避免污染 hp002）。
+
+### 第 6 轮机审（本审查新增 · 独立重验）
+
+**机审方**：Claude Code（2017 机审席） · 日期：2026-08-07 · 轮次：第 6 轮独立重验
+
+**机审：不通过（3 项 P1 · 范围性问题 · 连续第 6 轮未闭环 · 非0退出）**
+
+#### 本审查独立取证（hp 业务仓实测，非沿用前轮）
+
+在 `/Users/fan/program/apps/hp` 实测（本审查自主执行，非引用前轮文本）：
+- `git branch -a` → 仅 `main` + `codex/hp002-monitoring-git-probe`（hp002 卡分支）+ 对应远端；**仍不存在 `codex/hp003-backup-alignment`**（P1-2 未修复）。
+- `git status` → `docs/knowledgebase/BACKUP.md` **仍 untracked（未 commit）**，验收 #4「文档落 hp 仓」未达成（P1-1 未修复）。
+- 最近 commit 无任何备份/hp003 交付；回写区 push 证据仍为 `265d650`（CCC 仓任务卡提交，非 hp 业务 hash）（P1-3 未修复）。
+
+工作树 `/Users/fan/program/ccc-dev-ws-hp003` HEAD 为 `1a0e1ccc`（第 5 轮不通过），干净，执行体自第 1 轮判定「不通过」后**未做任何再交付**。
+
+#### 第 6 轮发现清单（与第 1/2/3/4/5 轮逐项一致、均未修复）
+
+| # | 级别 | 第 6 轮实测 | 问题 |
+|---|------|-----------|------|
+| P1-1 | P1 | hp 仓 `docs/knowledgebase/BACKUP.md` 仍 untracked | 未 commit，验收 #4 未达成 |
+| P1-2 | P1 | 无 `codex/hp003-backup-alignment` 分支，产物仍在 hp002 卡分支 | 跨卡污染，触犯红线 #1 |
+| P1-3 | P1 | push 证据 `265d650` 仍指向 CCC 仓任务卡提交，hp 仓无此对象 | 证据不成立/误导 |
+
+#### 修复记录
+
+- 本轮**无可就地修复项**：3 项 P1 均属 hp 业务仓跨仓/跨分支交付闭合问题，修复动作全部落在 `/Users/fan/program/apps/hp`（从 `origin/main` 新建 `codex/hp003-backup-alignment` 分支 / `git add` commit / push），不在本机审工作区（CCC 仓 worktree）可及范围。
+- hp 仓仍处 hp002 卡活动分支 `codex/hp002-monitoring-git-probe`；机审在 hp 仓建分支/commit 将把 hp003 产物连带 hp002 工作区一起动，正是本卡红线 #1「互划界防并发冲突」要防的场景 → 依规**不越界代改业务仓**。
+
+#### 第 6 轮复审结论 / 打回方向（交执行体 OpenCode 重交付）
+
+- **机审：不通过**。服务端改造与验证（验收 #1/2/3，历轮已实测通过）保留；下列 3 项必须由执行体在 hp 仓完成重交付，已连续 6 轮零修复，请执行体认真闭环：
+  1. 在 hp 仓 `git fetch origin` 后从 `origin/main` 新建并经 `git checkout -b codex/hp003-backup-alignment` 承载本卡产物，`git add docs/knowledgebase/BACKUP.md` → commit → push，回写**真实 hp 仓 commit hash**；
+  2. 禁止用 hp002 卡分支承载本卡产物；
+  3. 修订回写区「commit+push 证据」，去除指向 CCC 仓的 `265d650`，改填 hp 仓真实 hash。
+- 另：卡头状态字段仍为「待分派」，未随执行体回写更新为「已回写」，属回写不规范（doc-level）。
+- 修毕再派机审。本审查不越界代改 hp 业务仓。
+
+#### 第 6 轮审查摘要
+
+- **机审结论**：不通过 · 连续 6 轮未闭环 · 非0退出。
+- **服务端（验收 #1/2/3）**：历轮独立实测通过，保留。
+- **hp 业务仓（验收 #4）**：P1-1/P1-2/P1-3 全数沿用、连续 6 轮零修复。
+- **范围属性**：跨仓/跨分支交付缺陷，机审工作区无法安全就地修复（避免污染 hp002）。
