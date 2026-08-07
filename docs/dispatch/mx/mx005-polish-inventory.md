@@ -1,6 +1,6 @@
 # 任务卡 mx005 · polish inventory for code and UI（OpenCode 执行）
 
-> 关联：ccc-plan: mx 打磨线启动：服务健康巡检 + 打磨盘点 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx 打磨线启动：服务健康巡检 + 打磨盘点 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -50,8 +50,18 @@ medio-0 打磨线启动摸底（纯只读，不开发）：盘点现有代码质
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 实现说明
+1. **代码质量摸底**：深入审计了 `medio-0` 的 `.github/workflows/ci.yml`、`Cargo.toml` / `Cargo.lock`、`eslint.config.js` / `.prettierrc` 以及 `tests/` 结构与覆盖率情况。识别出：后端格式化 CI/Hook 检查缺失、tarpaulin 覆盖率排除范围过大、前端测试覆盖率未在 CI 门禁中运行、历史依赖漏洞等代码质量缺陷。
+2. **功能细节摸底**：通过 `lessons.md` 梳理了 iOS 视频播放权限、随机 refill 串文件夹和网络盘抖动误删等核心教训，并对 `issues.jsonl` 台账进行了全面扫描，发掘了设置页前端校验、认证暴破、敏感操作无速率限制等痛点。
+3. **UI/UX 细节摸底**：分析了 Tailwind 4 / shadcn 的 CSP 兼容现状，以及移动端大操作触控、确认弹窗等细节。
+4. **打磨点输出**：整理归纳出 9 项具体打磨点（3类，含现状、建议动作与预估成本 S/M/L），全量追加到 `docs/roadmap.md` 的「业务线路（mx）」打磨点清单子段中。
+5. **项目 README 更新**：同步更新 `docs/projects/mx/README.md`「线路 / 近况」为 “打磨盘点完成，清单挂 roadmap（mx005）”。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试与自检结果
+1. **业务仓零改动校验**：运行 `git -C /Users/fan/program/apps/medio-0 status -sb`，确认本地未对业务仓进行任何修改，符合只读红线。
+2. **本地卡头自检**：运行 `python3 -m server.board.validate docs/dispatch`，卡头及格式校验 100% 通过。
+
+### push 证据
+- Commit Hash: `b56fa4e5d753cd249a7bcbb8dbb0befc121fa449`
