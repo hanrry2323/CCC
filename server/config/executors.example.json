@@ -7,7 +7,7 @@
       "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
       "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；若卡含 ## 人工批注（老板最高开发指令），必须先按批注修订目标/步骤，完成后在回写区填 ## 批注落实 说明如何落实；完成后 commit+push 到卡内指定分支（勿直推 main）；若业务仓（registry 指向的仓）有改动，必须 push 到该仓同名 codex 分支（勿直推业务 main，合入批准会跨仓收口）；更新卡头为已回写并填回写区。禁止自置已关闭、禁止写验收区/机审区。\"",
+      "参数模板": "run --auto --model loop/flash --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；若卡含 ## 人工批注（老板最高开发指令），必须先按批注修订目标/步骤，完成后在回写区填 ## 批注落实 说明如何落实；完成后 commit+push 到卡内指定分支（勿直推 main）；若业务仓（registry 指向的仓）有改动，必须 push 到该仓同名 codex 分支（勿直推业务 main，合入批准会跨仓收口）；更新卡头为已回写并填回写区。禁止自置已关闭、禁止写验收区/机审区。\"",
       "工作目录": "",
       "worktree_base": "",
       "备注": "2017 默认开发（6102）。停在已回写；机审由验收席（自验收，同工具）自动拉起。"
@@ -27,7 +27,7 @@
       "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
       "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
+      "参数模板": "run --auto --model loop/flash --dir {worktree} \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）\"",
       "工作目录": "",
       "worktree_base": "",
       "备注": "维护默认 OpenCode"
@@ -56,7 +56,7 @@
       "分类": "可后台 CLI",
       "当前绑定": "OpenCode",
       "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"你是 2017 机审席。任务卡 {card_path}（work {work_id}）已回写。你以验收席身份独立审查——即使开发者与你同工具，也按独立审查执行，不因同工具放水。核对 git log/diff 与验收标准；若卡含 ## 人工批注（老板最高开发指令），必须核对批注落实（含回写区 ## 批注落实），未落实 → 机审：不通过（原因=未按批注修订）。发现 P0/P1 → 在 worktree 分支就地修复并 commit+push，按清单复审；通过则把 ## 机审区 写 机审：通过 到 worktree 卡文件（engine 会提交推送）；不通过把原因写进 audit 输出并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。\"",
+      "参数模板": "run --auto --model loop/flash --dir {worktree} \"你是 2017 机审席。任务卡 {card_path}（work {work_id}）已回写。你以验收席身份独立审查——即使开发者与你同工具，也按独立审查执行，不因同工具放水。核对 git log/diff 与验收标准；若卡含 ## 人工批注（老板最高开发指令），必须核对批注落实（含回写区 ## 批注落实），未落实 → 机审：不通过（原因=未按批注修订）。发现 P0/P1 → 在 worktree 分支就地修复并 commit+push，按清单复审；通过则把 ## 机审区 写 机审：通过 到 worktree 卡文件（engine 会提交推送）；不通过把原因写进 audit 输出并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。\"",
       "工作目录": "",
       "worktree_base": "",
       "备注": "Claude 开发后自动机审；人侧合入批准"
