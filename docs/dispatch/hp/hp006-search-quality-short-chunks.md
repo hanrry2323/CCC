@@ -1,6 +1,6 @@
 # 任务卡 hp006 · 搜索质量：短chunk清理与检索相关性调优（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
