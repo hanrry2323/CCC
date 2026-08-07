@@ -65,3 +65,7 @@
 - 业务仓 `xianyu` 提交信息：
   - 分支：`codex/xy018-config-drift-fix`
   - 提交 Hash：`7bc8902df595b1da42a19b8832a82fa2c5a0899f`
+
+## 机审区
+
+机审：通过
