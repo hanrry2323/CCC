@@ -1,7 +1,8 @@
 # 开发通道 — 谁改 CCC（2026-08-07 北星）
 
 > **老板面**：主 IDE 谈意图 → 确认 `ccc-plan` → 盯看板；中间自动。  
-> **Mac2017**：**OpenCode = 开发**；回写后 **Claude（或交叉对家）= 机审**（质量门）。  
+> **Mac2017**：**谁开发谁验收（自验收，2026-08-07 起）**；回写后机审 = 验收席按
+> **code-review 技能**做完整审查（P0/P1 就地修复复审闭环），质量门。  
 > **人侧**：**「合入批准」** = 审 diff 后 ff-merge+关卡（旧称「验收看板」）。  
 > 竖切：[`north-star-slice.md`](north-star-slice.md)
 
@@ -9,11 +10,11 @@
 
 | 席位 | 绑定 | 做什么 |
 |------|------|--------|
-| **OpenCode** | 2017 默认开发（6102） | 写码 → 已回写；不自验、不写机审/验收区 |
-| **Claude Code** | 2017 默认机审（6100）；可点名开发 | 机审写 `## 机审区` |
+| **OpenCode** | 2017 默认开发（6102） | 写码 → 已回写；机审由验收席（同工具）独立审查 |
+| **Claude Code** | 2017 可点名开发（6100）；机审席 | 机审 = code-review 技能完整审查 + 就地修复复审 |
 | **Codex** | 管理席 | 出卡/裁决 |
 | **Cursor** | 难度突击 | 写码；不代关卡 |
-| **主 IDE** | 中枢 | `plan-to-cards`；说「合入批准」 |
+| **M1 Claude/主 IDE** | 合入执行体 | 取证 → 人话 diff 摘要 → 等「合入批准」→ approve-merge；不做二次审查 |
 
 ## 主路径
 
@@ -21,13 +22,15 @@
 确认 ccc-plan → plan-to-cards（一次多卡 push）
   → 2017 自动 pull → Engine 派发 OpenCode → worktree
   → 机械门禁（新 commit + 非空 diff）→ 已回写
-  → Engine 拉 Claude 机审 → ## 机审区 通过 → ready_for_merge
+  → Engine 拉验收席机审（code-review 技能，P0/P1 就地修复复审）→ 分支信封 `## 机审区` 通过
+  → ready（= `git show origin/<分支>:<卡>` 含机审通过）
   → 老板审 diff →「合入批准」→ approve-merge.sh → 已关闭
 ```
 
 质量过不过看机审/门禁 exit code，不看口头流程。「验收看板」及旧同义句 = **合入批准** 别名。
 
-Claude 点名开发时：机审为 OpenCode（交叉）。
+自验收：OpenCode 开发 → OpenCode 机审；Claude 开发 → Claude 机审。机审仍是独立步骤
+（开发禁止写机审区；验收席即使与开发同工具，也按独立审查执行），老板人审不可省。
 
 ## 红线
 

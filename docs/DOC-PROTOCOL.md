@@ -125,6 +125,20 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 
 废弃手维：`docs/kb-seed/`。
 
+### 3.1 仓库位置规范（硬 · 2026-08-07）
+
+业务仓路径必须落在归属树内（`registry.yaml` 每项目 `location` 字段，`server.board.registry.check_path_locations` 校验）：
+
+| location | 允许树 | 说明 |
+|----------|--------|------|
+| `m1-program` | `~/program/<name>`（M1） | M1 业务/基建仓 |
+| `mac2017-apps` | `~/program/apps/<name>`（2017） | 2017 业务仓 |
+| `mac2017-platform` | `~/program/CCC`（2017 例外） | 平台本体 |
+| `legacy` | 不限 | 散落仓（QuantHive `~/ZCodeProject`、qx-map `~/qx-map` 等）只标注不迁移 |
+
+- 新注册项目必须标 `location`；路径越界 → 校验红。
+- 文件夹归位搬迁为独立运维项（停机窗口一仓一验），搬迁后 registry 路径随迁移更新。
+
 ### 档案五节模板（强制）
 
 1. **是什么**（一句话）  

@@ -27,6 +27,7 @@ class ProjectEntry:
     role: str
     path_m1: str | None
     path_mac2017: str | None
+    location: str = ""
 
 
 def _as_bool(v: Any) -> bool:
@@ -136,6 +137,7 @@ def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
         path_mac2017=(
             str(paths["mac2017"]) if paths.get("mac2017") not in (None, "") else None
         ),
+        location=str(raw.get("location") or "").strip(),
     )
 
 
@@ -160,6 +162,54 @@ def load_projects(registry_path: str | None = None) -> tuple[ProjectEntry, ...]:
 
 def clear_registry_cache() -> None:
     load_projects.cache_clear()
+
+
+def check_path_locations(
+    projects: tuple[ProjectEntry, ...] | list[ProjectEntry] | None = None,
+) -> list[str]:
+    """仓库路径归属校验：非遗留项目路径必须落在所属 location 树内。
+
+    location 取值（逗号分隔可多个）：
+    - ``m1-program``：M1 业务根 ``~/program/``
+    - ``mac2017-apps``：2017 业务根 ``~/program/apps/``
+    - ``mac2017-platform``：2017 平台例外（CCC 本体 ``~/program/CCC``）
+    - ``legacy``：散落仓豁免（只标注不迁移）
+
+    返回问题清单（空 = 合规）。只做结构校验，不因校验失败阻断既有调用。
+    """
+    issues: list[str] = []
+    projects = projects if projects is not None else load_projects()
+    for p in projects:
+        tags = {t.strip() for t in (p.location or "").split(",") if t.strip()}
+        label = p.prefix or p.id or "?"
+        if not tags:
+            issues.append(
+                f"{label}: 缺 location（mac2017-apps / m1-program / mac2017-platform / legacy）"
+            )
+            continue
+        if "legacy" in tags:
+            continue
+        if p.path_m1:
+            if "m1-program" not in tags:
+                issues.append(f"{label}: M1 有路径 {p.path_m1} 但 location 缺 m1-program")
+            elif "/program/" not in p.path_m1:
+                issues.append(f"{label}: M1 路径越界 {p.path_m1}（须在 ~/program/ 下）")
+        if p.path_mac2017:
+            if "mac2017-apps" not in tags and "mac2017-platform" not in tags:
+                issues.append(
+                    f"{label}: 2017 有路径 {p.path_mac2017} 但 location 缺 mac2017-apps/platform"
+                )
+            elif "mac2017-apps" in tags and "/program/apps/" not in p.path_mac2017:
+                issues.append(
+                    f"{label}: 2017 路径越界 {p.path_mac2017}（业务仓须在 ~/program/apps/ 下）"
+                )
+            elif "mac2017-platform" in tags and (
+                "/program/" not in p.path_mac2017 or "/program/apps/" in p.path_mac2017
+            ):
+                issues.append(
+                    f"{label}: 2017 平台路径异常 {p.path_mac2017}（平台例外 ~/program/CCC）"
+                )
+    return issues
 
 
 def card_prefixes(registry_path: str | None = None) -> dict[str, str]:

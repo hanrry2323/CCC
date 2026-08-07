@@ -106,6 +106,9 @@ $PYTHON_BIN -m server.engine.main --config <config.env> --once  # 单次扫描 +
 - **自验收（2026-08-07 四改）**：谁开发谁验收（OpenCode↔OpenCode / Claude↔Claude），
   日常单工具闭环；机审仍是独立步骤（开发禁止写机审区，验收席同工具也按独立审查执行），
   老板「合入批准」人审 diff 不可省。
+- **机审判定与状态（2026-08-07 五改）**：业务结论优先（「机审：不通过」绝不被日志弱特征
+  误判 infra）；infra 连续 3 次回待分派人工跟进；`EXECUTOR_AUDIT_TIMEOUT_SECONDS` 独立
+  审计超时；看板机审列状态标签 = 审核中 / 冷却中 / 修复中 / 待审。
 - **主树干净化**：`FileBoardStore` 有 `log_dir` 时 `save_work` 只写运行时 sidecar
   （`state/cards.jsonl`：state/retry_count/reason/redispatch），不写卡文件；看板以
   「git 卡真相 + 运行时状态 + 分支信封证据」合成。git_sync 对卡文件强制以 main 为准。

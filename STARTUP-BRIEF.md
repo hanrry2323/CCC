@@ -18,7 +18,8 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 **席位（硬，2026-08-07 · 北星）**：
 - **OpenCode** = 2017 默认**开发**（6102）
-- **Claude Code** = 2017 默认**机审**；亦可点名开发（则 OpenCode 机审）
+- **自验收（2026-08-07 起）**：谁开发谁验收（OpenCode↔OpenCode / Claude↔Claude）
+- **机审** = 验收席按 **code-review 技能**完整审查（P0/P1 就地修复复审）；开发禁止写机审区
 - **合入批准** = 人审 diff 后唯一常规动作（[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；旧称「验收看板」）
 - **Codex** = 出卡/裁决 · **Cursor** = 突击（均不响应合入口令代关卡）
 - **HTTP 看板** = 实时面；Desktop 暂缓
@@ -26,7 +27,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md)。  
 **cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`。  
 **北星命令**：`scripts/plan-to-cards.sh` · `GET /board/ready_for_merge` · `scripts/approve-merge.sh` / `scripts/card-evidence.sh`。  
-**合入硬路由**：听到「合入批准」（旧称「验收看板」等同义）→ approve-merge / north-star-slice；质量靠机审 exit code，**禁止**代写机审区。
+**合入硬路由**：听到「合入批准」（旧称「验收看板」等同义）→ approve-merge / north-star-slice；ready = 分支信封 `git show origin/<分支>:<卡>` 含机审通过；**禁止**代写机审区。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图；共识必须写入权威链文档（`docs/INDEX.md` §0）再应用。
 
@@ -55,7 +56,7 @@ SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) ·
   → 看板/线路图视图实时反映进度
 ```
 
-自研期标准链路：IDE/Codex 出卡 → push main → 2017 自动 pull → Engine 派发 → worktree → 验收 → 合入部署。
+自研期标准链路：IDE/Codex 出卡 → push main → 2017 自动 pull → Engine 派发 → worktree → 机审（code-review 技能）→ ready（分支证据）→ 老板「合入批准」（人审 diff）→ 合入部署。
 
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
 架构：[`docs/architecture.md`](docs/architecture.md)  

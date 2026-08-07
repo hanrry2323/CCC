@@ -56,6 +56,8 @@
 | **S2a ops 旧端口去红** | opsRed 去掉 7775/7777；config.md 对齐 topology | ✅ |
 | **S2b registry 单源接线** | PREFIXES/taskable ← registry.yaml | ✅ ccc005 已回写 |
 | **S3 现网狗粮度量** | 调度≤2；禁新 SOP | ✅ 见下「度量」 |
+| **web CPU / 轮询优化（挂账）** | boardPanel 5s 轮询 + Edge 看板页（/cards 已缓存缓解，轮询源未收敛） | ⏳ 2026-08-08 |
+| **仓库归位搬迁（运维项）** | M1/2017 散落项目文件夹统一归位（registry location 已标注；搬迁需停机窗口一仓一验） | ⏳ 排期，非 SOP |
 
 ### 度量（S3 · 2026-08-07 foundation anti-drift）
 
@@ -219,5 +221,4 @@
    - **现状**：在移动端，一键物理删除（F-04）按钮为防误触调大至 44px 且常驻显示，虽有 Trash 恢复机制，但在触屏上缺少防呆设计与撤销按钮。
    - **建议动作**：强化 ConfirmDialog 安全防呆（特别是移动端），增加二次确认手势（如滑动删除或延迟动作），并在 Toast 提示中增加 "撤销" (Undo) 功能。
    - **预估成本**：S
-
 

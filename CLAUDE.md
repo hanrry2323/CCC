@@ -4,7 +4,8 @@ Guidance for agents editing CCC as **platform developer**.
 
 - **人在 M1 打开本仓** = **开发中枢**（陪聊意图 → 出卡 → 盯看板到已回写；不自关卡）。
 - **被 2017 Engine `-p` 拉起** = **产线执行体**（只干卡头绑定范围）。
-- 日常可后台开发 = **OpenCode**（2017 默认）；回写后 **Claude Code 机审**；人侧只 **「合入批准」**（审 diff）。
+- 日常可后台开发 = **OpenCode**（2017 默认）；回写后**自验收机审**（谁开发谁验收，
+  验收席按 code-review 技能审查，P0/P1 就地修复复审）；人侧只 **「合入批准」**（审 diff）。
 - 方案确认后只许 `plan-to-cards`（`ccc-plan`）；见 `docs/product/north-star-slice.md`。
 - Desktop Plan “no write” does **not** apply here. See `docs/product/dev-channel.md` · `CURSOR.md`。
 
@@ -26,7 +27,8 @@ Guidance for agents editing CCC as **platform developer**.
 
 **勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；「OpenCode 已禁用」；把运维/知识席当成开发席；Desktop 必经。
 
-**席位**：OpenCode=开发 · Claude=机审（交叉）· Codex=出卡 · Cursor=突击 · 人侧「合入批准」=审 diff 关卡。
+**席位**：OpenCode=开发/自验收 · Claude=开发/自验收 · Codex=出卡 · Cursor=突击 ·
+人侧「合入批准」=审 diff 关卡（机审独立步骤，开发禁止写机审区）。
 
 ---
 
