@@ -36,11 +36,6 @@ let _indicatorBusy = false;
 let _nameMap = {};
 
 // T58 state（2026-08 视图收拢：只保留看板）
-let _filterProj = 'all';
-let _filterState = 'all';
-let _filterExec = 'all';
-let _filterQ = '';
-let _filterDebounce = null;
 let _colLists = {};
 let _kanbanPageSizes = {};
 
@@ -49,12 +44,6 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = String(s);
   return d.innerHTML;
-}
-
-function matchesKeyword(t, q) {
-  if (!q) return true;
-  const hay = [t.id, t.title, t.executor, t.status, t.state, t.note].filter(Boolean).join(' ');
-  return hay.toLowerCase().indexOf(q.toLowerCase()) >= 0;
 }
 
 async function copyTextToClipboard(text) {
@@ -113,40 +102,6 @@ function html() {
     <span class="st" id="board-st">·</span>
   </div>
 
-  <div class="board-toolbar-filters" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px; background: var(--ccc-bg-layer); border-bottom: 1px solid var(--ccc-border-subtle); flex-shrink: 0; border-radius: var(--ccc-radius-sm); margin-bottom: 5px;">
-    <div class="filter-group" style="display: flex; align-items: center; gap: 6px;">
-      <label for="board-filter-proj" style="font-size: 11px; color: var(--ccc-text-muted);">项目:</label>
-      <select id="board-filter-proj" class="hub-select" style="padding: 2px 6px; font-size: 12px; border-radius: 3px; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-base); color: var(--ccc-text-base);">
-        <option value="all">全部</option>
-      </select>
-    </div>
-
-    <div class="filter-group" style="display: flex; align-items: center; gap: 6px;">
-      <label for="board-filter-state" style="font-size: 11px; color: var(--ccc-text-muted);">状态:</label>
-      <select id="board-filter-state" class="hub-select" style="padding: 2px 6px; font-size: 12px; border-radius: 3px; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-base); color: var(--ccc-text-base);">
-        <option value="all">全部</option>
-        <option value="待分派">待分派</option>
-        <option value="执行中">执行中</option>
-        <option value="机审">机审</option>
-        <option value="已回写">已回写</option>
-        <option value="打回">打回</option>
-        <option value="已关闭">已关闭</option>
-      </select>
-    </div>
-
-    <div class="filter-group" style="display: flex; align-items: center; gap: 6px;">
-      <label for="board-filter-exec" style="font-size: 11px; color: var(--ccc-text-muted);">执行体:</label>
-      <select id="board-filter-exec" class="hub-select" style="padding: 2px 6px; font-size: 12px; border-radius: 3px; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-base); color: var(--ccc-text-base);">
-        <option value="all">全部</option>
-      </select>
-    </div>
-
-    <div class="filter-group" style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
-      <input type="search" id="board-filter-q" class="board-filter-input" placeholder="筛选关键词（标题/ID/执行体）" aria-label="筛选关键词" style="width: 100%;">
-    </div>
-
-  </div>
-
   <div class="board-main" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
     <div class="board-layout" id="board-layout" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
       <div class="board-loading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ccc-text-muted); font-size: 12px;">加载看板中…</div>
@@ -178,75 +133,8 @@ function getFilteredCards() {
     if (_ws !== 'all' && c.project !== _ws) {
       return false;
     }
-    // 2. Project filter from dropdown
-    if (_filterProj !== 'all' && c.project !== _filterProj) {
-      return false;
-    }
-    // 3. State filter
-    const cardState = c.state || c.status || '待分派';
-    if (_filterState !== 'all' && cardState !== _filterState) {
-      return false;
-    }
-    // 4. Executor filter
-    if (_filterExec !== 'all' && c.executor !== _filterExec) {
-      return false;
-    }
-    // 5. Keyword search filter
-    if (_filterQ && !matchesKeyword(c, _filterQ)) {
-      return false;
-    }
     return true;
   });
-}
-
-function populateFilterOptions() {
-  if (!_root) return;
-
-  // 1. Project select dropdown
-  const projSelect = _root.querySelector('#board-filter-proj');
-  if (projSelect) {
-    const selectedVal = _filterProj;
-    const projects = new Set();
-    for (const c of _allCards) {
-      if (c.project) projects.add(c.project);
-    }
-    const sortedProj = Array.from(projects).sort();
-
-    let htmlOpts = '<option value="all">全部</option>';
-    for (const p of sortedProj) {
-      htmlOpts += `<option value="${esc(p)}">${esc(_nameMap[p] || p)}</option>`;
-    }
-    projSelect.innerHTML = htmlOpts;
-    projSelect.value = selectedVal;
-    if (selectedVal !== 'all' && !projects.has(selectedVal)) {
-      _filterProj = 'all';
-      projSelect.value = 'all';
-    }
-  }
-
-  // 2. Executor select dropdown
-  const execSelect = _root.querySelector('#board-filter-exec');
-  if (execSelect) {
-    const selectedVal = _filterExec;
-    const executors = new Set();
-    for (const c of _allCards) {
-      if (c.executor && c.executor !== '未知') {
-        executors.add(c.executor);
-      }
-    }
-    const sortedExec = Array.from(executors).sort();
-
-    let htmlOpts = '<option value="all">全部</option>';
-    for (const e of sortedExec) {
-      htmlOpts += `<option value="${esc(e)}">${esc(e)}</option>`;
-    }
-    execSelect.innerHTML = htmlOpts;
-    execSelect.value = selectedVal;
-    if (selectedVal !== 'all' && !executors.has(selectedVal)) {
-      _filterExec = 'all';
-      execSelect.value = 'all';
-    }
-  }
 }
 
 function renderBoard() {
@@ -498,7 +386,6 @@ async function loadBoard() {
     ]);
     _allCards = mergeDirtyFromRunning(r.cards || [], running.tasks || []);
 
-    populateFilterOptions();
     renderBoard();
     refreshAllWsIndicators().catch(() => {});
   } catch (err) {
@@ -571,41 +458,6 @@ function bind() {
     _root.querySelector('#board-dm').classList.remove('open');
   });
 
-  const qInput = _root.querySelector('#board-filter-q');
-  if (qInput) {
-    qInput.value = _filterQ;
-    qInput.addEventListener('input', () => {
-      clearTimeout(_filterDebounce);
-      _filterDebounce = setTimeout(() => {
-        _filterQ = qInput.value.trim();
-        renderBoard();
-      }, 150);
-    });
-  }
-
-  const projSelect = _root.querySelector('#board-filter-proj');
-  if (projSelect) {
-    projSelect.addEventListener('change', () => {
-      _filterProj = projSelect.value;
-      renderBoard();
-    });
-  }
-
-  const stateSelect = _root.querySelector('#board-filter-state');
-  if (stateSelect) {
-    stateSelect.addEventListener('change', () => {
-      _filterState = stateSelect.value;
-      renderBoard();
-    });
-  }
-
-  const execSelect = _root.querySelector('#board-filter-exec');
-  if (execSelect) {
-    execSelect.addEventListener('change', () => {
-      _filterExec = execSelect.value;
-      renderBoard();
-    });
-  }
 }
 
 export async function mountBoard(el) {
