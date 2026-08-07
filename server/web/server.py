@@ -831,6 +831,115 @@ _ENRICHED_CACHE: tuple[float, str, list[dict]] | None = None
 _ENRICHED_TTL_S = 10.0
 
 
+_RELAY_USAGE_FILE_DEFAULT = Path("/Users/fan/program/apps/ai-loop-router-ccc/logs/usage.json")
+_RELAY_HEALTH_URL_DEFAULT = "http://127.0.0.1:6100/health"
+_RELAY_STATS_CACHE: tuple[float, str, dict] | None = None
+_RELAY_STATS_TTL_S = 3.0
+
+
+def _relay_usage_file() -> Path:
+    raw = os.environ.get("CCC_RELAY_USAGE_FILE", "").strip()
+    return Path(raw).expanduser() if raw else _RELAY_USAGE_FILE_DEFAULT
+
+
+def _relay_health_url() -> str:
+    raw = os.environ.get("CCC_RELAY_HEALTH_URL")
+    if raw is None:
+        return _RELAY_HEALTH_URL_DEFAULT
+    return raw.strip()  # 显式设空 = 跳过健康探测
+
+
+def _relay_bucket(model: str) -> str | None:
+    """用量 model → 分桶（pro / flash / code）；未知模型只计入 total。"""
+    m = (model or "").strip().lower()
+    if not m:
+        return None
+    if "flash" in m:
+        return "flash"
+    if m == "code":
+        return "code"
+    if "pro" in m or "opus" in m or "sonnet" in m or m.startswith("claude"):
+        return "pro"
+    return None
+
+
+def _compute_relay_stats() -> dict:
+    """中转站今日请求 + 近 10s 增量 + 健康；TTL 缓存按文件 mtime。"""
+    global _RELAY_STATS_CACHE
+    now = time.time()
+    path = _relay_usage_file()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = 0
+    key = f"{path}:{mtime}"
+    if (
+        _RELAY_STATS_CACHE is not None
+        and now - _RELAY_STATS_CACHE[0] < _RELAY_STATS_TTL_S
+        and _RELAY_STATS_CACHE[1] == key
+    ):
+        return _RELAY_STATS_CACHE[2]
+
+    from datetime import datetime as _dt
+
+    today_start_ms = int(
+        _dt.combine(_dt.now().date(), _dt.min.time()).timestamp() * 1000
+    )
+    now_ms = int(now * 1000)
+    ten_ago_ms = now_ms - 10_000
+    counts = {"total": 0, "pro": 0, "flash": 0, "code": 0}
+    deltas = {"total": 0, "pro": 0, "flash": 0, "code": 0}
+    healthy = True
+    alert = ""
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        records = data if isinstance(data, list) else []
+    except Exception as exc:
+        records = []
+        healthy = False
+        alert = f"中转站用量文件读取失败: {exc}"
+
+    for r in records:
+        ts = r.get("timestamp")
+        if not isinstance(ts, (int, float)) or ts <= 0:
+            continue
+        ts = int(ts)
+        if ts < today_start_ms:
+            continue
+        counts["total"] += 1
+        b = _relay_bucket(r.get("model"))
+        if b:
+            counts[b] += 1
+        if ts >= ten_ago_ms:
+            deltas["total"] += 1
+            if b:
+                deltas[b] += 1
+
+    url = _relay_health_url()
+    if url:
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                code = resp.status
+            if code not in (200, 404):
+                healthy = False
+                alert = f"中转站健康探测异常（HTTP {code}）"
+        except Exception as exc:
+            healthy = False
+            alert = f"中转站不可达: {exc}"
+
+    out = {
+        "today": counts,
+        "delta_10s": deltas,
+        "healthy": healthy,
+        "alert": alert or None,
+        "ts": now,
+    }
+    _RELAY_STATS_CACHE = (now, key, out)
+    return out
+
+
 def _log_activity_key(log_dir) -> str:
     """运行/机审 marker 快照：派发与机审起止才变化，避免活跃期逐轮重算。"""
     if not log_dir:
@@ -1696,6 +1805,10 @@ class _APIHandler(BaseHTTPRequestHandler):
             data["worker_events_tail"] = []
         self._send_json(data)
 
+    def _handle_ops_relay_stats(self):
+        """GET /ops/relay-stats → 中转站今日请求（总/Pro/flash/code）+ 近10s增量 + 健康。"""
+        self._send_json(_compute_relay_stats())
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
         raw_path = self.path.split("?")[0]
@@ -1749,6 +1862,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/concurrency":
             self._handle_ops_concurrency()
+            return
+        if path == "/ops/relay-stats":
+            self._handle_ops_relay_stats()
             return
         try:
             items = _load_board_items()

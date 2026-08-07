@@ -1611,6 +1611,56 @@ class TestOpsConcurrency:
         assert "error" in data
 
 
+class TestOpsRelayStats:
+    """GET /ops/relay-stats：今日请求（总/Pro/flash/code）+ 近10s增量 + 健康。"""
+
+    def test_returns_today_and_deltas(self, api_server, monkeypatch, tmp_path):
+        import json
+        import time
+        from datetime import datetime
+
+        now_ms = int(time.time() * 1000)
+        today_start_ms = int(
+            datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000
+        )
+        usage = [
+            {"timestamp": now_ms - 5000, "model": "flash"},
+            {"timestamp": now_ms - 5000, "model": "code"},
+            {"timestamp": now_ms - 5000, "model": "claude-sonnet-5"},
+            {"timestamp": now_ms - 60000, "model": "flash"},
+            {"timestamp": today_start_ms + 1000, "model": "flash"},
+        ]
+        f = tmp_path / "usage.json"
+        f.write_text(json.dumps(usage), encoding="utf-8")
+        monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(f))
+        monkeypatch.setenv("CCC_RELAY_HEALTH_URL", "")
+
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/relay-stats", token=token)
+        assert status == 200
+        assert data["today"]["total"] == 5
+        assert data["today"]["flash"] == 3
+        assert data["today"]["code"] == 1
+        assert data["today"]["pro"] == 1
+        assert data["delta_10s"]["total"] == 3
+        assert data["delta_10s"]["flash"] == 1
+        assert data["healthy"] is True
+
+    def test_missing_file_unhealthy(self, api_server, monkeypatch, tmp_path):
+        monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("CCC_RELAY_HEALTH_URL", "")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/relay-stats", token=token)
+        assert status == 200
+        assert data["healthy"] is False
+        assert data["alert"]
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/ops/relay-stats")
+        assert status == 401
+        assert "error" in data
+
+
 class TestTaskTransition:
     """POST /tasks/{id}/transition → 运行时重新分派（主树卡文件只读）。"""
 

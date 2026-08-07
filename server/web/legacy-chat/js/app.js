@@ -262,6 +262,7 @@ async function init() {
   initRouter(onHubRoute);
   initTitlebar();
   initDualPaneControls(generateId);
+  import('./components/relayStats.js').then((m) => m.initRelayStats());
   initComposer();
   initRuntimeStatus();
   initEngineControl();

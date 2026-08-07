@@ -32,6 +32,45 @@
 #titlebar.scrolled::after {
   opacity: 1;
 }
+#relay-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 6px;
+  padding: 2px 8px 2px 10px;
+  border-left: 1px solid var(--ccc-border-subtle);
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--ccc-text-muted);
+  -webkit-app-region: no-drag;
+}
+.relay-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.relay-item b {
+  font-weight: 600;
+  color: var(--ccc-text-secondary);
+}
+.relay-num {
+  font-family: var(--ccc-font-mono);
+  font-size: 11px;
+  color: var(--ccc-text-base);
+}
+.relay-delta {
+  font-family: var(--ccc-font-mono);
+  font-size: 10px;
+  color: #3d9a5f;
+}
+#relay-stats.relay-alert .relay-num,
+#relay-stats.relay-alert .relay-delta {
+  color: #c44;
+}
+.relay-alert-tag {
+  color: #c44;
+  font-weight: 700;
+}
 .titlebar-tab {
   display: flex;
   align-items: center;
