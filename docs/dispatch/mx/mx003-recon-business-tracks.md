@@ -1,6 +1,6 @@
 # 任务卡 mx003 · recon business tracks for in-flight branches（OpenCode 执行）
 
-> 关联：mx 业务线路摸底 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：mx 业务线路摸底 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
