@@ -156,11 +156,14 @@
 
 | 卡号 | 意图 | 进度 |
 |------|------|------|
-| **hp001** | 首次摸底：recon baseline 与业务线路图梳理 | 待合入批准 |
-| **hp002** | 监控盲区：daily-sync 与服务探活接入 qx-map | 已回写 |
-| **hp003** | 备份对齐：异地/冷热数据备份流程机制规范化 | 待分派 |
+| **hp001** | 首次摸底：recon baseline 与业务线路图梳理 | 已合入 |
+| **hp002** | 监控盲区：daily-sync 与服务探活接入 qx-map | 已合入 (外仓 main 已含) |
+| **hp003** | 备份对齐：异地/冷热数据备份流程机制规范化 | 已合入 (外仓 main 已含) |
+| **hp004** | 采集器重建与数据源扩展：launchd 守护与 ingest 补强 | 已回写 (外仓 main 未含，在 codex/hp004-collector-source-expansion 分支) |
+| **hp005** | 前端治理与 API 合约对齐：伪数据治理与 Quality 升级 | 已回写 (外仓 main 未含，在 codex/hp005-frontend-fake-data-contract 分支) |
+| **hp006** | 向量检索与数据质量治理：合并短 chunk 恢复检索相关度 | 已回写 (外仓 main 未含，在 codex/hp006-search-quality-short-chunks 分支) |
 
-> **下一程意向**：推进 hp 仓监控盲区修复、探活探针接入与数据备份对齐，确保基础设施高可用与零断链
+> **下一程意向**：推进 hp 仓监控盲区修复、探活探针接入与数据备份对齐，已通过 hp002-hp006 高质量闭环。下一阶段（hp007）攻坚 CLI 检索复活与短 chunk 拦截。
 
 ---
 

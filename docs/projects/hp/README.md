@@ -75,9 +75,11 @@ hp/ (git tracked files at top-level)
 
 | 阶段 / 模块 | 现状与核心产出 | 下一步规划 / 意向 |
 |-------------|----------------|-------------------|
-| **Phase 0 摸底与基线** | 2026-08-03 摸底基线已产出，发现 K23 未交付、Collector 停摆、文档漂移。 | 已收口，作为后续里程碑对照基准。 |
-| **Phase 1 修复与对齐** | 2026-08-07 复验完成，清除根目录草稿双轨，修复路径与端口漂移，文档自检对齐。 | 已收口。 |
-| **Phase 2 采集器重建** | 完成。通过 `kb-collect.py` 与 launchd `com.hp-kb.collector.plist` 重建 collector 守护，恢复数据管道。 | 持续监控采集稳定性与资源占用。 |
-| **Phase 3 K23 元数据交付** | 完成。`heading_path`, `domain`, `project`, `node_type` 四列补档完成，重写 md_parser 并在前端增加 Quality 与 Search。 | 持续核算短 chunk 占比 (<15% 目标)。 |
-| **Phase 4 监控盲区修复** | 待启动。当前 `daily-sync` 不含 hp git 状态，缺乏探活。 | 将 hp git state 接入 daily-sync，实现统一端口探活。 |
-| **Phase 5 备份对齐** | 待启动。当前冷热与异地备份机制尚未对齐规范。 | 梳理备份策略，规范化 psql 异地备份与恢复机制。 |
+| **Phase 0 摸底与基线 (hp001)** | ✅ 已完成并合入。2026-08-03 摸底基线已产出，定位数据同步与文档漂移根因。 | 已收口，作为后续里程碑对照基准。 |
+| **Phase 1 修复与对齐 (hp001-fix)** | ✅ 已完成并合入。2026-08-07 复验完成，清除根目录草稿双轨，修复路径与端口漂移，文档自检对齐。 | 已收口。 |
+| **Phase 2 采集器重建 (hp004)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp004-collector-source-expansion` 分支)。通过 `kb-collect.py` 与 launchd `com.hp-kb.collector.plist` 重建 collector 守护，恢复数据管道。 | 持续监控采集稳定性与资源占用。 |
+| **Phase 3 K23 元数据交付** | ✅ 已完成。`heading_path`, `domain`, `project`, `node_type` 四列补档完成，重写 md_parser 并在前端增加 Quality 与 Search。 | 持续核算短 chunk 占比 (<15% 目标)。 |
+| **Phase 4 监控盲区修复 (hp002)** | ✅ 已完成并合入 (外仓 main 已含)。当前已将 hp git state 接入 `daily-sync`，实现服务与统一端口探活。 | 持续验证日常巡检稳定性。 |
+| **Phase 5 备份对齐 (hp003)** | ✅ 已完成并合入 (外仓 main 已含)。规范化 psql 异地备份与恢复机制，冷热与异地备份机制已对齐。 | 持续监控定时备份输出完整性。 |
+| **前端治理与合约对齐 (hp005)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp005-frontend-fake-data-contract` 分支)。全面对齐 API 契约，处理伪数据。 | 持续收敛前后端异常接口。 |
+| **向量检索与数据质量 (hp006)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp006-search-quality-short-chunks` 分支)。清理并分析短 chunk，优化检索相关性，避免检索漂移。 | 下一阶段（hp007）对新入库短 chunk 进行硬拦截。 |
