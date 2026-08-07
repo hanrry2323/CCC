@@ -231,3 +231,75 @@
    - **建议动作**：强化 ConfirmDialog 安全防呆（特别是移动端），增加二次确认手势（如滑动删除或延迟动作），并在 Toast 提示中增加 "撤销" (Undo) 功能。
    - **预估成本**：S
 
+### HTTP 页面巡检清单（mx008 巡检产出）
+
+#### 一、代码问题 (Code Quality)
+
+1. **标准 RSS/Atom 爬虫中的 Atom 解析器极其脆弱 (P0)**
+   - **现状**：`builtin.rs` 中的 `extract_atom_entries` 未使用标准 XML/Atom 库，而是通过裸字符串 `split` 以及 `find` 匹配特定的 `<title>` 和 `<link href="` 来提取条目。这种手工解析非常脆弱，在遇到 CDATA 字段、带有命名空间的复杂 XML 结构、注释，或格式稍微不标准（如换行或多属性顺序变化）的 Atom 订阅源时，会发生解析遗漏、截断或错误。
+   - **建议动作**：在 `medio-core` 中引入成熟的 XML/Atom 解析库（如 `quick-xml` 或 `atom-syndication`），对 Atom 源进行结构化、健壮的流式/树形解析，彻底消除手写字符串截取逻辑。
+   - **预估成本**：M
+
+2. **RSS 统计页 (RssStatsPage) 存在 1000 条硬编码数据截断与客户端全量计算瓶颈 (P1)**
+   - **现状**：`RssStatsPage.tsx` 中为了计算未读/已读/收藏数以及日/周发布数量，采用 `rssApi.items({ perPage: 1000 })` 直接拉取最多 1000 条数据到前端并在客户端进行 `filter` 和 `reduce` 计算。
+     1. 数据不准确：一旦用户总条目数超过 1000，统计结果将完全失真。
+     2. 内存与性能瓶颈：一次性拉取 1000 条大型 JSON 文章数据到内存，并进行大量的 JS 数组过滤操作，极易导致前端界面严重卡顿或网络慢。
+   - **建议动作**：后端提供专门的轻量级统计聚合接口（如 `GET /api/v1/rss/stats`），由 SQLite 直接执行 `COUNT(*)` 聚合，前端直接获取数值显示。
+   - **预估成本**：S
+
+3. **小时级自动巡检 `crawl_all` 无法向数据库写回异常状态与重试计数 (P1)**
+   - **现状**：`scheduler.rs` 中的手动刷新单个源 `crawl_one` 接口在发生抓取错误时，能正确捕获并写入 DB 中的 `last_error` 和 `retry_count` 字段。而作为每小时定时执行的主进程 `crawl_all` 虽有并发信号量限制，但其 `Err` 分支只打印了 `tracing::warn!` 警告日志，未向 SQLite 更新任何订阅失败状态。这导致自动调度失败状态在前端和订阅源列表中不可见。
+   - **建议动作**：对齐 `crawl_all` 和 `crawl_one` 的错误写回逻辑，使自动巡检失败时也能写回 `last_error`、`last_error_at` 和递增 `retry_count`，保障异常追踪链路统一。
+   - **预估成本**：S
+
+4. **定时自动巡检 `crawl_all` 绕过了 RSS 图片本地化预缓存逻辑 (P1)**
+   - **现状**：手动刷新 `crawl_one` 会在保存后调用 `replace_image_urls`，利用 `ImageCacheService` 将 RSS 正文内的图片抓取并缓存到本地。然而每小时跑一次的后台自动扫描进程 `crawl_all` 却完全忽略了此调用，导致通过自动轮询拉回的所有 RSS 文章图片均保留原始热链。这在离线阅读时图片无法显示，且由于很多图片源防盗链或速度极慢，导致前端显示体验非常差。
+   - **建议动作**：在 `crawl_all` 成功写入条目后，统一调用正文图片本地化预缓存服务，支持静默后台缓存。
+   - **预估成本**：S
+
+5. **保存 RSS 条目和自动生成标签时缺乏数据库事务保护 (P2)**
+   - **现状**：`save_rss_item_with_auto_tags` 在保存单条 RSS Item 时，会依次执行 `INSERT into rss_items`、`SELECT tags`，然后循环执行 `INSERT OR IGNORE into rss_item_tags`，这些 SQL 在单次异步中串行运行，未被包裹在 `sqlx` Transaction 事务内。遇到包含几十个新文章的大型 feed 导入时，会引发几十次磁盘 I/O 写入，不仅速度慢，还极易触发 SQLite Busy 锁数据库错误。
+   - **建议动作**：将单个或批量 RssItem/Tags 写入步骤使用 `sqlx::Transaction` 包装，大幅减少 commit 的 I/O 开销并确保写入原子性。
+   - **预估成本**：S
+
+6. **OPML 导入解析器的 XML 属性读取顺序依赖漏洞 (P2)**
+   - **现状**：在 `api/routes/rss.rs` 的 `parse_opml` 中，遍历 XML 属性是无序的。若 `<outline>` 标签中的 `xmlUrl` 属性出现在 `text` 属性之前（非常普遍），此时 `current_text` 仍为空，解析器会在 `xmlUrl` 触发时将 `name` 直接设为 `url` 写入列表；等后续读到 `text` 属性时虽能更新 `current_text` 变量，但由于已完成 push，导致该条订阅的显示名称在数据库中永久丢失并显示为原始 URL。
+   - **建议动作**：重构 `parse_opml`，不应在属性循环内部直接 push 结果。应在完整解析完 outline 的所有属性并填充临时结构体后，在循环外部按优先级设定 `name` 并执行 push。
+   - **预估成本**：S
+
+#### 二、显示问题 (UI/Display Quality)
+
+7. **RSS 阅读器渲染组件 `RssReader` 缺少统一的 CSS 样式类绑定 (P2)**
+   - **现状**：`index.css` 在 `.rss-reader` 类上声明了许多页面级响应式布局样式。但 `RssReader.tsx` 的外层容器仅绑定了 `rss-pane` 和 `active`，并没有 `.rss-reader` 类，导致其大部分专属样式在浏览器中失效，退而依赖一些不一致的内联样式属性。
+   - **建议动作**：为 `RssReader.tsx` 外层容器容器增加 `rss-reader` CSS 类，消除内联样式和 CSS 冲突。
+   - **预估成本**：S
+
+8. **RSS 文章图片缺少防盗链/防 CORS 代理防护 (P2)**
+   - **现状**：对于未完成本地缓存的图片（如自动巡检拉下的文章或缓存中途断网），前端会直接发起原生 `<img>` 请求。这些请求因为携带了 Medio 的 Origin，会被如微博、微信、B站等防盗链图片 host 拒绝（403/CORS 报错），导致图片破损。
+   - **建议动作**：后端提供一个统一的图片代理解析端点（例如 `/api/v1/media/proxy?url=...`），在前端图片加载失败时（onError 分支）或检测到特定敏感 host 时，通过代理获取图片，以绕过浏览器防盗链和跨域限制。
+   - **预估成本**：S
+
+#### 三、PC端适配 (PC Adaptation)
+
+9. **RSS 订阅 OPML 导出链接不支持 Bearer Token 鉴权 (P0)**
+   - **现状**：`RssSidebar.tsx` 里的 "导出" (OPML) 按钮采用原生 `<a>` 标签，直接链接至 `${API_BASE}/rss/opml`。在系统开启了 Bearer Token 强鉴权模式下，由于原生超链接点击无法附加 `Authorization` 请求头，导致 PC 浏览器点击导出时会报 401 Unauthorized，甚至直接弹出 Token 重输页面，导出功能对加锁用户彻底废弃。
+   - **建议动作**：按钮改用 `fetch` API 请求导出内容，将结果转换为 `Blob` URL，通过创建虚拟 `<a>` 并模拟 `click()` 的方式，实现携带 Bearer 头且安全的导出文件下载。
+   - **预估成本**：S
+
+10. **缺乏键盘快捷键操作支持，阻碍 PC 端流畅盲打阅读 (P1)**
+    - **现状**：PC 端 RSS 双栏非常适合键盘流，但目前全站只在 `RssPage` 中绑定了 `ArrowLeft` 和 `ArrowRight` 用来上一篇/下一篇切歌，完全没有快捷键去操作文章星标、标记已读/未读或呼出搜索/标签面板，使得在 PC 桌面阅读时仍要频繁使用鼠标点击小图标，破坏交互连贯性。
+    - **建议动作**：引入全局快捷键监听，在 PC 端支持按 `S` 收藏/取消收藏当前文章，`M` 标记已读/未读，`R` 强制刷新当前源。
+    - **预估成本**：S
+
+#### 四、移动端适配 (Mobile Adaptation)
+
+11. **768px 边界分辨率下响应式布局发生严重挤压与垂直堆叠崩溃 (P0)**
+    - **现状**：JS 断点识别 `useIsMobile()` 和 `useIsTablet()` 在非触屏的 768px 分辨率下认为其是 Desktop 级（因为 768px >= 768px），于是前端 RssPage 将三个面板（Sidebar, List, Reader）全部激活设为 `active={true}`。然而 CSS 的 `@media (max-width: 768px)` 指令触发，将大框架 `.page` 的 `flex-direction` 设为了 `column`（垂直排布），并将 `rss-sidebar` 和 `rss-list` 宽度拉伸为 `100% !important`。这导致 768px 视口下三个大面板同时处于 display: flex 并在垂直方向堆叠在一起，挤扁了整个阅读区，布局完全崩塌、无法看清任何文字。
+    - **建议动作**：对齐前端 JavaScript `useMediaQuery` 媒体查询规则与 CSS 的 `@media` 查询断点（确保两端的分界数值完全闭合、不重叠）；或者在 768px 的平板视图下，采用左侧 Sidebar 抽屉式收起，仅显示 List + Reader 的双栏布局。
+    - **预估成本**：S
+
+12. **移动端浏览器下通知轮询机制频繁中断和卡死 (P2)**
+    - **现状**：`RssPage` 中使用前端 `setInterval(..., 60000)` 来向后端查询未读文章数量并调起通知。但移动端浏览器（Safari / 微信内置浏览器 / 鸿蒙系统 WebView）为了省电，在应用切换至后台或熄屏后，会极其激进地暂停或节流所有 JS Timer 线程。一旦被挂起，轮询将不再触发，通知到达的实时性变为 0，且应用唤醒后由于大量 timer 积压还可能出现高频重发请求的现象。
+    - **建议动作**：移动端放弃单纯的前端定时器轮询策略。对桌面/移动壳，在 Tauri / HarmonyOS 原生层注册后台常驻 Worker/Service，由操作系统级别进行订阅巡检与原生 Push 推送，实现真正高可用的通知。
+    - **预估成本**：M
+
