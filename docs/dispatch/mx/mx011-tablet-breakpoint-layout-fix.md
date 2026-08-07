@@ -1,6 +1,6 @@
 # 任务卡 mx011 · 768px 平板断点布局修复（OpenCode 执行）
 
-> 关联：ccc-plan: mx HTTP 页面修复第一批：RSS P0/P1 四项 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx HTTP 页面修复第一批：RSS P0/P1 四项 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -47,8 +47,28 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 实现说明
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **JS/CSS 边界数值对齐**：
+   - 将 JS 中的 `useIsMobile()` 与 `useIsTablet()` 与 CSS 中的 `@media` 闭合断点进行了精确对齐。
+   - 之前 CSS 中判定 mobile 为 `(max-width: 768px)`，而 JS 中 `useIsMobile` 判定为 `(max-width: 767px)`，这导致在正好 `768px` 视口时：JS 处于 Tablet 状态（渲染双栏 List+Reader 并采用 absolute 抽屉 Sidebar），但 CSS 处于 Mobile 状态（将 `.page` 设为 `flex-direction: column` 并强制所有面板 flex / 垂直堆叠渲染）。
+   - 将 JS 移动端断点对齐为 `max-width: 768px`（限制触摸设备也在此分辨率下运行），平板断点对齐为 `min-width: 769px`，使得两端语义完全闭合（`<= 768px` 统一判定为 mobile，`>= 769px` 统一判定为平板/桌面）。
+2. **测试用例修订**：
+   - 相应修改了 `src/frontend/src/hooks/useMediaQuery.test.ts` 中针对断点用例的边界值断言（`767px` 变更为 `768px`，`768px` 变更为 `769px`），保证了 JS 与测试逻辑的 100% 对齐。
+
+### 测试结果
+
+1. **边界自测通过**：
+   - `767px` / `768px` (Mobile 档位)：呈现移动端全款单栏布局，完美切换。
+   - `769px` / `1024px` / `1199px` (Tablet 档位)：呈现抽屉式 Sidebar + 双栏 List/Reader 布局。
+   - `>= 1200px` (Desktop 档位)：呈现三栏（Sidebar/List/Reader）常驻展开布局。
+2. **用例与构建全通**：
+   - 跑测 `npx vitest run src/hooks/useMediaQuery.test.ts` (12/12 用例全通过)。
+   - `npm run lint` & `npm run build` 全部成功通过。
+
+### Push 证据
+
+- 业务仓 (medio-0) 提交分支：`codex/mx011-tablet-breakpoint-layout-fix`
+- 业务仓提交 Commit HASH：`07b73802860f0b29705856d06861dda6ac62a998`
