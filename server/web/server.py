@@ -827,6 +827,57 @@ def _closed_at_map(repo_root, ttl: float = 60.0) -> dict[str, str]:
     return out
 
 
+_ENRICHED_CACHE: tuple[float, str, list[dict]] | None = None
+_ENRICHED_TTL_S = 3.5
+
+
+def _log_activity_key(log_dir) -> str:
+    """运行/机审 marker 快照：派发与机审起止才变化，避免活跃期逐轮重算。"""
+    if not log_dir:
+        return ""
+    parts: list[str] = []
+    try:
+        for pat in ("*.running", "*-audit.running"):
+            for p in Path(log_dir).glob(pat):
+                parts.append(f"{p.name}:{p.stat().st_mtime_ns}")
+    except OSError:
+        pass
+    return "|".join(sorted(parts))
+
+
+def _enriched_cards(include_archived: bool = False) -> list[dict]:
+    """合成 + 逐卡运行时富化，整表缓存（运行 marker 变化才失效）。"""
+    global _ENRICHED_CACHE
+    from server.web.exec_metrics import card_wants_runtime, enrich_card_runtime
+
+    key = (
+        _board_cache_key()
+        + ("|archived" if include_archived else "")
+        + "|"
+        + _log_activity_key(_executor_log_dir())
+    )
+    now = time.time()
+    if (
+        _ENRICHED_CACHE is not None
+        and now - _ENRICHED_CACHE[0] < _ENRICHED_TTL_S
+        and _ENRICHED_CACHE[1] == key
+    ):
+        return _ENRICHED_CACHE[2]
+
+    cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
+    cards_list.sort(key=lambda x: x["id"])
+    log_dir = _executor_log_dir()
+    for c in cards_list:
+        if card_wants_runtime(c):
+            enrich_card_runtime(
+                c,
+                log_dir,
+                force=base_state(c.get("state", "")) == "执行中",
+            )
+    _ENRICHED_CACHE = (now, key, cards_list)
+    return cards_list
+
+
 def _compose_board_items(items):
     """运行时状态覆盖 + 分支机审证据（TTL 缓存）；主树卡文件只读。"""
     from dataclasses import replace
@@ -1331,9 +1382,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         if page_size < 1:
             page_size = 50
 
-        # 合成视图：git 真相 + 运行时状态 + 分支信封证据（主树卡文件只读）
-        cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
-        cards_list.sort(key=lambda x: x["id"])
+        # 合成视图 + 运行时富化，整表缓存（运行 marker 变化才失效）
+        cards_list = _enriched_cards(include_archived=include_archived)
 
         filtered = cards_list
         if not include_archived:
@@ -1367,9 +1417,6 @@ class _APIHandler(BaseHTTPRequestHandler):
         end_idx = start_idx + page_size
         paginated = filtered[start_idx:end_idx]
 
-        from server.web.exec_metrics import card_wants_runtime, enrich_card_runtime
-
-        log_dir = _executor_log_dir()
         cards_out: list[dict[str, Any]] = []
         for c in paginated:
             row = dict(c)
@@ -1379,13 +1426,6 @@ class _APIHandler(BaseHTTPRequestHandler):
                 row["board_column"] = _bc(
                     row.get("state", ""),
                     bool(row.get("machine_audit_passed", False)),
-                )
-            # 调用/时长/Δ 跟卡走：执行中·机审·已回写·打回·已关闭（有日志或 worktree 才有数）
-            if card_wants_runtime(row):
-                enrich_card_runtime(
-                    row,
-                    log_dir,
-                    force=base_state(c.get("state", "")) == "执行中",
                 )
             cards_out.append(row)
 
