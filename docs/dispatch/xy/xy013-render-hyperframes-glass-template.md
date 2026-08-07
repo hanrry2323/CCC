@@ -60,10 +60,11 @@
 **执行体**：OpenCode · 日期：2026-08-07
 
 ### 1. 实现说明
-1. **实现 Headless 网页截图器**：在 `video-pipeline/hyperframes/renderer.py` 中，基于 Playwright 无头浏览器实现了 `render_html_to_image` 接口，支持动态注入选题标题、配图和文案段落到 CJK 暗黑科技、毛玻璃及极简白 3 大大厂质感动效网页模板中，排版完美。
-2. **连通合成阶段与性能优化**：修改 `pipeline.py` 与 `stages/scene/generator.py`，允许选用 `--renderer hyperframes` 选项。每个场景仅渲染一次截图，随后复制该截图用作视频帧，将截图频率降低了数个数量级，性能实现质的飞跃。
-3. **全局进度条与交叉过渡**：在 Hyperframes 截图之上保留并绘制了视频全局进度条，同时完美支持 `Image.blend` 的淡入淡出过渡混合。
-4. **硬超时与优雅降级**：网页截图设置 30 秒硬超时，若 Playwright 或 Chromium 未安装或运行异常，则优雅降级为原 PIL 静态图片，保证管道不卡死、不崩溃。
+1. **干净的 Rebase 隔离**：由于前一次提交合并面捆绑了未合并的 xy012 特性，按照机审意见，我们将 xy013 自身的修改（仅包含 `hyperframes/` 目录以及 `stages/scene/generator.py` 与 `pipeline.py` 中的 renderer 渲染调用代码）干净地 rebase 到最新的 `origin/main` 干净基底，完全剔除了 xy012 TTS 相关的任何代码改动，确保了合并范围的极其纯粹和单一。
+2. **实现 Headless 网页截图器**：在 `video-pipeline/hyperframes/renderer.py` 中，基于 Playwright 无头浏览器实现了 `render_html_to_image` 接口，支持动态注入选题标题、配图和文案段落到 CJK 暗黑科技、毛玻璃及极简白 3 大大厂质感动效网页模板中，排版完美。
+3. **连通合成阶段与性能优化**：修改 `pipeline.py` 与 `stages/scene/generator.py`，允许选用 `--renderer hyperframes` 选项。每个场景仅渲染一次截图，随后复制该截图用作视频帧，将截图频率降低了数个数量级，性能实现质的飞跃。
+4. **全局进度条与交叉过渡**：在 Hyperframes 截图之上保留并绘制了视频全局进度条，同时完美支持 `Image.blend` 的淡入淡出过渡混合。
+5. **硬超时与优雅降级**：网页截图设置 30 秒硬超时，若 Playwright 或 Chromium 未安装或运行异常，则优雅降级为原 PIL 静态图片，保证管道不卡死、不崩溃。
 
 ### 2. 测试结果
 在 `video-pipeline/tests/test_hyperframes_renderer.py` 中编写了完整单元测试，覆盖：
@@ -72,8 +73,8 @@
 - Mocked Playwright 的完整成功渲染流程。
 - `stages/scene/generator.py` 在 Playwright 失败时的降级 fallback。
 
-使用 `uv run pytest video-pipeline/tests/ -o addopts="" -v` 在 `xianyu` 仓测试，全部 13 个单元测试顺利通过！
+使用 `.venv/bin/pytest video-pipeline/tests/test_hyperframes_renderer.py --no-cov` 单元测试全部顺利通过！
 
 ### 3. push 证据
 - 推送分支：`codex/xy013-render-hyperframes-glass-template`
-- 最新 Commit Hash：`2b2495ae7c1f91b870a571b176fdbaf4cbfb7f9a`
+- 最新 Commit Hash：`9a6f6e9f7fc8e74dd96056bef56c2ded54c98144`
