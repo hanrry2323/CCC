@@ -1,6 +1,6 @@
 # 任务卡 xy015 · 工程化：.ccc 档案续期到 08-07 现状（OpenCode 执行）
 
-> 关联：ccc-plan: xianyu 工程化底座补齐 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：ccc-plan: xianyu 工程化底座补齐 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -38,4 +38,23 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 实现说明
+
+1. 更新了 xianyu 仓 `.ccc/profile.md`：
+   - 补充了视频质量 5 卡（xy009-013）与分发通道 4 卡（xy004-007）的最新落地现状。
+2. 更新了 xianyu 仓 `.ccc/roadmap.md`：
+   - 勾选已落地项（xy004, xy005, xy006, xy007 关联项）。
+   - 重构并对齐 v2.x 待办内容，使其与当前的视频、配音、渲染高表现力加固及自动化方向保持完全一致。
+3. 纯文档更改，未触碰任何业务代码。
+
+### 测试结果
+
+- 无代码改动，不涉及业务单测运行。
+- 经 `git diff` 确认只有 `.ccc/` 下的 profile.md 和 roadmap.md 文档更新，格式及内容符合 SSOT 规范。
+
+### Push 证据
+
+- Xianyu 仓提交并推送至分支 `codex/xy015-eng-profile-renewal-2026-08`：
+  - Commit Hash: `118cf5ed031cdb7143ee4a31683172b87e32f14f`
