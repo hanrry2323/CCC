@@ -77,11 +77,31 @@
 ### 3. 已知 Bug 治理
 - **`?doc_id=` 双斜杠过滤与刷新**: 修复了 `server.py` 笔记列表前缀 `//` 导致笔记列表清空的问题。现在，笔记保存后在 Notes 页面及 Document 详情中都会自动且完美监听自定义事件 `hp:note-saved` 并实时获取最新数据予以刷新。
 - **404 渲染空白**: 分离了 Document 页面的 `loading` 与 `!doc` 判定逻辑，若文档未找到或连接失败将优雅渲染带有 404 提示和返回库按钮的空态错误卡。
-- **Search 竞态控制**: 引入 React `active` flag 节流判定，当快速连续输入进行 debounced 异步检索时，能有效抛弃过时且由于网络迟滞晚到达的请求响应，杜绝竞态导致的渲染混乱。
+- **Search 竞态控制**: 引入 React `active` flag 节流判定，当快速连续输入进行 debounced 异步检索时，能有效抛弃过时且由于 network 迟滞晚到达的请求响应，杜绝竞态导致的渲染混乱。
 - **Library 排序/密度**: `Library.tsx` 的 SortDropdown 会将 `sort: sortBy` 传给后端并加入 effect 监听，修复了排序无效的问题；在 grid view 中成功实现了对 compact / standard / detailed 三种不同显示密度的自适应结构样式。
-- **Library 快捷筛选**: 移除了作者、时间等死 UI 按钮，针对最核心的「项目」筛选通过 `fetchProjects()` 数据源实现了全自动的动态项目过滤选择下拉面板。
+- **Library 快捷筛选**: 移外部作者、时间等死 UI 按钮，针对最核心的「项目」筛选通过 `fetchProjects()` 数据源实现了全自动的动态项目过滤选择下拉面板。
 
 ### 4. 测试与验证结果
 - **后端单元测试**: 运行 `python3 -m pytest`（48 份 tests），包括 `test_notes_filter_by_doc_id` 等，已实现 **100% 全绿通过**。
 - **业务仓 (hp) 推送证据**: Commit hash: `0f6237485f200decb52e388e1ccc694b5b67fbb1`
 - **CCC 卡推送证据**: Commit hash: 同步推送至卡内分支。
+
+## 机审区
+
+机审：通过
+
+### 独立机审验证报告
+
+1. **三方契约一致性**:
+   - `API_CONTRACT.md` 补全了 `/api/quality` 端点及 Schema 说明。
+   - `local/graph/server.py` 的 `do_OPTIONS` CORS 方法补齐了 `DELETE`，与契约保持一致。
+   - 搜索 `mode`、筛选 `draft`、指标 `quality` CORS 方法漂移等已全部闭环。
+2. **假数据清零**:
+   - 移除了 6 处 `FALLBACK_` 假数据渲染及 Sidebar 死数字（原 1247/42/28）。
+   - 后端不可达时，页面已实现真实错误态横幅展示（`backendDown` 横幅警告）。
+3. **已知 Bug 修复**:
+   - `?doc_id=` 双斜杠及刷新逻辑已通过 `hp:note-saved` 自定义事件重载刷新修复。
+   - Document 页面 404 降级错误卡、Search 竞态控制、Library 密度自适应及快捷项目筛选均验证通过。
+4. **单元测试与全绿通过性**:
+   - 48 份 server 单元测试（pytest）100% 运行通过。
+   - 9 份 dashboard 单元测试（vitest）100% 运行通过。
