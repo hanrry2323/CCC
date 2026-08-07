@@ -1,6 +1,6 @@
 # 任务卡 hp005 · 前端治理：假数据边界与API契约三方对齐（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -56,8 +56,32 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode (开发执行体) · 日期：2026-08-07
 
-## 批注落实
+### 1. 落实三方契约与代码对齐情况
+- **API_CONTRACT.md**: 补充了 `/api/quality` 契约端点与响应 Schema 说明，在 `chunks` 表中补齐了 `domain` 和 `node_type` 字段规范。
+- **CORS 选项修复**: `/Users/fan/program/apps/hp/local/graph/server.py` 的 `do_OPTIONS` 端点补齐了 `DELETE` 和 `PATCH` 方法，现在返回 `GET, POST, PATCH, DELETE, OPTIONS`，与契约完全一致。
+- **`/api/search` 搜索模式**: 支持 `hybrid`、`vector`、`keyword`、`regex` 四种模式并在后端 `pg_search` 中全部补齐。其中：
+  - `vector`: cosine 向量召回（冷启动失败或不满足时自动回退）。
+  - `keyword`: SQL `ILIKE` 进行快速文本筛选（无模型开销）。
+  - `regex`: 利用 PostgreSQL `~*` 运算符实现全文本正则检索。
+  - `hybrid`: 将向量相似度与文本模糊命中（ILIKE 命中的分配额外的 bonus 权重）深度融合。
+- **`status=draft` 筛选**: 对 `_doc_to_summary` 与 `pg_library` 后端进行对齐。若 `source_path` 包含 `draft` 且不在 `_archive/` 下，则判定其状态为 `draft`（草稿），并在 `pg_library` 状态参数过滤时实现精准排除与获取。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 前端假数据治理（FALLBACK_ 清理）
+- 移除了 Dashboard、Library、Search、Document、Notes、Activity 所有 6 处的 `FALLBACK_` 静态硬编码假数据和假文档填充。
+- 后端不可达时，页面使用已有横幅机制进行真实错误展现并返回空白数据。
+- 移除了 Sidebar 与 NavLinks 里的假数字（例如 1247/42/28）。当加载成功时，活跃的 Library/Notes 等 Tab 上会基于后端返回的实际 count 动态显示精确的真实数字。
+- 将 Dashboard 中的"今日新增"死卡片替换为从后端 `stats.memories` 获取真实数据的"快速笔记"动态卡片。
+
+### 3. 已知 Bug 治理
+- **`?doc_id=` 双斜杠过滤与刷新**: 修复了 `server.py` 笔记列表前缀 `//` 导致笔记列表清空的问题。现在，笔记保存后在 Notes 页面及 Document 详情中都会自动且完美监听自定义事件 `hp:note-saved` 并实时获取最新数据予以刷新。
+- **404 渲染空白**: 分离了 Document 页面的 `loading` 与 `!doc` 判定逻辑，若文档未找到或连接失败将优雅渲染带有 404 提示和返回库按钮的空态错误卡。
+- **Search 竞态控制**: 引入 React `active` flag 节流判定，当快速连续输入进行 debounced 异步检索时，能有效抛弃过时且由于网络迟滞晚到达的请求响应，杜绝竞态导致的渲染混乱。
+- **Library 排序/密度**: `Library.tsx` 的 SortDropdown 会将 `sort: sortBy` 传给后端并加入 effect 监听，修复了排序无效的问题；在 grid view 中成功实现了对 compact / standard / detailed 三种不同显示密度的自适应结构样式。
+- **Library 快捷筛选**: 移除了作者、时间等死 UI 按钮，针对最核心的「项目」筛选通过 `fetchProjects()` 数据源实现了全自动的动态项目过滤选择下拉面板。
+
+### 4. 测试与验证结果
+- **后端单元测试**: 运行 `python3 -m pytest`（48 份 tests），包括 `test_notes_filter_by_doc_id` 等，已实现 **100% 全绿通过**。
+- **业务仓 (hp) 推送证据**: Commit hash: `0f6237485f200decb52e388e1ccc694b5b67fbb1`
+- **CCC 卡推送证据**: Commit hash: 同步推送至卡内分支。
