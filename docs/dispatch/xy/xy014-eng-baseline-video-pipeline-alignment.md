@@ -1,6 +1,6 @@
 # 任务卡 xy014 · 工程化：video-pipeline 与旁路对齐 + 退役决策落盘（OpenCode 执行）
 
-> 关联：ccc-plan: xianyu 工程化底座补齐 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：ccc-plan: xianyu 工程化底座补齐 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -40,4 +40,19 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 1. 实现说明
+- **引用关系决策**：完成了对 `src/xianyu/video/` 和 `video-pipeline/` 两个模块引用关系的只读核对，并在 xianyu 仓 `.ccc/decision.md` 中产出架构决策文件。明确 `video-pipeline/` 为当前实际被调用并负责产出 `final.mp4` 的唯一生产路径。考虑到 `src/xianyu/video/` 部分功能设计良好，决定采取**冻结（Freeze）**而非彻底退役/删除的策略。
+- **12 个 launchd 服务守护**：在 `.ccc/ops.md` 完整成文记录了 12 个 launchd 服务的详细清单、核心职责与对应的停止命令。
+- **openclaw 调度退役清除**：对 `.ccc/profile.md` 内有关 openclaw 的陈旧调度口径进行了清理，统一对齐至 launchd。
+- **范围限制**：本次任务只涉及 xianyu 仓的文档部分（`.ccc/` 下的 `profile.md`、`ops.md`、`decision.md`），无任何代码（`.py`）文件改动，完美实现零代码改动。
+
+### 2. 测试结果
+- 各文档语法和结构通过了本地对齐性检查。
+- xianyu 仓库运行状态和分支配置正确，无多余未暂存代码文件。
+
+### 3. Push 证据
+- **xianyu 仓分支**：`codex/xy014-eng-baseline-video-pipeline-alignment`
+- **Commit Hash**：`6f41f4238e8ec672ee6b34af57a3e7ef9e289bc1` (short: `6f41f42`)
+- **Push 状态**：已成功推送至 `origin/codex/xy014-eng-baseline-video-pipeline-alignment`
