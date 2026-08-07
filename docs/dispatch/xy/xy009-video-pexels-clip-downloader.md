@@ -52,3 +52,9 @@
 - **自检结果**：
   - 11 个 Pytest 测试用例（含 BGM 和全新 Pexels 退避测试）全部通过。
   - Git 分支 `codex/xy009-video-pexels-clip-downloader` 已成功推送至 xianyu 仓 `hanrry2323/xianyu`。
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（audit-log-restore）· 2026-08-07 13:05
+证据：开发回写。请：1) Read 该绝对路径卡全文与验收标准；2) 在 worktree /Users/fan/program/ccc-dev-ws-xy009 核对 git log/diff；3) 独立取证。通过则必须把「## 机审区」+「机审：通过」写进绝对路径卡文件 /Users/fan/program/CCC/docs/dispatch/xy/xy009-video-pexels-clip-downloader.md（不要只改 worktree 相对副本）；不通过写「机审：不通过」并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。 [ccc.engine] child_pid=74266 机审区「**机审：通过**」已写入绝对路径卡 `/Users/fan/program/CCC/docs/dispatch/xy/xy009-video-pexels-clip-downlo

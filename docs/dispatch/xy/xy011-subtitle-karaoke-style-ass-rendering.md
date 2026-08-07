@@ -79,3 +79,9 @@
 ### 3. Push 证据
 - 关联分支：`codex/xy011-subtitle-karaoke-style-ass-rendering`
 - 最新 Commit Hash：`a221df2`
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（audit-log-restore）· 2026-08-07 13:05
+证据：通过」写进绝对路径卡文件 /Users/fan/program/CCC/docs/dispatch/xy/xy011-subtitle-karaoke-style-ass-rendering.md（不要只改 worktree 相对副本）；不通过写「机审：不通过」并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。 [ccc.engine] child_pid=14370 机审完成，判定**通过**。已向绝对路径卡 `/Users/fan/program/CCC/docs/dispatch/xy/xy011-subtitle-karaoke-style-ass-rendering.md` 写入「## 机审区」+「机审：通过」。未动业务代码，未写验收区，未置已关闭。 **独立取证摘要**： | 检查项 | 结果 | |---|---| | push 证据 | `a221df2` 本地

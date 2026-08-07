@@ -78,3 +78,9 @@
 ### 3. push 证据
 - 推送分支：`codex/xy013-render-hyperframes-glass-template`
 - 最新 Commit Hash：`9a6f6e9f7fc8e74dd96056bef56c2ded54c98144`
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（audit-log-restore）· 2026-08-07 13:05
+证据：过」结论。未写验收区、未置已关闭。以 0 退出。 --- **机审：通过**（xy013） **结论**：通过。业务实现与回写声明在 xianyu 仓 `video-pipeline/` 全链路可核实，单独复跑测试 4 passed。 **独立取证要点**： 1. **push 证据真实**：commit `9a6f6e9f7fc8e74dd96056bef56c2ded54c98144` 存在于 xianyu 仓，本地+remote 的 `codex/xy013-...` 分支均已指向，与回写区一致，未直推 main。 2. **验收标准逐条过**： - headless 一键截图注入帧 —— renderer.py 实现，generator.py pre-render 接线 - 优雅降级 —— 双保险（ImportError→None + use_hyperframes 判空）+ 渲染
