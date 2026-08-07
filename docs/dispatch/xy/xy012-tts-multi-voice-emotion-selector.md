@@ -56,18 +56,19 @@
 2. **人声后期声学增强**：音频在 TTS 生成后，对人声轨（`voice.mp3`）进行后期处理：
    - **高音提亮 (High-shelf EQ)**：在 4kHz 处提升 +3dB，使唇齿音更清晰。
    - **低频切除 (High-pass Filter)**：切除 80Hz 以下底噪与直流噪。
-   - **动态压缩 (Compand)**：施加 `compand` 动态压缩，使人声音量饱满稳定。
+   - **动态压缩 (Compand)**：施加 `compand` 动态压缩，使人声音量饱满稳定.
    - **安全限幅 (Alimiter)**：施加 `-1.5dB` peak limit 安全限幅防止与 BGM 混合时溢出削波。
 3. **安全 Fallback**：Edge-TTS 故障或调用异常时，自动进入重试候选队列，提供 `zh-CN-YunxiNeural`, `zh-CN-XiaoxiaoNeural`, `zh-CN-YunjianNeural` 等备份高品质人声，确保生成流程 100% 弹性，杜绝卡死或空字节文件。
 4. **还原 `config.json` 生产参数**：已彻底回滚/还原 `config.json` 的 debug/探针级参数，恢复为正式生产参数（`duration_sec: 80`，场景 durations 各 `20.0`）。
+5. **剔除超范围渲染代码**：已彻底剔除超范围的 `stages/scene/generator.py` Playwright 网页渲染逻辑与 `pipeline.py` 的 venv/hyperframes 参数，并将其还原为 production baseline（完全对齐 `origin/main`）。
 
 ### 测试结果
-在 `.venv` 虚拟环境下成功运行 `pytest video-pipeline/tests/test_tts_emotion_selector.py --no-cov`，6 个测试用例全部 100% 通过（6 passed），完美覆盖了 `serious`/`humorous`/`marketing`/`emotional` 所有分流逻辑、高品质声线映射，以及音频后期处理 EQ、降噪及限幅等符合性的参数取证。
+在 `.venv` 虚拟环境下成功运行 `pytest video-pipeline/tests/ --no-cov`，12 个测试用例全部 100% 通过（12 passed），完美通过所有配音分流、后期 EQ 音频增强、限幅与 Fallback 机制测试。
 
 ### Push 证据
 - **仓库**：`xianyu` 业务仓 (`/Users/fan/program/apps/xianyu`)
 - **分支**：`codex/xy012-tts-multi-voice-emotion-selector`
-- **提交 Hash (Commit Hash)**：`3a1bc66124f21247df187c80057683ad42f958b1` (Short Hash: `3a1bc66`)
+- **提交 Hash (Commit Hash)**：`19f7a4faab9af98181aee7f82623c43d0bed9f88` (Short Hash: `19f7a4f`)
 
 ## 机审区
 
