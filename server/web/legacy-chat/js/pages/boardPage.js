@@ -33,6 +33,7 @@ let _allCards = [];
 let _ws = 'all';
 let _wsNames = [];
 let _indicatorBusy = false;
+let _nameMap = {};
 
 // T58 state
 let _activeView = 'list'; // 'list' | 'kanban' | 'group-project' | 'group-executor'
@@ -243,7 +244,7 @@ function populateFilterOptions() {
 
     let htmlOpts = '<option value="all">全部</option>';
     for (const p of sortedProj) {
-      htmlOpts += `<option value="${esc(p)}">${esc(p)}</option>`;
+      htmlOpts += `<option value="${esc(p)}">${esc(_nameMap[p] || p)}</option>`;
     }
     projSelect.innerHTML = htmlOpts;
     projSelect.value = selectedVal;
@@ -461,11 +462,12 @@ function renderActiveView() {
       const isCollapsed = _collapsedGroups.has(key);
       const toggleIcon = isCollapsed ? '▶' : '▼';
       const cardsHtml = isCollapsed ? '' : groupCards.map(renderTaskCard).join('');
+      const displayKey = groupBy === 'project' ? (_nameMap[key] || key) : key;
       return `
         <div class="board-group" data-group-key="${esc(key)}" style="border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); background: var(--ccc-bg-layer); overflow: hidden; margin-bottom: 4px;">
           <div class="board-group-header" style="display: flex; align-items: center; padding: 8px 12px; background: var(--ccc-bg-base); cursor: pointer; user-select: none;">
             <span class="board-group-toggle" style="margin-right: 8px; font-family: monospace; font-size: 11px; color: var(--ccc-text-muted);">${toggleIcon}</span>
-            <span style="font-weight: 600; font-size: 12px; color: var(--ccc-text-base);">${esc(key)}</span>
+            <span style="font-weight: 600; font-size: 12px; color: var(--ccc-text-base);">${esc(displayKey)}</span>
             <span class="board-group-count" style="margin-left: 8px; font-size: 10px; color: var(--ccc-text-muted); background: var(--ccc-border-subtle); padding: 1px 6px; border-radius: 10px;">${groupCards.length}</span>
           </div>
           <div class="board-group-body" style="display: ${isCollapsed ? 'none' : 'flex'}; flex-direction: column; gap: 4px; padding: 8px;" ${isCollapsed ? 'hidden' : ''}>
@@ -517,7 +519,8 @@ function updateSummary() {
   const el = _root.querySelector('#board-st');
   if (!el) return;
   const total = getFilteredCards().length;
-  el.textContent = _ws + ` · 共 ${total} 张`;
+  const wsDisplay = _ws === 'all' ? '全部' : (_nameMap[_ws] || _ws);
+  el.textContent = wsDisplay + ` · 共 ${total} 张`;
 }
 
 function classifyWsStatus(payload) {
@@ -592,8 +595,20 @@ function setActiveWorkspace(name) {
 }
 
 async function loadConfig() {
-  const data = await apiGet('/board/summaries');
+  const [data, projData] = await Promise.all([
+    apiGet('/board/summaries'),
+    apiGet('/projects').catch(() => ({ projects: [] }))
+  ]);
   const summaries = (data && data.summaries) || {};
+  const projects = (projData && projData.projects) || [];
+
+  _nameMap = {};
+  for (const p of projects) {
+    if (p.prefix) {
+      _nameMap[p.prefix] = p.name;
+    }
+  }
+
   const btns = _root.querySelector('#board-ws-btns');
   btns.innerHTML = '';
   _wsNames = Object.keys(summaries).sort();
@@ -615,7 +630,7 @@ async function loadConfig() {
     b.type = 'button';
     b.className = 'board-ws-btn' + (n === _ws ? ' active' : '');
     b.dataset.ws = n;
-    b.textContent = n;
+    b.textContent = _nameMap[n] || n;
     b.setAttribute('aria-pressed', n === _ws ? 'true' : 'false');
     btns.appendChild(b);
   }

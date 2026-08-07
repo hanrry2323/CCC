@@ -438,8 +438,20 @@ def _build_public_projects() -> list[dict[str, Any]]:
     ``is_taskable`` 走 _is_taskable_projects 白名单（可下达任务）。
     本接口不带任何任务卡分组名（INT-120 等只在看板筛选出现，不进入左栏）。
     """
+    from server.board.registry import load_projects
+
     projects: list[dict[str, Any]] = []
     taskable = _is_taskable_projects()
+
+    prefix_map = {}
+    for p in load_projects():
+        if p.name:
+            prefix_map[p.name] = p.prefix
+        if p.id:
+            prefix_map[p.id] = p.prefix
+        if p.display:
+            prefix_map[p.display] = p.prefix
+
     for item in _load_project_metadata():
         name = str(item.get("name") or "").strip()
         if not name:
@@ -451,6 +463,7 @@ def _build_public_projects() -> list[dict[str, Any]]:
                 "kind": _infer_project_kind(item),
                 "workspace_path": _extract_workspace_path(str(item.get("path") or "")),
                 "is_taskable": name in taskable,
+                "prefix": prefix_map.get(name, ""),
             }
         )
     # 固定排序：taskable 业务项目在前，其余按 name
