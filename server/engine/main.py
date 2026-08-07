@@ -339,11 +339,33 @@ def _worktree_hint_for(work: Work, registry: ExecutorRegistry) -> str:
 
 
 def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
-    """机审证据是否已在信封（分支卡优先，生产卡兜底）。"""
+    """机审证据是否已在信封（**分支 git 证据**为准，生产卡兜底）。
+
+    只认进 git 的证据：worktree 卡文件有标记但分支没有（commit 被吞的洞）
+    不算通过，避免死结（xy016 事故）。
+    """
     if worktree_hint:
         wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
         if wt_card is not None and _card_machine_audit_passed(str(wt_card)):
-            return True
+            try:
+                rel = wt_card.relative_to(
+                    Path(worktree_hint).expanduser().resolve()
+                ).as_posix()
+            except ValueError:
+                rel = wt_card.name
+            branch = f"codex/{Path(work.card_path).stem.lower()}"
+            res = subprocess.run(
+                ["git", "-C", worktree_hint, "show", f"origin/{branch}:{rel}"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if res.returncode == 0:
+                from server.board.models import machine_audit_passed_text
+
+                if machine_audit_passed_text(res.stdout):
+                    return True
     return _card_machine_audit_passed(work.card_path)
 
 
@@ -1104,6 +1126,18 @@ def _run_machine_audit_after_writeback(
     if _audit_evidence_passed(work, worktree_hint):
         logger.info("机审已通过（分支/生产卡证据），跳过: work=%s", work.id)
         return True, []
+    # 补提交：机审区已在 worktree 文件但未进分支（commit 被吞的历史洞）→ 直接补提交，不重审
+    if worktree_hint:
+        wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
+        if (
+            wt_card is not None
+            and _card_machine_audit_passed(str(wt_card))
+            and not _audit_evidence_passed(work, worktree_hint)
+        ):
+            if _commit_and_push_worktree_card(worktree_hint, work.card_path, work.id):
+                logger.info("机审区补提交进分支（历史遗留）: work=%s", work.id)
+                return True, []
+            logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
     acceptor = normalize_tool(work.acceptance) or "Claude Code"
     entry = _audit_cli_entry(registry, acceptor)
     if entry is None:
