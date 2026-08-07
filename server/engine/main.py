@@ -231,24 +231,74 @@ def _slot_limits(cfg: dict[str, Any], config_path: str | Path | None = None) -> 
     return exec_max, audit_max
 
 
-def _audit_pending_path(log_dir: Path, work_id: str) -> Path:
-    return log_dir / f"{work_id}.audit-pending"
+def _worktree_hint_for(work: Work, registry: ExecutorRegistry) -> str:
+    """按注册表 worktree_base 计算该卡 worktree 路径（无则空串）。"""
+    entry = None
+    if work.executor:
+        entry = registry.cli_entry_for_binding(work.executor, project=work.project)
+    if entry is None:
+        entry = registry.cli_entry_for_role(work.role, project=work.project)
+    wt_base = getattr(entry, "worktree_base", "") or "" if entry else ""
+    if not wt_base:
+        return ""
+    return get_worktree_path(wt_base, work.id)
 
 
-def _mark_audit_pending(log_dir: Path, work_id: str) -> None:
-    """执行收单成功 → 打「待机审」标记；机审池按标记捞卡（跨重启可恢复）。"""
+def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
+    """机审证据是否已在信封（分支卡优先，生产卡兜底）。"""
+    if worktree_hint:
+        wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
+        if wt_card is not None and _card_machine_audit_passed(str(wt_card)):
+            return True
+    return _card_machine_audit_passed(work.card_path)
+
+
+def _commit_and_push_worktree_card(
+    worktree_path: str,
+    card_path: str,
+    work_id: str,
+) -> bool:
+    """把 worktree 卡（含机审区）commit+push 到分支（信封证据进 git）。"""
+    wt_card = _worktree_card_candidate(worktree_path, card_path)
+    if wt_card is None:
+        logger.warning("worktree 卡不存在，无法提交机审证据: work=%s", work_id)
+        return False
     try:
-        log_dir.mkdir(parents=True, exist_ok=True)
-        _audit_pending_path(log_dir, work_id).touch()
-    except OSError:
-        logger.exception("写待机审标记失败: work=%s", work_id)
-
-
-def _clear_audit_pending(log_dir: Path, work_id: str) -> None:
+        rel = wt_card.relative_to(Path(worktree_path).expanduser().resolve()).as_posix()
+    except ValueError:
+        rel = wt_card.name
     try:
-        _audit_pending_path(log_dir, work_id).unlink(missing_ok=True)
-    except OSError:
-        pass
+        subprocess.run(
+            ["git", "-C", worktree_path, "add", "--", rel],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        res = subprocess.run(
+            ["git", "-C", worktree_path, "commit", "-m", f"docs(card): 机审通过 {work_id}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if res.returncode != 0:
+            logger.info("worktree 卡 commit 无改动（可能已由机审 CLI 提交）: %s", work_id)
+        push = subprocess.run(
+            ["git", "-C", worktree_path, "push", "origin", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if push.returncode != 0:
+            logger.warning("机审证据 push 失败: work=%s (%s)", work_id, push.stderr.strip())
+            return False
+        logger.info("机审证据已提交并推送分支: work=%s", work_id)
+        return True
+    except Exception as exc:
+        logger.warning("机审证据 commit/push 异常: work=%s (%s)", work_id, exc)
+        return False
 
 
 def _audit_marker_alive(log_dir: Path, work_id: str) -> bool:
@@ -340,7 +390,6 @@ def _cleanup_closed_worktrees(
                 timeout=60,
                 check=False,
             )
-            _clear_audit_pending(log_dir, work.id)
             cleaned += 1
             logger.info("worktree 已清理（卡已关闭）: %s", wt)
         except Exception as exc:
@@ -981,12 +1030,14 @@ def _run_machine_audit_after_writeback(
     log_dir: Path,
     timeout: int,
 ) -> tuple[bool, list[str]]:
-    """开发收单已回写后：拉起卡头验收方做机审（写 ## 机审区）；已通过则跳过。
+    """机审信封化：结果写进 worktree 分支卡并 commit+push；生产卡只读。
 
-    注册表无验收席 CLI → 跳过机审（仅打日志），不阻断已回写。
+    已通过（分支卡优先，生产卡兜底）→ 跳过；注册表无验收席 CLI → 跳过。
+    无 worktree（测试/简易执行体）回退写生产卡。
     """
-    if _card_machine_audit_passed(work.card_path):
-        logger.info("机审已通过，跳过: work=%s", work.id)
+    worktree_hint = _worktree_hint_for(work, registry)
+    if _audit_evidence_passed(work, worktree_hint):
+        logger.info("机审已通过（分支/生产卡证据），跳过: work=%s", work.id)
         return True, []
     acceptor = normalize_tool(work.acceptance) or "Claude Code"
     entry = _audit_cli_entry(registry, acceptor)
@@ -999,10 +1050,6 @@ def _run_machine_audit_after_writeback(
         return True, []
     logger.info("拉起机审: work=%s acceptor=%s", work.id, acceptor)
     _claim_running_marker(log_dir, f"{work.id}-audit")
-    worktree_hint = ""
-    wt_base = getattr(entry, "worktree_base", "") or ""
-    if wt_base:
-        worktree_hint = get_worktree_path(wt_base, work.id)
     try:
         ok, problems = _dispatch_and_collect(
             work,
@@ -1020,31 +1067,34 @@ def _run_machine_audit_after_writeback(
     audit_log = log_dir / f"{work.id}.audit.log"
     audit_text = _read_text_best_effort(audit_log)
 
-    def _try_backfill(reason: str) -> bool:
-        """worktree 同步失败后：若 audit 输出判定通过则自动落盘（ccc006）。"""
-        if worktree_hint and _sync_machine_audit_from_worktree(work, worktree_hint):
-            logger.info("机审区已从 worktree 同步通过: work=%s (%s)", work.id, reason)
-            return True
-        if _card_machine_audit_passed(work.card_path):
-            return True
-        if not _audit_output_indicates_pass(audit_text):
-            return False
-        return _append_machine_audit_pass(
-            work.card_path,
-            source=reason,
-            evidence=audit_text[-800:],
-        )
-
-    if not ok:
-        # 退出非0也可能已写机审区到 worktree / 或日志已判定通过
-        if _try_backfill("audit-exit-nonzero"):
-            return True, []
+    if not ok and not _audit_output_indicates_pass(audit_text):
         return False, problems or ["机审执行失败"]
-    if _card_machine_audit_passed(work.card_path):
-        return True, []
-    if _try_backfill("audit-log-pass"):
-        return True, []
-    return False, ["机审结束但卡上无 ## 机审区 通过标记（机审：通过 / ✅ / 判定：通过）"]
+
+    evidence = audit_text[-800:]
+    if worktree_hint:
+        wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
+        if wt_card is not None:
+            if not _append_machine_audit_pass(
+                str(wt_card),
+                source="engine-audit",
+                evidence=evidence,
+            ):
+                return False, ["机审通过但机审区落盘到分支卡失败"]
+            if not _commit_and_push_worktree_card(
+                worktree_hint,
+                work.card_path,
+                work.id,
+            ):
+                return False, ["机审通过但分支证据未推送（ready 不可见）"]
+            return True, []
+        logger.warning("worktree 卡缺失，回退生产卡落证据: work=%s", work.id)
+    if not _append_machine_audit_pass(
+        work.card_path,
+        source="engine-audit",
+        evidence=evidence,
+    ):
+        return False, ["机审通过但机审区落盘失败"]
+    return True, []
 
 
 def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
@@ -1068,7 +1118,7 @@ def _run_auto_worker(
     log_dir: Path,
     timeout: int,
 ) -> dict[str, int]:
-    """单卡 AUTO 执行：派发 → 回写/打回 → 打「待机审」标记（机审走独立槽位池）。"""
+    """单卡 AUTO 执行：派发 → 回写/打回（机审走独立槽位池，证据进分支信封）。"""
     outcome = {"collected": 0, "timed_out": 0}
     try:
         ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
@@ -1076,7 +1126,6 @@ def _run_auto_worker(
             work.transition(State.DONE)
             store.save_work(work)
             logger.info("收单成功: work=%s → 已回写", work.id)
-            _mark_audit_pending(log_dir, work.id)
             outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
@@ -1115,8 +1164,8 @@ def _run_audit_worker(
     """
     outcome = {"collected": 0, "failed": 0}
     try:
-        if _card_machine_audit_passed(work.card_path):
-            logger.info("机审已通过，跳过: work=%s", work.id)
+        if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
+            logger.info("机审证据已存在（分支/生产卡），跳过: work=%s", work.id)
             outcome["collected"] = 1
             return outcome
         ok, problems = _run_machine_audit_after_writeback(
@@ -1139,7 +1188,6 @@ def _run_audit_worker(
             logger.exception("机审异常后失败流转失败: work=%s", work.id)
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
-        _clear_audit_pending(log_dir, work.id)
     return outcome
 
 
@@ -1283,10 +1331,7 @@ def run_once(
         for work in store.list_work(state=State.DONE):
             if work.id in audit_alive or _audit_marker_alive(log_dir, work.id):
                 continue
-            if not _audit_pending_path(log_dir, work.id).is_file():
-                continue
-            if _card_machine_audit_passed(work.card_path):
-                _clear_audit_pending(log_dir, work.id)
+            if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
                 continue
             candidates.append(work)
         a_pending = len(candidates)
@@ -1433,7 +1478,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
-    store: BoardStore = FileBoardStore(dispatch_dir, registry)
+    store: BoardStore = FileBoardStore(
+        dispatch_dir,
+        registry,
+        log_dir=cfg.get("EXECUTOR_LOG_DIR", "").strip() or None,
+    )
     if args.audit:
         timeout = int(cfg.get("EXECUTOR_TIMEOUT_SECONDS") or DEFAULT_EXECUTOR_TIMEOUT)
         log_dir_str = cfg.get("EXECUTOR_LOG_DIR", "").strip()

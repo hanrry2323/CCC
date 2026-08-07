@@ -91,6 +91,23 @@ def _body_has(card: Path, marker: str) -> bool:
     return marker in text
 
 
+def _has_real_annotation(card: Path) -> bool:
+    """卡含 `## 人工批注` 且内容非模板占位（老板写了真实修订指示）。"""
+    try:
+        text = card.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    m = re.search(r"^##\s*人工批注\s*$", text, flags=re.MULTILINE)
+    if not m:
+        return False
+    tail = text[m.end():]
+    nxt = re.search(r"^##\s", tail, flags=re.MULTILINE)
+    content = (tail[: nxt.start()] if nxt else tail).strip()
+    if not content:
+        return False
+    return "老板对打回卡/审核的批注意见写这里" not in content
+
+
 def _is_accepted(path: Path) -> bool:
     """读卡正文 `## 验收区` 后 20 行内含 `✅` 或 `判定：通过`。"""
     try:
@@ -360,6 +377,19 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             )
         if base in ("已回写", "已关闭", "打回") and not _body_has(path, "## 回写区"):
             issues.append(CardIssue(card_id, str(path), f"状态 {base} 但缺少 ## 回写区"))
+        if (
+            base in ("已回写", "已关闭")
+            and _has_real_annotation(path)
+            and not _body_has(path, "## 批注落实")
+        ):
+            issues.append(
+                CardIssue(
+                    card_id,
+                    str(path),
+                    "卡含 ## 人工批注（老板最高开发指令），但回写区缺 ## 批注落实"
+                    "（执行体须说明批注如何落实；未落实=机审不通过）",
+                )
+            )
         if not _body_has(path, "## 目标"):
             issues.append(CardIssue(card_id, str(path), "缺少 ## 目标"))
         if not _body_has(path, "## 验收标准"):

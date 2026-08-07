@@ -78,7 +78,8 @@ class TestSyncOriginMain:
         assert summary["method"] == "ff-only"
         assert (local / "docs" / "dispatch" / "b.md").is_file()
 
-    def test_dirty_skips_local_card_but_gets_new(self, tmp_path: Path) -> None:
+    def test_force_sync_cards_from_main(self, tmp_path: Path) -> None:
+        """本地脏卡不再可信：ff 受阻时强制以 main 为准覆盖（主树=main 镜像）。"""
         bare = tmp_path / "bare.git"
         subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
         local = tmp_path / "local"
@@ -96,11 +97,11 @@ class TestSyncOriginMain:
         _git(other, "commit", "-m", "remote edits")
         _git(other, "push", "origin", "main")
 
-        # 本地 Engine 正在改 a.md → dirty
+        # 本地旧卡状态（不再可信）→ 强制对齐 main
         (local / "docs" / "dispatch" / "a.md").write_text("# a local dirty\n", encoding="utf-8")
 
         summary = sync_origin_main(local, remote="origin", branch="main")
         assert summary["method"] == "dispatch-checkout"
         assert (local / "docs" / "dispatch" / "c.md").is_file()
-        assert "docs/dispatch/a.md" in summary.get("skipped_dirty", [])
-        assert (local / "docs" / "dispatch" / "a.md").read_text(encoding="utf-8") == "# a local dirty\n"
+        assert "docs/dispatch/a.md" in summary.get("updated", [])
+        assert (local / "docs" / "dispatch" / "a.md").read_text(encoding="utf-8") == "# a remote\n"

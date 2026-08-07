@@ -1611,6 +1611,55 @@ class TestOpsConcurrency:
         assert "error" in data
 
 
+class TestTaskTransition:
+    """POST /tasks/{id}/transition → 运行时重新分派（主树卡文件只读）。"""
+
+    def test_closed_card_rejected(self, api_server, monkeypatch, tmp_path):
+        monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+        token = _get_token(api_server)
+        status, snap = _get(api_server, "/board/snapshot", token=token)
+        assert status == 200
+        closed = snap["columns"].get("已关闭", [])
+        if not closed:
+            pytest.skip("无已关闭卡")
+        status, data = _post(
+            api_server,
+            f"/tasks/{closed[0]['id']}/transition",
+            {"status": "待分派"},
+            token=token,
+        )
+        assert status == 400
+        assert "不可重新分派" in data["error"]
+
+    def test_redispatch_writes_runtime_sidecar(self, api_server, monkeypatch, tmp_path):
+        monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+        token = _get_token(api_server)
+        status, snap = _get(api_server, "/board/snapshot", token=token)
+        assert status == 200
+        candidates = [
+            t["id"]
+            for col in ("打回", "待分派")
+            for t in snap["columns"].get(col, [])
+        ]
+        if not candidates:
+            pytest.skip("无打回/待分派卡")
+        task_id = candidates[0]
+        status, data = _post(
+            api_server,
+            f"/tasks/{task_id}/transition",
+            {"status": "待分派"},
+            token=token,
+        )
+        assert status == 200, data
+        assert data["runtime"] is True
+        from server.engine.runtime_state import read_card_state
+
+        rt = read_card_state(tmp_path)
+        assert rt[task_id]["state"] == "待分派"
+        assert rt[task_id]["retry_count"] == 0
+        assert rt[task_id]["redispatch"]
+
+
 # ── T33 前端只读配置注入：/config ──
 
 
@@ -2016,4 +2065,3 @@ class TestCardsFallback:
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "tst002"
-

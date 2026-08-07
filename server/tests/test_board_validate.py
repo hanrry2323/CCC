@@ -284,3 +284,45 @@ def test_qh_prefix_forbidden(tmp_path: Path) -> None:
     )
     errs = _errors(validate_cards(tmp_path))
     assert any("禁止" in i.reason or "QuantHive" in i.reason for i in errs)
+
+
+class TestAnnotationGate:
+    """老板批注（最高开发指令）：已执行卡必须带「## 批注落实」。"""
+
+    def _card(self, tmp: Path, state: str, annotation: str = "", fulfillment: bool = False) -> Path:
+        body = "\n## 目标\nx\n\n## 验收标准\nx\n"
+        if annotation:
+            body += f"\n## 人工批注\n\n{annotation}\n"
+        body += "\n## 回写区\n**执行体**：X · 日期：\n"
+        if fulfillment:
+            body += "\n## 批注落实\n已按批注修订：x\n"
+        p = tmp / f"T-{state}-{len(annotation)}-{fulfillment}.md"
+        p.write_text(
+            f"# 任务卡 T · 测试\n"
+            f"> 关联：TEST · 执行体：OpenCode · 验收：Claude Code · 状态：{state} · 日期：2026-08-07\n"
+            f"{body}",
+            encoding="utf-8",
+        )
+        return p
+
+    def test_annotated_written_back_requires_fulfillment(self, tmp_path: Path) -> None:
+        self._card(tmp_path, "已回写", annotation="把接口改成 POST")
+        issues = _errors(validate_cards(tmp_path))
+        assert any("批注落实" in i.reason for i in issues)
+
+    def test_annotated_with_fulfillment_passes(self, tmp_path: Path) -> None:
+        self._card(tmp_path, "已回写", annotation="把接口改成 POST", fulfillment=True)
+        assert _errors(validate_cards(tmp_path)) == []
+
+    def test_placeholder_annotation_not_required(self, tmp_path: Path) -> None:
+        self._card(
+            tmp_path,
+            "已回写",
+            annotation="（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）",
+        )
+        assert _errors(validate_cards(tmp_path)) == []
+
+    def test_rejected_card_annotation_waits_execution(self, tmp_path: Path) -> None:
+        """打回卡有批注但未重跑 → 不要求批注落实（待执行后机审把关）。"""
+        self._card(tmp_path, "打回", annotation="把接口改成 POST")
+        assert _errors(validate_cards(tmp_path)) == []

@@ -692,6 +692,40 @@ class TestFileBoardStore:
         parent.state = State.CLOSED
         assert _parent_blocks_dispatch(child, by_id) is None
 
+    def test_file_store_runtime_mode(self, tmp_path: Path) -> None:
+        """有 log_dir：save_work 只写运行时 sidecar，卡文件保持 main 镜像。"""
+        from server.board.loader import load_dispatch_cards
+        from server.engine.runtime_state import read_card_state
+        from server.engine.store import FileBoardStore
+
+        reg_path = _write_demo_registry(tmp_path)
+        reg = load_registry(reg_path)
+        dispatch_dir = tmp_path / "docs" / "dispatch"
+        card_dir = dispatch_dir / "ccc"
+        card_dir.mkdir(parents=True)
+        card = card_dir / "ccc999-runtime.md"
+        card.write_text(
+            "# 任务卡 ccc999 · 测试\n"
+            "> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-07\n"
+            "\n## 目标\nx\n\n## 验收标准\nx\n",
+            encoding="utf-8",
+        )
+        load_dispatch_cards(dispatch_dir)
+
+        store = FileBoardStore(dispatch_dir, reg, log_dir=tmp_path / "logs")
+        w = store.list_work(state=State.TODO)[0]
+        assert w.id == "ccc999"
+        w.transition(State.RUNNING)
+        store.save_work(w)
+
+        # 卡文件未被改写（主树干净）
+        assert "状态：待分派" in card.read_text(encoding="utf-8")
+        # 运行时 sidecar 记录执行中 + list_work 合成
+        rt = read_card_state(tmp_path / "logs")
+        assert rt["ccc999"]["state"] == "执行中"
+        assert store.list_work(state=State.RUNNING)[0].id == "ccc999"
+        assert store.list_work(state=State.TODO) == []
+
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
         """list_work(state=X) 只返回匹配状态的卡。"""
         reg_path = _write_demo_registry(tmp_path)
@@ -979,19 +1013,17 @@ class TestParallelAndRelayGuard:
             d = run_once(reg, store, cfg, wait=False)
             total_audit_collected += d["audit_collected"]
             done = len(store.list_work(state=State.DONE))
-            pending_flags = list((tmp_path / "logs").glob("*.audit-pending"))
-            if done == 2 and not pending_flags:
+            if done == 2 and total_audit_collected >= 2:
                 break
         if d is None or not (len(store.list_work(state=State.DONE)) == 2):
             d = run_once(reg, store, cfg, wait=True)
             total_audit_collected += d.get("audit_collected", 0)
 
         assert len(store.list_work(state=State.DONE)) == 2
-        assert not list((tmp_path / "logs").glob("*.audit-pending"))
         assert total_audit_collected == 2, f"两张卡机审应收 2 张: {total_audit_collected}"
 
-    def test_audit_pending_flag_resume(self, tmp_path: Path) -> None:
-        """执行收单写待机审标记；机审处理后清除；通过则卡上落机审区。"""
+    def test_audit_evidence_resume(self, tmp_path: Path) -> None:
+        """执行收单后机审按证据捞卡；通过则卡上落机审区（无 worktree 走生产卡）。"""
         reg_path = _write_demo_registry(
             tmp_path,
             command="echo",
@@ -1016,7 +1048,6 @@ class TestParallelAndRelayGuard:
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 1
         assert summary["audit_collected"] == 1
-        assert not (tmp_path / "logs" / "a1.audit-pending").exists()
         assert "机审：通过" in card_file.read_text(encoding="utf-8")
 
     def test_run_once_summary_audit_fields(self, tmp_path: Path) -> None:
@@ -1421,6 +1452,115 @@ class TestEngineWorktree:
         assert n == 1
         assert not wt1.exists()
         assert wt2.exists()
+
+    def test_audit_writes_branch_envelope(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """机审通过 → 机审区写进 worktree 分支卡并 commit+push（信封证据进 git）。"""
+        import json as _json
+
+        bare = tmp_path / "bare.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True, capture_output=True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "t"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "t@example.com"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", str(bare)], check=True, capture_output=True)
+        card_dir = repo / "docs" / "dispatch" / "xy"
+        card_dir.mkdir(parents=True)
+        card = card_dir / "xy099-audit-envelope.md"
+        card.write_text(
+            "# 任务卡 xy099 · 测试\n"
+            "> 关联：XY · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 日期：2026-08-07\n"
+            "\n## 目标\nx\n\n## 验收标准\nx\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "push", "-q", "-u", "origin", "main"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "main"],
+            check=True,
+            capture_output=True,
+        )
+        # Engine 建 worktree 以进程 cwd 为仓根（生产=launchd WorkingDirectory）
+        monkeypatch.chdir(repo)
+
+        reg_path = tmp_path / "executors.json"
+        reg_path.write_text(
+            _json.dumps(
+                {
+                    "version": "2",
+                    "executors": [
+                        {
+                            "角色": "开发执行体",
+                            "分类": "可后台 CLI",
+                            "当前绑定": "demo",
+                            "命令": "sh",
+                            "参数模板": "-c 'echo x >> work.txt && git add work.txt && git commit -qm w'",
+                            "工作目录": "",
+                            "worktree_base": str(tmp_path / "wt"),
+                            "备注": "",
+                        },
+                        {
+                            "角色": "验收席",
+                            "分类": "可后台 CLI",
+                            "当前绑定": "Claude Code",
+                            "命令": "echo",
+                            "参数模板": "机审：通过 {work_id}",
+                            "工作目录": "",
+                            "备注": "",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        reg = load_registry(str(reg_path))
+        store = InMemoryBoardStore()
+        store.seed(Work(id="xy099", role="开发执行体", card_path=str(card)))
+        cfg = {
+            "DATA_DIR": str(repo),
+            "DISPATCH_DIR": str(repo / "docs" / "dispatch"),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+            "CCC_AUTO_PULL": "0",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1, summary
+        assert summary["audit_collected"] == 1, summary
+
+        wt_card = tmp_path / "wt-xy099" / "docs" / "dispatch" / "xy" / "xy099-audit-envelope.md"
+        assert wt_card.is_file()
+        assert "机审：通过" in wt_card.read_text(encoding="utf-8")
+
+        fetch = subprocess.run(["git", "-C", str(repo), "fetch", "-q", "origin"], capture_output=True, text=True)
+        assert fetch.returncode == 0
+        show = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show",
+                "origin/codex/xy099-audit-envelope:docs/dispatch/xy/xy099-audit-envelope.md",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert show.returncode == 0, show.stderr
+        assert "机审：通过" in show.stdout
 
 
 class TestAcceptanceGuard:

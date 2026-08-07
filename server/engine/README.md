@@ -87,13 +87,25 @@ $PYTHON_BIN -m server.engine.main --config <config.env> --once  # 单次扫描 +
 ## 并发槽与埋点（2026-08-07）
 
 - **双池独立槽位**：执行池 `EXECUTOR_MAX_CONCURRENT`（默认 3）与机审池
-  `EXECUTOR_MAX_AUDIT_CONCURRENT`（默认 2）互不占位；执行收单打 `{work_id}.audit-pending`
-  标记，机审池每轮心跳独立捞卡（跨重启可恢复）。
+  `EXECUTOR_MAX_AUDIT_CONCURRENT`（默认 2）互不占位；机审池每轮按「已回写且分支无机审
+  证据」独立捞卡（跨重启从分支推导恢复）。
 - **槽位热读**：持续模式每轮重读 `config.env` 中两个槽位键，改配置免重启生效。
 - **埋点**：`{EXECUTOR_LOG_DIR}/engine-metrics.jsonl`（每轮心跳槽位/队列/吞吐快照）+
   `worker-events.jsonl`（每个执行/机审子进程退出事件：returncode/时长/峰值 RSS/CPU/退出类别）。
 - **卫生清理**：合入批准后自动删已合入分支（`scripts/approve-merge.sh`）；Engine 每轮清理
   「已关闭 + 干净 + 已合入」的 worktree（`git worktree remove` + prune，脏 worktree 绝不强删）。
+
+## 机审信封与运行时状态（2026-08-07 二改）
+
+- **分支即信封**：机审通过结果由 Engine 写进 worktree 分支卡并 commit+push（`## 机审区`），
+  合入 = 纯快进合并完整信封；生产卡只读，`ready_for_merge`/approve-merge 以
+  `git show origin/<分支>:<卡>` 含「机审：通过」为准（跨机可验，不再依赖 2017 本地脏状态）。
+- **主树干净化**：`FileBoardStore` 有 `log_dir` 时 `save_work` 只写运行时 sidecar
+  （`state/cards.jsonl`：state/retry_count/reason/redispatch），不写卡文件；看板以
+  「git 卡真相 + 运行时状态 + 分支信封证据」合成。git_sync 对卡文件强制以 main 为准。
+- **老板批注（最高指令）**：`## 人工批注` 随 main 卡走（worktree 天然读到）；回写区
+  `## 批注落实` 为机械抓手（validate 门禁）；机审必须核对批注落实，未落实 → 不通过。
+- **重新分派**：看板按钮/`redispatch-card.sh` 写运行时 redispatch 指令（不打回卡文件）。
 
 ## T3 施工入口
 

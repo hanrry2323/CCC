@@ -105,19 +105,27 @@ class InMemoryBoardStore:
 
 
 class FileBoardStore:
-    """文件/卡驱动看板存储（P1-1）。
+    """卡驱动看板存储（P1-1）+ 运行时状态（主树干净化）。
 
     读 `docs/dispatch/*.md` 卡头元数据 → 构造 `Work`；
-    `save_work` 回写卡头「状态：X」行（原子替换）。
+    `save_work` 在给定 ``log_dir`` 时写入运行时状态 sidecar（不写卡文件）；
+    未给 ``log_dir``（测试）回退回写卡头「状态：X」行（原子替换）。
 
     Args:
         dispatch_dir: 任务卡目录（如 `docs/dispatch`）。
         registry: 执行体注册表（用于工具名 → 角色反查）。
+        log_dir: 执行体日志目录（运行时状态落这里；None=legacy 卡文件写）。
     """
 
-    def __init__(self, dispatch_dir: str | Path, registry: ExecutorRegistry) -> None:
+    def __init__(
+        self,
+        dispatch_dir: str | Path,
+        registry: ExecutorRegistry,
+        log_dir: str | Path | None = None,
+    ) -> None:
         self._dir = Path(dispatch_dir)
         self._registry = registry
+        self._log_dir = Path(log_dir) if log_dir else None
 
     def list_work(self, state: State | None = None) -> list[Work]:
         """走索引列出 work (扫描仅用于重建/校验)。"""
@@ -125,6 +133,9 @@ class FileBoardStore:
         load_dispatch_cards(self._dir)
 
         index_entries = load_index_file(self._dir)
+        from server.engine.runtime_state import read_card_state
+
+        runtime = read_card_state(self._log_dir) if self._log_dir else {}
         works: list[Work] = []
         project_root = Path(__file__).resolve().parents[2]
 
@@ -132,12 +143,16 @@ class FileBoardStore:
             # 归档卡不进 Engine 派发队列（看板 loader 已过滤；store 须对齐）
             if entry.get("archived"):
                 continue
-            st = _state_from_str(entry["state"])
+            raw_state = entry.get("state", "")
+            rt = runtime.get(entry["id"]) or {}
+            if rt.get("state"):
+                raw_state = str(rt["state"])
+            st = _state_from_str(raw_state)
             if st is None:
                 logger.warning(
                     "跳过未知状态卡: id=%s state=%r",
                     entry.get("id"),
-                    entry.get("state"),
+                    raw_state,
                 )
                 continue
 
@@ -151,8 +166,8 @@ class FileBoardStore:
             rel_path = entry.get("path", "")
             abs_path = project_root / rel_path
 
-            raw_state = entry.get("state", "")
-            retry_count = _retry_count_from_state_str(str(raw_state or ""))
+            retry_count = int(rt.get("retry_count") or 0) if rt.get("retry_count") is not None else _retry_count_from_state_str(str(raw_state or ""))
+            reason = str(rt.get("reason") or "")[:200]
 
             work = Work(
                 id=entry["id"],
@@ -168,15 +183,28 @@ class FileBoardStore:
                 acceptance=entry.get("acceptance", "") or "",
                 thread_id=entry.get("thread_id", ""),
                 retry_count=retry_count,
+                problems=[reason] if reason else [],
             )
             works.append(work)
         return works
 
     def save_work(self, work: Work) -> None:
-        """回写卡头「状态」行（原子替换）。
+        """持久化 work 状态：有 log_dir → 运行时 sidecar（不写卡文件）；否则回写卡头。
 
-        只改 `>` 元数据行中的 `状态：X` 段；不动回写区 `**日期**：`。
+        运行时模式只写 ``EXECUTOR_LOG_DIR/state/cards.jsonl``，主树卡文件保持 main 镜像。
         """
+        if self._log_dir is not None:
+            from server.engine.runtime_state import write_card_state
+
+            write_card_state(
+                self._log_dir,
+                work.id,
+                state=work.state.value,
+                retry_count=work.retry_count,
+                reason=work.problems[0] if work.problems else "",
+            )
+            logger.info("save_work(runtime): %s → %s", work.id, work.state.value)
+            return
         if not work.card_path:
             logger.warning("save_work: work=%s 无 card_path，跳过回写", work.id)
             return

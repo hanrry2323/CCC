@@ -731,8 +731,53 @@ def _json_response(data: Any, status: int = 200) -> tuple[str, str, bytes]:
 
 
 def _load_board_items():
-    """加载任务卡数据。"""
-    return load_dispatch_cards(_DISPATCH_DIR)
+    """加载任务卡数据 + 运行时合成（git 真相 + 运行时状态 + 分支信封证据）。"""
+    items = load_dispatch_cards(_DISPATCH_DIR)
+    try:
+        return _compose_board_items(items)
+    except Exception:
+        logger.exception("看板合成失败，回退 git 真相")
+        return items
+
+
+def _compose_board_items(items):
+    """运行时状态覆盖 + 分支机审证据（TTL 缓存）；主树卡文件只读。"""
+    from server.engine.runtime_state import read_card_state
+    from server.web.audit_evidence import branch_card_audit_passed
+
+    log_dir = _executor_log_dir()
+    runtime = read_card_state(log_dir) if log_dir else {}
+    path_by_id: dict[str, str] = {}
+    try:
+        from server.board.loader import load_index_file
+
+        for entry in load_index_file(_DISPATCH_DIR).values():
+            if entry.get("id") and entry.get("path"):
+                path_by_id[str(entry["id"])] = str(entry["path"])
+    except Exception:
+        pass
+    repo_root = None
+    try:
+        from server.git_sync import resolve_repo_root
+
+        repo_root = resolve_repo_root(_DISPATCH_DIR)
+    except Exception:
+        pass
+
+    out = []
+    for item in items:
+        rt = runtime.get(item.id) or {}
+        if rt.get("state"):
+            item.state = str(rt["state"])
+        if not item.machine_audit_passed and base_state(item.state) == "已回写":
+            rel = path_by_id.get(item.id)
+            if rel and repo_root is not None:
+                branch = "codex/" + Path(rel).stem.lower()
+                passed = branch_card_audit_passed(repo_root, rel, branch)
+                if passed is True:
+                    item.machine_audit_passed = True
+        out.append(item)
+    return out
 
 
 # ── T53：后台任务进程实时展示（GET /tasks/running） ──
@@ -1440,8 +1485,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         return candidates[0] if candidates else None
 
     def _handle_task_transition(self, task_id: str):
-        """POST /tasks/{id}/transition
-        Body: {"status": "..."} or {"state": "..."}
+        """POST /tasks/{id}/transition → 运行时重新分派（主树卡文件只读）。
+
+        仅支持「打回/待分派 → 待分派」：写运行时 sidecar
+        （state=待分派、retry_count=0、redispatch=ts），engine 每轮读取视同重派。
         """
         body = self._read_body()
         if not body:
@@ -1449,69 +1496,47 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
 
         target_state_str = body.get("status") or body.get("state")
-        if not target_state_str:
-            self._send_json({"error": "status parameter is required"}, 400)
+        if (target_state_str or "").strip().lower() not in ("todo", "待分派"):
+            self._send_json({"error": "运行时仅支持重新分派（打回 → 待分派）"}, 400)
             return
 
-        from server.engine.task import State, _LEGAL_TRANSITIONS
-        state_map = {
-            "todo": State.TODO,
-            "running": State.RUNNING,
-            "done": State.DONE,
-            "closed": State.CLOSED,
-            "rejected": State.REJECTED,
-            "待分派": State.TODO,
-            "执行中": State.RUNNING,
-            "已回写": State.DONE,
-            "已关闭": State.CLOSED,
-            "打回": State.REJECTED,
-        }
-
-        target_state = state_map.get(target_state_str.lower() if isinstance(target_state_str, str) else target_state_str)
-        if not target_state:
-            self._send_json({"error": f"invalid status: {target_state_str}"}, 400)
+        log_dir = _executor_log_dir()
+        if log_dir is None:
+            self._send_json({"error": "EXECUTOR_LOG_DIR 未配置，无法写运行时状态"}, 500)
             return
 
-        card_file = self._find_card_file(task_id)
-        if not card_file:
+        item = next((i for i in _load_board_items() if i.id == task_id), None)
+        if item is None:
             self._send_json({"error": f"task card not found for: {task_id}"}, 404)
             return
 
-        try:
-            from server.board.loader import parse_card
-            item = parse_card(card_file)
-        except Exception as exc:
-            self._send_json({"error": f"failed to parse card: {exc}"}, 500)
+        cur = base_state(item.state)
+        if cur not in ("打回", "待分派"):
+            self._send_json(
+                {"error": f"当前状态「{item.state}」不可重新分派（仅打回/待分派）"},
+                400,
+            )
             return
 
-        curr_state_str = item.state
-        curr_state = state_map.get(curr_state_str)
-        if not curr_state:
-            curr_state = State.TODO
+        from datetime import datetime, timezone
 
-        allowed = _LEGAL_TRANSITIONS.get(curr_state, frozenset())
-        if target_state not in allowed:
-            allowed_vals = [s.value for s in sorted(allowed, key=str)]
-            self._send_json({
-                "error": f"Illegal state transition: {curr_state.value} -> {target_state.value} (Allowed targets: {allowed_vals})"
-            }, 400)
-            return
+        from server.engine.runtime_state import write_card_state
 
-        try:
-            from server.engine.store import _replace_state_in_metadata
-            text = card_file.read_text(encoding="utf-8")
-            new_state_str = target_state.value
-            new_text = _replace_state_in_metadata(text, new_state_str)
-            card_file.write_text(new_text, encoding="utf-8")
-
-            # 重建索引/刷新看板
-            from server.board.loader import load_dispatch_cards
-            load_dispatch_cards(_DISPATCH_DIR)
-        except Exception as exc:
-            self._send_json({"error": f"failed to write transition: {exc}"}, 500)
-            return
-
-        self._send_json({"ok": True, "id": task_id, "from": curr_state.value, "to": target_state.value})
+        ts = (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+        write_card_state(
+            log_dir,
+            task_id,
+            state="待分派",
+            retry_count=0,
+            redispatch=ts,
+        )
+        self._send_json(
+            {"ok": True, "id": task_id, "from": cur, "to": "待分派", "runtime": True}
+        )
 
     def _handle_ops_summary(self):
         """GET /ops/summary → OpsSummary 兼容子集（cluster 采集 + board 派生 severity）。

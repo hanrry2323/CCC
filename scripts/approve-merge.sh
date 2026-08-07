@@ -40,8 +40,41 @@ if [[ "$USE_READY" == true ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && IDS+=("$line")
   done < <(
-    curl -sf --max-time 10 "${BOARD_URL}/board/ready_for_merge" \
-      | "$PYTHON_BIN" -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(c['id'] for c in d.get('cards') or []))"
+    # 分支信封证据：origin/codex/* 分支卡含「机审：通过」且未合入 main → ready
+    git fetch origin main >/dev/null 2>&1
+    git fetch origin >/dev/null 2>&1
+    "$PYTHON_BIN" - <<'PY'
+import re, subprocess, sys
+from pathlib import Path
+
+sys.path.insert(0, ".")
+from server.board.models import machine_audit_passed_text
+
+out = subprocess.check_output(["git", "branch", "-r"], text=True)
+ready = []
+for b in out.splitlines():
+    b = b.strip()
+    if not b.startswith("origin/codex/"):
+        continue
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", b, "origin/main"],
+        capture_output=True,
+    ).returncode == 0:
+        continue  # 已合入 main
+    files = subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", b], text=True
+    ).splitlines()
+    for f in files:
+        if not f.startswith("docs/dispatch/") or not f.endswith(".md"):
+            continue
+        card = subprocess.check_output(["git", "show", f"{b}:{f}"], text=True)
+        if machine_audit_passed_text(card):
+            m = re.match(r"^([a-z]{2,4}\d{3})-", Path(f).stem)
+            if m:
+                ready.append(m.group(1))
+            break
+print("\n".join(sorted(set(ready))))
+PY
   )
   if [[ ${#IDS[@]} -eq 0 ]]; then
     echo "[OK] ready_for_merge 队列为空"
@@ -172,34 +205,27 @@ approve_one() {
   echo "== 合入批准 ${id} (${branch}) =="
   print_external_repo_hint "$path" "$branch"
 
-  # 优先 2017 ready；本地机审区也可
-  local api_ok=false
-  if curl -sf --max-time 8 "${BOARD_URL}/board/ready_for_merge" \
-    | "$PYTHON_BIN" -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(c.get('id')==sys.argv[1] for c in d.get('cards') or []) else 1)" "$id" 2>/dev/null; then
-    api_ok=true
-  fi
-  if [[ "$api_ok" != true ]]; then
-    if ! check_audit "$path"; then
-      # try tip of branch for 机审区
-      git fetch origin "$branch" >/dev/null 2>&1 || {
-        echo "[ERROR] ${id}: 不在 ready 队列且本地无机审通过；origin/${branch} 不可用" >&2
-        return 1
-      }
-      if ! git show "origin/${branch}:${path}" 2>/dev/null \
-        | "$PYTHON_BIN" -c "
+  # 机审证据 = 分支信封（git show origin/<branch>:<卡路径> 含 机审：通过）
+  git fetch origin main >/dev/null 2>&1
+  git fetch origin "$branch" >/dev/null 2>&1 || true
+  local audit_ok=false
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
+    && git show "origin/${branch}:${path}" 2>/dev/null \
+      | "$PYTHON_BIN" -c "
 import sys
 sys.path.insert(0, '.')
 from server.board.models import machine_audit_passed_text
 sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
 "; then
-        echo "[ERROR] ${id}: 机审未通过（API ready + 本地/分支机审区均失败）" >&2
-        return 1
-      fi
-    fi
+    audit_ok=true
+  elif check_audit "$path"; then
+    # 已合入/无分支（close-only）场景：本地卡机审区
+    audit_ok=true
   fi
-
-  git fetch origin main
-  git fetch origin "$branch" 2>/dev/null || true
+  if [[ "$audit_ok" != true ]]; then
+    echo "[ERROR] ${id}: 分支信封无机审通过证据（origin/${branch} 卡无机审区，本地卡也无）" >&2
+    return 1
+  fi
 
   # 工作树须在 main
   current="$(git rev-parse --abbrev-ref HEAD)"

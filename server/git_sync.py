@@ -109,8 +109,8 @@ def sync_origin_main(
         logger.info("git sync ff-only ok: %s", summary["detail"] or "ok")
         return summary
 
-    # ff 失败：尝试只更新 dispatch 下未脏路径（新卡可见，不覆盖 Engine 本地回写）
-    dirty = _porcelain_paths(repo)
+    # ff 失败：卡文件始终以 main 为准——本地卡状态已迁到运行时 sidecar + 分支信封，
+    # 主树只做 main 镜像（丢弃本地卡改动，杜绝 pull 冲突与批注被脏卡挡住的场景）。
     diff = _run(repo, ["diff", "--name-only", f"HEAD...{ref}", "--", dispatch_subdir])
     if diff.returncode != 0:
         summary["detail"] = (merged.stderr or "ff-only blocked; diff failed").strip()[:300]
@@ -118,29 +118,43 @@ def sync_origin_main(
         return summary
 
     updated: list[str] = []
-    skipped_dirty: list[str] = []
     for rel in diff.stdout.splitlines():
         rel = rel.strip()
         if not rel:
             continue
-        if rel in dirty:
-            skipped_dirty.append(rel)
-            continue
-        co = _run(repo, ["checkout", ref, "--", rel])
+        co = _run(repo, ["checkout", "-f", ref, "--", rel])
         if co.returncode == 0:
             updated.append(rel)
         else:
             logger.warning("git sync checkout %s failed: %s", rel, (co.stderr or "").strip()[:200])
 
-    summary["ok"] = bool(updated) or not diff.stdout.strip()
+    # 未跟踪卡文件（曾以 `A` 状态阻断 merge）一并清掉
+    untracked = _run(
+        repo,
+        ["ls-files", "--others", "--exclude-standard", "--", dispatch_subdir],
+    )
+    removed_untracked = 0
+    for rel in untracked.stdout.splitlines():
+        rel = rel.strip()
+        if not rel:
+            continue
+        try:
+            (repo / rel).unlink(missing_ok=True)
+            removed_untracked += 1
+        except OSError:
+            logger.warning("git sync 清理未跟踪卡失败: %s", rel)
+
+    # 清理后重试 ff-only（卡文件已对齐，剩余阻挡仅限非 dispatch 路径）
+    merged_retry = _run(repo, ["merge", "--ff-only", ref], timeout=60.0)
+    summary["ok"] = merged_retry.returncode == 0 or bool(updated) or not diff.stdout.strip()
     summary["method"] = "dispatch-checkout"
     summary["updated"] = updated
-    summary["skipped_dirty"] = skipped_dirty
+    summary["removed_untracked"] = removed_untracked
     summary["detail"] = (
-        f"ff-only blocked; checked out {len(updated)} clean dispatch path(s), "
-        f"skipped {len(skipped_dirty)} dirty"
-    )
-    logger.info("git sync fallback: %s", summary["detail"])
+        f"ff-only blocked; force-checked out {len(updated)} dispatch path(s), "
+        f"removed {removed_untracked} untracked; retry ff rc={merged_retry.returncode}"
+    ).strip()[:300]
+    logger.warning("git sync dispatch force-sync: %s", summary["detail"])
     return summary
 
 

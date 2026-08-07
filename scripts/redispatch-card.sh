@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# ── CCC：打回卡人工重新分派（打回 → 待分派，重试计数归零）──
+# ── CCC：打回卡人工重新分派（运行时指令，主树卡文件只读）──
 #
 # 用法：
 #   scripts/redispatch-card.sh <card-id> [<card-id>...]
 #
-# 校验：卡当前为「打回」（含括号原因）。
-# 动作：卡头状态改回纯「待分派」；保留 `## 人工批注` 与 `打回次数` 历史；
-#       引擎重试计数归零（状态串无「重试n」标记），下轮心跳自动再派。
-# 建议：先看卡上打回原因，在 `## 人工批注` 写好审核意见后再执行本脚本。
+# 前置：老板修订指示先写进卡 `## 人工批注` 并 commit+push 到 main
+#       （执行体 worktree 从 main 建，天然读到批注）。
+# 动作：调用看板 API POST /tasks/<id>/transition（status=待分派）→ 写运行时
+#       sidecar（state=待分派、retry_count=0、redispatch=ts），engine 每轮重派。
+#       不直接改任何卡文件（主树保持 main 镜像）。
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
+BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
 
 IDS=()
 DISPATCH_DIR=""
@@ -34,11 +35,11 @@ cd "$PROJECT_ROOT"
 
 rc=0
 for cid in "${IDS[@]}"; do
-  if [[ -n "$DISPATCH_DIR" ]]; then
-    if ! "$PYTHON_BIN" -m server.board.redispatch "$cid" --dispatch-dir "$DISPATCH_DIR"; then
-      rc=1
-    fi
-  elif ! "$PYTHON_BIN" -m server.board.redispatch "$cid"; then
+  if out="$(curl -sf --max-time 10 -X POST "${BOARD_URL}/tasks/${cid}/transition" \
+      -H 'Content-Type: application/json' -d '{"status":"待分派"}' 2>&1)"; then
+    echo "[OK] ${cid}: ${out}"
+  else
+    echo "[ERROR] ${cid}: ${out}" >&2
     rc=1
   fi
 done
