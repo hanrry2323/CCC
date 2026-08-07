@@ -1,6 +1,6 @@
 # 任务卡 mx012 · RSS 统计改后端聚合接口（OpenCode 执行）
 
-> 关联：ccc-plan: mx HTTP 页面修复第一批：RSS P0/P1 四项 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx HTTP 页面修复第一批：RSS P0/P1 四项 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -46,8 +46,19 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 实现说明
+1. 后端新增 `/api/v1/rss/stats` 聚合接口，通过 SQLite `COUNT` 聚合直接查询未读/已读/收藏数以及今日/本周发布数，避免了全量拉取。
+2. 前端 `RssStatsPage` 移除 `perPage: 1000` 拉取与客户端全量计算，直接改调新聚合接口获取数据，彻底解决 >1000 条数据不截断、不卡顿问题。
+3. 补全前端 `client.ts` 接口类型并优化状态判断。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+- 运行 `cargo check` 编译无任何错误与警告。
+- 运行 `cargo test --package medio-core --lib -- api::routes::rss::tests` 成功通过全部相关后端测试（13 个）。
+- 运行前端 `vitest` 通过 102 个 API 与 client 测试。
+- 确认统计数值与 SQLite 数据库直接 COUNT 的实际数值完全一致。
+
+### push 证据
+- 业务仓 (medio-0) 提交分支: `codex/mx012-rss-stats-backend-aggregation`
+- 业务仓 commit hash: `d1451f96400db4be74c3d2e0f4989dca3dfbb016`
