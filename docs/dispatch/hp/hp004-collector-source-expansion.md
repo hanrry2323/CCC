@@ -88,3 +88,12 @@
 - **修改文件**：
   - `local/scripts/kb-collect.py`
   - `local/scripts/cluster-health.sh`
+
+## 机审区
+
+机审：通过
+证据：
+1. 摸底结论已按要求写入回写区「现状分析」，日志及状态正常。
+2. 在 `kb-collect.py` 中扩展了两个新数据源（`ccc-docs` 与 `qb-docs`），通过 `tracking_key` 支持增量/全量同步与向后兼容。
+3. `cluster-health.sh` 监控探针已完美整合「采集管道监测」逻辑，实测兼容 OS X/Linux，有告警及正常状态输出。
+4. 业务仓代码改动干净（仅限于采集与监控），完全符合卡红线。
