@@ -745,6 +745,8 @@ def _load_board_items():
 
 def _compose_board_items(items):
     """运行时状态覆盖 + 分支机审证据（TTL 缓存）；主树卡文件只读。"""
+    from dataclasses import replace
+
     from server.engine.runtime_state import read_card_state
     from server.web.audit_evidence import branch_card_audit_passed
 
@@ -770,16 +772,22 @@ def _compose_board_items(items):
     out = []
     for item in items:
         rt = runtime.get(item.id) or {}
-        if rt.get("state"):
-            item.state = str(rt["state"])
-        if not item.machine_audit_passed and base_state(item.state) == "已回写":
+        new_state = str(rt["state"]) if rt.get("state") else item.state
+        audited = item.machine_audit_passed
+        if not audited and base_state(new_state) == "已回写":
             rel = path_by_id.get(item.id)
             if rel and repo_root is not None:
                 branch = "codex/" + Path(rel).stem.lower()
                 passed = branch_card_audit_passed(repo_root, rel, branch)
                 if passed is True:
-                    item.machine_audit_passed = True
-        out.append(item)
+                    audited = True
+        out.append(
+            replace(
+                item,
+                state=new_state,
+                machine_audit_passed=audited,
+            )
+        )
     return out
 
 
