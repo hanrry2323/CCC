@@ -1,6 +1,6 @@
 # 任务卡 mx002 · add server health api and python smoke test（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -75,4 +75,31 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 实现说明
+1. **API 路由及处理器**：在 `src/backend/core/src/api/routes/mod.rs` 中注册了 `/api/v1/health` 路由，并实现无鉴权处理器 `health_handler`，秒级返回包含状态 "ok" 及当前版本号的 JSON 数据。
+2. **冒烟测试用例**：在 `tests/test_probe.py` 中的 `TestServerConnectivity` 类里追加了针对 `/health` 接口的端到端自动化测试用例 `test_health_endpoint`。
+
+### 测试结果
+在本地通过 `cargo run` 拉起测试服务器后，使用 `python3 -m pytest tests/test_probe.py -v` 执行冒烟测试，所有 11 个测试用例（包括 `test_health_endpoint`）全部 100% Passed 成功通过：
+```
+tests/test_probe.py::TestImports::test_import_aiohttp PASSED             [  9%]
+tests/test_probe.py::TestImports::test_import_requests PASSED            [ 18%]
+tests/test_probe.py::TestImports::test_import_pytest PASSED              [ 27%]
+tests/test_probe.py::TestServerConnectivity::test_rss_subscriptions_endpoint PASSED [ 36%]
+tests/test_probe.py::TestServerConnectivity::test_rss_items_endpoint PASSED [ 45%]
+tests/test_probe.py::TestServerConnectivity::test_rss_tags_endpoint PASSED [ 54%]
+tests/test_probe.py::TestServerConnectivity::test_rss_opml_export PASSED [ 63%]
+tests/test_probe.py::TestServerConnectivity::test_media_videos_endpoint PASSED [ 72%]
+tests/test_probe.py::TestServerConnectivity::test_media_folders_endpoint PASSED [ 81%]
+tests/test_probe.py::TestServerConnectivity::test_search_endpoint PASSED [ 90%]
+tests/test_probe.py::TestServerConnectivity::test_health_endpoint PASSED [100%]
+
+============================== 11 passed in 0.41s ==============================
+```
+
+### push 证据 (Commit Hash)
+已成功推送至卡内指定远程分支 `codex/mx002-add-server-health-api-and-python-smoke-test`：
+- **Commit Hash**: `b3e24280c2fb46315a51fb74fb5999d6dae7424a`
+- **Remote Repo**: `git@github.com:hanrry2323/medio-0.git`
