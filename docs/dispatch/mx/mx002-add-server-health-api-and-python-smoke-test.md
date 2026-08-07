@@ -47,8 +47,8 @@
      ```
    - 激活虚拟环境并执行测试：
      ```bash
-     # M2 平台虚拟环境位置：/Users/fan/program/apps/medio-0/.venv 或 tests/requirements 对应环境
-     # 运行健康探测：
+     # M2 platform virtual env position: /Users/fan/program/apps/medio-0/.venv or tests/requirements env
+     # Run health probe:
      pytest tests/test_probe.py -k test_health_endpoint -v
      ```
    - 验证通过后清理测试服务器进程：
@@ -77,29 +77,30 @@
 
 **执行体**：OpenCode · 日期：2026-08-07
 
-### 实现说明
-1. **API 路由及处理器**：在 `src/backend/core/src/api/routes/mod.rs` 中注册了 `/api/v1/health` 路由，并实现无鉴权处理器 `health_handler`，秒级返回包含状态 "ok" 及当前版本号的 JSON 数据。
-2. **冒烟测试用例**：在 `tests/test_probe.py` 中的 `TestServerConnectivity` 类里追加了针对 `/health` 接口的端到端自动化测试用例 `test_health_endpoint`。
+### 1. 实现说明
+- **API 路由及处理器**：在 `src/backend/core/src/api/routes/mod.rs` 中注册了 `/api/v1/health` 路由，并引入 `axum::routing::get` 和 `axum::Json` 实现无鉴权处理器 `health_handler`，秒级返回包含状态 "ok" 及当前版本号 `0.9.0` 的 JSON 数据。
+- **冒烟测试用例**：在 `tests/test_probe.py` 中的 `TestServerConnectivity` 类里追加了针对 `/health` 接口的端到端自动化测试用例 `test_health_endpoint`。
 
-### 测试结果
-在本地通过 `cargo run` 拉起测试服务器后，使用 `python3 -m pytest tests/test_probe.py -v` 执行冒烟测试，所有 11 个测试用例（包括 `test_health_endpoint`）全部 100% Passed 成功通过：
-```
-tests/test_probe.py::TestImports::test_import_aiohttp PASSED             [  9%]
-tests/test_probe.py::TestImports::test_import_requests PASSED            [ 18%]
-tests/test_probe.py::TestImports::test_import_pytest PASSED              [ 27%]
-tests/test_probe.py::TestServerConnectivity::test_rss_subscriptions_endpoint PASSED [ 36%]
-tests/test_probe.py::TestServerConnectivity::test_rss_items_endpoint PASSED [ 45%]
-tests/test_probe.py::TestServerConnectivity::test_rss_tags_endpoint PASSED [ 54%]
-tests/test_probe.py::TestServerConnectivity::test_rss_opml_export PASSED [ 63%]
-tests/test_probe.py::TestServerConnectivity::test_media_videos_endpoint PASSED [ 72%]
-tests/test_probe.py::TestServerConnectivity::test_media_folders_endpoint PASSED [ 81%]
-tests/test_probe.py::TestServerConnectivity::test_search_endpoint PASSED [ 90%]
-tests/test_probe.py::TestServerConnectivity::test_health_endpoint PASSED [100%]
+### 2. 测试结果
+- 执行 `cargo check -p medio-server` 检查编译完美通过。
+- 启动测试服务器（使用端口 3000 和 config-test.toml 配置），运行 `pytest tests/test_probe.py -v` 冒烟测试共计 11 个测试用例，100% 成功通过（11 passed）：
+  ```
+  tests/test_probe.py::TestImports::test_import_aiohttp PASSED             [  9%]
+  tests/test_probe.py::TestImports::test_import_requests PASSED            [ 18%]
+  tests/test_probe.py::TestImports::test_import_pytest PASSED              [ 27%]
+  tests/test_probe.py::TestServerConnectivity::test_rss_subscriptions_endpoint PASSED [ 36%]
+  tests/test_probe.py::TestServerConnectivity::test_rss_items_endpoint PASSED [ 45%]
+  tests/test_probe.py::TestServerConnectivity::test_rss_tags_endpoint PASSED [ 54%]
+  tests/test_probe.py::TestServerConnectivity::test_rss_opml_export PASSED [ 63%]
+  tests/test_probe.py::TestServerConnectivity::test_media_videos_endpoint PASSED [ 72%]
+  tests/test_probe.py::TestServerConnectivity::test_media_folders_endpoint PASSED [ 81%]
+  tests/test_probe.py::TestServerConnectivity::test_search_endpoint PASSED [ 90%]
+  tests/test_probe.py::TestServerConnectivity::test_health_endpoint PASSED [100%]
 
-============================== 11 passed in 0.41s ==============================
-```
+  ============================== 11 passed in 0.41s ==============================
+  ```
+- 源码工作区除允许修改的文件外保持绝对干净（`.venv` 在验证完毕后已被彻底移除）。
 
-### push 证据 (Commit Hash)
-已成功推送至卡内指定远程分支 `codex/mx002-add-server-health-api-and-python-smoke-test`：
-- **Commit Hash**: `b3e24280c2fb46315a51fb74fb5999d6dae7424a`
-- **Remote Repo**: `git@github.com:hanrry2323/medio-0.git`
+### 3. Push 证据
+- 业务仓 (medio-0) 提交至分支 `codex/mx002-add-server-health-api-and-python-smoke-test`：
+  Commit Hash: `b3e24280c2fb46315a51fb74fb5999d6dae7424a`
