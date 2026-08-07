@@ -1,6 +1,6 @@
 # 任务卡 hp001 · 首次摸底：recon baseline 与业务线路图梳理（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -59,4 +59,21 @@ hp 项目首次进 CCC 自动开发流程：在 Mac2017 `/Users/fan/program/apps
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
+
+### 实现说明
+
+1. 深入侦察了 Mac2017 `/Users/fan/program/apps/hp` 业务仓只读基线状态，摸清了技术栈（Python psycopg2 后端 + React 前端 + pgvector + Ollama 1024 维）、目录布局（`local/` 为 untracked 部署、`tests/`、`docs/`）、git 状态（clean, main 分支 ahead 1）及文档资产。
+2. 在 CCC 仓回写了项目档案 `docs/projects/hp/README.md`，填充了「是什么/路径/在 CCC 怎么动/线路与近况/禁区」五节框架，并新增了附 A（技术栈表）、附 B（深度 3 目录树）、附 C（基于 Baseline 梳理的 Phase 0-5 业务线路与意向）。
+3. 在 `docs/roadmap.md` 末尾增设 `## 业务线路（hp）` 总览段，详细列出 `hp001` 到 `hp003` 的进度（`hp001` 为 `待合入批准`），并归纳了 hp 下一程意向。
+
+### 测试结果
+
+- 验证业务仓 `/Users/fan/program/apps/hp` 零改动：`git -C /Users/fan/program/apps/hp status -sb` 为 clean。
+- 本地自检：通过了 `python3 -m server.board.validate docs/dispatch` 卡头/看板一致性及项目前缀对账校验（卡头修改为「已回写」且更新缓存后校验无阻断阻碍）。
+
+### push 证据
+
+- **分支**：`codex/hp001-recon-baseline-roadmap`
+- **Commit Hash**：`accc74270151ef82bba5ee9e057b7eff9080fa27`
+
