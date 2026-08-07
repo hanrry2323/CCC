@@ -1,6 +1,6 @@
 # 任务卡 xy016 · 视频出片链路全摸底与架构图 HTML 产出（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
