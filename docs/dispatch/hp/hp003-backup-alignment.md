@@ -1,6 +1,6 @@
 # 任务卡 hp003 · 备份对齐：pg 备份链路摸底与冷热备份机制规范化（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
