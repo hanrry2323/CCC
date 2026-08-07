@@ -1,0 +1,78 @@
+# 任务卡 mx002 · add server health api and python smoke test（OpenCode 执行）
+
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+
+## 目标
+
+在 `medio-0` 媒体服务器 (Rust Axum 后端) 中实现一个极轻量的 `/api/v1/health` 健康监控接口，并在 Python API 冒烟测试集 `tests/test_probe.py` 中增加对应的端到端测试用例并成功跑通。
+
+## 红线（先看）
+
+1. **绝对禁止**修改或破坏 `medio-0` 中既有的任何业务 API 逻辑和数据库表结构。
+2. 仅允许在 `/Users/fan/program/apps/medio-0` 目录下的 `src/backend/core/src/api/routes/mod.rs` 和 `tests/test_probe.py` 中进行白名单修改。
+3. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+
+## 范围
+
+- `src/backend/core/src/api/routes/mod.rs` (核心 API 路由层)
+- `tests/test_probe.py` (Python 冒烟测试集)
+
+## 步骤
+
+1. 在 Mac2017 实机进入目录 `cd /Users/fan/program/apps/medio-0`。
+2. 编辑 `src/backend/core/src/api/routes/mod.rs`，在 `build_routes()` 路由器中注册 `/api/v1/health` 路由：
+   - 引入 `axum::routing::get` 及 `axum::Json`。
+   - 实现无鉴权直接可访问的 `async fn health_handler() -> Json<serde_json::Value>` 处理器，返回 `{"status": "ok", "version": env!("CARGO_PKG_VERSION")}`。
+   - 在 `build_routes()` 中追加 `.route("/api/v1/health", get(health_handler))` 链式注册。
+3. 执行编译检查，确保后端能够完美编译通过：
+   ```bash
+   cargo check -p medio-server
+   ```
+4. 编辑 `tests/test_probe.py`，在 `TestServerConnectivity` 测试类中追加一个针对健康检查接口的测试用例：
+   ```python
+   def test_health_endpoint(self, session):
+       """GET /health should return 200 with status ok and valid version."""
+       resp = session.get(f"{self.BASE_URL}/health", timeout=5)
+       assert resp.status_code == 200
+       data = resp.json()
+       assert data.get("status") == "ok"
+       assert "version" in data
+   ```
+5. 启动测试服务器并运行端到端测试进行验证：
+   - 使用测试配置拉起服务器（如后台挂载运行或使用指定测试端口，默认测试端口 3000）：
+     ```bash
+     cargo run -p medio-server -- --config config-test.toml --port 3000 &
+     SERVER_PID=$!
+     sleep 2
+     ```
+   - 激活虚拟环境并执行测试：
+     ```bash
+     # M2 平台虚拟环境位置：/Users/fan/program/apps/medio-0/.venv 或 tests/requirements 对应环境
+     # 运行健康探测：
+     pytest tests/test_probe.py -k test_health_endpoint -v
+     ```
+   - 验证通过后清理测试服务器进程：
+     ```bash
+     kill $SERVER_PID
+     ```
+6. commit+push 到卡内分支 `codex/mx002-add-server-health-api-and-python-smoke-test`（勿直推 main）；卡头改为「已回写」。
+7. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+
+## 验收标准
+
+1. 通过浏览器或 curl 访问 `http://127.0.0.1:3000/api/v1/health` 能够秒级返回 `{"status":"ok","version":"0.9.0"}` 等 JSON 数据。
+2. 运行 `pytest tests/test_probe.py -k test_health_endpoint` 测试用例 100% Passed。
+3. `/Users/fan/program/apps/medio-0` 源码工作区保持干净（除了我们修改的 `mod.rs` 和 `test_probe.py` 外，没有其他任何残留修改或未跟踪文件）。
+
+## 回写要求
+
+卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
+机审由卡头「验收」方自动写 `## 机审区`；人审 diff 后听「合入批准」写 `## 验收区`+已关闭。
+
+## 人工批注
+
+（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+
+## 回写区
+
+**执行体**：OpenCode · 日期：
