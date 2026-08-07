@@ -867,8 +867,21 @@ def _enriched_cards(include_archived: bool = False) -> list[dict]:
     cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
     cards_list.sort(key=lambda x: x["id"])
     log_dir = _executor_log_dir()
+    # 富化收窄：非关闭卡 + 最新 10 张已关闭（看板只展示这 10 张的徽章），
+    # 避免每轮对全部历史卡做日志/工作树计算（重建从 ~5s 降到 ~1s）。
+    enrich_ids = {
+        c["id"]
+        for c in cards_list
+        if base_state(c.get("state", "")) != "已关闭"
+    }
+    recent_closed = sorted(
+        [c for c in cards_list if base_state(c.get("state", "")) == "已关闭"],
+        key=lambda x: x.get("closed_at") or "",
+        reverse=True,
+    )[:10]
+    enrich_ids.update(c["id"] for c in recent_closed)
     for c in cards_list:
-        if card_wants_runtime(c):
+        if c["id"] in enrich_ids and card_wants_runtime(c):
             enrich_card_runtime(
                 c,
                 log_dir,
