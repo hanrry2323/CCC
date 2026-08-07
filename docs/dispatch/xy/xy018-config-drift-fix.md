@@ -1,6 +1,6 @@
 # 任务卡 xy018 · 配置漂移修复与文档对齐（OpenCode 执行）
 
-> 关联：ccc-plan: xy 审计问题修复：路径规划/漂移修复/生产补漏 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：ccc-plan: xy 审计问题修复：路径规划/漂移修复/生产补漏 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
