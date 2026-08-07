@@ -1,6 +1,6 @@
 # 任务卡 mx006 · CI 补后端 Rust 格式门禁（OpenCode 执行）
 
-> 关联：ccc-plan: mx 打磨第一批：后端格式门禁 + 设置页路径校验 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: mx 打磨第一批：后端格式门禁 + 设置页路径校验 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -51,8 +51,19 @@ medio-0 打磨第一批（按 mx005 清单第 1 项）：后端 Rust 代码格�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 1. 实现说明
+- 新增 `rustfmt.toml` 配置 `edition = "2021"` 确保 `rustfmt` 可不依赖 cargo 独立运行检查 Rust 2021 语法。
+- 本地配置：在 `package.json` 的 `lint-staged` 属性中为 `**/*.rs` 增加 `"rustfmt --check"` 本地钩子检查。
+- CI 门禁配置：修改 `.github/workflows/ci.yml`，在 backend 任务 check 前插入 `cargo fmt --all -- --check` 格式检查步骤。
+- 存量重构：对 `medio-0` 全仓现有代码执行 `cargo fmt --all`，统一了 66 个受影响的 Rust 文件的格式。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- **存量格式统一**：执行 `cargo fmt --all` 后，格式校验 `cargo fmt --all -- --check` 返回退出码 `0`。
+- **本地钩子拦截自测**：在 `src/backend/server/src/main.rs` 中故意插入不合规空格缩进并 `git add`，触发 pre-commit 时 `npx lint-staged` 成功拦截不合规格式并阻断提交。
+- **项目完备性**：`cargo check --workspace` 编译通过，对原有逻辑无任何副作用。
+
+### 3. Push 证据
+- 关联分支：`codex/mx006-cargo-fmt-ci-gate`
+- Commit 哈希：`827d6e739a40ed49efb31bdc1d63f23f1b313c42`
