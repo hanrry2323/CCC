@@ -140,3 +140,24 @@
 - 补齐覆盖 `humorous/marketing/emotional` 分流的单元测试（引用真实 `voice_map`）。
 - 还原 `config.json` 的正式时长参数。
 - commit+push 到原卡内分支后回写，重投 2017 机审。
+
+---
+
+**机审（轮次 4 · 复审·回写后重核）**：Claude Code（2017）· 日期：2026-08-07
+
+**结论：机审：通过**
+
+**回写后新增提交 `19f7a4f` 已独立取证，未引入回归也非超范围：**
+- `19f7a4f fix(tts): remove out-of-scope hyperframes playwright rendering logic` 仅改 `video-pipeline/pipeline.py` + `video-pipeline/stages/scene/generator.py`，`git diff origin/main` 两文件均为**空 diff**，即已还原 production baseline（彻底剔除超范围 hyperframes/playwright 渲染逻辑与 venv 参数），符合红线 1「只动配音/音频后期」范围约束。
+- 该提交未触碰 xy012 核心文件：`config.json` / `stages/tts/generator.py` / `stages/compose/generator.py` / `stages/script/generator.py` / `contracts.py` 均未被 `19f7a4f` 修改。
+
+**分支极点在 `19f7a4f`、与其父 `3a1bc66`（轮次 3 判通过点）差异即为上述单条剔除提交，逐一重核通过项均保留：**
+- **config.json（轮次 2 打回项）仍为正式参数**：`duration_sec: 80`、四场景各 `20.0`；且 `git diff origin/main` 不含 config.json，确认与 production 完全一致。✓
+- **script→tts 分流链路（轮次 1 打回项）仍在**：`stages/script/generator.py:234-245` 依 style/topic 计算 emotion_tag 四分支，写入 `ScriptOutput`（`contracts.py:51`），`run()` 序列化至 script.json（`generator.py:262`）；TTS 端 `VOICE_MAP.get(emotion_tag,"serious")` 消费（`stages/tts/generator.py:68,167`）。✓
+- **声线池 + fallback（红线 3）在**：VOICE_MAP 四款神经声线齐备；多候选重试 + 空文件守卫（≥0 字节才成功），杜绝卡死/0 字节。✓
+- **人声后期增强（AC2）在**：`stages/compose/generator.py:28` `filter_str="highpass=f=80,treble=g=3:f=4000,compand=…,alimiter=limit=-1.5dB"`。✓
+- **测试（AC3）**：隔离 worktree `.venv` 实跑 `video-pipeline/tests/ --no-cov` → **12 passed**（其中 tts 6 项全过，compose 6 项全过），通过率 100%，与回写区陈述一致。✓
+- **红线 2 不直推 main**：`git merge-base --is-ancestor HEAD origin/main` 判 **NOT MERGED**；当前工作树 branch 极点为 `19f7a4f`，与回写区 Push 证据 commit 一致。✓
+- **人工批注**：本卡无 `## 人工批注` 段（无老板批注意见），无批注需核对落实，不构成拦点。✓
+
+**验收闭环达成，判机审通过。** 待老板审 diff 后执行「合入批准」。
