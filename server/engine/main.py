@@ -41,7 +41,8 @@ from server.engine.dispatch import (
     decide_work,
     load_registry,
 )
-from server.engine.pool import get_dispatch_pool
+from server.engine.metrics import ProcessSampler, record_slot_snapshot, record_worker_event
+from server.engine.pool import get_audit_pool, get_dispatch_pool
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
@@ -195,6 +196,156 @@ def _fail_retry_or_reject(
         reasons[:2],
     )
     return False
+
+
+def _slot_limits(cfg: dict[str, Any], config_path: str | Path | None = None) -> tuple[int, int]:
+    """执行/机审槽位上限；config_path 可读时热读文件值（改配置免重启）。
+
+    Returns:
+        (exec_max, audit_max)，均至少 1。
+    """
+
+    def _int_val(raw: Any, default: int) -> int:
+        try:
+            return max(1, int(str(raw).strip()))
+        except (TypeError, ValueError):
+            return default
+
+    exec_max = _int_val(cfg.get("EXECUTOR_MAX_CONCURRENT"), 3)
+    audit_max = _int_val(cfg.get("EXECUTOR_MAX_AUDIT_CONCURRENT"), 2)
+    if config_path:
+        try:
+            for line in Path(config_path).read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, _, v = s.partition("=")
+                k = k.strip()
+                val = v.strip().strip('"').strip("'")
+                if k == "EXECUTOR_MAX_CONCURRENT":
+                    exec_max = _int_val(val, exec_max)
+                elif k == "EXECUTOR_MAX_AUDIT_CONCURRENT":
+                    audit_max = _int_val(val, audit_max)
+        except OSError:
+            pass
+    return exec_max, audit_max
+
+
+def _audit_pending_path(log_dir: Path, work_id: str) -> Path:
+    return log_dir / f"{work_id}.audit-pending"
+
+
+def _mark_audit_pending(log_dir: Path, work_id: str) -> None:
+    """执行收单成功 → 打「待机审」标记；机审池按标记捞卡（跨重启可恢复）。"""
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _audit_pending_path(log_dir, work_id).touch()
+    except OSError:
+        logger.exception("写待机审标记失败: work=%s", work_id)
+
+
+def _clear_audit_pending(log_dir: Path, work_id: str) -> None:
+    try:
+        _audit_pending_path(log_dir, work_id).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _audit_marker_alive(log_dir: Path, work_id: str) -> bool:
+    """``{id}-audit.running`` 标记含任一存活 PID → 机审在途（跨重启防双审）。"""
+    marker = log_dir / f"{work_id}-audit.running"
+    try:
+        raw = marker.read_text(encoding="utf-8")
+    except OSError:
+        raw = ""
+    return any(_pid_alive(p) for p in _parse_running_marker_pids(raw))
+
+
+def _cleanup_closed_worktrees(
+    store: BoardStore,
+    registry: ExecutorRegistry,
+    cfg: dict[str, Any],
+    log_dir: Path,
+) -> int:
+    """合入批准后自动清理：已关闭 + worktree 干净 + 分支已合入 → remove + prune。
+
+    有未提交改动 / 仍有执行或机审标记 / 分支未合入 main 的一律跳过，绝不强删。
+    顺带清已关闭卡的残留「待机审」标记。返回清理张数。
+    """
+    cleaned = 0
+    try:
+        from server.git_sync import resolve_repo_root
+
+        main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+    except Exception:
+        logger.exception("worktree 清理：解析仓根失败，跳过")
+        return 0
+
+    bases: set[Path] = set()
+    for entry in registry.entries:
+        wt_base = getattr(entry, "worktree_base", "") or ""
+        if wt_base:
+            bases.add(Path(wt_base).expanduser().resolve())
+    if not bases:
+        return 0
+
+    for work in store.list_work(state=State.CLOSED):
+        if (log_dir / f"{work.id}.running").is_file() or (
+            log_dir / f"{work.id}-audit.running"
+        ).is_file():
+            continue
+        wt: Path | None = None
+        for base in bases:
+            cand = Path(get_worktree_path(str(base), work.id)).resolve()
+            if cand.is_dir():
+                wt = cand
+                break
+        if wt is None:
+            continue
+        try:
+            status = subprocess.run(
+                ["git", "-C", str(wt), "status", "--porcelain", "-uall"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if status.returncode != 0 or status.stdout.strip():
+                logger.info("worktree 未清理（有未提交改动或非 git 仓）: %s", wt)
+                continue
+            merged = subprocess.run(
+                ["git", "-C", str(wt), "log", "origin/main..HEAD", "--oneline"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if merged.returncode != 0 or merged.stdout.strip():
+                logger.info("worktree 未清理（分支未合入 main）: %s", wt)
+                continue
+            remove = subprocess.run(
+                ["git", "-C", str(main_repo), "worktree", "remove", str(wt)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            if remove.returncode != 0:
+                logger.warning("worktree remove 失败（跳过）: %s (%s)", wt, remove.stderr.strip())
+                continue
+            subprocess.run(
+                ["git", "-C", str(main_repo), "worktree", "prune"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            _clear_audit_pending(log_dir, work.id)
+            cleaned += 1
+            logger.info("worktree 已清理（卡已关闭）: %s", wt)
+        except Exception as exc:
+            logger.warning("worktree 清理异常（跳过）: %s (%s)", wt, exc)
+    return cleaned
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -377,7 +528,9 @@ def _sync_machine_audit_from_worktree(work: Work, worktree_path: str) -> bool:
 def _audit_output_indicates_pass(text: str) -> bool:
     """从机审席 stdout/audit.log 判断是否已给出通过结论（ccc006）。
 
-    只看 child 启动后的模型输出，避免 prompt 里「不通过写…」误判为失败（xy001）。
+    只看 child 启动后的模型输出，避免 prompt/启动行里「不通过写…」误判为失败（xy001）。
+    判定区 = engine 启动行（含 ``pid_pending cmd=``）之后的所有输出——子进程输出无论
+    先于/后于 ``child_pid=`` 行落盘都能被捕获（echo 类快输出不再漏判）。
     不通过优先：输出区含「机审：不通过」/「机审不通过」。
     通过：合格机审区，或出现「机审：通过」/「机审通过」/「判定：通过」。
     """
@@ -386,11 +539,11 @@ def _audit_output_indicates_pass(text: str) -> bool:
     from server.board.models import machine_audit_passed_text
 
     body = text
-    for marker in ("[ccc.engine] child_pid=", "child_pid="):
-        idx = text.rfind(marker)
+    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
+        idx = text.find(marker)
         if idx >= 0:
             nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else text[idx:]
+            body = text[nl + 1 :] if nl >= 0 else ""
             break
 
     if machine_audit_passed_text(body):
@@ -496,6 +649,7 @@ def _dispatch_and_collect(
     if entry is None:
         return False, [f"无法为卡片找到对应的可后台 CLI 注册行 (role={work.role}, executor={work.executor}, project={work.project})"]
 
+    _t_start = time.monotonic()
     default_workdir = cfg.get("DATA_DIR", "")
     worktree_path = ""
     worktree_base = getattr(entry, "worktree_base", "")
@@ -544,6 +698,31 @@ def _dispatch_and_collect(
         return False, [f"命令构造失败: {exc}"]
 
     phase = (log_phase or "run").strip().lower() or "run"
+
+    sampler: ProcessSampler | None = None
+
+    def _emit(
+        ok: bool,
+        returncode: int | None,
+        exit_kind: str,
+        problems: list[str] | None = None,
+    ) -> None:
+        try:
+            record_worker_event(
+                log_dir,
+                work_id=work.id,
+                phase=phase,
+                ok=ok,
+                returncode=returncode,
+                duration_s=time.monotonic() - _t_start,
+                exit_kind=exit_kind,
+                peak_rss_mb=sampler.peak_rss_mb if sampler else None,
+                peak_cpu_pct=sampler.peak_cpu_pct if sampler else None,
+                problems=problems,
+            )
+        except Exception:
+            logger.exception("worker 事件埋点失败（不影响流程）: work=%s", work.id)
+
     if phase == "audit":
         log_path = log_dir / f"{work.id}.audit.log"
     else:
@@ -581,46 +760,67 @@ def _dispatch_and_collect(
         _refresh_running_marker_child(log_dir, work.id, proc.pid)
         logf.write(f"[ccc.engine] child_pid={proc.pid}\n")
         logf.flush()
+        sampler = ProcessSampler(proc)
+        sampler.start()
     except FileNotFoundError as exc:
         if logf is not None:
             logf.close()
+        _emit(False, None, "launch_error", [f"启动失败（命令不存在）: {exc}"])
         return False, [f"启动失败（命令不存在）: {exc}"]
     except OSError as exc:
         if logf is not None:
             logf.close()
+        _emit(False, None, "launch_error", [f"启动失败: {exc}"])
         return False, [f"启动失败: {exc}"]
 
     try:
-        returncode = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-        return False, [f"执行超时（{timeout}s 已 kill）"]
-    finally:
-        if logf is not None:
-            try:
-                logf.close()
-            except OSError:
-                pass
+        try:
+            returncode = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            _emit(False, None, "timeout", [f"执行超时（{timeout}s 已 kill）"])
+            return False, [f"执行超时（{timeout}s 已 kill）"]
+        finally:
+            if logf is not None:
+                try:
+                    logf.close()
+                except OSError:
+                    pass
 
-    if returncode == 0:
-        # 机械门禁（worktree 派发）：必须有新 commit 且相对 origin/main 非空 diff。
-        # 不再承认「仅卡头已回写」为产物（防未写码假成功）。机审路径 skip_product_gate。
-        if worktree_path and not skip_product_gate:
-            has_commit = _worktree_has_new_commit(worktree_path)
-            has_diff = _worktree_has_nonempty_diff(worktree_path)
-            if not (has_commit and has_diff):
-                logger.warning(
-                    "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
-                    work.id, worktree_path, has_commit, has_diff,
-                )
-                return False, [
-                    f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
-                    f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
-                    f"(commit={has_commit}, diff={has_diff})"
-                ]
-        return True, []
-    return False, [f"退出码非 0: {returncode}（日志: {log_path}）"]
+        if returncode == 0:
+            # 机械门禁（worktree 派发）：必须有新 commit 且相对 origin/main 非空 diff。
+            # 不再承认「仅卡头已回写」为产物（防未写码假成功）。机审路径 skip_product_gate。
+            if worktree_path and not skip_product_gate:
+                has_commit = _worktree_has_new_commit(worktree_path)
+                has_diff = _worktree_has_nonempty_diff(worktree_path)
+                if not (has_commit and has_diff):
+                    logger.warning(
+                        "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
+                        work.id, worktree_path, has_commit, has_diff,
+                    )
+                    _emit(False, 0, "ok", [
+                        f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
+                        f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
+                        f"(commit={has_commit}, diff={has_diff})"
+                    ])
+                    return False, [
+                        f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
+                        f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
+                        f"(commit={has_commit}, diff={has_diff})"
+                    ]
+            _emit(True, 0, "ok")
+            return True, []
+        _emit(
+            False,
+            returncode,
+            "signal" if returncode < 0 else "nonzero",
+            [f"退出码非 0: {returncode}（日志: {log_path}）"],
+        )
+        return False, [f"退出码非 0: {returncode}（日志: {log_path}）"]
+    finally:
+        if sampler is not None:
+            sampler.stop()
 
 
 def _pid_alive(pid: int) -> bool:
@@ -868,7 +1068,7 @@ def _run_auto_worker(
     log_dir: Path,
     timeout: int,
 ) -> dict[str, int]:
-    """单卡 AUTO：派发 → 回写/打回 → 机审。调用方已标执行中+marker。"""
+    """单卡 AUTO 执行：派发 → 回写/打回 → 打「待机审」标记（机审走独立槽位池）。"""
     outcome = {"collected": 0, "timed_out": 0}
     try:
         ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
@@ -876,16 +1076,8 @@ def _run_auto_worker(
             work.transition(State.DONE)
             store.save_work(work)
             logger.info("收单成功: work=%s → 已回写", work.id)
-            audit_ok, audit_problems = _run_machine_audit_after_writeback(
-                work, registry, cfg, log_dir, timeout
-            )
-            if audit_ok:
-                outcome["collected"] = 1
-            else:
-                # 机审已写失败原因 → 回待分派重试；用尽才打回（不改 validate/NG）
-                reasons = list(audit_problems) if audit_problems else ["机审：不通过"]
-                _fail_retry_or_reject(work, store, reasons, cfg)
-                logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
+            _mark_audit_pending(log_dir, work.id)
+            outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
             _, hint = is_retryable_failure(work.id, problems, log_dir)
@@ -908,17 +1100,62 @@ def _run_auto_worker(
     return outcome
 
 
+def _run_audit_worker(
+    work: Work,
+    registry: ExecutorRegistry,
+    store: BoardStore,
+    cfg: dict[str, Any],
+    log_dir: Path,
+    timeout: int,
+) -> dict[str, int]:
+    """单卡机审（独立槽位池）：拉起验收席 CLI 写 ``## 机审区``。
+
+    通过/跳过 → ``collected=1``；不通过 → 清标记、走 ``_fail_retry_or_reject``
+    （回待分派重试，用尽才打回）→ ``failed=1``。
+    """
+    outcome = {"collected": 0, "failed": 0}
+    try:
+        if _card_machine_audit_passed(work.card_path):
+            logger.info("机审已通过，跳过: work=%s", work.id)
+            outcome["collected"] = 1
+            return outcome
+        ok, problems = _run_machine_audit_after_writeback(
+            work, registry, cfg, log_dir, timeout
+        )
+        if ok:
+            outcome["collected"] = 1
+        else:
+            reasons = list(problems) if problems else ["机审：不通过"]
+            _fail_retry_or_reject(work, store, reasons, cfg)
+            outcome["failed"] = 1
+            logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
+    except Exception as exc:
+        logger.exception("机审 worker 异常: work=%s: %s", work.id, exc)
+        try:
+            if work.state in (State.RUNNING, State.DONE):
+                _fail_retry_or_reject(work, store, [f"机审 worker 异常: {exc}"], cfg)
+            outcome["failed"] = 1
+        except Exception:
+            logger.exception("机审异常后失败流转失败: work=%s", work.id)
+    finally:
+        _clear_running_marker(log_dir, f"{work.id}-audit")
+        _clear_audit_pending(log_dir, work.id)
+    return outcome
+
+
 def run_once(
     registry: ExecutorRegistry,
     store: BoardStore,
     cfg: dict[str, Any] | None = None,
     *,
     wait: bool = True,
+    config_path: str | Path | None = None,
 ) -> dict[str, int]:
-    """收割 + 补位：扫待分派，按空位派发。
+    """收割 + 补位：执行槽与机审槽独立派发。
 
     ``wait=True``（``--once`` / 测试默认）：本轮 submit 后 drain 池再返回。
     ``wait=False``（持续心跳）：立即返回，不阻塞下一轮扫卡。
+    ``config_path``：热读槽位上限的 config.env 路径（改配置免重启）。
     """
     cfg = cfg or {}
     timeout = int(cfg.get("EXECUTOR_TIMEOUT_SECONDS") or DEFAULT_EXECUTOR_TIMEOUT)
@@ -927,12 +1164,13 @@ def run_once(
         raise ConfigError("EXECUTOR_LOG_DIR 未配置（必填，执行体日志目录）")
     log_dir = Path(log_dir_str)
 
-    max_concurrent = int(cfg.get("EXECUTOR_MAX_CONCURRENT") or 2)
+    max_concurrent, max_audit_concurrent = _slot_limits(cfg, config_path)
     probe_url = cfg.get("EXECUTOR_PROBE_URL")
     if probe_url is None:
         probe_url = os.environ.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
 
     pool = get_dispatch_pool()
+    audit_pool = get_audit_pool()
     reclaimed = reclaim_orphaned_running(store, log_dir)
 
     git_sync_ok = True
@@ -1028,13 +1266,73 @@ def run_once(
         dispatched += 1
         slots -= 1
 
+    # ── 机审池（独立槽位）：扫「已回写 + 待机审标记 + 未通过」填槽 ──
+    def _audit_round() -> tuple[int, int, int, int, int]:
+        """一次机审扫描：返回 (dispatched, collected, failed, pending, in_flight)。"""
+        audit_alive = audit_pool.alive_ids()
+        reaped = audit_pool.reap()
+        a_collected = reaped.get("collected", 0)
+        a_failed = reaped.get("failed", 0)
+        occupied = len(audit_alive)
+        for w in store.list_work(state=State.DONE):
+            if w.id not in audit_alive and _audit_marker_alive(log_dir, w.id):
+                occupied += 1
+        a_slots = max(0, int(max_audit_concurrent) - occupied)
+
+        candidates: list[Work] = []
+        for work in store.list_work(state=State.DONE):
+            if work.id in audit_alive or _audit_marker_alive(log_dir, work.id):
+                continue
+            if not _audit_pending_path(log_dir, work.id).is_file():
+                continue
+            if _card_machine_audit_passed(work.card_path):
+                _clear_audit_pending(log_dir, work.id)
+                continue
+            candidates.append(work)
+        a_pending = len(candidates)
+        a_dispatched = 0
+        for work in candidates:
+            if a_slots <= 0:
+                break
+
+            def _mk_audit(w: Work = work) -> Any:
+                def _fn() -> dict[str, int]:
+                    return _run_audit_worker(w, registry, store, cfg, log_dir, timeout)
+
+                return _fn
+
+            try:
+                audit_pool.submit(work.id, _mk_audit())
+            except RuntimeError as exc:
+                logger.warning("机审 submit 跳过: work=%s (%s)", work.id, exc)
+                continue
+            a_dispatched += 1
+            a_slots -= 1
+        return a_dispatched, a_collected, a_failed, a_pending, len(audit_pool.alive_ids())
+
+    audit_dispatched, audit_collected, audit_failed, audit_pending, audit_in_flight = (
+        _audit_round()
+    )
+
     if wait:
         drained = pool.drain()
         collected += drained["collected"]
         timed_out += drained["timed_out"]
+        # 执行收单可能新产生「待机审」标记：wait 模式再扫一轮机审并 drain（--once 完整闭环）
+        extra = _audit_round()
+        audit_dispatched += extra[0]
+        audit_collected += extra[1]
+        audit_failed += extra[2]
+        audit_pending = extra[3]
+        audit_in_flight = extra[4]
+        audit_drained = audit_pool.drain()
+        audit_collected += audit_drained.get("collected", 0)
+        audit_failed += audit_drained.get("failed", 0)
+        audit_in_flight = len(audit_pool.alive_ids())
 
     # 看板 in_flight = 全部执行中（含 manual 挂起）；CLI 空位另用 pool.occupancy
     in_flight = len(store.list_work(state=State.RUNNING))
+    worktrees_cleaned = _cleanup_closed_worktrees(store, registry, cfg, log_dir)
     summary: dict[str, int] = {
         "mode": "once",
         "scanned": len(pending),
@@ -1046,6 +1344,12 @@ def run_once(
         "probe_skips": probe_skips,
         "parent_skips": parent_skips,
         "none_skips": none_skips,
+        "audit_dispatched": audit_dispatched,
+        "audit_in_flight": audit_in_flight,
+        "audit_pending": audit_pending,
+        "audit_collected": audit_collected,
+        "audit_failed": audit_failed,
+        "worktrees_cleaned": worktrees_cleaned,
     }
     try:
         from server.engine.pipeline_status import write_pipeline_status
@@ -1063,10 +1367,36 @@ def run_once(
                 "dispatched": dispatched,
                 "in_flight": in_flight,
                 "scanned": len(pending),
+                "audit_dispatched": audit_dispatched,
+                "audit_in_flight": audit_in_flight,
+                "audit_pending": audit_pending,
+                "audit_collected": audit_collected,
+                "audit_failed": audit_failed,
+                "worktrees_cleaned": worktrees_cleaned,
             },
         )
     except Exception:
         logger.exception("写管道状态失败（不影响本轮）")
+    try:
+        record_slot_snapshot(
+            log_dir,
+            exec_used=len(pool.alive_ids()),
+            exec_max=max_concurrent,
+            audit_used=len(audit_pool.alive_ids()),
+            audit_max=max_audit_concurrent,
+            pending_exec=len(pending),
+            audit_pending=audit_pending,
+            dispatched=dispatched,
+            collected=collected,
+            timed_out=timed_out,
+            audit_dispatched=audit_dispatched,
+            audit_collected=audit_collected,
+            audit_failed=audit_failed,
+            reclaimed=reclaimed,
+            worktrees_cleaned=worktrees_cleaned,
+        )
+    except Exception:
+        logger.exception("写槽位快照失败（不影响本轮）")
     return summary
 
 
@@ -1075,11 +1405,12 @@ def run_loop(
     store: BoardStore,
     cfg: dict[str, Any],
     heartbeat_interval: int,
+    config_path: str | Path | None = None,
 ) -> None:
     """持续模式：收割 + 补位心跳（不等待在途收单）。"""
     logger.info("Engine 持续模式启动（收割+补位，真实派发/收单）")
     while True:
-        summary = run_once(registry, store, cfg, wait=False)
+        summary = run_once(registry, store, cfg, wait=False, config_path=config_path)
         summary = {**summary, "mode": "loop"}
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
         if summary["timed_out"] > 0:
@@ -1133,7 +1464,13 @@ def main(argv: list[str] | None = None) -> int:
         summary = run_once(registry, store, cfg)
         print(json.dumps(summary, ensure_ascii=False))
         return 0
-    run_loop(registry, store, cfg, args.heartbeat_interval)
+    run_loop(
+        registry,
+        store,
+        cfg,
+        args.heartbeat_interval,
+        config_path=args.config,
+    )
     return 0  # 持续模式不返回（Ctrl-C 终止）
 
 

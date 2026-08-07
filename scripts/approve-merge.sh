@@ -242,6 +242,17 @@ EOF
   fi
   git push origin main
   echo "[OK] 合入批准完成：${id} → 请 2017 pull（部署流程）"
+
+  # 卫生：已合入 main 的卡分支自动删除（分叉/未合入一律保留，保护 --close-only）
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
+    && git merge-base --is-ancestor "origin/${branch}" origin/main >/dev/null 2>&1; then
+    git branch -D "${branch}" >/dev/null 2>&1 || true
+    if git push origin --delete "${branch}" >/dev/null 2>&1; then
+      echo "[OK] 已删除已合入分支: ${branch}"
+    else
+      echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
+    fi
+  fi
 }
 
 FAILED=0

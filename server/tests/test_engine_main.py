@@ -52,34 +52,49 @@ def _write_demo_registry(
     command: str = "echo",
     args_template: str = "work={work_id} card={card_path}",
     worktree_base: str = "",
+    audit_command: str = "",
+    audit_args_template: str = "audit {work_id}",
 ) -> Path:
     """写临时 executors.json（演示用占位命令，禁止生产引用）。"""
+    executors = [
+        {
+            "角色": "开发执行体",
+            "分类": "可后台 CLI",
+            "当前绑定": "demo",
+            "命令": command,
+            "参数模板": args_template,
+            "工作目录": "",
+            "worktree_base": worktree_base,
+            "备注": "测试夹具",
+        },
+        {
+            "角色": "管理席",
+            "分类": "—",
+            "当前绑定": "demo",
+            "命令": "",
+            "参数模板": "",
+            "工作目录": "",
+            "备注": "",
+        },
+    ]
+    if audit_command:
+        executors.append(
+            {
+                "角色": "验收席",
+                "分类": "可后台 CLI",
+                "当前绑定": "Claude Code",
+                "命令": audit_command,
+                "参数模板": audit_args_template,
+                "工作目录": "",
+                "备注": "测试机审夹具",
+            }
+        )
     p = tmp_path / "executors.json"
     p.write_text(
         json.dumps(
             {
                 "version": "2",
-                "executors": [
-                    {
-                        "角色": "开发执行体",
-                        "分类": "可后台 CLI",
-                        "当前绑定": "demo",
-                        "命令": command,
-                        "参数模板": args_template,
-                        "工作目录": "",
-                        "worktree_base": worktree_base,
-                        "备注": "测试夹具",
-                    },
-                    {
-                        "角色": "管理席",
-                        "分类": "—",
-                        "当前绑定": "demo",
-                        "命令": "",
-                        "参数模板": "",
-                        "工作目录": "",
-                        "备注": "",
-                    },
-                ],
+                "executors": executors,
             },
             ensure_ascii=False,
         ),
@@ -913,6 +928,173 @@ class TestParallelAndRelayGuard:
         assert len(store.list_work(state=State.DONE)) == 2
         assert {w.id for w in store.list_work(state=State.DONE)} == {"c1", "c2"}
 
+    def test_exec_and_audit_slots_independent(self, tmp_path: Path) -> None:
+        """执行槽与机审槽独立：exec=1/audit=1 时，机审与第二张执行并行推进。"""
+        import time
+
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="sleep",
+            args_template="1",
+            audit_command="echo",
+            audit_args_template="机审：通过 {work_id}",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        (tmp_path / "e1.md").write_text("# 任务卡 e1\n", encoding="utf-8")
+        (tmp_path / "e2.md").write_text("# 任务卡 e2\n", encoding="utf-8")
+        store.seed(
+            Work(id="e1", role="开发执行体", card_path=str(tmp_path / "e1.md")),
+            Work(id="e2", role="开发执行体", card_path=str(tmp_path / "e2.md")),
+        )
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        total_audit_collected = 0
+        r1 = run_once(reg, store, cfg, wait=False)
+        assert r1["dispatched"] == 1
+
+        deadline = time.time() + 8
+        s = None
+        while time.time() < deadline:
+            time.sleep(0.15)
+            s = run_once(reg, store, cfg, wait=False)
+            total_audit_collected += s["audit_collected"]
+            if s["audit_dispatched"] == 1 and s["dispatched"] == 1:
+                break
+        assert s is not None, "未等到机审/执行同轮派发"
+        assert s["audit_dispatched"] == 1, f"机审应独立派发: {s}"
+        assert s["dispatched"] == 1, f"执行槽应同时派第二张: {s}"
+
+        deadline2 = time.time() + 8
+        d = None
+        while time.time() < deadline2:
+            time.sleep(0.25)
+            d = run_once(reg, store, cfg, wait=False)
+            total_audit_collected += d["audit_collected"]
+            done = len(store.list_work(state=State.DONE))
+            pending_flags = list((tmp_path / "logs").glob("*.audit-pending"))
+            if done == 2 and not pending_flags:
+                break
+        if d is None or not (len(store.list_work(state=State.DONE)) == 2):
+            d = run_once(reg, store, cfg, wait=True)
+            total_audit_collected += d.get("audit_collected", 0)
+
+        assert len(store.list_work(state=State.DONE)) == 2
+        assert not list((tmp_path / "logs").glob("*.audit-pending"))
+        assert total_audit_collected == 2, f"两张卡机审应收 2 张: {total_audit_collected}"
+
+    def test_audit_pending_flag_resume(self, tmp_path: Path) -> None:
+        """执行收单写待机审标记；机审处理后清除；通过则卡上落机审区。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="echo",
+            audit_args_template="机审：通过 {work_id}",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "a1.md"
+        card_file.write_text("# 任务卡 a1\n", encoding="utf-8")
+        store.seed(Work(id="a1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+        assert summary["audit_collected"] == 1
+        assert not (tmp_path / "logs" / "a1.audit-pending").exists()
+        assert "机审：通过" in card_file.read_text(encoding="utf-8")
+
+    def test_run_once_summary_audit_fields(self, tmp_path: Path) -> None:
+        """摘要含机审/清理字段（空队列时全 0）。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        summary = run_once(reg, store, cfg)
+        for key in (
+            "audit_dispatched",
+            "audit_in_flight",
+            "audit_pending",
+            "audit_collected",
+            "audit_failed",
+            "worktrees_cleaned",
+        ):
+            assert key in summary, f"摘要缺字段: {key}"
+            assert isinstance(summary[key], int)
+
+    def test_slot_limits_hot_read(self, tmp_path: Path) -> None:
+        """槽位上限热读 config.env：改配置免重启生效；非法值回退启动值。"""
+        from server.engine.main import _slot_limits
+
+        cfg = {"EXECUTOR_MAX_CONCURRENT": "3", "EXECUTOR_MAX_AUDIT_CONCURRENT": "2"}
+        assert _slot_limits(cfg) == (3, 2)
+
+        env = tmp_path / "c.env"
+        env.write_text(
+            "EXECUTOR_MAX_CONCURRENT=5\nEXECUTOR_MAX_AUDIT_CONCURRENT=4\n",
+            encoding="utf-8",
+        )
+        assert _slot_limits(cfg, env) == (5, 4)
+
+        env.write_text("EXECUTOR_MAX_CONCURRENT=abc\n", encoding="utf-8")
+        assert _slot_limits(cfg, env) == (3, 2)
+
+    def test_heartbeat_writes_metrics_files(self, tmp_path: Path) -> None:
+        """每轮心跳落 engine-metrics.jsonl / worker-events.jsonl。"""
+        reg_path = _write_demo_registry(tmp_path, command="echo")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        (tmp_path / "w1.md").write_text("# 任务卡 w1\n", encoding="utf-8")
+        store.seed(Work(id="w1", role="开发执行体", card_path=str(tmp_path / "w1.md")))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        run_once(reg, store, cfg)
+        log_dir = tmp_path / "logs"
+        assert (log_dir / "engine-metrics.jsonl").is_file()
+        assert (log_dir / "worker-events.jsonl").is_file()
+        slot = json.loads(
+            (log_dir / "engine-metrics.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()[-1]
+        )
+        assert slot["exec_max"] == 1
+        assert slot["audit_max"] == 1
+        worker = json.loads(
+            (log_dir / "worker-events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()[0]
+        )
+        assert worker["work_id"] == "w1"
+        assert worker["exit_kind"] in ("ok", "nonzero", "signal", "timeout", "launch_error")
+
     def test_probe_success_dispatches_work(self, tmp_path: Path, monkeypatch) -> None:
         """探活成功：正常派发。"""
         reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
@@ -1144,6 +1326,101 @@ class TestEngineWorktree:
         log_content = log_file.read_text(encoding="utf-8")
         assert "work=T64" in log_content
         assert "wt=" in log_content  # wt 被渲染为空字符串
+
+    def test_cleanup_closed_worktree(self, tmp_path: Path) -> None:
+        """已关闭 + 干净 + 已合入 → 移除；脏 worktree 保留（绝不强删）。"""
+        from server.engine.main import _cleanup_closed_worktrees
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main", str(repo)],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "t@example.com"],
+            check=True,
+            capture_output=True,
+        )
+        (repo / "f.txt").write_text("base\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "-qm", "base"],
+            check=True,
+            capture_output=True,
+        )
+
+        wt_base = tmp_path / "ccc-dev-ws"
+        wt1 = tmp_path / "ccc-dev-ws-close1"
+        subprocess.run(
+            ["git", "-C", str(repo), "worktree", "add", "-b", "codex/close1", str(wt1)],
+            check=True,
+            capture_output=True,
+        )
+        (wt1 / "f.txt").write_text("done\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(wt1), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(wt1), "commit", "-qm", "work"],
+            check=True,
+            capture_output=True,
+        )
+        # 模拟已合入 main，并维护 origin/main 引用（合入检查依赖）
+        subprocess.run(
+            ["git", "-C", str(repo), "merge", "-q", "--ff-only", "codex/close1"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "main"],
+            check=True,
+            capture_output=True,
+        )
+
+        wt2 = tmp_path / "ccc-dev-ws-dirty1"
+        subprocess.run(
+            ["git", "-C", str(repo), "worktree", "add", "-b", "codex/dirty1", str(wt2)],
+            check=True,
+            capture_output=True,
+        )
+        (wt2 / "dirty.txt").write_text("x\n", encoding="utf-8")  # 未提交改动
+
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            worktree_base=str(wt_base),
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(
+                id="close1",
+                role="开发执行体",
+                state=State.CLOSED,
+                card_path=str(repo / "close1.md"),
+            ),
+            Work(
+                id="dirty1",
+                role="开发执行体",
+                state=State.CLOSED,
+                card_path=str(repo / "dirty1.md"),
+            ),
+        )
+
+        n = _cleanup_closed_worktrees(
+            store,
+            reg,
+            {"DISPATCH_DIR": str(repo / "docs" / "dispatch")},
+            tmp_path / "logs",
+        )
+        assert n == 1
+        assert not wt1.exists()
+        assert wt2.exists()
 
 
 class TestAcceptanceGuard:

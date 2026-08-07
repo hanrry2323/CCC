@@ -1593,6 +1593,24 @@ class TestOpsSummary:
         assert "error" in data
 
 
+class TestOpsConcurrency:
+    """GET /ops/concurrency（槽位上限 + 并发/进程埋点尾部，只读）。"""
+
+    def test_returns_slots_and_tails(self, api_server):
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/concurrency", token=token)
+        assert status == 200
+        assert data["slots"]["exec_max"] >= 1
+        assert data["slots"]["audit_max"] >= 1
+        assert isinstance(data["engine_metrics_tail"], list)
+        assert isinstance(data["worker_events_tail"], list)
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/ops/concurrency")
+        assert status == 401
+        assert "error" in data
+
+
 # ── T33 前端只读配置注入：/config ──
 
 
@@ -1998,5 +2016,4 @@ class TestCardsFallback:
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "tst002"
-
 

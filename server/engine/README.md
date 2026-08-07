@@ -80,9 +80,20 @@ $PYTHON_BIN -m server.engine.main --config <config.env>        # 持续模式（
 $PYTHON_BIN -m server.engine.main --config <config.env> --once  # 单次扫描 + 真实派发 + 收单后退出
 ```
 
-- `--once` 输出一行 JSON 统计（scanned / dispatched / in_flight / collected / timed_out）。
+- `--once` 输出一行 JSON 统计（scanned / dispatched / in_flight / collected / timed_out + `audit_*` / `worktrees_cleaned`）。
 - 缺 `--config` 或配置缺失 → 非零退出并报错。
 - 持续模式：每轮 `run_once` 后输出心跳日志；若有超时任务，额外输出催单 warning。
+
+## 并发槽与埋点（2026-08-07）
+
+- **双池独立槽位**：执行池 `EXECUTOR_MAX_CONCURRENT`（默认 3）与机审池
+  `EXECUTOR_MAX_AUDIT_CONCURRENT`（默认 2）互不占位；执行收单打 `{work_id}.audit-pending`
+  标记，机审池每轮心跳独立捞卡（跨重启可恢复）。
+- **槽位热读**：持续模式每轮重读 `config.env` 中两个槽位键，改配置免重启生效。
+- **埋点**：`{EXECUTOR_LOG_DIR}/engine-metrics.jsonl`（每轮心跳槽位/队列/吞吐快照）+
+  `worker-events.jsonl`（每个执行/机审子进程退出事件：returncode/时长/峰值 RSS/CPU/退出类别）。
+- **卫生清理**：合入批准后自动删已合入分支（`scripts/approve-merge.sh`）；Engine 每轮清理
+  「已关闭 + 干净 + 已合入」的 worktree（`git worktree remove` + prune，脏 worktree 绝不强删）。
 
 ## T3 施工入口
 

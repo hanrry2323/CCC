@@ -770,6 +770,34 @@ def _tail_lines(path: Path, n: int = 5) -> list[str]:
         return []
 
 
+def _config_value(key: str, default: str) -> str:
+    """读取配置值：环境变量 → ``CCC_CONFIG_ENV`` 文件 → 默认值。"""
+    raw = os.environ.get(key, "").strip()
+    if raw:
+        return raw
+    cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip()
+    if cfg_path:
+        try:
+            for line in Path(cfg_path).expanduser().read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, _, v = s.partition("=")
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+        except OSError:
+            pass
+    return default
+
+
+def _try_json_line(line: str) -> dict | None:
+    try:
+        parsed = json.loads(line)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
 def _load_running_tasks() -> dict[str, Any]:
     """GET /tasks/running：执行中 + 机审中任务进程视图 + worktree / 日志指标。
 
@@ -1492,6 +1520,45 @@ class _APIHandler(BaseHTTPRequestHandler):
                 200,
             )
 
+    def _handle_ops_concurrency(self):
+        """GET /ops/concurrency → 槽位上限 + 并发/进程埋点尾部（只读，供运维）。"""
+        from server.config.loader import OPTIONAL_KEYS
+
+        exec_max = _config_value(
+            "EXECUTOR_MAX_CONCURRENT",
+            OPTIONAL_KEYS.get("EXECUTOR_MAX_CONCURRENT", "3"),
+        )
+        audit_max = _config_value(
+            "EXECUTOR_MAX_AUDIT_CONCURRENT",
+            OPTIONAL_KEYS.get("EXECUTOR_MAX_AUDIT_CONCURRENT", "2"),
+        )
+        try:
+            exec_max = max(1, int(exec_max))
+            audit_max = max(1, int(audit_max))
+        except (TypeError, ValueError):
+            exec_max, audit_max = 3, 2
+
+        log_dir = _executor_log_dir()
+        data: dict[str, Any] = {
+            "slots": {"exec_max": exec_max, "audit_max": audit_max},
+            "log_dir": str(log_dir) if log_dir else None,
+        }
+        if log_dir:
+            data["engine_metrics_tail"] = [
+                _try_json_line(line)
+                for line in _tail_lines(log_dir / "engine-metrics.jsonl", 20)
+                if _try_json_line(line) is not None
+            ]
+            data["worker_events_tail"] = [
+                _try_json_line(line)
+                for line in _tail_lines(log_dir / "worker-events.jsonl", 20)
+                if _try_json_line(line) is not None
+            ]
+        else:
+            data["engine_metrics_tail"] = []
+            data["worker_events_tail"] = []
+        self._send_json(data)
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
         raw_path = self.path.split("?")[0]
@@ -1542,6 +1609,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/summary":
             self._handle_ops_summary()
+            return
+        if path == "/ops/concurrency":
+            self._handle_ops_concurrency()
             return
         try:
             items = _load_board_items()

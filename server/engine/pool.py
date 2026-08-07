@@ -13,7 +13,7 @@ from typing import Any
 from server.engine.store import BoardStore
 from server.engine.task import State
 
-Outcome = dict[str, int]  # collected / timed_out
+Outcome = dict[str, int]  # collected / timed_out / failed
 
 
 class DispatchPool:
@@ -74,9 +74,10 @@ class DispatchPool:
         thread.start()
 
     def reap(self) -> Outcome:
-        """回收已结束线程，返回本轮累计 collected / timed_out。"""
+        """回收已结束线程，返回本轮累计 collected / timed_out / failed。"""
         collected = 0
         timed_out = 0
+        failed = 0
         with self._lock:
             finished = [wid for wid, t in self._threads.items() if not t.is_alive()]
             for wid in finished:
@@ -84,11 +85,12 @@ class DispatchPool:
                 out = self._outcomes.pop(wid, None) or {}
                 collected += int(out.get("collected", 0))
                 timed_out += int(out.get("timed_out", 0))
-        return {"collected": collected, "timed_out": timed_out}
+                failed += int(out.get("failed", 0))
+        return {"collected": collected, "timed_out": timed_out, "failed": failed}
 
     def drain(self, join_slice: float = 0.5) -> Outcome:
         """阻塞直到池空，返回期间 reap 累计。"""
-        totals: Outcome = {"collected": 0, "timed_out": 0}
+        totals: Outcome = {"collected": 0, "timed_out": 0, "failed": 0}
         while True:
             with self._lock:
                 alive = [(wid, t) for wid, t in self._threads.items() if t.is_alive()]
@@ -96,21 +98,29 @@ class DispatchPool:
                 got = self.reap()
                 totals["collected"] += got["collected"]
                 totals["timed_out"] += got["timed_out"]
+                totals["failed"] += got["failed"]
                 return totals
             for _wid, t in alive:
                 t.join(timeout=join_slice)
             got = self.reap()
             totals["collected"] += got["collected"]
             totals["timed_out"] += got["timed_out"]
+            totals["failed"] += got["failed"]
 
 
 _POOL = DispatchPool()
+_AUDIT_POOL = DispatchPool()
 
 
 def get_dispatch_pool() -> DispatchPool:
     return _POOL
 
 
+def get_audit_pool() -> DispatchPool:
+    return _AUDIT_POOL
+
+
 def reset_dispatch_pool() -> None:
-    """测试夹具：清空全局池。"""
+    """测试夹具：清空全局执行池与机审池。"""
     _POOL.reset()
+    _AUDIT_POOL.reset()

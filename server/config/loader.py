@@ -46,7 +46,10 @@ OPTIONAL_KEYS: dict[str, str] = {
     "EXECUTOR_LOG_DIR": "",
     # 任务卡目录（P1-1 FileBoardStore 读写；默认 docs/dispatch）
     "DISPATCH_DIR": "docs/dispatch",
-    "EXECUTOR_MAX_CONCURRENT": "2",
+    # 执行槽上限（独立于机审槽；执行与机审互不占位）
+    "EXECUTOR_MAX_CONCURRENT": "3",
+    # 机审槽上限（独立于执行槽）
+    "EXECUTOR_MAX_AUDIT_CONCURRENT": "2",
     "EXECUTOR_PROBE_URL": "http://127.0.0.1:6100/",
     "EXECUTOR_RETRY_ONCE": "true",
     # 失败回待分派自动重试上限；用尽才打回。RETRY_ONCE=false 时视为 0
