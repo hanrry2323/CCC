@@ -757,7 +757,7 @@ def _load_board_items(include_archived: bool = False):
         return items
 
 
-_BOARD_CACHE_TTL_S = 8.0
+_BOARD_CACHE_TTL_S = 20.0
 _BOARD_CACHE: tuple[float, str, list] | None = None
 
 
@@ -828,7 +828,7 @@ def _closed_at_map(repo_root, ttl: float = 60.0) -> dict[str, str]:
 
 
 _ENRICHED_CACHE: tuple[float, str, list[dict]] | None = None
-_ENRICHED_TTL_S = 10.0
+_ENRICHED_TTL_S = 30.0
 
 
 _RELAY_USAGE_FILE_DEFAULT = Path("/Users/fan/program/apps/ai-loop-router-ccc/logs/usage.json")
