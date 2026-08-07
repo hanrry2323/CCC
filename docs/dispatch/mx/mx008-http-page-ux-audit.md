@@ -1,6 +1,6 @@
 # 任务卡 mx008 · HTTP 页面体验巡检（RSS 优先）（OpenCode 执行）
 
-> 关联：ccc-plan: HTTP 页面体验巡检：RSS 优先 + 全页面代码/显示/双端适配 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：ccc-plan: HTTP 页面体验巡检：RSS 优先 + 全页面代码/显示/双端适配 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 
@@ -53,8 +53,16 @@ medio-0 HTTP 页面体验巡检（纯只读，不开发）：**RSS 优先**—�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 1. 实现说明
+严格按照任务卡要求，对业务仓 `medio-0`（`/Users/fan/program/apps/medio-0`）的前后端进行了全面只读巡检。重点排查了 RSS 页/订阅功能、已知教训、HTML tags 过滤、RSS 3栏/双栏布局，并针对全页面代码问题、显示问题、PC端与移动端双端适配进行了深度盘点，共输出并整理了 12 项高质量问题清单。
+巡检清单分类汇总后已回写至 `docs/roadmap.md`「业务线路（mx）」段，并同步更新了 `docs/projects/mx/README.md`「线路 / 近况」部分，作为后续修复卡拆分依据。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试与自检结果
+- 业务仓状态自检：`git -C /Users/fan/program/apps/medio-0 status -sb` 为 clean，符合零改动红线。
+- 任务卡校验：运行 `python3 -m server.board.validate docs/dispatch`，卡头及格式校验 100% 通过。
+
+### 3. Push 证据 (Commit Hash)
+- 审计回写 Commit Hash: `ab1d263ec88faf2655f60f67b843bad89bc232a1` (short: `ab1d263e`)
+- 本卡回写 Commit Hash: fcc6ac155c180240eeb1efe77ded79d9bda2e89b (short: fcc6ac15)
