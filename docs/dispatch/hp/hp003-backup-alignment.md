@@ -411,3 +411,57 @@
 - **hp 业务仓（验收 #4）**：P1-1/P1-2/P1-3 全数沿用、连续 8 轮零修复。
 - **范围属性**：跨仓/跨分支交付缺陷，机审工作区无法安全就地修复（避免污染 hp002）。
 - **人工批注**：卡内无实际老板批注，无批注落实义务。
+
+### 第 9 轮机审（本审查新增 · 独立重验）
+
+**机审方**：Claude Code（2017）· 日期：2026-08-07 · 轮次：第 9 轮独立复审（本审查重新独立取证，非同工具放水）
+
+**机审：不通过（3 项 P1 · 范围性问题 · 连续第 9 轮未闭环 · 非0退出）** —— 服务端备份链路改造（验收 #1/2/3）经本审查 SSH 独立实测**属实、可运行、完整、零删除**，通过保留；但 hp 业务仓文档交付（验收 #4）与 push 证据经本审查独立重验**自第 1 轮败诉至今仍零改动**，3 项 P1 全数沿用，属跨仓/跨分支交付缺陷，连续 9 轮未闭合 → 触发「机审不通过 + 非0退出」。
+
+#### 本审查独立取证（2017 机审席实证，非沿用前轮文本）
+
+**服务端 hp@192.168.3.131（SSH 独立复核，验收 #1/2/3 通过，保留）**：
+- cron `0 2 * * * /data/backups/pg_dump_knowledge.sh >> /data/backups/knowledge/cron.log 2>&1` 在位。
+- 历史 dump `/data/knowledge/backups/2026-07-04-pre-4finance.dump`（297,484,254 B）完好，**零删除**。
+- WAL 归档 `/data/backups/wal/` 实测 1378 个分片，完整未删。
+
+**hp 业务仓 `/Users/fan/program/apps/hp`（本审查独立实测）—— 3 项 P1 自第 1 轮零修复，第 9 轮仍沿用**：
+- P1-1：`git status --short` → `?? docs/knowledgebase/BACKUP.md`；`git ls-files docs/knowledgebase/BACKUP.md` 为空 → 文档**仍 untracked、从未 commit**，验收 #4「文档落 hp 仓」未达成。
+- P1-2：`git branch --show-current` → 仍 `codex/hp002-monitoring-git-probe`（hp002 卡分支）；`git branch -a`（本地）+ `git ls-remote --heads origin`（远端）均仅 `main` + hp002 分支，**均无 `codex/hp003-backup-alignment` 分支**。
+- P1-3：回写 push 证据 `265d650fbdca3b681816d23c1340950957a6aae0`：hp 仓 `git cat-file -t` 实测报 `could not get object info`（**hp 仓无此对象**）；`git -C /Users/fan/program/CCC log -1 265d650` 实测 = `docs(hp): update hp003 task card to writeback state`（**CCC 仓任务卡状态提交**，非 hp 业务改动）→ push 证据不成立、误导。
+
+**人工批注核对**：卡内 `## 人工批注` 仅含说明占位符（「老板对打回卡/审核的批注意见写这里…无批注时保留本节即可」），**无实际老板批注**，故无「批注落实」义务项。
+
+#### 工作区状态核实（本审查）
+
+- worktree `/Users/fan/program/ccc-dev-ws-hp003`（CCC 仓）：`git log -1` HEAD = `c2756e35b8`「机审第8轮不通过」；`git status` 干净（`nothing to commit`），**执行体自第 1 轮被判「不通过」后未提交任何再交付 commit**，本审查无新增可审代码 delta。卡头状态字段因 CCC 仓历史提交而显示「已回写」，但验收 #4 的 hp 仓交付实为未闭环。
+
+#### 第 9 轮发现清单（与第 1–8 轮逐项一致、均未修复）
+
+| # | 级别 | 第 9 轮实测 | 问题 |
+|---|------|-----------|------|
+| P1-1 | P1 | hp 仓 `docs/knowledgebase/BACKUP.md` 仍 untracked（`git ls-files` 空） | 未 commit，机器重置即丢；验收 #4「文档落 hp 仓」未达成 |
+| P1-2 | P1 | 本地+远端均无 `codex/hp003-backup-alignment` 分支，产物仍落 hp002 卡分支 | 跨卡污染，触犯红线 #1「互划界防并发冲突」 |
+| P1-3 | P1 | push 证据 `265d650` 在 hp 仓 `cat-file` 报 `could not get object info`，实为 CCC 仓任务卡提交 | 证据不成立/误导 |
+
+#### 修复记录
+
+- 本轮**无可就地修复项**：3 项 P1 全部是 **hp 业务仓跨仓/跨分支交付闭合**问题，修复动作（从 `origin/main` 新建 `codex/hp003-backup-alignment` / `git add docs/knowledgebase/BACKUP.md` / commit / push）全部落在 `/Users/fan/program/apps/hp`，不在本机审工作区 `/Users/fan/program/ccc-dev-ws-hp003`（CCC 仓 worktree）可及范围，卡内**无可就地修复的 code defect**。
+- hp 仓现 checkout 在 hp002 卡活动分支 `codex/hp002-monitoring-git-probe`；本机审若在 hp 仓切分支/`git add` commit，将把 hp003 产物连带 hp002 工作区一起动，正是本卡红线 #1「互划界防并发冲突」必防场景 → 依规**不越界代改 hp 业务仓**。
+- 执行体自第 1 轮被判「不通过」后，跨仓/跨分支交付**连续 9 轮零修复、零再交付** → 属范围性问题 + 连续 9 轮未闭环，按机审门禁触发「机审不通过 + 非0退出」。
+
+#### 复审结论 / 打回方向（交执行体 OpenCode 重交付）
+
+- **机审：不通过**。服务端改造与验证（验收 #1/2/3，历轮+本轮已实测通过）保留；下列 3 项必须在 hp 仓完成重交付，已连续 9 轮零修复，请执行体务必闭环后再派机审：
+  1. 在 hp 仓 `git fetch origin` 后从 `origin/main` 新建并经 `git checkout -b codex/hp003-backup-alignment` 承载本卡产物，`git add docs/knowledgebase/BACKUP.md` → commit → push（**勿复用 hp002 卡分支**）；
+  2. 禁止用 hp002 卡分支承载本卡产物；
+  3. 修订回写区「commit+push 证据」，去除指向 CCC 仓的 `265d650`，改填 hp 仓**真实 git log -1 hash**，并如实列分支名。
+- 修毕再派机审。本审查不越界代改 hp 业务仓。
+
+#### 第 9 轮审查摘要
+
+- **机审结论**：不通过 · 连续 9 轮未闭环 · 非0退出。
+- **服务端（验收 #1/2/3）**：本审查 SSH 独立实测通过，保留。
+- **hp 业务仓（验收 #4）**：P1-1/P1-2/P1-3 全数沿用、连续 9 轮零修复。
+- **范围属性**：跨仓/跨分支交付缺陷，机审工作区无法安全就地修复（避免污染 hp002）。
+- **人工批注**：卡内无实际老板批注，无批注落实义务。
