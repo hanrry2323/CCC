@@ -70,7 +70,8 @@ export function renderWorktreeBadges(t) {
     const liveFlag = t.metrics_live === true || t.metrics_live === 'true';
     // 以运行时 marker 驱动（{id}.running / {id}-audit.running 存在即 live），
     // 不再依赖 45s 最近活动窗口——机审进行中同样显示动画指示。
-    const recent = liveFlag;
+    const st = t.board_column || t.state || '';
+    const recent = liveFlag && st !== '已关闭' && st !== '打回';
     parts.push(
       `<span class="board-card-badge ${recent ? 'badge-live' : 'badge-elapsed'}" title="${recent ? '执行中/机审中 · 已运行时长' : '累计运行时长（结束后冻结，随卡进机审/回写）'}">⏱ ${escapeHtml(fmtElapsed(elapsed))}</span>`
     );
