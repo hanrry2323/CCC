@@ -1058,6 +1058,7 @@ def _compose_board_items(items):
     closed_map: dict[str, str] = {}
     if repo_root is not None:
         closed_map = _closed_at_map(repo_root)
+    now_ts = time.time()
     for item in items:
         rt = runtime.get(item.id) or {}
         # 运行时状态仅覆盖非关闭卡；一旦卡在磁盘上已关闭，则不予覆盖
@@ -1067,11 +1068,21 @@ def _compose_board_items(items):
             new_state = str(rt["state"]) if rt.get("state") else item.state
         audited = item.machine_audit_passed
         closed_at = item.closed_at
+        audit_status = item.audit_status
         if not closed_at and base_state(new_state) == "已关闭":
             rel = path_by_id.get(item.id)
             if rel:
                 closed_at = closed_map.get(rel, "")
         if not audited and base_state(new_state) == "已回写":
+            # 机审列状态标签：审核中 / 冷却中 / 修复中 / 待审
+            if log_dir and _audit_marker_alive_web(log_dir, item.id):
+                audit_status = "审核中"
+            elif _infra_cooldown_active_web(rt, now_ts):
+                audit_status = "冷却中"
+            elif rt.get("state") in ("待分派", "执行中", "打回"):
+                audit_status = "修复中"
+            else:
+                audit_status = "待审"
             rel = path_by_id.get(item.id)
             if rel and repo_root is not None:
                 branch = "codex/" + Path(rel).stem.lower()
@@ -1084,9 +1095,46 @@ def _compose_board_items(items):
                 state=new_state,
                 machine_audit_passed=audited,
                 closed_at=closed_at,
+                audit_status=audit_status,
             )
         )
     return out
+
+
+def _audit_marker_alive_web(log_dir, card_id: str) -> bool:
+    """``{id}-audit.running`` 标记含存活 PID → 机审进行中。"""
+    marker = Path(log_dir) / f"{card_id}-audit.running"
+    try:
+        raw = marker.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    import re as _re
+
+    pids = [int(m) for m in _re.findall(r"(?:pid|engine_pid|child_pid)=(\d+)", raw)]
+    for pid in pids:
+        if pid <= 1:
+            continue
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            continue
+        except OSError:
+            return True
+    return False
+
+
+def _infra_cooldown_active_web(rt: dict, now_ts: float) -> bool:
+    cd = rt.get("infra_cooldown_until")
+    if not cd:
+        return False
+    try:
+        from datetime import datetime as _dt
+
+        parsed = _dt.fromisoformat(cd.replace("Z", "+00:00"))
+        return parsed.timestamp() > now_ts
+    except (ValueError, TypeError):
+        return False
 
 
 # ── T53：后台任务进程实时展示（GET /tasks/running） ──

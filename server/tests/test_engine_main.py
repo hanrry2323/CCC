@@ -1146,6 +1146,76 @@ class TestParallelAndRelayGuard:
         assert todo and todo[0].id == "b1"
         assert todo[0].retry_count == 1
 
+    def test_audit_rejection_beats_infra_hint(self, tmp_path: Path) -> None:
+        """审计日志同时含「机审：不通过」与 timeout 字样 → 业务失败优先（hp003 事故）。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo 机审：不通过; echo \"timeout occurred upstream\"; exit 1'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "r1.md"
+        card_file.write_text("# 任务卡 r1\n", encoding="utf-8")
+        store.seed(Work(id="r1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["audit_failed"] == 1, summary
+        assert summary["audit_failed_infra"] == 0
+        todo = store.list_work(state=State.TODO)
+        assert todo and todo[0].id == "r1"
+        assert todo[0].retry_count == 1
+
+    def test_audit_infra_cap_falls_back_to_todo(self, tmp_path: Path) -> None:
+        """连续 3 次基础设施失败 → 回待分派人工跟进（可见、可操作，不无限空转）。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo \"API Error: 503 所有上游不可用\"; exit 1'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "c1.md"
+        card_file.write_text("# 任务卡 c1\n", encoding="utf-8")
+        store.seed(Work(id="c1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "0",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        s1 = run_once(reg, store, cfg)
+        assert s1["audit_failed_infra"] == 1, s1
+        s2 = run_once(reg, store, cfg)
+        assert s2["audit_failed_infra"] == 1, s2
+        s3 = run_once(reg, store, cfg)
+        assert s3["audit_failed"] == 1, f"第 3 次应回待分派: {s3}"
+        todo = store.list_work(state=State.TODO)
+        assert todo and todo[0].id == "c1"
+        assert any("基础设施失败" in p for p in todo[0].problems)
+
+    def test_audit_timeout_config(self) -> None:
+        from server.engine.main import _audit_timeout_seconds
+
+        assert _audit_timeout_seconds({}) == 1800
+        assert _audit_timeout_seconds({"EXECUTOR_AUDIT_TIMEOUT_SECONDS": "600"}) == 600
+        assert _audit_timeout_seconds({"EXECUTOR_AUDIT_TIMEOUT_SECONDS": "bad"}) == 1800
+
     def test_exec_infra_failure_holds(self, tmp_path: Path) -> None:
         """执行侧上游 503：回待分派 + 冷却，不计业务重试预算、不打回。"""
         reg_path = _write_demo_registry(

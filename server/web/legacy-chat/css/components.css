@@ -2604,6 +2604,29 @@
   border-color: color-mix(in srgb, #a33a2c 35%, transparent);
   background: color-mix(in srgb, #a33a2c 8%, transparent);
 }
+.board-card-badge.badge-audit {
+  font-size: 9px;
+  padding: 0 5px;
+  border-radius: 999px;
+}
+.badge-audit-审核中 {
+  color: #c47a2c;
+  background: color-mix(in srgb, #c47a2c 14%, transparent);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.badge-audit-冷却中 {
+  color: var(--ccc-text-muted);
+  background: color-mix(in srgb, #9aa0a6 12%, transparent);
+}
+.badge-audit-修复中 {
+  color: #3d9a5f;
+  background: color-mix(in srgb, #3d9a5f 12%, transparent);
+}
+.badge-audit-待审 {
+  color: var(--ccc-text-muted);
+  background: transparent;
+  border: 1px solid var(--ccc-border-subtle);
+}
 .board-card-badge.badge-dirty {
   color: #c47a2c;
   border-color: color-mix(in srgb, #c47a2c 40%, transparent);

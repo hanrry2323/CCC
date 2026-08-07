@@ -107,6 +107,8 @@ export function renderTaskCard(t) {
   const tone = STATE_TONE[state] || 'pending';
   const color = STATE_COLORS[state] || '#a39e93';
 
+  const auditStatus = t.audit_status ? `<span class="board-card-badge badge-audit badge-audit-${t.audit_status}" title="机审状态：${t.audit_status}">${t.audit_status}</span>` : '';
+
   const reject = Number(t.reject_count || 0);
   const rejectHtml = reject > 0
     ? `<span class="board-card-badge badge-reject" title="打回次数">↩ ${reject}</span>`
@@ -137,6 +139,7 @@ export function renderTaskCard(t) {
         <span class="board-card-id id">${escapeHtml(t.id)}</span>
         <div class="board-card-row-right">
           <span class="board-card-state state-${tone}">${escapeHtml(state)}</span>
+          ${auditStatus}
           <button type="button" class="board-card-copy card-copy-btn" data-id="${escapeHtml(t.id)}" title="复制任务块" aria-label="复制任务块">
             <span class="card-copy-ico" aria-hidden="true">⧉</span>
           </button>

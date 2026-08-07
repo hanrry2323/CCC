@@ -128,11 +128,11 @@ def probe_relay(url: str, timeout: int = 5) -> bool:
 def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tuple[bool, str]:
     """识别基础设施故障（超时/网络/上游不可用）——这类失败不进业务重试预算、不打回。"""
     keywords = [
-        "timeout", "timed out", "connection error", "network error",
+        "connection error", "network error",
         "network unreachable", "host unreachable", "dns resolution",
         "connection reset", "broken pipe", "bad gateway",
-        "service unavailable", "gateway timeout", "502", "503", "504",
-        "relay error", "read timeout", "connect timeout", "connection timed out",
+        "service unavailable", "502", "503", "504",
+        "relay error",
         "所有上游不可用", "upstream", "不可用（网络错误）", "上游不可用",
         "inference gateway", "上游",
     ]
@@ -174,6 +174,7 @@ def _hold_infra_failure(
     cfg: dict[str, Any],
     *,
     phase: str,
+    infra_count: int | None = None,
 ) -> None:
     """基础设施/引擎侧故障：不进业务重试预算、不打回；记冷却时间，冷却后自动续跑。
 
@@ -197,6 +198,9 @@ def _hold_infra_failure(
         pass
     from server.engine.runtime_state import write_card_state
 
+    if infra_count is None:
+        infra_count = 0
+
     write_card_state(
         log_dir,
         work.id,
@@ -204,6 +208,7 @@ def _hold_infra_failure(
         retry_count=work.retry_count,
         reason=reasons[0] if reasons else "基础设施故障",
         infra_cooldown_until=until,
+        infra_count=infra_count,
     )
     logger.warning(
         "基础设施失败（冷却 %ds 后自动续%s，不计重试预算）: work=%s reason=%s",
@@ -212,6 +217,13 @@ def _hold_infra_failure(
         work.id,
         reasons[0] if reasons else "",
     )
+
+
+def _audit_timeout_seconds(cfg: dict[str, Any]) -> int:
+    try:
+        return max(60, int(cfg.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS") or 1800))
+    except (TypeError, ValueError):
+        return 1800
 
 
 def _infra_cooldown_active(
@@ -682,6 +694,13 @@ def _audit_output_indicates_pass(text: str) -> bool:
     if "机审：不通过" in body or "机审不通过" in body:
         return False
     return ("机审：通过" in body) or ("机审通过" in body) or ("判定：通过" in body)
+
+
+def _audit_output_indicates_rejection(text: str) -> bool:
+    """审计输出明确给出「不通过」结论 → 业务判定（优先于任何 infra 特征）。"""
+    if not text:
+        return False
+    return ("机审：不通过" in text) or ("机审不通过" in text)
 
 
 def _read_text_best_effort(path: Path) -> str:
@@ -1247,7 +1266,8 @@ def _run_audit_worker(
     """单卡机审（独立槽位池）：拉起验收席 CLI 写 ``## 机审区``。
 
     通过/跳过 → ``collected=1``；业务不通过 → 回待分派重试（用尽才打回）→ ``failed=1``；
-    基础设施失败（503/上游不可用/超时/证据落盘失败）→ 冷却后自动续审，不打回 → ``infra=1``。
+    基础设施失败（503/上游不可用/证据落盘失败）→ 冷却后自动续审，不打回 → ``infra=1``。
+    业务结论优先：审计明确「不通过」绝不被日志里的弱特征误判为 infra（hp003 事故）。
     """
     outcome = {"collected": 0, "failed": 0, "infra": 0}
     try:
@@ -1255,19 +1275,51 @@ def _run_audit_worker(
             logger.info("机审证据已存在（分支/生产卡），跳过: work=%s", work.id)
             outcome["collected"] = 1
             return outcome
+        audit_timeout = _audit_timeout_seconds(cfg)
         ok, problems = _run_machine_audit_after_writeback(
-            work, registry, cfg, log_dir, timeout
+            work, registry, cfg, log_dir, audit_timeout
         )
         if ok:
+            from server.engine.runtime_state import write_card_state
+
+            write_card_state(log_dir, work.id, infra_count=0)  # 成功清零连续 infra
             outcome["collected"] = 1
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
+            audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
+            business = _audit_output_indicates_rejection(audit_text)
             retryable, hint = is_retryable_failure(work.id, reasons, log_dir)
-            if retryable or _is_persistence_failure(reasons):
+            if business:
+                _fail_retry_or_reject(work, store, reasons, cfg)
+                outcome["failed"] = 1
+                logger.warning("机审不通过（业务）: work=%s → %s", work.id, work.state.value)
+            elif retryable or _is_persistence_failure(reasons):
                 if hint and hint not in reasons[0]:
                     reasons = [hint, *reasons]
-                _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="audit")
-                outcome["infra"] = 1
+                from server.engine.runtime_state import read_card_state
+
+                rt = read_card_state(log_dir).get(work.id) or {}
+                infra_count = int(rt.get("infra_count") or 0)
+                if infra_count >= 2:
+                    # 连续 3 次基础设施失败 → 回待分派人工跟进（可见、可操作，不打回）
+                    _fail_retry_or_reject(
+                        work,
+                        store,
+                        [*reasons, "机审多次基础设施失败（已自动重试 3 次），回待分派人工跟进"],
+                        cfg,
+                    )
+                    outcome["failed"] = 1
+                else:
+                    _hold_infra_failure(
+                        store,
+                        work,
+                        log_dir,
+                        reasons,
+                        cfg,
+                        phase="audit",
+                        infra_count=infra_count + 1,
+                    )
+                    outcome["infra"] = 1
             else:
                 _fail_retry_or_reject(work, store, reasons, cfg)
                 outcome["failed"] = 1

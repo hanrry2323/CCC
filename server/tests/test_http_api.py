@@ -1717,6 +1717,29 @@ class TestOpsRelayStats:
         assert "error" in data
 
 
+class TestAuditStatusTag:
+    """机审列状态标签辅助函数。"""
+
+    def test_audit_marker_alive_web(self, tmp_path):
+        import os
+
+        from server.web.server import _audit_marker_alive_web
+
+        marker = tmp_path / "x1-audit.running"
+        marker.write_text(f"engine_pid={os.getpid()}\npid={os.getpid()}\n", encoding="utf-8")
+        assert _audit_marker_alive_web(tmp_path, "x1") is True
+        marker.write_text("pid=99999999\n", encoding="utf-8")
+        assert _audit_marker_alive_web(tmp_path, "x1") is False
+        assert _audit_marker_alive_web(tmp_path, "nope") is False
+
+    def test_infra_cooldown_active_web(self):
+        from server.web.server import _infra_cooldown_active_web
+
+        assert _infra_cooldown_active_web({"infra_cooldown_until": "2099-01-01T00:00:00Z"}, 0) is True
+        assert _infra_cooldown_active_web({"infra_cooldown_until": "2000-01-01T00:00:00Z"}, 1e12) is False
+        assert _infra_cooldown_active_web({}, 0) is False
+
+
 class TestTaskTransition:
     """POST /tasks/{id}/transition → 运行时重新分派（主树卡文件只读）。"""
 
