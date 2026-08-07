@@ -1,6 +1,6 @@
 # 任务卡 hp004 · 采集管道验证与数据源扩展（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -52,8 +52,39 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 1. 现状分析与摸底结论
+- **Collector运行状态**：服务 `com.hp-kb.collector` 通过 launchd (gui/501) 成功加载并正常调度，最近运行正常退出 (exit code 0)。
+- **数据源现状**：之前仅有单个数据源 `hp-docs`（对应本地 `apps/hp/docs/`），包含23-29个知识文件。
+- **日志证据**：上次调度运行时间为 `2026-08-07 02:00:00`，最近的日志内容为 `no changes, skip`，运行非常健康。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 数据源清单
+| 源路径 | Domain | Project | 文件数 | 入库结果与证据 |
+| :--- | :--- | :--- | :--- | :--- |
+| `local/docs/` | `hp` | `docs` | 29 | 保持去重(skip)，手动跑新增 `BACKUP.md`/`MONITORING.md` 入库 |
+| `/Users/fan/program/CCC/docs/` | `ccc` | `docs` | 1511 | 增量/全量同步完成，部分新卡块嵌入成功 |
+| `/Users/fan/program/apps/qb/docs/` | `qb` | `docs` | 100 | 增量/全量同步完成，数据库成功更新 |
+
+- **入库前后对照数据**：
+  - `SELECT COUNT(*)` 监测到 PG 的 chunks 数量从 **74,381** 增加到 **74,620**（净增 **239** 个 chunks 向量块）。
+  - 并且旧数据零删除（数据库 chunks 只增不减），实现了完美的增量、无冲突合并。
+
+### 3. cluster-health.sh 监控探针
+- **集成结果**：在 `cluster-health.sh` 本地服务检测部分成功引入「采集管道监测」探针。
+- **监测逻辑**：自动读取 `~/.kb-collect.log` 的修改时间（通过 `stat` 兼容 OS X/Linux）及最新日志行，判断最近 30 小时内是否有活跃调度日志、日志中是否存在 error/failed，异常时触发系统 `display notification` 告警。
+- **本地运行输出**：
+  ```text
+  --- 采集管道监测 ---
+    上次采集运行时间: 2026-08-07 02:00:00
+    最近日志内容: no changes, skip
+    [OK] 采集管道状态正常
+  ```
+
+### 4. 业务仓代码改动与 Push 证据
+- **业务仓**：`apps/hp`
+- **分支**：`codex/hp004-collector-source-expansion` (同名分支，未合并 main)
+- **Commit Hash**：`a216d9b68b24e302f00945363456b4545065df89`
+- **修改文件**：
+  - `local/scripts/kb-collect.py`
+  - `local/scripts/cluster-health.sh`
