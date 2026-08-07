@@ -65,3 +65,9 @@
 ### push 证据（commit hash）
 - `712bcd59bacf4f11dc2400e2a1ea7c174b08106e` (README)
 - `ddf5b2df922fd19986c5c1d4f46d45cdaa5975fc` (Card)
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（audit-log-restore）· 2026-08-07 13:52
+证据：开发回写。请：1) Read 该绝对路径卡全文与验收标准；2) 在 worktree /Users/fan/program/ccc-dev-ws-mx001 核对 git log/diff；3) 独立取证。通过则必须把「## 机审区」+「机审：通过」写进绝对路径卡文件 /Users/fan/program/CCC/docs/dispatch/mx/mx001-recon-and-baseline.md（不要只改 worktree 相对副本）；不通过写「机审：不通过」并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。 [ccc.engine] child_pid=87549 机审完成。 **结论：通过（机审区已写入绝对路径卡文件）** - 独立取证属实：worktree `main...HEAD` 仅两份文档、零业务代码改动；实机 medio-0 `git status` 干净（
