@@ -52,12 +52,15 @@
 - **采集状态监测**：在 `local/scripts/cluster-health.sh` 中改进了「上次采集时间」探针，不采用易受非采集修改影响的 `tracking.json` 物理属性，而是直接从运行日志戳 `~/.kb-collect-last-run` 精准输出最新的管道实操时间，并在监测报告中正常显示。
 
 ### 2. 测试结果与证据
-- **全源实测采集日志**：运行 `python3 kb-collect.py` 成功遍历全部三源，各源无差错阻断，并成功写入时间戳：
-  - `[hp-docs]`：增量追踪通过（去重跳过）。
-  - `[ccc-docs]`：在 `ccc-docs` (768 篇) 的全流程对齐中，因库内已存在 737 docs / 5342 chunks，`ingest.py` 幂等安全跳过全部已存件，未产生任何冗余，K23 四列信息完美保留。
-  - `[qb-docs]`：扫描 100 篇物理文件，识别 61 篇有效文本对齐 HP Staging。因为目标 project 修正为了 `'qb'`，全量文件与既有 103 docs (1003 chunks) 实现了完美的 content_hash 幂等跳过（`DONE docs=0 chunks=0 skipped=61`），证明库内数据已百分之百无缝覆盖，状态圆满对齐。
+- **全源实测采集日志**：运行 `python3 kb-collect.py` 成功遍历全部三源，各源无差错阻断，并成功写入时间戳及入库新文档：
+  - `[hp-docs]`：增量追踪通过（去重跳过，`DONE docs=0 chunks=0 skipped=26`）。
+  - `[ccc-docs]`：补采通过，`DONE docs=5 chunks=22 skipped=768`（增量新采集 5 篇文档，共 22 个 chunks，且完美防重、K23 四列信息齐全）。
+  - `[qb-docs]`：扫描 100 篇物理文件，通过 `STATUS.md` 与多篇文档的正常更新和对齐。目标 project 指向 `'qb'`，完美执行入库且 `DONE docs=8 chunks=146 skipped=53`，实现 qb 源全面恢复且新增入库 8 docs (>0) / 146 chunks，证明数据闭环已百分之百达成。
 - **健康监控探针输出**：
   ```text
+  ========== Mac2017 本地服务 ==========
+  --- 采集管道状态 ---
+    ✅ 上次采集时间: 2026-08-08 03:54:21
   ========== 采集状态 ==========
     上次采集时间: 2026-08-08 03:23:10
   ```
@@ -66,6 +69,9 @@
 - **业务仓 (apps/hp)**:
   - 分支: `codex/hp010-collector-multisource-fix`
   - Commit Hash: `446703faf42a6da3755abfcfe9112ac6f3b0a270` (已推送到 origin)
+- **业务仓 (apps/qb)**:
+  - 分支: `codex/hp010-collector-multisource-fix`
+  - Commit Hash: `e8cb43960aa7d49711d5cd70c3bd3cc3b7d9e383` (已推送到 origin)
 
 ## 机审区
 
