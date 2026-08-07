@@ -1,6 +1,6 @@
 # 任务卡 hp003 · 备份对齐：pg 备份链路摸底与冷热备份机制规范化（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 
@@ -51,8 +51,25 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 1. 现状分析（摸底结论）
+- **定时冷备确实在正常运行**：每天凌晨 02:00 定时执行，日志输出到 `/data/backups/knowledge/pg_dump.log`。
+- **落点与认知错位**：备份文件生成路径为 `/data/backups/knowledge/knowledge_$DATE.sql.gz`，而 `/data/knowledge/backups/` 目录下仅有历史手动备份 `2026-07-04-pre-4finance.dump`，并非定时任务落点。因此备份链并未断，而是文件存放位置不一致。
+- **WAL 实时热备正常**：数据库中 `archive_mode` 为 `on` 且 `wal_level` 为 `replica`，WAL 日志被实时归档至 `/data/backups/wal/` 下。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 定时冷备机制修整与规范
+- 修改了 `/data/backups/pg_dump_knowledge.sh` 脚本，在保留原 `.sql.gz` 兼容性的基础上，新增了 **PostgreSQL 自定义二进制格式 (`.dump`)** 的导出，支持并发恢复和 `pg_restore` 结构检查。
+- 增加了针对 `.dump` 格式文件的 30 天自动轮转删除机制。
+- 备份脚本修改后手动试跑成功，顺利在 `/data/backups/knowledge/` 路径下产出今日份 `.dump` 与 `.sql.gz` 文件，且无一例删除/覆盖旧备份及现有 WAL 文件的行为。
+
+### 3. 恢复完整性验证
+- **dump 完整性校验**：对新生成的 `/data/backups/knowledge/knowledge_2026-08-07.dump` 执行了 `pg_restore --list` 完整性检验。成功还原并列出了全套 TOC 结构（包含 vector 扩展、`chunks`/`documents`/`memory_store` 等表结构和 IVFFlat 向量索引定义），验证通过。
+- **gzip 完整性校验**：对 `knowledge_2026-08-07.sql.gz` 运行了 `gzip -t` 校验，验证通过。
+
+### 4. 机制文档归档说明
+- 已在 `hp` 业务仓库中新建了备份与恢复的机制说明文档：`/Users/fan/program/apps/hp/docs/knowledgebase/BACKUP.md`，文档内详细列出了定时任务、落点、保留策略、异地副本 Pull 机制（Mac2017 的 `rsync` 增量拉取），以及低风险完整性校验、测试沙箱库恢复和生产库灾难恢复的具体步骤。
+
+### 5. commit+push 证据
+- 已经向分支 `codex/hp003-backup-alignment` 进行了 commit 与 push 操作。
+- 最终 commit hash：265d650fbdca3b681816d23c1340950957a6aae0
