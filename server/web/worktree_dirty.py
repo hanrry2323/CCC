@@ -28,7 +28,7 @@ from server.engine.main import get_worktree_path
 
 logger = logging.getLogger("ccc.web.worktree_dirty")
 
-_CACHE_TTL_S = 8.0
+_CACHE_TTL_S = 15.0
 # work_id → (monotonic_ts, dirty_files|None)
 _dirty_cache: dict[str, tuple[float, int | None]] = {}
 # registry path → (mtime, bases)
@@ -206,18 +206,12 @@ def _numstat_sum(worktree: Path, args: list[str], timeout: float = 2.0) -> tuple
 
 
 def count_line_churn(worktree: Path, timeout: float = 2.0) -> tuple[int, int] | None:
-    """工作区相对 HEAD 的行变更（暂存+未暂存）。返回 (insertions, deletions)。
+    """工作区相对 HEAD 的行变更（暂存+未暂存合并）。返回 (insertions, deletions)。
 
-    ``git diff --numstat`` = WT vs index；``git diff --cached --numstat`` = index vs HEAD；
-    两者相加 = WT vs HEAD（未跟踪文件不计行）。
+    ``git diff HEAD --numstat`` = WT vs HEAD 一次算清（未跟踪文件不计行），
+    替代原「diff --numstat + diff --cached --numstat」两次调用（worktree 必有 HEAD）。
     """
-    wt = _numstat_sum(worktree, ["diff", "--numstat"], timeout=timeout)
-    staged = _numstat_sum(worktree, ["diff", "--numstat", "--cached"], timeout=timeout)
-    if wt is None and staged is None:
-        return None
-    wi, wd = wt or (0, 0)
-    si, sd = staged or (0, 0)
-    return wi + si, wd + sd
+    return _numstat_sum(worktree, ["diff", "HEAD", "--numstat"], timeout=timeout)
 
 
 def count_branch_line_churn(worktree: Path, timeout: float = 2.0) -> tuple[int, int] | None:
