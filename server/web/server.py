@@ -61,6 +61,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import logging
 import mimetypes
 import os
 import select
@@ -71,6 +72,8 @@ from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("ccc.web.server")
 
 # ── 项目根路径探测 ──
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
