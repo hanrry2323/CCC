@@ -1,6 +1,6 @@
 # 任务卡 ccc011 · deploy-ccc.sh pytest 路径修复（venv 兼容）（Claude Code 执行）
 
-> 关联：升级批次 4 交付脚本 · 执行体：Claude Code · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-08
+> 关联：升级批次 4 交付脚本 · 执行体：Claude Code · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 
@@ -42,7 +42,13 @@ deploy-ccc.sh 的 pytest 门禁改用 ${PYTHON_BIN} -m pytest（兼容 venv 环�
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · **日期**：2026-08-08
+
+**实现说明**：scripts/deploy-ccc.sh 第 55 行 pytest 裸命令 → `"${PYTHON_BIN}" -m pytest --ignore=server/tests/test_t53_console_roadmap.py -q`。PYTHON_BIN 变量文件内已定义(:16，`${CCC_PYTHON_BIN:-python3}`)，-m 走解释器自带 pytest 模块，与运行环境 python 同源，venv bin 不在 PATH 时不再 command not found。
+
+**测试结果**：`bash -n scripts/deploy-ccc.sh` 通过；机制核对 `\${PYTHON_BIN} -m pytest` 在 `env -i PATH=/usr/bin:/bin` 下以解释器模块方式解析（不再依赖 PATH 上的 pytest 可执行文件）；diff 仅限第 55 行。
+
+**push 证据**：分支 codex/ccc011-deploy-ccc-sh-pytest-venv · commit 90ca8d1e（`fix(deploy-ccc): pytest 门禁改 ${PYTHON_BIN} -m pytest，兼容 venv 无 PATH 前置`）· 已 rebase origin/main（fd64410b）之上。
 
 ## 批注落实
 
