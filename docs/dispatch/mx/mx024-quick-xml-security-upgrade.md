@@ -1,6 +1,6 @@
 # 任务卡 mx024 · quick-xml 安全债升级（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 打磨第四批：质量门禁与安全债、架构暴露 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：ccc-plan: medio-0 打磨第四批：质量门禁与安全债、架构暴露 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
