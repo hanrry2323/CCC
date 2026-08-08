@@ -18,8 +18,9 @@ def test_cleanup_closed_worktrees_lifecycle(tmp_path: Path):
 
     1. hp001: 已关闭卡 -> 自动回收 worktree (clean) 且删除本地分支 (merged)
     2. hp002: 打回卡 (含脏改动) -> 允许 --force 强删 worktree；不删本地分支
-    3. hp003: 待分派卡且远端分支已删 -> 自动回收 worktree (clean)，删除本地分支
+    3. hp003: 待分派卡且远端分支已删 -> 处于 "待分派" 活跃期被硬闸保护，不回收
     4. hp004: 执行中卡且仍在运行 -> 保护，不予强删 worktree
+    5. hp005: 已回写卡且本地分支存在 -> 处于 "已回写" 收单证据现场被硬闸保护，不回收
     """
     store = InMemoryBoardStore()
     store.seed(
@@ -27,6 +28,7 @@ def test_cleanup_closed_worktrees_lifecycle(tmp_path: Path):
         Work(id="hp002", role="开发执行体", state=State.REJECTED, card_path="docs/dispatch/hp/hp002-test.md"),
         Work(id="hp003", role="开发执行体", state=State.TODO, card_path="docs/dispatch/hp/hp003-test.md"),
         Work(id="hp004", role="开发执行体", state=State.TODO, card_path="docs/dispatch/hp/hp004-test.md"),
+        Work(id="hp005", role="开发执行体", state=State.DONE, card_path="docs/dispatch/hp/hp005-test.md"),
     )
 
     entry = ExecutorEntry(
@@ -65,14 +67,21 @@ def test_cleanup_closed_worktrees_lifecycle(tmp_path: Path):
                  else:
                      m.stdout = ""
              elif "show-ref --verify" in cmd:
-                 # Simulate remote branches for hp003 and hp001 do not exist
-                 if "hp003" in cmd or "hp001" in cmd:
-                     m.returncode = 1
+                 # refs/remotes/origin/codex/...
+                 if "remotes/origin" in cmd:
+                     if "hp003" in cmd or "hp001" in cmd or "hp005" in cmd:
+                         m.returncode = 1  # Remote branch does not exist
+                     else:
+                         m.returncode = 0
                  else:
-                     m.returncode = 0
+                     # refs/heads/codex/...
+                     if "hp003" in cmd or "hp001" in cmd:
+                         m.returncode = 1  # Local branch does not exist either (hp001/hp003 are true orphans)
+                     else:
+                         m.returncode = 0  # hp005 local branch exists
              elif "branch --list" in cmd:
                      # Simulate local branches
-                     m.stdout = "  codex/hp001-test\n  codex/hp002-test\n  codex/hp003-test\n"
+                     m.stdout = "  codex/hp001-test\n  codex/hp002-test\n  codex/hp005-test\n"
              elif "merge-base" in cmd:
                  m.returncode = 0
              return m
@@ -86,19 +95,20 @@ def test_cleanup_closed_worktrees_lifecycle(tmp_path: Path):
          # 验证 worktree 回收
          remove_hp001 = any("worktree remove" in c and "/fake/base/hp001" in c and "--force" not in c for c in calls)
          remove_hp002_force = any("worktree remove" in c and "/fake/base/hp002" in c and "--force" in c for c in calls)
-         remove_hp003 = any("worktree remove" in c and "/fake/base/hp003" in c and "--force" not in c for c in calls)
+         remove_hp003 = any("worktree remove" in c and "/fake/base/hp003" in c for c in calls)
          remove_hp004 = any("worktree remove" in c and "/fake/base/hp004" in c for c in calls)
+         remove_hp005 = any("worktree remove" in c and "/fake/base/hp005" in c for c in calls)
 
          assert remove_hp001 is True, "hp001 (Closed) should be reaped cleanly"
          assert remove_hp002_force is True, "hp002 (Rejected & dirty) should be force reaped"
-         assert remove_hp003 is True, "hp003 (Todo & remote deleted) should be reaped cleanly"
+         assert remove_hp003 is False, "hp003 (Todo but hard gate protected) should NOT be reaped"
          assert remove_hp004 is False, "hp004 (running) must be protected"
+         assert remove_hp005 is False, "hp005 (Done but hard gate protected) should NOT be reaped"
 
          # 验证本地分支清理
          branch_deletions = [c for c in calls if "branch" in c and "-D" in c]
          assert any("hp001-test" in c for c in branch_deletions) is True, "hp001 branch should be deleted (merged)"
          assert any("hp002-test" in c for c in branch_deletions) is False, "hp002 branch should be kept (remote exists)"
-         assert any("hp003-test" in c for c in branch_deletions) is True, "hp003 branch should be deleted (remote deleted)"
 
 
 def test_dispatch_and_collect_retry_reset_on_failure(tmp_path: Path):

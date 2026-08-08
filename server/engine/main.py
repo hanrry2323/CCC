@@ -505,6 +505,14 @@ def _cleanup_closed_worktrees(
             )
             remote_branch_exists = (res_branch.returncode == 0)
 
+            local_branch = f"refs/heads/codex/{card_id_slug}"
+            res_local_branch = subprocess.run(
+                ["git", "-C", str(main_repo), "show-ref", "--verify", local_branch],
+                capture_output=True,
+                check=False
+            )
+            local_branch_exists = (res_local_branch.returncode == 0)
+
             should_reap = False
             use_force = False
 
@@ -512,16 +520,18 @@ def _cleanup_closed_worktrees(
                 should_reap = False
             else:
                 disk_base = base_state(work.state)
-                if disk_base in ("已关闭", "打回"):
-                    should_reap = True
-                    if is_dirty:
-                        use_force = True
-                elif not remote_branch_exists:
-                    should_reap = True
-                    if is_dirty:
-                        use_force = True
-                elif disk_base in ("执行中", "待分派"):
+                if disk_base in ("待分派", "执行中", "已回写"):
+                    # 保护：进行中/已回写/已收单卡的 worktree 是运行现场，一律不予回收
                     should_reap = False
+                elif disk_base in ("已关闭", "打回"):
+                    should_reap = True
+                    if is_dirty:
+                        use_force = True
+                elif (not remote_branch_exists) and (not local_branch_exists):
+                    # 孤儿判定：只有远端分支与本地分支均不存在时才属孤儿
+                    should_reap = True
+                    if is_dirty:
+                        use_force = True
 
             if should_reap:
                 cmd_remove = ["git", "-C", str(main_repo), "worktree", "remove", str(wt)]
