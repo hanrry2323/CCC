@@ -1,6 +1,6 @@
 # 任务卡 xy024 · 遗留治理③：测试门禁修复与文档除债（P0-FLOW 前置）（OpenCode 执行）
 
-> 关联：ccc-plan: xy PRM 批2：测试门禁修复与文档除债 · 执行体：OpenCode · 验收：OpenCode · 状态：打回（机审未通过） · 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：ccc-plan: xy PRM 批2：测试门禁修复与文档除债 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 

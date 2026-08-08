@@ -1,6 +1,6 @@
 # 任务卡 mx026 · 公开化前期准备：敏感信息扫描与铺垫（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 公开化前期准备：敏感信息扫描与铺垫 · 执行体：OpenCode · 验收：OpenCode · 状态：打回（未回写无产物） · 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：ccc-plan: medio-0 公开化前期准备：敏感信息扫描与铺垫 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
