@@ -1,6 +1,6 @@
 # 任务卡 ccc013 · 新流程全链路验证（OpenCode 执行）
 
-> 关联：CCC 系统化升级 · 新流程验证（2026-08-08） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-08
+> 关联：CCC 系统化升级 · 新流程验证（2026-08-08） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 
@@ -41,8 +41,23 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 1. 实现说明
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+新增了最小探针脚本 `scripts/pipeline-flow-verify.sh`，仅包含 `set -euo pipefail` 和输出三行状态标志的核心逻辑，无额外注释。
+
+### 2. 测试结果
+
+`bash -n scripts/pipeline-flow-verify.sh` 通过，本地执行输出：
+```
+PROBE_STATE_HOLD
+PROBE_WORKTREE_OK
+PROBE_EXIT_OK
+```
+进程退出码：`0`
+
+### 3. push 证据
+
+- Commit Hash: `dcb0e7910be6ef234d0152c737425ea2ce998e41`
+- 目标分支: `codex/ccc013-flow-verify-pipeline` (已成功 push 至 origin)
