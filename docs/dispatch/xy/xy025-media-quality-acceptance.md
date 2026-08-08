@@ -1,6 +1,6 @@
 # 任务卡 xy025 · 成片质量验收联测（P0-MEDIA）（OpenCode 执行）
 
-> 关联：ccc-plan: xy PRM 批3：成片质量验收联测 + 关卡自动验证脚本 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：ccc-plan: xy PRM 批3：成片质量验收联测 + 关卡自动验证脚本 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 
