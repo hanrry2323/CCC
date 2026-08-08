@@ -80,7 +80,7 @@
   ```
 
 ### 3. push 证据 (Push Evidence)
-- Commit Hash: `6d3d08fe`
+- Commit Hash: `c0afed73`
 
 ### 4. 验收自检对照表
 - [x] 新增门禁探针失败（pytest 退出 1）卡直接打回，不拉起机审
