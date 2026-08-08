@@ -65,6 +65,30 @@
 
 ### 3. push 证据
 - 脚本提交 Commit Hash: `e9254c04ee843d048f8610e690873bb4a3ecb344`
+- 机审修复提交 Commit Hash: `a04dc39a`
+
+## 机审区
+
+**机审**：2017 机审席 · 日期：2026-08-09
+
+### 机审：通过
+
+### 审查摘要
+任务卡 ccc018（知识库条目自动同步脚本）已回写，机审席独立复核。范围仅触及 `scripts/sync-kb-index.sh`（新建）+ 任务卡写回，未动 `server/kb/`、`server/engine/`，符合白名单。红线核验：①使用现有 `python3 -m server.kb.mcp_server --reindex`（`server/kb/mcp_server.py:300` 有 `--reindex` 分支）；②零硬编码——`KB_DIR/MARKER_FILE/LOG_FILE/PYTHON_BIN` 均由环境变量覆盖；③首轮跑通三验收标准 + 门禁 dry-run。
+
+### 发现清单（机审发现 1 项 · P1 就地修复）
+- **P1-01（已修复）** 原 `find ... | head -n 1` 在批量新增 KB 条目时触发 SIGPIPE(141)：find 多行输出、head 提前关闭管道，`set -euo pipefail` 下脚本在**重建索引前即中止**（实测 exit 141，索引静默不重建），且覆盖了 on-reindex-fail 的错误路径（error-path exit 1 不可达）。此即该脚本核心用途「批量自动同步」的首使用例，属真实缺陷。
+
+### 修复记录
+- 提交 `a04dc39a`（`fix(kb): ccc018 机审发现 P1-01 …`）：改为命令替换一次性收齐 find 输出 + bash 参数展开取首行，find 全程无管道读方提前关闭，杜绝 SIGPIPE。改动仅脚本一处。
+
+### 复审结论（修复后实测，全部通过）
+- 批量 500 新增文件 → 重建、exit 0（修复前 exit 141、不重建）
+- 无变更 → 幂等跳过、exit 0
+- 索引重建失败 → exit 1（错误处理生效）
+- 门禁 `bash scripts/sync-kb-index.sh --dry-run` → exit 0
+- `bash -n` → syntax OK
+- 分支 commit+push 已更新（`fe7172e9..a04dc39a`）
 
 ## 执行提示
 
