@@ -1,6 +1,6 @@
 # 任务卡 mx016 · PC 端 RSS 键盘快捷键（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 打磨第二批：交互/安全/显示/质量四线推进 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：ccc-plan: medio-0 打磨第二批：交互/安全/显示/质量四线推进 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
