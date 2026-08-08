@@ -68,6 +68,18 @@ for b in out.splitlines():
     for f in files:
         if not f.startswith("docs/dispatch/") or not f.endswith(".md"):
             continue
+        # 只认与分支同名 stem 的卡：分支 codex/ccc013-flow-verify-pipeline
+        # 只应贡献 ccc013，避免把分支里携带的历史卡（如已关闭 ccc004）误扫进 ready
+        if Path(f).stem != b.removeprefix("origin/codex/"):
+            continue
+        # 卡在 main 已关闭（close-only/历史残留分支）→ 不重复批准
+        main_card = subprocess.run(
+            ["git", "show", f"origin/main:{f}"],
+            capture_output=True,
+            text=True,
+        )
+        if main_card.returncode == 0 and "状态：已关闭" in main_card.stdout:
+            continue
         card = subprocess.check_output(["git", "show", f"{b}:{f}"], text=True)
         if machine_audit_passed_text(card):
             m = re.match(r"^([a-z]{2,4}\d{3})-", Path(f).stem)
