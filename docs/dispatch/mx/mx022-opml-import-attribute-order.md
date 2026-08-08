@@ -1,6 +1,6 @@
 # 任务卡 mx022 · OPML 导入属性顺序修复（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 打磨第三批：RSS 事务化 / 定时巡检 / OPML 导入修复 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：ccc-plan: medio-0 打磨第三批：RSS 事务化 / 定时巡检 / OPML 导入修复 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
@@ -44,8 +44,8 @@ OPML 导入属性顺序修复（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+- **实现说明**：重构了 `parse_opml` 中 `Event::Start(e)` 与 `Event::Empty(e)` 的逻辑，不再在属性循环内进行 push。改为先解析 `xmlUrl`, `text`, `title`, `category` 至局部变量，再在属性循环外按 `text > title > url` 的优先级确定订阅名称，彻底解决属性顺序导致的名丢失 bug，并完美兼容既有嵌套及容错行为。
+- **测试结果**：新增了 `parse_opml_attribute_ordering_and_priorities` 测试，全量覆盖属性顺序变体（xmlUrl先、text先、缺 text、属性乱序等），经 `cargo test -p medio-core` 所有 421 项单元测试已 100% 通过（零警告）。
+- **Push 证据**：分支 `codex/mx022-opml-import-attribute-order` 已成功 push 至 medio-0 业务仓，对应 commit hash 为 `286f0d691ce09c2a8fe46967758bc29fac19ee7c`。
