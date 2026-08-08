@@ -1,6 +1,6 @@
 # 任务卡 mx026 · RssService WebSub 联动断链修复（P0）（OpenCode 执行）
 
-> 关联：mx025 架构问题清单 #1 P0 · WebSub 实时推送功能断链 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-09
+> 关联：mx025 架构问题清单 #1 P0 · WebSub 实时推送功能断链 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-09
 
 ## 目标
 
@@ -47,8 +47,17 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 实现说明
+1. **定位并解决问题**：在 `medio-0` 项目的 `src/backend/core/src/service/rss/service.rs` 中定位了由于重构引起路径引用错误（原 `crate::service::websub_service::WebSubService` 无法被解析）而被注释禁用的 WebSub 链接检测联动代码。
+2. **修复路径引用**：经代码上下文库查找，确认正确的模块路径应该为 `crate::service::rss::WebSubService::detect_websub_links`。已将其恢复并重新启用，并将 `_content` 变量改为 `content` 以正确传递给检测函数，从而彻底消除了断链，使 WebSub 实时推送功能能成功联动。
+3. **安全与依赖**：没有引入任何新依赖、新 crate，也未改动其他的业务逻辑。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+1. **编译检查**：在 `medio-0` 中执行 `cargo check` 以及 `cargo check --tests -p medio-core`，一切编译通过，无任何错误或警告。
+2. **单元测试**：成功运行 `cargo test -p medio-core --lib` 所有的库单元测试，全部 423 个测试全部 PASS（其中包含了 `service::rss::websub` 模块下的所有测试，确保联动和 SSRF 验证逻辑均工作正常且无回归）。
+
+### push 证据（commit hash）
+- **业务仓 (medio-0) 提交分支**：`codex/mx026-rssservice-websub-p0`
+- **提交哈希 (commit hash)**：`d8377d00bb94a0b583223cdf750196c5a024c220`
