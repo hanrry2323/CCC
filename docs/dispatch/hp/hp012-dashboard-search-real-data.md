@@ -70,3 +70,48 @@ Dashboard 与 Search 页面真实数据接入（清假数据）（ccc-plan 切�
 
 - **业务仓 (hp)** Branch: `codex/hp012-dashboard-search-real-data`
 - **Commit Hash**: `0dbbf56b0d0e3dfe5f8f943169b1644f09d8dc21`
+
+## 机审区
+
+机审：通过
+
+### 审查摘要
+
+独立验收席按 code-review 清单对 hp012 回写进行完整 Code Review。范围文件为
+`apps/hp/local/graph/dashboard/src/pages/{Dashboard,Search}.tsx`，deliverable 在业务仓
+`codex/hp012-dashboard-search-real-data` 分支（HEAD+写回区 commit `0dbbf56`）。核实：
+
+- **Dashboard.tsx**：`FALLBACK_PROJECTS/TAGS/RECENT/TIMELINE` 全部移除，活跃项目/热门标签/
+  最近更新/时间线改渲染 `fetchProjectsStatus`/`fetchTags`/`fetchLibrary`/`fetchTimeline`
+  真实数据；字段名与后端 `/api/projects/status`（name/domain/color/doc_count/chunk_count/
+  version）逐一核对一致。验收标准#1 满足。
+- **Search.tsx**：`FALLBACK_RESULTS/HISTORY/SUGGESTIONS` 移除；无结果渲染真实「没有找到
+  …的结果」空态；耗时用 `performance.now()` 实测，引擎写死值移除。验收标准#2 满足。
+- **错误 banner**：两文件均用 `_warning`/`getWarning` 渲染真实接口错误（含 endpoint/status/
+  message），不 fallback 假内容。验收标准#3 满足。
+- **构建与测试**：独立执行 `npm run build`（✓ 7.4s）、`npm test`（9 passed，1 file）。
+  验收标准#4 构建/测试条目满足。
+- **分支/回写**：改动在 `codex/hp012-dashboard-search-real-data` 分支，回写区含实现说明/
+  测试结果/commit hash。验收标准#5 满足。
+- 卡内无「## 人工批注」（最高开发指令区为空占位），无批注需核对落实。
+
+### 发现清单
+
+| 编号 | 级别 | 文件:行 | 描述 | 结论 |
+|------|------|---------|------|------|
+| P1-01 | P1 | Search.tsx 原 292-308 | 结果侧栏「AI 摘要」为整块编造内容：硬编码「3 篇主文档 / 5 条笔记 / 集中在 HermesPet 项目」、编造「关键概念：可证伪假设…」、按钮文案「基于 bge-m3 检索 + GPT 总结」。直接违反验收#2（引擎写死值移除）与#4（展示真实项目名而非 HermesPet/Mavis），违背「清假数据」意图 | 已修复 |
+
+### 修复记录
+
+- P1-01：删除 Search.tsx 中整块编造的「AI 摘要」区块（无真实摘要上报接口支撑，保留即持续输出假数据）。
+  commit `a867dfb` 到 `codex/hp012-dashboard-search-real-data` 并已 push（origin 0dbbf56..a867dfb）。
+
+### 复审结论
+
+对 P1-01 修复 diff 复审：
+
+- 删除内容为纯数据/纯渲染编造块，不影响结果渲染/空态/历史逻辑；`pushToast`/`Icon` 仍被其他处使用，无死引用。
+- 修复后 `grep HermesPet/Mavis/bge-m3/GPT 总结`：0 命中于两范围文件；`FALLBACK_` 0 命中。
+- 修复后重建 ✓ 7.4s；复测 ✓ 9 passed。工作树在 deliverable 分支清洁（无未提交杂项）。
+
+P1 已闭环，无 P0/P1 遗留，范围线与验收标准全部满足。机审通过。
