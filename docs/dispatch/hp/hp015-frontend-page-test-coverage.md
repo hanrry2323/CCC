@@ -1,6 +1,6 @@
 # 任务卡 hp015 · 前端页面测试覆盖（React Testing Library）（OpenCode 执行）
 
-> 关联：ccc-plan: HP 前端测试覆盖补齐（页面渲染 + 关键交互，目标测试评分 4→7） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 前端测试覆盖补齐（页面渲染 + 关键交互，目标测试评分 4→7） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
@@ -45,8 +45,43 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 实现说明
+在 `/Users/fan/program/apps/hp/local/graph/dashboard/src/__tests__/` 下新增了以下前端页面与交互测试，实现了 React Testing Library / vitest 完整测试覆盖：
+1. `dashboard.test.tsx`:
+   - Dashboard 真数据渲染 (mock `/api` 接口返回真实项目 `claude-code/docs/qb`，断言渲染正确)
+   - Dashboard 空态渲染 (当后端不可达时展示友好提示及空态)
+2. `search.test.tsx`:
+   - Search 页面空结果时展示 `没有找到 "{q}" 的结果` 空态（不展示 fake data / fallback 假数据列表）
+   - Search 页面检索到真数据时的结果渲染 (使用 custom matcher 兼容 HTML 关键字高亮标记)
+3. `library.test.tsx`:
+   - Library 页面过滤参数提取（从 URL 获取 `status/tag/project` 并正确传递给 `fetchLibrary` 接口）
+   - Library 页面结果为空时的空态展示
+4. `document.test.tsx`:
+   - Document 页面 404 空态渲染 (当 `fetchDocument` 返回 `null` 时展示 "文档未找到")
+   - Document 页面笔记添加 (点击 "保存" 调用实际 API `saveNote`)
+   - Document 页面笔记删除 (点击 "删除" 触发确认并调用实际 API `deleteNote`)
+5. `interaction.test.tsx`:
+   - 主题切换 (交互测试：`light` -> `dark` -> `auto` -> `light` 切换，并持久化至 `localStorage` 和 DOM 元素 `data-theme` 属性)
+   - Spotlight 搜索框打开与关闭 (通过 Escape 键或点击 overlay 关闭)
+   - NoteModal 笔记保存 (点击 "保存笔记" 调用实际 API `saveNote` 并自动关闭弹窗)
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+本地执行 `npm test` 全部通过（包含已有的 `api.test.ts` 9 个测试，共 21 个 tests 全绿）：
+```
+ ✓ src/api.test.ts (9 tests) 145ms
+ ✓ src/__tests__/interaction.test.tsx (3 tests) 525ms
+ ✓ src/__tests__/search.test.tsx (3 tests) 772ms
+ ✓ src/__tests__/library.test.tsx (2 tests) 492ms
+ ✓ src/__tests__/dashboard.test.tsx (2 tests) 585ms
+ ✓ src/__tests__/document.test.tsx (2 tests) 684ms
+
+ Test Files  6 passed (6)
+      Tests  21 passed (21)
+```
+类型检查 `npx tsc --noEmit` 完美通过（no output）。
+
+### Push 证据 (Commit Hash)
+- hp 业务仓: `39284d996e40aa060edadfc8b48c6f0557f6f2cb`
+- 分支: `codex/hp015-frontend-page-test-coverage`
