@@ -90,6 +90,16 @@
 - `bash -n` → syntax OK
 - 分支 commit+push 已更新（`fe7172e9..a04dc39a`）
 
+### 机审复核（2017 机审席 · 第 2 轮独立复查）
+- 独立取证：`bash -n` 语法 OK；`server/kb/mcp_server.py:300` 确含 `--reindex` 分支，命令属实；范围仅 `scripts/sync-kb-index.sh` + 卡文件，未动 `server/kb` / `server/engine`，无越界。
+- 隔离实测（stub python 拦截 reindex）四条核心路径，非信任自述：
+  - 首次运行 → 触发重建，exit 0
+  - 无变更 → 幂等跳过，exit 0
+  - 新增 newer 文件 → 正确触发重建，exit 0（证实 P1-01 修复后能从真实变更触发，非 SIGPIPE 夭折）
+  - reindex 失败 → exit 1（错误处理生效）
+- P1-01 修复复审：`CHANGED_ALL` 命令替换收齐 find 输出 + 参数展开取首行，无管道读方提前关闭，根治 SIGPIPE；`.index` prune 防自触发（标记在 `.index/` 下已被排除），已由连续幂等跳过实证。
+- **本轮无新增发现**，机审：通过。工作区 clean，4 commit 均在卡分支，等待老板「合入批准」。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
