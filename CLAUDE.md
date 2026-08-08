@@ -1,255 +1,59 @@
-# CLAUDE.md
+# CLAUDE.md — CCC 平台（本仓 · 唯一双入口之一）
 
-Guidance for agents editing CCC as **platform developer**.
+> 打开本仓即生效。本文件是 CCC 平台**两个通用入口之一**（另一个是 `AGENTS.md`，同一套心智）；
+> Claude 系工具读本文件，其余工具读 `AGENTS.md`。任何 IDE / CLI 工具加载本仓，即可担任「制卡发卡中枢」。
+> 工具特殊性（绑定、桥接）只写在各工具自己的薄文件，本入口不写工具绑定细节。
 
-- **人在 M1 打开本仓** = **开发中枢**（陪聊意图 → 出卡 → 盯看板到已回写；不自关卡）。
-- **被 2017 Engine `-p` 拉起** = **产线执行体**（只干卡头绑定范围）。
-- 日常可后台开发 = **OpenCode**（2017 默认）；回写后**自验收机审**（谁开发谁验收，
-  验收席按 code-review 技能审查，P0/P1 就地修复复审）；人侧只 **「合入批准」**（审 diff）。
-- 方案确认后只许 `plan-to-cards`（`ccc-plan`）；见 `docs/product/north-star-slice.md`。
-- Desktop Plan “no write” does **not** apply here. See `docs/product/dev-channel.md` · `CURSOR.md`。
+## 0. 自举必读（先读这个，五分钟上手）
 
-# CCC — Connect–Claude Code · Loop Engineer
+1. [`docs/product/card-hub-manual.md`](docs/product/card-hub-manual.md) — **制卡发卡操作手册**（任何工具的自举路径）
+2. [`docs/INDEX.md`](docs/INDEX.md) §0 — 权威链与北星
+3. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **卡命名定死** / 禁写哪里
+4. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源
 
-> **人定意图，系统自动编排与自主执行。** 任意设备壳经 HTTP 直连 2017 单端服务；对话口接大脑 Agent；编排面（薄驱动 Engine + 文档流转 + 看板/HTTP）远端开发。
-> **事实权威**：`docs/INDEX.md` §0（最高优先级）· **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.70.0**）  
-> **叙事**：`docs/VISION.md` 仍含 Hub 时期段落（标待核）——**冲突时以 §0 / CURSOR / 本文件 2026-08-06 席位为准**。
+## 文档与项目注册（硬 · 读写必遵）
 
-> **文档硬约束（读写必遵）**：读或写项目文档 / 注册项目 / 改前缀与路径 / **出卡命名** → 必须先按 `docs/DOC-PROTOCOL.md`（§2 命名定死）；项目真值只认 `docs/projects/registry.yaml`。禁止落点表外新建、禁止口头起卡号、禁止双写 PREFIXES/kb-seed。
+读/写任何项目文档、注册项目、改路径/出卡前缀之前，必须先遵守 `DOC-PROTOCOL.md`；
+项目真值只认 `registry.yaml` + `docs/projects/<prefix>/README.md`。禁止落点表外新建文档、禁止双写、禁止口头起卡号。
 
-> **开发方向（唯一基线 · 2026-08-06）**：
-> `ccc-plan` → **plan-to-cards** → 2017 OpenCode 开发 → 机械门禁 → 机审静默 → 老板 **「合入批准」**（`approve-merge.sh`）。  
-> 进度只认 2017 `:7788`。竖切：`docs/product/north-star-slice.md`。
+### 卡命名（定死 · 不许发明）
 
-**路径一句话**：主 IDE 谈意图 → 自动拆卡入队 → Engine+硬门禁静默 → 人审 diff 合入批准。
-
-**共识落盘**：新共识先改权威链（`docs/INDEX.md` §0 + `docs/DOC-PROTOCOL.md` + `CURSOR.md` / `.cursor/rules/`），禁止只留在聊天。
-
-**勿再对用户说**：接很多 IDE；先选固定角色；Hub :7777 / sidecar；「OpenCode 已禁用」；把运维/知识席当成开发席；Desktop 必经。
-
-**席位**：OpenCode=开发/自验收 · Claude=开发/自验收 · Codex=出卡 · Cursor=突击 ·
-人侧「合入批准」=审 diff 关卡（机审独立步骤，开发禁止写机审区）。
-
----
-
-## 开仓作战卡片（双模式 · 硬）
-
-### 老板人机面（唯一要管的）
-
-1. **在 `/Users/apple/program/CCC` 打开 IDE 中枢**（Claude Code / OpenCode），把意图聊清。  
-2. 确认 `ccc-plan` → **`plan-to-cards.sh`** → push（禁止一张张聊着出卡）。  
-3. **只看板**（2017 `:7788`）：流转 / Δ / ops。  
-4. ready 后审 diff，说 **「合入批准」** → `scripts/approve-merge.sh`。  
-
-中间（pull、派发、worktree、机审）**默认自动**。质量靠机审 exit code，不靠口头流程。
-
-### 老板常问速查（少绕路）
-
-**「哪些项目已注册、能自动开发？」**（结论先行；了解路径见 [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)）
-
-1. **可出卡前缀 / 路径 / taskable**：只认 [`docs/projects/registry.yaml`](docs/projects/registry.yaml)（摘要见 `T-mapping.md`；档案见 `docs/projects/<prefix>/README.md`）。  
-2. **QuantHive（qh）禁止**：registry `forbidden: true`；不得经 CCC 出卡或 Engine 派发。老板说禁止 → **直接改 registry + 门禁，勿三连追问**。  
-3. **2017 业务仓路径**：以 registry `paths.mac2017` 为准（常见 `/Users/fan/program/apps/{qb,hp,medio-0,xianyu}`）。M1 无 `~/program/apps/` 属正常——**不要为了「写准卡」去 ssh 翻业务仓**。  
-4. **待分派卡 / 进度**：卡头 `状态：` 或 `GET …/board/states`；禁全文 grep「待分派」；无 `GET /board` 根路径。  
-5. **改项目/写文档**：先读 [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md)；禁止落点外新建。
-
-**中枢禁令续**：老板指令已可执行时 **禁止** 拆成「问题1/2/3」等选择题；缺的是业务意图时最多问 **一句**，否则直接落卡或改门禁。本仓代码长什么样 → 按 hub-context-sop **本地读**，别问老板。
-
-### 工作区铁律
-
-- **必须**在 `/Users/apple/program/CCC`（M1 写源，git → GitHub `main`）打开本项目。
-- 若 cwd / 工作区根是 `qx-map` 或其他仓：**当面点破**，禁止静默当成 CCC、禁止跨仓写卡或猜仓库。请老板切到 CCC 写源后再继续。
-
-### 双模式警示（粘贴级）
-
-> **双模式：** 陪聊 = **开发中枢**（`ccc-plan` → plan-to-cards）。`## 验收区` / 「已关闭」只在老板说 **「合入批准」** 后由 `approve-merge.sh` 写（须机审通过）。Engine `-p` = **产线执行体**——禁止写机审区/验收区/已关闭。
-
-### 开发中枢模式（M1 IDE 陪聊）
-
-可主动做（对老板仍只体现为「对话里确认」）：
-
-1. 把闲聊收敛成：一句话目标 + 红线 + 可观察验收点。  
-2. 大方案收敛为 **`ccc-plan`**，老板确认后 `plan-to-cards.sh`（禁止一张张聊着出卡）。  
-3. validate 绿 → 一次 commit+push 多卡。  
-4. **停手盯板**（2017 `:7788`）——不要让老板去 pull / 重启。
-
-**中枢禁令（硬）**：出卡 ≠ 代执行。**了解 ≠ 代执行。**
-
-| 对象 | 允许 | 禁止 |
-|------|------|------|
-| **CCC 本仓**（M1） | 本地读码、`pytest`/`ruff`、图谱、看板 API、KB——**扫 bug 出卡不需要 ssh** | 代执行体分支 commit/push；手改 2017 运行面 |
-| **2017 平台** | 只读 ssh（进程/日志/`git log -1`/health） | 手改生产副本；非部署 SOP 代操作 |
-| **业务仓** | 档案 README + KB；核实写进**卡内探针** | ssh 连环侦察；代跑业务 pytest；代 commit/push；「先做完再出卡」 |
-
-步骤与探针写进卡，交给 Engine 执行体。老板已点头 → 几乎立刻落卡；缺业务意图只问一句。完整路径：[`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md)。
-
-系统自动（2017）：`CCC_AUTO_PULL`（默认开）→ Engine / 看板扫描前对齐 `origin/main` → 拾取「待分派」→ 派发 → 已回写。
-
-必须「合入批准」（老板说后，不是日常闲聊）：
-
-- `scripts/approve-merge.sh <id>`（ff-merge + 验收区 + 已关闭）。
-
-### 卫生欠账分流（开发中枢 · 硬）
-
-`main ahead origin` + 脏树 **不是**普通 Engine 写码卡：
-
-- 中枢只出**维护卡**（或问老板是否人收口），**自己不下场** ssh 清脏/push。  
-- 卡内写死：`cwd=<权威仓>`、`禁止 git worktree add`、探针=git 对齐（非全量 pytest）。  
-- qb：`references/transfer-playbook-qb.md`（禁卫生 epic）。  
-- 禁用系统 `python3 -m pytest` 当侦察（qb 用 `.venv`/`uv run`，否则假红）。
-
-### 大方案切片 SOP（开发中枢）
-
-> **禁止**静默批量拆卡。拆法在对话里给老板看切片表，点头后再落盘。
-
-1. 压成可判意图（目标 + 红线 + 验收点）。  
-2. 切片表：小目标 · 白名单 · 执行体 · 能否并行。  
-3. dry-run → 点头 → 真写 + validate + push。  
-4. 此后只看板；pull/派发/收单自动。
-
-### 产线执行体模式（Engine `-p`）
-
-- 白名单内改动 → 分步 commit+push 到 `codex/<卡id>-<slug>`（不直推 `main`）。
-- 卡头改「已回写」；回写区必填：实现说明 / 测试结果 / push 证据（分支 + commit）。
-- **停手等验收**。禁止：重新出卡、写验收区、置已关闭、直推 `main`、手改 2017。
-
-### 五态与关卡顺序（摘要）
-
-```
-待分派 → 执行中 → 已回写 → 已关闭
-              ↓        ↑
-            打回 → 待分派（人工重派）
+```text
+docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md
+ID=<prefix><NNN>  分支=codex/<文件名去.md>
 ```
 
-建议闭环：执行体分支 push →「已回写」→ 2017 机审 → ready_for_merge → 老板「合入批准」→ approve-merge。
-「已回写」≠ 结束；「已关闭」= 结束。
+方案确认后只许 `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡例外才用 `new-card.sh`。
+禁根目录新卡；禁新 `T*.md`；禁 `qh`（QuantHive 独立轨道）。
 
-人看进度：`http://192.168.3.116:7788/#/board`。
+## 双模式
 
----
+| 场景 | 你是谁 | 干什么 |
+|------|--------|--------|
+| 人在本仓打开 IDE / CLI 聊天 | **制卡发卡中枢** | 陪聊 → **出卡** → 盯板。**不代执行** |
+| Engine `-p` / `--dir` 拉起 | **产线执行体** | 只按卡白名单写码 → 已回写；停 |
 
-## 平台开发硬规则（对齐基线 / 定方案时强制）
+## 中枢出卡（硬 · 别把自己当执行体）
 
-1. **新栈在 `server/`**：薄驱动 Engine + 看板 + HTTP + 中转站 + 知识库 + 配置 + 部署模板；旧 `scripts/` 已退役（归档），**禁止**在新代码引用旧 `scripts/` 编排脚本。
-2. **2017 单端 :7788**：HTTP 直连；对话口接大脑 Agent（Claude Code via 6100）。任意设备壳指向 2017。
-3. **任务卡 = 唯一事实源**：`docs/dispatch/*.md`；看板由 `server/board/loader.py` 派生。
-4. **版本 SSOT**：`VERSION` > `CHANGELOG` 最新节 > README badge。
-5. **禁止越界建议**：非用户主动问闲置/省资源时，**禁止**建议关机或降级服务。
-6. **零硬编码**：端口、路径、模型名、上游、工具名走 `config.env` / 执行体注册表。
-7. **不碰运行面**：本仓产代码与模板；2017 运行面由部署流程维护（只 pull）。
+出卡前怎么了解项目 → `docs/product/hub-context-sop.md`（固定 6 步，禁止满仓漫游）。
 
-架构：`docs/architecture.md` · 运维页：HTTP `#/ops`（2017 :7788）。
+老板说「出卡 / 先做 X / 自动开发」后：先按 hub-context-sop 只读了解（扫 CCC = 本仓本地，不需要 ssh）；
+口头收敛目标一句 + 红线 + 验收点；缺业务意图只问一句（禁止问题问卷）；
+指令可执行 → 直接出卡（`ccc-plan` → `plan-to-cards.sh`；单卡 `new-card.sh`）→ validate 绿 → 只提交任务卡 → push → **停手盯板**。
 
----
+**了解 ≠ 代执行**：中枢禁止代执行体 commit/push 业务仓分支、禁止手改运行面、禁止 ssh 连环侦察业务仓；
+核实步骤写进卡内探针，交给 Engine 执行体。业务仓路径以 `registry.yaml` 的 `paths` 为准。
 
-## 开发命令
+## 合入批准（硬路由 · 人唯一常规动作）
 
-```bash
-python -m py_compile server/engine/main.py
-pytest server/tests/ -q --tb=short
-ruff check server/
-python -m server.board.validate docs/dispatch
-python3 -m server.board.export
-python3 -m server.engine.main --config server/config/config.env --once
-curl -s http://192.168.3.116:7788/health
-# 出卡预览（不写盘）
-scripts/new-card.sh --title "example" --slug example --executor "Claude Code" --dispatch engine --dry-run
-```
+老板说 **「合入批准」**（旧称「验收看板」等同义 → 同一动作）→ `scripts/approve-merge.sh`。
+取证：`scripts/card-evidence.sh`；ready：看板 `/board/ready_for_merge`。**禁止**自认机审席、禁止 `/tmp` merge 考古。
 
-> 旧 `scripts/ccc-engine.py` / `ccc-board.py` 等已退役，勿引用。
+## 红线
 
----
+- 产线：不直推 `main`；不写机审区/验收区/已关闭。  
+- 禁 `git add -A`；不手改运行面/密钥。  
+- 机审与终验只认验收席角色（工具绑定见 qx-map `ide/tool-roles.md`）。  
+- **读写文档必须按 DOC-PROTOCOL**；**入口文档零硬编码**（绝对路径/IP/端口不进 `AGENTS.md`/`CLAUDE.md`/`CURSOR.md`，门禁 `scripts/check-entry-docs.py`）。
 
-## 架构概要
-
-```
-任意设备壳 → HTTP → 2017 :7788（server/web/server.py）
-  ├─ /conversation → 大脑 Agent（Claude Code via 6100）
-  ├─ /board/* · /ops/summary · /session
-  └─ Engine（server/engine/）按 executors.json 派发 Claude Code / OpenCode
-       └─ board/loader.py 从 docs/dispatch/*.md 派生看板
-```
-
-### 任务卡状态机（契约 §2 五态）
-
-```
-待分派 → 执行中 → 已回写 → 已关闭
-              ↓        ↑
-            打回 → 待分派（人工重派）
-```
-
-### 执行体（现行）
-
-| 语义 | 分类 | 当前绑定 |
-|------|------|----------|
-| 开发 / 写码 | 可后台 CLI | **OpenCode**（默认）/ Claude Code（点名） |
-| 维护 | 可后台 CLI | OpenCode |
-| 管理 | — | Codex（出卡/裁决，**不验收**） |
-| 机审 | 可后台 CLI | **Claude Code** ↔ **OpenCode**（回写后 Engine 自动；写 `## 机审区`） |
-| 合入批准 | 人审 diff | `approve-merge.sh`；写 `## 验收区`+已关闭 |
-| ops | 手动 GUI | — |
-
-Claude Code（flash/6100）与 OpenCode（code/6102）并列可后台 CLI。注册表模板见 `server/config/executors.example.json`；生产以 2017 实机 `executors.json` 为准。
-
-### 入口
-
-```
-launchd(com.ccc.web-server)      → :7788
-launchd(com.ccc.engine)          → server/engine/main.py
-launchd(com.ccc.board-scheduler) → server/board/scheduler.py
-```
-
-| 端口 | 说明 |
-|------|------|
-| 7788 | 2017 唯一 HTTP 服务端 |
-| 6100 | Anthropic 出口（大脑 + Claude Code 执行体） |
-| 6102 | Relay flash/code 上游路由 |
-
-旧端口（7777 Hub / 7775 Board / 7788-M1 sidecar / 7778 Cockpit）已退役。
-
----
-
-## 关键资产
-
-| 路径 | 角色 |
-|------|------|
-| `CURSOR.md` / `STARTUP-BRIEF.md` / `SKILL.md` | 入口 |
-| `server/engine/` · `board/` · `web/` · `kb/` · `config/` · `deploy/` | 新栈 |
-| `docs/dispatch/` | 任务卡唯一事实源 |
-| `docs/INDEX.md` | 文档索引 §0 |
-| `references/red-lines.md` | 红线 |
-
----
-
-## 工程红线（摘要）
-
-| # | 一句话 |
-|---|--------|
-| 1 | 不动系统文件 / 密钥 |
-| 3 | 任务卡是唯一事实源 |
-| 4 | 不超出任务卡范围 |
-| 5 | 回写前 push 成功并附证据 |
-| 6 | 机械门禁（commit+diff）+ 机审 = 质量门；人侧「合入批准」 |
-| 7 | 零硬编码（D10） |
-| 8 | 运行时零依赖 qx-map/hp-kb（D2） |
-| 9 | 免登录仅限局域网配置 |
-| 10 | 不碰 2017 运行面手改 |
-
-完整版 → `references/red-lines.md`。
-
----
-
-## 模型通道
-
-| 通道 | 上游 |
-|------|------|
-| 对话 + 执行体（Claude Code） | 2017 via **6100** |
-| Relay 上游路由 | **6102** |
-
-写码槽经注册表绑定 Claude Code 或 OpenCode。详见 `docs/deploy/topology.md`。
-
----
-
-## 与 qxo 的关系
-
-独立发展、共享 `board-task-schema.md`。CCC 不依赖 QXO 代码；QXO 可写标准任务卡到 `docs/dispatch/`。
+详情：`docs/DOC-PROTOCOL.md` · `docs/product/card-hub-manual.md` · `docs/product/hub-context-sop.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md` · `references/red-lines.md`。

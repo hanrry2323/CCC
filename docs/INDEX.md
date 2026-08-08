@@ -28,9 +28,11 @@
 | 优先级 | 文档 | 管什么 |
 |--------|------|--------|
 | **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
-| 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（v0.70.0 架构重构） |
+| 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（以 VERSION 文件为准） |
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
 | 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；优先 `plan-to-cards`；单卡 `new-card.sh` |
+| 2b1 | `AGENTS.md` · `CLAUDE.md` · `CURSOR.md` | **通用双入口**（工具无关，零硬编码）；`CURSOR.md` 仅工具桥接 |
+| 2b2a | [`product/card-hub-manual.md`](product/card-hub-manual.md) | **制卡发卡操作手册**：任何工具加载本仓的自举路径（门禁 `scripts/check-entry-docs.py`） |
 | 2b2 | [`product/north-star-slice.md`](product/north-star-slice.md) | **北星竖切**：ccc-plan → 入队 → ready_for_merge → 合入批准 |
 | 2c | [`projects/registry.yaml`](projects/registry.yaml) | **项目注册唯一事实源**（前缀 / 路径 / taskable）；每项目一页见 `projects/<prefix>/README.md` |
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |

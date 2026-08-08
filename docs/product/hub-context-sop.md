@@ -16,7 +16,7 @@
 
 | 对象 | 允许 | 禁止 |
 |------|------|------|
-| **CCC 本仓**（`/Users/apple/program/CCC`） | 本地读码、`pytest`/`ruff`、`git log`、codebase-memory、`:7788` 看板 API、KB | 代执行体分支 commit/push；手改 2017 运行面 |
+| **CCC 本仓**（仓库根 = 本文件所在仓） | 本地读码、`pytest`/`ruff`、`git log`、codebase-memory、看板 API（端点见 `docs/deploy/topology.md`）、KB | 代执行体分支 commit/push；手改 2017 运行面 |
 | **2017 平台核验** | 只读 ssh（`ps`/`lsof`/`ls`/`cat` 日志、`git log -1`、health） | 手改生产；非部署 SOP 代 pull/重启 |
 | **业务仓**（qb/xy/mx…） | `docs/projects/<prefix>/README.md` + KB；核实步骤写进卡 | ssh 连环侦察；代跑业务测；代 commit/push；先做完再出卡 |
 
@@ -29,10 +29,10 @@
 ### ① 身份
 
 ```bash
-cd /Users/apple/program/CCC && cat VERSION && git log -5 --oneline
+cd <仓库根> && cat VERSION && git log -5 --oneline
 ```
 
-cwd 不是本路径 → **当面点破**，禁止当成 CCC 继续。
+cwd 不是本仓 → **当面点破**，禁止当成 CCC 继续。
 
 ### ② 项目边界
 
@@ -42,8 +42,7 @@ cwd 不是本路径 → **当面点破**，禁止当成 CCC 继续。
 
 ### ③ 进度（SSOT = 卡 + 看板）
 
-- 人看：`http://192.168.3.116:7788/#/board`  
-- 机读：`GET http://192.168.3.116:7788/board/states`（或 `/cards`）  
+- 人看 / 机读：看板端点与路径**只认 `docs/deploy/topology.md`**（机器名/端口不写死）；机读 `GET <board>/board/states`（或 `/cards`）  
 - 扫 `docs/dispatch/<prefix>/` **未关闭**卡，避免重复出卡  
 
 **禁止**全文 grep「待分派」当进度；无 `GET /board` 根路径。

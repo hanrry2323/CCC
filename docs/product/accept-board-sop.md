@@ -11,8 +11,8 @@
 听到任一 → **不要**做 31 分钟验收考古；执行：
 
 ```bash
-# 1) ready 队列（进度只认 2017）
-curl -s http://192.168.3.116:7788/board/ready_for_merge
+# 1) ready 队列（端点见 docs/deploy/topology.md，不写死机器名/端口）
+curl -s "$CCC_BOARD_URL/board/ready_for_merge"   # CCC_BOARD_URL 见 scripts/card-evidence.sh 默认值
 
 # 2) 取证（禁 /tmp merge）
 scripts/card-evidence.sh <card-id>
