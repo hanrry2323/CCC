@@ -1,6 +1,6 @@
 # 任务卡 ccc015 · 机械门禁与机审职责分离：编译/测试/lint/范围由门禁裁决，机审定位优化就地闭环（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 目标
 
@@ -52,8 +52,43 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- **机械门禁层扩展**：
+  - 在 `_dispatch_and_collect` 开发回写收单部分新增了解析卡内 `## 门禁` 节配置的功能。
+  - 通过 `parse_gate_section` 读取门禁命令，并使用 `subprocess.run` 机械执行命令、根据 exit code 裁决（成功放行，失败则通过 `problems` 直接打回并不拉起机审）。
+  - 支持 `范围` 门禁探针：通过 `check_range_gate` 函数，比对 `git diff --name-only origin/main` 差异文件与卡 `## 范围` 声明 of 路径白名单（支持 fnmatch 匹配及目录前缀包含）。超出声明范围直接拦截，防范围越界。
+- **机审 Prompt 职责重写**：
+  - 重写了 `server/config/executors.example.json` 中 `验收席` (Claude Code / OpenCode) 的 `"参数模板"`（即机审 Prompt）。
+  - 移除了「独立复跑测试/编译裁决」职责，将其完全移交给前置机械门禁层。
+  - 改为专注于：只做原则性 Code Review（代码实现质量、安全、隐患等）、就地在 worktree 修复并 commit+push 直接通过、遇红线问题打回。
+  - 增加 `MachineAuditPrompt` 构造函数用于构造干净、无机械表述的代码审查 Prompt。
+- **打回路径分流**：
+  - 增强了 `_audit_output_indicates_rejection`：判定前截断至 `pid_pending cmd=` 等启动前缀之后，确保仅识别真正的子进程输出，防止 Prompt 中指导语导致误判业务不通过。
+  - 新增 `_is_mechanical_rejection_text`：当日志内包含「测试未跑/编译失败」等机械问题特征时，过滤业务打回，归类到 infra / 机械故障中。不占用业务 retry 预算，触发 cooling down / 续审或回 TODO 人工跟进。
+
+### 2. 测试输出
+- 新增 3 个门禁与机审重构专用测试用例：
+  1. `test_audit_prompt_no_re_run_wording`: 断言 Prompt 构造输出，校验绝不含机械复跑文字表述。
+  2. `test_gate_probe_failure_blocks_audit`: 校验 `## 门禁` 节定义的 pytest 失败（exit 1）时，卡片直接被打回或重试，而 **不派发拉起 audit 机审**。
+  3. `test_audit_mechanical_rejection_leads_to_infra_retry`: 校验机审中输出测试失败/未跑类机械问题时，不被判业务打回，而是触发 infra cooldown 续审且不扣除业务 retry 预算。
+- 运行测试全绿，总测试数由 71 增加到 74 且无任何回归：
+  ```
+  server/tests/test_engine_main.py .......................................................................... [100%]
+  ============================= 74 passed in 20.25s ==============================
+  ```
+
+### 3. push 证据 (Push Evidence)
+- Commit Hash: `6d3d08fe`
+
+### 4. 验收自检对照表
+- [x] 新增门禁探针失败（pytest 退出 1）卡直接打回，不拉起机审
+- [x] 新增机审输出机械故障（编译/测试/范围越界）时走 infra 冷却续审重试，不扣业务 retry 预算
+- [x] 确保机审 prompt 中不含任何「复跑测试/复跑编译裁决」表述
+- [x] 全套测试 `pytest server/tests/test_engine_main.py` 通过（74 passed）且全仓无回归
+- [x] 零硬编码：生产代码无字面量机器路径/端口/模型名
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+无人工批注。

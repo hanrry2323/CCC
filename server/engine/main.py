@@ -797,10 +797,189 @@ def _audit_output_indicates_pass(text: str) -> bool:
 
 
 def _audit_output_indicates_rejection(text: str) -> bool:
-    """审计输出明确给出「不通过」结论 → 业务判定（优先于任何 infra 特征）。"""
-    if not text:
+    """审计输出明确给出「不通过」结论 → 业务判定（优先于任何 infra 特征）。
+    与 pass 判定同口径，截断到 pid_pending cmd= 之后，避免 prompt 启动行误判。
+    """
+    if not text or not text.strip():
         return False
-    return ("机审：不通过" in text) or ("机审不通过" in text)
+    body = text
+    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
+        idx = text.find(marker)
+        if idx >= 0:
+            nl = text.find("\n", idx)
+            body = text[nl + 1 :] if nl >= 0 else ""
+            break
+    return ("机审：不通过" in body) or ("机审不通过" in body)
+
+
+class MachineAuditPrompt:
+    """机审/验收席系统 Prompt 构造器。
+    
+    遵循职责分离原则：仅进行原则性审查与就地修复，删除「独立复跑测试/编译裁决」职责。
+    """
+    def __init__(self, card_path: str, work_id: str, worktree: str) -> None:
+        self.card_path = card_path
+        self.work_id = work_id
+        self.worktree = worktree
+
+    def build(self) -> str:
+        return (
+            "你是 2017 机审席。任务卡 {card_path}（work {work_id}）已回写。你以验收席身份独立审查——"
+            "即使开发者与你同工具，也按独立审查执行，不因同工具放水。\n"
+            "职责规范：\n"
+            "- 只做原则性 Code Review（包括代码实现质量、边界安全、架构隐患、人工批注落实等）；\n"
+            "- 发现可修问题 → 在 worktree {worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
+            "- 原则性红线问题（如范围系统性越界、核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出。\n"
+            "通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {card_path}，engine 会提交推送）。"
+            "禁止改动与任务无关的文件、禁止编写 ## 验收区、禁止置卡状态为已关闭。"
+        ).format(card_path=self.card_path, work_id=self.work_id, worktree=self.worktree)
+
+
+def _is_mechanical_rejection_text(text: str) -> bool:
+    """是否包含机械问题特征（测试/编译/lint 失败、范围越界等）。"""
+    if not text or not text.strip():
+        return False
+    body = text
+    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
+        idx = text.find(marker)
+        if idx >= 0:
+            nl = text.find("\n", idx)
+            body = text[nl + 1 :] if nl >= 0 else ""
+            break
+            
+    keywords = [
+        "测试失败",
+        "测试未跑",
+        "编译失败",
+        "lint失败",
+        "lint 失败",
+        "范围越界",
+        "越界",
+    ]
+    body_lower = body.lower()
+    return any(kw in body_lower for kw in keywords)
+
+
+def match_path(file_path: str, pattern: str) -> bool:
+    import fnmatch
+    f = file_path.replace("\\", "/")
+    p = pattern.replace("\\", "/").strip()
+    if not p:
+        return False
+    if fnmatch.fnmatch(f, p):
+        return True
+    p_dir = p if p.endswith("/") else p + "/"
+    if f.startswith(p_dir):
+        return True
+    return False
+
+
+def parse_gate_section(card_file_path: Path) -> dict[str, str]:
+    if not card_file_path.is_file():
+        return {}
+    try:
+        content = card_file_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    lines = content.splitlines()
+    gate_lines = []
+    in_gate = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## 门禁"):
+            in_gate = True
+            continue
+        if in_gate:
+            if stripped.startswith("## ") or stripped.startswith("---"):
+                break
+            gate_lines.append(line)
+    gates = {}
+    for line in gate_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if ":" in stripped:
+            k, _, v = stripped.partition(":")
+            gates[k.strip()] = v.strip()
+        elif "：" in stripped:
+            k, _, v = stripped.partition("：")
+            gates[k.strip()] = v.strip()
+    return gates
+
+
+def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
+    card_file = Path(worktree_path) / card_path
+    if not card_file.is_file():
+        return True, ""
+    try:
+        content = card_file.read_text(encoding="utf-8")
+    except OSError:
+        return True, ""
+    
+    # Extract ## 范围 section
+    lines = content.splitlines()
+    range_lines = []
+    in_range = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## 范围"):
+            in_range = True
+            continue
+        if in_range:
+            if stripped.startswith("## ") or stripped.startswith("---"):
+                break
+            range_lines.append(line)
+            
+    if not in_range:
+        return True, ""
+        
+    # Extract whitelist patterns from range_lines
+    whitelist_patterns = []
+    for line in range_lines:
+        if any(kw in line for kw in ["不动", "保持", "不改", "禁止", "不碰"]):
+            continue
+        matches = re.findall(r"`([^`]+)`", line)
+        for m in matches:
+            m_clean = m.strip()
+            if m_clean:
+                whitelist_patterns.append(m_clean)
+                
+    if not whitelist_patterns:
+        return True, ""
+        
+    # Get modified files in worktree relative to origin/main
+    import subprocess
+    res = subprocess.run(
+        ["git", "-C", worktree_path, "diff", "--name-only", "origin/main"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if res.returncode != 0:
+        return True, "" # Git error, skip to avoid blocking
+        
+    modified_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+    
+    out_of_scope = []
+    for f in modified_files:
+        # Exempt card file, logs, runnings
+        if f == card_path or Path(f).name == Path(card_path).name:
+            continue
+        if f.endswith(".running") or f.endswith(".tmp") or f.endswith(".log"):
+            continue
+        matched = False
+        for pat in whitelist_patterns:
+            if match_path(f, pat):
+                matched = True
+                break
+        if not matched:
+            out_of_scope.append(f)
+            
+    if out_of_scope:
+        return False, f"范围越界门禁拦截：修改了不属于卡「范围」声明中的路径: {out_of_scope} (允许范围: {whitelist_patterns})"
+        
+    return True, ""
 
 
 def _read_text_best_effort(path: Path) -> str:
@@ -1279,6 +1458,37 @@ def _dispatch_and_collect(
                                 f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
                                 f"(commit={has_commit}, diff={has_diff})"
                             ]
+
+                        # 机械门禁扩展：解析卡内门禁探针
+                        if work.card_path:
+                            gates = parse_gate_section(card_file_path)
+                            for gate_name, cmd in gates.items():
+                                if gate_name in ("编译", "测试", "lint"):
+                                    if not cmd:
+                                        continue
+                                    logger.info("运行门禁【%s】: cmd=%s", gate_name, cmd)
+                                    res_gate = subprocess.run(
+                                        cmd,
+                                        shell=True,
+                                        cwd=worktree_path,
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=120,
+                                    )
+                                    if res_gate.returncode != 0:
+                                        combined_output = (res_gate.stdout or "") + (res_gate.stderr or "")
+                                        snippet = combined_output[-1000:] if len(combined_output) > 1000 else combined_output
+                                        err_msg = f"门禁【{gate_name}】失败: 退出码 {res_gate.returncode}。命令: {cmd}\n输出:\n{snippet}"
+                                        logger.warning("卡 %s 门禁【%s】未通过: %s", work.id, gate_name, err_msg)
+                                        _emit(False, res_gate.returncode, "ok", [err_msg])
+                                        return False, [err_msg]
+                                elif gate_name == "范围":
+                                    if str(cmd).strip().lower() in ("true", "yes", "1", "on"):
+                                        range_ok, range_err = check_range_gate(worktree_path, work.card_path)
+                                        if not range_ok:
+                                            logger.warning("卡 %s 门禁【范围】未通过: %s", work.id, range_err)
+                                            _emit(False, 1, "ok", [range_err])
+                                            return False, [range_err]
             _emit(True, 0, "ok")
             return True, []
 
@@ -1697,13 +1907,14 @@ def _run_audit_worker(
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
             audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
-            business = _audit_output_indicates_rejection(audit_text)
+            is_mech = _is_mechanical_rejection_text(audit_text)
+            business = _audit_output_indicates_rejection(audit_text) and not is_mech
             retryable, hint = is_retryable_failure(work.id, reasons, log_dir)
             if business:
                 _fail_retry_or_reject(work, store, reasons, cfg)
                 outcome["failed"] = 1
                 logger.warning("机审不通过（业务）: work=%s → %s", work.id, work.state.value)
-            elif retryable or _is_persistence_failure(reasons):
+            elif retryable or _is_persistence_failure(reasons) or is_mech:
                 if hint and hint not in reasons[0]:
                     reasons = [hint, *reasons]
                 from server.engine.runtime_state import read_card_state

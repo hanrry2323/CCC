@@ -1988,3 +1988,88 @@ class TestRunOnceFakeSuccessGuard:
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 0
         assert store.list_work(state=State.REJECTED)
+
+    def test_audit_prompt_no_re_run_wording(self) -> None:
+        """断言 MachineAuditPrompt 构造函数输出，且不含「复跑测试/复跑编译裁决」等表述。"""
+        from server.engine.main import MachineAuditPrompt
+        prompt_obj = MachineAuditPrompt(card_path="docs/dispatch/c1.md", work_id="c1", worktree="/tmp/wt")
+        prompt_text = prompt_obj.build()
+        assert "复跑测试" not in prompt_text
+        assert "复跑编译" not in prompt_text
+        assert "编译裁决" not in prompt_text
+        assert "只做原则性 Code Review" in prompt_text
+        assert "就地修复" in prompt_text
+
+    def test_gate_probe_failure_blocks_audit(self, tmp_path: Path, monkeypatch) -> None:
+        """门禁探针失败（如伪造 pytest 退出 1）→ 卡直接打回开发、不拉起机审（断言 audit 未派发）。"""
+        monkeypatch.chdir(tmp_path)
+        _init_src_repo(tmp_path)
+        worktree_base = tmp_path / "wt"
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="sh",
+            args_template="-c 'echo x >> work.txt && git add work.txt && git commit -qm w'",
+            worktree_base=str(worktree_base)
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_path = tmp_path / "T-fake5.md"
+        card_path.write_text(
+            "# 任务卡 T-fake5\n"
+            "> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n\n"
+            "## 门禁\n\n"
+            "测试：sh -c 'exit 1'\n\n"
+            "## 回写区\n\n"
+            "已完成\n",
+            encoding="utf-8",
+        )
+        store.seed(Work(id="T-fake5", role="开发执行体", card_path=str(card_path)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "DISPATCH_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_RETRY_ONCE": "false"
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 0
+        assert summary["audit_dispatched"] == 0
+        todo_or_rejected = store.list_work(state=State.REJECTED) + store.list_work(state=State.TODO)
+        assert len(todo_or_rejected) == 1
+        assert any("门禁【测试】失败" in p for p in todo_or_rejected[0].problems)
+
+    def test_audit_mechanical_rejection_leads_to_infra_retry(self, tmp_path: Path) -> None:
+        """机审输出「测试未跑/编译失败」类机械问题 → 不被判业务打回，走 infra 冷却续审路径，不进 retry 预算。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo \"[ccc.engine] start work=xy001 phase=audit pid_pending cmd=...\n测试未跑，无法通过\"; exit 1'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "m1.md"
+        card_file.write_text("# 任务卡 m1\n", encoding="utf-8")
+        store.seed(Work(id="m1", role="开发执行体", card_path=str(card_file)))
+        done_work = store.list_work()[0]
+        done_work.state = State.DONE
+        store.save_work(done_work)
+
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["audit_failed_infra"] == 1
+        assert summary["audit_failed"] == 0
+        all_works = store.list_work()
+        assert all_works[0].retry_count == 0
