@@ -1,6 +1,6 @@
 # 任务卡 hp013 · Library/Document/Activity/Notes 页面真实数据接入与空态统一（OpenCode 执行）
 
-> 关联：ccc-plan: HP 前端里程碑开发（真数据接入/后端接口/空态/测试，目标 75+ 分） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 前端里程碑开发（真数据接入/后端接口/空态/测试，目标 75+ 分） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
@@ -47,8 +47,23 @@ Library/Document/Activity/Notes 页面真实数据接入与空态统一（ccc-pl
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 实现说明
+- 新建了统一的 EmptyState 组件，并接入 Library、Document、Activity、Notes 页面的空态及 404 渲染。
+- Library 页面：删除了 FALLBACK_DOCS 与硬编码 TABS count，对接真实的 backend count_by_status 字典及总数。
+- Library 页面：修改了“导出”按钮，使其原生 fetch 调用 `/api/export` 并触发 zip 文件下载，不依赖新封装函数。
+- Document 页面：删除了假文档、假反链及假笔记的 FALLBACK 数据，文档不存在时展示统一 404 EmptyState。
+- Activity 页面：删除了假时间线 FALLBACK，对接真实 Timeline API 并在无数据时兜底 EmptyState。
+- Notes 页面：初始不预填假数据，使用真实接口进行拉取、删除、保存，并统一空态兜底。
+- 所有前端代码均顺利通过类型检查及构建：`npm run build` 成功。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+- 前端 Vitest 单元测试全部通过：
+  `✓ src/api.test.ts (9 tests) 20ms`
+- 后端 51 个 Pytest 测试全部通过：
+  `tests/server/test_*.py 51 passed`
+
+### push 证据（commit hash）
+- 业务仓 (hp) 提交 Hash: `b203f944a2a999ba31ed9f1a265e74d08145ae9e`
+- 业务仓分支: `codex/hp013-library-doc-activity-notes-real-data`
