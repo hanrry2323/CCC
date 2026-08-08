@@ -1,6 +1,6 @@
 # 任务卡 xy026 · 测试门禁修复与文档除债（P0-FLOW 前置）（OpenCode 执行）
 
-> 关联：xy PRM P0-FLOW 前置（xy024 意图重建） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-09
+> 关联：xy PRM P0-FLOW 前置（xy024 意图重建） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-09
 
 ## 目标
 
