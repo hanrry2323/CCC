@@ -1,6 +1,6 @@
 # 任务卡 ccc018 · 知识库条目自动同步脚本（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 目标
 
@@ -47,11 +47,24 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 1. 实现说明
+- 编写了自动同步脚本 `scripts/sync-kb-index.sh`。
+- 该脚本通过 `find "${KB_DIR}" -path "*/.index" -prune -o -path "*/.*" -prune -o -newer "${MARKER_FILE}" -print` 高效、精确地检测 `knowledge/` 目录中的变更，排除 `.index` 缓存目录及任何隐藏文件，避免了重复重建或无限循环触发。
+- 在有文件变更或首次运行时，自动执行 `python3 -m server.kb.mcp_server --reindex` 重建 BM25 索引。
+- 索引重建成功后，更新同步标记文件并写入日志。
+- 支持 `--dry-run` 模式，仅对变更对账，不改变状态或重建索引。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- 运行 `bash scripts/sync-kb-index.sh --dry-run` 正确进行首次运行判定。
+- 运行 `bash scripts/sync-kb-index.sh` 首次运行时全量重建索引并生成标记文件。
+- 再次运行 `bash scripts/sync-kb-index.sh` 准确检测到无变更并自动跳过重建。
+- `touch knowledge/domains/projects/seed.md` 后运行，能自动检测到该变动，并触发索引重建。
+- 所有 KB 相关单元测试全绿通过 (`57 passed in 2.10s`)。
+
+### 3. push 证据
+- 脚本提交 Commit Hash: `e9254c04ee843d048f8610e690873bb4a3ecb344`
 
 ## 执行提示
 
