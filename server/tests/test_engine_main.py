@@ -1661,9 +1661,12 @@ class TestEngineWorktree:
             {"DISPATCH_DIR": str(repo / "docs" / "dispatch")},
             tmp_path / "logs",
         )
-        assert n == 1
+        # 新语义（批次 3 设计）：卡终态（已关闭/打回）即使有未提交改动（如 dirty1）也会被 force 回收，
+        # 干净的（如 close1）和脏的都回收，所以合计回收 2 个。
+        # 未提交改动由关闭流程归档进行兜底。
+        assert n == 2
         assert not wt1.exists()
-        assert wt2.exists()
+        assert not wt2.exists()
 
     def test_audit_writes_branch_envelope(
         self,

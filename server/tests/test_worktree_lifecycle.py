@@ -152,3 +152,61 @@ def test_dispatch_and_collect_retry_reset_on_failure(tmp_path: Path):
          has_clean = any("clean -fd" in c for c in calls)
 
          assert has_reset is True or any("worktree remove" in c for c in calls)
+
+
+def test_dispatch_and_collect_retry_reuses_successful_worktree(tmp_path: Path):
+    """测试重用成功收单的 worktree 规则。"""
+    card_dir = tmp_path / "docs" / "dispatch" / "xy"
+    card_dir.mkdir(parents=True)
+    card_file = card_dir / "xy102-retry.md"
+    card_file.write_text(
+        "# 任务卡 xy102 · 测试\n"
+        "> 关联：TEST · 执行体：demo · 验收：Codex · 状态：执行中 · 日期：2026-08-08\n",
+        encoding="utf-8"
+    )
+
+    entry = ExecutorEntry(
+        role="开发执行体",
+        category="可后台 CLI",
+        binding="demo",
+        note="test",
+        command="echo",
+        worktree_base="/fake/base"
+    )
+    registry = ExecutorRegistry((entry,))
+
+    work = Work(id="xy102", role="开发执行体", state=State.RUNNING, card_path=str(card_file))
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+
+    # 模拟 sidecar 记录该卡已经成功收单 (state="已回写")
+    from server.engine.runtime_state import write_card_state
+    write_card_state(log_dir, "xy102", state="已回写")
+
+    with patch("server.git_sync.resolve_repo_root", return_value=Path("/fake/main_repo")), \
+         patch("server.engine.main.get_worktree_path", return_value="/fake/base/xy102"), \
+         patch("pathlib.Path.exists", return_value=True), \
+         patch("subprocess.run") as mock_run, \
+         patch("server.engine.main.build_command", return_value=["echo", "test"]):
+
+         def fake_run(args, **kwargs):
+             m = MagicMock()
+             m.returncode = 0
+             m.stdout = ""
+             m.stderr = ""
+             return m
+         mock_run.side_effect = fake_run
+
+         cfg = {"DISPATCH_DIR": str(tmp_path / "docs" / "dispatch")}
+         _dispatch_and_collect(work, registry, cfg, log_dir, timeout=30)
+
+         calls = [" ".join(c[0][0]) for c in mock_run.call_args_list if isinstance(c[0][0], list)]
+
+         # 因为上次成功收单，不应当执行 checkout/clean/remove 重置或删除重建
+         has_reset = any("checkout -- ." in c for c in calls)
+         has_clean = any("clean -fd" in c for c in calls)
+         has_remove = any("worktree remove" in c for c in calls)
+
+         assert has_reset is False, "should not reset checkout on successful worktree"
+         assert has_clean is False, "should not clean on successful worktree"
+         assert has_remove is False, "should not remove successful worktree"
