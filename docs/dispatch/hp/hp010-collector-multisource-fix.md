@@ -1,6 +1,6 @@
 # 任务卡 hp010 · 采集管道多源固化与补采（ccc-docs 剩余 + qb 源恢复）（OpenCode 执行）
 
-> 关联：ccc-plan: HP 知识底座落地推进（存量落库/采集管道固化/qb 归属修正） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 知识底座落地推进（存量落库/采集管道固化/qb 归属修正） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
