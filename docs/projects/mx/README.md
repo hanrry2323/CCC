@@ -23,6 +23,7 @@ Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌�
 - 三条功能分支（`library-management`/`ui-upgrade`/`rss-bugs`）已 100% 合入 main（领先其 184~232 个 commit），集成风险为 0。
 - 近期重点：打磨盘点（mx005）与 HTTP 页面/RSS 双端巡检（mx008）已完成，巡检清单已归档并回写 roadmap，后续推进 mx 业务线路高可用加固。
 - 公开化准备已挂账（roadmap「业务线路（mx）」）：目标转 GitHub Public，前提=清签名私钥历史 + 敏感信息清零；不急执行，开发中逐步准备。
+- 架构问题收集已挂账（mx025 产出 6 项，含 P0 WebSub 断链）：2026-08-08 下午起做架构性梳理。
 
 ## 禁区
 

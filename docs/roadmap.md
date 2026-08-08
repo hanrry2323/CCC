@@ -228,6 +228,22 @@
 > **步骤**（未来出卡执行）：清敏感历史 → 扫描清零 → 签名处置 → LICENSE/README → 切 Private→Public → 验证 CI。
 > **注意**：filter-repo 重写历史会改 commit hash，需在批次卡收口后单独执行，不打断自动流程。
 
+### 架构问题收集（2026-08-08 挂账 · 下午开始梳理）
+
+> **来源**：mx025 `docs/architecture-coupling.md`（业务仓，medio-core 耦合审计）。整理中——下午起按此清单做架构性梳理，后续可能出架构重构批次。
+> **计划**：P0 先修（功能断链），P1 重构（依赖注入/状态拆分），P2 优化项与公开化准备并行。
+
+| # | 问题 | 优先级 | 一句话 |
+|---|------|--------|--------|
+| 1 | RssService WebSub 联动被注释禁用（路径重构致编译错误，`rss/service.rs:94`） | **P0** | WebSub 实时推送功能断链，需修路径引用恢复 |
+| 2 | ScanScheduler 内部现场 new MediaLibraryService（两次实例） | P1 | 冗余初始化，无法 mock 测试 |
+| 3 | AppState 上帝状态（捆绑 7+ 服务） | P1 | 改动全局、违反最少特权 |
+| 4 | API 路由层每次请求 new RssService | P1 | 额外开销、屏蔽 DI |
+| 5 | ImageCacheService 爬虫 UA/超时硬编码（不读 config） | P2 | 反爬配置失效 |
+| 6 | PlaybackService 强耦合内存 RateLimitMap | P2 | 职责不清、锁竞争 |
+
+> **重构方向**（mx025）：依赖注入统一构造 Arc 服务；AppState 拆子状态；恢复 WebSub 断链。**「部署=手动发布动作，不随卡自动执行」亦为后续默认前提。**
+
 ### 打磨点清单（mx005 盘点产出）
 
 #### 一、代码质量（Code Quality）
