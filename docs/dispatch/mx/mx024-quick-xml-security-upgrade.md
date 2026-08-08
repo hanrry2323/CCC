@@ -65,7 +65,7 @@ quick-xml 安全债升级（ccc-plan 切片）。
 
 ### 4. Push 证据
 - 业务仓 `medio-0` 推送分支：`codex/mx024-quick-xml-security-upgrade`
-- Commit Hash: `4c2f1824b3d00ef6de87b1471e9bf3ec87a82d95`
+- Commit Hash: `e33f1bf89870279b9053539ab3089f014432551a`
 
 ## 机审区
 
