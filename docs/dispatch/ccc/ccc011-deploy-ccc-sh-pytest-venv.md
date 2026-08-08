@@ -1,6 +1,6 @@
 # 任务卡 ccc011 · deploy-ccc.sh pytest 路径修复（venv 兼容）（Claude Code 执行）
 
-> 关联：升级批次 4 交付脚本 · 执行体：Claude Code · 验收：Claude Code · 状态：待分派 · 派发：manual · 项目：ccc · 日期：2026-08-08
+> 关联：升级批次 4 交付脚本 · 执行体：Claude Code · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 
