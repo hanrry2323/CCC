@@ -854,7 +854,9 @@ def _is_mechanical_rejection_text(text: str) -> bool:
         "lint失败",
         "lint 失败",
         "范围越界",
-        "越界",
+        "超出范围",
+        "不在范围",
+        "范围外",
     ]
     body_lower = body.lower()
     return any(kw in body_lower for kw in keywords)
