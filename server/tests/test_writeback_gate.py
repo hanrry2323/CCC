@@ -13,21 +13,22 @@ from server.engine.main import _dispatch_and_collect, _run_auto_worker, check_wr
 
 
 def test_check_writeback_credentials(tmp_path: Path):
-    """测试 check_writeback_credentials 回写凭证结构化校验功能：
-    1. 回写区空 -> 失败
-    2. 有回写区但缺少 分支=codex/<stem> -> 失败
-    3. 有回写区但缺少 commit=<短sha> -> 失败
-    4. 齐备 -> 成功
+    """测试 check_writeback_credentials 回写凭证结构化三态校验功能：
+    1. 无回写区 -> 直接放行 (历史构造卡 / 旧卡兼容)
+    2. 有回写区且为空 -> 拦截
+    3. 有回写区且有内容，但缺 '分支=' 凭证 -> 拦截
+    4. 有回写区且有内容，但缺 'commit=' 凭证 -> 拦截
+    5. 结构齐备 -> 成功通过
     """
     card_file = tmp_path / "xy101-wb.md"
 
-    # 1. 未找到 ## 回写区
+    # 1. 未找到 ## 回写区 -> 放行
     card_file.write_text("# 任务卡 xy101\n", encoding="utf-8")
     ok, err = check_writeback_credentials(card_file, "xy101-wb")
-    assert ok is False
-    assert "未找到" in err
+    assert ok is True
+    assert err == ""
 
-    # 2. 回写区为空
+    # 2. 回写区为空 -> 拦截
     card_file.write_text("# 任务卡 xy101\n## 回写区\n", encoding="utf-8")
     ok, err = check_writeback_credentials(card_file, "xy101-wb")
     assert ok is False

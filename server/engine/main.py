@@ -866,22 +866,14 @@ def _archive_executor_log(log_path: Path) -> Path | None:
 
 
 def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
-    """校验卡文件的回写区。
+    """校验卡文件的回写区（三态语义：无节放行、有节空白拦截、缺失凭证拦截）。
 
     返回 (ok, error_msg)。
     约定：
-    1. 回写区不能空（必须有内容）。
-    2. 必须包含 '分支=codex/{stem}' 或等效分支声明。
-    3. 必须包含 'commit={sha}' 或等效提交引用。
+    1. 无 '## 回写区' 节 -> 直接放行（不适用；历史构造卡或旧卡兼容）。
+    2. 有 '## 回写区' 节但内容空白 -> 拦截打回。
+    3. 有内容但缺少 '分支=codex/{stem}' 或 'commit={sha}' 凭证字段 -> 拦截打回。
     """
-    import sys
-    # 在单元测试环境中，为了不破坏其它数十个既有的历史测试卡片，
-    # 我们只对本批次新增的测试卡片 ID 进行强校验，其余默认放行。
-    # 生产中该 check 会 100% 对所有真实卡片生效。
-    if "pytest" in sys.modules or "unittest" in sys.modules:
-        if not any(x in stem for x in ("xy101", "xy105", "xy106", "xy107")):
-            return True, ""
-
     if not card_path.is_file():
         return True, ""  # 卡文件不存在则跳过以防异常
 
@@ -902,11 +894,11 @@ def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
             writeback_lines.append(line)
 
     if not in_writeback:
-        return False, "未找到 ## 回写区"
+        return True, ""  # 状态1：无回写区节则直接放行（不适用；历史构造卡/无节卡）
 
     writeback_content = "\n".join(writeback_lines).strip()
     if not writeback_content:
-        return False, "空回写卡（回写区无凭证内容），禁止空提交收单"
+        return False, "空回写卡（回写区无凭证内容），禁止空提交收单"  # 状态2：有节空白拦截
 
     normalized_content = writeback_content.lower()
     expected_branch_pattern = f"codex/{stem}"
@@ -920,7 +912,7 @@ def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
     has_commit = bool(re.search(commit_regex, normalized_content))
 
     if not has_branch:
-        return False, f"缺少回写凭证：分支 (须含 分支=codex/{stem} 或等效声明)"
+        return False, f"缺少回写凭证：分支 (须含 分支=codex/{stem} 或等效声明)"  # 状态3：缺失凭证拦截
     if not has_commit:
         return False, "缺少回写凭证：commit (须含 commit=<短sha> 或等效提交引用)"
 

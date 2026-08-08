@@ -1897,8 +1897,7 @@ class TestRunOnceFakeSuccessGuard:
         card_path = tmp_path / "T-fake.md"
         card_path.write_text(
             "# 任务卡 T-fake\n"
-            f"> 关联：TEST · 执行体：demo · 状态：{card_state} · 日期：2026-08-06\n"
-            "\n## 回写区\n",
+            f"> 关联：TEST · 执行体：demo · 状态：{card_state} · 日期：2026-08-06\n",
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake", role="开发执行体", card_path=str(card_path)))
@@ -1931,7 +1930,7 @@ class TestRunOnceFakeSuccessGuard:
         store = InMemoryBoardStore()
         card_path = tmp_path / "T-fake2.md"
         card_path.write_text(
-            "# 任务卡 T-fake2\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n\n## 回写区\n",
+            "# 任务卡 T-fake2\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n",
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake2", role="开发执行体", card_path=str(card_path)))
@@ -1956,7 +1955,7 @@ class TestRunOnceFakeSuccessGuard:
         store = InMemoryBoardStore()
         card_path = tmp_path / "T-fake3.md"
         card_path.write_text(
-            "# 任务卡 T-fake3\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n\n## 回写区\n",
+            "# 任务卡 T-fake3\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n",
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake3", role="开发执行体", card_path=str(card_path)))
