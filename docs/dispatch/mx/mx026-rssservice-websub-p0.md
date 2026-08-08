@@ -61,3 +61,32 @@
 ### push 证据（commit hash）
 - **业务仓 (medio-0) 提交分支**：`codex/mx026-rssservice-websub-p0`
 - **提交哈希 (commit hash)**：`08a081616500b94702e4e8a9f3ead019aef25bc0`
+
+## 机审区
+
+**验收席**：2017 机审席（OpenCode 同工具，按独立审查执行）· 日期：2026-08-09 · 状态：**机审：通过**
+
+### 审查摘要
+独立核对了 worktree `ccc-dev-ws-mx026` 与业务仓 `medio-0` 分支 `codex/mx026-rssservice-websub-p0`（含 `origin/main` 基准 diff）。断链根因：路径重构后 `crate::service::websub_service::WebSubService` 无法解析，WebSub 联动块被注释禁用。修复将路径改为 `crate::service::rss::WebSubService`（经 `src/backend/core/src/service/rss/mod.rs` 的 `pub mod websub; pub use websub::*;` 重导出，有效），`_content`→`content` 恢复传参并重新启用联动块。改动仅落在 `src/backend/core/src/service/rss/service.rs` 单文件（相对 origin/main：15+/15-）。编译、测试、push 证据与回写区一一吻合。
+
+### 验证证据（实侧）
+- `cargo check --tests -p medio-core`：编译通过，无错误无警告。
+- `cargo test -p medio-core --lib`：**423 passed / 0 failed**（与回写区一致）。
+- websub 模块单测：15 passed（含 `detect_websub_links` / `verify_signature` 用例）。
+- HEAD = `08a081616500b94702e4e8a9f3ead019aef25bc0`（匹配回写区 push hash）。
+
+### 发现清单
+- **F1（P2，已闭环）**：首次 commit `d8377d0` :94 注释仍写「暂时禁用，websub_service 有编译错误」（过时）。开发者经第二个 commit `08a0816` 修正为反映已启用状态。批注过时性问题已修复。
+- **F2（信息性，非缺陷，不改）**：卡正文红线/范围引用旧路径 `src/backend/core/src/rss/service.rs`，实际文件位于 `src/backend/core/src/service/rss/service.rs`。系卡文本与目录布局的陈旧对照，实际修复落在正确文件，不影响正确性。
+
+### 红线复核
+- 只修断链 ✅（仅单文件，未动其他业务逻辑）；不引入新依赖 ✅（无 Cargo.toml/Cargo.lock 变更）；人工批注 ✅（卡内为空，无待落实指令）。
+
+### 修复记录
+- `d8377d0` fix(rss): restore websub link detection and fix path reference
+- `08a0816` docs(rss): update stale websub comment to reflect re-enabled state [mx026 机审 P2]（F1 修复）
+
+### 复审结论
+修复 diff 复审通过。F1 已闭环，F2 信息性不改；无 P0/P1。验收标准 1/2/3 全部满足。
+
+**机审：通过**
