@@ -383,12 +383,30 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                 )
         if base not in VALID_STATES:
             issues.append(CardIssue(card_id, str(path), f"状态值非法: {state_raw!r}（合法={sorted(VALID_STATES)}）"))
+
+        # 卡头「状态」字段与实际（打回/已关闭/待分派等）一致性强校验 (Task 4)
+        if base == "已关闭" and not _is_accepted(path):
+            issues.append(
+                CardIssue(
+                    card_id,
+                    str(path),
+                    "卡头声明状态为 '已关闭'，但实际未在验收区通过验收（未找到 ## 验收区 或无 ✅/判定：通过 标记）",
+                )
+            )
         if _is_accepted(path) and base != "已关闭":
             issues.append(
                 CardIssue(
                     card_id,
                     str(path),
-                    f"卡片已通过验收（## 验收区 后 20 行内含有 ✅ 或 判定：通过），但当前卡头状态为 {base!r}（期望：'已关闭'）",
+                    f"卡片实际已通过验收，但当前卡头状态为 {base!r}（期望：'已关闭'）",
+                )
+            )
+        if base == "打回" and _is_accepted(path):
+            issues.append(
+                CardIssue(
+                    card_id,
+                    str(path),
+                    "卡片实际已通过验收，但当前卡头状态为 '打回'（冲突，已被验收的卡不能是打回状态）",
                 )
             )
         if base in ("已回写", "已关闭", "打回") and not _body_has(path, "## 回写区"):

@@ -32,7 +32,8 @@ def _write_card(
 
 def test_valid_cards_pass(tmp_path: Path) -> None:
     _write_card(tmp_path, "T1-ok.md", "待分派")
-    _write_card(tmp_path, "T2-ok.md", "已关闭")
+    p = _write_card(tmp_path, "T2-ok.md", "已关闭")
+    p.write_text(p.read_text(encoding="utf-8") + "\n## 验收区\n\n**合入批准** · 日期：2026-08-08\n- 判定：通过\n", encoding="utf-8")
     assert _errors(validate_cards(tmp_path)) == []
 
 
