@@ -60,4 +60,4 @@
 
 ### push 证据（commit hash）
 - **业务仓 (medio-0) 提交分支**：`codex/mx026-rssservice-websub-p0`
-- **提交哈希 (commit hash)**：`d8377d00bb94a0b583223cdf750196c5a024c220`
+- **提交哈希 (commit hash)**：`08a081616500b94702e4e8a9f3ead019aef25bc0`
