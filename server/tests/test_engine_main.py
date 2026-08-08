@@ -1226,6 +1226,7 @@ class TestParallelAndRelayGuard:
             "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
             "EXECUTOR_INFRA_COOLDOWN_SECONDS": "0",
             "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_INFRA_MAX_STRIKES": "3",
         }
         s1 = run_once(reg, store, cfg)
         assert s1["audit_failed_infra"] == 1, s1

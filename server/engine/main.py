@@ -183,7 +183,18 @@ def _hold_infra_failure(
     """
     from datetime import datetime, timedelta, timezone
 
-    cooldown = _infra_cooldown_seconds(cfg)
+    strikes = infra_count if infra_count is not None else 0
+    power = max(0, strikes - 1)
+    base = _infra_cooldown_seconds(cfg)
+    cooldown = base * (2 ** power)
+
+    try:
+        max_cooldown = int(cfg.get("EXECUTOR_INFRA_COOLDOWN_MAX_SECONDS") or 1800)
+    except (TypeError, ValueError):
+        max_cooldown = 1800
+
+    cooldown = min(cooldown, max_cooldown)
+
     until = (
         datetime.now(timezone.utc) + timedelta(seconds=cooldown)
     ).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -1469,6 +1480,8 @@ def _run_auto_worker(
             work.transition(State.DONE)
             store.save_work(work)
             logger.info("收单成功: work=%s → 已回写", work.id)
+            from server.engine.runtime_state import write_card_state
+            write_card_state(log_dir, work.id, infra_count=0)  # 成功清零连续 infra
             outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
@@ -1477,9 +1490,39 @@ def _run_auto_worker(
             if hint and hint not in reasons[0]:
                 reasons = [hint, *reasons]
             if retryable:
-                # 上游/网络/超时：基础设施故障 → 回待分派 + 冷却，不计业务重试预算、不打回
-                _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="run")
-                outcome["infra"] = 1
+                # 读 sidecar 的 infra_count
+                from server.engine.runtime_state import read_card_state
+                rt = read_card_state(log_dir).get(work.id) or {}
+                strikes = int(rt.get("infra_count") or 0)
+                next_strikes = strikes + 1
+
+                try:
+                    max_strikes = int(cfg.get("EXECUTOR_INFRA_MAX_STRIKES") or 5)
+                except (TypeError, ValueError):
+                    max_strikes = 5
+
+                if next_strikes >= max_strikes:
+                    # 连续失败超限，不再冷却续跑，强制打回
+                    reasons = [f"基础设施连续失败 {next_strikes} 次强制打回（可人工恢复后再派）", *reasons]
+                    work.transition(State.REJECTED, problems=reasons)
+                    store.save_work(work)
+
+                    from server.engine.runtime_state import write_card_state
+                    write_card_state(
+                        log_dir,
+                        work.id,
+                        state=State.REJECTED.value,
+                        infra_count=next_strikes,
+                        reason=reasons[0]
+                    )
+                    logger.error(
+                        "基础设施故障连续失败超限（已触发熔断打回）: work=%s strikes=%d",
+                        work.id, next_strikes
+                    )
+                else:
+                    # 上游/网络/超时：基础设施故障 → 回待分派 + 冷却，不计业务重试预算、不打回
+                    _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="run", infra_count=next_strikes)
+                    outcome["infra"] = 1
             else:
                 retried = _fail_retry_or_reject(work, store, reasons, cfg)
                 # 催单计数：仅最终打回时记 timed_out（回待分派不算）
@@ -1542,12 +1585,19 @@ def _run_audit_worker(
 
                 rt = read_card_state(log_dir).get(work.id) or {}
                 infra_count = int(rt.get("infra_count") or 0)
-                if infra_count >= 2:
-                    # 连续 3 次基础设施失败 → 回待分派人工跟进（可见、可操作，不打回）
+                next_strikes = infra_count + 1
+
+                try:
+                    max_strikes = int(cfg.get("EXECUTOR_INFRA_MAX_STRIKES") or 5)
+                except (TypeError, ValueError):
+                    max_strikes = 5
+
+                if next_strikes >= max_strikes:
+                    # 连续失败超限 → 回待分派人工跟进（可见、可操作，不打回）
                     _fail_retry_or_reject(
                         work,
                         store,
-                        [*reasons, "机审多次基础设施失败（已自动重试 3 次），回待分派人工跟进"],
+                        [*reasons, f"机审多次基础设施失败（已自动重试 {max_strikes} 次），回待分派人工跟进"],
                         cfg,
                     )
                     outcome["failed"] = 1
@@ -1559,7 +1609,7 @@ def _run_audit_worker(
                         reasons,
                         cfg,
                         phase="audit",
-                        infra_count=infra_count + 1,
+                        infra_count=next_strikes,
                     )
                     outcome["infra"] = 1
             else:
