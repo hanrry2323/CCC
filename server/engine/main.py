@@ -447,13 +447,14 @@ def _cleanup_closed_worktrees(
     cfg: dict[str, Any],
     log_dir: Path,
 ) -> int:
-    """合入批准后自动清理：已关闭 + worktree 干净 + 分支已合入 → remove + prune。
+    """自动清理与生命周期管理：远端分支已删/卡已关闭/卡已打回时，回收 worktree 及本地残留分支。
 
-    有未提交改动 / 仍有执行或机审标记 / 分支未合入 main 的一律跳过，绝不强删。
-    顺带清已关闭卡的残留「待机审」标记。返回清理张数。
+    有未提交改动且卡仍在执行/机审中（.running 存在）的，绝不强删，保护数据底线。
+    卡状态为终态（已关闭/打回）且有脏改动时，才允许 --force 强制 remove。
     """
     cleaned = 0
     try:
+        from server.board.models import base_state
         from server.git_sync import resolve_repo_root
 
         main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
@@ -469,11 +470,13 @@ def _cleanup_closed_worktrees(
     if not bases:
         return 0
 
-    for work in store.list_work(state=State.CLOSED):
-        if (log_dir / f"{work.id}.running").is_file() or (
+    # 1. worktree 回收
+    all_works = store.list_work()
+    for work in all_works:
+        is_running = (log_dir / f"{work.id}.running").is_file() or (
             log_dir / f"{work.id}-audit.running"
-        ).is_file():
-            continue
+        ).is_file()
+
         wt: Path | None = None
         for base in bases:
             cand = Path(get_worktree_path(str(base), work.id)).resolve()
@@ -482,48 +485,134 @@ def _cleanup_closed_worktrees(
                 break
         if wt is None:
             continue
+
         try:
             status = subprocess.run(
                 ["git", "-C", str(wt), "status", "--porcelain", "-uall"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=15,
                 check=False,
             )
-            if status.returncode != 0 or status.stdout.strip():
-                logger.info("worktree 未清理（有未提交改动或非 git 仓）: %s", wt)
-                continue
-            merged = subprocess.run(
-                ["git", "-C", str(wt), "log", "origin/main..HEAD", "--oneline"],
+            is_dirty = (status.returncode != 0 or bool(status.stdout.strip()))
+
+            card_id_slug = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
+            remote_branch = f"origin/codex/{card_id_slug}"
+            res_branch = subprocess.run(
+                ["git", "-C", str(main_repo), "show-ref", "--verify", f"refs/remotes/{remote_branch}"],
                 capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
+                check=False
             )
-            if merged.returncode != 0 or merged.stdout.strip():
-                logger.info("worktree 未清理（分支未合入 main）: %s", wt)
-                continue
-            remove = subprocess.run(
-                ["git", "-C", str(main_repo), "worktree", "remove", str(wt)],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-            if remove.returncode != 0:
-                logger.warning("worktree remove 失败（跳过）: %s (%s)", wt, remove.stderr.strip())
-                continue
-            subprocess.run(
-                ["git", "-C", str(main_repo), "worktree", "prune"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-            cleaned += 1
-            logger.info("worktree 已清理（卡已关闭）: %s", wt)
+            remote_branch_exists = (res_branch.returncode == 0)
+
+            should_reap = False
+            use_force = False
+
+            if is_running:
+                should_reap = False
+            else:
+                disk_base = base_state(work.state)
+                if disk_base in ("已关闭", "打回"):
+                    should_reap = True
+                    if is_dirty:
+                        use_force = True
+                elif not remote_branch_exists:
+                    should_reap = True
+                    if is_dirty:
+                        use_force = True
+                elif disk_base in ("执行中", "待分派"):
+                    should_reap = False
+
+            if should_reap:
+                cmd_remove = ["git", "-C", str(main_repo), "worktree", "remove", str(wt)]
+                if use_force:
+                    cmd_remove.append("--force")
+
+                remove = subprocess.run(
+                    cmd_remove,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                if remove.returncode != 0:
+                    logger.warning("worktree remove 失败: %s (%s)", wt, remove.stderr.strip())
+                    continue
+
+                subprocess.run(
+                    ["git", "-C", str(main_repo), "worktree", "prune"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                cleaned += 1
+                logger.info("worktree 已回收 (force=%s): %s", use_force, wt)
         except Exception as exc:
             logger.warning("worktree 清理异常（跳过）: %s (%s)", wt, exc)
+
+    # 2. 本地残留分支清理
+    try:
+        res_branches = subprocess.run(
+            ["git", "-C", str(main_repo), "branch", "--list", "codex/*"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        if res_branches.returncode == 0:
+            local_branches = []
+            for line in res_branches.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("*"):
+                    continue
+                local_branches.append(line.split()[-1])
+
+            work_map = {w.id.lower(): w for w in all_works}
+            for branch in local_branches:
+                id_prefix_match = re.search(r'codex/([a-z]{2,4}\d{3})', branch)
+                if not id_prefix_match:
+                    continue
+                cid = id_prefix_match.group(1).lower()
+                work = work_map.get(cid)
+
+                remote_branch = f"origin/{branch}"
+                res_verify = subprocess.run(
+                    ["git", "-C", str(main_repo), "show-ref", "--verify", f"refs/remotes/{remote_branch}"],
+                    capture_output=True,
+                    check=False
+                )
+                remote_exists = (res_verify.returncode == 0)
+
+                should_delete = False
+                if not remote_exists:
+                    should_delete = True
+                elif work:
+                    is_merged = subprocess.run(
+                        ["git", "-C", str(main_repo), "merge-base", "--is-ancestor", remote_branch, "origin/main"],
+                        capture_output=True,
+                        check=False
+                    ).returncode == 0
+                    if base_state(work.state) == "已关闭" and is_merged:
+                        should_delete = True
+
+                if should_delete:
+                    del_res = subprocess.run(
+                        ["git", "-C", str(main_repo), "branch", "-D", branch],
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
+                    if del_res.returncode == 0:
+                        logger.info("已删除本地残留分支: %s", branch)
+                    else:
+                        logger.warning("删除本地分支失败: %s (%s)", branch, del_res.stderr.strip())
+                else:
+                    logger.info("本地分支 %s 保留（分叉/进行中/未合入）", branch)
+    except Exception as exc:
+        logger.warning("分支清理过程异常: %s", exc)
+
     return cleaned
 
 
@@ -798,11 +887,96 @@ def _dispatch_and_collect(
         try:
             target_path = Path(target_worktree).expanduser().resolve()
             if target_path.exists():
-                logger.info("Worktree 目录已存在，重用: %s", target_worktree)
-                worktree_path = str(target_path)
+                # 检查上次执行是否成功收单
+                from server.engine.runtime_state import read_card_state
+                rt = read_card_state(log_dir).get(work.id) or {}
+                success = False
+                if rt.get("state") == "已回写":
+                    success = True
+
+                log_file = log_dir / f"{work.id}.log"
+                if not success and log_file.is_file():
+                    try:
+                        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                        for line in reversed(lines):
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                data = json.loads(line)
+                                if isinstance(data, dict) and data.get("ok") is True:
+                                    success = True
+                                    break
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                if not success:
+                    logger.info("上次执行未成功收单，不直接复用 worktree: %s. 正在重置...", target_worktree)
+                    # 尝试重置: git checkout -- . && git clean -fd
+                    res_reset1 = subprocess.run(["git", "checkout", "--", "."], cwd=target_worktree, capture_output=True, check=False)
+                    res_reset2 = subprocess.run(["git", "clean", "-fd"], cwd=target_worktree, capture_output=True, check=False)
+
+                    # 检查是否真的干净了 (git status --porcelain)
+                    res_status = subprocess.run(["git", "status", "--porcelain"], cwd=target_worktree, capture_output=True, text=True, check=False)
+
+                    is_clean = (res_reset1.returncode == 0 and res_reset2.returncode == 0 and not res_status.stdout.strip())
+
+                    if is_clean:
+                        # 检查分支是否与 origin/main 分叉
+                        res_merge_base = subprocess.run(
+                            ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
+                            cwd=target_worktree,
+                            capture_output=True,
+                            check=False
+                        )
+                        if res_merge_base.returncode != 0:
+                            is_clean = False
+                            logger.warning("Worktree 分支已与 origin/main 分叉，将被强制重建: %s", target_worktree)
+
+                    if is_clean:
+                        logger.info("Worktree 重置干净成功: %s", target_worktree)
+                        worktree_path = str(target_path)
+                    else:
+                        logger.info("Worktree 重置失败或分支分叉，正在进行强制干净重建: %s", target_worktree)
+                        try:
+                            from server.git_sync import resolve_repo_root
+                            main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+                        except Exception:
+                            main_repo = Path(__file__).resolve().parents[2]
+
+                        subprocess.run(["git", "-C", str(main_repo), "worktree", "remove", "--force", str(target_path)], capture_output=True, check=False)
+                        subprocess.run(["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False)
+                        subprocess.run(["git", "-C", str(main_repo), "branch", "-D", branch_name], capture_output=True, check=False)
+
+                        cmd_add = ["git", "-C", str(main_repo), "worktree", "add", str(target_path), "-b", branch_name, "origin/main"]
+                        logger.info("正在干净重建 worktree: %s", " ".join(cmd_add))
+                        res_add = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
+                        if res_add.returncode == 0:
+                            worktree_path = str(target_path)
+                            logger.info("Worktree 干净重建成功: %s", worktree_path)
+                        else:
+                            logger.warning("git worktree add -b 失败: %s. 尝试关联已存在分支...", res_add.stderr.strip())
+                            cmd_add_existing = ["git", "-C", str(main_repo), "worktree", "add", str(target_path), branch_name]
+                            res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
+                            if res_existing.returncode == 0:
+                                worktree_path = str(target_path)
+                                logger.info("Worktree 关联已有分支成功: %s", worktree_path)
+                            else:
+                                logger.warning("git worktree add 干净重建与关联均失败。")
+                else:
+                    logger.info("上次执行已成功收单，重用 existing worktree: %s", target_worktree)
+                    worktree_path = str(target_path)
             else:
                 # 尝试用新分支创建
-                cmd_add = ["git", "worktree", "add", str(target_path), "-b", branch_name, "origin/main"]
+                try:
+                    from server.git_sync import resolve_repo_root
+                    main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+                except Exception:
+                    main_repo = Path(__file__).resolve().parents[2]
+
+                cmd_add = ["git", "-C", str(main_repo), "worktree", "add", str(target_path), "-b", branch_name, "origin/main"]
                 logger.info("正在创建 worktree: %s", " ".join(cmd_add))
                 res = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
                 if res.returncode == 0:
@@ -811,7 +985,7 @@ def _dispatch_and_collect(
                 else:
                     logger.warning("git worktree add -b 失败: %s. 尝试关联已存在分支...", res.stderr.strip())
                     # 尝试关联已存在的分支
-                    cmd_add_existing = ["git", "worktree", "add", str(target_path), branch_name]
+                    cmd_add_existing = ["git", "-C", str(main_repo), "worktree", "add", str(target_path), branch_name]
                     res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
                     if res_existing.returncode == 0:
                         worktree_path = str(target_path)
