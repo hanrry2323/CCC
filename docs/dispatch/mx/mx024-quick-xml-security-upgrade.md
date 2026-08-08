@@ -66,3 +66,14 @@ quick-xml 安全债升级（ccc-plan 切片）。
 ### 4. Push 证据
 - 业务仓 `medio-0` 推送分支：`codex/mx024-quick-xml-security-upgrade`
 - Commit Hash: `4c2f1824b3d00ef6de87b1471e9bf3ec87a82d95`
+
+## 机审区
+
+机审：通过
+- 审查摘要：审查范围含 medio-0 业务仓分支 `codex/mx024-quick-xml-security-upgrade`（tip 4c2f182）+ CCC 卡文件（worktree 分支 ea62feba）。涉及文件：`src/backend/core/Cargo.toml`、`Cargo.lock`、`src/backend/core/src/api/routes/rss.rs`、`src/backend/core/src/infra/nfo_parser.rs`、`.github/workflows/ci.yml`。
+- 独立取证：1) quick-xml 在 `Cargo.lock` 仅余 0.41.0 单一版本，旧 0.36.2 条目已删，DoS 风险依赖彻底移除；全仓 `grep RUSTSEC-2026-0194/0195` 无残留。2) API 适配逐一对 quick-xml 0.41.0 源码核验：`Attribute::decoded_and_normalized_value(XmlVersion, Decoder)`、`XmlVersion::Implicit1_0`（lib.rs:93）、`reader.decoder()`（reader/mod.rs:908）、`escape::unescape(&str)`（escape.rs:222）、`Decoder::decode(&[u8])`（encoding.rs:123）、`BytesText: Deref<[u8]>`（events/mod.rs:711）均存在且签名匹配。3) `cargo check --workspace` 三 crate 编译通过（exit 0，无告警）。4) `cargo test -p medio-core`：423 单测全过（含 RSS OPML / NFO 解析 T 用例），db_migrations 3/3 过。5) 业务仓 `status -sb` 仅白名单改动、未直推 main。6) `python3 -m server.board.validate docs/dispatch` 通过。
+- 发现清单：
+  - P2-1（测试覆盖）：`rss.rs` / `nfo_parser.rs` 新解的 `quick_xml::escape::unescape` 分支仅被 decode 路径测试间接覆盖，无一例含实体（如 `&amp;`）的直接断言。非阻断，建议补一条含实体的解析断言。
+  - P2-2（环境说明）：本地跑 `cargo test -p medio-core` 时 `media_library.rs::file_move_results_in_old_soft_deleted_and_new_added` 失败，根因本机未装 `ffmpeg`（`Command::new("ffmpeg")` 生成测试视频 fixture）。`.github/workflows/ci.yml:28-29` 已显式 `sudo apt-get install -y ffmpeg`，CI 环境具备，非 mx024 回归、与 quick-xml 改动无涉，属本机环境缺口。
+- 修复记录：无 P0/P1，未需修复。
+- 复审结论：按 code-review 清单复核——正确性（API 无一臆造、逐一源码核验）、契约一致性（卡头三验收标准逐条达成）、健壮性（重试/降级不涉及）、范围与红线（仅白名单、未直推 main、未写验收区/未置已关闭）、验收标准（cargo check 过、423 测试过、RUSTSEC ignore 已移除）、老板批注（卡 `## 人工批注` 为空，无最高指令待落实）。结论：通过。
