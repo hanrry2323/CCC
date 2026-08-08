@@ -1,6 +1,6 @@
 # 任务卡 mx026 · RssService WebSub 联动断链修复（P0）（OpenCode 执行）
 
-> 关联：mx025 架构问题清单 #1 P0 · WebSub 实时推送功能断链 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-09
+> 关联：mx025 架构问题清单 #1 P0 · WebSub 实时推送功能断链 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-09
 
 ## 目标
 
