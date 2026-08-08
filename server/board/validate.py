@@ -37,9 +37,7 @@ REQUIRED_HEADER_KEYS = ("关联", "执行体", "状态", "日期")
 REQUIRED_HEADER_KEYS_NEW = ("关联", "执行体", "验收", "状态", "日期")
 
 # T54 新卡文件名：`<前缀><三位序号>-<slug>.md`（前缀 2-4 位小写字母；slug 小写字母数字 + 单连字符）
-NEW_CARD_RE = re.compile(
-    r"^(?P<prefix>[a-z]{2,4})(?P<num>\d{3})-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$"
-)
+NEW_CARD_RE = re.compile(r"^(?P<prefix>[a-z]{2,4})(?P<num>\d{3})-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$")
 # 旧卡：`T<N>-...`（根目录平铺）
 OLD_CARD_RE = re.compile(r"^T\d")
 
@@ -65,11 +63,7 @@ def _has_card_title(path: Path) -> bool:
 
 def _header_lines(card: Path) -> list[str]:
     """取卡头全部 ``>`` 元数据行（与 loader 同款：多行合并解析）。"""
-    return [
-        ln.strip()
-        for ln in card.read_text(encoding="utf-8").splitlines()
-        if ln.strip().startswith(">")
-    ]
+    return [ln.strip() for ln in card.read_text(encoding="utf-8").splitlines() if ln.strip().startswith(">")]
 
 
 def _header_metadata(card: Path) -> dict[str, str]:
@@ -100,7 +94,7 @@ def _has_real_annotation(card: Path) -> bool:
     m = re.search(r"^##\s*人工批注\s*$", text, flags=re.MULTILINE)
     if not m:
         return False
-    tail = text[m.end():]
+    tail = text[m.end() :]
     nxt = re.search(r"^##\s", tail, flags=re.MULTILINE)
     content = (tail[: nxt.start()] if nxt else tail).strip()
     if not content:
@@ -108,8 +102,12 @@ def _has_real_annotation(card: Path) -> bool:
     return "老板对打回卡/审核的批注意见写这里" not in content
 
 
-def _is_accepted(path: Path) -> bool:
-    """读卡正文 `## 验收区` 后 20 行内含 `✅` 或 `判定：通过`。"""
+def _is_accepted(path: Path) -> bool | None:
+    """读卡正文 `## 验收区` 后 20 行内含 `✅` 或 `判定：通过`。
+
+    无 `## 验收区` 节 → 返回 None（历史旧流程卡，不适用验收标记校验）；
+    有节但无通过标记 → False；有通过标记 → True。
+    """
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except Exception:
@@ -122,7 +120,7 @@ def _is_accepted(path: Path) -> bool:
             break
 
     if idx == -1:
-        return False
+        return None
 
     # 检查后 20 行
     for j in range(idx + 1, min(idx + 21, len(lines))):
@@ -214,9 +212,7 @@ def _validate_new_naming(
             )
         )
     elif prefix not in PREFIXES:
-        issues.append(
-            CardIssue(card_id, str(path), f"未知前缀 {prefix!r}（合法前缀: {sorted(PREFIXES)}）")
-        )
+        issues.append(CardIssue(card_id, str(path), f"未知前缀 {prefix!r}（合法前缀: {sorted(PREFIXES)}）"))
     if loc != "subdir":
         issues.append(CardIssue(card_id, str(path), f"新规则卡 {card_id} 必须位于子目录 {prefix}/ 下"))
     elif path.parent.name != prefix:
@@ -250,6 +246,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
     cards = _scan_cards(d)
 
     from server.board.loader import parse_card
+
     all_items: dict[Path, BoardItem] = {}
     id_to_item: dict[str, BoardItem] = {}
     for path, _ in cards:
@@ -311,7 +308,9 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         else:
             if loc == "subdir":
                 issues.append(
-                    CardIssue(card_id, str(path), f"子目录卡文件名不符合新命名规则 <前缀><三位序号>-<slug>.md: {path.name}")
+                    CardIssue(
+                        card_id, str(path), f"子目录卡文件名不符合新命名规则 <前缀><三位序号>-<slug>.md: {path.name}"
+                    )
                 )
 
         meta = _header_metadata(path)
@@ -337,7 +336,13 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                     if not parent_item:
                         issues.append(CardIssue(item.id, str(path), f"父卡 {item.parent} 不存在"))
                     elif parent_item.project != item.project:
-                        issues.append(CardIssue(item.id, str(path), f"父卡 {item.parent} 的项目 ({parent_item.project}) 与当前卡片项目 ({item.project}) 不一致"))
+                        issues.append(
+                            CardIssue(
+                                item.id,
+                                str(path),
+                                f"父卡 {item.parent} 的项目 ({parent_item.project}) 与当前卡片项目 ({item.project}) 不一致",
+                            )
+                        )
 
         missing = [k for k in REQUIRED_HEADER_KEYS if not meta.get(k, "").strip()]
         if missing:
@@ -385,15 +390,17 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             issues.append(CardIssue(card_id, str(path), f"状态值非法: {state_raw!r}（合法={sorted(VALID_STATES)}）"))
 
         # 卡头「状态」字段与实际（打回/已关闭/待分派等）一致性强校验 (Task 4)
-        if base == "已关闭" and not _is_accepted(path):
+        # 三态：None=无验收区节（历史旧流程卡豁免）；True=已通过；False=有节无通过标记
+        accepted = _is_accepted(path)
+        if base == "已关闭" and accepted is False:
             issues.append(
                 CardIssue(
                     card_id,
                     str(path),
-                    "卡头声明状态为 '已关闭'，但实际未在验收区通过验收（未找到 ## 验收区 或无 ✅/判定：通过 标记）",
+                    "卡头声明状态为 '已关闭'，但验收区无 ✅/判定：通过 标记",
                 )
             )
-        if _is_accepted(path) and base != "已关闭":
+        if accepted is True and base != "已关闭":
             issues.append(
                 CardIssue(
                     card_id,
@@ -401,7 +408,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                     f"卡片实际已通过验收，但当前卡头状态为 {base!r}（期望：'已关闭'）",
                 )
             )
-        if base == "打回" and _is_accepted(path):
+        if base == "打回" and accepted is True:
             issues.append(
                 CardIssue(
                     card_id,
@@ -411,11 +418,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             )
         if base in ("已回写", "已关闭", "打回") and not _body_has(path, "## 回写区"):
             issues.append(CardIssue(card_id, str(path), f"状态 {base} 但缺少 ## 回写区"))
-        if (
-            base in ("已回写", "已关闭")
-            and _has_real_annotation(path)
-            and not _body_has(path, "## 批注落实")
-        ):
+        if base in ("已回写", "已关闭") and _has_real_annotation(path) and not _body_has(path, "## 批注落实"):
             issues.append(
                 CardIssue(
                     card_id,
@@ -436,6 +439,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
     # 对账索引 vs 磁盘文件
     try:
         from server.board.loader import load_index_file, parse_card, get_index_path, load_dispatch_cards
+
         index_path = get_index_path(d)
         if not index_path.is_file():
             load_dispatch_cards(d)
@@ -465,7 +469,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                         card_id=item.id,
                         path=str(path),
                         reason=f"索引缺失：卡片 {item.id} 在磁盘上存在，但未在索引中找到",
-                        severity="error"
+                        severity="error",
                     )
                 )
                 continue
@@ -477,7 +481,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                         card_id=item.id,
                         path=str(path),
                         reason=f"路径不一致：索引路径为 {entry.get('path')}，实际路径为 {repo_path}",
-                        severity="error"
+                        severity="error",
                     )
                 )
 
@@ -510,7 +514,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                         card_id=item.id,
                         path=str(path),
                         reason=f"索引对账失败: {'; '.join(mismatches)}",
-                        severity="error"
+                        severity="error",
                     )
                 )
 
@@ -522,18 +526,11 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                         card_id=card_id,
                         path=entry.get("path", ""),
                         reason=f"孤立索引：索引中存在卡片 {card_id}，但磁盘上未找到对应文件",
-                        severity="error"
+                        severity="error",
                     )
                 )
     except Exception as e:
-        issues.append(
-            CardIssue(
-                card_id="?",
-                path="index",
-                reason=f"对账过程异常: {e}",
-                severity="error"
-            )
-        )
+        issues.append(CardIssue(card_id="?", path="index", reason=f"对账过程异常: {e}", severity="error"))
 
     return issues
 
