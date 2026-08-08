@@ -145,7 +145,9 @@ class FileBoardStore:
                 continue
             raw_state = entry.get("state", "")
             rt = runtime.get(entry["id"]) or {}
-            if rt.get("state"):
+            # sidecar 状态仅在磁盘状态为「已回写」/「执行中」时参与判定。
+            # 若磁盘状态是「已关闭」「打回」「待分派」，忽略 sidecar 状态。
+            if base_state(raw_state) in ("已回写", "执行中") and rt.get("state"):
                 raw_state = str(rt["state"])
             st = _state_from_str(raw_state)
             if st is None:

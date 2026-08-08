@@ -1053,8 +1053,8 @@ def _compose_board_items(items):
     now_ts = time.time()
     for item in items:
         rt = runtime.get(item.id) or {}
-        # 运行时状态仅覆盖非关闭卡；一旦卡在磁盘上已关闭，则不予覆盖
-        if base_state(item.state) == "已关闭":
+        # 运行时状态仅覆盖磁盘为「执行中」或「已回写」的卡；一旦卡在磁盘上是已关闭/打回/待分派，则不予覆盖
+        if base_state(item.state) in ("已关闭", "打回", "待分派"):
             new_state = item.state
         else:
             new_state = str(rt["state"]) if rt.get("state") else item.state

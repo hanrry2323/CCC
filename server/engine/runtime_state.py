@@ -42,10 +42,31 @@ def read_card_state(log_dir: str | Path) -> dict[str, dict[str, Any]]:
             except ValueError:
                 continue
             if isinstance(rec, dict) and rec.get("id"):
-                out[str(rec["id"])] = rec
+                cid = str(rec["id"])
+                # 支持 null/None 失效语义：若最后更新为 null 状态，则认为无状态
+                if "state" in rec and rec["state"] is None:
+                    out.pop(cid, None)
+                else:
+                    out[cid] = rec
     except OSError:
         logger.exception("读取运行时卡状态失败: %s", path)
     return out
+
+
+def clear_card_state(log_dir: str | Path, card_id: str) -> None:
+    """清除一个卡的 sidecar 流程态（追加一条 state=None/null 失效记录）。"""
+    rec: dict[str, Any] = {
+        "id": card_id,
+        "ts": _utcnow_iso(),
+        "state": None
+    }
+    try:
+        path = Path(log_dir) / STATE_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        logger.exception("写失效运行时卡状态失败: %s (%s)", path, card_id)
 
 
 def write_card_state(

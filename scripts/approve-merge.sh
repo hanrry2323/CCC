@@ -337,19 +337,42 @@ merge: 合入批准 ${id}
 EOF
 )"
   fi
-  git push origin main
-  echo "[OK] 合入批准完成：${id} → 请 2017 pull（部署流程）"
 
-  # 卫生：已合入 main 的卡分支自动删除（分叉/未合入一律保留，保护 --close-only）
-  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
-    && git merge-base --is-ancestor "origin/${branch}" origin/main >/dev/null 2>&1; then
-    git branch -D "${branch}" >/dev/null 2>&1 || true
-    if git push origin --delete "${branch}" >/dev/null 2>&1; then
-      echo "[OK] 已删除已合入分支: ${branch}"
+  # sidecar 同步：清除该卡的 sidecar 流程态
+  "$PYTHON_BIN" - "$id" <<'PY'
+import sys
+sys.path.insert(0, ".")
+from server.web.server import _executor_log_dir
+from server.engine.runtime_state import clear_card_state
+
+log_dir = _executor_log_dir()
+if log_dir:
+    clear_card_state(log_dir, sys.argv[1])
+    print(f"[OK] sidecar 已同步：已清除卡 {sys.argv[1]} 的 sidecar 流程态")
+else:
+    print("[WARN] 未配置 EXECUTOR_LOG_DIR，跳过 sidecar 清除")
+PY
+
+  # 分支清理：已合入 main 的本地及远端分支自动删除，分叉分支保留并加日志
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    # 注意：此时可能已经有其它修改被 commit，所以我们需要以 origin/main 作为合入对比基准
+    if git merge-base --is-ancestor "origin/${branch}" origin/main >/dev/null 2>&1; then
+      git branch -D "${branch}" >/dev/null 2>&1 || true
+      if git push origin --delete "${branch}" >/dev/null 2>&1; then
+        echo "[OK] 已删除已合入分支: ${branch}"
+      else
+        echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
+      fi
     else
-      echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
+      echo "[INFO] 分支 ${branch} 与 main 分叉（含有独立 diff），保留该分支"
     fi
   fi
+
+  # 输出收口日志
+  echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
+
+  git push origin main
+  echo "[OK] 合入批准完成：${id} → 请 2017 pull（部署流程）"
 }
 
 FAILED=0
