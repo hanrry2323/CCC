@@ -52,7 +52,7 @@ echo "[2/3] 正在运行测试套件，执行预校验门禁 (pytest)..."
 # 实际上，我们可以运行 pytest，但只跑非 t53 的测试，或者跑全量测试但若失败时判断失败的文件名
 # 既然 t53 文件名是 test_t53_console_roadmap.py，我们可以运行 pytest 排除该文件！
 # 排除方法：pytest --ignore=server/tests/test_t53_console_roadmap.py -q
-if ! pytest --ignore=server/tests/test_t53_console_roadmap.py -q; then
+if ! "${PYTHON_BIN}" -m pytest --ignore=server/tests/test_t53_console_roadmap.py -q; then
   print_recovery_hint "Pytest" "核心测试用例未通过，安全性门禁拒绝发布。"
   exit 2
 fi
