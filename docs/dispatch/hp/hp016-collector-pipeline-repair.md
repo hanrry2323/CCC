@@ -1,6 +1,6 @@
 # 任务卡 hp016 · 采集管道完整性恢复与 md_parser 解析修复（OpenCode 执行）
 
-> 关联：ccc-plan: HP 采集管道完整性修复（ingest/md_parser 恢复 + 解析 bug + ccc-docs 补采） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 采集管道完整性修复（ingest/md_parser 恢复 + 解析 bug + ccc-docs 补采） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
