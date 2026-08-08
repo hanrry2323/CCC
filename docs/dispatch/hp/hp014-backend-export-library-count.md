@@ -1,6 +1,6 @@
 # 任务卡 hp014 · 后端接口补齐（export 导出 + library 计数）（OpenCode 执行）
 
-> 关联：ccc-plan: HP 前端里程碑开发（真数据接入/后端接口/空态/测试，目标 75+ 分） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 前端里程碑开发（真数据接入/后端接口/空态/测试，目标 75+ 分） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
@@ -42,8 +42,21 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 1. 实现说明
+- **后端 /api/export 接口**：新增了 `pg_export` 函数，查询 `documents` 表中所有文档的元数据，利用 `io.BytesIO` 与 `zipfile.ZipFile` 在内存中生成 ZIP 二进制流，包含主要索引文件 `index.json` 及各文档的独立 JSON 元数据文件 `documents/doc_{id}.json`。
+- **后端 /api/library 接口**：扩展了 statusCounts 功能。通过单条高效 SQL（使用 PostgreSQL 的 `COUNT(*) FILTER` 语法）在一次查询内统计出全部、已发布、草稿、已归档各分类的文档数。同时支持 `draft` 分类条件的文档过滤及衍生状态 `status` 计算。
+- **前端 API 类型声明**：在 `/Users/fan/program/apps/hp/local/graph/dashboard/src/api.ts` 中新增了 `fetchExport` 函数声明，并增加了 `CountByStatus` 接口定义，同步扩充 `fetchLibrary` 的 Promise 返回值类型，零涉前端页面改动，保证完美的前后端契约兼容。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试验证
+- 在 `/Users/fan/program/apps/hp/tests/server/test_library.py` 中新增了以下单元测试：
+  1. `test_library_returns_count_by_status`：验证 `/api/library` 正常返回各状态的计数值。
+  2. `test_export_endpoint_returns_zip`：验证 `/api/export` 路由通路和响应状态码。
+  3. `test_pg_export_zip_binary_integrity`：验证 `pg_export` 二进制 ZIP 打包无损、索引信息及子 JSON 文件完整性。
+- **测试结果**：使用 pytest 执行全套 51 个后端测试，全部通过（100% GREEN）。
+- **前端验证**：运行 `npm run test` 进行 Vitest 验证，9 个测试全部通过；运行 `npx tsc --noEmit` 进行 TypeScript 类型编译，完全无报错。
+
+### 3. PUSH 证据
+- 业务仓 (hp) 提交 commit hash: `3df6d27ba1ea94511d7fcce331b26f58f795908f`
+- 推送分支：`codex/hp014-backend-export-library-count` (origin)
