@@ -1,6 +1,6 @@
 # 任务卡 mx024 · quick-xml 安全债升级（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 打磨第四批：质量门禁与安全债、架构暴露 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：ccc-plan: medio-0 打磨第四批：质量门禁与安全债、架构暴露 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
@@ -45,8 +45,24 @@ quick-xml 安全债升级（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 1. 升级前后版本说明
+- **升级前**：`quick-xml = "0.36"` (直接依赖)，同时由于 `atom_syndication` / `rss` / `tauri` 等依赖树，间接依赖了 `quick-xml 0.41.0`。
+- **升级后**：统一升级为 `quick-xml = "0.41"` (即 0.41.0)，消除 known vulnerability DoS 风险。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. API 适配点说明
+1. **OPML 属性提取** (`src/backend/core/src/api/routes/rss.rs`):
+   - 旧代码使用 `unescape_value()` 提取并反转义属性值，该方法在启用 `encoding` 特性时被禁用。
+   - 新代码修改为通过 `decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, reader.decoder())` 安全可靠、无警告地进行解码与反转义。
+2. **Text 事件反转义** (`src/backend/core/src/api/routes/rss.rs` & `src/backend/core/src/infra/nfo_parser.rs`):
+   - `BytesText::unescape()` 在 0.41 中被移除。
+   - 新代码修改为 `reader.decoder().decode(&e)` 获取解码后的字符串，再调用 `quick_xml::escape::unescape(&decoded)` 来实现同等反转义逻辑。
+
+### 3. 测试与验证结果
+- 本地跑 `cargo check` 和 `cargo test -p medio-core` (包括 RSS、NFO 测试套件) 全量通过。
+- 移除了 `.github/workflows/ci.yml` 中对应的 `RUSTSEC-2026-0194` 与 `RUSTSEC-2026-0195` 忽略。
+
+### 4. Push 证据
+- 业务仓 `medio-0` 推送分支：`codex/mx024-quick-xml-security-upgrade`
+- Commit Hash: `4c2f1824b3d00ef6de87b1471e9bf3ec87a82d95`
