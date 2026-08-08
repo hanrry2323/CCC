@@ -1,6 +1,6 @@
 # 任务卡 ccc014 · 收敛历史已关闭卡的远端 codex 分支（OpenCode 执行）
 
-> 关联：CCC 治理 · 历史残留收敛（2026-08-08） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-08
+> 关联：CCC 治理 · 历史残留收敛（2026-08-08） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 
@@ -43,8 +43,45 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 实现说明
+我们严格按白名单及红线要求，对 CCC 仓 23 个已关闭的历史 codex 分支进行了全面复核和清理：
+1. **安全复核**：针对所有 23 个分支执行 `git log origin/main..origin/codex/<branch>` 与 `git diff --name-only origin/main...origin/codex/<branch>`，确认它们独有的提交和改动全部且仅包含对应任务卡的 markdown 文件（落点均在 `docs/dispatch/` 目录下），不包含任何对非 `docs/` 文件的真实独有改动。所有分支 100% 符合安全删除红线。
+2. **清理删除**：逐个执行 `git push origin :codex/<branch>` 成功删除了这 23 个远端分支，并运行 `git remote prune origin` 进行了远端修剪，使 `git branch -r | grep origin/codex/` 列表干净，未在清单内的任何其他分支及 `main` 分支均未受任何影响。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 详细清单与执行结果
+- **hp016-collector-pipeline-repair**: 已确认仅修改 `docs/dispatch/hp/hp016-collector-pipeline-repair.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/hp016-collector-pipeline-repair)
+- **mx009-atom-parser-library**: 已确认仅修改 `docs/dispatch/mx/mx009-atom-parser-library.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx009-atom-parser-library)
+- **mx013-architecture-doc-dev-guide**: 已确认仅修改 `docs/dispatch/mx/mx013-architecture-doc-dev-guide.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx013-architecture-doc-dev-guide)
+- **mx014-crawl-all-image-localization**: 已确认仅修改 `docs/dispatch/mx/mx014-crawl-all-image-localization.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx014-crawl-all-image-localization)
+- **mx015-crawl-all-error-writeback**: 已确认仅修改 `docs/dispatch/mx/mx015-crawl-all-error-writeback.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx015-crawl-all-error-writeback)
+- **mx016-pc-keyboard-shortcuts**: 已确认仅修改 `docs/dispatch/mx/mx016-pc-keyboard-shortcuts.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx016-pc-keyboard-shortcuts)
+- **mx017-rss-image-proxy**: 已确认仅修改 `docs/dispatch/mx/mx017-rss-image-proxy.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx017-rss-image-proxy)
+- **mx018-rss-reader-css-class**: 已确认仅修改 `docs/dispatch/mx/mx018-rss-reader-css-class.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx018-rss-reader-css-class)
+- **mx019-backend-coverage-core-tests**: 已确认仅修改 `docs/dispatch/mx/mx019-backend-coverage-core-tests.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx019-backend-coverage-core-tests)
+- **mx020-rss-save-transaction**: 已确认仅修改 `docs/dispatch/mx/mx020-rss-save-transaction.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx020-rss-save-transaction)
+- **mx021-scheduled-health-probe**: 已确认仅修改 `docs/dispatch/mx/mx021-scheduled-health-probe.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx021-scheduled-health-probe)
+- **mx022-opml-import-attribute-order**: 已确认仅修改 `docs/dispatch/mx/mx022-opml-import-attribute-order.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx022-opml-import-attribute-order)
+- **mx023-frontend-coverage-ci-gate**: 已确认仅修改 `docs/dispatch/mx/mx023-frontend-coverage-ci-gate.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx023-frontend-coverage-ci-gate)
+- **mx025-core-module-coupling-audit**: 已确认仅修改 `docs/dispatch/mx/mx025-core-module-coupling-audit.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/mx025-core-module-coupling-audit)
+- **xy016-video-pipeline-recon-html-report**: 已确认仅修改 `docs/dispatch/xy/xy016-video-pipeline-recon-html-report.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy016-video-pipeline-recon-html-report)
+- **xy017-storage-layout-normalize**: 已确认仅修改 `docs/dispatch/xy/xy017-storage-layout-normalize.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy017-storage-layout-normalize)
+- **xy019-prod-gap-fix**: 已确认仅修改 `docs/dispatch/xy/xy019-prod-gap-fix.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy019-prod-gap-fix)
+- **xy020-round2-legacy-inventory**: 已确认仅修改 `docs/dispatch/xy/xy020-round2-legacy-inventory.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy020-round2-legacy-inventory)
+- **xy021-purge-hardcode-old-rules**: 已确认仅修改 `docs/dispatch/xy/xy021-purge-hardcode-old-rules.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy021-purge-hardcode-old-rules)
+- **xy022-dynamic-path-derivation**: 已确认仅修改 `docs/dispatch/xy/xy022-dynamic-path-derivation.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy022-dynamic-path-derivation)
+- **xy023-env-credential-alignment**: 已确认仅修改 `docs/dispatch/xy/xy023-env-credential-alignment.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy023-env-credential-alignment)
+- **xy025-media-quality-acceptance**: 已确认仅修改 `docs/dispatch/xy/xy025-media-quality-acceptance.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy025-media-quality-acceptance)
+- **xy027-prm-gate-verifier**: 已确认仅修改 `docs/dispatch/xy/xy027-prm-gate-verifier.md`，已删除 (To github.com:hanrry2323/CCC.git - [deleted] codex/xy027-prm-gate-verifier)
+
+- **删除数**：23
+- **跳过数**：0
+
+### 测试结果
+运行 `git branch -r | grep origin/codex/` 列表为空（本卡分支 `ccc014-converge-stale-remote-branches` 待此次 commit + push 后远端可见，属于当前活跃分支）。
+
+### push 证据
+本卡修改及成果提交已 push 到本卡分支：
+- 分支名：`codex/ccc014-converge-stale-remote-branches`
+- 提交哈希：e2a4a03dbe7a1fdbead92055ebbdd4556ba861e0
