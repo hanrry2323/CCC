@@ -108,3 +108,25 @@
   - 清理及落库相关 commit `ebed30eef25554c361c74eecd402c100ff3c316f` (clean and merge short chunks, reduce count to 0) 已经合入并存在于 `main` 分支。
 - **CCC 平台仓 (ccc-dev-ws-hp017)**：
   - 任务卡状态更新已提交并 push 到分支 `codex/hp017-chunk-hp007`，Commit Hash 为 `c03682c5`。
+
+## 机审区
+
+**机审**：2017 机审席（独立审查）· 审查日期：2026-08-09 · 结论：**机审：通过**
+
+### 审查摘要
+按卡内验收标准 + 红线逐条独立取证（非仅读回写）：短 chunk 占比、备份/回滚、检索回归、只动存量短 chunk、M1 禁改业务仓、不直推 main 均有可复现证据。
+
+### 发现清单 / 逐项取证
+1. **验收 1（短 chunk<15%）→ 通过**：`bash scripts/qa/verify-k23.sh` 独立两次输出 `chunks=73420 null4=0 short_pct=0.0`；源库实测 `SHORT=0`，文档数 `DOCS=5058` 与回写一致。
+2. **验收 2（备份/回滚）→ 通过（附 P2 备注）**：备份表 `chunks_backup_hp009=2688` 行、`documents_backup_hp009=30` 行存在，`chunks_backup_hp009` 含精确 **445** 个原短 chunk（含 embedding），回滚可用；另每日冷备 `knowledge_2026-08-08.dump`（02:03，早于 02:58 清理 DB 运行前）为完整清理前快照，可回滚确认成立。
+   - **P2（过程完备性）**：回写引用的 `chunks_backup_hp009` 为前序 hp009 任务遗留表，未见本卡 **清理时点新建快照**（无 `_hp017` 命名表/转储）；恢复性仍成立，仅"先备份后清理"的时点证据不充分。建议后续落库任务在运行点留独立快照。
+3. **验收 3（检索回归）→ 通过**：`kb-search.py search "Siri AI"` 独立运行返回 RSS/baseline 命中，结果与回写一致；短 chunk 门禁不受影响（verify-k23 绿）。
+4. **红线 1（只动存量短 chunk）→ 通过**：全读 `scripts/clean_short_chunks.py`，其 DELETE 均在 `len(content)<50` 条件下，逻辑上无法删 ≥50 字符 chunk；备份表出现 315 个非短 chunk 缺失属 hp009 时期既有（源文件在盘、同批兄弟 doc 完整），非本卡清理所致。本次清理仅删 445 个目标短 chunk。
+5. **红线 3（M1 禁改业务仓）→ 通过**：DB 改动在 `hp@hp`(192.168.3.131)；hp 仓 commit 作者 `hp@local`；CCC 仓仅含任务卡文档。
+6. **红线/合规（不直推 main / 卡卫生）→ 通过**：worktree `codex/hp017-chunk-hp007` 仅 1 提交（卡文档）；状态「已回写」；未写 `## 验收区`/已关闭。`c03682c5` 与 HEAD `66288acb` 差异仅执行体自引 commit-hash 的补写，非缺陷。
+
+### 修复记录
+机审无需修复项；无 P0/P1。P2 备注（清理时点独立快照）已被每日冷备 `knowledge_2026-08-08.dump` 覆盖回滚能力，不阻塞通过，留档供后续卡改进。
+
+### 复审结论
+验收标准 4/4 达标、红线 1/3/4 无违背、检索与门禁回归正常；审查中发现项均为可复现取证，无 P0/P1。**机审：通过**。
