@@ -27,7 +27,12 @@ def _utcnow_iso() -> str:
 
 
 def read_card_state(log_dir: str | Path) -> dict[str, dict[str, Any]]:
-    """读全部运行时卡状态（last-wins）；文件缺失/坏行容错。"""
+    """读全部运行时卡状态（按字段 last-wins 合并）；文件缺失/坏行容错。
+
+    追加记录可能只携带部分字段（如收单后 ``infra_count=0`` 记录不含 state）。
+    若按「整条记录覆盖」，部分字段记录会顶掉先前写好的 state，导致
+    已回写卡被误判回待分派（引擎死循环重跑开发体、机审永不启动）。
+    """
     path = Path(log_dir) / STATE_REL
     out: dict[str, dict[str, Any]] = {}
     try:
@@ -47,7 +52,8 @@ def read_card_state(log_dir: str | Path) -> dict[str, dict[str, Any]]:
                 if "state" in rec and rec["state"] is None:
                     out.pop(cid, None)
                 else:
-                    out[cid] = rec
+                    # 按字段合并：缺省字段沿用历史，避免部分字段记录顶掉 state
+                    out.setdefault(cid, {}).update(rec)
     except OSError:
         logger.exception("读取运行时卡状态失败: %s", path)
     return out

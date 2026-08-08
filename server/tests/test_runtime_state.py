@@ -21,6 +21,17 @@ def test_write_and_read_last_wins(tmp_path: Path) -> None:
     assert rt["xy002"]["reason"] == "缺测试"
 
 
+def test_partial_field_record_does_not_clobber_state(tmp_path: Path) -> None:
+    """收单成功后紧随的 infra_count=0 记录（无 state 字段）不得顶掉已回写状态。"""
+    write_card_state(tmp_path, "xy027", state="已回写", retry_count=0)
+    write_card_state(tmp_path, "xy027", infra_count=0)
+
+    rt = read_card_state(tmp_path)
+    assert rt["xy027"]["state"] == "已回写"
+    assert rt["xy027"]["infra_count"] == 0
+    assert rt["xy027"]["retry_count"] == 0
+
+
 def test_clear_card_state_null_invalidation(tmp_path: Path) -> None:
     """测试 clear_card_state 追加 null 失效标记后，read_card_state last-wins 会让该卡无状态。"""
     write_card_state(tmp_path, "xy001", state="已回写", retry_count=1)
