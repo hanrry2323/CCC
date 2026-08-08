@@ -1,0 +1,60 @@
+diff --git a/scripts/_ccc_hygiene.py b/scripts/_ccc_hygiene.py
+index 9025f6d2..b8cd09c0 100644
+--- a/scripts/_ccc_hygiene.py
++++ b/scripts/_ccc_hygiene.py
+@@ -72,19 +72,51 @@ def _pipeline_from_task(task: dict[str, Any] | None) -> str:
+     return ""
+ 
+ 
++def scopes_are_docs_only(scopes: list[str]) -> bool:
++    """全部 scope 落在 docs/ 或纯 markdown 报告戳记（禁止强制全仓 pytest）。"""
++    if not scopes:
++        return False
++    for s in scopes:
++        p = str(s).strip().replace("\\", "/")
++        while p.startswith("./"):
++            p = p[2:]
++        if not p:
++            return False
++        if p.startswith("docs/") or p.endswith(".md"):
++            continue
++        return False
++    return True
++
++
+ def task_skips_forced_pytest(
+     ws: Path, tid: str, task: dict[str, Any] | None = None
+ ) -> bool:
+-    """ops/卫生 / .ccc-only scope：禁止 engine/tester 强制全仓 pytest。"""
++    """ops/卫生 / .ccc-only / docs-only scope：禁止 engine/tester 强制全仓 pytest。"""
+     pipeline = _pipeline_from_task(task)
+     if pipeline in ("ops", "hygiene", "board", "board_ops"):
+         return True
+     if task:
+         tags = {str(t).lower() for t in (task.get("tags") or [])}
+-        if tags & {"ops", "hygiene", "ccc-hygiene", "board_ops"}:
++        if tags & {"ops", "hygiene", "ccc-hygiene", "board_ops", "doc_only", "no-pytest"}:
+             return True
+         title = str(task.get("title") or "").lower()
+-        if any(k in title for k in ("卫生", "清场", "编排产物", "hygiene")):
++        if any(k in title for k in ("卫生", "清场", "编排产物", "hygiene", "文档戳记")):
+             return True
++    # result.json path=doc_only（短路径审测）
++    rp = Path(ws) / ".ccc" / "reports" / f"{tid}.result.json"
++    if rp.is_file():
++        try:
++            data = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
++            if isinstance(data, dict) and str(data.get("path") or "").strip().lower() in (
++                "doc_only",
++                "script_seed",
++                "board_ops",
++                "feature_seed",
++            ):
++                return True
++        except (OSError, json.JSONDecodeError) as exc:
++            _log.debug("hygiene result.json path probe: %s", exc)
+     scopes = _load_phase_scopes(ws, tid)
+-    return scopes_are_ccc_only(scopes)
++    if scopes_are_ccc_only(scopes):
++        return True
++    return scopes_are_docs_only(scopes)
