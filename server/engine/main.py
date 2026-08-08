@@ -867,13 +867,14 @@ def _archive_executor_log(log_path: Path) -> Path | None:
 
 
 def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
-    """校验卡文件的回写区（三态语义：无节放行、有节空白拦截、缺失凭证拦截）。
+    """校验卡文件的回写区（两态语义：无节放行、有节空白拦截）。
 
     返回 (ok, error_msg)。
     约定：
     1. 无 '## 回写区' 节 -> 直接放行（不适用；历史构造卡或旧卡兼容）。
-    2. 有 '## 回写区' 节但内容空白 -> 拦截打回。
-    3. 有内容但缺少 '分支=codex/{stem}' 或 'commit={sha}' 凭证字段 -> 拦截打回。
+    2. 有 '## 回写区' 节但内容空白 -> 拦截打回（防空提交糊弄）。
+    分支/commit 凭证不再强校验固定行：执行体以自由文本回写（如「push 到 codex/x 分支
+    Commit: sha」），分支存在性与提交证据由引擎收单侧的远端分支/提交校验兜底。
     """
     if not card_path.is_file():
         return True, ""  # 卡文件不存在则跳过以防异常
@@ -900,22 +901,6 @@ def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
     writeback_content = "\n".join(writeback_lines).strip()
     if not writeback_content:
         return False, "空回写卡（回写区无凭证内容），禁止空提交收单"  # 状态2：有节空白拦截
-
-    normalized_content = writeback_content.lower()
-    expected_branch_pattern = f"codex/{stem}"
-
-    # 支持 分支: codex/... 或 分支=codex/... or branch: codex/... etc.
-    branch_regex = r"(分支|branch)\s*[:：=]\s*(?:`|\*\*|)?" + re.escape(expected_branch_pattern)
-    has_branch = bool(re.search(branch_regex, normalized_content))
-
-    # 支持 commit: <sha> or hash: <sha> or 哈希: <sha> etc.
-    commit_regex = r"(commit|hash|提交|哈希)\s*[:：=]\s*(?:`|\*\*|)?([0-9a-fA-F]{7,40})"
-    has_commit = bool(re.search(commit_regex, normalized_content))
-
-    if not has_branch:
-        return False, f"缺少回写凭证：分支 (须含 分支=codex/{stem} 或等效声明)"  # 状态3：缺失凭证拦截
-    if not has_commit:
-        return False, "缺少回写凭证：commit (须含 commit=<短sha> 或等效提交引用)"
 
     return True, ""
 

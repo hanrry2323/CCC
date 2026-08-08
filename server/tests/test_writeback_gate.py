@@ -13,12 +13,11 @@ from server.engine.main import _dispatch_and_collect, _run_auto_worker, check_wr
 
 
 def test_check_writeback_credentials(tmp_path: Path):
-    """测试 check_writeback_credentials 回写凭证结构化三态校验功能：
+    """测试 check_writeback_credentials 回写区两态校验：
     1. 无回写区 -> 直接放行 (历史构造卡 / 旧卡兼容)
     2. 有回写区且为空 -> 拦截
-    3. 有回写区且有内容，但缺 '分支=' 凭证 -> 拦截
-    4. 有回写区且有内容，但缺 'commit=' 凭证 -> 拦截
-    5. 结构齐备 -> 成功通过
+    3. 有回写区且有内容（自由文本，无需强制 分支=/commit= 行）-> 放行，
+       分支/commit 凭证由引擎收单侧分支存在性校验兜底。
     """
     card_file = tmp_path / "xy101-wb.md"
 
@@ -34,33 +33,19 @@ def test_check_writeback_credentials(tmp_path: Path):
     assert ok is False
     assert "空回写卡" in err
 
-    # 3. 缺少分支
+    # 3. 有内容但缺结构化凭证行 -> 放行（自由文本回写，凭证由分支存在性兜底）
     card_file.write_text(
         "# 任务卡 xy101\n"
         "## 回写区\n"
         "**执行体**：demo\n"
-        "commit: aeb6c89\n",
+        "已完成，push 到 codex/xy101-wb 分支 Commit: aeb6c89\n",
         encoding="utf-8"
     )
     ok, err = check_writeback_credentials(card_file, "xy101-wb")
-    assert ok is False
-    assert "缺少回写凭证" in err
-    assert "分支" in err
+    assert ok is True
+    assert err == ""
 
-    # 4. 缺少 commit
-    card_file.write_text(
-        "# 任务卡 xy101\n"
-        "## 回写区\n"
-        "**执行体**：demo\n"
-        "分支: codex/xy101-wb\n",
-        encoding="utf-8"
-    )
-    ok, err = check_writeback_credentials(card_file, "xy101-wb")
-    assert ok is False
-    assert "缺少回写凭证" in err
-    assert "commit" in err
-
-    # 5. 凭证结构齐备
+    # 4. 结构化凭证行齐备同样放行
     card_file.write_text(
         "# 任务卡 xy101\n"
         "## 回写区\n"
