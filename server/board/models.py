@@ -63,26 +63,56 @@ def base_state(state: str) -> str:
 
 
 def machine_audit_passed_text(text: str) -> bool:
-    """卡正文任一个 ``## 机审区`` 节内是否含通过标记。
+    """卡正文任一个 ``## 机审区`` 节内是否含通过标记（A 判定真值）。
 
-    多轮机审会在同一节内追加多轮结论（历史不通过轮 + 通过轮），结论可远超
-    20 行。只认首个锚点 + 短窗口会把多轮卡误判为未通过 → approve-merge 拒绝
-    + 引擎反复重审（xy012 事故）。改为逐节检查至下一节标题，无行数上限。
+    判定规则：
+    1. 只认结论行：忽略表格行（以 `|` 开头的行）、小节标题（`###` 开头）、纯描述文本。
+    2. 多轮追加：同一节内若有多轮结论，以该节内最后出现的结论行为准。
+    3. 噪声排除：不认 `✅` 字符、`通过项`、`已闭环` 等，且「不通过」结论行（如 `机审：不通过`）优先于「通过」解析。
+    4. 任一 `## 机审区` 节最后结论为通过 → True。
     """
     if not text:
         return False
     lines = text.splitlines()
     n = len(lines)
-    for i, line in enumerate(lines):
-        if not line.strip().startswith("## 机审区"):
-            continue
-        for j in range(i + 1, n):
-            cur = lines[j]
-            if cur.strip().startswith("## "):
-                break  # 下一节标题
-            if "机审：通过" in cur or "✅" in cur or "判定：通过" in cur:
-                return True
-    return False
+    any_section_passed = False
+
+    i = 0
+    while i < n:
+        line_stripped = lines[i].strip()
+        if line_stripped.startswith("## 机审区"):
+            last_verdict = None  # None, "通过", or "不通过"
+            j = i + 1
+            while j < n:
+                cur = lines[j]
+                cur_stripped = cur.strip()
+                if cur_stripped.startswith("## "):
+                    break  # 下一主节标题
+
+                # 忽略表格行、小节标题
+                if cur_stripped.startswith("|") or cur_stripped.startswith("###"):
+                    j += 1
+                    continue
+
+                # 规避 markdown 加粗干扰
+                line_normalized = cur_stripped.replace("**", "").replace("*", "")
+
+                # 匹配形如 `机审：通过` / `结论：通过` / `机审：不通过` / `结论：不通过`
+                # 采用 (不通过|通过) 确保「不通过」优先匹配，避免被「通过」子串截断
+                match = re.search(r'(机审|结论)\s*[:：]\s*(不通过|通过)', line_normalized)
+                if match:
+                    last_verdict = match.group(2)
+
+                j += 1
+
+            if last_verdict == "通过":
+                any_section_passed = True
+
+            i = j
+        else:
+            i += 1
+
+    return any_section_passed
 
 
 def board_column(state: str, machine_audit_ok: bool) -> str:

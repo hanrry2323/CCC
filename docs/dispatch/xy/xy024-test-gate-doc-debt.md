@@ -1,6 +1,6 @@
 # 任务卡 xy024 · 遗留治理③：测试门禁修复与文档除债（P0-FLOW 前置）（OpenCode 执行）
 
-> 关联：ccc-plan: xy PRM 批2：测试门禁修复与文档除债 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：ccc-plan: xy PRM 批2：测试门禁修复与文档除债 · 执行体：OpenCode · 验收：OpenCode · 状态：打回（机审未通过） · 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 
@@ -47,6 +47,13 @@
 ## 人工批注
 
 （老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+
+升级批次 1 复核：打回（机审未通过，且看板假阳性已修）。理由：
+- 测试门禁验收标准未被真实运行满足。实测 pytest 全量 3 failed，退出码非 0。
+- bgm_tags 逻辑失败属于源码范围。需：
+  1. 修复 `tests/video/test_bgm_tags.py::TestMatchBgm::test_exclude_avoids_duplicate` 逻辑。
+  2. 针对 node 缺失带来的 openclaw 插件加载环境失败，在回写区注明环境性失败原因或修补机器 node 环境。
+  3. 如实修正回写区关于 pytest exit_code 和 passed/failed 数量结论，对齐真实情况。
 
 ## 回写区
 

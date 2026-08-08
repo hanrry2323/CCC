@@ -928,23 +928,47 @@ def _dispatch_and_collect(
             # 机械门禁（worktree 派发）：必须有新 commit 且相对 origin/main 非空 diff。
             # 不再承认「仅卡头已回写」为产物（防未写码假成功）。机审路径 skip_product_gate。
             if worktree_path and not skip_product_gate:
-                has_commit = _worktree_has_new_commit(worktree_path)
-                has_diff = _worktree_has_nonempty_diff(worktree_path)
-                if not (has_commit and has_diff):
-                    logger.warning(
-                        "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
-                        work.id, worktree_path, has_commit, has_diff,
-                    )
-                    _emit(False, 0, "ok", [
-                        f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
-                        f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
-                        f"(commit={has_commit}, diff={has_diff})"
-                    ])
-                    return False, [
-                        f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
-                        f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
-                        f"(commit={has_commit}, diff={has_diff})"
-                    ]
+                remote_passed = False
+                if work.card_path:
+                    card_id_slug = Path(work.card_path).stem.lower()
+                    remote_branch = f"origin/codex/{card_id_slug}"
+                    try:
+                        res_show = subprocess.run(
+                            ["git", "show", f"{remote_branch}:{work.card_path}"],
+                            capture_output=True,
+                            text=True,
+                            cwd=worktree_path,
+                            check=False
+                        )
+                        if res_show.returncode == 0:
+                            from server.board.models import machine_audit_passed_text
+                            if machine_audit_passed_text(res_show.stdout):
+                                remote_passed = True
+                                logger.info(
+                                    "远端凭证成立: %s 机审已通过，忽略本地 commit/diff 校验",
+                                    remote_branch
+                                )
+                    except Exception as e:
+                        logger.warning("检查远端凭证异常: %s", e)
+
+                if not remote_passed:
+                    has_commit = _worktree_has_new_commit(worktree_path)
+                    has_diff = _worktree_has_nonempty_diff(worktree_path)
+                    if not (has_commit and has_diff):
+                        logger.warning(
+                            "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
+                            work.id, worktree_path, has_commit, has_diff,
+                        )
+                        _emit(False, 0, "ok", [
+                            f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
+                            f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
+                            f"(commit={has_commit}, diff={has_diff})"
+                        ])
+                        return False, [
+                            f"exit 0 但无有效产物（机械门禁）: worktree {worktree_path} "
+                            f"须同时满足 origin/main..HEAD 有新 commit 且 diff 非空 "
+                            f"(commit={has_commit}, diff={has_diff})"
+                        ]
             _emit(True, 0, "ok")
             return True, []
         _emit(
