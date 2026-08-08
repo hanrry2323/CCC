@@ -48,8 +48,12 @@ if [[ ! -f "${MARKER_FILE}" ]]; then
     NEED_SYNC=true
     CHANGES="首次运行（未找到标记文件 ${MARKER_FILE}）"
 else
-    # 查找是否有更新的文件（排除 .index 和标记文件本身）
-    CHANGED_FILE=$(find "${KB_DIR}" -path "*/.index" -prune -o -path "*/.*" -prune -o -newer "${MARKER_FILE}" -print | head -n 1)
+    # 查找是否有更新的文件（排除 .index 和标记文件本身）。
+    # 不用 `find | head -1`：批量新增条目时 find 输出多行，head 提前关闭管道触发 SIGPIPE(141)，
+    # 令脚本在重建索引前即被终止。改由命令替换一次性收齐 find 输出、再用 bash 参数展开取首行，
+    # find 全程无管道读方提前关闭，杜绝 SIGPIPE。
+    CHANGED_ALL=$(find "${KB_DIR}" -path "*/.index" -prune -o -path "*/.*" -prune -o -newer "${MARKER_FILE}" -print)
+    CHANGED_FILE="${CHANGED_ALL%%$'\n'*}"  # 取首个变更文件（换行分片取首段）
     if [[ -n "${CHANGED_FILE}" ]]; then
         NEED_SYNC=true
         CHANGES="检测到文件变更: ${CHANGED_FILE}"
