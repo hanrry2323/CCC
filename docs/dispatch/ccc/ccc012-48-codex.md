@@ -1,6 +1,6 @@
 # 任务卡 ccc012 · 48 分叉 codex 分支人工核验清理（Claude Code 执行）
 
-> 关联：升级批次 3 生命周期 · 执行体：Claude Code · 验收：Claude Code · 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-08
+> 关联：升级批次 3 生命周期 · 执行体：Claude Code · 验收：Claude Code · 状态：已关闭· 派发：manual · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 
