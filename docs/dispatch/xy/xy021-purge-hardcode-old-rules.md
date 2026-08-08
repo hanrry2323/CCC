@@ -1,6 +1,6 @@
 # 任务卡 xy021 · 硬编码/旧 OpenCode 规则/人名消灭（P0-PATH）（OpenCode 执行）
 
-> 关联：ccc-plan: xy PRM 批1：硬编码旧规则消灭 / 动态推导 / 凭据补全 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：ccc-plan: xy PRM 批1：硬编码旧规则消灭 / 动态推导 / 凭据补全 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 
