@@ -2312,3 +2312,18 @@ LLM 输出里的弱关键词（timeout 等）不能作为故障归因的唯一�
 看板机审列状态标签（审核中/冷却中/修复中/待审）。
 
 **如何应用**：长耗时后台步骤必须有独立超时；队列中的「进行中」状态要能区分各阶段，避免静默卡死。
+
+## Lesson 54：M1 smbd 无连接空转烧 CPU（SMB 文件共享自旋）
+
+**问题**：M1 整机卡顿，实测 `smbd`（PID 29898）CPU 590-650%（约 6 核满载），
+从 8/6 10:46 连续空转累计 170+ 分钟 CPU。
+
+**根因**：macOS 系统级 SMB 服务（launchd com.apple.smbd）在**无任何网络连接、无共享文件访问**时自旋。
+M1 只「挂载」HP 的 3tb-hd（主动访问别人），从不对外提供共享——但 launchd 仍拉起 smbd 空转。
+
+**修复（2026-08-08）**：`sudo launchctl bootout system/com.apple.smbd` 停掉服务；CPU 立即回落到空闲（68% idle）。
+恢复命令：`sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.smbd.plist`。
+
+**如何应用**：遇到「不知道谁在烧 CPU」先 `ps aux | sort -k3 -rn | head` 定位；
+系统级服务（root）异常高 CPU 且无连接 → 大概率自旋 bug，查 launchctl 状态后 bootout 止血。
+M1 无对外文件共享需求，该服务保持停用。
