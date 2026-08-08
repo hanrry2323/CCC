@@ -33,8 +33,13 @@ def test_clear_card_state_null_invalidation(tmp_path: Path) -> None:
     assert "xy001" not in rt2  # 已被失效，视为不存在
 
 
-def test_store_ignores_sidecar_for_closed_rejected_todo_cards(tmp_path: Path) -> None:
-    """测试 FileBoardStore 派发队列：若磁盘状态为已关闭/打回/待分派，忽略 sidecar 流程态。"""
+def test_store_runtime_mode_and_override_rules(tmp_path: Path) -> None:
+    """测试 FileBoardStore 的覆盖与失效判定规则：
+
+    1. 磁盘「打回」 + sidecar「已回写」 -> 忽略 sidecar，保持「打回」（P2 场景）
+    2. 磁盘「已关闭」 + sidecar「已回写」 -> 忽略 sidecar，保持「已关闭」
+    3. 磁盘「待分派」 + sidecar「执行中」 -> 允许覆盖，升级为「执行中」（返工核心）
+    """
     from server.engine.store import FileBoardStore
     from server.engine.task import State
     from server.engine.dispatch import ExecutorRegistry
@@ -42,35 +47,63 @@ def test_store_ignores_sidecar_for_closed_rejected_todo_cards(tmp_path: Path) ->
     # 1. 模拟磁盘卡片
     card_dir = tmp_path / "docs" / "dispatch" / "xy"
     card_dir.mkdir(parents=True)
-    card_file = card_dir / "xy999-test.md"
-    card_file.write_text(
-        "# 任务卡 xy999 · 测试\n"
-        "> 关联：TEST · 执行体：demo · 验收：Codex · 状态：打回 · 日期：2026-08-08\n"
-        "## 目标\nx\n",
+
+    # 卡片1：磁盘为打回
+    (card_dir / "xy101-rejected.md").write_text(
+        "# 任务卡 xy101 · 测试\n"
+        "> 关联：TEST · 执行体：demo · 状态：打回 · 日期：2026-08-08\n",
+        encoding="utf-8"
+    )
+    # 卡片2：磁盘为已关闭
+    (card_dir / "xy102-closed.md").write_text(
+        "# 任务卡 xy102 · 测试\n"
+        "> 关联：TEST · 执行体：demo · 状态：已关闭 · 日期：2026-08-08\n",
+        encoding="utf-8"
+    )
+    # 卡片3：磁盘为待分派
+    (card_dir / "xy103-todo.md").write_text(
+        "# 任务卡 xy103 · 测试\n"
+        "> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-08\n",
         encoding="utf-8"
     )
 
-    # 2. 模拟 sidecar：残留「已回写」
+    # 2. 模拟 sidecar
     log_dir = tmp_path / "logs"
-    write_card_state(log_dir, "xy999", state="已回写")
+    write_card_state(log_dir, "xy101", state="已回写")
+    write_card_state(log_dir, "xy102", state="已回写")
+    write_card_state(log_dir, "xy103", state="执行中")
 
     # 3. 构造 FileBoardStore 并获取任务
     reg = ExecutorRegistry(())
     store = FileBoardStore(tmp_path / "docs" / "dispatch", reg, log_dir=log_dir)
-    works = store.list_work()
-    assert len(works) == 1
-    # 磁盘是「打回」，即使 sidecar 说是「已回写」，也应该以磁盘为准判定为 State.REJECTED
-    assert works[0].state == State.REJECTED
+
+    works = {w.id: w for w in store.list_work()}
+    assert len(works) == 3
+
+    # 规则 1：磁盘打回，忽略 sidecar
+    assert works["xy101"].state == State.REJECTED
+
+    # 规则 2：磁盘已关闭，忽略 sidecar
+    assert works["xy102"].state == State.CLOSED
+
+    # 规则 3：磁盘待分派，允许升级覆盖为执行中
+    assert works["xy103"].state == State.RUNNING
 
 
-def test_compose_board_items_ignores_sidecar_for_closed_rejected_todo_cards(tmp_path: Path) -> None:
-    """测试 _compose_board_items：若磁盘状态为已关闭/打回/待分派，看板合成忽略 sidecar 流程态。"""
+def test_compose_board_items_override_rules(tmp_path: Path) -> None:
+    """测试 _compose_board_items 在看板合成时的覆盖原则：
+
+    1. 磁盘「打回」 + sidecar「已回写」 -> 看板显示「打回」
+    2. 磁盘「已关闭」 + sidecar「已回写」 -> 看板显示「已关闭」
+    3. 磁盘「待分派」 + sidecar「已回写」 -> 看板显示「已回写」
+    """
     from server.board.models import BoardItem
     from server.web.server import _compose_board_items
 
     # 1. 构造 BoardItem（代表磁盘数据）
     items = [
         BoardItem(id="hp009", title="hp009-task", state="打回"),
+        BoardItem(id="mx024", title="mx024-task", state="已关闭"),
         BoardItem(id="xy026", title="xy026-task", state="待分派"),
     ]
 
@@ -78,13 +111,20 @@ def test_compose_board_items_ignores_sidecar_for_closed_rejected_todo_cards(tmp_
     os.environ["EXECUTOR_LOG_DIR"] = str(tmp_path)
     try:
         write_card_state(tmp_path, "hp009", state="已回写")
+        write_card_state(tmp_path, "mx024", state="已回写")
         write_card_state(tmp_path, "xy026", state="已回写")
 
         composed = _compose_board_items(items)
-        assert len(composed) == 2
-        # 看板合并结果必须显示磁盘真实状态，而不是 sidecar 残留状态
+        assert len(composed) == 3
+
+        # 1. 磁盘打回：不被覆盖
         assert composed[0].state == "打回"
-        assert composed[1].state == "待分派"
+
+        # 2. 磁盘已关闭：不被覆盖
+        assert composed[1].state == "已关闭"
+
+        # 3. 磁盘待分派：被覆盖为已回写
+        assert composed[2].state == "已回写"
     finally:
         os.environ.pop("EXECUTOR_LOG_DIR", None)
 
