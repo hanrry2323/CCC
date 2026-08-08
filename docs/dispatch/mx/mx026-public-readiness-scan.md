@@ -1,6 +1,6 @@
 # 任务卡 mx026 · 公开化前期准备：敏感信息扫描与铺垫（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 公开化前期准备：敏感信息扫描与铺垫 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：ccc-plan: medio-0 公开化前期准备：敏感信息扫描与铺垫 · 执行体：OpenCode · 验收：OpenCode · 状态：打回 · 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
@@ -56,6 +56,8 @@ medio-0 公开化前期准备（铺垫卡，不破坏、不切换）：全仓敏
 - DIVERGED 阻断属旧机制问题；批次 3 已实现「分叉 → 干净重建（worktree remove --force + branch -D + 从 origin/main 重建）」，升级后不再有该阻断。
 - 如需执行本卡目标（medio-0 公开化扫描/方案/LICENSE），按升级后新机制重新出卡（新卡号）或经引擎重新派发；本卡打回为终态，不再自动拉起。
 
+
+重派复核（2026-08-08 处置）：打回（执行体未产出，停循环）。理由：重派首轮执行体在 worktree 内 git 操作被本地改动冲突阻断（local changes would be overwritten），回写区始终为空、无产物。该卡目标（medio-0 公开化扫描/方案/LICENSE）如需执行，建议人工窗口在业务仓侧直接完成，或由平台侧确认 worktree 重建机制后再重派。打回为终态，不自动重试。
 ## 回写区
 
 **执行体**：OpenCode · 日期：

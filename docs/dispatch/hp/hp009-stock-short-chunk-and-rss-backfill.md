@@ -1,6 +1,6 @@
 # 任务卡 hp009 · 存量短 chunk 清理与 rss 归属落库执行（OpenCode 执行）
 
-> 关联：ccc-plan: HP 知识底座落地推进（存量落库/采集管道固化/qb 归属修正） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 知识底座落地推进（存量落库/采集管道固化/qb 归属修正） · 执行体：OpenCode · 验收：OpenCode · 状态：打回 · 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
@@ -48,6 +48,8 @@ hp009 数据操作已实际落库（短 chunk 445 已合并归零、rss 30 篇�
   3. 将 clean_short_chunks 提交以 hp@local 作者改写。
   4. 修正 CCC 回写 push 证据哈希为真实 origin tip。
 
+
+重派复核（2026-08-08 处置）：打回（环境阻塞，停循环）。理由：HP 知识库 PostgreSQL 仅在 M1（/data/knowledge，本机 5432），2017 无 PG——执行体在 2017 worktree 连 127.0.0.1:5432 必拒绝，restore/verify 验证无法完成（psycopg2 Connection refused）。本卡需架构决策：hp 验证类卡改在 M1 侧执行，或 2017 部署 PG/指向 M1 实例后重派。打回为终态，不自动重试。
 ## 回写区
 
 **执行体**：OpenCode · 日期：
