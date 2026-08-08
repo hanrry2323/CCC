@@ -56,4 +56,11 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 - 机审与终验只认验收席角色（工具绑定见 qx-map `ide/tool-roles.md`）。  
 - **读写文档必须按 DOC-PROTOCOL**；**入口文档零硬编码**（绝对路径/IP/端口不进 `AGENTS.md`/`CLAUDE.md`/`CURSOR.md`，门禁 `scripts/check-entry-docs.py`）。
 
+## 工作收口（硬 · 不做完不交）
+
+任何实质性工作完成后，自动收口三步：
+1. **记录**：出卡→卡落 `docs/dispatch/<prefix>/`；方案→按 DOC-PROTOCOL 落对应目录
+2. **提交**：`git add` 显式文件 → `git commit`（写明做了什么）；半成品不提交
+3. **推送**：`git push`；半成品不推
+
 详情：`docs/DOC-PROTOCOL.md` · `docs/product/card-hub-manual.md` · `docs/product/hub-context-sop.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md` · `references/red-lines.md`。
