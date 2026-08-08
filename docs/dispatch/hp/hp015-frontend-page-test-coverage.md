@@ -85,3 +85,31 @@
 ### Push 证据 (Commit Hash)
 - hp 业务仓: `39284d996e40aa060edadfc8b48c6f0557f6f2cb`
 - 分支: `codex/hp015-frontend-page-test-coverage`
+
+## 机审区
+
+**机审执行体**：Claude Code（2017 机审席） · 日期：2026-08-08
+
+### 机审：通过
+
+### 审查摘要
+独立审查 hp015 任务卡（验收方视角，不依赖执行体自述）。卡内 5 项验收标准逐条核验：
+
+1. **AC#1 依赖与测试脚本** — `vitest.config.ts` 已配置 jsdom + jest-dom setup；`package.json` 已有 `test: vitest run` 与 RTL/jest-dom/vitest/jsdom 依赖（此前提交已就绪，本卡复用，符合「若 vitest 已配置则复用」）。
+2. **AC#2 页面渲染测试** — 5 个测试文件覆盖：Dashboard 真数据渲染（`claude-code/docs/qb`）、Dashboard 空态、Search 空结果「没有找到 q 的结果」且无 fallback 假数据、Library status/tag/project 参数透传 + 空态、Document 404 空态。全部为真实 render 断言，非空壳。
+3. **AC#3 交互测试** — 主题切换 light/dark/auto 持久化 localStorage(`hp-kb-theme`)与 DOM data-theme（与 store.ts:29-53 实际实现逐行核验一致，非伪造 mock）；Spotlight 开/关（Esc/overlay）；NoteModal 及 Document 笔记保存/删除调用真实 `saveNote`/`deleteNote` api。
+4. **AC#4 全绿** — 独立运行 `npm test`：6 文件 21 tests 全绿（api 9 + 新增 12）；`npx tsc --noEmit` 退出码 0。页面组件被 render 测试真实占用（覆盖率依赖 @vitest/coverage-v8 未装，报告文件未落盘，但页面覆盖由通过断言证实，非阻塞）。
+5. **AC#5 分支与回写证据** — hp 仓 commit `39284d9` 与本机 HEAD、`origin/codex/hp015-frontend-page-test-coverage` 三方一致，已 push。回写区含实现说明、测试结果、commit hash。
+
+### 发现清单
+- **P0**：无
+- **P1**：无
+- **P2/提示**：
+  - `interaction.test.tsx` 主题测试同时断言 `useUI.getState().theme`（耦合 store 内部态），但也断言了可观察的 DOM `data-theme` 与 localStorage，行为级断言充分，可接受。
+  - `document.test.tsx` 用 `mockResolvedValueOnce` 顺序链，隐含对调用次序的依赖，稍脆但当前通过，可后续优化。
+
+### 修复记录
+无（未发现 P0/P1，未产生修复 commit）。
+
+### 复审结论
+所有验收标准已满足，测试与类型独立复验通过，push 证据一致，无批注待落实（`## 人工批注` 为空占位）。**机审通过**，可进入人审「合入批准」。
