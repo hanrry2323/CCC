@@ -1,6 +1,6 @@
 # 任务卡 ccc012 · 48 分叉 codex 分支人工核验清理（Claude Code 执行）
 
-> 关联：升级批次 3 生命周期 · 执行体：Claude Code · 验收：Claude Code · 状态：待分派 · 派发：manual · 项目：ccc · 日期：2026-08-08
+> 关联：升级批次 3 生命周期 · 执行体：Claude Code · 验收：Claude Code · 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 
@@ -44,7 +44,19 @@
 
 ## 回写区
 
-**执行体**：Claude Code · 日期：
+**执行体**：Claude Code · 日期：2026-08-08
+
+核验完成（2026-08-08，2017 侧人工核验+执行）：本地 codex 分支 48 → 12。
+
+**删除 36 支**（14 支：远端已删+无独立提交=纯垃圾；22 支：远端在备份+已关闭卡残留）：
+- flow-real-001, t52-auto-base, t53-console-roadmap-fix, t54-auto-naming, t57-big-small-cards, t58-board-refactor, t59-conversation-as-workflow, t59-engine-parallel, t61-task-flow-linked, t63-nginx-entry, t64-engine-auto-worktree, t65-dual-shell-align, t66-card-format, t69-release-engine-plist-rebuild
+- hp016, mx009, mx013-mx023(10), mx025, xy016, xy017, xy019-xy023(5), xy025
+
+**保留 12 支**：
+- 5 支 worktree 占用（执行中/通用 ws）：hp009, mx026, xy024, xy026, t67-deploy-race-guard
+- 7 支远端已删+有独立提交（唯一副本，main 无）：t51-kb-mcp-optimize(5), t55-index-layer(1), t56-card-components(5), t60-console-cockpit(1), t62-archive-review(2), t71-fix-server-p0(4), t72-desktop-p0(3)
+
+探针：`git branch | grep -c 'codex/'` = 12；远端/worktree/卡文件零触碰。
 
 ## 批注落实
 
