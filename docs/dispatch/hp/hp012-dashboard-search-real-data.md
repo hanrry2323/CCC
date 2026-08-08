@@ -1,6 +1,6 @@
 # 任务卡 hp012 · Dashboard 与 Search 页面真实数据接入（清假数据）（OpenCode 执行）
 
-> 关联：ccc-plan: HP 前端里程碑开发（真数据接入/后端接口/空态/测试，目标 75+ 分） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：ccc-plan: HP 前端里程碑开发（真数据接入/后端接口/空态/测试，目标 75+ 分） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
@@ -41,8 +41,32 @@ Dashboard 与 Search 页面真实数据接入（清假数据）（ccc-plan 切�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 实现说明
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **Dashboard.tsx 真实数据接入**
+   - 移除了无条件渲染的假数据 fallback 常量：`FALLBACK_PROJECTS`、`FALLBACK_TAGS`、`FALLBACK_RECENT` 和 `FALLBACK_TIMELINE`。
+   - 引入并并行调用了 `fetchTags()` 和 `fetchLibrary({ size: 4 })` 接口。
+   - 在页面上完全渲染真实获取的 `projects`（活跃项目）、`tags`（热门标签）和 `recentDocs`（最近更新）。
+   - 最近动态渲染 fetch 的真实 timeline。
+   - 对热门标签实现了基于最大 count 的动态大小计算（从 1 到 5 的 size）。
+
+2. **Search.tsx 清理与重构**
+   - 删除了 `FALLBACK_RESULTS`、`FALLBACK_HISTORY`、`FALLBACK_SUGGESTIONS` 等编假数据。
+   - 实现无结果时的「无结果」空态展现。
+   - 移除了搜索耗时 0.18s 和 bge-m3 引擎等写死假值。通过 `performance.now()` 测量真实搜索耗时，并动态渲染当前选择的搜索模式驱动说明。
+   - 接入了真正的搜索历史记录（利用 localStorage 持久化并允许清空）。
+
+3. **异常与错误处理**
+   - 在 Dashboard 和 Search 页面上，使用 safeJson 返回的 `_warning` 并在后端不可达/报错时渲染真实的错误 banner。
+
+### 测试与验证结果
+
+- 执行 `npm run build`：成功通过类型检查和编译。
+- 执行 `npm run test`：`src/api.test.ts` 9 个测试点全部一次性通过。
+
+### push 证据 (commit hash)
+
+- **业务仓 (hp)** Branch: `codex/hp012-dashboard-search-real-data`
+- **Commit Hash**: `0dbbf56b0d0e3dfe5f8f943169b1644f09d8dc21`
