@@ -136,3 +136,23 @@ Loop Observer 调度启用 + 报告路径治理（ccc-plan 切片）。
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过**
+
+- 审查人：2017 机审席 · 日期：2026-08-10
+
+**审查摘要**：
+
+- **范围合规**：改动仅限卡声明范围（`server/engine/observer.py`、`server/deploy/com.ccc.scheduler.plist`、任务卡文件），无越界。
+- **代码质量/架构**：
+  - `observer.py` 巡查报告改为「优先落 DATA_DIR/observer/，仅内容变化才写 docs/notes/」，消除 patrol report 的 git churn，符合卡验收标准 2/3；快照/`last-run.json` 写入逻辑未受影响。
+  - 报告写入均 try/except 兜底，observer 写失败时 `write_report` 回退到 observer 目录，边界安全。
+  - plist 将硬编码 `python3`/`fan` 统一为 `$PYTHON_BIN`/`$USERNAME` 模板占位符，与文件既有 `$PROJECT_ROOT` 等占位符一致（该文件本为部署前渲染的模板）。
+  - 机审补一处注释完善：plist 头部占位变量说明新增 `$PYTHON_BIN` 一行（`ce754fd6` 后续提交）。
+- **测试**：`test_observer.py` 14 passed，与回写区声明一致。
+- **维护区**（Doc-Gate）：四问均已逐项勾选并填实质说明，非占位；方案同步 [是]、教训 [无]、档案 [否]、线路图 [否] 声明与卡改动一致，工件（test_observer.py、.gitignore squad 规则）真实存在。
+- **人工批注**：无，批注落实已填「无人工批注」。
+
+无原则性红线问题，通过。
