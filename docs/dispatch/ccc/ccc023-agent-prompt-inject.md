@@ -137,3 +137,18 @@ Commit Hash: 09b557674271cbd0968a54a3bd77712666052b60
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过**
+
+**审查方**：2017 机审席（Claude Code 验收席） · 日期：2026-08-09
+
+### 审查摘要
+
+- **范围合规**：改动限于 `server/board/prompt_inject.py`（核心注入逻辑）与 `server/tests/test_engine_main.py`（补 3 用例）；红线 #1 所列禁改文件（dispatch.py / executors.json / main.py 派发 / validate.py）均未触碰。
+- **架构合理**：`build_executor_hint` 新增 `card_content` 入参，数据源抽取封装为 `_parse_related_field` / `_parse_plan_ref` / `_get_plan_summary` / `_get_project_recent_lines` 四个职责单一纯函数，沿用库内 `| None` / `list[` 类型惯例；`inject_hints` 已把卡文件全文传入，main.py 消费者仍经 `_read_card_section` 读卡内已注入段，兼容无回归。
+- **边界安全**：方案缺失→`return ""`、README 缺失→`[]`、读取异常 catch、摘要 400 字符截断，全部优雅降级不抛错；实测注入产出（卡内 `## 执行提示` 含「关联方案摘要」「项目线路/近况」行）符合验收标准 #1，三用例覆盖「方案编号→注入 / 占位→不注入 / 方案不存在→不抛错」。
+- **Doc-Gate**：维护区四问逐项勾选 [是/是/否/否] 并填非占位说明；批注落实节标注「无批注」，符合卡头 `## 人工批注` 为空的事实。
+- **补充说明**：本卡新建 `docs/projects/ccc/plans/011-loop-observer-architecture.md`——出卡时 ccc023-026 已引用 ccc-plan-011 但方案文件缺位，此为执行体补完出卡遗留，内容与卡目标一致，非系统性越界，判定为合理而不打回。
+- **可修点（不阻塞）**：README「线路/近况」标题仅覆盖 `## 线路 / 近况` 与 `## 线路近况` 两种变体，未覆盖无空格 `## 线路/近况`；属边界苛求，非红线，留待后续优化即可。
