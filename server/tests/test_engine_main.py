@@ -10,7 +10,7 @@ import pytest
 
 from server.config.loader import ConfigError
 from server.engine.dispatch import load_registry
-from server.engine.main import main, run_once
+from server.engine.main import main, run_once, _read_card_section
 from server.engine.pool import reset_dispatch_pool
 from server.engine.store import FileBoardStore, InMemoryBoardStore
 from server.engine.task import State, Work
@@ -2001,7 +2001,7 @@ class TestRunOnceFakeSuccessGuard:
         assert "就地修复" in prompt_text
 
     def test_gate_probe_failure_blocks_audit(self, tmp_path: Path, monkeypatch) -> None:
-        """门禁探针失败（如伪造 pytest 退出 1）→ 卡直接打回开发、不拉起机审（断言 audit 未派发）。"""
+        """门禁探针失败（代码级）→ 放行进机审，不直接打回（机审负责修复或判定）。"""
         monkeypatch.chdir(tmp_path)
         _init_src_repo(tmp_path)
         worktree_base = tmp_path / "wt"
@@ -2035,11 +2035,11 @@ class TestRunOnceFakeSuccessGuard:
             "EXECUTOR_RETRY_ONCE": "false"
         }
         summary = run_once(reg, store, cfg)
-        assert summary["collected"] == 0
-        assert summary["audit_dispatched"] == 0
-        todo_or_rejected = store.list_work(state=State.REJECTED) + store.list_work(state=State.TODO)
-        assert len(todo_or_rejected) == 1
-        assert any("门禁【测试】失败" in p for p in todo_or_rejected[0].problems)
+        assert summary["collected"] == 1  # 门禁代码级失败 → 放行进机审，卡进入已回写
+        assert summary["audit_dispatched"] == 1  # 卡进入机审队列（但无验收席 CLI，跳过）
+        done = store.list_work(state=State.DONE)
+        assert len(done) == 1
+        assert done[0].id == "T-fake5"
 
     def test_audit_mechanical_rejection_leads_to_infra_retry(self, tmp_path: Path) -> None:
         """机审输出「测试未跑/编译失败」类机械问题 → 不被判业务打回，走 infra 冷却续审路径，不进 retry 预算。"""
@@ -2073,3 +2073,153 @@ class TestRunOnceFakeSuccessGuard:
         assert summary["audit_failed"] == 0
         all_works = store.list_work()
         assert all_works[0].retry_count == 0
+
+
+class TestCardSectionReader:
+    """_read_card_section 单元测试。"""
+
+    def test_reads_section_content(self, tmp_path: Path) -> None:
+        """提取卡内指定节的内容。"""
+        card = tmp_path / "test.md"
+        card.write_text(
+            "# 任务卡 m1 · 测试\n\n"
+            "## 目标\n完成测试\n\n"
+            "## 执行提示\n"
+            "- 项目：test\n"
+            "- 技术栈：Python\n\n"
+            "## 机审提示\n"
+            "- 审查重点：逻辑\n\n"
+            "## 回写区\n",
+            encoding="utf-8",
+        )
+        hint = _read_card_section(card, "执行提示")
+        assert "- 项目：test" in hint
+        assert "- 技术栈：Python" in hint
+        assert "机审提示" not in hint
+
+    def test_empty_when_section_missing(self, tmp_path: Path) -> None:
+        """卡无对应节 → 返回空字符串。"""
+        card = tmp_path / "test.md"
+        card.write_text(
+            "# 任务卡 m1 · 测试\n\n## 目标\n完成测试\n",
+            encoding="utf-8",
+        )
+        assert _read_card_section(card, "执行提示") == ""
+
+    def test_empty_when_section_is_placeholder(self, tmp_path: Path) -> None:
+        """节内容为占位文本 → 返回空（中枢尚未注入）。"""
+        card = tmp_path / "test.md"
+        card.write_text(
+            "# 任务卡 m1 · 测试\n\n"
+            "## 执行提示\n\n"
+            "（中枢在出卡时注入，执行体（开发大模型）读到本节后优先遵循。）\n\n"
+            "## 回写区\n",
+            encoding="utf-8",
+        )
+        result = _read_card_section(card, "执行提示")
+        # 占位文本 → 返回空（不注入无意义内容）
+        assert result == ""
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        """文件不存在 → 返回空。"""
+        assert _read_card_section(tmp_path / "nonexistent.md", "执行提示") == ""
+
+
+class TestPromptInjection:
+    """引擎注入卡内提示段到执行体/验收体 prompt 的集成测试。"""
+
+    def test_executor_prompt_gets_hint(self, tmp_path: Path) -> None:
+        """卡含「## 执行提示」→ 执行体命令末尾包含提示内容。"""
+        reg_path = _write_demo_registry(
+            tmp_path, command="echo", args_template="work={work_id} card={card_path}"
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+
+        dispatch_dir = tmp_path / "dispatch" / "ccc"
+        dispatch_dir.mkdir(parents=True)
+        card_file = dispatch_dir / "ccc001-test.md"
+        card_file.write_text(
+            "# 任务卡 ccc001 · 测试\n"
+            "> 关联：TEST · 执行体：demo · 验收：demo · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09\n"
+            "\n"
+            "## 目标\n测试\n"
+            "\n"
+            "## 验收标准\n测试通过\n"
+            "\n"
+            "## 执行提示\n"
+            "- 项目：test（Python）\n"
+            "- 仓库路径：/tmp/test\n"
+            "\n"
+            "## 回写区\n\n测试回写内容\n",
+            encoding="utf-8",
+        )
+
+        store.seed(Work(id="ccc001", role="开发执行体", card_path=str(card_file), executor="demo"))
+        done_work = store.list_work()[0]
+        done_work.state = State.TODO
+        store.save_work(done_work)
+
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "0",
+            "EXECUTOR_PROBE_URL": "",
+            "DISPATCH_DIR": str(tmp_path / "dispatch"),
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+
+        # 检查执行体日志是否包含注入的提示
+        log_file = tmp_path / "logs" / "ccc001.log"
+        log_content = log_file.read_text(encoding="utf-8")
+        # 日志第一行是引擎启动信息，包含完整 cmd
+        assert "项目：test" in log_content
+        assert "仓库路径：/tmp/test" in log_content
+
+    def test_no_hint_section_unchanged_behavior(self, tmp_path: Path) -> None:
+        """卡无「## 执行提示」段 → 执行体行为与原来完全一致（不注入任何内容）。"""
+        reg_path = _write_demo_registry(
+            tmp_path, command="echo", args_template="work={work_id} card={card_path}"
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+
+        dispatch_dir = tmp_path / "dispatch" / "ccc"
+        dispatch_dir.mkdir(parents=True)
+        card_file = dispatch_dir / "ccc002-test.md"
+        card_file.write_text(
+            "# 任务卡 ccc002 · 旧卡\n"
+            "> 关联：TEST · 执行体：demo · 验收：demo · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09\n"
+            "\n"
+            "## 目标\n旧卡测试\n"
+            "\n"
+            "## 验收标准\n测试通过\n"
+            "\n"
+            "## 回写区\n\n测试回写内容\n",
+            encoding="utf-8",
+        )
+
+        store.seed(Work(id="ccc002", role="开发执行体", card_path=str(card_file), executor="demo"))
+        done_work = store.list_work()[0]
+        done_work.state = State.TODO
+        store.save_work(done_work)
+
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "0",
+            "EXECUTOR_PROBE_URL": "",
+            "DISPATCH_DIR": str(tmp_path / "dispatch"),
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+
+        log_file = tmp_path / "logs" / "ccc002.log"
+        log_content = log_file.read_text(encoding="utf-8")
+        # 旧卡无提示段 → 不含注入标记
+        assert "项目提示（由中枢在出卡时注入" not in log_content

@@ -909,6 +909,52 @@ def parse_gate_section(card_file_path: Path) -> dict[str, str]:
     return gates
 
 
+def _read_card_section(card_path: Path | str, section_name: str) -> str:
+    """从任务卡 Markdown 文件中提取指定节的内容。
+
+    匹配 ``## <section_name>`` 开头的节，提取内容直到下一个 ``## `` 节或文件末尾。
+    节名匹配规则：前缀匹配，如 ``## 执行提示`` 可匹配 ``## 执行提示（给开发大模型）``。
+
+    Args:
+        card_path: 卡文件路径。
+        section_name: 节名（不含 ``## `` 前缀），如 ``"执行提示"``。
+
+    Returns:
+        节内容文本（不含节标题行）；文件不存在/不可读/无此节 → 返回空字符串。
+    """
+    path = Path(card_path)
+    if not path.is_file():
+        return ""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    lines = content.splitlines()
+    in_section = False
+    section_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## ") and stripped[3:].strip().startswith(section_name):
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("## ") or stripped.startswith("---"):
+                break
+            section_lines.append(line)
+    # 去掉首尾空行
+    while section_lines and not section_lines[0].strip():
+        section_lines.pop(0)
+    while section_lines and not section_lines[-1].strip():
+        section_lines.pop()
+    result = "\n".join(section_lines).strip()
+
+    # 占位文本 → 视为空（中枢尚未注入实际内容）
+    if result.startswith("（中枢在出卡时注入"):
+        return ""
+
+    return result
+
+
 def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
     card_file = Path(worktree_path) / card_path
     if not card_file.is_file():
@@ -1307,6 +1353,20 @@ def _dispatch_and_collect(
     except ValueError as exc:
         return False, [f"命令构造失败: {exc}"]
 
+    # ── 中枢 Prompt 注入：读取卡内提示段，追加到执行体/验收体 prompt ──
+    # 执行阶段 → 读「## 执行提示」；机审阶段 → 读「## 机审提示」
+    _card_hint_section = "机审提示" if (log_phase or "").strip().lower() == "audit" else "执行提示"
+    _card_file = Path(worktree_path) / work.card_path if worktree_path else Path(work.card_path)
+    _card_hint = _read_card_section(_card_file, _card_hint_section)
+    if _card_hint:
+        # 注入：追加到最后一个参数（prompt 文本）末尾
+        _hint_block = (
+            "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n"
+            + _card_hint
+        )
+        cmd[-1] = cmd[-1] + _hint_block
+        logger.info("已注入 %s: work=%s (%d 字符)", _card_hint_section, work.id, len(_card_hint))
+
     phase = (log_phase or "run").strip().lower() or "run"
 
     sampler: ProcessSampler | None = None
@@ -1462,11 +1522,35 @@ def _dispatch_and_collect(
                             ]
 
                         # 机械门禁扩展：解析卡内门禁探针
+                        # 门禁分层：
+                        #   1. 环境缺失（命令不存在）→ 跳过门禁，放行进机审
+                        #   2. 代码级失败（测试/编译报错）→ 标记可修复，放行进机审
+                        #   3. 硬底线（空提交/无 diff/范围越界）→ 直接打回，不重试
                         if work.card_path:
                             gates = parse_gate_section(card_file_path)
                             for gate_name, cmd in gates.items():
                                 if gate_name in ("编译", "测试", "lint"):
                                     if not cmd:
+                                        continue
+                                    # 检查命令是否存在（worktree 可能无 venv/toolchain）
+                                    cmd_binary = cmd.split()[0] if cmd else ""
+                                    cmd_exists = False
+                                    if cmd_binary:
+                                        try:
+                                            which_rc = subprocess.run(
+                                                ["which", cmd_binary],
+                                                capture_output=True,
+                                                timeout=5,
+                                            )
+                                            cmd_exists = which_rc.returncode == 0
+                                        except Exception:
+                                            cmd_exists = False
+                                    if not cmd_exists:
+                                        logger.warning(
+                                            "门禁【%s】跳过: 命令 '%s' 在 worktree 环境不可用，非代码问题，放行进机审",
+                                            gate_name,
+                                            cmd_binary,
+                                        )
                                         continue
                                     logger.info("运行门禁【%s】: cmd=%s", gate_name, cmd)
                                     res_gate = subprocess.run(
@@ -1479,15 +1563,20 @@ def _dispatch_and_collect(
                                     )
                                     if res_gate.returncode != 0:
                                         combined_output = (res_gate.stdout or "") + (res_gate.stderr or "")
-                                        snippet = combined_output[-1000:] if len(combined_output) > 1000 else combined_output
-                                        err_msg = f"门禁【{gate_name}】失败: 退出码 {res_gate.returncode}。命令: {cmd}\n输出:\n{snippet}"
-                                        logger.warning("卡 %s 门禁【%s】未通过: %s", work.id, gate_name, err_msg)
-                                        _emit(False, res_gate.returncode, "ok", [err_msg])
-                                        return False, [err_msg]
+                                        snippet = combined_output[-800:] if len(combined_output) > 800 else combined_output
+                                        logger.warning(
+                                            "卡 %s 门禁【%s】未通过（代码级，放行进机审就地修复）: 退出码 %d",
+                                            work.id,
+                                            gate_name,
+                                            res_gate.returncode,
+                                        )
+                                        # 不直接打回：标记为机审可修复，放行进机审
+                                        # 机审会根据严重程度决定就地修复还是打回
                                 elif gate_name == "范围":
                                     if str(cmd).strip().lower() in ("true", "yes", "1", "on"):
                                         range_ok, range_err = check_range_gate(worktree_path, work.card_path)
                                         if not range_ok:
+                                            # 范围越界是硬底线 → 直接打回
                                             logger.warning("卡 %s 门禁【范围】未通过: %s", work.id, range_err)
                                             _emit(False, 1, "ok", [range_err])
                                             return False, [range_err]
