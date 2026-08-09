@@ -1,6 +1,6 @@
 # 任务卡 clw007 · resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（OpenCode 执行）
 
-> 关联：ccc-plan: clw007 会话恢复工作目录 + 小缺陷修复 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-09
+> 关联：ccc-plan: clw007 会话恢复工作目录 + 小缺陷修复 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：clw · 日期：2026-08-09
 
 ## 目标
 
@@ -44,11 +44,33 @@ resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（ccc-plan �
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 1. 实现说明
+- **会话工作目录（working_directory）恢复**：
+  在 `provider.rs` 的 `resume_session` 中，通过 `list_all_sessions()` 获取要恢复的会话信息。
+  - 对于 Claude 类型的会话，使用 `git_status::decode_claude_project_path` 解码其会话路径（以 `-Users-` 开头的编码格式）为真实的工作目录。
+  - 对于 Codex 或 OpenCode 类型的会话，直接使用其记录的 `path` 字段作为工作目录。
+  - 最后，将解析出的 `working_directory` 作为参数提供给 `TerminalSession::new`，从而在新 PTY 中恢复相应的工作目录。新创建的会话不受影响（仍然使用默认目录）。
+- **Git 路径解码（不误拆连字符）**：
+  在 `git_status.rs` 的 `decode_claude_project_path` 中，引入了基于实际文件系统遍历的 `resolve_path_from_segments` 递归匹配机制。通过逐步探测真实存在的目录组合（例如在 `/Users/fan/program` 下匹配整个 `ccc-dev-ws-clw007` 节点而非误拆为 `ccc/dev/ws/clw007`），完美避免了误拆带有连字符（如 `my-app` 或 `ccc-dev-ws-clw007`）的目录，并支持 Claude / Codex / OpenCode 三类会话的路径定位。
+- **非阻塞 Kill Terminal**：
+  在 `terminal.rs` 的 `kill_terminal` 命令中，不再在 UI 主线程同步 Drop 和等待子进程。将要移除的 `TerminalSession` 转移所有权到通过 `std::thread::spawn` 异步启动的后台线程中进行 Drop。后台线程安全地在后台完成 SIGHUP 和等待子进程，从而确保 UI 线程完全不冻结。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- **单元测试**：
+  在 `git_status.rs` 中编写了专门的 `test_decode_claude_project_path` 单元测试，测试结果：
+  ```
+  running 1 test
+  test git_status::tests::test_decode_claude_project_path ... ok
+  ```
+- **构建与分析**：
+  - Rust 侧编译与测试通过：`cargo build --release` 和 `cargo test` 100% 绿。
+  - 前端 Lint 检查无警告：`npm run lint` 通过。
+  - 前端 TypeScript 构建通过：`npm run build`（`tsc -b && vite build`）成功。
+
+### 3. Push 证据 (Commit Hash)
+- 业务仓（clwarp）提交：[e3d3dd4b4cd2140020b64267d2ee07b0c285dc17](https://github.com/hanrry2323/clwarp/commit/e3d3dd4b4cd2140020b64267d2ee07b0c285dc17) 已经推送至 `codex/clw007-resume-cwd-fix` 分支。
 
 ## 执行提示
 
