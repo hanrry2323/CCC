@@ -76,6 +76,22 @@
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：项目近况/下一步没有发生额外改变。
 
+## 机审区
+
+机审：通过
+
+### 机审证据与审查摘要
+
+2017 机审席独立审查，改动范围完全限定在卡声明范围（`server/engine/**`、`server/config/**`、`server/tests/**`），未越界。
+
+- **架构/实现质量**：在 `run_once` 汇总中新增 `queued` 排队计数，当 `free_slots(...) <= 0` 时不做派发（卡保持待分派，下一心跳重扫，不重复派发、不超开 worktree），并以日志「无空闲执行槽位，进入排队等待」记录当前并发数/上限，排队行为可观测。`slots -= 1` 每轮派发递减，单心跳内并发闸门正确收口。并发上限可配置：`EXECUTOR_MAX_CONCURRENT` 默认 3，`config.example.env` 与 `loader.py` 均有配置项，`_slot_limits` 经 `_int_val` 做非法值回退—验收标准 1/2/3 全部满足。
+- **边界/异常**：排队判定在探活、infra 冷却、验收卡、父卡拦截之后，语义正确；`queued` 与 `probe_skips` 不混淆。metrics 汇总与 pipeline 状态均透出 `queued` 指标。
+- **测试**：新增 `TestParallelAndRelayGuard::test_concurrency_cap_and_queuing_boundaries` 覆盖「任务数 < 上限」「== 上限」「> 上限」三边界，实跑通过（18 用例全绿）。`test_http_api.py`/`test_plans.py` 的改动仅为 f-string→普通字符串、补末尾换行等格式化清理，无行为变更。
+- **既有回归**：抽查确认 3 个失败用例（`test_exec_and_audit_slots_independent` 及 `TestPlansPageContract` 两条前端内容断言）在 `f615617b~1` 基线上同样失败，为既有环境/陈旧用例问题，与本卡改动无关，不构成本卡回归。
+- **维护区落格**：Doc-Gate 四问均逐项勾选并填具说明，无占位；回写区含实现说明/测试结果/commit hash，卡头状态「已回写」，满足完成钩子。
+
+无可修问题，直接通过。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
