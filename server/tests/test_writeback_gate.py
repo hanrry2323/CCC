@@ -254,8 +254,86 @@ def test_run_stage_melt_down_outcome_failed_metric(tmp_path: Path):
          patch("server.engine.runtime_state.read_card_state", return_value={"xy107": {"infra_count": 0}}), \
          patch("server.engine.runtime_state.write_card_state"):
 
-         outcome = _run_auto_worker(work, reg, store, cfg, log_dir, timeout=30)
-         # 验证 熔断打回 时 failed = 1 统计数据闭环
-         assert outcome.get("failed") == 1
-         assert "infra" not in outcome
-         assert work.state == State.REJECTED
+          outcome = _run_auto_worker(work, reg, store, cfg, log_dir, timeout=30)
+          # 验证 熔断打回 时 failed = 1 统计数据闭环
+          assert outcome.get("failed") == 1
+          assert "infra" not in outcome
+          assert work.state == State.REJECTED
+
+
+def test_verify_maintenance_success(tmp_path: Path):
+    card_file = tmp_path / "docs" / "dispatch" / "ccc" / "ccc101-test.md"
+    card_file.parent.mkdir(parents=True, exist_ok=True)
+    card_file.write_text(
+        "# 任务卡 ccc101 · 测试\n"
+        "> 关联：ccc-plan-011 · 状态：执行中\n"
+        "## 维护区\n"
+        "1. **方案同步**：[是]\n"
+        "   - 说明：ccc-plan-011\n"
+        "2. **教训沉淀**：[有]\n"
+        "   - 说明：docs/notes/test-lesson.md\n"
+        "3. **档案/README**：[是]\n"
+        "   - 说明：docs/projects/ccc/README.md\n"
+        "4. **线路图**：[是]\n"
+        "   - 说明：docs/roadmap.md\n",
+        encoding="utf-8"
+    )
+
+    plan_file = tmp_path / "docs" / "projects" / "ccc" / "plans" / "011-docgate.md"
+    plan_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_file.write_text(
+        "# 方案 · Doc-Gate\n"
+        "> 状态：部分执行\n"
+        "> 关联卡：ccc101\n",
+        encoding="utf-8"
+    )
+
+    (tmp_path / "docs" / "notes").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "notes" / "test-lesson.md").touch()
+    (tmp_path / "docs" / "projects" / "ccc" / "README.md").touch()
+    (tmp_path / "docs" / "roadmap.md").touch()
+
+    from server.board.docgate import verify_maintenance
+
+    with patch("server.board.docgate.get_modified_files", return_value=["docs/projects/ccc/README.md", "docs/roadmap.md"]):
+        ok, problems = verify_maintenance(card_file, tmp_path)
+        assert ok is True
+        assert not problems
+
+
+def test_verify_maintenance_failed_cases(tmp_path: Path):
+    card_file = tmp_path / "docs" / "dispatch" / "ccc" / "ccc102-test.md"
+    card_file.parent.mkdir(parents=True, exist_ok=True)
+    card_file.write_text(
+        "# 任务卡 ccc102 · 测试\n"
+        "> 关联：ccc-plan-011 · 状态：执行中\n"
+        "## 维护区\n"
+        "1. **方案同步**：[是]\n"
+        "   - 说明：ccc-plan-011\n"
+        "2. **教训沉淀**：[有]\n"
+        "   - 说明：docs/notes/non-existent.md\n"
+        "3. **档案/README**：[是]\n"
+        "   - 说明：docs/projects/ccc/README.md\n"
+        "4. **线路图**：[是]\n"
+        "   - 说明：docs/roadmap.md\n",
+        encoding="utf-8"
+    )
+
+    plan_file = tmp_path / "docs" / "projects" / "ccc" / "plans" / "011-docgate.md"
+    plan_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_file.write_text(
+        "# 方案 · Doc-Gate\n"
+        "> 状态：草案\n"
+        "> 关联卡：无\n",
+        encoding="utf-8"
+    )
+
+    from server.board.docgate import verify_maintenance
+
+    with patch("server.board.docgate.get_modified_files", return_value=[]):
+        ok, problems = verify_maintenance(card_file, tmp_path)
+        assert ok is False
+        assert any("方案同步" in p for p in problems)
+        assert any("Q2 声明的教训文件不存在" in p for p in problems)
+        assert any("Q3 声明更新了项目档案" in p for p in problems)
+        assert any("Q4 声明更新了线路图" in p for p in problems)

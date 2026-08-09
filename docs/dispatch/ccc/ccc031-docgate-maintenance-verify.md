@@ -1,6 +1,6 @@
 # 任务卡 ccc031 · 维护区四问交叉核对：docgate门禁升级（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡9 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡9 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -59,24 +59,32 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- 新建了 `server/board/docgate.py`，实现 `verify_maintenance` 核心函数。
+- 解析维护区四问（方案同步、教训沉淀、项目档案、线路图），并做深度交叉核对。
+- `scripts/approve-merge.sh` 升级 `check_maintenance` 门禁，接线调用 `docgate.verify_maintenance`。
+- `server/board/prompt_inject.py` 升级 `build_auditor_hint` 审计指令。
+
+### 2. 测试结果
+- 在 `server/tests/test_writeback_gate.py` 补充了 `test_verify_maintenance_success` 和 `test_verify_maintenance_failed_cases` 测试，pytest 全绿。
+
+### 3. push 证据
+- 提交哈希：21c3741a
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：由于本仓暂无 ccc-plan-011 对应的实体方案文件，故本次无需同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本次为标准门禁升级实现，暂无需要沉淀的新教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变项目结构、技术栈或路径，不涉及项目 README 的更新。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况和下一步暂无变化，无需更新 roadmap.md。
 
 ## 执行提示
 
