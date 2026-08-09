@@ -68,8 +68,18 @@
    - 说明：无。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：未改变项目结构或技术栈。
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：无。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：纯脚本/测试加固，不涉及线路图或档案「线路/近况」。
+
+## 机审区
+
+**机审：通过**（2017 机审席）
+
+审查摘要：
+- 改动范围与卡声明一致：`scripts/new-card.sh`、`server/tests/test_card_dispatch_gate.py`、卡文件本身，均在白名单（`scripts/new-card.sh` / `scripts/plan-to-cards.sh` / `server/tests/**`）内；无越界。
+- 实现合理：出卡前 `git fetch origin main`，自动编号取本地与 `origin/main` 双源最大值自增；显式 `--id` 与同名卡均做远端查重拒绝，杜绝撞号。`plan-to-cards.sh:114` 走 `new-card.sh`，相关格式沿用同源防御，满足验收 1/2/4。
+- 测试覆盖到位：`test_card_dispatch_gate.py` 构造「本地过期但远端已占用编号」场景（真实 git 临时仓库 + bare remote），验证显式 ID 撞号被拒（returncode 3 + 冲突提示）、自动编号自增跳过至下一号。实测单测通过（1 passed）。
+- 维护区四问已补齐（方案同步/教训/档案/线路图均勾选并填说明）；关联方案 `014-governance-gate-fixes.md` 已在转卡名单，声明属实。
 
 ## 执行提示
 
