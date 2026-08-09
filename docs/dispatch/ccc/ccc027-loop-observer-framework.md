@@ -136,3 +136,23 @@
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过**
+
+- 验收方：Claude Code（2017 机审席）· 日期：2026-08-09
+- 范围核对：cc027 两提交仅触及卡白名单内文件（`server/engine/observer.py` 新建、`server/engine/scheduler.py` 注册行、`server/deploy/com.ccc.scheduler.plist` 新建、`server/tests/test_observer.py` 新建、卡文件回写），无越界；status 已置「已回写」。
+  - 附注：diff 中出现的 `docs/dispatch/clw/clw008-*` 删除为**分支基础点早于 origin/main** 的历史分叉产物（该文件由 origin/main 上 4e1fb16a 在分支之后新建），非本卡改动，合入 rebase 后自会消解。未触及、未代理执行。
+- 架构审查：
+  - observer 只读性**符合红线**：仅 import `registry.load_projects` / `loader.load_dispatch_cards,get_index_path` / `plans.list_plans` 三个只读 loader，AST 白名单测试 `test_ast_import_whitelist` 硬性禁止 store 与 plans create/update；`run_observer(cfg)->(ok,summary)` 契约与 scheduler 框架一致，延迟 import（`_default_registry` 内）无循环依赖。
+  - 调度门槛自审合理：每日 1 次（24h last-run 比较）+ 合入后触发（git merge commit 哈希）+ cards.index.jsonl mtime/size 变化，输出固定落 `DATA_DIR/observer/`（snapshot.json + 时间戳快照 + last-run.json），无写卡/registry/代码路径。
+  - 边界与异常：git subprocess、文件读写均有 try/except 兜底，threshold 逐场景单测覆盖（首次/跳过/24h/git 变更/index 变更）。
+- Doc-Gate 完成钩子：维护区四问已逐项勾选并填实质说明，无占位。
+- 可修问题（就地已修并 push `063d3bda`）：
+  1. `server/engine/scheduler.py:195` 注释存在回写时引入的病字符（「避免循环依赖」缺字），已恢复完整 UTF-8 文本。
+  2. `server/deploy/com.ccc.scheduler.plist` 模板头部占位说明补充 `$DATA_DIR`（EnvironmentVariables 已引用但未在模板说明文档化）。
+  - 验证：`py_compile` OK、`plutil -lint` OK。
+
+- 结论：范围、只读红线、架构契约、边界处理均达标，非原则性红线问题，予以通过。
+
