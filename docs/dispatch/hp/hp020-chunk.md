@@ -1,6 +1,6 @@
 # 任务卡 hp020 · 短 chunk 门禁自动化脚本（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-09
 
 ## 目标
 
