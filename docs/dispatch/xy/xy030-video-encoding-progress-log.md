@@ -1,6 +1,6 @@
 # 任务卡 xy030 · video encoding progress log（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-09
 
 ## 目标
 
@@ -46,7 +46,31 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+在 `video-pipeline/pipeline.py` 中添加了进度日志记录函数 `log_progress`。
+该函数会在每个编码阶段完成时（不论是运行成功还是跳过）被调用，动态计算当前已完成阶段占总阶段数的百分比，并格式化输出当前进度百分比及阶段耗时到 `stdout`。
+
+### 测试结果
+运行 `uv run python video-pipeline/pipeline.py` 验证了日志输出格式，日志能够清晰地呈现：
+`[进度] 阶段 <stage_name> 完成 | 进度: <percentage>% | 耗时: <elapsed_sec>s`
+
+### push 证据 (commit hash)
+业务仓 `xianyu` 提交 hash: `3269ff5918731bf71887fe3548981d3f905fbfa1` (分支 `codex/xy030-video-encoding-progress-log`)
+
+## 机审区
+
+**机审席**：2017 · 日期：2026-08-09
+
+**机审：通过**
+
+审查摘要：
+- **范围合规**：仅改动 `video-pipeline/pipeline.py`，`src/` 未动；只加日志不改编码逻辑（红线 1）；`print()` 输出 stdout，不新增文件（红线 2）；无 `## 人工批注`（红线 3）。
+- **实现质量**：`log_progress` 在成功/跳过两条路径均被调用，且 `manifest["stages"]` 先写入再取 `len`，已完阶段计数准确；并行 `starmap` 结果逐条回写计数正确，最终阶段进度可达 100%，无重复计数（按 stage 名去重）。
+- **边界修复**：机审发现空管线（`total_stages=0`）时原 `int(completed/0*100)` 会抛 `ZeroDivisionError`，已在分支 `codex/xy030-video-encoding-progress-log` 就地补齐防御性分支（commit `79c192d`），纯日志改动不触碰编码逻辑；`py_compile` 通过、空管线 pct=0 / 常规 2/4=50% 验证正常。
+
+**人工批注落实**：无批注，不适用。
 
 ## 批注落实
 

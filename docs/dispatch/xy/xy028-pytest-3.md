@@ -1,6 +1,6 @@
 # 任务卡 xy028 · 修复 pytest 3 个失败用例（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-09
 
 ## 目标
 
@@ -53,11 +53,22 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 实现说明
+1. **根因分析**：
+   - 之前版本的 `tests/content/test_rewriter.py` 中，`test_execute_generates_4_platform_versions` 和 `test_execute_truncates_correctly` 等测试用例没有对 `xianyu.content.rewriter.chat_json` 进行 mock/patch。
+   - 当 `ollama_base_url` 在 `xy027` 中被更改为本机的 `"http://127.0.0.1:6102/v1"` 且有活跃的模型响应时，这些集成测试实际上发送了真实的网络请求并获得了模型返回的具体正文，导致本应在 Fallback Mock 路径下触发的截断断言（如 `assert d["title"] == "AI 提效"` 和 `assert r.data["video_script"] == "X" * 200`）失效。
+2. **修复方案**：
+   - 在 `tests/content/test_rewriter.py` 中引入 `unittest.mock.patch`，在测试 Mock 兜底逻辑的测试用例中将 `chat_json` 显式 patch 为抛出异常（`RuntimeError("LLM offline")`），强行令其降级进入 mock 兜底切片分支，以此保障断言稳定性及测试执行速度。
+   - 增加 `test_execute_ollama_success` 单元测试，mock `chat_json` 的正常返回值，完整验证 Ollama 成功情况下的各平台版本生成及字段组装，使 `rewriter.py` 覆盖率达成 100%。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+- 全量 `pytest --no-cov` 成功通过：669 passed, 10 skipped, 90 warnings in 98.50s，实现 exit 0 全绿。
+
+### Push 证据
+- 业务仓分支：`codex/xy028-pytest-3`
+- Commit Hash: `b87cc94a3a5220e35a07c72ca0dd84756067f2c0`
 
 ## 执行提示
 
@@ -95,3 +106,13 @@
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 机审区
+
+**机审**（中枢兜底验收 · Claude Code）：通过 · 日期：2026-08-09
+
+### 审查摘要
+代码实现正确，在卡白名单范围内，commit+push 证据完整。无红线违背。
+
+### 复审结论
+验收标准达标。**机审：通过**。等老板合入批准。
