@@ -111,3 +111,22 @@ resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（ccc-plan �
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 机审区
+
+**机审**：2017 · 2026-08-09 · 结果：**机审：通过**
+
+**审查摘要**
+
+对照 5 项验收标准逐条核验：
+
+1. **resume 携带工作目录** ✅ — `provider.rs::resume_session` 按 provider 分支：Claude 走 `decode_claude_project_path` 解码 `-Users-*` 路径，Codex/OpenCode 直接取 `SessionInfo.path`（其即为真实 cwd）；空 id（新会话）保持 `working_directory=None`。逻辑与三 provider 的 `path` 语义吻合。
+2. **连字符不误拆 + 三类定位** ✅ — `git_status.rs` 用贪心最长前缀 + 实盘 `exists()` 探测的 `resolve_path_from_segments`，已实测对 `-Users-fan-program-ccc-dev-ws-clw007` 正确解析出 `ccc-dev-ws-clw007`（而非 `ccc/dev/ws/clw007`），且测试断言同时验正/反两向。
+3. **kill 非阻塞** ✅ — `kill_terminal` 将 `TerminalSession` 所有权移交 `std::thread::spawn` 后台线程 drop，UI 线程不 block；session id 由单调递增计数器生成、不复用，后台 drop 与新建 session 无 id 竞态。
+4. **回归** ✅ — `cargo test --lib` 全绿（`test_decode_claude_project_path` ok）；编译通过；机械门禁已裁决 build/前端（非本席重复）。
+5. **红线合规** ✅ — 全程只读 session 元数据与 cwd，零写入用户 CLI 配置、零会话文件写入、零业务仓文件改动（本次 commit 仅改声明范围内 3 个 Rust 文件）。
+
+**本席就地修复（可修问题，已合规 commit+push）**
+- 移除 `decode_claude_project_path` 中针对 project 目录成分做的 `.jsonl` 后缀裁剪：该成分是项目*目录*、从不以 `.jsonl` 结尾（后缀只存在于后续 session 文件名上），是永不触发的死代码，且若真目录恰以 `.jsonl` 结尾会误伤；并给语法回退路径加了空 segments 防护。commit `ab01ece`（clwarp 仓 `codex/clw007-resume-cwd-fix`）。
+
+**结论**：改动在卡声明范围内（5 文件范围的子集）、未违背业务意图、无系统性越界、无安全漏洞。可修问题已修复并回推。**通过**，可交老板「合入批准」。
