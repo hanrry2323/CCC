@@ -165,8 +165,28 @@ class FileBoardStore:
             role = self._registry.role_for_binding(executor_name) or ""
             executor_binding = "" if executor_name == UNKNOWN else executor_name
 
-            rel_path = entry.get("path", "")
-            abs_path = project_root / rel_path
+            card_id = entry["id"]
+            # work.id -> card_path 解析改为每次从磁盘索引重新匹配，避免改名后残留旧 card_path
+            matched_path = None
+            try:
+                candidates = list(Path(self._dir).glob(f"**/*{card_id}*.md"))
+                candidates = [c for c in candidates if not c.name.endswith(".tmp") and not c.name.endswith(".bak")]
+                if candidates:
+                    for c in candidates:
+                        stem = c.stem.lower()
+                        if stem == card_id.lower() or stem.startswith(card_id.lower() + "-") or stem.startswith(card_id.lower() + "_"):
+                            matched_path = c
+                            break
+                    if not matched_path:
+                        matched_path = candidates[0]
+            except Exception:
+                pass
+
+            if matched_path:
+                abs_path = matched_path.resolve()
+            else:
+                rel_path = entry.get("path", "")
+                abs_path = project_root / rel_path
 
             retry_count = int(rt.get("retry_count") or 0) if rt.get("retry_count") is not None else _retry_count_from_state_str(str(raw_state or ""))
             reason = str(rt.get("reason") or "")[:200]

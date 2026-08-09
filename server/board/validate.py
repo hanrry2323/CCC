@@ -245,6 +245,28 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         return [CardIssue("?", str(d), "目录不存在")]
     cards = _scan_cards(d)
 
+    # 方案链编号保护：扫描所有方案文件并提取已计划的卡编号 (Step 5)
+    plan_reservations = {}
+    try:
+        projects_dir = d.parents[1] / "docs" / "projects"
+        if not projects_dir.is_dir():
+            projects_dir = Path(__file__).resolve().parents[2] / "docs" / "projects"
+        if projects_dir.is_dir():
+            for p in projects_dir.glob("**/plans/*.md"):
+                try:
+                    text = p.read_text(encoding="utf-8")
+                    title_match = re.search(r"^#\s*方案\s*·\s*(.+)$", text, re.M)
+                    plan_title = title_match.group(1).strip() if title_match else p.stem
+                    for line in text.splitlines():
+                        if "关联卡：" in line:
+                            ids = re.findall(r'([a-z]{2,4}\d{3})', line.lower())
+                            for cid in ids:
+                                plan_reservations[cid] = (str(p), plan_title)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     from server.board.loader import parse_card
 
     all_items: dict[Path, BoardItem] = {}
@@ -286,6 +308,20 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         ctype, prefix, num = _classify_card(path)
         if ctype == "new":
             issues.extend(_validate_new_naming(path, loc, prefix, num))
+            # 方案链编号保护 (Step 5)
+            card_id_full = (prefix + num).lower()
+            if card_id_full in plan_reservations:
+                plan_path, plan_title = plan_reservations[card_id_full]
+                # 必须关联对应方案
+                related = meta.get("关联", "")
+                if f"ccc-plan: {plan_title}" not in related and plan_title not in related:
+                    issues.append(
+                        CardIssue(
+                            card_id,
+                            str(path),
+                            f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明方案 {plan_title!r}，但该编号已被该方案占用。请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+                        )
+                    )
         elif ctype == "old":
             # 旧卡零拦截：仅提示迁移建议（T54 红线 2：旧卡不批量重命名，保持 git 历史）
             issues.append(
