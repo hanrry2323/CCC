@@ -3675,3 +3675,44 @@
   justify-content: flex-end;
   margin-top: 16px;
 }
+
+/* ── 计划页面 移动端适配 ── */
+
+@media (max-width: 768px) {
+  .plans-page {
+    padding: 12px 14px;
+  }
+
+  .plans-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plans-search {
+    max-width: none;
+  }
+
+  .plans-card-meta {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .plans-card-actions {
+    flex-wrap: wrap;
+  }
+
+  .plans-detail-meta {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .plans-form {
+    width: 95%;
+    padding: 16px;
+    max-height: 90vh;
+  }
+
+  .plans-form-field textarea {
+    font-size: 16px; /* 防止 iOS 缩放 */
+  }
+}

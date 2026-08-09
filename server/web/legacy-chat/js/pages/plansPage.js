@@ -25,6 +25,8 @@ let _plans = [];
 let _filterProject = '';
 let _filterStatus = '';
 let _searchQ = '';
+let _detailPath = null;  // 当前打开的详情路径，null=列表视图
+let _formOpen = false;   // 新建表单是否打开
 
 function esc(s) {
   if (s == null) return '';
@@ -54,10 +56,56 @@ async function loadPlans() {
     console.error('plans: load failed', e);
     _plans = [];
   }
+
+  // 详情或表单打开时只更新列表数据，不重建区域
+  if (_detailPath || _formOpen) {
+    updateListOnly();
+    return;
+  }
   render();
 }
 
 // ── render ──
+
+// ── partial update (不破坏详情/表单状态) ──
+
+function updateListOnly() {
+  const listEl = _root?.querySelector('#plans-list');
+  const countEl = _root?.querySelector('.plans-count');
+  if (listEl) listEl.innerHTML = renderList();
+  if (countEl) countEl.textContent = `${_plans.length} 个方案`;
+  // 重新绑定列表事件（但保留详情/表单区域不变）
+  rebindListEvents();
+}
+
+function rebindListEvents() {
+  const root = _root;
+  if (!root) return;
+  root.querySelectorAll('#plans-list [data-action]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = el.dataset.action;
+      const path = el.dataset.path;
+      if (action === 'detail') await showDetail(path);
+      else if (action === 'convert') await doConvert(path);
+    });
+  });
+  root.querySelectorAll('#plans-list select[data-action="status"]').forEach(el => {
+    el.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      const path = el.dataset.path;
+      const newStatus = el.value;
+      if (!newStatus) return;
+      await doUpdateStatus(path, newStatus);
+    });
+  });
+  root.querySelectorAll('#plans-list .plans-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const path = card.dataset.path;
+      if (path) showDetail(path);
+    });
+  });
+}
 
 function renderToolbar() {
   return `
@@ -201,6 +249,7 @@ function bindEvents() {
 // ── detail ──
 
 async function showDetail(path) {
+  _detailPath = path;
   const detailEl = _root?.querySelector('#plans-detail');
   const listEl = _root?.querySelector('#plans-list');
   if (!detailEl || !listEl) return;
@@ -247,6 +296,7 @@ function renderDetail(plan) {
 
 function bindDetailEvents(path) {
   _root?.querySelector('#plans-detail-back')?.addEventListener('click', () => {
+    _detailPath = null;
     const detailEl = _root?.querySelector('#plans-detail');
     const listEl = _root?.querySelector('#plans-list');
     if (detailEl) detailEl.style.display = 'none';
@@ -293,6 +343,7 @@ async function doConvert(path) {
 // ── create form ──
 
 function showCreateForm() {
+  _formOpen = true;
   const overlay = _root?.querySelector('#plans-form-overlay');
   if (!overlay) return;
 
@@ -333,6 +384,7 @@ function showCreateForm() {
     </div>`;
 
   overlay.querySelector('#plans-form-cancel')?.addEventListener('click', () => {
+    _formOpen = false;
     overlay.style.display = 'none';
   });
 
@@ -351,6 +403,7 @@ function showCreateForm() {
     try {
       const result = await apiPost('/plans/create', { project, title, content, author, tool });
       if (result.ok) {
+        _formOpen = false;
         overlay.style.display = 'none';
         loadPlans();
       } else {
@@ -411,4 +464,6 @@ export function unmountPlans() {
   }
   _root = null;
   _plans = [];
+  _detailPath = null;
+  _formOpen = false;
 }

@@ -430,7 +430,10 @@ class TestPlansPageContract:
             assert s in text, f"Missing status: {s}"
 
     def test_auto_refresh(self) -> None:
-        """验证 30s 自动刷新。"""
+        """验证 30s 自动刷新 + 状态保护（详情/表单打开时不重建 DOM）。"""
         text = self._page()
         assert "setInterval" in text
         assert "30000" in text
+        assert "_detailPath" in text
+        assert "_formOpen" in text
+        assert "updateListOnly" in text
