@@ -1,6 +1,6 @@
 # 任务卡 xy027 · xianyu 视频里程碑推进：环境恢复+HyperFrames 高质量样片（OpenCode 执行）
 
-> 关联：INT-122 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-09
+> 关联：INT-122 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-09
 
 ## 目标
 
@@ -35,3 +35,9 @@ xianyu 视频项目：恢复 Mac2017 开发环境，产出 HyperFrames 高质量
 ## 回写要求
 
 完成后更新本卡验收区，Engine 自动回写 INT-122。
+
+## 验收区
+
+**合入批准** · 日期：2026-08-09
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
