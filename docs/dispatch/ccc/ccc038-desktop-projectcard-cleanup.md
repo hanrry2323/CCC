@@ -51,7 +51,7 @@
   2. 移除了失效的 `TimelineView` 齿轮动效，以及整个 `trailingStatus` 状态视图。
   3. 将 `accessibilityLabel` 简化对齐为 `\(project.name)，空闲`，消除了对 `statusLine` 的依赖。
 - **测试结果**：通过 `swiftc -typecheck` 工具链对全量 Desktop SwiftUI 文件进行了编译与类型安全验证，0 errors, 0 warnings，保证代码类型 100% 架构完好、无任何编译问题。
-- **push 证据**：分支：`codex/ccc038-desktop-projectcard-cleanup`，提交：`f18f9aa8`
+- **push 证据**：分支：`codex/ccc038-desktop-projectcard-cleanup`，提交：`e39835a2`
 
 ## 维护区
 
@@ -69,6 +69,18 @@
 ## 批注落实
 
 （无批注。）
+
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-10）
+
+审查摘要：
+- 范围合规：改动仅 `desktop/Sources/CCCDesktop/Components/ProjectCard.swift` + 任务卡回写，未越界。
+- 删除完整：移除 `primaryKind`/`statusLine`/`statusLineColor`/`PrimaryKind` 恒值 stub 与失效 `TimelineView` 齿轮动效、`trailingStatus` 视图；grep 确认无任何残留引用。
+- 行为不变：被删状态/动效本就恒 `.idle`（`primaryKind` 恒返回 `.idle` → `trailingStatus` 只渲染 `Color.clear`）且 `statusLine` 恒空不渲染，皆为不可见死代码，侧栏显示无感知差异。
+- 可修问题已就地修复：清理 ProjectCard 顶部失效注释（仍描述已删除的状态图标/主状态优先级），并对齐回写区 push 证据 hash 为实际 amend 后提交 `e39835a2`。
+- 维护区四问逐项勾选填写完整，无占位；批注区无批注，落实节如实标注。
+- 机械门禁（编译/测试）由引擎裁决通过，此处不复核。
 
 ## 执行提示
 

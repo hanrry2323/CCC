@@ -2,8 +2,8 @@ import SwiftUI
 
 /// 侧栏项目卡片。
 ///
-/// 尾部：新建会话「+」在状态图标左侧。
-/// 主状态（优先级）：对话生成中 → 未读 → 编排异常/在跑 → 空闲。
+/// 尾部：新建会话「+」与定位复制按钮。
+/// （旧版的状态图标/主状态优先级逻辑已由 ccc038 清理移除，保持卡片显示行为不变。）
 struct ProjectCard: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
