@@ -311,22 +311,26 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         if ctype == "new":
             naming_issues = _validate_new_naming(path, loc, prefix, num)
             issues.extend(naming_issues)
-            # 方案链编号保护 (Step 5)：仅对命名合规且非重复的新卡生效，已不合规的卡不叠加报错
+            # 方案链编号保护 (Step 5)：仅对命名合规、非重复、未关闭的新卡生效；
+            # 关联含任何合法 <prefix>-plan-<NNN> 即视为已关联（旧卡标题格式不要求）
             if not naming_issues and path.resolve() not in dup_paths:
-                card_id_full = (prefix + num).lower()
-                if card_id_full in plan_reservations:
-                    plan_path, plan_title = plan_reservations[card_id_full]
-                    # 必须关联对应方案
-                    meta = _header_metadata(path)
-                    related = meta.get("关联", "")
-                    if f"ccc-plan: {plan_title}" not in related and plan_title not in related:
-                        issues.append(
-                            CardIssue(
-                                card_id,
-                                str(path),
-                                f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明方案 {plan_title!r}，但该编号已被该方案占用。请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+                card_state = _header_metadata(path).get("状态", "")
+                if "已关闭" in card_state or "作废" in card_state:
+                    pass
+                else:
+                    card_id_full = (prefix + num).lower()
+                    if card_id_full in plan_reservations:
+                        plan_path, plan_title = plan_reservations[card_id_full]
+                        meta = _header_metadata(path)
+                        related = meta.get("关联", "")
+                        if not re.search(r"[a-z]{2,4}-plan-\d{3}", related):
+                            issues.append(
+                                CardIssue(
+                                    card_id,
+                                    str(path),
+                                    f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明任何合法方案编号（<prefix>-plan-<NNN>），但该编号已被方案 {plan_title!r} 占用。请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+                                )
                             )
-                        )
         elif ctype == "old":
             # 旧卡零拦截：仅提示迁移建议（T54 红线 2：旧卡不批量重命名，保持 git 历史）
             issues.append(
