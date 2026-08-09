@@ -127,3 +127,9 @@
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（engine-audit）· 2026-08-09 23:04
+证据：erver/kb/` 4 个文件 + `test_kb_query_cases.py` + `knowledge/query-cases.md`，域归一两处别名表同步 plans、扫描函数补 roadmap.md + `docs/projects/*/plans/*.md`，四域→五域断言。改动严格落在卡白名单内，无越界，无违规写 `knowledge/domains/` 副本，架构归一一致（indexer/search/mcp/cli 四端同步）。**代码本身通过。** **打回原因：维护区未完成（Doc-Gate 完成钩子未落实）** — 非机械问题，是原则性门禁。 卡 `ccc025-plans-roadmap-ccc-kb.md` 现状： - 卡头状态仍是 `待分派`，未按步骤 6 改为「已回写」。 - `## 回写区` 为空（L58 仅「执行体：OpenCode · 日期：」占位
