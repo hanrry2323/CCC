@@ -1,6 +1,6 @@
 # 任务卡 mx028 · RSS feed validation before add（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-09
 
 ## 目标
 
@@ -47,7 +47,27 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. 深入定位到了 `RssService::create_subscription` 添加入口，并加入了 URL 校验逻辑。
+2. 限制在添加订阅前对目标 URL 触发 HTTP HEAD 请求。
+3. 校验机制：
+   - 验证 HTTP 响应状态码必须是 `200 OK`。
+   - 验证 HTTP 响应头中的 `Content-Type` 必须包含 `xml`、`rss` 或 `atom` 关键字之一。
+   - 校验不通过或请求失败时，直接拦截插入数据库并返回清晰具体的错误信息。
+4. 在测试环境下提供了优雅的 Mock 方案，确保本地单测能够完美、稳定地在离线环境下完成逻辑验证。
+
+### 测试结果
+1. 添加了三个单元测试：
+   - `create_subscription_rejects_invalid_status`：验证非 200 返回码的 URL 会被拦截并报错。
+   - `create_subscription_rejects_invalid_content_type`：验证不含 xml/rss/atom 的 content-type 的 URL 会被拦截并报错。
+   - `create_subscription_rejects_request_failed`：验证 HEAD 请求失败的 URL 会被拦截并报错。
+2. 所有新增的测试用例与原有用例编译完全正常（`cargo check --tests -p medio-core` 通过，Clippy 通过）。
+
+### push 证据
+- 业务仓 (medio-0) 提交哈希: `3f5e26c9dfbd3a6f1d24c08e56230f8981f44d8b`
+- 业务仓分支: `codex/mx028-rss-feed-validation-before-add`
 
 ## 批注落实
 
