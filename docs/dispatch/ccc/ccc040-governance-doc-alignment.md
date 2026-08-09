@@ -89,6 +89,19 @@
 
 - 禁止：直推 main、写机审区/验收区、置已关闭
 
+## 机审区
+
+**机审方**：2017 机审席 · 日期：2026-08-10 · 结论：**机审：通过**
+
+验收标准逐项核验：
+1. ✅ `docs/deploy/topology.md` / `docs/projects/ccc/README.md` / `.ccc/*` / `.cursor/rules/*` 已统一为「2017=执行写码节点（engine worktree）+ 生产 :7788；M1=中枢出卡/验收/合入/看板」。
+2. ✅ 与 `docs/architecture.md`「2017 单端 :7788」、`executors.example.json`「2017 默认开发」一致，无互相矛盾。
+3. ⚠️→✅ 全仓 grep 门禁：残留 `docs/cursor-code-check-handoff.md`（live 交接文档）「M1 开发副本」表述，机审就地修复对齐后已无残留；仅保留已关闭历史卡（T4/T45-48）与被拒备选方案（005 计划）等历史记录。
+
+改动范围判定：主 commit `8d9b3b17` 改动集中在卡范围（topology/README/onboarding/.ccc/.cursor）+ 卡本身回写，未越界；`docs/architecture.md` 本就为 2017 单端表述无需改动。机审补充 commit `75a4b149` 仅为补全卡验收 #3 全仓门禁，属卡内范围。
+
+维护区完成钩子核验：四问均已勾选并填说明，无占位。
+
 ## 机审提示
 
 - 审查项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
