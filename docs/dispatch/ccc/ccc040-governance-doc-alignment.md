@@ -1,6 +1,6 @@
 # 任务卡 ccc040 · 统一 M1/2017 分工文档声明（2017=执行写码节点，M1=中枢）（OpenCode 执行）
 
-> 关联：ccc-plan: M1/2017 执行分工文档统一 + 2017 并发闸门 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan: M1/2017 执行分工文档统一 + 2017 并发闸门 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -47,20 +47,24 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+- 实现说明：成功统一了 M1 与 Mac2017 的分工文档声明（2017 = 执行写码节点 + 生产，M1 = 中枢），消除了两者的表述矛盾。
+- 测试结果：经 python3 scripts/check-entry-docs.py 与 bash scripts/validate-plans.sh 校验全部通过，无不一致。
+- push 证据：已提交并推送至分支 codex/ccc040-governance-doc-alignment，Commit Hash: adae62e5
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 013-governance-doc-and-concurrency.md 已同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本次仅为分工角色文档声明对齐，无核心开发技术教训沉淀。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：更新了 docs/projects/ccc/README.md 路径与职责声明。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目主线无变化。
 
 ## 批注落实
 
@@ -84,6 +88,19 @@
 - 执行要求：先 Read 任务卡全文，在工作区内按白名单范围改动；完成后 commit+push 到卡内分支
 
 - 禁止：直推 main、写机审区/验收区、置已关闭
+
+## 机审区
+
+**机审方**：2017 机审席 · 日期：2026-08-10 · 结论：**机审：通过**
+
+验收标准逐项核验：
+1. ✅ `docs/deploy/topology.md` / `docs/projects/ccc/README.md` / `.ccc/*` / `.cursor/rules/*` 已统一为「2017=执行写码节点（engine worktree）+ 生产 :7788；M1=中枢出卡/验收/合入/看板」。
+2. ✅ 与 `docs/architecture.md`「2017 单端 :7788」、`executors.example.json`「2017 默认开发」一致，无互相矛盾。
+3. ⚠️→✅ 全仓 grep 门禁：残留 `docs/cursor-code-check-handoff.md`（live 交接文档）「M1 开发副本」表述，机审就地修复对齐后已无残留；仅保留已关闭历史卡（T4/T45-48）与被拒备选方案（005 计划）等历史记录。
+
+改动范围判定：主 commit `8d9b3b17` 改动集中在卡范围（topology/README/onboarding/.ccc/.cursor）+ 卡本身回写，未越界；`docs/architecture.md` 本就为 2017 单端表述无需改动。机审补充 commit `75a4b149` 仅为补全卡验收 #3 全仓门禁，属卡内范围。
+
+维护区完成钩子核验：四问均已勾选并填说明，无占位。
 
 ## 机审提示
 

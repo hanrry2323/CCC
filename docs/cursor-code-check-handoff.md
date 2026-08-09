@@ -5,7 +5,7 @@
 ## 一、项目现状（重启后基线）
 
 - **版本**：v0.70.0；main = `fecbe4e`（2026-08-05 新栈对齐收口）
-- **架构**：薄驱动 Engine + Markdown 任务卡（`docs/dispatch/TNN-*.md` 唯一事实源）+ 看板/HTTP/桌面双壳；生产在 Mac2017（:7788 + 中继 6100/6102），M1 是开发副本
+- **架构**：薄驱动 Engine + Markdown 任务卡（`docs/dispatch/TNN-*.md` 唯一事实源）+ 看板/HTTP/桌面双壳；生产与执行在 Mac2017（:7788 + 中继 6100/6102 + engine worktree 写码），M1 = 中枢出卡/验收/合入/看板
 - **流程**：Codex 出卡 → Engine 派发 Claude Code（2017 worktree）→ 分步提交 → Codex 验收 → 合入部署
 - **执行体**：日常 = OpenCode / Claude Code（注册表可后台 CLI）；**Cursor = 难度开发突击手**（硬骨头 / 复杂排查 / 点名硬任务）
 - **看板**：74 已关闭 / 0 待分派 / 4 历史打回；今天（08-05）T54-T69 全链路闭环部署
@@ -66,7 +66,7 @@ docs/         权威文档 + dispatch/（任务卡）+ archive/（归档，勿�
 ### 红线
 
 1. **只读检查，不擅自改代码**（修复走正式任务卡）；可写的问题清单文档除外
-2. 只检查 `/Users/apple/program/CCC` 开发副本；**禁止 SSH 改 2017 生产**
+2. 只检查 `/Users/apple/program/CCC` 中枢副本；**禁止 SSH 改 2017 生产**
 3. 不碰 QuantHive / qb（双轨独立）；不碰 docs/archive/（归档）
 4. 不伪造证据——每条问题给真实命令输出或代码引用
 5. 分支 `codex/cursor-t02-code-audit`（从 main 新建），分步提交，push 后等 Codex 验收

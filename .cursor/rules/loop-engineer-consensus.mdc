@@ -21,7 +21,7 @@ CCC = 自动化任务编排平台：薄驱动 Engine + Markdown 任务卡（唯�
 ## 当前架构（2026-08-06 基线）
 
 - **版本**：v0.70.0（根目录 VERSION；版本号只在 CHANGELOG 补丁）
-- **代码分布**：M1 `/Users/apple/program/CCC` = 开发副本（git → GitHub main）；2017 `/Users/fan/program/CCC` = 生产副本（只 pull、不手改）
+- **代码分布**：M1 `/Users/apple/program/CCC` = 主仓/中枢副本；2017 `/Users/fan/program/CCC` = 生产与执行副本（只 pull、不手改）
 - **单端生产**：2017 `:7788`（web-server / engine / board-scheduler 三 launchd 服务）；大脑对话走 2017 中继 6100/6102；**M1 不跑 7788，无 Hub :7777、无 sidecar**
 - **任务卡 = 唯一事实源**：`docs/dispatch/TNN-*.md`；卡头五态：待分派 / 执行中 / 已回写 / 已关闭 / 打回；看板是派生视图（loader 扫描卡 → /board API），不存数据不做决策
 - **北星流程**：`ccc-plan` → plan-to-cards → Engine+机审静默 → ready_for_merge → 人审 diff →「合入批准」→ 合入部署
