@@ -1,6 +1,6 @@
 # 任务卡 ccc030 · 巡查权重打分与转卡接线（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡8 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡8 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -59,20 +59,38 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. 实现了权重打分机制：新增了 `DEFAULT_SCORING_RULES` 默认规则配置表，支持通过 `OBSERVER_SCORING_RULES` 进行自定义规则注入。每条风险发现按照 `weight = cross_confirm × impact × frequency` 进行打分，并打上红/黄/蓝旗的 severity。
+2. 一致性扫描与自动诊断：
+   - 检查每个 taskable 项目在 roadmap.md 中是否有业务线路段落；
+   - 检查已关闭卡在 roadmap.md 和卡文件中的状态漂移与不一致；
+   - 检查已完成方案所关联卡是否全关闭；
+   - 检查已完成方案中关联引用的卡是否存在；
+   - 检查已关闭卡是否缺失或未填写维护区四问（说明为空或包含模板占位）。
+3. 风险报告自动生成：每天或触发运行时生成 `docs/notes/YYYY-MM-DD-ccc-patrol.md` Markdown 报告，自动按权重降序排列，并在报告末尾针对风险，输出对应的 `scripts/new-card.sh` 转卡建议命令。
+
+### 测试结果
+1. 在 `server/tests/test_observer.py` 中补充了 `test_weight_scoring_and_report_ordering` 测试用例，对打分公式、权重计算、降序排列以及 new-card 命令输出进行全方位覆盖。
+2. 运行 `python3 -m pytest server/tests/test_observer.py` 结果全绿。
+3. 通过 `python3 -m server.engine.scheduler --config test_config.env --once` 本地跑通单次巡查流程，产出带权重的巡查报告 `docs/notes/2026-08-09-ccc-patrol.md`。
+
+### Push 证据
+- Commit Hash: ea4f1a9b8c715997b4877e10cd51a0c29bf05e2c
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：ccc-plan-011 方案的阶段三（3.1 权重公式与打分）已经随着本卡的开发得以部分落实。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：无
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变项目结构/技术栈/路径，不影响 `docs/projects/ccc/README.md`。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况和下一步依然严格遵循 ccc-plan-011 的既定路线运行，没有新增和变更方向。
 
 ## 批注落实
 
