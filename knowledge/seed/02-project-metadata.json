@@ -149,6 +149,14 @@
       "role": "学习资料",
       "access": "本地直接访问",
       "last_activity": "unknown"
+    },
+    {
+      "name": "clwarp",
+      "path": "Mac2017 /Users/fan/program/apps/clwarp/（SMB: /Volumes/fan/program/apps/clwarp）",
+      "nature": "git 仓",
+      "role": "统一 AI 开发桌面驾驶舱（Claude+OpenCode+Codex）",
+      "access": "SMB /Volumes/fan/program/apps/clwarp/ 或 ssh fan@192.168.3.116",
+      "last_activity": "2026-08-09"
     }
   ],
   "cleaned_paths_history": {
