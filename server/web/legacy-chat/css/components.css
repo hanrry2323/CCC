@@ -3356,11 +3356,12 @@
   background: var(--ccc-bg-hover) !important;
 }
 
-/* ── 计划页面（#/plans）── */
+
+/* ── 计划页面（#/plans · 主题变量版）── */
 
 .plans-page {
   padding: 16px 20px;
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
@@ -3383,6 +3384,7 @@
   color: var(--ccc-fg-dim);
 }
 
+/* 工具栏 */
 .plans-toolbar {
   display: flex;
   gap: 8px;
@@ -3395,7 +3397,7 @@
   padding: 5px 10px;
   font-size: 13px;
   border: 1px solid var(--ccc-border);
-  border-radius: 6px;
+  border-radius: var(--ccc-radius-sm, 6px);
   background: var(--ccc-bg);
   color: var(--ccc-fg);
   cursor: pointer;
@@ -3405,7 +3407,7 @@
   padding: 5px 10px;
   font-size: 13px;
   border: 1px solid var(--ccc-border);
-  border-radius: 6px;
+  border-radius: var(--ccc-radius-sm, 6px);
   background: var(--ccc-bg);
   color: var(--ccc-fg);
   flex: 1;
@@ -3413,27 +3415,28 @@
   max-width: 240px;
 }
 
+/* 按钮 */
 .plans-btn-primary {
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
   border: none;
-  border-radius: 6px;
-  background: #0c4a6e;
+  border-radius: var(--ccc-radius-sm, 6px);
+  background: var(--ccc-accent, #0c4a6e);
   color: #fff;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .plans-btn-primary:hover {
-  background: #0e5a82;
+  opacity: .88;
 }
 
 .plans-btn-sm {
   padding: 3px 10px;
   font-size: 12px;
   border: 1px solid var(--ccc-border);
-  border-radius: 4px;
+  border-radius: var(--ccc-radius-sm, 4px);
   background: var(--ccc-bg);
   color: var(--ccc-fg);
   cursor: pointer;
@@ -3444,46 +3447,69 @@
 }
 
 .plans-btn-convert {
-  border-color: #0c4a6e;
-  color: #0c4a6e;
+  border-color: var(--ccc-accent, #0c4a6e);
+  color: var(--ccc-accent, #0c4a6e);
   font-weight: 600;
 }
 
 .plans-btn-convert:hover {
-  background: #0c4a6e;
+  background: var(--ccc-accent, #0c4a6e);
   color: #fff;
 }
 
-.plans-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* 加载态／空态 */
+.plans-loading {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--ccc-fg-dim);
+  font-size: 14px;
+  animation: plans-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes plans-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
 }
 
 .plans-empty {
   text-align: center;
   padding: 48px 16px;
-  color: var(--ccc-fg-dim);
+  color: var(--ccc-fg-muted, var(--ccc-fg-dim));
   font-size: 14px;
+  border: 2px dashed var(--ccc-border);
+  border-radius: var(--ccc-radius-sm, 8px);
+  background: var(--ccc-bg-layer, var(--ccc-bg));
+}
+
+/* ── 卡片网格 ── */
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
 }
 
 .plans-card {
   border: 1px solid var(--ccc-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  border-radius: var(--ccc-radius-sm, 8px);
+  padding: 14px 16px;
   cursor: pointer;
-  transition: background .15s;
+  transition: background .15s, border-color .15s;
+  background: var(--ccc-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .plans-card:hover {
   background: var(--ccc-bg-hover);
+  border-color: var(--ccc-border-subtle, var(--ccc-border));
 }
 
-.plans-card-header {
+/* 卡片头部 */
+.plans-card-top {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
   flex-wrap: wrap;
 }
 
@@ -3493,99 +3519,179 @@
   text-transform: uppercase;
   color: var(--ccc-fg-dim);
   letter-spacing: .5px;
+  background: var(--ccc-bg-layer, var(--ccc-bg-hover));
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.plans-card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .plans-card-status {
   font-size: 11px;
-  color: #fff;
+  font-weight: 600;
   padding: 1px 6px;
   border-radius: 3px;
-  font-weight: 600;
 }
 
 .plans-card-id {
   font-size: 12px;
   color: var(--ccc-fg-dim);
   font-family: monospace;
+  margin-left: auto;
 }
 
 .plans-card-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--ccc-fg);
+  line-height: 1.4;
 }
 
+/* 卡片中段 */
 .plans-card-meta {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   font-size: 12px;
   color: var(--ccc-fg-dim);
-  margin-bottom: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
+.plans-card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--ccc-bg-layer, var(--ccc-bg-hover));
+  color: var(--ccc-fg-dim);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 卡片底部操作 */
 .plans-card-actions {
   display: flex;
   gap: 6px;
   align-items: center;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--ccc-border-subtle, var(--ccc-border));
 }
 
 .plans-status-select {
   padding: 2px 6px;
   font-size: 11px;
   border: 1px solid var(--ccc-border);
-  border-radius: 4px;
+  border-radius: var(--ccc-radius-sm, 4px);
   background: var(--ccc-bg);
   color: var(--ccc-fg);
+  margin-left: auto;
 }
 
-/* 详情 */
-
+/* ── 详情面板 ── */
 .plans-detail {
   border: 1px solid var(--ccc-border);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--ccc-radius-sm, 8px);
+  padding: 20px;
+  background: var(--ccc-bg);
 }
 
 .plans-detail-inner {
-  max-width: 720px;
+  max-width: 780px;
 }
 
 .plans-detail-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .plans-detail-header h3 {
   margin: 0;
   font-size: 16px;
   flex: 1;
+  color: var(--ccc-fg);
 }
 
 .plans-detail-meta {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   font-size: 12px;
   color: var(--ccc-fg-dim);
   margin-bottom: 16px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .plans-detail-body {
   font-size: 14px;
-  line-height: 1.65;
+  line-height: 1.7;
   color: var(--ccc-fg);
   margin-bottom: 16px;
 }
 
-.plans-detail-body h2 { font-size: 16px; margin: 20px 0 8px; }
-.plans-detail-body h3 { font-size: 15px; margin: 16px 0 6px; }
-.plans-detail-body h4 { font-size: 14px; margin: 14px 0 4px; }
+.plans-detail-body h2 { font-size: 16px; margin: 22px 0 10px; color: var(--ccc-fg); }
+.plans-detail-body h3 { font-size: 15px; margin: 18px 0 8px; color: var(--ccc-fg); }
+.plans-detail-body h4 { font-size: 14px; margin: 14px 0 6px; color: var(--ccc-fg); }
 .plans-detail-body p { margin: 0 0 10px; }
-.plans-detail-body blockquote { margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--ccc-border); background: var(--ccc-bg-hover); border-radius: 0 4px 4px 0; color: var(--ccc-fg-dim); }
-.plans-detail-body code { background: var(--ccc-bg-hover); padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+.plans-detail-body blockquote {
+  margin: 0 0 10px;
+  padding: 8px 14px;
+  border-left: 3px solid var(--ccc-border);
+  background: var(--ccc-bg-layer, var(--ccc-bg-hover));
+  border-radius: 0 4px 4px 0;
+  color: var(--ccc-fg-dim);
+}
+.plans-detail-body code {
+  background: var(--ccc-bg-layer, var(--ccc-bg-hover));
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: monospace;
+  color: var(--ccc-fg);
+}
+.plans-detail-body pre {
+  background: var(--ccc-bg-layer, var(--ccc-bg-hover));
+  padding: 10px 14px;
+  border-radius: var(--ccc-radius-sm, 6px);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.plans-detail-body pre code {
+  background: none;
+  padding: 0;
+}
+.plans-detail-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.plans-detail-body th,
+.plans-detail-body td {
+  border: 1px solid var(--ccc-border);
+  padding: 5px 10px;
+  text-align: left;
+}
+.plans-detail-body th {
+  background: var(--ccc-bg-layer, var(--ccc-bg-hover));
+  font-weight: 600;
+}
+.plans-detail-body ul { margin: 0 0 10px; padding-left: 20px; }
+.plans-detail-body ol { margin: 0 0 10px; padding-left: 20px; }
+.plans-detail-body a { color: var(--ccc-accent, #0c4a6e); }
 
 .plans-checkbox {
   display: flex;
@@ -3608,8 +3714,7 @@
   border-top: 1px solid var(--ccc-border);
 }
 
-/* 新建表单 overlay */
-
+/* ── 新建表单 overlay ── */
 .plans-form-overlay {
   position: fixed;
   inset: 0;
@@ -3622,7 +3727,8 @@
 
 .plans-form {
   background: var(--ccc-bg);
-  border-radius: 10px;
+  border: 1px solid var(--ccc-border);
+  border-radius: var(--ccc-radius-sm, 10px);
   padding: 24px;
   width: 90%;
   max-width: 580px;
@@ -3634,6 +3740,7 @@
 .plans-form h3 {
   margin: 0 0 16px;
   font-size: 16px;
+  color: var(--ccc-fg);
 }
 
 .plans-form-field {
@@ -3648,6 +3755,11 @@
   color: var(--ccc-fg-dim);
 }
 
+.plans-form-field label .required {
+  color: #c44;
+  margin-left: 2px;
+}
+
 .plans-form-field input,
 .plans-form-field select,
 .plans-form-field textarea {
@@ -3655,7 +3767,7 @@
   padding: 6px 10px;
   font-size: 13px;
   border: 1px solid var(--ccc-border);
-  border-radius: 6px;
+  border-radius: var(--ccc-radius-sm, 6px);
   background: var(--ccc-bg);
   color: var(--ccc-fg);
   font-family: inherit;
@@ -3676,11 +3788,14 @@
   margin-top: 16px;
 }
 
-/* ── 计划页面 移动端适配 ── */
-
+/* ── 移动端适配 ── */
 @media (max-width: 768px) {
   .plans-page {
     padding: 12px 14px;
+  }
+
+  .plans-grid {
+    grid-template-columns: 1fr;
   }
 
   .plans-toolbar {
@@ -3713,6 +3828,6 @@
   }
 
   .plans-form-field textarea {
-    font-size: 16px; /* 防止 iOS 缩放 */
+    font-size: 16px;
   }
 }

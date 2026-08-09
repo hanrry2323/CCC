@@ -25,6 +25,7 @@ let _plans = [];
 let _filterProject = '';
 let _filterStatus = '';
 let _searchQ = '';
+let _projects = [];
 let _detailPath = null;  // 当前打开的详情路径，null=列表视图
 let _formOpen = false;   // 新建表单是否打开
 
@@ -41,7 +42,17 @@ function h(html) {
 
 // ── API ──
 
+async function loadProjects() {
+  try {
+    const data = await apiGet('/projects');
+    _projects = (data.projects || []).filter(p => p.taskable);
+  } catch (e) {
+    _projects = [];
+  }
+}
+
 async function loadPlans() {
+  if (!_projects.length) await loadProjects();
   const params = new URLSearchParams();
   if (_filterProject) params.set('project', _filterProject);
   if (_filterStatus) params.set('status', _filterStatus);
@@ -112,11 +123,7 @@ function renderToolbar() {
     <div class="plans-toolbar">
       <select id="plans-filter-project" class="plans-select">
         <option value="">全部项目</option>
-        <option value="ccc"${_filterProject === 'ccc' ? ' selected' : ''}>CCC</option>
-        <option value="xy"${_filterProject === 'xy' ? ' selected' : ''}>xianyu</option>
-        <option value="mx"${_filterProject === 'mx' ? ' selected' : ''}>medio-0</option>
-        <option value="hp"${_filterProject === 'hp' ? ' selected' : ''}>知识库</option>
-        <option value="qb"${_filterProject === 'qb' ? ' selected' : ''}>qb</option>
+        ${(_projects || []).map(p => `<option value="${esc(p.prefix)}"${_filterProject === p.prefix ? ' selected' : ''}>${esc(p.display || p.name)}</option>`).join('')}
       </select>
       <select id="plans-filter-status" class="plans-select">
         <option value="">全部状态</option>
@@ -133,19 +140,21 @@ function renderPlanCard(plan) {
   const accText = acc.total > 0 ? `${acc.done}/${acc.total}` : '—';
   const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
 
+  const dotColor = color;
   return `
     <div class="plans-card" data-path="${esc(plan.path)}">
-      <div class="plans-card-header">
+      <div class="plans-card-top">
         <span class="plans-card-project">${esc(plan.project)}</span>
-        <span class="plans-card-status" style="background:${color}">${esc(plan.status)}</span>
+        <span class="plans-card-dot" style="background:${dotColor}" title="${esc(plan.status)}"></span>
+        <span class="plans-card-status" style="color:${dotColor}">${esc(plan.status)}</span>
         <span class="plans-card-id">#${esc(plan.num)}</span>
-        <span class="plans-card-title">${esc(plan.title.replace('方案 · ', ''))}</span>
       </div>
+      <div class="plans-card-title">${esc(plan.title.replace('方案 · ', ''))}</div>
       <div class="plans-card-meta">
-        <span>作者：${esc(plan.author)} · ${esc(plan.tool)}</span>
+        <span>${esc(plan.author)} · ${esc(plan.tool)}</span>
         <span>${esc(plan.updated || plan.created)}</span>
-        ${cardsText ? `<span>关联卡：${esc(cardsText)}</span>` : ''}
-        <span>验收：${accText}</span>
+        ${acc.total > 0 ? `<span class="plans-card-chip">验收 ${acc.done}/${acc.total}</span>` : ''}
+        ${cardsText ? `<span class="plans-card-chip" title="${esc(cardsText)}">卡 ${esc(cardsText)}</span>` : ''}
       </div>
       <div class="plans-card-actions">
         <button class="plans-btn-sm" data-action="detail" data-path="${esc(plan.path)}">详情</button>
@@ -160,9 +169,12 @@ function renderPlanCard(plan) {
 
 function renderList() {
   if (_plans.length === 0) {
-    return `<div class="plans-empty">暂无方案。点击「+ 新建方案」开始。</div>`;
+    return `<div class="plans-empty">
+      <p>暂无方案</p>
+      <p style="font-size:12px;margin-top:4px">点击「+ 新建方案」创建第一个方案，或调整筛选条件。</p>
+    </div>`;
   }
-  return _plans.map(renderPlanCard).join('');
+  return `<div class="plans-grid">${_plans.map(renderPlanCard).join('')}</div>`;
 }
 
 function render() {
@@ -327,6 +339,19 @@ async function doUpdateStatus(path, status) {
 async function doConvert(path) {
   if (!confirm('确定将此方案转为任务卡？转卡后方案状态将自动推进为「部分执行」。')) return;
 
+  // 检查转卡计划行数
+  try {
+    const detail = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
+    const planSection = (detail.content || '').split('## 转卡计划')[1];
+    if (planSection) {
+      const lines = planSection.split('\\n').filter(l => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('##'));
+      if (lines.length > 8) {
+        alert('转卡计划段最多 8 行，当前 ' + lines.length + ' 行。请精简后重试。');
+        return;
+      }
+    }
+  } catch (e) { /* 无法读取详情时跳过行数检查 */ }
+
   try {
     const result = await apiPost('/plans/convert', { path });
     if (result.ok) {
@@ -367,7 +392,7 @@ function showCreateForm() {
       </div>
       <div class="plans-form-field">
         <label>作者</label>
-        <input type="text" id="plans-form-author" placeholder="作者名">
+        <input type="text" id="plans-form-author" placeholder="作者名" required>
       </div>
       <div class="plans-form-field">
         <label>工具</label>
@@ -397,6 +422,11 @@ function showCreateForm() {
 
     if (!title || !content) {
       alert('标题和内容不能为空');
+      return;
+    }
+
+    if (!author) {
+      alert('作者不能为空');
       return;
     }
 

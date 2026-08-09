@@ -1630,6 +1630,10 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "缺少 project 或 title"}, 400)
             return
 
+        if not author:
+            self._send_json({"error": "作者不能为空"}, 400)
+            return
+
         result = create_plan(
             _PROJECT_ROOT,
             project=project,

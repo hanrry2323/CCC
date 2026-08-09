@@ -27,6 +27,14 @@ logger = logging.getLogger("ccc.board.plans")
 # 有效状态
 VALID_STATES = frozenset({"草案", "已确认", "部分执行", "已完成", "作废"})
 
+# 状态流转白名单（from → allowed to）
+_TRANSITIONS: dict[str, frozenset[str]] = {
+    "草案": frozenset({"已确认", "作废"}),
+    "已确认": frozenset({"部分执行", "作废"}),
+    "部分执行": frozenset({"已完成", "作废"}),
+    # 已完成 / 作废 = 终态，不可再改
+}
+
 # 方案文件路径模式
 _PLAN_PATH_RE = re.compile(
     r"^docs/projects/([a-z]{2,4})/plans/([0-9]{3})-([a-z0-9][-a-z0-9]*)\.md$"
@@ -313,12 +321,23 @@ def update_plan(
         return {"error": "无效的方案路径格式"}
 
     if status and status not in VALID_STATES:
-        return {"error": f"无效状态: {status}（须为: {'/'.join(VALID_STATES)}）"}
+        return {"error": f"无效状态: {status}（须为: {'/'.join(sorted(VALID_STATES))}）"}
 
     try:
         current = plan_file.read_text()
     except OSError:
         return {"error": "读取方案文件失败"}
+
+    # 状态流转白名单校验
+    if status:
+        current_fields = _extract_header_fields(current)
+        current_status = current_fields.get("状态", "").split("·")[0].strip()
+        if current_status in _TRANSITIONS:
+            allowed = _TRANSITIONS[current_status]
+            if status not in allowed:
+                return {"error": f"状态流转非法: {current_status} → {status}（允许: {', '.join(sorted(allowed))}）"}
+        elif current_status in ("已完成", "作废"):
+            return {"error": f"终态不可修改: {current_status}"}
 
     today = date.today().isoformat()
 
@@ -413,6 +432,11 @@ def convert_plan(
 
     if not plan_section.strip():
         return {"error": "方案缺少「转卡计划」段"}
+
+    # 转卡计划段限 8 行
+    plan_lines = [l for l in plan_section.strip().split("\n") if l.strip() and not l.strip().startswith("#")]
+    if len(plan_lines) > 8:
+        return {"error": f"转卡计划段最多 8 行，当前 {len(plan_lines)} 行"}
 
     # 提取标题（方案标题去掉「方案 · 」前缀）
     title = _extract_title(content).removeprefix("方案 · ").strip()

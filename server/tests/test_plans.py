@@ -303,6 +303,58 @@ class TestUpdatePlan:
         (tmp_path / path).unlink()
 
 
+    def test_transition_draft_to_done_rejected(self, tmp_path: Path):
+        """草案到已完成应被拒绝。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        result = create_plan(tmp_path, project="ccc", title="test",
+                             content="## ok", author="T", tool="T")
+        assert result.get("ok")
+        path = result["path"]
+
+        r2 = update_plan(tmp_path, rel_path=path, status="已完成")
+        assert "error" in r2
+        assert "流转非法" in r2["error"]
+
+        (tmp_path / path).unlink()
+
+    def test_transition_done_to_draft_rejected(self, tmp_path: Path):
+        """已完成到草案应被拒绝（终态不可改）。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        result = create_plan(tmp_path, project="ccc", title="test",
+                             content="## ok", author="T", tool="T")
+        assert result.get("ok")
+        path = result["path"]
+
+        # 合法流转到已完成
+        update_plan(tmp_path, rel_path=path, status="已确认")
+        update_plan(tmp_path, rel_path=path, status="部分执行")
+        update_plan(tmp_path, rel_path=path, status="已完成")
+
+        # 已完成到草案应拒绝
+        r2 = update_plan(tmp_path, rel_path=path, status="草案")
+        assert "error" in r2
+
+        (tmp_path / path).unlink()
+
+    def test_transition_confirm_to_partial_allowed(self, tmp_path: Path):
+        """已确认到部分执行应放行（转卡自动推进）。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        result = create_plan(tmp_path, project="ccc", title="test",
+                             content="## ok", author="T", tool="T")
+        assert result.get("ok")
+        path = result["path"]
+
+        # 草案到已确认（合法）
+        update_plan(tmp_path, rel_path=path, status="已确认")
+        # 已确认到部分执行（合法）
+        r2 = update_plan(tmp_path, rel_path=path, status="部分执行")
+        assert r2.get("ok")
+
+        (tmp_path / path).unlink()
+
 # ── 5. convert_plan ──
 
 class TestConvertPlan:
@@ -415,11 +467,34 @@ class TestPlansPageContract:
         assert "转为任务卡" in text
         assert "confirm" in text
 
+    def test_has_grid_layout(self) -> None:
+        """验证卡片网格布局。"""
+        text = self._page()
+        assert "plans-grid" in text
+
     def test_create_form(self) -> None:
         """验证新建表单存在。"""
         text = self._page()
         assert "plans-btn-new" in text
         assert "plans-form-overlay" in text
+        assert "plans-form-project" in text
+        assert "plans-form-title" in text
+
+    def test_author_required(self) -> None:
+        """验证作者必填校验。"""
+        text = self._page()
+        assert '作者不能为空' in text
+
+    def test_dynamic_projects(self) -> None:
+        """验证动态项目加载。"""
+        text = self._page()
+        assert "loadProjects" in text
+        assert "_projects" in text
+
+    def test_convert_line_limit(self) -> None:
+        """验证转卡计划 8 行限制。"""
+        text = self._page()
+        assert "8 行" in text or "lines.length > 8" in text
         assert "plans-form-project" in text
         assert "plans-form-title" in text
 
