@@ -84,6 +84,23 @@
 
 （无人工批注，不适用。）
 
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-09）
+
+审查范围（clwarp 仓 `codex/clw002-session-management` @ `19c3a49`）：`src-tauri/src/session.rs`、`provider.rs`、`lib.rs`、`terminal.rs`、`Cargo.toml`（rusqlite 0.31 bundled）、前端 `src/App.tsx`、`src/Terminal.tsx`，与卡声明范围一致，无越界文件。
+
+**审查摘要**
+
+- **红线合规（通过）**：全会话源只读。Claude/Codex 的 `.jsonl` 仅以只读打开；OpenCode 经 `rusqlite` 以 `SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_NO_MUTEX` 连接。不改用户现有 CLI 配置，无任何写入路径；本卡仅读取会话、无持久化需求故未落 `~/.clwarp/`，与 ShellSight 隔离成立。mtime/内容哈希零写入。
+- **PTY 生命周期（通过）**：`resume_session` 经 `TerminalSession::new` 拉起 native PTY（alacritty TTY 指定程序+参数），`spawn_terminal` 复用同一设备。切会话时前端 effect cleanup 对旧 `activeSessionId` 调 `kill_terminal` 关闭后端 PTY，无进程泄漏。
+- **IPC 边界（通过）**：`list_sessions` / `resume_session` / `kill_session` 三命令经 `State<TerminalState>` 管理，作用域最小，无越权。
+- **前端错误处理（通过）**：`fetchSessions` try/catch + error 态；TerminalComponent 启动失败有 error 卡片展示，读循环/写终止错误被捕获打印。
+- **架构（通过）**：会话解析（读）与 Provider 调度（spawn/resume/kill）分层清晰；三 Provider 统一 `SessionInfo` 结构，按时间倒序注入侧边栏并分组展示。
+- **机审补充修复**：App.tsx 原三处 Provider 区块 131 行近乎重复 JSX，机审就地重构为数据驱动渲染（`providers` 配置数组驱动单份渲染），显示顺序/配色/交互行为完全一致。独立验证：`tsc -b` 0 错、`vite build` 通过（449ms）、`oxlint src/App.tsx` 0 问题；Push `63725b8` 至 `origin/codex/clw002-session-management`。
+
+**非阻断备注**：Codex 会话 `path` 字段含工作目录而非文件路径（与 Claude 语义不一致），当前无下游消费者，属设计取舍；HOME 缺失时 `/Users/fan` 兜底仅在极端环境触发（Tauri 恒注入 HOME），阈值内接受。不构成本卡打回理由。
+
 ## 执行提示
 
 - 项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。）
