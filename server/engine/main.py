@@ -32,8 +32,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import structlog
-
 from server.config.loader import ConfigError, load_config
 from server.engine.dispatch import (
     DispatchDecision,
@@ -50,7 +48,7 @@ from server.engine.task import State, Work
 from server.board.roles import normalize_tool
 
 logger = logging.getLogger("ccc.engine")
-metrics_logger = structlog.get_logger("ccc.engine.metrics")
+metrics_logger = logging.getLogger("ccc.engine.metrics")
 
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
@@ -1555,10 +1553,10 @@ def _dispatch_and_collect(
                                             cmd_binary,
                                         )
                                         metrics_logger.info(
-                                            "gate_skip",
-                                            card=work.id,
-                                            gate=gate_name,
-                                            reason="env_missing",
+                                            "gate_skip card=%s gate=%s reason=%s",
+                                            work.id,
+                                            gate_name,
+                                            "env_missing",
                                         )
                                         continue
                                     logger.info("运行门禁【%s】: cmd=%s", gate_name, cmd)

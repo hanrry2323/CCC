@@ -2225,7 +2225,7 @@ class TestPromptInjection:
         assert "项目提示（由中枢在出卡时注入" not in log_content
 
     def test_gate_skip_env_missing_metrics_logged(self, tmp_path: Path, monkeypatch) -> None:
-        """门禁命令不存在（环境缺失）→ 记录 structlog 指标并放行。"""
+        """门禁命令不存在（环境缺失）→ 记录指标日志并放行。"""
         monkeypatch.chdir(tmp_path)
         _init_src_repo(tmp_path)
         worktree_base = tmp_path / "wt"
@@ -2259,21 +2259,19 @@ class TestPromptInjection:
             "EXECUTOR_RETRY_ONCE": "false"
         }
 
-        # Mock structlog metrics_logger to capture the log call
-        logged_events = []
+        # Mock metrics_logger.info to capture the log call
+        logged_call = {}
+
         from server.engine.main import metrics_logger
-        def mock_info(event, **kwargs):
-            logged_events.append((event, kwargs))
+        def mock_info(msg, *args, **kwargs):
+            logged_call["msg"] = msg % args if args else msg
 
         monkeypatch.setattr(metrics_logger, "info", mock_info)
 
         summary = run_once(reg, store, cfg)
-        assert summary["collected"] == 1  # 门禁跳过 → 放行，卡进入已回写
+        # 门禁跳过（命令不存在）→ 放行，卡进入已回写
+        assert summary["collected"] == 1
 
-        # Verify structlog metrics
-        assert len(logged_events) == 1
-        event, kwargs = logged_events[0]
-        assert event == "gate_skip"
-        assert kwargs["card"] == "T-skip"
-        assert kwargs["gate"] == "测试"
-        assert kwargs["reason"] == "env_missing"
+        # 指标日志必须记录 gate_skip 及 card/gate/reason
+        assert "gate_skip card=T-skip gate=测试 reason=env_missing" == logged_call["msg"]
+
