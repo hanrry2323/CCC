@@ -28,7 +28,7 @@ struct TaskCardPanel: View {
             cardList
         }
         .frame(width: 300)
-        .background(CCCTheme.chatBg)
+        .glassEffect()
         .onAppear { startPolling() }
         .onDisappear { stopPolling() }
     }
@@ -127,11 +127,33 @@ struct TaskCardPanel: View {
         return ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 6) {
                 if cards.isEmpty {
-                    Text(model.boardBusy ? "加载中…" : "暂无任务")
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.faint)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 24)
+                    if model.boardBusy {
+                        VStack(spacing: 8) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        SkeletonView(width: 60, height: 12)
+                                        Spacer()
+                                        SkeletonView(width: 40, height: 12)
+                                    }
+                                    SkeletonView(width: 200, height: 14)
+                                    HStack {
+                                        SkeletonView(width: 80, height: 10)
+                                        Spacer()
+                                        SkeletonView(width: 50, height: 10)
+                                    }
+                                }
+                                .padding(10)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(CCCTheme.surface))
+                            }
+                        }
+                    } else {
+                        Text("暂无任务")
+                            .font(.system(size: 11))
+                            .foregroundStyle(CCCTheme.faint)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 24)
+                    }
                 } else {
                     ForEach(cards, id: \.id) { task in
                         TaskCard(
@@ -325,6 +347,8 @@ struct TaskCard: View {
                     .padding(.vertical, 4)
             }
             .contentShape(Rectangle())
+            .powHoverSpring()
+            .powSpringClick()
             .onTapGesture { onToggle() }
 
             // 展开详情
@@ -341,11 +365,10 @@ struct TaskCard: View {
     @ViewBuilder
     private var detailView: some View {
         if detailBusy {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text("加载详情…")
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.faint)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonView(width: 240, height: 12)
+                SkeletonView(width: 160, height: 10)
+                SkeletonView(width: 200, height: 10)
             }
             .padding(8)
         } else if let err = detailError {
@@ -433,29 +456,29 @@ enum StateTone {
     }
 
     static let pending = Palette(
-        fg: Color(red: 0.42, green: 0.40, blue: 0.37),
-        bg: Color(red: 0.92, green: 0.91, blue: 0.89),
-        bar: Color(red: 0.69, green: 0.67, blue: 0.62)
+        fg: CCCTheme.tonePendingFG,
+        bg: CCCTheme.tonePendingBG,
+        bar: CCCTheme.tonePendingBar
     )
     static let running = Palette(
-        fg: Color(red: 0.24, green: 0.42, blue: 0.27),
-        bg: Color(red: 0.91, green: 0.94, blue: 0.89),
-        bar: Color(red: 0.35, green: 0.60, blue: 0.43)
+        fg: CCCTheme.toneRunningFG,
+        bg: CCCTheme.toneRunningBG,
+        bar: CCCTheme.toneRunningBar
     )
     static let written = Palette(
-        fg: Color(red: 0.29, green: 0.42, blue: 0.35),
-        bg: Color(red: 0.89, green: 0.92, blue: 0.91),
-        bar: Color(red: 0.42, green: 0.54, blue: 0.48)
+        fg: CCCTheme.toneWrittenFG,
+        bg: CCCTheme.toneWrittenBG,
+        bar: CCCTheme.toneWrittenBar
     )
     static let closed = Palette(
-        fg: Color(red: 0.29, green: 0.31, blue: 0.34),
-        bg: Color(red: 0.88, green: 0.90, blue: 0.91),
-        bar: Color(red: 0.54, green: 0.56, blue: 0.60)
+        fg: CCCTheme.toneClosedFG,
+        bg: CCCTheme.toneClosedBG,
+        bar: CCCTheme.toneClosedBar
     )
     static let returned = Palette(
-        fg: Color(red: 0.64, green: 0.23, blue: 0.17),
-        bg: Color(red: 0.95, green: 0.87, blue: 0.85),
-        bar: Color(red: 0.77, green: 0.36, blue: 0.29)
+        fg: CCCTheme.toneReturnedFG,
+        bg: CCCTheme.toneReturnedBG,
+        bar: CCCTheme.toneReturnedBar
     )
     static let unknown = Palette(
         fg: CCCTheme.secondary,

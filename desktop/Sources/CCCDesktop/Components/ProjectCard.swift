@@ -82,6 +82,8 @@ struct ProjectCard: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isSelected ? CCCTheme.selected.opacity(0.55) : (hovering ? CCCTheme.hover : Color.clear))
         )
+        .powHoverSpring()
+        .powSpringClick()
         .onHover { hovering = $0 }
         .contextMenu {
             Button("重置对话") {
