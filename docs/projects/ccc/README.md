@@ -18,6 +18,17 @@
 - **出卡**：`scripts/new-card.sh --project ccc --title "..."`
 - **出卡前了解**：按 [`../../product/hub-context-sop.md`](../../product/hub-context-sop.md) **本仓本地**读码/图谱/看板即可，**无需 ssh**
 
+## 基准文件（核心导航）
+
+| 项 | 位置 |
+|----|------|
+| 看板（卡/派发/验收） | http://192.168.3.116:7788/#/board（项目筛选 ccc） |
+| 方案池（方案/验收标准） | http://192.168.3.116:7788/#/plans（筛选 ccc） |
+| 项目档案（本页） | docs/projects/ccc/README.md |
+| 方案文件 | docs/projects/ccc/plans/ |
+| 业务仓入口 | 业务仓根 AGENTS.md · CLAUDE.md · README.md |
+
+
 ## 线路 / 近况
 
 - 北星：[`docs/roadmap.md`](../../roadmap.md)「当前方向」

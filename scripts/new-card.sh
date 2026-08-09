@@ -178,10 +178,31 @@ fi
 
 # ── 卡骨架 ──
 TODAY="$(date +%Y-%m-%d)"
+
+# ── 基准文件节：从 docs/projects/<prefix>/ 自动生成（注册即带基准，缺基准时给指引） ──
+BASELINE=""
+PROJ_README="$PROJECT_ROOT/docs/projects/$PROJECT_PREFIX/README.md"
+PROJ_PLANS="$PROJECT_ROOT/docs/projects/$PROJECT_PREFIX/plans"
+if [[ -f "$PROJ_README" ]]; then
+  BASELINE="- 项目基准（README·权威索引）：\`docs/projects/$PROJECT_PREFIX/README.md\`"
+fi
+if [[ -d "$PROJ_PLANS" && -n "$(ls "$PROJ_PLANS" 2>/dev/null)" ]]; then
+  if [[ -n "$BASELINE" ]]; then BASELINE+="
+"; fi
+  BASELINE+="- 方案池：\`docs/projects/$PROJECT_PREFIX/plans/\`（关联方案见卡头「关联」）"
+fi
+if [[ -z "$BASELINE" ]]; then
+  BASELINE="- 本项目暂无基准文件。执行前必须先补齐项目基准（\`docs/projects/$PROJECT_PREFIX/README.md\` 五节档案），再执行本卡；缺少基准的卡视为流程缺陷，机审打回。"
+fi
+
 read -r -d '' CARD_BODY <<EOF || true
 # 任务卡 ${CARD_ID} · ${TITLE}（${EXECUTOR} 执行）
 
 > 关联：${RELATED} · 执行体：${EXECUTOR} · 验收：${ACCEPTANCE} · 状态：待分派 · 派发：${DISPATCH} · 项目：${PROJECT_PREFIX} · 日期：${TODAY}
+
+## 基准文件（先看）
+
+${BASELINE}
 
 ## 目标
 

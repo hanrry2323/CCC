@@ -17,6 +17,17 @@ Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌�
 - **taskable**：是
 - **出卡**：`scripts/new-card.sh --project mx --title "..."`
 
+## 基准文件（核心导航）
+
+| 项 | 位置 |
+|----|------|
+| 看板（卡/派发/验收） | http://192.168.3.116:7788/#/board（项目筛选 mx） |
+| 方案池（方案/验收标准） | http://192.168.3.116:7788/#/plans（筛选 mx） |
+| 项目档案（本页） | docs/projects/mx/README.md |
+| 方案文件 | docs/projects/mx/plans/ |
+| 业务仓入口 | 业务仓根 AGENTS.md · CLAUDE.md · README.md |
+
+
 ## 线路 / 近况
 
 - 版本 v0.9.0；本地 main 领先 origin 1 个 commit（安全修复 `2e093b5`），工作区干净。

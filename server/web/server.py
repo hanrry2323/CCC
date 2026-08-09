@@ -453,36 +453,49 @@ def _is_taskable_projects() -> set[str]:
 def _build_public_projects() -> list[dict[str, Any]]:
     """构造 GET /projects 响应：真实业务项目清单。
 
-    字段：``id/name/kind/workspace_path/is_taskable``（T47 契约）。
-    ``id`` 用 name 的稳定 slug；``kind`` 由 role/nature 推断；``workspace_path`` 为纯路径；
-    ``is_taskable`` 走 _is_taskable_projects 白名单（可下达任务）。
+    字段：``id/name/kind/workspace_path/is_taskable/prefix``（T47 契约）。
+    **注册即上页面**：主体来自 registry.yaml（唯一事实源，prefix/taskable/路径全由 registry 派生，
+    新项目注册后无需同步任何种子文件）；种子文件仅补充 registry 未收录的旧项目（只读）。
     本接口不带任何任务卡分组名（INT-120 等只在看板筛选出现，不进入左栏）。
     """
     from server.board.registry import load_projects
 
     projects: list[dict[str, Any]] = []
-    taskable = _is_taskable_projects()
+    seen_names: set[str] = set()
 
+    for p in load_projects():
+        if not p.name:
+            continue
+        seen_names.add(p.name)
+        taskable = bool(p.taskable and not p.forbidden)
+        projects.append(
+            {
+                "id": p.name,  # 稳定 id（name 即业务仓稳定标识）
+                "name": p.name,
+                "kind": "base" if p.prefix == "ccc" else ("business" if taskable else "legacy"),
+                "workspace_path": p.path_m1 or p.path_mac2017 or "",
+                "is_taskable": taskable,
+                "prefix": p.prefix or "",
+            }
+        )
+
+    # 种子补充：registry 未收录的历史项目只读展示（不标记 taskable）
     prefix_map = {}
     for p in load_projects():
-        if p.name:
-            prefix_map[p.name] = p.prefix
-        if p.id:
-            prefix_map[p.id] = p.prefix
-        if p.display:
-            prefix_map[p.display] = p.prefix
-
+        for key in (p.name, p.id, p.display):
+            if key:
+                prefix_map[key] = p.prefix
     for item in _load_project_metadata():
         name = str(item.get("name") or "").strip()
-        if not name:
+        if not name or name in seen_names:
             continue
         projects.append(
             {
-                "id": name,  # 稳定 id（name 即业务仓稳定标识）
+                "id": name,
                 "name": name,
                 "kind": _infer_project_kind(item),
                 "workspace_path": _extract_workspace_path(str(item.get("path") or "")),
-                "is_taskable": name in taskable,
+                "is_taskable": False,
                 "prefix": prefix_map.get(name, ""),
             }
         )

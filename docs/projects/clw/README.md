@@ -18,6 +18,17 @@
 - **出卡**：`scripts/new-card.sh --project clw --title "..."`；执行 cwd 写在卡内（2017 apps/clwarp）
 - **技术栈**：Tauri 2.0（Rust + React/TypeScript）+ alacritty_terminal + Metal GPU
 
+## 基准文件（核心导航）
+
+| 项 | 位置 |
+|----|------|
+| 看板（卡/派发/验收） | http://192.168.3.116:7788/#/board（项目筛选 clw） |
+| 方案池（方案/验收标准） | http://192.168.3.116:7788/#/plans（筛选 clw） |
+| 项目档案（本页） | docs/projects/clw/README.md |
+| 方案文件 | docs/projects/clw/plans/ |
+| 业务仓入口 | 业务仓根 AGENTS.md · CLAUDE.md · README.md |
+
+
 ## 线路 / 近况
 
 - 2026-08-09 方案确认，6 张卡待出

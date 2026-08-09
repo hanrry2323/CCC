@@ -152,11 +152,11 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 | 层 | 路径 | 角色 |
 |----|------|------|
 | **SSOT** | [`projects/registry.yaml`](projects/registry.yaml) | 前缀 / UI id / 路径 / taskable / forbidden / status |
-| **档案** | `projects/<prefix>/README.md` | 每项目一页（五节模板，禁止再长） |
+| **档案** | `projects/<prefix>/README.md` | 每项目一页（七节模板，禁止再长） |
 | **派生** | `PREFIXES`、`GET /projects`、`is_taskable`、`knowledge/seed` | 禁止手维第二份真值 |
 | **历史对照** | [`dispatch/T-mapping.md`](dispatch/T-mapping.md) | 旧 T 卡 ↔ 新名；**前缀表以 registry 为准** |
 
-废弃手维：`docs/kb-seed/`。
+废弃手维：`docs/kb-seed/`。从零到一全流程规范见 [`projects/onboarding.md`](projects/onboarding.md)（注册 SOP / 基准四件套 / 方案卡联动 / 线路图挂账 / Agent 入口统一）。
 
 ### 3.1 仓库位置规范（硬 · 2026-08-07）
 
@@ -172,13 +172,16 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 - 新注册项目必须标 `location`；路径越界 → 校验红。
 - 文件夹归位搬迁为独立运维项（停机窗口一仓一验），搬迁后 registry 路径随迁移更新。
 
-### 档案五节模板（强制）
+### 档案七节模板（强制 · 2026-08-09 升级）
 
 1. **是什么**（一句话）  
 2. **路径**（M1 / 2017）  
 3. **在 CCC 怎么动**（出卡前缀、是否 taskable）  
-4. **线路 / 近况**（≤3 条）  
-5. **禁区**
+4. **基准文件**（核心导航：项目档案 / 方案池 / 架构 / 入口规范——Agent 必读）  
+5. **线路 / 近况**（≤3 条）  
+6. **禁区**
+
+> 七节模板即「看板即入口」的落点：任何 Agent 从看板/方案池进入项目页，即可找到全部核心基准。逐节写法见 [`projects/onboarding.md`](projects/onboarding.md) §2.2。
 
 ---
 
