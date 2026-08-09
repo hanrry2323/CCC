@@ -1,6 +1,6 @@
-# 任务卡 clw008 · dmg 打包安装 + 全链路验收（OpenCode 执行）
+# 任务卡 clw006 · dmg 打包安装 + 全链路验收（OpenCode 执行）
 
-> 关联：ccc-plan: clw006 打包 + 全链路验收 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-09
+> 关联：clw-plan-001 · 阶段 6/6 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -9,35 +9,49 @@
 
 ## 目标
 
-dmg 打包安装 + 全链路验收（ccc-plan 切片）。
+tauri build 打包 dmg，安装到 /Applications 正常启动，全链路验收通过（clw-plan-001 最后一张卡）。
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
-- `src-tauri/tauri.conf.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/icons/`
-- `src-tauri/Info.plist`
-- `src-tauri/src/lib.rs`
-- `package.json`
+- `src-tauri/tauri.conf.json` — identifier 改为正式 bundle id（如 `com.clwarp.app`）、版本号、bundle 配置
+- `src-tauri/Cargo.toml` — version 对齐（如 0.1.0 → 正式版本）、description/license
+- `src-tauri/icons/` — 正式应用图标（现有占位 icon）
+- `src-tauri/Info.plist` — 若需补充 macOS 元信息
+- `src-tauri/src/lib.rs` — 仅允许打包相关最小改动
+- `package.json` — 版本号对齐
+- 打包产物：`src-tauri/target/release/bundle/dmg/*.dmg`、`*.app`
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，基于 main 切分支 `codex/clw006-package-acceptance`
+2. 改 `tauri.conf.json`：identifier `com.tauri.dev` → `com.clwarp.app`，版本号对齐 Cargo.toml
+3. `cargo tauri build`（或 npm run tauri build）打包 dmg，确认产物生成
+4. dmg 安装到 /Applications，启动应用验证全链路：
+   - 终端交互：claude / opencode / codex 三类会话 spawn + 输入输出
+   - 侧边栏：历史会话列表显示 + 点击恢复（工作目录正确）
+   - CCC 看板面板：`/board` 加载可用
+   - 设置面板：主题/字号/看板地址修改持久化（`~/.clwarp/config.json`）
+   - Git 指示器：变更数 + 分支名实时刷新
+5. 验证会话文件零写入（mtime/哈希不变）
+6. commit+push 到 `codex/clw006-package-acceptance`（勿直推 main）；卡头改为「已回写」。
+7. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 
-1. tauri build 打包 dmg 成功，产物可安装到 /Applications 并正常启动
-2. identifier 由 com.tauri.dev 改为正式 bundle id（如 com.clwarp.app），打包产物信息正确
-3. 全链路验收：启动应用 → 终端交互（claude/opencode/codex 三类会话）→ 侧边栏恢复会话 → CCC 看板面板 → 设置面板持久化 → Git 指示器，均可用
-4. 红线合规：不修改用户 CLI 配置；会话文件零写入；打包不残留开发依赖
-5. 构建通过：cargo build --release + tsc -b && vite build 0 error；dmg 安装到 /Applications 后启动验证通过
+1. `cargo tauri build` 成功产出 dmg，安装到 /Applications 后可启动（无崩溃）
+2. identifier 已从 `com.tauri.dev` 改为正式 bundle id，`codesign -dv` 或 App 信息显示正确
+3. 全链路：三类 CLI 会话 spawn/交互、侧边栏恢复（工作目录正确）、CCC 看板面板、设置持久化、Git 指示器均可用
+4. 红线合规：会话文件零写入（mtime/哈希不变）、不碰用户 CLI 配置
+5. `cargo build --release` + `tsc -b && vite build` 均 0 error
 
 ## 回写要求
 
