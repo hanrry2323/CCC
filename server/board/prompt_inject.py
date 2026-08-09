@@ -468,6 +468,9 @@ def build_auditor_hint(project_prefix: str, title: str = "", card_context: str =
         "  - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，"
     )
     lines.append("    打回原因注明缺失项；执行体补维护区后重试。")
+    lines.append(
+        "  - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。"
+    )
 
     return "\n\n".join(lines)
 

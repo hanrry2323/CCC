@@ -1,6 +1,6 @@
 # 任务卡 ccc031 · 维护区四问交叉核对：docgate门禁升级（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡9 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡9 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -59,24 +59,51 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- 新建了 `server/board/docgate.py`，实现 `verify_maintenance` 核心函数。
+- 解析维护区四问（方案同步、教训沉淀、项目档案、线路图），并做深度交叉核对。
+- `scripts/approve-merge.sh` 升级 `check_maintenance` 门禁，接线调用 `docgate.verify_maintenance`。
+- `server/board/prompt_inject.py` 升级 `build_auditor_hint` 审计指令。
+
+### 2. 测试结果
+- 在 `server/tests/test_writeback_gate.py` 补充了 `test_verify_maintenance_success` 和 `test_verify_maintenance_failed_cases` 测试，pytest 全绿。
+
+### 3. push 证据
+- 提交哈希：21c3741a
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：由于本仓暂无 ccc-plan-011 对应的实体方案文件，故本次无需同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本次为标准门禁升级实现，暂无需要沉淀的新教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变项目结构、技术栈或路径，不涉及项目 README 的更新。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况和下一步暂无变化，无需更新 roadmap.md。
 
-## 批注落实
+## 机审区
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+**机审：通过**
+
+审卡范围：docgate 维护区四问真实性交叉核对（ccc031），2017 机审席 Code Review。
+
+- **范围**：改动严格落在卡白名单内（`server/board/docgate.py` 新建、`scripts/approve-merge.sh`、`server/board/prompt_inject.py`、`server/tests/` + 卡文件回写）。未越界 registry / validate.py / 卡正文；红线无违反（分支卡内，未直推 main）。
+- **Doc-Gate（维护区四问）**：四问全部勾选 `[否]/[否]/[否]/[否]` 且说明为实情非占位；`verify_maintenance` 对本卡返回 `ok=True`。事实核对：`ccc-plan-011` 无实体方案文件（plans 仅到 010）、无新增教训/README/roadmap 变更，声明与实现一致。
+- **验收实现**：
+  - 真实填卡样本 → `ok=True`（成功测试 + 本卡自证）
+  - 填假样本（Q1 声明[是]但方案无本卡 / Q2 引用不存在文件）→ `ok=False` 且 problems 精确注明缺失项（已实测拦截）
+  - `approve-merge.sh` check_maintenance 由「只查非空」升级为调用 `docgate.verify_maintenance`，假卡拒绝合入
+  - `prompt_inject.py` 审计指令升级，把语义级（文件在但内容对不上）复核绑定到审计席，满足 needs_llm 设计意图
+- **测试**：`server/tests/test_writeback_gate.py` 6/6 绿（含新增 success / failed 两例）；全仓 `server/tests/` 的 5 个失败（HTTP 超时 / plans JS 静态契约）均在 ccc031 未触碰的文件中，属环境性既有失败，与本卡无关。
+- **非阻塞备注**：提交重排了无关 meltdown 测试缩进（无害）；choice 校验集对四问统一含「是/否/有/无」（继承旧门禁同款，模板已约束）。均已低于可修阈值，不动以保 diff 干净。
+- **回写证据**：代码在分支 HEAD `47fd6cf0`，卡回写 hash `21c3741a` 为 rebase 前同树提交，内容一致。
+
+本卡维护区完整、实现正确、架构合理，予以通过。
 
 ## 执行提示
 

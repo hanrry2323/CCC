@@ -1,0 +1,251 @@
+from __future__ import annotations
+
+import re
+import subprocess
+from pathlib import Path
+
+def _extract_header_fields(content: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    lines = content.split("\n")
+    in_header = False
+    for line in lines[:30]:
+        if line.startswith(">"):
+            in_header = True
+            text = line.lstrip("> ").strip()
+            for segment in text.split("·"):
+                segment = segment.strip()
+                m = re.match(r"([^：]+)：(.+)", segment)
+                if m:
+                    key = m.group(1).strip()
+                    val = m.group(2).strip()
+                    if key not in fields:
+                        fields[key] = val
+        elif in_header and not line.startswith(">"):
+            break
+    return fields
+
+
+def _parse_metadata(text: str) -> dict[str, str]:
+    meta: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith(">"):
+            continue
+        body = line.lstrip(">").strip()
+        for part in re.split(r"·", body):
+            match = re.match(r"^\s*([^：\s][^：]*?)\s*[:：]\s*(.+?)\s*$", part)
+            if match:
+                meta[match.group(1).strip()] = match.group(2).strip()
+    return meta
+
+
+def get_card_id(card_path: Path) -> str:
+    try:
+        text = card_path.read_text(encoding="utf-8")
+        m = re.search(r"^#\s*任务卡\s+(\S+)", text, re.M)
+        if m:
+            return m.group(1).strip()
+    except Exception:
+        pass
+    return card_path.stem
+
+
+def extract_paths(note: str) -> list[str]:
+    candidates = re.findall(r"[a-zA-Z0-9_/.-]+", note)
+    return [c for c in candidates if "/" in c or "." in c]
+
+
+def get_modified_files(repo_root: Path) -> list[str]:
+    base_ref = "origin/main"
+    try:
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "origin/main"],
+            cwd=repo_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True
+        )
+    except subprocess.CalledProcessError:
+        base_ref = "main"
+
+    try:
+        res = subprocess.run(
+            ["git", "diff", "--name-only", base_ref],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+    except Exception:
+        return []
+
+
+def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
+    if "## 维护区" not in text:
+        return {}
+    seg = text.split("## 维护区", 1)[1]
+    seg = seg.split("## ", 1)[0]
+
+    results = {}
+    for num in (1, 2, 3, 4):
+        item_m = re.search(rf"^\s*{num}\.\s+\*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]", seg, re.M)
+        if not item_m:
+            continue
+        name = item_m.group(1).strip()
+        choice = item_m.group(2).strip()
+
+        start_idx = item_m.end()
+        sub_seg = seg[start_idx:]
+        note_m = re.search(r"^\s+-\s+说明：\s*(.*)$", sub_seg, re.M)
+        note = note_m.group(1).strip() if note_m else ""
+
+        results[num] = {
+            "name": name,
+            "choice": choice,
+            "note": note
+        }
+    return results
+
+
+def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bool, list[str]]:
+    card_path = Path(card_path)
+    repo_root = Path(repo_root)
+
+    if not card_path.is_absolute():
+        card_file = repo_root / card_path
+    else:
+        card_file = card_path
+
+    if not card_file.exists():
+        return False, [f"任务卡不存在: {card_path}"]
+
+    try:
+        text = card_file.read_text(encoding="utf-8")
+    except Exception as e:
+        return False, [f"读取任务卡失败: {e}"]
+
+    meta = _parse_metadata(text)
+    state = meta.get("状态", "")
+    if "已关闭" in state or "作废" in state:
+        return True, []
+
+    if "## 维护区" not in text:
+        return False, ["完成钩子：卡缺 ## 维护区 节（模板已含，回写时必填四问）"]
+
+    parsed = parse_maintenance_section(text)
+    if len(parsed) < 4:
+        return False, [f"完成钩子：维护区只找到 {len(parsed)}/4 问"]
+
+    problems = []
+
+    for num in (1, 2, 3, 4):
+        item = parsed.get(num)
+        if not item:
+            problems.append(f"第 {num} 问缺失")
+            continue
+        choice = item["choice"].strip("[]").strip()
+        note = item["note"].strip()
+
+        if choice not in ("是", "否", "有", "无"):
+            problems.append(f"第 {num} 问「{item['name']}」未正确勾选（当前值为: {item['choice']!r}）")
+            continue
+
+        if not note or note == "" or note == "说明：" or note == "说明: " or note.startswith("<"):
+            problems.append("存在空「说明」（必须写一句实情）")
+            continue
+
+        if num == 1 and choice in ("`是`", "是"):
+            card_id = get_card_id(card_file)
+            related = meta.get("关联", "")
+            plan_m = re.search(r"([a-z]{2,4})-plan-([0-9]{3})", related)
+            if not plan_m:
+                problems.append("Q1 声明了方案同步[是]，但卡头「关联」字段未包含有效的方案编号（如 prefix-plan-NNN）")
+            else:
+                plan_prefix = plan_m.group(1)
+                plan_num = plan_m.group(2)
+                plans_dir = repo_root / "docs" / "projects" / plan_prefix / "plans"
+                plan_files = list(plans_dir.glob(f"{plan_num}-*.md"))
+                if not plan_files:
+                    problems.append(f"Q1 声明关联的方案文件不存在：docs/projects/{plan_prefix}/plans/{plan_num}-*.md")
+                else:
+                    plan_file = plan_files[0]
+                    try:
+                        plan_text = plan_file.read_text(encoding="utf-8")
+                        plan_fields = _extract_header_fields(plan_text)
+                        plan_status = plan_fields.get("状态", "").split("·")[0].strip()
+                        plan_cards = plan_fields.get("关联卡", "")
+
+                        has_card = bool(re.search(rf"\b{card_id}\b", plan_cards, re.I))
+                        has_status = plan_status in ("部分执行", "已完成")
+                        if not (has_card or has_status):
+                            problems.append(f"Q1 方案同步校验失败。方案 {plan_prefix}-plan-{plan_num} 状态为「{plan_status}」且关联卡「{plan_cards}」中不包含本卡 ID「{card_id}」")
+                    except Exception as e:
+                        problems.append(f"Q1 读取方案文件失败: {e}")
+
+        elif num == 2 and choice in ("`有`", "有"):
+            paths = extract_paths(note)
+            q2_files = [p for p in paths if "docs/notes/" in p or "lessons" in p]
+            if not q2_files:
+                problems.append("Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件")
+            else:
+                found = False
+                for f in q2_files:
+                    if (repo_root / f).exists():
+                        found = True
+                        break
+                if not found:
+                    problems.append(f"Q2 声明的教训文件不存在：{', '.join(q2_files)}")
+
+        elif num == 3 and choice in ("`是`", "是"):
+            modified = get_modified_files(repo_root)
+            card_id = get_card_id(card_file)
+            prefix_m = re.match(r"^([a-z]{2,4})", card_id)
+            prefix = prefix_m.group(1) if prefix_m else "ccc"
+
+            paths = extract_paths(note)
+            q3_files = [p for p in paths if "README.md" in p or "docs/projects/" in p]
+            if not q3_files:
+                q3_files = [f"docs/projects/{prefix}/README.md"]
+
+            file_exists = False
+            file_has_diff = False
+            for f in q3_files:
+                f_path = repo_root / f
+                if f_path.exists():
+                    file_exists = True
+                    if f in modified:
+                        file_has_diff = True
+                        break
+
+            if not file_exists:
+                problems.append(f"Q3 声明更新了项目档案[是]，但指定的项目档案文件不存在：{', '.join(q3_files)}")
+            elif not file_has_diff:
+                problems.append(f"Q3 声明更新了项目档案[是]，但指定的项目档案文件 {', '.join(q3_files)} 在当前分支上没有检测到相对 origin/main 的修改")
+
+        elif num == 4 and choice in ("`是`", "是"):
+            modified = get_modified_files(repo_root)
+            card_id = get_card_id(card_file)
+            prefix_m = re.match(r"^([a-z]{2,4})", card_id)
+            prefix = prefix_m.group(1) if prefix_m else "ccc"
+
+            paths = extract_paths(note)
+            q4_files = [p for p in paths if "roadmap.md" in p or "README.md" in p or "docs/projects/" in p]
+            if not q4_files:
+                q4_files = ["docs/roadmap.md", f"docs/projects/{prefix}/README.md"]
+
+            file_exists = False
+            file_has_diff = False
+            for f in q4_files:
+                f_path = repo_root / f
+                if f_path.exists():
+                    file_exists = True
+                    if f in modified:
+                        file_has_diff = True
+                        break
+            if not file_exists:
+                problems.append(f"Q4 声明更新了线路图[是]，但指定的文件不存在：{', '.join(q4_files)}")
+            elif not file_has_diff:
+                problems.append(f"Q4 声明更新了线路图[是]，但指定的文件 {', '.join(q4_files)} 在当前分支上没有检测到相对 origin/main 的修改")
+
+    return len(problems) == 0, problems
