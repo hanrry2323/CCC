@@ -1,6 +1,6 @@
 # 任务卡 ccc045 · 待合入积压提醒（≥N 张）（OpenCode 执行）
 
-> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -47,24 +47,30 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+- **实现说明**：
+  1. 在 `server/board/queries.py` 中重构了 `ready_for_merge` 接口，支持利用 `CCC_BACKLOG_THRESHOLD` / `BACKLOG_THRESHOLD`（或传入参数）进行卡片积压提醒阈值 `N` 的配置，当待合入卡片数量超出阈值（默认 5 张）时，接口会触发 backlog 报警标识（`backlog_alert: True` 并附加详细 `warning`）。
+  2. 在 `scripts/approve-merge.sh` 脚本的入口处加入了卡片积压提醒的前置检测逻辑，在合并卡片时对当前已通过机审且待合入的卡片进行实时监控提示，防范卡片积压风险。
+  3. 在前端看板 UI（`boardPage.js`）上，也通过调用 `/board/ready_for_merge` 接口进行监控，若存在积压，则在看板页面顶部最显眼处展示呼吸式 backlog 警告横幅，引导点击去收卡。
+- **测试结果**：
+  1. 在 `server/tests/test_ccc_plan.py` 中编写并补充了 `test_ready_for_merge_backlog_threshold` 单元测试，全面验证了默认阈值触发机制、参数传递覆盖以及各种环境变量 `CCC_BACKLOG_THRESHOLD` 和 `BACKLOG_THRESHOLD` 下的阈值判断分支。
+  2. pytest 全部测试绿灯通过，接口和 CLI 表现极其稳定。
+- **push 证据（commit hash）**：
+  - `4dbffee4`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：同步推进并完成了 ccc-plan-015 方案的相关待合入卡片积压提醒（C2）部分。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：暂无。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否] (是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新)
+   - 说明：技术架构、项目结构未发生变更。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目既定路线未受影响。
 
 ## 执行提示
 
