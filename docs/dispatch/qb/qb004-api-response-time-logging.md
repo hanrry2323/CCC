@@ -52,6 +52,20 @@
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
 
+## 机审区
+
+**机审：通过**
+
+- 结论：通过。核心交付符合卡的 3 条验收标准，可进入「合入批准」。
+
+**审查摘要**
+
+1. **范围**：卡面写「`scripts/` / 不动 `src/`」，实际 qb 仓无 `src/`，API 请求入口在 `dashboard/backend/middleware/error_handler.py` 的 `RequestLoggingMiddleware`。改动落在 API 请求处理入口，符合卡意图（在请求入口埋点计时）；无业务逻辑改动。
+2. **实现质量**：中间件 `dispatch` 入口 `start_time = time.time()`，成功/异常两分支均计算 `duration_ms = int(...)` 并 `print(f"[API] {method} {path} - {duration_ms}ms", flush=True)` 输出 stdout。`flush=True` 保证即时可见。既有 `logger` 日志（含 `X-Response-Time` 头）未受影响，零回归。
+3. **验收逐条核对**：① stdout 可见 method+path+耗时 ✓；② `print` 为旁路输出，`response` 原样返回，响应内容不变 ✓；③ 纯加法计时日志，零业务逻辑改动 ✓；红线「只加日志 / 不引入新依赖」均满足（`print` 纯 stdlib）。
+4. **就地修复**：原分支另带一次 `.pre-commit-config.yaml` 越界改动——新增 `exclude: '^(?!...|pyproject\.toml$)'` 会**静默停用 black/isort/ruff 对所有源码的校验**，属系统性削弱仓库质量门禁、且超出本卡范围（卡只要求加日志，与 lint 门禁无关）。已将该 config 就地回滚至 main 版本（commit `44edd11c`），保留核心日志改动。回滚后 pre-commit 因本机缺 `python3.11` 解释器无法自检，属机器环境问题、超出本卡职责，不并入本卡处理。
+5. **发现清单**：无待修复项。两分支重复同一 `print` 行的微冗余属可接受风格问题，不构成打回理由。
+
 ## 执行提示
 
 - 项目：qb（CCC 自动化开发测试用业务仓（挂 Engine 出卡）。）
