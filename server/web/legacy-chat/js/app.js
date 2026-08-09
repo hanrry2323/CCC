@@ -14,11 +14,11 @@ import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
 import { initRuntimeStatus } from './components/runtimeStatus.js';
 import { initEngineControl } from './components/engineControl.js';
 import { initRouter, navigate } from './router.js';
-import { mountBoard, unmountBoard } from './pages/boardPage.js?v=20260809t10';
-import { mountConsole, unmountConsole } from './pages/consolePage.js?v=20260809t10';
-import { mountOps, unmountOps } from './pages/opsPage.js?v=20260809t10';
-import { mountPlans, unmountPlans } from './pages/plansPage.js?v=20260809t10';
-import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js?v=20260809t10';
+import { mountBoard, unmountBoard } from './pages/boardPage.js';
+import { mountConsole, unmountConsole } from './pages/consolePage.js';
+import { mountOps, unmountOps } from './pages/opsPage.js';
+import { mountPlans, unmountPlans } from './pages/plansPage.js';
+import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js';
 import {
   initDualPaneControls,
   isEnabled as dualPaneEnabled,
