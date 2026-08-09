@@ -76,6 +76,17 @@
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：仅对既有断链进行自动巡检探测，无 roadmap 演进变化。
 
+## 机审区
+
+**机审：通过** · 机审席：2017（Claude Code）· 日期：2026-08-09
+
+**审查摘要**：
+- 范围合规：仅改 `server/engine/observer.py` + `server/tests/test_observer.py` + 报告落 `docs/notes/`，卡状态「已回写」，未写验收区、未置已关闭。红线（只读不写入、不碰 registry/卡/方案/roadmap）完全守住，AST 白名单测试强制无写入接口 import。
+- 断言有效性：6 条机器可判断言（路线图缺段/方案已完成未闭环/双向引用真实性/段落状态漂移/维护区缺失）全部实现，`docs/notes/2026-08-09-ccc-patrol.md` 真实命中 22 红旗 + 190 黄 + 188 蓝；红旗抽查核验均为真实（qb/cd/clw 缺段、hp004-006 与 xy002 段落状态漂移、ccc023-032 引用不存在的 ccc-plan-011），满足验收标准「命中 ≥5 条真实漂移」。
+- 边界安全：巡查只读、异常捕获兜底、状态归一口径与看板一致；报告每条含 severity + acting_on + 证据(文件:行号)。
+- 修复：`get_base_state` 委托平台权威 `server.board.models.base_state`，消除双实现归一漂移；清理未使用 import。`pytest server/tests/test_observer.py` 4 passed。
+- Doc-Gate：维护区四问已逐项勾选并填具体说明，通过。
+
 ## 批注落实
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
