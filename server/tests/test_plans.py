@@ -32,7 +32,6 @@ from server.board.plans import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PAGES_DIR = PROJECT_ROOT / "server" / "web" / "legacy-chat" / "js" / "pages"
 
-
 # ── helpers ──
 
 def _make_plan(tmp: Path, prefix: str, num: str, slug: str, status: str,
@@ -70,7 +69,6 @@ def _make_plan(tmp: Path, prefix: str, num: str, slug: str, status: str,
     p.write_text(content)
     return p
 
-
 def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
     """构造最小 registry.yaml。"""
     reg = tmp / "docs" / "projects" / "registry.yaml"
@@ -86,7 +84,6 @@ def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
     reg.write_text("\n".join(lines))
     return reg
 
-
 def _make_validate_script(tmp: Path) -> Path:
     """构造一个最小 validate-plans.sh（始终返回 0）。"""
     s = tmp / "scripts" / "validate-plans.sh"
@@ -94,7 +91,6 @@ def _make_validate_script(tmp: Path) -> Path:
     s.write_text("#!/usr/bin/env bash\nexit 0\n")
     s.chmod(0o755)
     return s
-
 
 # ── 1. list_plans ──
 
@@ -147,7 +143,6 @@ class TestListPlans:
         ids = [p["id"] for p in plans]
         assert ids == ["ccc-plan-001", "ccc-plan-002", "ccc-plan-003", "xy-plan-001"]
 
-
 # ── 2. get_plan ──
 
 class TestGetPlan:
@@ -172,7 +167,6 @@ class TestGetPlan:
         """../ 目录穿越应拒绝。"""
         assert get_plan(tmp_path, "../etc/passwd") is None
         assert get_plan(tmp_path, "docs/projects/ccc/plans/../../../etc/passwd") is None
-
 
 # ── 3. create_plan ──
 
@@ -227,7 +221,6 @@ class TestCreatePlan:
         plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
         md_files = list(plans_dir.glob("*.md")) if plans_dir.exists() else []
         assert len(md_files) == 0, f"文件应已自删，但存在: {md_files}"
-
 
 # ── 4. update_plan ──
 
@@ -302,7 +295,6 @@ class TestUpdatePlan:
 
         (tmp_path / path).unlink()
 
-
     def test_transition_draft_to_done_rejected(self, tmp_path: Path):
         """草案到已完成应被拒绝。"""
         _make_registry(tmp_path, ["ccc"])
@@ -360,8 +352,8 @@ class TestUpdatePlan:
 class TestConvertPlan:
     def test_missing_plan_section(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
-        # 方案没有「转卡计划」段
-        p = _make_plan(tmp_path, "ccc", "001", "test", "草案", plan_section="")
+        # 使用已确认状态，避免被草案拦截
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="")
 
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
@@ -376,6 +368,15 @@ class TestConvertPlan:
         result = convert_plan(tmp_path, rel_path="../etc/passwd")
         assert "error" in result
 
+    def test_convert_draft_rejected(self, tmp_path: Path):
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        p = _make_plan(tmp_path, "ccc", "001", "test", "草案",
+                       plan_section="- test card")
+        rel = str(p.relative_to(tmp_path))
+        result = convert_plan(tmp_path, rel_path=rel)
+        assert "error" in result
+        assert "草案" in result["error"]
 
 # ── 6. helpers ──
 
@@ -427,6 +428,14 @@ class TestHelpers:
         assert a["total"] == 3
         assert a["done"] == 2
 
+    def test_create_empty_author_rejected(self, tmp_path: Path):
+        """空作者应被拒绝。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        result = create_plan(tmp_path, project="ccc", title="test",
+                             content="## ok", author="", tool="T")
+        assert "error" in result
+        assert "作者" in result["error"]
 
 # ── 7. 前端渲染契约 ──
 
@@ -503,6 +512,13 @@ class TestPlansPageContract:
         text = self._page()
         for s in ["草案", "已确认", "部分执行", "已完成", "作废"]:
             assert s in text, f"Missing status: {s}"
+
+    def test_markdown_renders_links_and_tables(self) -> None:
+        text = self._page()
+        assert "_blank" in text
+        assert "pre" in text.lower()
+        assert "ul" in text.lower()
+        assert "table" in text.lower()
 
     def test_auto_refresh(self) -> None:
         """验证 30s 自动刷新 + 状态保护（详情/表单打开时不重建 DOM）。"""

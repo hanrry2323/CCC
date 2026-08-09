@@ -251,6 +251,9 @@ def create_plan(
     if project not in valid_prefixes:
         return {"error": f"无效项目前缀: {project}"}
 
+    if not author or not author.strip():
+        return {"error": "作者不能为空"}
+
     num = _next_num(repo_root, project)
     slug = _title_to_slug(title)
     plans_dir = repo_root / "docs" / "projects" / project / "plans"
@@ -417,6 +420,12 @@ def convert_plan(
         content = plan_file.read_text()
     except OSError:
         return {"error": "读取方案文件失败"}
+
+    # 状态检查：草案不可直接转卡
+    current_fields = _extract_header_fields(content)
+    current_status = current_fields.get("状态", "").split("·")[0].strip()
+    if current_status == "草案":
+        return {"error": "草案状态不可转卡，请先将方案状态改为「已确认」"}
 
     # 提取转卡计划
     plan_section = ""

@@ -449,18 +449,41 @@ function showCreateForm() {
 
 function renderMarkdown(md) {
   if (!md) return '';
-  let html = esc(md);
+  var html = esc(md);
+  // Code blocks first (before escaping interferes)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, lang, code) {
+    return '<pre><code>' + code + '</code></pre>';
+  });
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-  // Bold
+  // Bold + italic
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Links (markdown and bare URLs)
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Tables
+  html = html.replace(/\|(.+)\|\n\|[-: |]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, body) {
+    var hcols = header.split('|').filter(function(c) { return c.trim(); });
+    var hrow = '<tr>' + hcols.map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('') + '</tr>';
+    var rows = body.trim().split('\n').map(function(r) {
+      var cols = r.split('|').filter(function(c) { return c.trim(); });
+      return '<tr>' + cols.map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    return '<table><thead>' + hrow + '</thead><tbody>' + rows + '</tbody></table>';
+  });
   // Checkboxes
   html = html.replace(/^- \[x\] (.+)$/gm, '<label class="plans-checkbox done"><input type="checkbox" checked disabled> $1</label>');
   html = html.replace(/^- \[ \] (.+)$/gm, '<label class="plans-checkbox"><input type="checkbox" disabled> $1</label>');
+  // Unordered lists (non-checkbox lines)
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
   // Blockquotes
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
   // Line breaks
