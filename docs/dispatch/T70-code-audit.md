@@ -1,6 +1,6 @@
 # 任务卡 T70 · 全项目代码 bug 检查（Cursor 测试卡 2 · M1 只读审计）
 
-> 关联：老板 2026-08-06 指示「Cursor 做一次全部 CCC 项目检查，主要做代码 bug 检查」· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：已关闭 · 派发：manual · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复核）· 状态：已关闭 · 派发：manual · 项目：ccc · 日期：2026-08-06
 > 工作目录：M1 `/Users/apple/program/CCC`；分支 `codex/cursor-t02-code-audit`（从 main 新建）
 > 背景交接：`docs/cursor-code-check-handoff.md`（先读）
 > **分步提交纪律（硬）**：清单分批 commit+push；禁止 `git add -A` 全量提交。

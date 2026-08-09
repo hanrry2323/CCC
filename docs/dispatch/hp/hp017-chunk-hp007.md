@@ -1,6 +1,6 @@
 # 任务卡 hp017 · 存量短 chunk 清理落库（hp007 遗留）（OpenCode 执行）
 
-> 关联：hp007 遗留：存量 445 短 chunk 处理方案落库 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-09
+> 关联：hp-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-09
 
 ## 目标
 

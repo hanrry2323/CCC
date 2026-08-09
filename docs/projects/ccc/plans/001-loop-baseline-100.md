@@ -2,7 +2,7 @@
 
 > 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：老板 · 工具：Claude Code
 > 创建：2026-08-08 · 更新：2026-08-08
-> 关联卡：无
+> 关联卡：T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T59, T60, T61, T64, T65, T67, T68, T69, T70, T71, T72, T76, ccc005, ccc007, ccc012
 > 关联方案：ccc-plan-007
 > 迁移自：docs/notes/m8-loop-baseline-plan.md
 

@@ -1,6 +1,6 @@
 # 任务卡 mx013 · 整体架构文档与开发指南（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 框架优化第一批：文档地基 + RSS 巡检链路补齐 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 

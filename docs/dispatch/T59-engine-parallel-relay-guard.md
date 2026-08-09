@@ -1,6 +1,6 @@
 # 任务卡 T59 · Engine 异步派发 + 中继稳定性兜底（Claude Code 执行）
 
-> 关联：过夜任务发现——① Engine 串行派发（同步等执行体完成才派下一张）；② 上游中继多次波动导致执行卡死/超时 · 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：ccc-plan-001 · 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t59-engine-parallel`（先 `git fetch origin main && git checkout -b codex/t59-engine-parallel origin/main`）
 > **分步提交纪律（硬）**：A/B 两块各独立 commit+push；超时 7200s。
 

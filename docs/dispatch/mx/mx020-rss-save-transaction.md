@@ -1,6 +1,6 @@
 # 任务卡 mx020 · RSS 保存事务化（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 打磨第三批：RSS 事务化 / 定时巡检 / OPML 导入修复 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 

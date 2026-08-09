@@ -1,6 +1,6 @@
 # 任务卡 xy022 · 遗留治理①：硬编码路径动态推导（P0-PATH 深化）（OpenCode 执行）
 
-> 关联：ccc-plan: xy PRM 批1：硬编码旧规则消灭 / 动态推导 / 凭据补全 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 

@@ -1,6 +1,6 @@
 # 任务卡 T71 · server P0 修复（F01/F02/F11 · T70 审计）
 
-> 关联：T70 审计 P0（F01 卡头替换误改正文 / F02 非 UTF-8 卡拖垮扫描 / F11 SSE 断流不 settle）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t71 -b codex/t71-fix-server-p0 origin/main`；分支 `codex/t71-fix-server-p0`
 > 依据：`docs/dispatch/T70-audit-report.md` F01/F02/F11 条目
 > **分步提交纪律（硬）**：每条修复单独 commit+push；禁止 `git add -A`；超时 7200s。

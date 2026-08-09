@@ -1,6 +1,6 @@
 # 任务卡 T69 · release.sh Engine plist 自愈（T68 部署事故修复）
 
-> 关联：T68 部署事故（2026-08-05：start_engine 遇 plist 缺失仅 WARN，Engine 掉线未恢复，Codex 现场重建恢复）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t69 -b codex/t69-release-engine-plist-rebuild origin/main`；分支 `codex/t69-release-engine-plist-rebuild`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 

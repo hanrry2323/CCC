@@ -1,6 +1,6 @@
 # 任务卡 ccc014 · 收敛历史已关闭卡的远端 codex 分支（OpenCode 执行）
 
-> 关联：CCC 治理 · 历史残留收敛（2026-08-08） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-08
+> 关联：ccc-plan-004 · 历史残留收敛（2026-08-08） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-08
 
 ## 目标
 

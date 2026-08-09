@@ -1,6 +1,6 @@
 # 任务卡 T67 · 部署窗口误派防线（卡头纪律 + Engine/放行双保险）（Claude Code 执行）
 
-> 关联：T60 误派复盘（2026-08-05 部署窗口：已验收卡因卡头未同步被 Engine 重新拉起）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t67 -b codex/t67-deploy-race-guard origin/main`；分支 `codex/t67-deploy-race-guard`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 

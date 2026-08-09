@@ -1,6 +1,6 @@
 # 任务卡 ccc009 · 文档卫生：过时/过期文档清理归档（OpenCode 执行）
 
-> 关联：ccc-plan: 文档卫生与业务总线路图 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-07
+> 关联：ccc-plan-002 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 
