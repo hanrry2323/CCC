@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 from datetime import date
@@ -443,7 +442,7 @@ def convert_plan(
         return {"error": "方案缺少「转卡计划」段"}
 
     # 转卡计划段限 8 行
-    plan_lines = [l for l in plan_section.strip().split("\n") if l.strip() and not l.strip().startswith("#")]
+    plan_lines = [ln for ln in plan_section.strip().split("\n") if ln.strip() and not ln.strip().startswith("#")]
     if len(plan_lines) > 8:
         return {"error": f"转卡计划段最多 8 行，当前 {len(plan_lines)} 行"}
 

@@ -260,7 +260,7 @@ def _parse_related_field(card_content: str) -> str:
 
 def _parse_plan_ref(related_text: str) -> tuple[str, str] | None:
     """解析关联字段中的方案前缀和编号。
-    
+
     例如: "ccc-plan-011 卡1" -> ("ccc", "011")
     """
     match = re.search(r"\b([a-zA-Z0-9]+)-plan-(\d+)\b", related_text, re.IGNORECASE)
@@ -274,28 +274,28 @@ def _get_plan_summary(prefix: str, num: str) -> str:
     plans_dir = _PROJECT_ROOT / "docs" / "projects" / prefix / "plans"
     if not plans_dir.is_dir():
         return ""
-    
+
     plan_files = list(plans_dir.glob(f"{num}-*.md"))
     if not plan_files:
         return ""
-    
+
     try:
         plan_content = plan_files[0].read_text(encoding="utf-8")
     except Exception as exc:
         logger.warning("读取方案文件失败 %s: %s", plan_files[0], exc)
         return ""
-    
+
     # 提取目标：支持 ## 目标 或 ## 0. 一句话目标
     m_target = re.search(r"##\s+(?:\d+\.\s+)?(?:一句话)?目标\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", plan_content, re.DOTALL)
     target = m_target.group(1).strip() if m_target else ""
-    
+
     # 提取验收标准
     m_criteria = re.search(r"##\s+验收标准\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", plan_content, re.DOTALL)
     criteria = m_criteria.group(1).strip() if m_criteria else ""
-    
+
     if not target and not criteria:
         return ""
-    
+
     def clean_block(text: str) -> str:
         # 去除 markdown 复选框 - [ ] 或 - [x]
         text = re.sub(r"- \[[ xX]\]\s*", "", text)
@@ -304,16 +304,16 @@ def _get_plan_summary(prefix: str, num: str) -> str:
         # 替换多个空白字符为一个空格
         text = re.sub(r"\s+", " ", text)
         return text.strip()
-    
+
     target_clean = clean_block(target).rstrip("。")
     criteria_clean = clean_block(criteria).rstrip("。")
-    
+
     parts = []
     if target_clean:
         parts.append(f"目标：{target_clean}")
     if criteria_clean:
         parts.append(f"验收标准：{criteria_clean}")
-    
+
     summary = "。".join(parts)
     if summary:
         summary += "。"
@@ -327,21 +327,21 @@ def _get_project_recent_lines(prefix: str) -> list[str]:
     readme_path = _PROJECT_ROOT / "docs" / "projects" / prefix.lower() / "README.md"
     if not readme_path.is_file():
         return []
-    
+
     try:
         raw = readme_path.read_text(encoding="utf-8")
     except OSError:
         return []
-    
+
     m = re.search(r"##\s*线路\s*/\s*近况\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", raw, re.DOTALL)
     if not m:
         m = re.search(r"##\s*线路近况\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", raw, re.DOTALL)
-    
+
     if not m:
         return []
-    
+
     section_content = m.group(1).strip()
-    
+
     lines = []
     for line in section_content.splitlines():
         line = line.strip()

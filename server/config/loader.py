@@ -15,16 +15,18 @@ from pathlib import Path
 from typing import Any
 
 # 必填键列表（对应 config.example.env）
-REQUIRED_KEYS: frozenset[str] = frozenset({
-    "ENGINE_PORT",
-    "BOARD_PORT",
-    "WEB_PORT",
-    "RELAY_PORT",
-    "DATA_DIR",
-    "LOG_DIR",
-    "RELAY_UPSTREAM_URL",
-    "EXECUTOR_REGISTRY_PATH",
-})
+REQUIRED_KEYS: frozenset[str] = frozenset(
+    {
+        "ENGINE_PORT",
+        "BOARD_PORT",
+        "WEB_PORT",
+        "RELAY_PORT",
+        "DATA_DIR",
+        "LOG_DIR",
+        "RELAY_UPSTREAM_URL",
+        "EXECUTOR_REGISTRY_PATH",
+    }
+)
 
 # 可选键（有默认值）
 OPTIONAL_KEYS: dict[str, str] = {
@@ -48,6 +50,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     "DISPATCH_DIR": "docs/dispatch",
     # 执行槽上限（独立于机审槽；执行与机审互不占位）
     "EXECUTOR_MAX_CONCURRENT": "3",
+    # 双脑编排并发上限（config.example.env 有声明但此前未加载，2026-08-10 补）
+    "CCC_BRAIN_MAX_CONCURRENCY": "2",
     # 机审槽上限（独立于执行槽）
     "EXECUTOR_MAX_AUDIT_CONCURRENT": "2",
     "EXECUTOR_PROBE_URL": "http://127.0.0.1:6100/",
@@ -109,19 +113,14 @@ def load_config(env_path: str | Path) -> dict[str, Any]:
 
     missing = REQUIRED_KEYS - raw.keys()
     if missing:
-        raise ConfigError(
-            f"missing required config keys: {', '.join(sorted(missing))}"
-        )
+        raise ConfigError(f"missing required config keys: {', '.join(sorted(missing))}")
 
     empty_required = [k for k in REQUIRED_KEYS if not raw.get(k)]
     if empty_required:
         hint = ""
         if "EXECUTOR_REGISTRY_PATH" in empty_required:
             hint = "；请复制 config/executors.example.json 为 executors.json 并填写路径"
-        raise ConfigError(
-            f"required config keys are empty: {', '.join(sorted(empty_required))}"
-            f"{hint}"
-        )
+        raise ConfigError(f"required config keys are empty: {', '.join(sorted(empty_required))}{hint}")
 
     result: dict[str, Any] = {}
     for k in REQUIRED_KEYS:

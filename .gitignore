@@ -172,3 +172,4 @@ docs/dispatch/cards.index.jsonl
 /desktop/.build/
 
 .venv-t54/
+/desktop/Package.resolved

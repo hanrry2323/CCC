@@ -16,7 +16,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Textual", package: "textual")
             ],
-            path: "Sources/CCCDesktop"
+            path: "Sources/CCCDesktop",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "CCCDesktopTests",

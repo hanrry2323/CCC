@@ -286,18 +286,19 @@ def is_empty_writeback_or_placeholder(work: Work, worktree_path: str) -> tuple[b
                 return True, "缺失 ## 维护区 节（回写时必填）"
             seg = text.split("## 维护区", 1)[1]
             seg = seg.split("## ", 1)[0]
-            
+
             import re
-            items = re.findall(r'^(\d+)\. \*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]', seg, re.M)
+
+            items = re.findall(r"^(\d+)\. \*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]", seg, re.M)
             if len(items) < 4:
                 return True, "## 维护区 四问格式不完整，仍为占位模板"
-            
+
             for num, name, choice in items:
                 choice_strip = choice.strip()
-                if "是/否" in choice_strip or "有/无" in choice_strip or choice_strip not in ('是', '否', '有', '无'):
+                if "是/否" in choice_strip or "有/无" in choice_strip or choice_strip not in ("是", "否", "有", "无"):
                     return True, f"## 维护区 第 {num} 问「{name.strip()}」未勾选或仍为占位"
-            
-            notes = re.findall(r'^   - 说明：(.+)$', seg, re.M)
+
+            notes = re.findall(r"^   - 说明：(.+)$", seg, re.M)
             if len(notes) < 4:
                 return True, "## 维护区 说明少于 4 条，仍为占位模板"
             for note in notes:
@@ -306,7 +307,7 @@ def is_empty_writeback_or_placeholder(work: Work, worktree_path: str) -> tuple[b
                     return True, "## 维护区 说明为空或包含占位文本"
         except Exception as e:
             logger.warning("检查空回写/维护区异常: %s", e)
-            
+
     return False, ""
 
 
@@ -866,6 +867,7 @@ class MachineAuditPrompt:
 
     遵循职责分离原则：仅进行原则性审查与就地修复，删除「独立复跑测试/编译裁决」职责。
     """
+
     def __init__(self, card_path: str, work_id: str, worktree: str) -> None:
         self.card_path = card_path
         self.work_id = work_id
@@ -913,6 +915,7 @@ def _is_mechanical_rejection_text(text: str) -> bool:
 
 def match_path(file_path: str, pattern: str) -> bool:
     import fnmatch
+
     f = file_path.replace("\\", "/")
     p = pattern.replace("\\", "/").strip()
     if not p:
@@ -1046,6 +1049,7 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
 
     # Get modified files in worktree relative to origin/main
     import subprocess
+
     res = subprocess.run(
         ["git", "-C", worktree_path, "diff", "--name-only", "origin/main"],
         capture_output=True,
@@ -1054,7 +1058,7 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
         check=False,
     )
     if res.returncode != 0:
-        return True, "" # Git error, skip to avoid blocking
+        return True, ""  # Git error, skip to avoid blocking
 
     modified_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
 
@@ -1074,7 +1078,10 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
             out_of_scope.append(f)
 
     if out_of_scope:
-        return False, f"范围越界门禁拦截：修改了不属于卡「范围」声明中的路径: {out_of_scope} (允许范围: {whitelist_patterns})"
+        return (
+            False,
+            f"范围越界门禁拦截：修改了不属于卡「范围」声明中的路径: {out_of_scope} (允许范围: {whitelist_patterns})",
+        )
 
     return True, ""
 
@@ -1202,7 +1209,7 @@ def validate_card_state_after_writeback(card_path: Path) -> tuple[bool, str]:
         for seg in stripped[1:].split("·"):
             seg = seg.strip()
             if seg.startswith("状态："):
-                raw_state = seg[len("状态："):].strip()
+                raw_state = seg[len("状态：") :].strip()
                 from server.board.models import base_state as _base_state
 
                 base = _base_state(raw_state)
@@ -1429,6 +1436,7 @@ def _dispatch_and_collect(
 
     # 在单测下，豁免对 mock/fake 临时卡的缺失校��
     import sys
+
     is_pytest = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
     if not is_pytest and worktree_path and work.card_path and "docs/dispatch" in work.card_path:
         if _worktree_card_candidate(worktree_path, work.card_path) is None:
@@ -1454,10 +1462,7 @@ def _dispatch_and_collect(
     _card_hint = _read_card_section(_card_file, _card_hint_section)
     if _card_hint:
         # 注入：追加到最后一个参数（prompt 文本）末尾
-        _hint_block = (
-            "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n"
-            + _card_hint
-        )
+        _hint_block = "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n" + _card_hint
         cmd[-1] = cmd[-1] + _hint_block
         logger.info("已注入 %s: work=%s (%d 字符)", _card_hint_section, work.id, len(_card_hint))
 
@@ -1665,7 +1670,9 @@ def _dispatch_and_collect(
                                     )
                                     if res_gate.returncode != 0:
                                         combined_output = (res_gate.stdout or "") + (res_gate.stderr or "")
-                                        snippet = combined_output[-800:] if len(combined_output) > 800 else combined_output
+                                        snippet = (
+                                            combined_output[-800:] if len(combined_output) > 800 else combined_output
+                                        )
                                         logger.warning(
                                             "卡 %s 门禁【%s】未通过（代码级，放行进机审就地修复）: 退出码 %d",
                                             work.id,
@@ -1858,7 +1865,7 @@ def _write_running_marker(
     lines = [f"engine_pid={engine_pid}\n", f"pid={primary}\n"]
     if child_pid is not None:
         lines.append(f"child_pid={child_pid}\n")
-    tmp = marker.with_suffix(marker.suffix + ".tmp")
+    tmp = marker.with_suffix(marker.suffix + f".tmp.{time.time_ns()}")
     tmp.write_text("".join(lines), encoding="utf-8")
     os.replace(tmp, marker)
     return marker
@@ -2034,7 +2041,9 @@ def _run_auto_worker(
                     is_empty, empty_reason = is_empty_writeback_or_placeholder(work, wt_hint)
 
             if is_empty:
-                logger.warning("检测到空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s", work.id, empty_reason)
+                logger.warning(
+                    "检测到空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s", work.id, empty_reason
+                )
                 reasons = [empty_reason, *reasons]
                 work.transition(State.REJECTED, problems=reasons)
                 store.save_work(work)
@@ -2134,7 +2143,11 @@ def _run_audit_worker(
                     is_empty, empty_reason = is_empty_writeback_or_placeholder(work, wt_hint)
 
             if is_empty:
-                logger.warning("检测到机审时卡为空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s", work.id, empty_reason)
+                logger.warning(
+                    "检测到机审时卡为空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s",
+                    work.id,
+                    empty_reason,
+                )
                 reasons = [empty_reason, *reasons]
                 work.transition(State.REJECTED, problems=reasons)
                 store.save_work(work)
@@ -2266,6 +2279,7 @@ def run_once(
         # 派发前校验 worktree 内是否存在对应卡，若不存在，跳过派发避免空转
         wt_hint = _worktree_hint_for(work, registry)
         import sys
+
         is_pytest = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
         if not is_pytest and wt_hint and os.path.isdir(wt_hint) and "docs/dispatch" in work.card_path:
             if _worktree_card_candidate(wt_hint, work.card_path) is None:
@@ -2303,7 +2317,12 @@ def run_once(
             continue
         if slots <= 0:
             queued += 1
-            logger.info("无空闲执行槽位，进入排队等待: work=%s, 当前并发数=%d, 上限=%d", work.id, pool.occupancy(store, log_dir), max_concurrent)
+            logger.info(
+                "无空闲执行槽位，进入排队等待: work=%s, 当前并发数=%d, 上限=%d",
+                work.id,
+                pool.occupancy(store, log_dir),
+                max_concurrent,
+            )
             continue
         if probe_url and not probe_relay(probe_url):
             probe_skips += 1

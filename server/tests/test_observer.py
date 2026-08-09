@@ -108,14 +108,14 @@ def test_run_observer_output(mock_list_plans, mock_load_dispatch_cards, mock_loa
     observer_dir = tmp_path / 'observer'
     assert (observer_dir / 'last-run.json').exists()
     assert (observer_dir / 'snapshot.json').exists()
-    with open(observer_dir / 'snapshot.json', 'r', encoding='utf-8') as f:
+    with open(observer_dir / 'snapshot.json', encoding='utf-8') as f:
         snapshot = json.load(f)
         assert snapshot['projects_count'] == 0
         assert snapshot['cards_count'] == 0
         assert snapshot['plans_count'] == 0
 
 def test_weight_scoring_and_report_ordering():
-    from server.engine.observer import score_finding, generate_patrol_report, DEFAULT_SCORING_RULES
+    from server.engine.observer import DEFAULT_SCORING_RULES
     f1 = {'id': 'missing_roadmap_section_qb', 'title': 'missing roadmap qb', 'project': 'qb', 'type': 'missing_section', 'cross_confirm': 0.5}
     f2 = {'id': 'status_drift_hp004', 'title': 'status drift hp004', 'project': 'hp', 'type': 'drift', 'cross_confirm': 1.0}
     scored1 = score_finding(f1, DEFAULT_SCORING_RULES)
@@ -131,7 +131,7 @@ def test_weight_scoring_and_report_ordering():
     assert 'scripts/new-card.sh' in report
 
 def test_patrol_report_sorts_unsorted_input():
-    from server.engine.observer import score_finding, generate_patrol_report, DEFAULT_SCORING_RULES
+    from server.engine.observer import DEFAULT_SCORING_RULES
     low = {'id': 'drift_low', 'title': 'low', 'project': 'ccc', 'type': 'drift', 'cross_confirm': 0.3}
     high = {'id': 'broken_high', 'title': 'high', 'project': 'ccc', 'type': 'broken_link', 'cross_confirm': 1.0}
     scored_low = score_finding(low, DEFAULT_SCORING_RULES)

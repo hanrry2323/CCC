@@ -2284,7 +2284,7 @@ class TestPromptInjection:
     def test_prompt_inject_plan_extracted(self, tmp_path: Path) -> None:
         """关联含方案编号 → 提取方案并注入摘要。"""
         from server.board.prompt_inject import build_executor_hint
-        
+
         # 1. 准备一个方案文件
         plan_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
         plan_dir.mkdir(parents=True)
@@ -2298,7 +2298,7 @@ class TestPromptInjection:
             "- [ ] 在提示中看到关联方案摘要。\n",
             encoding="utf-8"
         )
-        
+
         # 2. 准备一个项目 README
         project_dir = tmp_path / "docs" / "projects" / "ccc"
         project_dir.mkdir(parents=True, exist_ok=True)
@@ -2310,7 +2310,7 @@ class TestPromptInjection:
             "- 近况2\n",
             encoding="utf-8"
         )
-        
+
         # 我们需要临时修改 _PROJECT_ROOT
         import server.board.prompt_inject
         orig_root = server.board.prompt_inject._PROJECT_ROOT
@@ -2332,7 +2332,7 @@ class TestPromptInjection:
     def test_prompt_inject_non_plan_related(self, tmp_path: Path) -> None:
         """关联占位 (无方案编号) → 不注入降级。"""
         from server.board.prompt_inject import build_executor_hint
-        
+
         import server.board.prompt_inject
         orig_root = server.board.prompt_inject._PROJECT_ROOT
         server.board.prompt_inject._PROJECT_ROOT = tmp_path
@@ -2350,7 +2350,7 @@ class TestPromptInjection:
     def test_prompt_inject_plan_not_found(self, tmp_path: Path) -> None:
         """方案不存在 → 不抛错。"""
         from server.board.prompt_inject import build_executor_hint
-        
+
         import server.board.prompt_inject
         orig_root = server.board.prompt_inject._PROJECT_ROOT
         server.board.prompt_inject._PROJECT_ROOT = tmp_path
@@ -2443,7 +2443,7 @@ class TestValidateCardStateAfterWriteback:
         """测试：is_empty_writeback_or_placeholder 函数正确判断各种占位和空回写情况"""
         from server.engine.main import is_empty_writeback_or_placeholder
         from server.engine.task import Work
-        
+
         card = tmp_path / "ccc039-test.md"
         # 1. 缺失维护区
         card.write_text("# 任务卡 ccc039\n", encoding="utf-8")

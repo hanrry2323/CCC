@@ -32,7 +32,7 @@ from server.board.loader import (
     parse_card,
 )
 from server.board.plans import list_plans
-from server.board.models import base_state, BoardItem
+from server.board.models import base_state
 from server.board.validate import NEW_CARD_RE
 
 logger = logging.getLogger("ccc.engine.observer")
@@ -86,7 +86,7 @@ def should_run(cfg: dict[str, Any], current_state: dict[str, Any]) -> tuple[bool
     if not last_run_path.exists():
         return (True, 'first run')
     try:
-        with open(last_run_path, 'r', encoding='utf-8') as f:
+        with open(last_run_path, encoding='utf-8') as f:
             last_state = json.load(f)
     except Exception as e:
         return (True, f'last-run error: {e}')
@@ -426,7 +426,7 @@ def run_patrol(repo_root: Path) -> list[dict[str, Any]]:
             if p.taskable and p.prefix:
                 pattern = re.compile(f'##\\s*业务线路[（(]{p.prefix}[）)]', re.I)
                 if not pattern.search(roadmap_content):
-                    findings.append({'type': 'governance', 'assertion': 1, 'acting_on': p.prefix, 'severity': 'YELLOW', 'msg': f'项目 {p.prefix} 缺失对应的 业务线路（{p.prefix}）段落。', 'evidence': f'docs/roadmap.md:1', 'cross_confirm': 0.0})
+                    findings.append({'type': 'governance', 'assertion': 1, 'acting_on': p.prefix, 'severity': 'YELLOW', 'msg': f'项目 {p.prefix} 缺失对应的 业务线路（{p.prefix}）段落。', 'evidence': 'docs/roadmap.md:1', 'cross_confirm': 0.0})
     dispatch_dir = repo_root / 'docs' / 'dispatch'
     card_files = scan_card_files(dispatch_dir)
     for cp in card_files:
@@ -472,13 +472,13 @@ def run_patrol(repo_root: Path) -> list[dict[str, Any]]:
                 ref_card_id = match.group(1).strip()
                 status_cell = match.group(3).strip()
                 expected_state = None
-                if any((k in status_cell for k in ('已合入', '已关闭'))):
+                if any(k in status_cell for k in ('已合入', '已关闭')):
                     expected_state = '已关闭'
                 elif '已回写' in status_cell:
                     expected_state = '已回写'
-                elif any((k in status_cell for k in ('执行中', '开发中'))):
+                elif any(k in status_cell for k in ('执行中', '开发中')):
                     expected_state = '执行中'
-                elif any((k in status_cell for k in ('待分派', '未开发'))):
+                elif any(k in status_cell for k in ('待分派', '未开发')):
                     expected_state = '待分派'
                 elif '打回' in status_cell:
                     expected_state = '打回'
@@ -520,8 +520,8 @@ def run_patrol(repo_root: Path) -> list[dict[str, Any]]:
     for f in findings:
         by_entity[f['acting_on']].append(f)
     for entity, group in by_entity.items():
-        has_gov = any((f['type'] == 'governance' for f in group))
-        has_rev = any((f['type'] == 'reverse' for f in group))
+        has_gov = any(f['type'] == 'governance' for f in group)
+        has_rev = any(f['type'] == 'reverse' for f in group)
         if has_gov and has_rev:
             for f in group:
                 f['severity'] = 'RED'
@@ -536,9 +536,9 @@ def write_report(findings: list[dict[str, Any]], repo_root: Path) -> Path:
     notes_dir = repo_root / 'docs' / 'notes'
     notes_dir.mkdir(parents=True, exist_ok=True)
     report_path = notes_dir / report_name
-    red_cnt = sum((1 for f in findings if f['severity'] == 'RED'))
-    yel_cnt = sum((1 for f in findings if f['severity'] == 'YELLOW'))
-    blu_cnt = sum((1 for f in findings if f['severity'] == 'BLUE'))
+    red_cnt = sum(1 for f in findings if f['severity'] == 'RED')
+    yel_cnt = sum(1 for f in findings if f['severity'] == 'YELLOW')
+    blu_cnt = sum(1 for f in findings if f['severity'] == 'BLUE')
     content = f"# CCC 巡查与一致性交叉验证风险报告 ({today_str})\n\n> 自动生成时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n> 风险概览：🔴 红旗 {red_cnt} 处 · 🟡 黄旗 {yel_cnt} 处 · 🔵 蓝旗 {blu_cnt} 处\n\n---\n\n## 巡查发现清单\n\n| 严重程度 | 对象 (acting_on) | 发现分类 | 交叉确认 | 证据 (位置) | 详细描述 |\n| :---: | :--- | :--- | :---: | :--- | :--- |\n"
     for f in sorted(findings, key=lambda x: (x['severity'] == 'RED', x['acting_on']), reverse=True):
         sev_icon = '🔴 红旗' if f['severity'] == 'RED' else '🟡 黄旗' if f['severity'] == 'YELLOW' else '🔵 蓝旗'
@@ -585,7 +585,7 @@ def is_maintenance_complete(text: str) -> bool:
             if choice.strip() not in ('是', '否', '有', '无'):
                 return False
         notes = re.findall('^   - 说明：(.+)$', seg, re.M)
-        if len(notes) < 4 or any((n.strip() == '' for n in notes)):
+        if len(notes) < 4 or any(n.strip() == '' for n in notes):
             return False
         return True
     except Exception:
@@ -688,8 +688,8 @@ def gather_audit_trends_metrics(dispatch_dir: Path) -> dict[str, Any]:
         except Exception:
             pass
     total_processed = len(processed_cards)
-    passed_count = sum((1 for item in processed_cards if item.machine_audit_passed or base_state(item.state) == '已关闭'))
-    rejected_count = sum((1 for item in processed_cards if base_state(item.state) == '打回' or item.reject_count > 0))
+    passed_count = sum(1 for item in processed_cards if item.machine_audit_passed or base_state(item.state) == '已关闭')
+    rejected_count = sum(1 for item in processed_cards if base_state(item.state) == '打回' or item.reject_count > 0)
     passed_rate = passed_count / total_processed * 100.0 if total_processed > 0 else 0.0
     rejected_rate = rejected_count / total_processed * 100.0 if total_processed > 0 else 0.0
     return {'processed_cards_count': total_processed, 'passed_count': passed_count, 'rejected_count': rejected_count, 'passed_rate_pct': passed_rate, 'rejected_rate_pct': rejected_rate}
@@ -763,7 +763,7 @@ def main_metrics():
     log_dir = Path(args.log_dir)
     output_file = Path(args.output)
     if args.once:
-        print(f"开始单次巡查与指标采集...")
+        print("开始单次巡查与指标采集...")
         results = run_observation(dispatch_dir, log_dir, output_file)
         print("\n=== 指标采集摘要 ===")
         print(f"ccc-kb 接入: OpenCode={results['mcp']['opencode_mcp_enabled']}, Claude={results['mcp']['claude_mcp_enabled']}, 累计调用={results['mcp']['total_calls_observed']}次")
