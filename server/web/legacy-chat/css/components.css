@@ -3756,7 +3756,7 @@
 }
 
 .plans-form-field label .required {
-  color: #c44;
+  color: var(--ccc-danger, #c44);
   margin-left: 2px;
 }
 
