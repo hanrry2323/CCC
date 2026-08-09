@@ -1,5 +1,10 @@
 /**
- * plansPage.js — 计划页面（#/plans）
+ * plansPage.js — 计划页面（#/plans · 方案池）
+ *
+ * 设计：方案池 = 五态流水线看板（与看板页同语言）。
+ * 列 = 状态（草案/已确认/部分执行/已完成/作废），列内为紧凑方案条目：
+ * 项目徽标 + 编号 + 标题 + 作者/工具 + 验收进度条 + 关联卡。
+ * 项目筛选为看板同款按钮组；点击条目进详情面板。
  *
  * 数据源：GET /plans/list?project=&status=&q=
  * 详情：GET /plans/detail?path=...
@@ -16,18 +21,38 @@ const STATUS_COLORS = {
   '已确认': '#3d9a5f',
   '部分执行': '#c47a2c',
   '已完成': '#5a7a9a',
-  '作废': '#999',
+  '作废': '#b0563f',
 };
+
+const PROJECT_COLORS = {
+  ccc: '#c96442',
+  qb: '#3d9a5f',
+  xy: '#5a7a9a',
+  mx: '#8b6cc1',
+  hp: '#c47a2c',
+  clw: '#0f9f8f',
+  tst: '#73726c',
+};
+const PROJECT_COLOR_FALLBACK = ['#5a7a9a', '#8b6cc1', '#3d9a5f', '#c47a2c', '#c96442'];
+
+function projectColor(prefix) {
+  if (PROJECT_COLORS[prefix]) return PROJECT_COLORS[prefix];
+  let h = 0;
+  for (const ch of String(prefix || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PROJECT_COLOR_FALLBACK[h % PROJECT_COLOR_FALLBACK.length];
+}
 
 let _root = null;
 let _timer = null;
 let _plans = [];
 let _filterProject = '';
-let _filterStatus = '';
 let _searchQ = '';
 let _projects = [];
+let _projectDisplay = {}; // prefix → 展示名
 let _detailPath = null;  // 当前打开的详情路径，null=列表视图
 let _formOpen = false;   // 新建表单是否打开
+
+// ── 工具 ──
 
 function esc(s) {
   if (s == null) return '';
@@ -40,12 +65,46 @@ function h(html) {
   return String(html || '');
 }
 
+/** 内联 SVG 图标（lucide 风格，stroke=currentColor，16px） */
+function icon(name) {
+  const p = {
+    search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.4" y2="16.4"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+    open: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+    convert: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  };
+  const body = p[name] || '';
+  return `<svg class="plans-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+function _globalKeydown(e) {
+  if (e.key !== 'Escape' || !_formOpen) return;
+  _formOpen = false;
+  const overlay = _root?.querySelector('#plans-form-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
 // ── API ──
 
 async function loadProjects() {
   try {
     const data = await apiGet('/projects');
-    _projects = (data.projects || []).filter(p => p.taskable);
+    _projects = (data.projects || []).filter(p => p.is_taskable && p.prefix);
+    _projectDisplay = {};
+    for (const p of _projects) _projectDisplay[p.prefix] = p.display || p.name || p.prefix;
   } catch (e) {
     _projects = [];
   }
@@ -53,22 +112,13 @@ async function loadProjects() {
 
 async function loadPlans() {
   if (!_projects.length) await loadProjects();
-  const params = new URLSearchParams();
-  if (_filterProject) params.set('project', _filterProject);
-  if (_filterStatus) params.set('status', _filterStatus);
-  if (_searchQ) params.set('q', _searchQ);
-
-  const qs = params.toString();
-  const path = '/plans/list' + (qs ? '?' + qs : '');
   try {
-    const data = await apiGet(path);
+    const data = await apiGet('/plans/list');
     _plans = data.plans || [];
   } catch (e) {
     console.error('plans: load failed', e);
     _plans = [];
   }
-
-  // 详情或表单打开时只更新列表数据，不重建区域
   if (_detailPath || _formOpen) {
     updateListOnly();
     return;
@@ -76,123 +126,111 @@ async function loadPlans() {
   render();
 }
 
-// ── render ──
+// ── 筛选（客户端，列即状态） ──
 
-// ── partial update (不破坏详情/表单状态) ──
-
-function updateListOnly() {
-  const listEl = _root?.querySelector('#plans-list');
-  const countEl = _root?.querySelector('.plans-count');
-  if (listEl) listEl.innerHTML = renderList();
-  if (countEl) countEl.textContent = `${_plans.length} 个方案`;
-  // 重新绑定列表事件（但保留详情/表单区域不变）
-  rebindListEvents();
+function filteredPlans() {
+  const q = _searchQ.trim().toLowerCase();
+  return _plans.filter(p => {
+    if (_filterProject && p.project !== _filterProject) return false;
+    if (!q) return true;
+    return (p.title || '').toLowerCase().includes(q)
+      || (p.author || '').toLowerCase().includes(q)
+      || String(p.num || '').includes(q)
+      || (p.project || '').toLowerCase().includes(q);
+  });
 }
 
-function rebindListEvents() {
-  const root = _root;
-  if (!root) return;
-  root.querySelectorAll('#plans-list [data-action]').forEach(el => {
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const action = el.dataset.action;
-      const path = el.dataset.path;
-      if (action === 'detail') await showDetail(path);
-      else if (action === 'convert') await doConvert(path);
-    });
-  });
-  root.querySelectorAll('#plans-list select[data-action="status"]').forEach(el => {
-    el.addEventListener('change', async (e) => {
-      e.stopPropagation();
-      const path = el.dataset.path;
-      const newStatus = el.value;
-      if (!newStatus) return;
-      await doUpdateStatus(path, newStatus);
-    });
-  });
-  root.querySelectorAll('#plans-list .plans-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const path = card.dataset.path;
-      if (path) showDetail(path);
-    });
-  });
+// ── render ──
+
+function renderPlanItem(plan) {
+  const color = STATUS_COLORS[plan.status] || '#a39e93';
+  const projColor = projectColor(plan.project);
+  const projTint = projColor + '1f';
+  const acc = plan.acceptance || {};
+  const accPct = acc.total > 0 ? Math.round((acc.done / acc.total) * 100) : null;
+  const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
+  const title = String(plan.title || '').replace('方案 · ', '');
+
+  return `
+    <article class="pcard" data-path="${esc(plan.path)}" tabindex="0" role="button" aria-label="查看方案 ${esc(title)}">
+      <span class="pcard-edge" style="background:${color}"></span>
+      <div class="pcard-head">
+        <span class="pcard-proj" style="background:${projTint};color:${projColor}">${esc(_projectDisplay[plan.project] || plan.project)}</span>
+        <span class="pcard-id">#${esc(plan.num)}</span>
+      </div>
+      <h3 class="pcard-title">${esc(title)}</h3>
+      <div class="pcard-meta">${esc(plan.author)}<span class="pcard-dotsep">·</span>${esc(plan.tool)}</div>
+      <div class="pcard-foot">
+        ${accPct !== null ? `
+          <span class="pcard-acc" title="验收 ${acc.done}/${acc.total}">
+            <span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${accPct}%;background:${color}"></span></span>
+            <span class="pcard-acc-num">${acc.done}/${acc.total}</span>
+          </span>` : ''}
+        ${cardsText ? `<span class="pcard-chip" title="关联卡 ${esc(cardsText)}">${icon('tag')}<span>${esc(cardsText)}</span></span>` : ''}
+        <span class="pcard-open">详情${icon('open')}</span>
+      </div>
+    </article>`;
+}
+
+function renderColumn(status) {
+  const color = STATUS_COLORS[status];
+  const items = filteredPlans().filter(p => p.status === status);
+  return `
+    <section class="pcol" data-status="${esc(status)}">
+      <header class="pcol-h">
+        <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
+        <span class="pcol-count">${items.length}</span>
+      </header>
+      <div class="pcol-body">
+        ${items.length ? items.map(renderPlanItem).join('') : `<div class="pcol-empty"><div class="pcol-empty-line"></div><span>暂无方案</span></div>`}
+      </div>
+    </section>`;
 }
 
 function renderToolbar() {
+  const projBtns = ['', ..._projects.map(p => p.prefix)].map(prefix => {
+    const label = prefix ? (_projectDisplay[prefix] || prefix) : '全部';
+    return `<button type="button" class="ptool-proj ${_filterProject === prefix ? 'on' : ''}" data-proj="${esc(prefix)}">${esc(label)}</button>`;
+  }).join('');
   return `
     <div class="plans-toolbar">
-      <select id="plans-filter-project" class="plans-select">
-        <option value="">全部项目</option>
-        ${(_projects || []).map(p => `<option value="${esc(p.prefix)}"${_filterProject === p.prefix ? ' selected' : ''}>${esc(p.display || p.name)}</option>`).join('')}
-      </select>
-      <select id="plans-filter-status" class="plans-select">
-        <option value="">全部状态</option>
-        ${STATUSES.map(s => `<option value="${s}"${_filterStatus === s ? ' selected' : ''}>${s}</option>`).join('')}
-      </select>
-      <input type="search" id="plans-search" class="plans-search" placeholder="搜索方案..." value="${esc(_searchQ)}">
-      <button id="plans-btn-new" class="plans-btn-primary">+ 新建方案</button>
+      <h2 class="plans-title">计划<span class="plans-total">${filteredPlans().length}</span></h2>
+      <div class="ptool-projects" role="group" aria-label="按项目筛选">${projBtns}</div>
+      <div class="ptool-spacer"></div>
+      <label class="ptool-search">
+        ${icon('search')}
+        <input type="search" id="plans-search" placeholder="搜索标题 / 作者 / 编号…" value="${esc(_searchQ)}" aria-label="搜索方案">
+      </label>
+      <button type="button" class="ptool-new" id="plans-btn-new">${icon('plus')}新建方案</button>
     </div>`;
-}
-
-function renderPlanCard(plan) {
-  const color = STATUS_COLORS[plan.status] || '#999';
-  const acc = plan.acceptance || {};
-  const accText = acc.total > 0 ? `${acc.done}/${acc.total}` : '—';
-  const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
-
-  const dotColor = color;
-  return `
-    <div class="plans-card" data-path="${esc(plan.path)}">
-      <div class="plans-card-top">
-        <span class="plans-card-project">${esc(plan.project)}</span>
-        <span class="plans-card-dot" style="background:${dotColor}" title="${esc(plan.status)}"></span>
-        <span class="plans-card-status" style="color:${dotColor}">${esc(plan.status)}</span>
-        <span class="plans-card-id">#${esc(plan.num)}</span>
-      </div>
-      <div class="plans-card-title">${esc(plan.title.replace('方案 · ', ''))}</div>
-      <div class="plans-card-meta">
-        <span>${esc(plan.author)} · ${esc(plan.tool)}</span>
-        <span>${esc(plan.updated || plan.created)}</span>
-        ${acc.total > 0 ? `<span class="plans-card-chip">验收 ${acc.done}/${acc.total}</span>` : ''}
-        ${cardsText ? `<span class="plans-card-chip" title="${esc(cardsText)}">卡 ${esc(cardsText)}</span>` : ''}
-      </div>
-      <div class="plans-card-actions">
-        <button class="plans-btn-sm" data-action="detail" data-path="${esc(plan.path)}">详情</button>
-        ${plan.status !== '已完成' && plan.status !== '作废' ? `<button class="plans-btn-sm plans-btn-convert" data-action="convert" data-path="${esc(plan.path)}">转为任务卡</button>` : ''}
-        <select class="plans-status-select" data-action="status" data-path="${esc(plan.path)}">
-          <option value="">改状态...</option>
-          ${STATUSES.map(s => `<option value="${s}"${plan.status === s ? ' selected' : ''}>${s}</option>`).join('')}
-        </select>
-      </div>
-    </div>`;
-}
-
-function renderList() {
-  if (_plans.length === 0) {
-    return `<div class="plans-empty">
-      <p>暂无方案</p>
-      <p style="font-size:12px;margin-top:4px">点击「+ 新建方案」创建第一个方案，或调整筛选条件。</p>
-    </div>`;
-  }
-  return `<div class="plans-grid">${_plans.map(renderPlanCard).join('')}</div>`;
 }
 
 function render() {
   if (!_root) return;
   _root.innerHTML = `
     <div class="plans-page">
-      <div class="plans-header">
-        <h2>计划</h2>
-        <span class="plans-count">${_plans.length} 个方案</span>
-      </div>
       ${renderToolbar()}
-      <div class="plans-grid plans-list" id="plans-list">
-        ${renderList()}
+      <div class="plans-flow" id="plans-flow">
+        ${filteredPlans().length === 0 ? `
+          <div class="plans-empty-all">
+            <div class="plans-empty-ic">${icon('file')}</div>
+            <p>没有匹配的方案</p>
+            <button type="button" class="ptool-btn-plain" id="plans-empty-clear">清除筛选</button>
+          </div>` : STATUSES.map(renderColumn).join('')}
       </div>
       <div class="plans-detail" id="plans-detail" style="display:none"></div>
       <div class="plans-form-overlay" id="plans-form-overlay" style="display:none"></div>
     </div>`;
+  bindEvents();
+}
 
+function updateListOnly() {
+  const flowEl = _root?.querySelector('#plans-flow');
+  const countEl = _root?.querySelector('.plans-total');
+  if (flowEl) flowEl.innerHTML = filteredPlans().length === 0
+    ? `<div class="plans-empty-all"><div class="plans-empty-ic">${icon('file')}</div><p>没有匹配的方案</p><button type="button" class="ptool-btn-plain" id="plans-empty-clear">清除筛选</button></div>`
+    : STATUSES.map(renderColumn).join('');
+  if (countEl) countEl.textContent = filteredPlans().length;
   bindEvents();
 }
 
@@ -202,58 +240,44 @@ function bindEvents() {
   const root = _root;
   if (!root) return;
 
-  // 筛选
-  const selProject = root.querySelector('#plans-filter-project');
-  const selStatus = root.querySelector('#plans-filter-status');
-  const search = root.querySelector('#plans-search');
+  root.querySelectorAll('.ptool-proj').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _filterProject = btn.dataset.proj || '';
+      root.querySelectorAll('.ptool-proj').forEach(b => b.classList.toggle('on', b === btn));
+      render();
+    });
+  });
 
-  selProject?.addEventListener('change', () => {
-    _filterProject = selProject.value;
-    loadPlans();
-  });
-  selStatus?.addEventListener('change', () => {
-    _filterStatus = selStatus.value;
-    loadPlans();
-  });
+  const search = root.querySelector('#plans-search');
   search?.addEventListener('input', debounce(() => {
     _searchQ = search.value.trim();
-    loadPlans();
-  }, 300));
+    if (_detailPath || _formOpen) updateListOnly(); else render();
+  }, 250));
 
-  // 新建
   root.querySelector('#plans-btn-new')?.addEventListener('click', showCreateForm);
-
-  // 卡片操作
-  root.querySelectorAll('[data-action]').forEach(el => {
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const action = el.dataset.action;
-      const path = el.dataset.path;
-
-      if (action === 'detail') {
-        await showDetail(path);
-      } else if (action === 'convert') {
-        await doConvert(path);
-      }
-    });
+  root.querySelector('#plans-empty-clear')?.addEventListener('click', () => {
+    _filterProject = '';
+    _searchQ = '';
+    render();
   });
 
-  // 状态选择
-  root.querySelectorAll('select[data-action="status"]').forEach(el => {
-    el.addEventListener('change', async (e) => {
-      e.stopPropagation();
-      const path = el.dataset.path;
-      const newStatus = el.value;
-      if (!newStatus) return;
-      await doUpdateStatus(path, newStatus);
-    });
-  });
-
-  // 卡片点击 → 详情
-  root.querySelectorAll('.plans-card').forEach(card => {
-    card.addEventListener('click', () => {
+  // 条目 → 详情
+  root.querySelectorAll('.pcard').forEach(card => {
+    const open = () => {
       const path = card.dataset.path;
       if (path) showDetail(path);
+    };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    const openBtn = card.querySelector('.pcard-open');
+    if (openBtn) openBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      open();
     });
   });
 }
@@ -263,12 +287,12 @@ function bindEvents() {
 async function showDetail(path) {
   _detailPath = path;
   const detailEl = _root?.querySelector('#plans-detail');
-  const listEl = _root?.querySelector('#plans-list');
-  if (!detailEl || !listEl) return;
+  const flowEl = _root?.querySelector('#plans-flow');
+  if (!detailEl || !flowEl) return;
 
   try {
     const data = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
-    listEl.style.display = 'none';
+    flowEl.style.display = 'none';
     detailEl.style.display = 'block';
     detailEl.innerHTML = renderDetail(data);
     bindDetailEvents(path);
@@ -278,28 +302,30 @@ async function showDetail(path) {
 }
 
 function renderDetail(plan) {
-  const color = STATUS_COLORS[plan.status] || '#999';
+  const color = STATUS_COLORS[plan.status] || '#a39e93';
+  const tint = color + '1f';
   const acc = plan.acceptance || {};
-
+  const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
   return `
-    <div class="plans-detail-inner">
-      <div class="plans-detail-header">
-        <button class="plans-btn-sm" id="plans-detail-back">← 返回列表</button>
-        <h3>${esc(plan.title)}</h3>
-        <span class="plans-card-status" style="background:${color}">${esc(plan.status)}</span>
+    <div class="pdetail">
+      <div class="pdetail-bar">
+        <button type="button" class="ptool-btn-plain pdetail-back" id="plans-detail-back">${icon('back')}返回方案池</button>
+        <span class="pdetail-badge" style="background:${tint};color:${color}">${esc(plan.status)}</span>
+        <span class="pdetail-id">${esc(plan.project)} · ${esc(plan.id)}</span>
       </div>
-      <div class="plans-detail-meta">
-        <span>${esc(plan.project)} · ${esc(plan.id)}</span>
-        <span>作者：${esc(plan.author)} · ${esc(plan.tool)}</span>
-        <span>${esc(plan.updated || plan.created)}</span>
-        ${plan.cards && plan.cards !== '无' ? `<span>关联卡：${esc(plan.cards)}</span>` : ''}
-        ${acc.total > 0 ? `<span>验收：${acc.done}/${acc.total}</span>` : ''}
+      <h2 class="pdetail-title">${esc(plan.title)}</h2>
+      <div class="pdetail-meta">
+        <span>作者：${esc(plan.author)}</span>
+        <span>工具：${esc(plan.tool)}</span>
+        <span>更新：${esc(plan.updated || plan.created)}</span>
+        ${cardsText ? `<span class="pcard-chip">${icon('tag')}<span>关联卡 ${esc(cardsText)}</span></span>` : ''}
+        ${acc.total > 0 ? `<span class="pcard-acc" title="验收 ${acc.done}/${acc.total}"><span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${Math.round(acc.done / acc.total * 100)}%;background:${color}"></span></span><span class="pcard-acc-num">验收 ${acc.done}/${acc.total}</span></span>` : ''}
       </div>
-      <div class="plans-detail-body">${renderMarkdown(plan.content)}</div>
-      <div class="plans-detail-actions">
-        ${plan.status !== '已完成' && plan.status !== '作废' ? `<button class="plans-btn-primary" id="plans-detail-convert">转为任务卡</button>` : ''}
-        <select id="plans-detail-status">
-          <option value="">改状态...</option>
+      <div class="pdetail-body">${renderMarkdown(plan.content)}</div>
+      <div class="pdetail-actions">
+        ${plan.status !== '已完成' && plan.status !== '作废' ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        <select id="plans-detail-status" class="plans-status-select" aria-label="修改状态">
+          <option value="">改状态…</option>
           ${STATUSES.map(s => `<option value="${s}"${plan.status === s ? ' selected' : ''}>${s}</option>`).join('')}
         </select>
       </div>
@@ -310,9 +336,9 @@ function bindDetailEvents(path) {
   _root?.querySelector('#plans-detail-back')?.addEventListener('click', () => {
     _detailPath = null;
     const detailEl = _root?.querySelector('#plans-detail');
-    const listEl = _root?.querySelector('#plans-list');
+    const flowEl = _root?.querySelector('#plans-flow');
     if (detailEl) detailEl.style.display = 'none';
-    if (listEl) listEl.style.display = 'block';
+    if (flowEl) flowEl.style.display = '';
   });
 
   _root?.querySelector('#plans-detail-convert')?.addEventListener('click', () => doConvert(path));
@@ -321,7 +347,7 @@ function bindDetailEvents(path) {
     const newStatus = e.target.value;
     if (!newStatus) return;
     await doUpdateStatus(path, newStatus);
-    showDetail(path); // refresh
+    showDetail(path);
   });
 }
 
@@ -339,12 +365,11 @@ async function doUpdateStatus(path, status) {
 async function doConvert(path) {
   if (!confirm('确定将此方案转为任务卡？转卡后方案状态将自动推进为「部分执行」。')) return;
 
-  // 检查转卡计划行数
   try {
     const detail = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
     const planSection = (detail.content || '').split('## 转卡计划')[1];
     if (planSection) {
-      const lines = planSection.split('\\n').filter(l => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('##'));
+      const lines = planSection.split('\n').filter(l => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('##'));
       if (lines.length > 8) {
         alert('转卡计划段最多 8 行，当前 ' + lines.length + ' 行。请精简后重试。');
         return;
@@ -374,37 +399,38 @@ function showCreateForm() {
 
   overlay.style.display = 'flex';
   overlay.innerHTML = `
-    <div class="plans-form">
-      <h3>新建方案</h3>
+    <div class="plans-form" role="dialog" aria-modal="true" aria-label="新建方案">
+      <div class="plans-form-head">
+        <h3>新建方案</h3>
+        <button type="button" class="ptool-btn-plain plans-form-x" id="plans-form-cancel">${icon('close')}<span class="visually-hidden">关闭</span></button>
+      </div>
       <div class="plans-form-field">
-        <label>项目</label>
-        <select id="plans-form-project">
-          <option value="ccc">CCC</option>
-          <option value="xy">xianyu</option>
-          <option value="mx">medio-0</option>
-          <option value="hp">知识库</option>
-          <option value="qb">qb</option>
+        <label for="plans-form-project">项目</label>
+        <select id="plans-form-project" class="plans-status-select">
+          ${_projects.map(p => `<option value="${esc(p.prefix)}">${esc(_projectDisplay[p.prefix] || p.prefix)}</option>`).join('')}
         </select>
       </div>
       <div class="plans-form-field">
-        <label>标题</label>
-        <input type="text" id="plans-form-title" placeholder="方案标题">
+        <label for="plans-form-title">标题</label>
+        <input type="text" id="plans-form-title" class="plans-form-input" placeholder="方案标题">
+      </div>
+      <div class="plans-form-row">
+        <div class="plans-form-field">
+          <label for="plans-form-author">作者</label>
+          <input type="text" id="plans-form-author" class="plans-form-input" placeholder="作者名" required>
+        </div>
+        <div class="plans-form-field">
+          <label for="plans-form-tool">工具</label>
+          <input type="text" id="plans-form-tool" class="plans-form-input" placeholder="如 Claude Code" value="Claude Code">
+        </div>
       </div>
       <div class="plans-form-field">
-        <label>作者</label>
-        <input type="text" id="plans-form-author" placeholder="作者名" required>
-      </div>
-      <div class="plans-form-field">
-        <label>工具</label>
-        <input type="text" id="plans-form-tool" placeholder="如 Claude Code" value="Claude Code">
-      </div>
-      <div class="plans-form-field">
-        <label>内容（Markdown，从「## 目标」开始）</label>
-        <textarea id="plans-form-content" rows="12" placeholder="## 目标&#10;&#10;...&#10;&#10;## 背景&#10;&#10;...&#10;&#10;## 方案内容&#10;&#10;...&#10;&#10;## 验收标准&#10;&#10;- [ ] ...&#10;&#10;## 转卡计划&#10;&#10;- ...&#10;&#10;## 备注&#10;&#10;..."></textarea>
+        <label for="plans-form-content">内容（Markdown，从「## 目标」开始）</label>
+        <textarea id="plans-form-content" class="plans-form-input plans-form-textarea" rows="12" placeholder="## 目标&#10;&#10;...&#10;&#10;## 背景&#10;&#10;...&#10;&#10;## 方案内容&#10;&#10;...&#10;&#10;## 验收标准&#10;&#10;- [ ] ...&#10;&#10;## 转卡计划&#10;&#10;- ...&#10;&#10;## 备注&#10;&#10;..."></textarea>
       </div>
       <div class="plans-form-actions">
-        <button class="plans-btn-sm" id="plans-form-cancel">取消</button>
-        <button class="plans-btn-primary" id="plans-form-submit">创建</button>
+        <button type="button" class="ptool-btn-plain" id="plans-form-submit-cancel">取消</button>
+        <button type="button" class="ptool-new" id="plans-form-submit">${icon('plus')}创建</button>
       </div>
     </div>`;
 
@@ -412,6 +438,17 @@ function showCreateForm() {
     _formOpen = false;
     overlay.style.display = 'none';
   });
+  overlay.querySelector('#plans-form-submit-cancel')?.addEventListener('click', () => {
+    _formOpen = false;
+    overlay.style.display = 'none';
+  });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      _formOpen = false;
+      overlay.style.display = 'none';
+    }
+  });
+  document.addEventListener('keydown', _globalKeydown);
 
   overlay.querySelector('#plans-form-submit')?.addEventListener('click', async () => {
     const project = overlay.querySelector('#plans-form-project')?.value;
@@ -424,7 +461,6 @@ function showCreateForm() {
       alert('标题和内容不能为空');
       return;
     }
-
     if (!author) {
       alert('作者不能为空');
       return;
@@ -445,67 +481,115 @@ function showCreateForm() {
   });
 }
 
-// ── markdown (simple) ──
+// ── markdown（块级解析，分组列表/表格/代码块） ──
 
 function renderMarkdown(md) {
   if (!md) return '';
-  var html = esc(md);
-  // Code blocks first (before escaping interferes)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, lang, code) {
-    return '<pre><code>' + code + '</code></pre>';
-  });
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Headers
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-  // Bold + italic
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Links (markdown and bare URLs)
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  // Tables
-  html = html.replace(/\|(.+)\|\n\|[-: |]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, body) {
-    var hcols = header.split('|').filter(function(c) { return c.trim(); });
-    var hrow = '<tr>' + hcols.map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('') + '</tr>';
-    var rows = body.trim().split('\n').map(function(r) {
-      var cols = r.split('|').filter(function(c) { return c.trim(); });
-      return '<tr>' + cols.map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('') + '</tr>';
-    }).join('');
-    return '<table><thead>' + hrow + '</thead><tbody>' + rows + '</tbody></table>';
-  });
-  // Checkboxes
-  html = html.replace(/^- \[x\] (.+)$/gm, '<label class="plans-checkbox done"><input type="checkbox" checked disabled> $1</label>');
-  html = html.replace(/^- \[ \] (.+)$/gm, '<label class="plans-checkbox"><input type="checkbox" disabled> $1</label>');
-  // Unordered lists (non-checkbox lines)
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  // Ordered lists
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  // Blockquotes
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-  // Line breaks
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
-  return '<p>' + html + '</p>';
-}
+  const lines = String(md).replace(/\r\n/g, '\n').split('\n');
 
-// ── utils ──
-
-function debounce(fn, ms) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
+  const inline = (s) => {
+    let out = esc(s);
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    out = out.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+    return out;
   };
+
+  const html = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // 代码块
+    if (/^```/.test(line)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++;
+      html.push('<pre class="md-pre"><code>' + esc(buf.join('\n')) + '</code></pre>');
+      continue;
+    }
+    // 表格
+    if (/^\|.+\|$/.test(line) && i + 1 < lines.length && /^\|[\s:|-]+\|$/.test(lines[i + 1])) {
+      const header = line.split('|').filter(c => c.trim() !== '');
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\|.+\|$/.test(lines[i])) {
+        rows.push(lines[i].split('|').filter(c => c.trim() !== ''));
+        i++;
+      }
+      html.push('<table class="md-table"><thead><tr>' + header.map(c => '<th>' + inline(c.trim()) + '</th>').join('') + '</tr></thead><tbody>' +
+        rows.map(r => '<tr>' + r.map(c => '<td>' + inline(c.trim()) + '</td>').join('') + '</tr>').join('') + '</tbody></table>');
+      continue;
+    }
+    // 标题
+    const hm = line.match(/^(#{1,4})\s+(.+)$/);
+    if (hm) {
+      const lv = Math.min(4, hm[1].length + 1);
+      html.push(`<h${lv} class="md-h">${inline(hm[2])}</h${lv}>`);
+      i++;
+      continue;
+    }
+    // checkbox 行
+    const cbm = line.match(/^-\s+\[([ xX])\]\s+(.+)$/);
+    if (cbm) {
+      const done = /[xX]/.test(cbm[1]);
+      html.push(`<label class="md-check${done ? ' done' : ''}"><input type="checkbox" disabled${done ? ' checked' : ''}>${inline(cbm[2])}</label>`);
+      i++;
+      continue;
+    }
+    // 无序列表（连续分组）
+    if (/^\s*[-*]\s+\S/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*]\s+\S/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s+/, ''));
+        i++;
+      }
+      html.push('<ul class="md-ul">' + items.map(it => '<li>' + inline(it) + '</li>').join('') + '</ul>');
+      continue;
+    }
+    // 有序列表
+    if (/^\s*\d+\.\s+\S/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+\S/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, ''));
+        i++;
+      }
+      html.push('<ol class="md-ol">' + items.map(it => '<li>' + inline(it) + '</li>').join('') + '</ol>');
+      continue;
+    }
+    // 引用
+    if (/^>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^>\s?/, '')); i++; }
+      html.push('<blockquote class="md-quote">' + buf.map(b => inline(b)).join('<br>') + '</blockquote>');
+      continue;
+    }
+    // 空行
+    if (!line.trim()) { i++; continue; }
+    // 普通段落（合并相邻行；孤立表格行/未匹配行兜底前进，防死循环）
+    const buf = [];
+    while (i < lines.length && lines[i].trim() && !/^```/.test(lines[i]) && !/^\|.+\|$/.test(lines[i]) && !/^#{1,4}\s/.test(lines[i]) && !/^\s*[-*>]/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i])) {
+      buf.push(lines[i].trim());
+      i++;
+    }
+    if (buf.length === 0) {
+      html.push('<p class="md-p">' + inline(lines[i]) + '</p>');
+      i++;
+      continue;
+    }
+    html.push('<p class="md-p">' + buf.map(inline).join('<br>') + '</p>');
+  }
+  return html.join('\n');
 }
 
 // ── mount / unmount ──
 
 export async function mountPlans(root) {
   _root = root;
+  _root.innerHTML = '<div class="plans-loading">加载方案池…</div>';
   await loadPlans();
   _timer = setInterval(loadPlans, 30000); // 30s 自动刷新
 }
@@ -515,6 +599,7 @@ export function unmountPlans() {
     clearInterval(_timer);
     _timer = null;
   }
+  document.removeEventListener('keydown', _globalKeydown);
   _root = null;
   _plans = [];
   _detailPath = null;
