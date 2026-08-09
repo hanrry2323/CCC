@@ -85,7 +85,19 @@
 
 - 禁止：直推 main、写机审区/验收区、置已关闭
 
-## 机审提示
+## 机审区
+
+**机审：通过**
+
+审查对象：branch `codex/qb005-script-argument-parsing-fix`，qb 业务仓净改动 `git diff main HEAD` 仅有 `scripts/stress_qb_feature_probe.py` 一个文件（215 行，+141/-74），完全落在卡声明范围 `scripts/` 内；未触碰 `src/`，argparse 为标准库，无新依赖，符合红线 1/2 与范围约束。
+
+**审查摘要**：
+- **目标达成**：`parse_args()` 用 `argparse.ArgumentParser` 统一接管 `--dry-run/--dr/--full/-f/--sections`；空值 `--sections "   "` 走 `parser.error(...)` 友好报错，缺失值由 argparse 原生 `expected one argument` 接管，两项验收点均达成，回写区承诺与实现一致。
+- **范围合规**：合并基准 `merge-base` 之前的 `stage5` 改动（commit 7e6ebecc）早已在 main 上，非本卡引入；本分支相对 main 的净差异仅 stress_qb 一个脚本。
+- **语义对齐**：`--full`/`--dry-run`/`--sections` 从 `sys.argv in` 改为 argparse，probe 执行与 sections 分派逻辑未变，零业务逻辑改动。
+- **记录（不越界修复）**：「零业务逻辑改动」红线约束下未改动；存在两处**既有**缺陷，非本卡引入，可后续单卡处理——① `print_results()` 成功路径未给 `exit_code` 赋值，else 分支后 `return exit_code` 会抛 `UnboundLocalError`；② `elif "thin" in test_sections and not test_sections` 中 `not test_sections` 恒为 False，`thin` 分支为死代码。
+
+
 
 - 审查项目：qb（CCC 自动化开发测试用业务仓（挂 Engine 出卡）。）
 
