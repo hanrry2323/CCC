@@ -119,9 +119,9 @@ if [ $# -eq 0 ]; then
   echo "=== 方案文件全量校验 ==="
   echo ""
 
-  find "$PLANS_DIR" -path "*/plans/*.md" -not -path "*/_template/*" 2>/dev/null | while read -r f; do
+  while read -r f; do
     validate_file "$f"
-  done | sort
+  done < <(find "$PLANS_DIR" -path "*/plans/*.md" -not -path "*/_template/*" 2>/dev/null | sort)
 
   echo ""
   if [ "$ERRORS" -eq 0 ]; then
@@ -138,10 +138,15 @@ elif [ "$1" = "--prefix" ]; then
   fi
   echo "=== 方案校验 · 前缀 $prefix ==="
   echo ""
-  find "$PLANS_DIR/$prefix/plans" -name "*.md" 2>/dev/null | while read -r f; do
+  while read -r f; do
     validate_file "$f"
-  done | sort
+  done < <(find "$PLANS_DIR/$prefix/plans" -name "*.md" 2>/dev/null | sort)
   echo ""
+  if [ "$ERRORS" -eq 0 ]; then
+    green "全部通过"
+  else
+    red "$ERRORS 个错误, $WARNINGS 个警告"
+  fi
 
 else
   # 单文件校验
