@@ -126,6 +126,20 @@ projects:
     role: CCC 演示项目
     notes: 前缀 cd（ccc004 意图经 registry 单源落地 · M4）
 
+  - prefix: clw
+    id: clwarp
+    name: clwarp
+    display: clwarp
+    location: mac2017-apps
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/clwarp
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/clw/README.md
+    role: 统一 AI 开发桌面驾驶舱（Claude+OpenCode+Codex）
+
   - prefix: null
     id: ai-loop-router
     name: ai-loop-router
