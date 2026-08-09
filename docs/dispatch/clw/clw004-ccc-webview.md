@@ -67,6 +67,25 @@ CCC WebView 面板 + 自动化入口（ccc-plan 切片）。
 - 业务仓 `clwarp` 提交哈希 (commit hash): `43670535f7f30352d06fe0ae3c0f455cb3e7d51d`
 - 业务仓推送分支: `codex/clw004-ccc-webview`
 
+## 机审区
+
+**机审**：2017 · 日期：2026-08-09
+
+**机审：通过**（含一处就地修复）
+
+审查范围：clw004 commit `be9c2c9..4367053`（clwarp，4 文件：`src/App.tsx` / `src/i18n/index.ts` / `src-tauri/src/lib.rs` / 新 `src-tauri/src/webview.rs`），均在卡声明范围，无越界文件；后端改动贴近实现说明 `43670535`。
+
+验收逐条：
+1. **看板面板** ✅ 侧边栏「CCC 看板」项切 `ccc` 视图内嵌 `iframe`（`${boardUrl}/#/board`）；选/建会话正确切回终端。PTY 仅 `display` 显隐、不杀进程，浏览看板不中断终端会话。
+2. **地址从配置读** ✅ env `CCC_BOARD_URL` → `~/.clwarp/config.json|settings.json` → 回退 `http://192.168.3.116:7788`，即 `docs/deploy/topology.md` 现行唯一生产 HTTP 端点（2017，`:7788`）；`#/board` 路由与 `.ccc/infrastructure.md` 一致，非随机硬编码。
+3. **失败中文提示+重试** ✅ `cccLoadFailed`/`cccNotReachable`/`cccRetry`；`TcpStream::connect_timeout`(1s) 探活，失败给重试按钮。探活为连通性近似，可接受。
+4. **红线合规** ✅ 只读用户配置，不写 CLI 配置；数据目录 `~/.clwarp/` 隔离；不写业务项目文件。
+5. 构建属机械门禁，未重复。
+
+就地修复（mochi 乱码）：`src/i18n/index.ts` `cccNotReachable` 原含替换字符 `无���` → 改为 `无法`；commit `1d86c90`，已 push `codex/clw004-ccc-webview`。
+
+结论：无原则性红线问题，可进入「合入批准」。
+
 ## 执行提示
 
 - 项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。）
