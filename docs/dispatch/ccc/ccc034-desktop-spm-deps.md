@@ -117,3 +117,14 @@ Desktop 引入 SwiftUIX / swiftui-introspect / textual（纯依赖，零代码�
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过** · 机审方：2017 机审席 · 日期：2026-08-10
+
+审查摘要：
+- **范围合规**：commit `f8f23690` 仅改 `desktop/Package.swift`（+10 行依赖声明），commit `b64418e4` 仅改本卡；业务代码零改动，符合范围。
+- **代码质量**：三个依赖的 `.product(name:)` 引用（`SwiftUIX` / `SwiftUIIntrospect` / `Textual`）与各库实际导出的 product 名完全匹配；`targets[].path` 与既有结构未受扰动。`SwiftUIX` 用 `branch: "master"` 系该库官方无 stable release，惯常做法，可接受（锁定 revision 待后续能在真机构建时由锁文件固化）。
+- **边界/披露**：`Package.resolved` 因本地无 macOS 15 SDK 无法 `swift build` 生成而未含在提交内——回写已如实披露环境限制，缺失锁文件属可复现性待补项而非越界；不做人为编造以避免失真。
+- **回写/维护区**：回写区实现说明、测试结果、push 证据（commit hash）齐全；维护区四问逐项勾选并填具体说明，无占位，Doc-Gate 通过。
+- 机械门禁（validate 绿 / package-baseline）已由引擎裁决，不重复检查。
