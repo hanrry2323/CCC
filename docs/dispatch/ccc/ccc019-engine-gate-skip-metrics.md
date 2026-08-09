@@ -1,6 +1,6 @@
 # 任务卡 ccc019 · engine gate skip metrics（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 目标
 
@@ -47,11 +47,22 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 实现说明
+1. 在 `server/engine/main.py` 门禁跳过处，引入并定义了 `structlog` logger。
+2. 当由于环境缺失（`cmd_exists` 为 `False`）跳过门禁时，在日志警告后追加了 `structlog` 级别的 info 日志：
+   `metrics_logger.info("gate_skip", card=work.id, gate=gate_name, reason="env_missing")`
+   完全满足指标记录的要求。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+1. 在 `server/tests/test_engine_main.py` 中新增单元测试 `test_gate_skip_env_missing_metrics_logged`。
+2. 该测试通过 Mock `structlog` logger 来捕获日志输出，验证在由于环境缺失跳过门禁时是否确实生成了指定格式 of 日志。
+3. 执行 `pytest` 全量测试，81 个测试用例全数通过。
+
+### push 证据
+- 提交分支：`codex/ccc019-engine-gate-skip-metrics`
+- commit hash: `c00637223bd8d028b1daf35039574525267c733b`
 
 ## 执行提示
 
