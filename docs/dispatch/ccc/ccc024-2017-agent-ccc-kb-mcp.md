@@ -1,6 +1,6 @@
 # 任务卡 ccc024 · 2017执行Agent接入ccc-kb MCP并重建索引（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡2 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡2 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
