@@ -6,26 +6,27 @@
 
 from __future__ import annotations
 
-import os
 import re
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from server.board.registry import load_projects
 from server.board.loader import load_dispatch_cards, parse_card, scan_dispatch_files, get_archive_dir, scan_archive_files
 from server.board.plans import list_plans
+from server.board.models import base_state as _base_state
 
 logger = logging.getLogger("ccc.observer")
 
 
 def get_base_state(state: str) -> str:
-    """状态归一化：取括号前的基础状态（打回/待分派/执行中/已回写/已关闭）。"""
-    if not state or state.strip() == "未知":
-        return "未知"
-    return re.split(r"[（(]", state, maxsplit=1)[0].strip()
+    """状态归一化：取括号前的基础状态（打回/待分派/执行中/已回写/已关闭）。
+
+    委托 ``server.board.models.base_state``（平台权威口径），保证巡查与看板计数一致。
+    """
+    return _base_state(state)
 
 
 def parse_card_related(content: str) -> str:
