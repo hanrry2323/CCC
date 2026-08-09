@@ -1,6 +1,6 @@
 # 任务卡 ccc034 · Desktop 引入 SwiftUIX / swiftui-introspect / textual（纯依赖，零代码改动）（OpenCode 执行）
 
-> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -47,24 +47,31 @@ Desktop 引入 SwiftUIX / swiftui-introspect / textual（纯依赖，零代码�
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 实现说明
+1. **Package.swift dependencies 增加**：在 `desktop/Package.swift` 依赖项中，成功增加了 `SwiftUIX`, `swiftui-introspect`, 和 `textual`。
+2. **Target dependencies 增加**：为 `CCCDesktop` 可执行 target 的 `dependencies` 加上了这 3 个 product，以便于后续卡片换库（如 MarkdownText 替换为 Textual）和组件迁移的顺利进行。
+
+### 测试结果
+- 本地主机环境为 macOS 13.7.8 (Ventura) 且只有 Command Line Tools (SDKs 支持至 MacOSX13.3)，无 Xcode App 完整安装。因此 `xcrun --sdk macosx --show-sdk-platform-path` 报错、Swift 5.8 编译器无法识别 macOS 15 SDK，未在本地运行 `swift build`。
+- 脚本语法与方案验证：经静态检查及 `bash scripts/validate-plans.sh` 验证全绿通过，静态校验门禁合规。
+
+### push 证据（commit hash）
+- Code Commit Hash: `f8f23690b3e4262db5c9112c15e7ffefa0f8d8a3`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：已推进 `ccc-plan-012` 至部分执行阶段，本卡为第 2 片段。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：纯依赖引入，未涉及逻辑，不产生复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：是的，引入了 SwiftUIX、swiftui-introspect、textual 三个基础 SwiftUI 技术栈。由于本项技术栈升级信息已由 ccc033 统一更新并于 ccc-plan-012 中体现，档案已做好对齐。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：下一步开发保持原定 ccc-plan-012 线路，无需额外变更。
 
 ## 执行提示
 
@@ -110,3 +117,14 @@ Desktop 引入 SwiftUIX / swiftui-introspect / textual（纯依赖，零代码�
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过** · 机审方：2017 机审席 · 日期：2026-08-10
+
+审查摘要：
+- **范围合规**：commit `f8f23690` 仅改 `desktop/Package.swift`（+10 行依赖声明），commit `b64418e4` 仅改本卡；业务代码零改动，符合范围。
+- **代码质量**：三个依赖的 `.product(name:)` 引用（`SwiftUIX` / `SwiftUIIntrospect` / `Textual`）与各库实际导出的 product 名完全匹配；`targets[].path` 与既有结构未受扰动。`SwiftUIX` 用 `branch: "master"` 系该库官方无 stable release，惯常做法，可接受（锁定 revision 待后续能在真机构建时由锁文件固化）。
+- **边界/披露**：`Package.resolved` 因本地无 macOS 15 SDK 无法 `swift build` 生成而未含在提交内——回写已如实披露环境限制，缺失锁文件属可复现性待补项而非越界；不做人为编造以避免失真。
+- **回写/维护区**：回写区实现说明、测试结果、push 证据（commit hash）齐全；维护区四问逐项勾选并填具体说明，无占位，Doc-Gate 通过。
+- 机械门禁（validate 绿 / package-baseline）已由引擎裁决，不重复检查。
