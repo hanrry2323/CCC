@@ -1,6 +1,6 @@
 # 任务卡 ccc025 · plans与roadmap纳入ccc-kb知识库索引（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡3 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡3 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -55,24 +55,33 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+- **实现说明**：
+  1. 在 `server/kb/indexer.py` 的 `_SECTION_ALIASES` 与 `server/kb/search.py` 的 `_SECTION_ALIASES` 加上了 `"plans"`/`"roadmap"` 到 `"plans"` 域的��一。
+  2. 在 `server/kb/indexer.py` 的 `scan_source_files` 中，新增扫描 `docs/projects/*/plans/*.md` 方案文件与 `docs/roadmap.md`。
+  3. 修改了 `_parse_domain_markdown` 的 `section` 归一逻辑和 `base_id` 的生成，对 `roadmap.md` 和各项目 `plans` 文件生成了唯一的 `base_id`（例如：`domains::plans::ccc::011-loop-observer-architecture`），从而在统一解析 markdown 标题分段时避免冲突。
+  4. 修改 `server/kb/mcp_server.py` 与 `server/kb/cli.py`，在其 `domain` 过滤选项描述中同步加入了 `plans` 选项。
+  5. 修改 `server/tests/test_kb_query_cases.py`，将 `test_covers_four_domains` 升级为 `test_covers_five_domains`，增加并补充 plans 用例。
+  6. 同步修改了 `knowledge/query-cases.md`，加入了 3 个 plans 域用例（桌面驾驶舱、心智分层、视频里程碑），均全绿通过。
+- **测试结果**：
+  - 本地运行 `python3 -m server.kb.cli reindex` 构建成功，242 个 documents 成功编入索引。
+  - `python3 -m pytest server/tests/test_kb_*.py` 128 个测试全量通过！
+- **push 证据**：
+  - Commit Hash: `1ea45ba160f6ff3d94567fc82902b0132cecfbdf`
+  - 分支: `codex/ccc025-plans-roadmap-ccc-kb`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联的 ccc-plan-011 (plans与roadmap纳入ccc-kb知识库索引) 阶段一 1.3 方案状态已经完全对齐，对应的开发任务卡已完成并顺利推入「已回写」阶段。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本任务为知识库域扩展常规特性开发，未在编码/流程上触发具有泛化意义的新型架构教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：本项目未引入新的第三方依赖，未改变原有知识库（BM25 检索）的架构实现和技术栈，项目结构完全保持不变。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：本卡不改变现有的产品路线图。
 
 ## 执行提示
 
