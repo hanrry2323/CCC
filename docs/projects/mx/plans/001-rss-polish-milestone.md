@@ -2,7 +2,7 @@
 
 > 项目: mx · 编号: mx-plan-001 · 状态: 草案 · 作者: OpenCode · 工具: ccc-plan
 > 创建: 2026-08-09 · 更新: 2026-08-09
-> 关联卡: mx001, mx002, mx003, mx004, mx005, mx006, mx007, mx008, mx009, mx010, mx011, mx012, mx013, mx014, mx015, mx016, mx017, mx018, mx019, mx020, mx021, mx022, mx023, mx024, mx025, mx026, mx027, mx028, mx029
+> 关联卡：mx001, mx002, mx003, mx004, mx005, mx006, mx007, mx008, mx009, mx010, mx011, mx012, mx013, mx014, mx015, mx016, mx017, mx018, mx019, mx020, mx021, mx022, mx023, mx024, mx025, mx026, mx027, mx028, mx029
 > 关联方案: 无
 
 ## 目标

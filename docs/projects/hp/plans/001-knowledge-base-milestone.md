@@ -2,7 +2,7 @@
 
 > 项目: hp · 编号: hp-plan-001 · 状态: 草案 · 作者: OpenCode · 工具: ccc-plan
 > 创建: 2026-08-09 · 更新: 2026-08-09
-> 关联卡: hp001, hp002, hp003, hp004, hp005, hp006, hp007, hp008, hp010, hp011, hp012, hp013, hp014, hp015, hp016, hp017, hp019, hp020, hp021, hp022
+> 关联卡：hp001, hp002, hp003, hp004, hp005, hp006, hp007, hp008, hp010, hp011, hp012, hp013, hp014, hp015, hp016, hp017, hp019, hp020, hp021, hp022
 > 关联方案: 无
 
 ## 目标
@@ -45,7 +45,6 @@ HP 知识库是平台的关键基建，但此前存在短 chunk 碎片化严重�
 - hp015-frontend-page-test-coverage: 前端测试覆盖补齐
 - hp016-collector-pipeline-repair: 采集管道完整性修复
 - hp017-chunk-hp007: 存量短 chunk 清理落库
-- hp018-hp-pg-backtest-cron: 每日定时任务回测 cron
 - hp019-task: 采集任务调度
 - hp020-chunk: 文本分块策略调优
 - hp021-search-result-relevance-scoring-display: 检索结果相关性评分展示
