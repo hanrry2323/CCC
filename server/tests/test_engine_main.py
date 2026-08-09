@@ -2296,3 +2296,44 @@ class TestValidateCardStateAfterWriteback:
         )
         ok, _ = validate_card_state_after_writeback(card)
         assert ok  # 无状态行 → 放行（历史兼容）
+
+    def test_is_empty_writeback_or_placeholder_all_cases(self, tmp_path: Path) -> None:
+        """测试：is_empty_writeback_or_placeholder 函数正确判断各种占位和空回写情况"""
+        from server.engine.main import is_empty_writeback_or_placeholder
+        from server.engine.task import Work
+        
+        card = tmp_path / "ccc039-test.md"
+        # 1. 缺失维护区
+        card.write_text("# 任务卡 ccc039\n", encoding="utf-8")
+        work = Work(id="ccc039", role="开发执行体", card_path=str(card))
+        is_empty, reason = is_empty_writeback_or_placeholder(work, "")
+        assert is_empty
+        assert "缺失 ## 维护区 节" in reason
+
+        # 2. 维护区为占位符
+        card.write_text("# 任务卡 ccc039\n## 维护区\n"
+                        "1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]\n"
+                        "   - 说明：占位\n"
+                        "2. **教训沉淀**：本卡是否产出可复用教训？[有/无]\n"
+                        "   - 说明：占位\n"
+                        "3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]\n"
+                        "   - 说明：占位\n"
+                        "4. **线路图**：项目近况/下一步是否变化？[是/否]\n"
+                        "   - 说明：占位\n", encoding="utf-8")
+        is_empty, reason = is_empty_writeback_or_placeholder(work, "")
+        assert is_empty
+        assert "未勾选或仍为占位" in reason or "包含占位文本" in reason or "格式不完整" in reason
+
+        # 3. 维护区正常填写
+        card.write_text("# 任务卡 ccc039\n## 维护区\n"
+                        "1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]\n"
+                        "   - 说明：方案已同步更新\n"
+                        "2. **教训沉淀**：本卡是否产出可复用教训？[无]\n"
+                        "   - 说明：无教训沉淀\n"
+                        "3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]\n"
+                        "   - 说明：结构未改变\n"
+                        "4. **线路图**：项目近况/下一步是否变化？[否]\n"
+                        "   - 说明：无变化\n", encoding="utf-8")
+        is_empty, reason = is_empty_writeback_or_placeholder(work, "")
+        assert not is_empty, reason
+

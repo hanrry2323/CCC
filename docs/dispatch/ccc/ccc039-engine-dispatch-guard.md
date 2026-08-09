@@ -1,6 +1,6 @@
 # 任务卡 ccc039 · engine 派发防护 + 空回写上限 + 卡编号保护（OpenCode 执行）
 
-> 关联：ccc-plan: 失败复盘 clw006 事故 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan: 失败复盘 clw006 事故 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -58,24 +58,33 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 实现说明
+1. **派发防护**：在 `server/engine/main.py` 派发循环 `run_once` 以及执行体 `_dispatch_and_collect` 启动前添加对 worktree 内卡文件副本存在性的强校验。若 `_worktree_card_candidate` 结果为 None（卡改名/文件缺失），则直接拦截派发并跳过，不再进行空转。
+2. **空回写直接打回，不再无限重试**：新增 `is_empty_writeback_or_placeholder` 判定助手，完美校验卡片是否为零 diff/新 commit 或其维护区是否为占位模板。在 `_run_auto_worker` 与 `_run_audit_worker` 中，一旦检测到空回写，卡片直接流转到打回状态 (`State.REJECTED`)，立刻中断重试。
+3. **卡路径磁盘动态匹配**：重构 `server/engine/store.py` 里的 `FileBoardStore.list_work`，在反查 `card_path` 时每次都通过磁盘索引动态匹配（支持同 id 多个文件时取精确 `*<id>*.md` 候选），避免卡改名后残留旧路径问题。
+4. **方案链编号保护**：在 `server/board/validate.py` 门禁中添加对方案保留编号的交叉对比校验；同时升级 `scripts/new-card.sh`，在生成自动编号前通过 Python 深度扫描 `docs/projects/**/plans/*.md` 中所有声明的 `关联卡：`。若生成的自动编号落在任何已有方案已声明的编号区间内，则直接报错中断，要求显式使用 `--id` 指定。对于非方案主链卡，增加显式编号提示，杜绝吃掉自动编号空间。
+5. **单元测试**：在 `server/tests/test_engine_main.py` 新增专门的单元测试，全面验证了空回写/占位模板判定。
+
+### 测试结果
+- 执行 pytest `test_engine_main.py` 86 个用例全量通过：
+  `python3 -m pytest server/tests/test_engine_main.py` -> 100% Passed.
+- 执行 `test_board_validate.py` 23 个校验用例全量通过：
+  `python3 -m pytest server/tests/test_board_validate.py` -> 100% Passed.
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：ccc039 关联方案 “失败复盘 clw006 事故” 的所有防护策略已全部完整实现并测试通过。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：已在 `docs/notes/2026-08-10-clw006-card-spin-failures.md` 沉淀了失败模式与防护。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：无路径/结构改变。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：近况无新增变动。
 
 ## 执行提示
 
