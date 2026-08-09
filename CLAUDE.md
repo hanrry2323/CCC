@@ -10,6 +10,7 @@
 2. [`docs/INDEX.md`](docs/INDEX.md) §0 — 权威链与北星
 3. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **卡命名定死** / 禁写哪里
 4. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源
+5. [`docs/projects/onboarding.md`](docs/projects/onboarding.md) — 从零到一准入 / **完成钩子 Doc-Gate（回写必填维护区四问）**
 
 ## 文档与项目注册（硬 · 读写必遵）
 
