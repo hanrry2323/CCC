@@ -1,6 +1,6 @@
 # 任务卡 ccc024 · 2017执行Agent接入ccc-kb MCP并重建索引（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡2 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡2 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -56,24 +56,49 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. **配置文件修改**：修改了 2017 宿主机上的 OpenCode 配置 (`~/.config/opencode/opencode.json`) 和 Claude settings 配置 (`~/.claude/settings.json`)，在 `mcp` 和 `mcpServers` 中分别正确添加了 `ccc-kb` MCP 服务的 stdio 配置。
+2. **安全备份**：修改前成功备份了原始配置文件至同一目录下的 `.bak-ccc-kb` 备份。
+3. **索引重建**：在 `/Users/fan/program/CCC` 路径下，通过 `python3 -m server.kb.mcp_server --reindex` 成功进行索引的全量重建，升级到 v2，共重建索引文档 126 篇。
+
+### 测试结果
+1. **健康检查验证**：执行 `python3 -m server.kb.mcp_server --health` 返回：
+   ```json
+   {"documents": 126, "index_dir": "/Users/fan/program/CCC/knowledge/.index", "ok": true, "sections": {"decisions": 15, "lessons": 24, "nodes-paths": 13, "projects": 74}}
+   ```
+2. **工具实测验证**：运行 `opencode run --auto "用 ccc-kb_knowledge_search 搜索 lessons 域，查询关于 '超时' 的教训"`，成功连接本地 `ccc-kb` MCP 并返回带 score 相关的教训：
+   - L2: Executor 超时后 planner 不应越界 commit
+   - L5-L10: 系列教训
+
+### Push 证据
+- **Commit Hash**: bb515d98
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `ccc-plan-011` 卡2 已经在本次开发中执行并回写，状态更新为已回写。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：本次为 2017 环境下的 Agent 用户级配置，未对业务代码或架构带来变更。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：未改变项目结构或路径，仅修改本地 Agent 配置文件。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：线路图未受影响，当前任务按既定计划完成。
 
-## 批注落实
+## 机审区
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+**机审：通过**（2026-08-09 · 2017 机审席）
+
+审查摘要：
+- **范围**：卡分支相对切出点仅改动 `docs/dispatch/ccc/ccc024-2017-agent-ccc-kb-mcp.md` 一个文件（+27/-14，write-back）。`git diff origin/main` 所见 ccc027-032 卡"删除"为分支基准差异（切出点早于 main 出卡 `228b20e7`），非执行体所为，无越界。
+- **意图**：按 ccc-plan-011 阶段一 1.2，将 CCC `server.kb.mcp_server` stdio 接入 2017 执行 Agent（OpenCode + Claude Code）并重建 v2 索引。范围限定 2017 用户级配置 + `--reindex`，不碰仓代码/registry/卡/看板，符合卡红线。
+- **配置/实现**：复用既存 `server.kb.mcp_server`（薄驱动调用既有能力），无新依赖、无架构风险；操作对象为 2017（`fan@192.168.3.116`），配置前已备份 `.bak-ccc-kb`。
+- **验收证据**：回写区报告 `--health` documents=126、sections 含 lessons/projects/decisions/nodes-paths 四域齐全；OpenCode 实测 `knowledge_search` 命中 lessons 返回带 score 教训。运行面证据与目录结构自洽。
+- **维护区 Doc-Gate**：四问逐项勾选并填写真实说明，无占位。
+- **结论**：无可修问题、无原则性红线问题。通过。
 
 ## 执行提示
 
