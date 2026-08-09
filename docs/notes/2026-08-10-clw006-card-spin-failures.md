@@ -55,3 +55,30 @@
 - [ ] engine 派发前校验 worktree 内 card_path 存在；不存在则重建 worktree 或跳过，禁止派空转。
 - [ ] 空回写防护：回写无有效产物（diff 为空/维护区占位）→ 机审直接打回进「打回」态，不无限重试。
 - [ ] plan-to-cards / new-card：方案链编号保护，附加卡显式编号，杜绝吃空位。
+
+## 七、Agent 通用处置清单（卡在流程里打转时照做）
+
+> 场景：某卡长期不推进/反复打回/「执行中」但无产物。不要慌，按序排查。
+
+1. **看卡真实状态（磁盘 vs 运行时）**
+   - `grep -m1 '状态：' docs/dispatch/<p>/<id>-*.md`（磁盘主树卡头）
+   - 2017：`grep '<id>' ~/.ccc/logs/exec/state/cards.jsonl | tail`（engine 运行时状态，可能覆盖磁盘态）
+   - **关键判别**：磁盘「待分派」但 runtime「执行中/已回写」→ 存在在途执行体或残留，不是纯等待。
+2. **看执行体是否真在跑、产物在哪**
+   - 2017：`ps aux | grep <id>` 是否有 opencode/claude 进程；`ls ~/.ccc/logs/exec/<id>*`
+   - `git -C <worktree> worktree list | grep <id>` 看 worktree 是否含**对应卡文件**。
+   - **若 worktree 无该卡文件** → 卡改名/编号错位，执行体空转。这是最常见根因（见失败模式 A）。
+3. **看机审/重试循环**
+   - `tail ~/.ccc/logs/exec/<id>.audit.log`：机审在审什么；是否因「维护区空/未回写」反复打回。
+   - runtime 是否出现「已回写 + upstream 冷却」循环 → 空转被误判为基础设施故障。
+4. **止血（确定空转后）**
+   - 杀残留进程：`kill <audit_pid> <exec_pid>`。
+   - 删残留标记：`rm ~/.ccc/logs/exec/<id>.running*`；从 `state/cards.jsonl` 移除该 id 记录。
+   - 删垃圾分支：CCC 远端 `git push origin --delete codex/<id>-*`。
+   - 回收错误 worktree：`git worktree remove --force <wt>` + 删本地残留分支。
+   - 确认磁盘卡为干净「待分派」且索引指向正确文件。
+5. **让 engine 重派（会自动重建 worktree）**
+   - 观察 1-2 个调度周期，确认新 worktree 含正确卡文件、执行体正常拉卡。
+6. **沉淀 + 防再发**
+   - 写失败复盘（本文件格式：现象/根因链/证据/止血/通用教训/处置清单）。
+   - 判断是否触发平台修复卡（ccc039 这类派发防护）或只是编号纪律问题。
