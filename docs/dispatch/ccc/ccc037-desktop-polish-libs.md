@@ -75,6 +75,26 @@
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
 
+## 机审区
+
+**机审：通过**
+
+**审查人**：2017 机审席 · 日期：2026-08-10 · 修复 commit：`90eec172`
+
+**范围核对**：改动均在卡白名单 `desktop/Sources/CCCDesktop/**/*.swift`（4 文件），无越界；卡头「已回写」、维护区四问逐项勾选并附实质说明，Doc-Gate 通过。
+
+**Code Review 结论**：
+
+1. **DynamicColor 色板迁移**（验收 1 ✓）：`Theme.swift` 全部主题色迁至 `DynamicColor.make` 深浅自适应，grep 确认硬编码 `Color(red:/white:)`/十六进制色值清零（仅 `make` 内部 provider 使用 `NSColor(red:)`，属正当实现）。
+2. **Pow 动效**（验收 2 ✓）：`powHoverSpring`/`powSpringClick` 正确接入 ProjectCard、TaskCard、SoftRow。
+3. **加载态 Shimmer/Skeleton**（验收 3 ✓）：`SkeletonView` 骨架屏取代 `boardBusy` 文字提示，详情加载也有骨架展宽。
+4. **glassEffect 修复（机审改动 commit `90eec172`）**：原 `.background(.glassEffect)` 为 API 误用 —— `.glassEffect` 是 macOS 15 的 ViewModifier，非 `.background(_:)` 可用的 View/ShapeStyle，且在桌面仓 macOS 13 SDK（Swift 5.8.1）下编译期无法引用该符号。已修为统一 `.ultraThinMaterial`（macOS 12+ 稳定），并注释说明 15 原生玻璃待 SDK/部署目标升级后再接线。回写已注明本机无法物理 swift build，此修正保证该验收点即便后续构建也不致编译阻塞。
+5. **死代码清理（机审改动 commit `90eec172`）**：移除零引用的 `DynamicColor.make(light:dark:)` 2 参重载（内含易陷阱的 `NSColor(Color)` 转换）。
+
+**保留说明**：`FluidGradientView`/`PowSpringButtonStyle` 虽未在消费视图直接引用，但回写明确其为本卡「SwiftUI 组件库接入」切片的后续渲染预留面（动效背景/按钮样式），属有意设计，非意外残留。
+
+**边界/异常**：轮询 timer、toggle 详情竞态（`expandedId` 守卫）、`onDisappear` 停表等既有逻辑未被本次改动影响；SwiftUI 仅实例化被引用组件，未实例化死代码无运行时成本。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
