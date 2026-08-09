@@ -78,9 +78,9 @@ def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
         lines.append(f"  - prefix: {p}")
         lines.append(f"    id: {p}")
         lines.append(f"    name: {p}")
-        lines.append(f"    taskable: true")
-        lines.append(f"    forbidden: false")
-        lines.append(f"    status: active")
+        lines.append("    taskable: true")
+        lines.append("    forbidden: false")
+        lines.append("    status: active")
     reg.write_text("\n".join(lines))
     return reg
 

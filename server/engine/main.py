@@ -814,7 +814,7 @@ def _audit_output_indicates_rejection(text: str) -> bool:
 
 class MachineAuditPrompt:
     """机审/验收席系统 Prompt 构造器。
-    
+
     遵循职责分离原则：仅进行原则性审查与就地修复，删除「独立复跑测试/编译裁决」职责。
     """
     def __init__(self, card_path: str, work_id: str, worktree: str) -> None:
@@ -824,15 +824,15 @@ class MachineAuditPrompt:
 
     def build(self) -> str:
         return (
-            "你是 2017 机审席。任务卡 {card_path}（work {work_id}）已回写。你以验收席身份独立审查——"
+            f"你是 2017 机审席。任务卡 {self.card_path}（work {self.work_id}）已回写。你以验收席身份独立审查——"
             "即使开发者与你同工具，也按独立审查执行，不因同工具放水。\n"
             "职责规范：\n"
             "- 只做原则性 Code Review（包括代码实现质量、边界安全、架构隐患、人工批注落实等）；\n"
-            "- 发现可修问题 → 在 worktree {worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
+            f"- 发现可修问题 → 在 worktree {self.worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
             "- 原则性红线问题（如范围系统性越界、核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出。\n"
-            "通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {card_path}，engine 会提交推送）。"
+            f"通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {self.card_path}，engine 会提交推送）。"
             "禁止改动与任务无关的文件、禁止编写 ## 验收区、禁止置卡状态为已关闭。"
-        ).format(card_path=self.card_path, work_id=self.work_id, worktree=self.worktree)
+        )
 
 
 def _is_mechanical_rejection_text(text: str) -> bool:
@@ -846,7 +846,7 @@ def _is_mechanical_rejection_text(text: str) -> bool:
             nl = text.find("\n", idx)
             body = text[nl + 1 :] if nl >= 0 else ""
             break
-            
+
     keywords = [
         "测试失败",
         "测试未跑",
@@ -963,7 +963,7 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
         content = card_file.read_text(encoding="utf-8")
     except OSError:
         return True, ""
-    
+
     # Extract ## 范围 section
     lines = content.splitlines()
     range_lines = []
@@ -977,10 +977,10 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
             if stripped.startswith("## ") or stripped.startswith("---"):
                 break
             range_lines.append(line)
-            
+
     if not in_range:
         return True, ""
-        
+
     # Extract whitelist patterns from range_lines
     whitelist_patterns = []
     for line in range_lines:
@@ -991,10 +991,10 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
             m_clean = m.strip()
             if m_clean:
                 whitelist_patterns.append(m_clean)
-                
+
     if not whitelist_patterns:
         return True, ""
-        
+
     # Get modified files in worktree relative to origin/main
     import subprocess
     res = subprocess.run(
@@ -1006,9 +1006,9 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
     )
     if res.returncode != 0:
         return True, "" # Git error, skip to avoid blocking
-        
+
     modified_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
-    
+
     out_of_scope = []
     for f in modified_files:
         # Exempt card file, logs, runnings
@@ -1023,10 +1023,10 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
                 break
         if not matched:
             out_of_scope.append(f)
-            
+
     if out_of_scope:
         return False, f"范围越界门禁拦截：修改了不属于卡「范围」声明中的路径: {out_of_scope} (允许范围: {whitelist_patterns})"
-        
+
     return True, ""
 
 
@@ -2163,6 +2163,7 @@ def run_once(
     probe_skips = 0
     parent_skips = 0
     none_skips = 0
+    queued = 0
     slots = pool.free_slots(max_concurrent, store, log_dir)
 
     for work in pending:
@@ -2199,6 +2200,8 @@ def run_once(
             )
             continue
         if slots <= 0:
+            queued += 1
+            logger.info("无空闲执行槽位，进入排队等待: work=%s, 当前并发数=%d, 上限=%d", work.id, pool.occupancy(store, log_dir), max_concurrent)
             continue
         if probe_url and not probe_relay(probe_url):
             probe_skips += 1
@@ -2323,6 +2326,7 @@ def run_once(
         "probe_skips": probe_skips,
         "parent_skips": parent_skips,
         "none_skips": none_skips,
+        "queued": queued,
         "audit_dispatched": audit_dispatched,
         "audit_in_flight": audit_in_flight,
         "audit_pending": audit_pending,
@@ -2347,6 +2351,7 @@ def run_once(
                 "dispatched": dispatched,
                 "in_flight": in_flight,
                 "scanned": len(pending),
+                "queued": queued,
                 "dead_markers_cleaned": dead_markers_cleaned,
                 "audit_dispatched": audit_dispatched,
                 "audit_in_flight": audit_in_flight,
