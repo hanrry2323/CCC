@@ -1,6 +1,6 @@
 # 任务卡 clw004 · CCC WebView 面板 + 自动化入口（OpenCode 执行）
 
-> 关联：ccc-plan: clw004 CCC WebView + 自动化 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：clw · 日期：2026-08-09
+> 关联：ccc-plan: clw004 CCC WebView + 自动化 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-09
 
 ## 目标
 
