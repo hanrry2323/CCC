@@ -192,13 +192,20 @@ def _default_registry() -> TaskRegistry:
     """返回默认注册表（含集群采集巡检任务）。"""
     registry = TaskRegistry()
 
-    # 延迟导入避免循环依赖
+    # 延迟导入避免��环依赖
     from server.engine.cluster import collect_cluster_status
+    from server.engine.observer import run_observer
 
     registry.register(ScheduledTask(
         name="cluster-collect",
         task_type=TASK_TYPE_READONLY,
         run=collect_cluster_status,
+    ))
+
+    registry.register(ScheduledTask(
+        name="loop-observer",
+        task_type=TASK_TYPE_READONLY,
+        run=run_observer,
     ))
 
     return registry
