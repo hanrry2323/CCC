@@ -259,7 +259,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                     plan_title = title_match.group(1).strip() if title_match else p.stem
                     for line in text.splitlines():
                         if "关联卡：" in line:
-                            ids = re.findall(r'([a-z]{2,4}\d{3})', line.lower())
+                            ids = re.findall(r"([a-z]{2,4}\d{3})", line.lower())
                             for cid in ids:
                                 plan_reservations[cid] = (str(p), plan_title)
                 except Exception:
@@ -290,8 +290,10 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             hdr_id = _header_card_id(path)
             if hdr_id:
                 old_by_hdr.setdefault(hdr_id, []).append(path)
+    dup_paths = set()
     for cid, dupes in new_by_id.items():
         if len(dupes) > 1:
+            dup_paths.update(p.resolve() for p in dupes)
             for card in dupes[1:]:
                 issues.append(
                     CardIssue(card.stem, str(card), f"新卡编号 {cid} 重复（与 {dupes[0].name} 冲突，编号跨项目唯一）")
@@ -307,21 +309,24 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         card_id = path.name.split(".")[0]
         ctype, prefix, num = _classify_card(path)
         if ctype == "new":
-            issues.extend(_validate_new_naming(path, loc, prefix, num))
-            # 方案链编号保护 (Step 5)
-            card_id_full = (prefix + num).lower()
-            if card_id_full in plan_reservations:
-                plan_path, plan_title = plan_reservations[card_id_full]
-                # 必须关联对应方案
-                related = meta.get("关联", "")
-                if f"ccc-plan: {plan_title}" not in related and plan_title not in related:
-                    issues.append(
-                        CardIssue(
-                            card_id,
-                            str(path),
-                            f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明方案 {plan_title!r}，但该编号已被该方案占用。请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+            naming_issues = _validate_new_naming(path, loc, prefix, num)
+            issues.extend(naming_issues)
+            # 方案链编号保护 (Step 5)：仅对命名合规且非重复的新卡生效，已不合规的卡不叠加报错
+            if not naming_issues and path.resolve() not in dup_paths:
+                card_id_full = (prefix + num).lower()
+                if card_id_full in plan_reservations:
+                    plan_path, plan_title = plan_reservations[card_id_full]
+                    # 必须关联对应方案
+                    meta = _header_metadata(path)
+                    related = meta.get("关联", "")
+                    if f"ccc-plan: {plan_title}" not in related and plan_title not in related:
+                        issues.append(
+                            CardIssue(
+                                card_id,
+                                str(path),
+                                f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明方案 {plan_title!r}，但该编号已被该方案占用。请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+                            )
                         )
-                    )
         elif ctype == "old":
             # 旧卡零拦截：仅提示迁移建议（T54 红线 2：旧卡不批量重命名，保持 git 历史）
             issues.append(

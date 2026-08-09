@@ -34,9 +34,18 @@ PAGES_DIR = PROJECT_ROOT / "server" / "web" / "legacy-chat" / "js" / "pages"
 
 # ── helpers ──
 
-def _make_plan(tmp: Path, prefix: str, num: str, slug: str, status: str,
-               title: str = "测试方案", author: str = "测试", tool: str = "pytest",
-               plan_section: str = "") -> Path:
+
+def _make_plan(
+    tmp: Path,
+    prefix: str,
+    num: str,
+    slug: str,
+    status: str,
+    title: str = "测试方案",
+    author: str = "测试",
+    tool: str = "pytest",
+    plan_section: str = "",
+) -> Path:
     """在临时目录下构造一个方案文件。"""
     plans_dir = tmp / "docs" / "projects" / prefix / "plans"
     plans_dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +78,7 @@ def _make_plan(tmp: Path, prefix: str, num: str, slug: str, status: str,
     p.write_text(content)
     return p
 
+
 def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
     """构造最小 registry.yaml。"""
     reg = tmp / "docs" / "projects" / "registry.yaml"
@@ -84,6 +94,7 @@ def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
     reg.write_text("\n".join(lines))
     return reg
 
+
 def _make_validate_script(tmp: Path) -> Path:
     """构造一个最小 validate-plans.sh（始终返回 0）。"""
     s = tmp / "scripts" / "validate-plans.sh"
@@ -92,7 +103,9 @@ def _make_validate_script(tmp: Path) -> Path:
     s.chmod(0o755)
     return s
 
+
 # ── 1. list_plans ──
+
 
 class TestListPlans:
     def test_list_all(self, tmp_path: Path):
@@ -143,7 +156,9 @@ class TestListPlans:
         ids = [p["id"] for p in plans]
         assert ids == ["ccc-plan-001", "ccc-plan-002", "ccc-plan-003", "xy-plan-001"]
 
+
 # ── 2. get_plan ──
+
 
 class TestGetPlan:
     def test_normal_read(self, tmp_path: Path):
@@ -168,7 +183,9 @@ class TestGetPlan:
         assert get_plan(tmp_path, "../etc/passwd") is None
         assert get_plan(tmp_path, "docs/projects/ccc/plans/../../../etc/passwd") is None
 
+
 # ── 3. create_plan ──
+
 
 class TestCreatePlan:
     def test_auto_increment(self, tmp_path: Path):
@@ -176,8 +193,7 @@ class TestCreatePlan:
         _make_validate_script(tmp_path)
         _make_plan(tmp_path, "ccc", "001", "existing", "草案")
 
-        result = create_plan(tmp_path, project="ccc", title="新方案",
-                             content="## 目标\n\n测试", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="新方案", content="## 目标\n\n测试", author="T", tool="T")
         assert result.get("ok")
         assert result["id"] == "ccc-plan-002"
 
@@ -188,8 +204,7 @@ class TestCreatePlan:
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
 
-        result = create_plan(tmp_path, project="ccc", title="首个方案",
-                             content="## 目标\n\n测试", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="首个方案", content="## 目标\n\n测试", author="T", tool="T")
         assert result.get("ok")
         assert result["id"] == "ccc-plan-001"
 
@@ -199,8 +214,7 @@ class TestCreatePlan:
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
 
-        result = create_plan(tmp_path, project="qh", title="非法",
-                             content="## 目标", author="T", tool="T")
+        result = create_plan(tmp_path, project="qh", title="非法", content="## 目标", author="T", tool="T")
         assert "error" in result
         assert "无效项目前缀" in result["error"]
 
@@ -213,8 +227,7 @@ class TestCreatePlan:
         s.write_text("#!/usr/bin/env bash\necho 'FAIL' >&2\nexit 1\n")
         s.chmod(0o755)
 
-        result = create_plan(tmp_path, project="ccc", title="失败方案",
-                             content="## 目标", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="失败方案", content="## 目标", author="T", tool="T")
         assert "error" in result
 
         # 文件应已自删
@@ -222,14 +235,15 @@ class TestCreatePlan:
         md_files = list(plans_dir.glob("*.md")) if plans_dir.exists() else []
         assert len(md_files) == 0, f"文件应已自删，但存在: {md_files}"
 
+
 # ── 4. update_plan ──
+
 
 class TestUpdatePlan:
     def test_update_status(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="测试",
-                             content="## 目标\n\n测试", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="测试", content="## 目标\n\n测试", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -244,8 +258,7 @@ class TestUpdatePlan:
     def test_invalid_status_rejected(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="测试",
-                             content="## 目标", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="测试", content="## 目标", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -256,15 +269,13 @@ class TestUpdatePlan:
         (tmp_path / path).unlink()
 
     def test_nonexistent_file(self, tmp_path: Path):
-        r = update_plan(tmp_path, rel_path="docs/projects/ccc/plans/999-x.md",
-                        status="已确认")
+        r = update_plan(tmp_path, rel_path="docs/projects/ccc/plans/999-x.md", status="已确认")
         assert "error" in r
 
     def test_content_replacement_preserves_header(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="测试",
-                             content="## 目标\n\n旧内容", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="测试", content="## 目标\n\n旧内容", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -282,8 +293,7 @@ class TestUpdatePlan:
     def test_update_cards_field(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="测试",
-                             content="## 目标\n\n测试", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="测试", content="## 目标\n\n测试", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -299,8 +309,7 @@ class TestUpdatePlan:
         """草案到已完成应被拒绝。"""
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="test",
-                             content="## ok", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="test", content="## ok", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -314,8 +323,7 @@ class TestUpdatePlan:
         """已完成到草案应被拒绝（终态不可改）。"""
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="test",
-                             content="## ok", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="test", content="## ok", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -334,8 +342,7 @@ class TestUpdatePlan:
         """已确认到部分执行应放行（转卡自动推进）。"""
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="test",
-                             content="## ok", author="T", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="test", content="## ok", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
@@ -347,7 +354,9 @@ class TestUpdatePlan:
 
         (tmp_path / path).unlink()
 
+
 # ── 5. convert_plan ──
+
 
 class TestConvertPlan:
     def test_missing_plan_section(self, tmp_path: Path):
@@ -371,8 +380,7 @@ class TestConvertPlan:
     def test_convert_draft_rejected(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        p = _make_plan(tmp_path, "ccc", "001", "test", "草案",
-                       plan_section="- test card")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "草案", plan_section="- test card")
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
         assert "error" in result
@@ -381,14 +389,15 @@ class TestConvertPlan:
     def test_convert_completed_rejected(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已完成",
-                       plan_section="- test card")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已完成", plan_section="- test card")
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
         assert "error" in result
         assert "不可转卡" in result["error"]
 
+
 # ── 6. helpers ──
+
 
 class TestHelpers:
     def test_extract_header_fields(self):
@@ -442,12 +451,13 @@ class TestHelpers:
         """空作者应被拒绝。"""
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
-        result = create_plan(tmp_path, project="ccc", title="test",
-                             content="## ok", author="", tool="T")
+        result = create_plan(tmp_path, project="ccc", title="test", content="## ok", author="", tool="T")
         assert "error" in result
         assert "作者" in result["error"]
 
+
 # ── 7. 前端渲染契约 ──
+
 
 class TestPlansPageContract:
     """plansPage.js 前端渲染契约（静态断言，无 JS 运行时）。"""
@@ -474,10 +484,10 @@ class TestPlansPageContract:
         assert "/plans/convert" in text
 
     def test_filter_controls(self) -> None:
-        """验证筛选控件存在。"""
+        """验证筛选控件存在（plansPage 重写后契约：项目按钮 ptool-proj + 状态 select + 搜索）。"""
         text = self._page()
-        assert "plans-filter-project" in text
-        assert "plans-filter-status" in text
+        assert "ptool-proj" in text
+        assert "plans-status-select" in text
         assert "plans-search" in text
 
     def test_convert_button(self) -> None:
@@ -487,9 +497,9 @@ class TestPlansPageContract:
         assert "confirm" in text
 
     def test_has_grid_layout(self) -> None:
-        """验证卡片网格布局。"""
+        """验证卡片网格布局（重写后为 plans-flow 流式布局）。"""
         text = self._page()
-        assert "plans-grid" in text
+        assert "plans-flow" in text
 
     def test_create_form(self) -> None:
         """验证新建表单存在。"""
@@ -502,7 +512,7 @@ class TestPlansPageContract:
     def test_author_required(self) -> None:
         """验证作者必填校验。"""
         text = self._page()
-        assert '作者不能为空' in text
+        assert "作者不能为空" in text
 
     def test_dynamic_projects(self) -> None:
         """验证动态项目加载。"""

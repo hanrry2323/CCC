@@ -67,30 +67,30 @@ class TestT54Naming:
         return _write_card(tmp / subdir, name, "待分派", hdr_id=hdr_id)
 
     def test_valid_new_style_card_pass(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "ccc", "ccc001-test.md", "ccc001")
+        self._new_card(tmp_path, "ccc", "ccc901-test.md", "ccc901")
         assert _errors(validate_cards(tmp_path)) == []
 
     def test_new_card_number_unique_across_prefixes(self, tmp_path: Path) -> None:
-        """编号跨项目唯一：不同前缀同序号（ccc001 / qb001）不冲突。"""
-        self._new_card(tmp_path, "ccc", "ccc001-test.md", "ccc001")
-        self._new_card(tmp_path, "qb", "qb001-test.md", "qb001")
+        """编号跨项目唯一：不同前缀同序号（ccc901 / qb901）不冲突。"""
+        self._new_card(tmp_path, "ccc", "ccc901-test.md", "ccc901")
+        self._new_card(tmp_path, "qb", "qb901-test.md", "qb901")
         assert _errors(validate_cards(tmp_path)) == []
 
     def test_new_card_duplicate_number_rejected(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "ccc", "ccc001-a.md", "ccc001")
-        self._new_card(tmp_path, "ccc", "ccc001-b.md", "ccc001")
+        self._new_card(tmp_path, "ccc", "ccc901-a.md", "ccc901")
+        self._new_card(tmp_path, "ccc", "ccc901-b.md", "ccc901")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
-        assert "ccc001 重复" in issues[0].reason
+        assert "ccc901 重复" in issues[0].reason
 
     def test_new_card_at_root_rejected(self, tmp_path: Path) -> None:
-        _write_card(tmp_path, "ccc002-root.md", "待分派", hdr_id="ccc002")
+        _write_card(tmp_path, "ccc902-root.md", "待分派", hdr_id="ccc902")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
         assert "必须位于子目录" in issues[0].reason
 
     def test_new_card_wrong_subdir_rejected(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "qb", "ccc003-wrong.md", "ccc003")
+        self._new_card(tmp_path, "qb", "ccc903-wrong.md", "ccc903")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
         assert "与前缀 'ccc' 不符" in issues[0].reason
@@ -102,7 +102,7 @@ class TestT54Naming:
         assert "未知前缀" in issues[0].reason
 
     def test_header_number_mismatch_rejected(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "ccc", "ccc004-mismatch.md", "ccc005")
+        self._new_card(tmp_path, "ccc", "ccc904-mismatch.md", "ccc905")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
         assert "与文件名" in issues[0].reason
