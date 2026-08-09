@@ -63,7 +63,7 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "domain": {
                     "type": "string",
-                    "description": "域过滤：nodes-paths / projects / decisions / lessons，不传则检索全部域",
+                    "description": "域过滤：nodes-paths / projects / decisions / lessons / plans，不传则检索全部域",
                 },
             },
             "required": ["query"],
@@ -91,7 +91,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "domain": {
                     "type": "string",
-                    "description": "域过滤：nodes-paths / projects / decisions / lessons，不传则列出全部",
+                    "description": "域过滤：nodes-paths / projects / decisions / lessons / plans，不传则列出全部",
                 },
             },
             "required": [],

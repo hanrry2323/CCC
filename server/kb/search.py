@@ -30,6 +30,8 @@ _SECTION_ALIASES = {
     "02-project-metadata": "projects",
     "03-key-decisions": "decisions",
     "04-lessons": "lessons",
+    "plans": "plans",
+    "roadmap": "plans",
 }
 
 
