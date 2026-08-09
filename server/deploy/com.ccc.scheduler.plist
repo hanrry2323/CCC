@@ -10,6 +10,7 @@
       $CONFIG_ENV    → config.env 绝对路径
       $LOG_DIR       → 日志目录绝对路径
       $DATA_DIR      → 数据目录绝对路径（observer 快照）
+      $PYTHON_BIN    → python 解释器绝对路径（推荐 uv run python）
       $USERNAME      → 运行用户
   -->
   <key>Label</key>
