@@ -142,3 +142,9 @@ tauri build 打包 dmg，安装到 /Applications 正常启动，全链路验收�
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+机审：通过
+来源：engine 自动落盘（engine-audit）· 2026-08-10 00:34
+证据：通过」+ 审查摘要 写进 worktree 卡文件。\n禁止改动无关文件、禁止 ## 验收区、禁止已关闭。 --- ## 项目提示（由中枢在出卡时注入，请优先遵循） - 审查项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。） - 审查清单： - [domains::projects::section_0] clw (clwarp) 审查维度 > 审查重点：PTY 生命周期、IPC 边界、红线合规、前端错误处理 - 架构约束/红线：- 禁止在 CCC 建 `docs/clw/` 深文档树 - 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/` 等只读） - 数据目录 `~/.clwarp/`，和 ShellSight 隔离 
