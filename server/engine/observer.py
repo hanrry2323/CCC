@@ -311,13 +311,15 @@ def score_finding(finding: dict[str, Any], rules: dict[str, dict[str, int]]) -> 
 
 
 def generate_patrol_report(findings: list[dict[str, Any]], report_name: str) -> str:
+    # 报告标题/表头承诺「按权重降序」，故在此自洽排序，不依赖调用方顺序
+    ordered = sorted(findings, key=lambda x: x.get("weight", 0.0), reverse=True)
     lines = []
     lines.append(f"# 巡查风险报告 — {report_name}")
-    lines.append(f"\n> 采集时间: {datetime.datetime.now().isoformat()} · 发现数: {len(findings)}\n")
+    lines.append(f"\n> 采集时间: {datetime.datetime.now().isoformat()} · 发现数: {len(ordered)}\n")
     lines.append("## 风险发现列表（按权重降序排序）\n")
     lines.append("| 权重 (Weight) | 交叉确认 (Cross-Confirm) | 影响 (Impact) | 频次 (Frequency) | 描述 (Title) | 项目 (Project) | 作用对象 (Acting On) | 证据 (Evidence) |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
-    for f in findings:
+    for f in ordered:
         w = f.get("weight", 0.0)
         cc = f.get("cross_confirm", 0.5)
         imp = f.get("impact", 1)

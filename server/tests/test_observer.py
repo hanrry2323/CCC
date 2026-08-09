@@ -149,3 +149,18 @@ def test_weight_scoring_and_report_ordering():
     assert "status drift hp004" in report
     assert "missing roadmap qb" in report
     assert "scripts/new-card.sh" in report
+
+
+def test_patrol_report_sorts_unsorted_input():
+    # generate_patrol_report 自身保证按权重降序，不依赖调用方预排序
+    from server.engine.observer import score_finding, generate_patrol_report, DEFAULT_SCORING_RULES
+    low = {"id": "drift_low", "title": "low", "project": "ccc", "type": "drift", "cross_confirm": 0.3}
+    high = {"id": "broken_high", "title": "high", "project": "ccc", "type": "broken_link", "cross_confirm": 1.0}
+    scored_low = score_finding(low, DEFAULT_SCORING_RULES)
+    scored_high = score_finding(high, DEFAULT_SCORING_RULES)
+    assert scored_high["weight"] > scored_low["weight"]
+    # 故意打乱顺序传入，报告仍应把高权重放在前面（按标题出现在表体中判断）
+    report = generate_patrol_report([scored_low, scored_high], "sort-test")
+    body = report.split("## 建议转卡命令")[0]
+    assert "high" in body and "low" in body
+    assert body.index("high") < body.index("low")
