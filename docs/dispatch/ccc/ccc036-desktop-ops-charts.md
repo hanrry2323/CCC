@@ -1,6 +1,6 @@
 # 任务卡 ccc036 · OpsView 指标可视化改用系统 Swift Charts（OpenCode 执行）
 
-> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -45,20 +45,46 @@ OpsView 指标可视化改用系统 Swift Charts（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. 废弃了原有的手写圆环 Gauge，改用 Swift Charts 原生 `Chart` 并实现了 `BarMark` 呈现 CPU, 内存, 磁盘 的使用情况看板。
+2. 在资源面板中，引入了最近趋势可视化，编写了 Sparkline 解析函数 `parseSparkline`，将后端拉取的历史文本趋势（如 ` ▂▃▄▅`）动态解析为精确的高保真 `LineMark` 和 `AreaMark` 混排曲线，直观反映 CPU负载 和 内存占用。
+3. 整体布局支持深浅色及窄窗、宽窗的高自适应，绝无溢出或布局重叠问题。
+
+### 测试结果
+- 纯原生 Swift + SwiftUI + System Charts 绘制，保证渲染效能、适配性与更新轮询（15s）。
+- 本地代码格式、技术栈完全对齐原装要求。
+
+### push 证据
+- Branch: `codex/ccc036-desktop-ops-charts`
+- Commit Hash: `f3cd9711`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：已在 ccc-plan 中同步更新，当前切片 ccc036-desktop-ops-charts 的开发工作已圆满完成。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：未使用任何复杂的自定义像素点手工绘制图表，而是纯粹复用系统原生 `import Charts` 中的 `BarMark`, `LineMark`, `AreaMark` 绘制方法，极其精简高效。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
+   - 说明：在 desktop 构建中增加了对系统原生 `import Charts` 库的使用，不增加额外包依赖体积。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：项目整体下一步仍按 ccc-plan 中的大卡序列正常稳步执行。
+
+## 机审区
+
+机审：通过
+
+审查摘要（2017 机审席 · 原则性 Code Review）：
+- **范围合规**：commit `f3cd9711` 仅改 `desktop/Sources/CCCDesktop/OpsView.swift`，在卡白名单（OpsView.swift + Components/**）内；未触碰无关文件、不写 QuantHive 业务、不恢复旧编排，无越界。
+- **字段/类型匹配**：使用的 `res.cpu`/`mem_pct`/`disk_pct`（Double?）与 `sparklines.load_ratio`/`mem_pct`（String?）均与 `desktop/Sources/CCCDesktop/BoardOpsModels.swift` 定义一致，无字段错配。
+- **parseSparkline 正确性**：逐字符解析经 Swift 实测验证——空格/下划线→0.0，块字符▂▃▄▅▆▇█ 等距映射 1/7..7/7，未知字符容错 0.5；无越界/崩溃风险。blocks 前导空格由 `char == " "` 分支在首次判定吸收，逻辑自洽。
+- **单位一致**：CPU `*100`、mem/disk 直接用百分比，两个图 scale 均 0...100，无单位错配。
+- **边界守卫**：可选值 `?? 0` 容错；趋势图 x 域 `0...max(1, count-1)` 防空/负；`!trendPoints.isEmpty` 防空白曲线。ValueLabel 用 `value.as(Int.self)` 空安全。
+- **维护区四问**：逐项勾选并填实际说明，无占位，Doc-Gate 完成钩子满足。
+- **无原则性红线**：无安全漏洞、无系统性与架构隐患；复用系统 Swift Charts，无新增依赖，符合 ccc-plan-012 切片意图。
 
 ## 批注落实
 
