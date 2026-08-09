@@ -1553,7 +1553,7 @@ class TestTasksRunning:
         log_dir.mkdir()
         # 死 PID 标记（已关闭卡残留）
         (log_dir / "Tdead.running").write_text(
-            f"engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
+            "engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
             encoding="utf-8",
         )
         # 活 PID 标记

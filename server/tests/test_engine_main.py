@@ -1305,6 +1305,64 @@ class TestParallelAndRelayGuard:
         env.write_text("EXECUTOR_MAX_CONCURRENT=abc\n", encoding="utf-8")
         assert _slot_limits(cfg, env) == (3, 2)
 
+    def test_concurrency_cap_and_queuing_boundaries(self, tmp_path: Path) -> None:
+        """测试并发上限与排队等待边界判定：
+        - 数量在上限内 (<= limit) -> 全部派发，无排队
+        - 数量超限 (> limit) -> 派发正好达到上限，超出部分排队进入等待
+        """
+        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="1")
+        reg = load_registry(reg_path)
+
+        # 1. 边界：当任务数 <= 上限 (2 <= 3) -> 派发 2，排队为 0
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
+            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
+        )
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "3",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg, wait=False)
+        assert summary["dispatched"] == 2
+        assert summary["queued"] == 0
+        assert len(store.list_work(state=State.RUNNING)) == 2
+
+        # 重置 Dispatch Pool 以便执行下一个干净的测试子项
+        reset_dispatch_pool()
+
+        # 2. 边界：当任务数刚好等于上限 (3 == 3) -> 派发 3，排队为 0
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
+            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
+            Work(id="q3", role="开发执行体", card_path=str(tmp_path / "q3.md")),
+        )
+        summary = run_once(reg, store, cfg, wait=False)
+        assert summary["dispatched"] == 3
+        assert summary["queued"] == 0
+        assert len(store.list_work(state=State.RUNNING)) == 3
+
+        reset_dispatch_pool()
+
+        # 3. 边界：当任务数超过上限 (4 > 3) -> 派发 3，排队 1
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
+            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
+            Work(id="q3", role="开发执行体", card_path=str(tmp_path / "q3.md")),
+            Work(id="q4", role="开发执行体", card_path=str(tmp_path / "q4.md")),
+        )
+        summary = run_once(reg, store, cfg, wait=False)
+        assert summary["dispatched"] == 3
+        assert summary["queued"] == 1
+        assert len(store.list_work(state=State.RUNNING)) == 3
+        assert len(store.list_work(state=State.TODO)) == 1
+
     def test_heartbeat_writes_metrics_files(self, tmp_path: Path) -> None:
         """每轮心跳落 engine-metrics.jsonl / worker-events.jsonl。"""
         reg_path = _write_demo_registry(tmp_path, command="echo")
