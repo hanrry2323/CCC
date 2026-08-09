@@ -447,10 +447,10 @@ def convert_plan(
                 "cards": cards,
             }
 
-        # 从输出提取卡 ID
-        card_match = re.search(rf"{prefix}\d{{3}}", result.stdout)
+        # 从输出提取卡 ID（匹配 "创建: docs/dispatch/<prefix>/<prefix><NNN>-..." 或 "ID=<prefix><NNN>"）
+        card_match = re.search(rf"(?:ID=|创建:.*?/){prefix}(\d{{3}})", result.stdout)
         if card_match:
-            cards.append(card_match.group(0))
+            cards.append(f"{prefix}{card_match.group(1)}")
 
     # 自动推进状态为「部分执行」+ 写入关联卡
     today = date.today().isoformat()
