@@ -58,6 +58,7 @@
 - **验证结果**：
   - `bash scripts/validate-plans.sh` 顺利全部通过。
   - `python3 -m pytest server/tests/` 720 个测试用例 100% 成功。
+- **Push 证据**：[97015d0d09f057bc9796c0802379e8f685fc9887](https://github.com/hanrry2323/CCC/commit/97015d0d09f057bc9796c0802379e8f685fc9887)
 
 ## 维护区
 
