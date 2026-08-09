@@ -17,6 +17,7 @@ import { initRouter, navigate } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
+import { mountPlans, unmountPlans } from './pages/plansPage.js';
 import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js';
 import {
   initDualPaneControls,
@@ -193,35 +194,47 @@ async function onHubRoute(route) {
   document.title =
     route === 'chat' ? 'CCC · 对话' :
       route === 'board' ? 'CCC · 看板' :
-        route === 'roadmap' ? 'CCC · 线路图' :
-          route === 'console' ? 'CCC · 控制台' :
+        route === 'plans' ? 'CCC · 计划' :
+          route === 'roadmap' ? 'CCC · 线路图' :
+            route === 'console' ? 'CCC · 控制台' :
             route === 'ops' ? 'CCC · 运维' :
               'CCC';
   if (route === 'chat') {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    unmountPlans();
     unmountRoadmap();
     // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
     import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
   } else if (route === 'board') {
     unmountConsole();
     unmountOps();
+    unmountPlans();
     unmountRoadmap();
     await mountBoard(document.getElementById('view-board'));
+  } else if (route === 'plans') {
+    unmountBoard();
+    unmountConsole();
+    unmountOps();
+    unmountRoadmap();
+    await mountPlans(document.getElementById('view-plans'));
   } else if (route === 'roadmap') {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    unmountPlans();
     await mountRoadmap(document.getElementById('view-roadmap'));
   } else if (route === 'console') {
     unmountBoard();
     unmountOps();
+    unmountPlans();
     unmountRoadmap();
     await mountConsole(document.getElementById('view-console'));
   } else if (route === 'ops') {
     unmountBoard();
     unmountConsole();
+    unmountPlans();
     unmountRoadmap();
     await mountOps(document.getElementById('view-ops'));
   } else {

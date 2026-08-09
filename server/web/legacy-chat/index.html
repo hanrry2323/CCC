@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/css/variables.css?v=20260804t44">
 <link rel="stylesheet" href="/css/base.css?v=20260804t44">
 <link rel="stylesheet" href="/css/themes.css?v=20260804t44">
-<link rel="stylesheet" href="/css/components.css?v=20260804t44">
+<link rel="stylesheet" href="/css/components.css?v=20260809t09">
 <link rel="stylesheet" href="/css/shell.css?v=20260805t68">
 <link rel="stylesheet" href="/css/dual-pane.css?v=20260804t44">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
@@ -31,6 +31,7 @@
 <nav id="hub-nav" aria-label="CCC 控制台">
   <div class="hub-brand" title="2017 单端 :7788 · 对话/看板/线路图/运维/控制台五视图">CCC</div>
   <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
+  <a class="hub-nav-link" data-route="plans" href="#/plans">计划</a>
   <a class="hub-nav-link" data-route="roadmap" href="#/roadmap">线路图</a>
   <a class="hub-nav-link" data-route="ops" href="#/ops">运维</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
@@ -92,6 +93,10 @@
         <button type="button" class="soft-row" data-dest="board" title="看板">
           <span class="soft-row-icon soft-icon-board" aria-hidden="true"></span>
           <span class="soft-row-label">看板</span>
+        </button>
+        <button type="button" class="soft-row" data-dest="plans" title="计划">
+          <span class="soft-row-icon soft-icon-plans" aria-hidden="true"></span>
+          <span class="soft-row-label">计划</span>
         </button>
         <button type="button" class="soft-row" data-dest="roadmap" title="线路图">
           <span class="soft-row-icon soft-icon-roadmap" aria-hidden="true"></span>
@@ -183,6 +188,7 @@
 </div>
   </div>
   <div class="hub-view" id="view-board"></div>
+  <div class="hub-view" id="view-plans"></div>
   <div class="hub-view" id="view-roadmap"></div>
   <div class="hub-view" id="view-console"></div>
   <div class="hub-view" id="view-ops"></div>
@@ -205,6 +211,6 @@
 </div>
 <script src="/js/login-gate.js?v=20260804t44"></script>
 <!-- T68: classic bootloader — retries critical ES module graph; banner on exhaust -->
-<script src="/js/bootloader.js?v=20260805t68" onerror="(function(){try{sessionStorage.removeItem('ccc-resource-boot-fails')}catch(e){}var b=document.createElement('button');b.id='ccc-resource-fail-banner';b.type='button';b.className='ccc-resource-fail-banner';b.setAttribute('role','alert');b.textContent='资源加载失败，点击重试';b.onclick=function(){location.reload()};var n=document.getElementById('hub-nav');if(n&&n.parentNode)n.parentNode.insertBefore(b,n.nextSibling);else document.body.insertBefore(b,document.body.firstChild)})()"></script>
+<script src="/js/bootloader.js?v=20260809t09" onerror="(function(){try{sessionStorage.removeItem('ccc-resource-boot-fails')}catch(e){}var b=document.createElement('button');b.id='ccc-resource-fail-banner';b.type='button';b.className='ccc-resource-fail-banner';b.setAttribute('role','alert');b.textContent='资源加载失败，点击重试';b.onclick=function(){location.reload()};var n=document.getElementById('hub-nav');if(n&&n.parentNode)n.parentNode.insertBefore(b,n.nextSibling);else document.body.insertBefore(b,document.body.firstChild)})()"></script>
 </body>
 </html>

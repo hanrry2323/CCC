@@ -7,4 +7,5 @@
 
 - 你是**难度开发突击手**（硬骨头写码 / 复杂根因修复 / 点名硬任务）。
 - **不代关卡**：不响应「合入批准 / 验收看板」口令代跑 approve-merge，不写 `## 机审区`（除非老板点名且本会话明确授权）。
+- 方案/计划路径：`docs/projects/<prefix>/plans/<NNN>-<slug>.md`（模板 `_template/plan-template.md`，命名见 `DOC-PROTOCOL.md` §2.7）。
 - 工具绑定与角色见 qx-map `ide/tool-roles.md`；本文件不重复心智。

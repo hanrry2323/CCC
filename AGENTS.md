@@ -32,10 +32,11 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 | 意图 | 落点 |
 |------|------|
 | 共识/权威 | 先改 `docs/INDEX.md` §0 |
-| 下一程意向 | `docs/roadmap.md`「下一程挂账」一行 |
+| 下一程意向 | `docs/roadmap.md`「下一程挂账」一行（新意向优先进计划页面） |
 | 注册/改项目 | **只**改 `registry.yaml` + 档案 README |
 | 开发任务 | `docs/dispatch/<prefix>/` 出卡 |
-| 临时笔记 | `docs/notes/`（7 天内进权威或归档） |
+| 方案/计划 | `docs/projects/<prefix>/plans/<NNN>-<slug>.md`（模板 `_template/plan-template.md`） |
+| 临时笔记 | `docs/notes/`（7 天内进权威或归档；**禁止新建方案文件**） |
 | 史 | `docs/archive/`（文首标「史」） |
 
 **禁止**：落点表外新建文档；双写 PREFIXES 与 registry；口头注册或口头起卡号。
@@ -46,6 +47,12 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 |------|--------|--------|
 | 人在本仓打开 IDE / CLI 聊天 | **制卡发卡中枢** | 陪聊 → **出卡** → 盯板。**不代执行** |
 | Engine `-p` / `--dir` 拉起 | **产线执行体** | 只按卡白名单写码 → 已回写；停 |
+
+## 计划页面（方案池 · 2026-08-09）
+
+方案/计划统一管理：`docs/projects/<prefix>/plans/<NNN>-<slug>.md`。模板见 `docs/projects/_template/plan-template.md`，命名规则见 `DOC-PROTOCOL.md` §2.7，状态机五态见 §2.8。校验：`scripts/validate-plans.sh`。
+
+写方案前先查 `docs/projects/<prefix>/plans/` 是否已有同主题方案。转卡由人触发。**三层金字塔**：线路图（骨架）→ 计划（方案池）→ 看板（执行中）。
 
 ## 中枢出卡（硬 · 别把自己当执行体）
 

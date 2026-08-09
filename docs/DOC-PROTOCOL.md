@@ -23,9 +23,10 @@
 | 下一程意向（未出卡） | [`roadmap.md`](roadmap.md)「下一程挂账」 | **一行**意图 + 备注；未出卡不写长文 |
 | 注册 / 改项目 | [`projects/registry.yaml`](projects/registry.yaml) + 对应 [`projects/<prefix>/README.md`](projects/) | 改完跑校验；禁止只改 `PREFIXES` 或只改 KB seed |
 | 开发任务 | **优先** `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡仍可用 `new-card.sh` | 命名见 §2；方案确认后禁止一张张聊着出卡 |
+| 方案 / 计划 | [`projects/<prefix>/plans/`](projects/) `<NNN>-<slug>.md` | 模板 [`projects/_template/plan-template.md`](projects/_template/plan-template.md)；命名见 §2.7；状态五态见 §2.8 |
 | 平台现行 SOP | [`product/`](product/) **白名单**（须进 INDEX §0/§1） | 新 SOP 必须同时改 INDEX；**禁止**心智补丁类新建（原则 #5） |
 | 部署 / 拓扑 | [`deploy/`](deploy/) | 短、可执行 |
-| 临时笔记 | [`notes/`](notes/) | **7 天内**并入权威、删或迁 `archive/` |
+| 临时笔记 | [`notes/`](notes/) | **7 天内**并入权威、删或迁 `archive/`；**禁止新建方案文件** |
 | 史实 / 烟测 / 旧协议 | [`archive/`](archive/) | 文首标「史」 |
 
 ### 现行产品 SOP 白名单（入口级）
@@ -111,6 +112,38 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 - `docs/dispatch/T99-new-thing.md`（新 T 卡）
 - `docs/dispatch/qh/qh001-x.md`（禁前缀）
 - 卡头「项目：medio-0」但文件在 `mx/`（项目字段必须写前缀 `mx`）
+
+### 2.7 方案 / 计划命名（硬 · 与任务卡编号分区独立）
+
+```text
+路径   = docs/projects/<prefix>/plans/<NNN>-<slug>.md
+方案 ID = <prefix>-plan-<NNN>     （例：ccc-plan-001）
+```
+
+| 段 | 规则 | 例 | 非法例 |
+|----|------|----|--------|
+| **prefix** | 与 `registry.yaml` 前缀一致，2–4 位小写字母 | `ccc` `xy` `hp` `mx` `qb` | `CCC` `qh` |
+| **NNN** | **恰好三位数字**，同前缀内自增，**独立于任务卡编号** | `001` `002` | `1` `0001` |
+| **slug** | 小写字母/数字/连字符，从标题派生 | `arch-upgrade-v2` | `架构升级` |
+| **扩展名** | 固定 `.md` | — | `.MD` |
+
+**与任务卡编号的关系**：方案编号和任务卡编号**分区独立**。方案用 `plans/` 下的 `NNN`，转卡时由 `new-card.sh` 生成任务卡编号。防止方案编号与任务卡编号冲突。
+
+**模板**：[`projects/_template/plan-template.md`](projects/_template/plan-template.md)（六段必填：目标/背景/方案内容/验收标准/转卡计划/备注）。
+
+### 2.8 方案状态机（五态定死）
+
+```text
+草案 → 已确认 → 部分执行 → 已完成 → 作废
+```
+
+| 状态 | 含义 |
+|------|------|
+| **草案** | 方案初稿，待讨论确认 |
+| **已确认** | 方案已定，等待排期进入看板 |
+| **部分执行** | 已拆分部分任务卡进入看板 |
+| **已完成** | 全部关联任务卡已关闭 |
+| **作废** | 方案不再执行（保留历史，不删除） |
 
 ---
 

@@ -38,7 +38,8 @@ cwd 不是本仓 → **当面点破**，禁止当成 CCC 继续。
 
 1. 读 [`docs/projects/registry.yaml`](../projects/registry.yaml)（前缀 / `taskable` / `paths` / `forbidden`）。  
 2. 读目标 [`docs/projects/<prefix>/README.md`](../projects/)（路径、禁区、近况一行）。  
-3. `qh` / `forbidden: true` → 不出卡，按 registry 改门禁。
+3. 扫 [`docs/projects/<prefix>/plans/`](../projects/) 已有方案，避免重复规划。  
+4. `qh` / `forbidden: true` → 不出卡，按 registry 改门禁。
 
 ### ③ 进度（SSOT = 卡 + 看板）
 
