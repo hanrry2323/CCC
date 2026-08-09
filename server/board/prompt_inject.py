@@ -205,7 +205,9 @@ def _search_kb(project_prefix: str, title: str, focus: str = "skill") -> str:
             # 按焦点过滤：只保留与当前焦点相关的内容
             if focus == "skill":
                 # 提取命令、守则、模块
-                if any(kw in snippet for kw in ("常用命令", "开发守则", "关键模块", "cargo", "pytest", "npm run", "构建")):
+                if any(
+                    kw in snippet for kw in ("常用命令", "开发守则", "关键模块", "cargo", "pytest", "npm run", "构建")
+                ):
                     snippets.append(_clean_snippet(snippet, doc_id))
             elif focus == "review":
                 # 提取审查维度、可修/不可修边界
@@ -332,6 +334,11 @@ def build_auditor_hint(project_prefix: str, title: str = "", card_context: str =
     lines.append("  - 原则性红线问题（范围系统性越界/核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出")
     lines.append("  - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决")
     lines.append("- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭")
+    lines.append("- **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。")
+    lines.append(
+        "  - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，"
+    )
+    lines.append("    打回原因注明缺失项；执行体补维护区后重试。")
 
     return "\n\n".join(lines)
 
@@ -372,9 +379,7 @@ def inject_hints(
     auditor_hint = build_auditor_hint(project_prefix, title, card_context)
 
     # 替换「## 执行提示」段：只替换空段或纯占位段
-    executor_placeholder = re.compile(
-        r"(##\s*执行提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL
-    )
+    executor_placeholder = re.compile(r"(##\s*执行提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL)
     exec_match = executor_placeholder.search(content)
     if exec_match:
         existing = exec_match.group(2).strip()
@@ -387,9 +392,7 @@ def inject_hints(
             )
 
     # 替换「## 机审提示」段
-    auditor_placeholder = re.compile(
-        r"(##\s*机审提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL
-    )
+    auditor_placeholder = re.compile(r"(##\s*机审提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL)
     audit_match = auditor_placeholder.search(content)
     if audit_match:
         existing = audit_match.group(2).strip()
@@ -423,22 +426,26 @@ def main() -> None:
         help="任务卡文件路径（或 '-' 从 stdin 读取；--executor-only/--auditor-only 模式可省略）",
     )
     parser.add_argument(
-        "--project", "-p",
+        "--project",
+        "-p",
         required=True,
         help="项目前缀（如 mx、ccc、hp）",
     )
     parser.add_argument(
-        "--title", "-t",
+        "--title",
+        "-t",
         default="",
         help="任务卡标题（用于 KB 检索）",
     )
     parser.add_argument(
-        "--context", "-c",
+        "--context",
+        "-c",
         default="",
         help="额外上下文",
     )
     parser.add_argument(
-        "--dry-run", "-n",
+        "--dry-run",
+        "-n",
         action="store_true",
         help="只打印注入后的卡内容，不写文件",
     )

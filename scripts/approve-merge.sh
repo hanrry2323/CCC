@@ -126,6 +126,37 @@ sys.exit(0 if ok else 1)
 " "$path"
 }
 
+# 完成钩子（Doc-Gate）机械门禁：维护区四问必须勾选且说明非空
+check_maintenance() {
+  local path="$1"
+  "$PYTHON_BIN" -c "
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding='utf-8')
+if '## 维护区' not in text:
+    print('[ERROR] 完成钩子：卡缺 ## 维护区 节（模板已含，回写时必填四问）', file=sys.stderr)
+    sys.exit(1)
+seg = text.split('## 维护区', 1)[1]
+seg = seg.split('## ', 1)[0]
+items = re.findall(r'^(\d+)\. \*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]', seg, re.M)
+if len(items) < 4:
+    print(f'[ERROR] 完成钩子：维护区只找到 {len(items)}/4 问', file=sys.stderr)
+    sys.exit(1)
+bad = []
+for num, name, choice in items:
+    if choice not in ('是', '否', '有', '无'):
+        bad.append(f'第{num}问「{name.strip()}」未勾选（{choice!r}）')
+notes = re.findall(r'^   - 说明：(.+)$', seg, re.M)
+if len(notes) < 4 or any(n.strip() == '' for n in notes):
+    bad.append('存在空「说明」（必须写一句实情）')
+if bad:
+    print('[ERROR] 完成钩子：' + '；'.join(bad), file=sys.stderr)
+    sys.exit(1)
+print('[OK] 完成钩子：维护区四问已勾选且说明完整')
+sys.exit(0)
+" "$path"
+}
+
 # 外仓提示：registry.mac2017 非 CCC 本仓时打印分支/HEAD/是否已在业务 main（不自动 push）
 print_external_repo_hint() {
   local path="$1" branch="$2"
@@ -300,6 +331,12 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
   if [[ "$audit_ok" != true ]]; then
     echo "[ERROR] ${id}: 分支信封无机审通过证据（origin/${branch} 卡无机审区，本地卡也无）" >&2
+    return 1
+  fi
+
+  # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入
+  if ! check_maintenance "$path"; then
+    echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
     return 1
   fi
 
