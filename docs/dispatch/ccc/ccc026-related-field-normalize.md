@@ -87,6 +87,23 @@ Commit Hash: `73f0198c` (分支：`codex/ccc026-related-field-normalize`)
 
 （无批注。）
 
+## 机审区
+
+**机审：通过**（2017 机审席 · Claude Code）· 日期：2026-08-09
+
+**审查范围**：`docs/dispatch/<prefix>/` 卡头「关联」字段规范化 + `docs/projects/<prefix>/plans/` 方案文件 + 映射表。git diff 确认改动在卡声明范围内（红线「只改关联字段+方案文件」遵守，无 registry/服务端/夹卡状态改动）。
+
+**审查结论**：
+1. **134 张历史卡「关联」字段规范化到位**，全部指向**实际存在**的 `docs/projects/<prefix>/plans/<NNN>-*.md` 方案（`ccc-plan-001/002/003/004/005/007`、`hp-plan-001`、`mx-plan-001`、`xy-plan-001`、`qb-plan-001`、`clw-plan-001`），定向可机器 parse。抽查 T40/ccc001/hp001/xy001 等新旧对照，无状态/执行体/正文误改。
+2. **hp/mx 空方案池各补 1 个里程碑方案**（`001-knowledge-base-milestone.md` / `001-rss-polish-milestone.md`），含目标/背景/验收/转卡计划，结构符合 plan-template；验收标准 #2 达成。
+3. **映射表 `docs/notes/2026-08-09-related-mapping.md`** 覆盖 134 卡（远超 40 验收线），逐卡旧→新对照可审计；验收 #5 达成。
+4. **机审就地修复（验收 #3 补完）**：执行体仅回填了新建 hp/mx 方案「关联卡」，而 134 卡引用的既有 ccc/xy/qb/clw 方案「关联卡」仍为「无」，双向追踪未闭环。机审按卡头 `> 关联：plan-NN` 实际值聚合，回填了 `ccc-plan-001/005/007/004/002/003`、`xy-plan-001`、`qb-plan-001`、`clw-plan-001(+clw007)` 的「关联卡」字段；并从 hp-plan-001 转卡计划移除 hp018（卡实关联 `INT-075` 非本方案，消除悬空引用）；全仓 16 个方案「关联卡」冒号统一全角（commit `01886669`）。
+5. **机械门禁**：`python3 -m server.board.validate docs/dispatch` 卡头 error 数在机审前后不变（2 条 pre-existing 看板索引问题：`ccc026` 状态对账「索引=待分派 vs 文件=已回写」、`clw006` 孤立索引——均为引擎/看板索引同步层问题，非执行体代码越界）。
+
+**上抛信号（该事项超出本卡执行体白名单，需中枢/老板处置，不构成本卡打回）**：
+- ⚠️ **`ccc-plan-011` 方案实体在整个仓库缺失**：`docs/projects/ccc/plans/` 仅到 `010-s8`，无 `011`；但 Loop Observer 阶段批次 ccc023-032 共 10 张卡（含本卡 ccc026）全部引用 `ccc-plan-011 卡N`。本卡把 134 张历史卡治理到「方案存在」，却让 ccc 主项目 10 张在途卡挂在缺失方案上——「卡↔方案双向追踪」对 ccc 自身未闭环。非本卡执行体职责（出卡批次系统性缺口，修 011 超出本卡「只改关联字段」红线），建议中枢补齐 `docs/projects/ccc/plans/011-loop-observer-architecture.md`。
+- 回写区 Push 证据 hash 写为 `73f0198c`，与实际落库 HEAD `7ac55e2a`（→rebase 后 `53aa8be4`）不一致，属回写记录笔误，不阻断。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
