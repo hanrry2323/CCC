@@ -185,13 +185,6 @@ public struct DynamicColor {
             }
         })
     }
-    
-    public static func make(light: Color, dark: Color) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark ? NSColor(dark) : NSColor(light)
-        })
-    }
 }
 
 // MARK: - Pow Signature Animations (Spring Scale-Effects)
@@ -254,13 +247,12 @@ extension View {
         self.modifier(ShimmerModifier())
     }
     
-    /// macOS 15+ .glassEffect backport support
+    /// 关键面板磨砂质感：统一走系统 material（macOS 12+ 稳定编译）。
+    /// macOS 15 原生 `.glassEffect` 是 ViewModifier（非 `.background(_:)` 可用的 View/ShapeStyle），
+    /// 且桌面仓 SDK 目前为 macOS 13（Package.swift 目标 .macOS(.v13)），无法编译期引用该符号；
+    /// 待 SDK/部署目标升到 15 后再接线原生玻璃，此处以 `.ultraThinMaterial` 兜底（验收标准 3 既有的回退路径）。
     public func glassEffect() -> some View {
-        if #available(macOS 15.0, *) {
-            return self.background(.glassEffect)
-        } else {
-            return self.background(.ultraThinMaterial)
-        }
+        self.background(.ultraThinMaterial)
     }
 }
 
