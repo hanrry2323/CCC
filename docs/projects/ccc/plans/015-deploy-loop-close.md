@@ -27,7 +27,7 @@
 ## 验收标准
 
 - [ ] C1：approve-merge 收完卡后自动触发部署检查；deploy-ccc.sh 重启包含三个服务。
-- [ ] C2：待合入 ≥5 张有明确提醒（board-live/看板提示）。
+- [x] C2：待合入 ≥5 张有明确提醒（board-live/看板提示）。（关联卡 `ccc045`，机审通过待合入）
 - [ ] Observer：2017 com.ccc.scheduler 运行、DATA_DIR/observer/ 有新快照、git 无 patrol 报告 churn。
 
 ## 转卡计划
