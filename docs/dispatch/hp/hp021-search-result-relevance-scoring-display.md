@@ -62,6 +62,34 @@
 - 业务仓 (hp) 提交 Hash: `bd0d5271d7df65f0f94adac8733915acd64cf0af`
 - 业务仓分支: `codex/hp021-search-result-relevance-scoring-display`
 
+## 机审区
+
+**机审：通过**（2017 机审席 · 独立审查）· 日期：2026-08-09
+
+### 审查范围与取证
+- 按 code-review 清单 Read 卡全文/验收标准、核对 worktree git log/diff、独立取证 `Search.tsx` 全量 diff（`bd0d527`，仅前端展示）。
+- 卡内 `## 人工批注` 为空 → 无批注需落实（批注落实区未填内容，无最高开发指令被遗漏）。
+
+### 验收标准核对
+1. 搜索结果每条可见 score 数值 ✅ — 文档/片段/笔记三组均渲染 `score.toFixed(2)`。
+2. 不改变搜索排序逻辑 ✅ — 仅展示层 gating/gruping，不动 `results` 排序。
+3. 零后端改动 ✅ — commit 仅触 `local/graph/dashboard/src/pages/Search.tsx`。
+
+### 红线核对
+- 只改前端展示 ✅ / 不引入新依赖 ✅ / 未写机审区、未写验收区、未置已关闭（执行体侧）✅。
+
+### 发现清单（评审通过，含已修复项）
+- **F1 (P1，已修复)**：`bd0d527` 新增 Tab gating 后，`project`(项目) tab 无对应渲染块且计数硬编码 `"0"` → 点击「项目」渲染空白结果区，属功能回归（改动前该 tab 显示全部分组）。
+- **F2 (P3，观察项，不改)**：docs/chunks/notes 按 `chunk_id` 区间启发式分组（≤3 / 4–99 / ≥100）为既有逻辑非本卡引入；若某文档 chunk 数>3 其后续片段会被划入「chunk」组。非本卡越界，记录跟进。
+
+### 修复记录（机审就地修复 → 已 commit+push）
+- 修复 commit（hp 业务仓）：`558236d`（分支 `codex/hp021-search-result-relevance-scoring-display`）。
+- 内容：`project` tab 计数回落到 `results.length`，渲染 gates 加入 `tab === "project"`，令「项目」tab 与改动前一致显示全部分组，消除空页回归。纯前端展示，不动排序、零后端改动。
+
+### 复审结论（对修复 diff 复审）
+- 修复 diff 为 4 处布尔条件 / 1 处字符串字面量变更，类型安全、无副作用、不触碰 `results` 排序；`558236d` 仅在 `bd0d527` 之上追加，范围收敛。F1 已闭环。
+- F2 属既有启发式，非 P0/P1，不阻塞合入。
+
 ## 执行提示
 
 - 项目：hp（HP 个人 AI agent 中央知识库基础设施 + 教训沉淀平台。）
