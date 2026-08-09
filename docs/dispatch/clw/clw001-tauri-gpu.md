@@ -1,6 +1,6 @@
 # 任务卡 clw001 · Tauri 骨架 + GPU 终端（OpenCode 执行）
 
-> 关联：clw-plan-001 · 阶段 1/6 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：clw · 日期：2026-08-09
+> 关联：clw-plan-001 · 阶段 1/6 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：clw · 日期：2026-08-09
 
 ## 目标
 
@@ -140,3 +140,25 @@
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 验收区
+
+**验收人**：Claude Code · 日期：2026-08-09
+
+**验收结论**： 判定：通过。
+
+**验收证据**：
+- 代码范围：45 文件均在 Tauri 骨架 + src/ + src-tauri/ 白名单内，零越界
+- 红线：零触碰 ~/.claude/、~/.codex/、~/.shellsight/，无 AGENTS.md/CLAUDE.md 注入
+- cargo build --release：通过
+- 前端编译 (npm run build)：0 errors, 0 warnings
+- 后端检查 (cargo check)：通过
+- PTY 清理：Drop 后子进程正确回收，无残留
+- 机审：通过（5 条非阻断观察记录，阶段一可演进点，后续按需处理）
+
+**机审观察（已记录）**：
+1. PTY 尺寸固定 80x24，resize 不同步 → clw002 补
+2. EOF 后无限轮询 → clw002 降频
+3. 遗留 xterm v5 死依赖 → 后续清理
+4. terminal.rs write 冗余绑定 → 纯风格
+5. PTY 回收依赖 Drop，无显式 waitpid → 多会话量级补
