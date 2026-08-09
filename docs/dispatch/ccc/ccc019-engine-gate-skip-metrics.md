@@ -64,6 +64,30 @@
 - 提交分支：`codex/ccc019-engine-gate-skip-metrics`
 - commit hash: `c00637223bd8d028b1daf35039574525267c733b`
 
+## 机审区
+
+**机审**：2017 机审席 · 验收：通过 · 日期：2026-08-09
+
+**独立取证**
+- 核对 worktree 分支 `codex/ccc019-engine-gate-skip-metrics`，两个回写 commit：`c0063722`（门禁跳过指标日志 + 测试）、`8a0aebb2`（卡回写）。工作区仅这两项改动。
+- 门禁跳过点 `server/engine/main.py` `_dispatch_and_collect`：`cmd_binary` 经 `which` 探活失败（env_missing）时，在 `logger.warning` 后追加指标日志 `metrics_logger.info("gate_skip", card=work.id, gate=gate_name, reason="env_missing")`，随后 `continue` 放行——逻辑正确，零硬编码。
+- 新增测试 `test_gate_skip_env_missing_metrics_logged` 覆盖该跳过路径，断言指标日志与放行结果。
+
+**发现清单**
+1. 【P1 · 已修复 · 红线「不引入未授权的新依赖」】回写引入模块级 `import structlog`，但 structlog 未声明于 pyproject.toml / requirements / 任何 lock 文件，且全仓无先例（项目统一用 stdlib `logging`，`server/engine/metrics.py` 等均为 `ccc.engine.*` name）。环境未装 structlog 时整包 `server.engine.main` import 即崩，实测 pytest 无法 collect 测试模块。已就地修复。
+2. 【P2 · 非阻塞】feature commit 顺带在 `MachineAuditPrompt.build` 做了 `.format()`→f-string 重构及多处空白清理，超出卡声明范围「门禁跳过段追加日志 + 测试」。属良性代码噪音，不影响功能，记录不修复。
+
+**修复记录**
+- commit `fd4119a5`：移除 `import structlog`；`metrics_logger` 改为 stdlib `logging.getLogger("ccc.engine.metrics")`（与 `server/engine/metrics.py` 同名约定一致）；日志保持卡内要求格式 `gate_skip card=%s gate=%s reason=%s`；测试改为捕获 stdlib 调用并校验格式化消息。已 push 到 `codex/ccc019-engine-gate-skip-metrics`。
+
+**复审结论**
+- 修复后 `server.engine.main` 在无 structlog 环境 import OK（`compileall` 通过）。
+- `pytest server/tests/test_engine_main.py`：全模块 81 通过，含 `-k gate_skip` 用例。唯一偶发 `test_exec_and_audit_slots_independent` `audit_dispatched` 0/1 断言抖动为测试自身时序竞态（隔离/重跑均绿），独立于本改动，非阻塞。
+- 验收标准逐条满足：①门禁跳过可见指标日志（`ccc.engine.metrics` logger）②card 相关 pytest 全绿 ③零硬编码。
+- 卡含 `人工批注` 节但内容为占位（无老板批注），无批注需核对。
+
+**机审：通过**
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
