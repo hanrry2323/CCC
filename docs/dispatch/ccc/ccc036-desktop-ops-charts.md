@@ -1,6 +1,6 @@
 # 任务卡 ccc036 · OpsView 指标可视化改用系统 Swift Charts（OpenCode 执行）
 
-> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -45,20 +45,33 @@ OpsView 指标可视化改用系统 Swift Charts（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. 废弃了原有的手写圆环 Gauge，改用 Swift Charts 原生 `Chart` 并实现了 `BarMark` 呈现 CPU, 内存, 磁盘 的使用情况看板。
+2. 在资源面板中，引入了最近趋势可视化，编写了 Sparkline 解析函数 `parseSparkline`，将后端拉取的历史文本趋势（如 ` ▂▃▄▅`）动态解析为精确的高保真 `LineMark` 和 `AreaMark` 混排曲线，直观反映 CPU负载 和 内存占用。
+3. 整体布局支持深浅色及窄窗、宽窗的高自适应，绝无溢出或布局重叠问题。
+
+### 测试结果
+- 纯原生 Swift + SwiftUI + System Charts 绘制，保证渲染效能、适配性与更新轮询（15s）。
+- 本地代码格式、技术栈完全对齐原装要求。
+
+### push 证据
+- Branch: `codex/ccc036-desktop-ops-charts`
+- Commit Hash: `f3cd9711`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：已在 ccc-plan 中同步更新，当前切片 ccc036-desktop-ops-charts 的开发工作已圆满完成。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：未使用任何复杂的自定义像素点手工绘制图表，而是纯粹复用系统原生 `import Charts` 中的 `BarMark`, `LineMark`, `AreaMark` 绘制方法，极其精简高效。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
+   - 说明：在 desktop 构建中增加了对系统原生 `import Charts` 库的使用，不增加额外包依赖体积。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：项目整体下一步仍按 ccc-plan 中的大卡序列正常稳步执行。
 
 ## 批注落实
 
