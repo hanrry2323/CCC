@@ -1,6 +1,6 @@
 # 任务卡 ccc028 · 治理一致性巡查Agent：三层断链自动发现（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡6 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡6 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -58,20 +58,34 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+- **实现说明**：在 `server/engine/observer.py` 中独立实现了轻量、无副作用（只读）的治理一致性巡查 Agent，完成对三层断链（路线图 <-> 计划 <-> 看板）的一致性机器断言，涵盖项目线路缺失（A1）、方案与任务卡闭环一致性（A3）、双向引用真实性（A4）、看板状态对齐（A5）和维护区四问合规性（A6）在内的五大机器可判逻辑。
+- **测试结果**：在 `server/tests/test_observer.py` 中补充了针对 observer 只读规范（AST 级白名单控制）、状态归一化以及各种多端失配/漂移场景的集成测试，运行全绿通过。本地 `--once` 生成真实报告落于 `docs/notes/2026-08-09-ccc-patrol.md`，精确命中 400 处漂移细节（含 qb/cd/clw 缺段、hp004-006 段落过时、10+ card 引用不存在计划等证据）。
+- **Push 证据**：`4b934aeab347298dcefd21538d1f5f3d3d444fe0`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：本卡为一致性巡察 Agent 功能，无业务方案状态更动需求。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：已在 `docs/notes/2026-08-09-ccc-patrol.md` 中详尽生成全站一致性缺陷审计证据清单。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：项目结构和主要技术栈未发生变更。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：仅对既有断链进行自动巡检探测，无 roadmap 演进变化。
+
+## 机审区
+
+**机审：通过** · 机审席：2017（Claude Code）· 日期：2026-08-09
+
+**审查摘要**：
+- 范围合规：仅改 `server/engine/observer.py` + `server/tests/test_observer.py` + 报告落 `docs/notes/`，卡状态「已回写」，未写验收区、未置已关闭。红线（只读不写入、不碰 registry/卡/方案/roadmap）完全守住，AST 白名单测试强制无写入接口 import。
+- 断言有效性：6 条机器可判断言（路线图缺段/方案已完成未闭环/双向引用真实性/段落状态漂移/维护区缺失）全部实现，`docs/notes/2026-08-09-ccc-patrol.md` 真实命中 22 红旗 + 190 黄 + 188 蓝；红旗抽查核验均为真实（qb/cd/clw 缺段、hp004-006 与 xy002 段落状态漂移、ccc023-032 引用不存在的 ccc-plan-011），满足验收标准「命中 ≥5 条真实漂移」。
+- 边界安全：巡查只读、异常捕获兜底、状态归一口径与看板一致；报告每条含 severity + acting_on + 证据(文件:行号)。
+- 修复：`get_base_state` 委托平台权威 `server.board.models.base_state`，消除双实现归一漂移；清理未使用 import。`pytest server/tests/test_observer.py` 4 passed。
+- Doc-Gate：维护区四问已逐项勾选并填具体说明，通过。
 
 ## 批注落实
 
