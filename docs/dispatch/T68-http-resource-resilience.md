@@ -1,6 +1,6 @@
 # 任务卡 T68 · HTTP 壳静态资源加载韧性（Cursor 测试卡 · M1 前端开发）
 
-> 关联：T48 审计 P0（M1→2017 静态资源并发 ERR_CONNECTION_RESET 41%，SPA 白屏根因，前端侧）· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复验）· 状态：已关闭 · 派发：manual · 项目：ccc · 日期：2026-08-05
+> 关联：ccc-plan-001· 执行体：Cursor（M1 测试接手）· 验收：Codex（独立复验）· 状态：已关闭 · 派发：manual · 项目：ccc · 日期：2026-08-05
 > 工作目录：M1 `/Users/apple/program/CCC`；分支 `codex/cursor-t01-resource-resilience`（从 main 新建）
 > **分步提交纪律（硬）**：每块完成立即 commit+push；禁止 `git add -A` 全量提交。
 

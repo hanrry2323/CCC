@@ -1,6 +1,6 @@
 # 任务卡 xy007 · 登录流程：实现B站与头条自存Cookie扫码抓取工具（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 

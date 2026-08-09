@@ -1,6 +1,6 @@
 # 任务卡 T56 · T-B1 统一卡片组件层（Claude Code 执行）
 
-> 关联：阶段 3（T-B1 统一卡片组件，过夜任务前端链 1/2）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
+> 关联：ccc-plan-005· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 工作目录：`/Users/fan/program/ccc-dev-ws`；分支：`codex/t56-card-components`（先 `git fetch origin main && git checkout -b codex/t56-card-components origin/main`）
 > **分步提交纪律（硬）**：每完成一个逻辑块立即 commit+push；超时 7200s。与 T55（索引层）并行，文件所有权见下。
 

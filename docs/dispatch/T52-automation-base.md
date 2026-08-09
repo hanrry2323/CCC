@@ -1,6 +1,6 @@
 # 任务卡 T52 · 自动化基建：出卡模板 + 一键放行 + 验收自动化（Claude Code 执行）
 
-> 关联：阶段 3 P1 · 依据：规划确认——Codex 只留「验收+放行」；出卡/门禁/部署自动化
+> 关联：ccc-plan-005 · 依据：规划确认——Codex 只留「验收+放行」；出卡/门禁/部署自动化
 > 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53/T51）后按 Engine 自动派发重出。
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t52-auto-base`（先 `git fetch origin main && git checkout -b codex/t52-auto-base origin/main`）

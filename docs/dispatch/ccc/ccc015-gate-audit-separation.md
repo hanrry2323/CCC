@@ -1,6 +1,6 @@
 # 任务卡 ccc015 · 机械门禁与机审职责分离：编译/测试/lint/范围由门禁裁决，机审定位优化就地闭环（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-005 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 目标
 

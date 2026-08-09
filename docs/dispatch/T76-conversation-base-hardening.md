@@ -1,6 +1,6 @@
 # 任务卡 T76 · 对话大底座加固与 50 轮稳定性极限压测
 
-> 关联：对话大底座加固（F16）· 执行体：Claude Code · 验收：Cursor 代 Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Cursor 代 Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
 > 变更记录：2026-08-06 验收通过关闭（Cursor 独立取证）；合入 commit `d730228` + `a9d607c`（main）；关卡同次修 ruff E741。
 
 ## 目标

@@ -1,6 +1,6 @@
 # 任务卡 xy003 · 接入2pass VBR编码到生产链路（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写· 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 

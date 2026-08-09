@@ -1,6 +1,6 @@
 # 任务卡 xy020 · 第二轮历史遗留全仓排查与遗留清单产出（OpenCode 执行）
 
-> 关联：ccc-plan: xy 第二轮历史遗留排查（根基立稳） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 

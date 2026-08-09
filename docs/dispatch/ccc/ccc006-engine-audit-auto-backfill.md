@@ -1,6 +1,6 @@
 # 任务卡 ccc006 · engine机审通过自动落盘机审区（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-07
+> 关联：ccc-plan-005 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-07
 
 ## 目标
 

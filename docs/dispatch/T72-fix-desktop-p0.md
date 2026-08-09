@@ -1,6 +1,6 @@
 # 任务卡 T72 · desktop P0 修复（F18/F19/F20 · T70 审计）
 
-> 关联：T70 审计 P0（F18 workspace 传路径 / F19 Kanban 英文旧列 / F20 流式缺 thread_id/model）· 执行体：Claude Code · 验收：Codex（独立复核）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex（独立复核）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t72 -b codex/t72-desktop-p0 origin/main`；分支 `codex/t72-desktop-p0`
 > **分步提交纪律（硬）**：每条修复单独 commit+push；禁止 `git add -A`；超时 7200s。
 > 依据：`docs/dispatch/T70-audit-report.md` F18/F19/F20 条目

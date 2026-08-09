@@ -1,6 +1,6 @@
 # 任务卡 mx001 · recon and baseline（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 

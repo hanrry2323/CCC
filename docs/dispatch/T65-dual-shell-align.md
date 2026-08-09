@@ -1,6 +1,6 @@
 # 任务卡 T65 · T-B5 双壳对齐（桌面端补齐 HTTP 新能力）（Claude Code 执行）
 
-> 关联：前端四板块架构（T-B5 双壳对齐）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t65 -b codex/t65-dual-shell-align origin/main`；分支 `codex/t65-dual-shell-align`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 

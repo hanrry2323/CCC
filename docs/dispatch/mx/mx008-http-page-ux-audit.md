@@ -1,6 +1,6 @@
 # 任务卡 mx008 · HTTP 页面体验巡检（RSS 优先）（OpenCode 执行）
 
-> 关联：ccc-plan: HTTP 页面体验巡检：RSS 优先 + 全页面代码/显示/双端适配 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
 
 ## 目标
 

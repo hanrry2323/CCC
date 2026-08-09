@@ -1,6 +1,6 @@
 # 任务卡 ccc005 · 项目注册表单源接线（PREFIXES /projects /taskable + 校验）
 
-> 关联：文档与项目注册统一治理 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 

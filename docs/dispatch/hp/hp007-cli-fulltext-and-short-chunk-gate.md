@@ -1,6 +1,6 @@
 # 任务卡 hp007 · 旧 CLI 全库检索复活 + 管道短 chunk 闸门 + bak 恢复 + 文档回填（OpenCode 执行）
 
-> 关联：ccc-plan: HP 知识底座评估整改（CLI 检索复活/短 chunk 闸门/口径映射/文档回填） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-07
+> 关联：hp-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-07
 
 ## 目标
 

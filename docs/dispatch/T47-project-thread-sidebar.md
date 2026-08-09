@@ -1,6 +1,6 @@
 # 任务卡 T47 · 项目+会话模型重构 + 左栏（借鉴 Codex/Cursor）（Claude Code 执行）
 
-> 关联：老板指出「左侧栏展示逻辑错误——应该项目+对话，用项目区分，不是任务分组；展示逻辑借鉴 Codex/Cursor 成熟工具」· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
+> 关联：ccc-plan-001· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
 > 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：已关闭 · 日期：2026-08-04 · 派发：manual · 项目：ccc
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t47`（分支 `codex/t47-project-sidebar`）**，与 T46 并行；文件所有权见下，禁止越界改 T46 文件。
 

@@ -1,6 +1,6 @@
 # 任务卡 hp015 · 前端页面测试覆盖（React Testing Library）（OpenCode 执行）
 
-> 关联：ccc-plan: HP 前端测试覆盖补齐（页面渲染 + 关键交互，目标测试评分 4→7） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-08
+> 关联：hp-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-08
 
 ## 目标
 
