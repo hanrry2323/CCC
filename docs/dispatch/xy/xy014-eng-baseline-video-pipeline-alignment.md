@@ -62,3 +62,16 @@
 机审：通过
 来源：engine 自动落盘（engine-audit）· 2026-08-07 13:58
 证据：eline-alignment` tip `6f41f42`，仅 1 commit ahead origin/main，仅改 3 个 `.ccc/` 文档，零代码，未直推 main，已回写齐全，回写区证据、分支、commit hash 均属实。 **不通过原因（验收标准 1「哪条是生产路径」与生产事实不符）**： - 实际每日生产 runner 是 `scripts/daily/generate_video.py`（launchd `com.xianyu.daily-video` → `run_daily_video.sh` → generate_video.py）。该脚本自体标注「standalone，不依赖 xianyu 包内模块」，全 ffmpeg，**既不引用 video-pipeline，也不引用 src/xianyu.video/**（grep 实证）。 - `video-pi
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

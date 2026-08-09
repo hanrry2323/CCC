@@ -105,3 +105,16 @@
 **审查摘要**：改动严格限定在卡范围 `src/xianyu/core/config.py`，仅将 4 个 cookie 路径字段（`publish_cookie_dir` / `bilibili_cookie_path` / `toutiao_cookie_path` / `weibo_cookie_path`）由相对路径 `data/cookies/...` 改为基于 `PROJECT_ROOT` 的绝对路径。与同文件既有 `database_url`、`video_save_dir` 模式一致，且与 `core/crypto.py` 的 `COOKIE_DIR = PROJECT_ROOT / "data" / "cookies"` 对齐，消除了相对路径对进程 cwd 的依赖。零新依赖、零业务逻辑改动、无硬编码机器绝对路径。命名/结构合理、边界安全，无原则性红线问题，无可修问题。
 
 Verification: grep 消费点确认字段无其他引用、无回归；diff 仅 4 行且全部符合声明范围。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。
