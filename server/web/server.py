@@ -17,6 +17,11 @@ API:
     GET  /board/roadmap       → 线路图聚合（需 Bearer token）
     GET  /board/states        → 卡头五态计数 + columns 看板列计数（需 Bearer token）
     GET  /board/ready_for_merge → 已回写且机审通过（可合入批准）
+    GET  /plans/list           → 方案列表（需 Bearer token；?project=&status=&q=）
+    GET  /plans/detail         → 方案详情（需 Bearer token；?path=...）
+    POST /plans/create         → 新建方案（需 Bearer token；{project,title,content,author,tool}）
+    POST /plans/update         → 更新方案（需 Bearer token；{path,status?,content?,cards?}）
+    POST /plans/convert        → 转任务卡（需 Bearer token；{path}）
     POST /conversation        → 对话（调用 2017 Claude Code 大脑 Agent，需 Bearer token）
     GET  /conversation        → 对话历史（需 Bearer token；T43 支持长轮询增量同步）
 
@@ -83,6 +88,13 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from server.board.loader import load_dispatch_cards
+from server.board.plans import (
+    convert_plan,
+    create_plan,
+    get_plan,
+    list_plans,
+    update_plan,
+)
 from server.board.queries import (
     ready_for_merge,
     roadmap_overview,
@@ -1559,6 +1571,123 @@ class _APIHandler(BaseHTTPRequestHandler):
             {"messages": messages if has_increment else [], "seq": seq},
         )
 
+    # ── /plans/* 端点 ──
+
+    def _handle_plans_list(self):
+        """GET /plans/list?project=&status=&q="""
+        from urllib.parse import parse_qs
+
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        project = qs.get("project", [None])[0]
+        status = qs.get("status", [None])[0]
+        q = qs.get("q", [None])[0]
+
+        try:
+            plans = list_plans(_PROJECT_ROOT, project=project, status=status, q=q)
+        except OSError as exc:
+            self._send_json({"error": f"方案列表读取失败: {exc}"}, 500)
+            return
+
+        self._send_json({"plans": plans, "total": len(plans)})
+
+    def _handle_plans_detail(self):
+        """GET /plans/detail?path=docs/projects/ccc/plans/001-test.md"""
+        from urllib.parse import parse_qs
+
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        rel_path = qs.get("path", [None])[0]
+
+        if not rel_path:
+            self._send_json({"error": "缺少 path 参数"}, 400)
+            return
+
+        try:
+            plan = get_plan(_PROJECT_ROOT, rel_path)
+        except OSError as exc:
+            self._send_json({"error": f"方案读取失败: {exc}"}, 500)
+            return
+
+        if plan is None:
+            self._send_json({"error": "方案不存在"}, 404)
+            return
+
+        self._send_json(plan)
+
+    def _handle_plans_create(self):
+        """POST /plans/create {project, title, content, author, tool}"""
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+
+        project = body.get("project", "").strip()
+        title = body.get("title", "").strip()
+        content = body.get("content", "").strip()
+        author = body.get("author", "").strip()
+        tool = body.get("tool", "").strip()
+
+        if not project or not title:
+            self._send_json({"error": "缺少 project 或 title"}, 400)
+            return
+
+        result = create_plan(
+            _PROJECT_ROOT,
+            project=project,
+            title=title,
+            content=content,
+            author=author or "未知",
+            tool=tool or "未知",
+        )
+
+        if "error" in result:
+            self._send_json(result, 400)
+        else:
+            self._send_json(result, 201)
+
+    def _handle_plans_update(self):
+        """POST /plans/update {path, status?, content?, cards?}"""
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+
+        rel_path = body.get("path", "").strip()
+        if not rel_path:
+            self._send_json({"error": "缺少 path 参数"}, 400)
+            return
+
+        result = update_plan(
+            _PROJECT_ROOT,
+            rel_path=rel_path,
+            status=body.get("status"),
+            content=body.get("content"),
+            cards=body.get("cards"),
+        )
+
+        if "error" in result:
+            self._send_json(result, 400)
+        else:
+            self._send_json(result)
+
+    def _handle_plans_convert(self):
+        """POST /plans/convert {path}"""
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+
+        rel_path = body.get("path", "").strip()
+        if not rel_path:
+            self._send_json({"error": "缺少 path 参数"}, 400)
+            return
+
+        result = convert_plan(_PROJECT_ROOT, rel_path=rel_path)
+
+        if "error" in result:
+            self._send_json(result, 400)
+        else:
+            self._send_json(result)
+
     def _handle_cards_get(self):
         """GET /cards?project=&state=&page=&page_size="""
         from urllib.parse import parse_qs
@@ -1935,6 +2064,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/ops/relay-stats":
             self._handle_ops_relay_stats()
             return
+        if path == "/plans/list":
+            self._handle_plans_list()
+            return
+        if path == "/plans/detail":
+            self._handle_plans_detail()
+            return
         try:
             items = _load_board_items()
         except OSError as exc:
@@ -1979,6 +2114,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         path = self.path.rstrip("/").split("?")[0]
         if path == "/session":
             self._handle_session()
+        elif path == "/plans/create":
+            self._handle_plans_create()
+        elif path == "/plans/update":
+            self._handle_plans_update()
+        elif path == "/plans/convert":
+            self._handle_plans_convert()
         elif path == "/conversation":
             self._handle_conversation_post()
         elif m := self._match_thread_route(path, "rename"):
