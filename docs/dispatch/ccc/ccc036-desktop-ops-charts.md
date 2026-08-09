@@ -1,6 +1,6 @@
 # 任务卡 ccc036 · OpsView 指标可视化改用系统 Swift Charts（OpenCode 执行）
 
-> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-012 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -68,8 +68,8 @@ OpsView 指标可视化改用系统 Swift Charts（ccc-plan 切片）。
    - 说明：已在 ccc-plan 中同步更新，当前切片 ccc036-desktop-ops-charts 的开发工作已圆满完成。
 2. **教训沉淀**：本卡是否产出可复用教训？[无]
    - 说明：未使用任何复杂的自定义像素点手工绘制图表，而是纯粹复用系统原生 `import Charts` 中的 `BarMark`, `LineMark`, `AreaMark` 绘制方法，极其精简高效。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
-   - 说明：在 desktop 构建中增加了对系统原生 `import Charts` 库的使用，不增加额外包依赖体积。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：系统 Charts 接入仅改 OpsView.swift，项目档案 README 未变更。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：项目整体下一步仍按 ccc-plan 中的大卡序列正常稳步执行。
 

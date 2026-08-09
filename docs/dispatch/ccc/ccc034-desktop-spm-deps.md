@@ -1,6 +1,6 @@
 # 任务卡 ccc034 · Desktop 引入 SwiftUIX / swiftui-introspect / textual（纯依赖，零代码改动）（OpenCode 执行）
 
-> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-012 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -68,8 +68,8 @@ Desktop 引入 SwiftUIX / swiftui-introspect / textual（纯依赖，零代码�
    - 说明：已推进 `ccc-plan-012` 至部分执行阶段，本卡为第 2 片段。
 2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
    - 说明：纯依赖引入，未涉及逻辑，不产生复用教训。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：是的，引入了 SwiftUIX、swiftui-introspect、textual 三个基础 SwiftUI 技术栈。由于本项技术栈升级信息已由 ccc033 统一更新并于 ccc-plan-012 中体现，档案已做好对齐。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：SPM 依赖引入仅改 desktop/Package.swift，项目档案 README 未变更。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：下一步开发保持原定 ccc-plan-012 线路，无需额外变更。
 

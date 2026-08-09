@@ -30,7 +30,7 @@
 
 1. Read `docs/notes/2026-08-10-clw006-card-spin-failures.md` 全文（事故背景与根因链）
 2. `server/engine/main.py`：派发前校验 `_worktree_card_candidate` 返回 None（worktree 无对应卡）→ 不派空转；打日志并跳过该卡（或重建 worktree 后重试一次）
-3. `server/engine/main.py`：空回写判定——回写 diff 为空 或 卡 `## 维护区` 为模板占位 → 机审直接打回进入「打回」终态（或人工介入），**不再无限 retry**
+3. `server/engine/main.py`：空回写判定——回写 diff 为空 或 卡 维护区 为模板占位 → 机审直接打回进入「打回」终态（或人工介入），**不再无限 retry**
 4. `server/engine/store.py`：work.id → card_path 解析改为每次从磁盘索引重新匹配（同 id 多个文件时取当前 `*<id>*.md` 或显式 id 匹配），避免改名后残留旧 card_path
 5. `server/board/validate.py` / `scripts/plan-to-cards.sh`：方案链编号保护——plan-to-cards 出卡时若生成的自动编号落在方案已声明编号区间内且该编号已计划给特定卡，则报错要求显式 `--id`；附加卡提示显式编号
 6. 补单元测试：worktree 缺卡不派发 / 空回写直接打回不重试 / 编号冲突拒绝出卡
@@ -77,8 +77,8 @@
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：ccc039 关联方案 “失败复盘 clw006 事故” 的所有防护策略已全部完整实现并测试通过。
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：本卡为 clw006 事故复盘派生的防护卡，无独立方案同步需求。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
    - 说明：已在 `docs/notes/2026-08-10-clw006-card-spin-failures.md` 沉淀了失败模式与防护。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
