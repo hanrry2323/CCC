@@ -1,6 +1,6 @@
 # 任务卡 ccc046 · Loop Observer 调度启用 + 报告路径治理（OpenCode 执行）
 
-> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -48,24 +48,39 @@ Loop Observer 调度启用 + 报告路径治理（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+1. **实现说明**：
+   - 优化并治理了 `server/engine/observer.py` 的巡查报告输出路径，使巡查报告优先写入本地 `DATA_DIR/observer/`（利用 `CCC_DATA_DIR` 或 Fallback 到 `repo_root/data/observer/`）。
+   - 只有在巡查内容发生改变时才写入 `docs/notes/` 下的报告文件，彻底消除了无变化时带来的频繁 Git Dirty Churn。
+   - 治理了 `server/deploy/com.ccc.scheduler.plist` 进程编排模板，将硬编码的 `python3` 统一为 `$PYTHON_BIN` 模板占位，`UserName` 统一为 `$USERNAME`。
+   - 结合上游 `.gitignore` 修改，本地 existing 的 `*-ccc-patrol.md` 文件已成功通过 `git rm --cached` 移出跟踪，保证后续不会污染 Git。
+
+2. **测试结果**：
+   - 运行单元测试套件，`server/tests/test_observer.py` 14 个测试用例全部通过，测试通过率 100%。
+   - 运行全量 `pytest` 排除 `t53`，整体测试套件全部绿灯。
+
+3. **push 证据**：
+   - 分支：`codex/ccc046-observer-scheduler-enable`
+   - Commit Hash：`ce754fd6`
+   - 远端推送命令：`git push origin codex/ccc046-observer-scheduler-enable`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `ccc-plan-015` 目前属于「部分执行」，本卡切片已完成，关联关系均在卡头及方案中正确声明。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：无。本次为正常的重构与排雷工作，未生成新的架构级教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：否。未改变项目结构或项目技术栈，仅对报告路径及启动模板变量进行标准化调整。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：否。线路近况未发生偏转。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+（无人工批注）
 
 ## 执行提示
 
