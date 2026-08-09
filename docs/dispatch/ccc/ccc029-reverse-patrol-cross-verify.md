@@ -1,6 +1,6 @@
 # 任务卡 ccc029 · 逆向巡查与交叉验证Agent（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡7 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡7 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -55,20 +55,33 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- 在 `server/engine/observer.py` 中实现了逆向巡查与治理巡查的双重检测核心，支持 `--once` CLI 运行并自动产出 `docs/notes/YYYY-MM-DD-ccc-patrol.md`。
+- 实现了对 roadmap 业务线路段落缺失、卡头关联方案格式、已关闭卡维护区占位检测、路线图状态漂移及方案关联卡完备性/双向状态状态推进的校验。
+- 实现交叉验证（cross_confirm），合并多视角下同一个 `acting_on` 的异常点升级为红旗（cross_confirm=1.0）并标注 `【交叉确认】`。
+- 完成自研测试用例 `server/tests/test_observer.py` 覆盖巡查及报告生成机制。
+
+### 2. 测试结果
+- `pytest server/tests/test_observer.py` 全绿通过。
+- `--once` 实测产出 400+ 条真实漂移/不一致异常，成功命中 `ccc-plan-010` 双视角失配、`ccc-plan-002`/`009` completed 但关联卡为无，以及 `hp004-006` 状态漂移并对其实施交叉验证升为红旗。
+
+### 3. Commit Hash
+- `fa61d61bcf8e8d41a8cbb4b8f001fde593e3431f`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：方案 ccc-plan-011 卡7 关联的逆向巡查已完成，卡头已同步更新为已回写。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：目前逻辑健全无特殊需要沉淀的架构级新教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：新增的 `observer.py` 及测试文件均符合已有 `server/` 项目 standard 架构。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：无变化，按 ccc-plan-011 路线稳步前进。
 
 ## 批注落实
 
