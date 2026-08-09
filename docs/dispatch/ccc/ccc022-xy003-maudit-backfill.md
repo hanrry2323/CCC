@@ -1,6 +1,6 @@
 # 任务卡 ccc022 · xy003 机审区补审回退(状态修复)（OpenCode 执行）
 
-> 关联：ccc-plan-004 批次5 空回写/机审缺口 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-004 批次5 空回写/机审缺口 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 目标
 
@@ -46,11 +46,18 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 1. 实现说明
+- **状态修复**：已按白名单要求，将 `docs/dispatch/xy/xy003-wire-2pass-encoding.md` 中的卡片头部状态由 `已关闭` 变更为 `已回写`。
+- **目的达成**：使 `xy003` 重新落入看板「机审」列，待 2017 Engine 机审席自动触发补审。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- **校验成功**：本地运行 `python3 -m server.board.validate docs/dispatch` 验证通过，无新增报错。
+
+### 3. Push 证据
+- **仓库分支**：`codex/ccc022-xy003-maudit-backfill`
+- **提交哈希**：`967649f734246b99cda12152a7ac82fbbbb3c6af`
 
 ## 执行提示
 
