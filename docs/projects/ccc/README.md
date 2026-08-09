@@ -6,10 +6,10 @@
 
 ## 路径
 
-| 机 | 路径 |
-|----|------|
-| M1（写源） | `/Users/apple/program/CCC` |
-| Mac2017（生产） | `/Users/fan/program/CCC`（只 pull） |
+| 机 | 路径 | 职责 |
+|----|------|------|
+| M1（中枢） | `/Users/apple/program/CCC` | 中枢出卡/验收/合入/看板 + 轻量开发 |
+| Mac2017（生产与执行） | `/Users/fan/program/CCC` | 执行写码节点（engine worktree） + 生产 :7788 |
 
 ## 在 CCC 怎么动
 
