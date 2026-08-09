@@ -67,7 +67,7 @@
 2. 所有新增的测试用例与原有用例编译完全正常。在业务仓 `/Users/fan/program/apps/medio-0` 中，执行 `cargo test --package medio-core --lib service::rss::service::tests`，所有 37 个 RSS 单元测试完全通过。
 
 ### push 证据
-- 业务仓 (medio-0) 提交哈希: `d5be9865cc8f2a9db4cc2e8d35eb65b9d363cc1d`
+- 业务仓 (medio-0) 提交哈希: `d5be9868fb1a638759daacfb2fde32c19a56f296`
 - 业务仓分支: `codex/mx028-rss-feed-validation-before-add`
 
 ## 批注落实
