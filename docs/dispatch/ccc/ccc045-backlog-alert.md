@@ -2,6 +2,19 @@
 
 > 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
+## 机审区
+
+**机审：通过** · Claude Code（2017 机审席）· 2026-08-10
+
+独立取证（不采信回写区摘要），证据如下：
+- 分支 `codex/ccc045-backlog-alert`，改动 2 commit：`4dbffee4`（feat）+ `a68bb5fb`（回写补记），`git diff origin/main...HEAD --stat` 仅 4 个白名单文件 + 本卡自身，无越界。
+- `server/board/queries.py` `ready_for_merge` 增加 `threshold` 参数（默认 env `CCC_BACKLOG_THRESHOLD`/`BACKLOG_THRESHOLD`，缺省 5），`count >= threshold` 时返回 `backlog_alert:True` + `warning`（验收 2 可配置 ✔）。
+- `server/tests/test_ccc_plan.py::test_ready_for_merge_backlog_threshold` 覆盖默认阈值触发（5==5→alert）、显式参数、两条 env 分支（验收 3 ✔）。
+- `scripts/approve-merge.sh` 入口加非阻塞 `[ALERT]` 前置提醒；`boardPage.js` 顶部呼吸式警告横幅 +「去收卡」，CSS 变量/`board-live-pulse` 动画均已存在。（验收 1 ✔）
+- 维护区四问已逐项填写非占位；其中 Q1 [是] 原声明与 plan-015 不符（C2 验收未勾选），机审已就地同步勾选 `[x]` 并登记关联卡 `ccc045`。
+
+**机审：通过**
+
 ## 基准文件（先看）
 
 - 项目基准（README·权威索引）：`docs/projects/ccc/README.md`
