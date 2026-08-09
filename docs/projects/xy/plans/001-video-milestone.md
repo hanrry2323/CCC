@@ -1,12 +1,12 @@
 # 方案 · xianyu 视频里程碑推进
 
-> 项目：xy · 编号：xy-plan-001 · 状态：已确认 · 作者：老板 · 工具：Codex
-> 创建：2026-08-03 · 更新：2026-08-03
-> 关联卡：xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy028, xy029, xy030, xy031
+> 项目：xy · 编号：xy-plan-001 · 状态：已完成 · 作者：老板 · 工具：Codex
+> 创建：2026-08-03 · 更新：2026-08-10
+> 关联卡：xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy027, xy028, xy029, xy030, xy031
 > 关联方案：无
 > 迁移自：qx-map `__archive__/decisions/xianyu-视频里程碑-方案-2026-08-03.md`
 > 决策人：老板 · 记录/管理：Codex · 执行：Trae · 验收：Codex
-> 状态：✅ 方案定稿，待 Trae 执行
+> 状态：✅ 已完成
 > 关联：`command-post/intents.md`（INT-122）
 > 性质：xianyu 视频推进唯一执行依据；与旧文档冲突处，以本方案为准。
 
