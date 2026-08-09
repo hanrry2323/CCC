@@ -1,6 +1,6 @@
 # 任务卡 ccc027 · Loop Observer只读巡查框架：scheduler挂载（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡5 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡5 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -55,24 +55,42 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- 新建了 `server/engine/observer.py` 巡查模块，实现了 `run_observer` 核心流程。
+- 设计了自建调度门槛，支持「每日1次」使用 `last-run.json` 时间戳对比，以及「合入后触发」对比 `git log origin/main` 较最新的 merge commit 哈希与 `cards.index.jsonl` 的文件修改时间和大小，确保只在变更或到达日周期时进行快照运行。
+- 在 `server/engine/scheduler.py:_default_registry()` 中延迟引入并注册了只读的 `loop-observer` 定时任务。
+- 新建了 `server/deploy/com.ccc.scheduler.plist` 作为进程编排模板，用于 launchd 部署 and 常驻定时拉起。
+- 确保所有引入仅限只读加载器，不调用写或变更接口。
+
+### 2. 测试结果
+- 新建并成功运行 `server/tests/test_observer.py` 包含:
+  - `test_ast_import_whitelist`: 语法分析（AST）校验白名单，确保 `observer.py` 绝对没有引入 `server.engine.store` 或 plans 改写/创建动作。
+  - `test_should_run_scenarios`: 精确模拟在“首次运行”、“未过24小时且无任何变更”、“24小时已过”、“Git commit发生变更”、“cards.index.jsonl发生变化”等 5 种场景下的门槛拦截与激活。
+  - `test_run_observer_output`: 模拟注册表/卡/计划加载，验证生成的 snapshot.json、last-run.json 等文件结构及其 projects, cards_states, plans_states 数据字段完整性。
+- 通过 `--once` 参数对 `scheduler.py` 启动的运行日志、首次运行与第二轮 skipped 拦截进行测试确认，结果全部全绿符合预期：
+  `pytest server/tests/test_engine_scheduler.py server/tests/test_observer.py` -> 13 passed / 34 passed (with cluster tests)。
+
+### 3. commit + push 证据
+- 提交哈希 (commit hash)：`307f0090` (branch: `codex/ccc027-loop-observer-framework`)
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：已在 ccc-plan-011 中同步记录本卡进入执行与回写阶段。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：按标准只读机制与 AST 校验白名单设计，无额外特异性教训沉淀。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
+   - 说明：在 `server/engine/` 下新建了 `observer.py` 作为定时巡查模块，并新建了 `server/deploy/com.ccc.scheduler.plist` 进程编排模板，不影响主体技术栈。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：项目近况完全符合原本规划。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+无批注
 
 ## 执行提示
 
@@ -118,3 +136,23 @@
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过**
+
+- 验收方：Claude Code（2017 机审席）· 日期：2026-08-09
+- 范围核对：cc027 两提交仅触及卡白名单内文件（`server/engine/observer.py` 新建、`server/engine/scheduler.py` 注册行、`server/deploy/com.ccc.scheduler.plist` 新建、`server/tests/test_observer.py` 新建、卡文件回写），无越界；status 已置「已回写」。
+  - 附注：diff 中出现的 `docs/dispatch/clw/clw008-*` 删除为**分支基础点早于 origin/main** 的历史分叉产物（该文件由 origin/main 上 4e1fb16a 在分支之后新建），非本卡改动，合入 rebase 后自会消解。未触及、未代理执行。
+- 架构审查：
+  - observer 只读性**符合红线**：仅 import `registry.load_projects` / `loader.load_dispatch_cards,get_index_path` / `plans.list_plans` 三个只读 loader，AST 白名单测试 `test_ast_import_whitelist` 硬性禁止 store 与 plans create/update；`run_observer(cfg)->(ok,summary)` 契约与 scheduler 框架一致，延迟 import（`_default_registry` 内）无循环依赖。
+  - 调度门槛自审合理：每日 1 次（24h last-run 比较）+ 合入后触发（git merge commit 哈希）+ cards.index.jsonl mtime/size 变化，输出固定落 `DATA_DIR/observer/`（snapshot.json + 时间戳快照 + last-run.json），无写卡/registry/代码路径。
+  - 边界与异常：git subprocess、文件读写均有 try/except 兜底，threshold 逐场景单测覆盖（首次/跳过/24h/git 变更/index 变更）。
+- Doc-Gate 完成钩子：维护区四问已逐项勾选并填实质说明，无占位。
+- 可修问题（就地已修并 push `063d3bda`）：
+  1. `server/engine/scheduler.py:195` 注释存在回写时引入的病字符（「避免循环依赖」缺字），已恢复完整 UTF-8 文本。
+  2. `server/deploy/com.ccc.scheduler.plist` 模板头部占位说明补充 `$DATA_DIR`（EnvironmentVariables 已引用但未在模板说明文档化）。
+  - 验证：`py_compile` OK、`plutil -lint` OK。
+
+- 结论：范围、只读红线、架构契约、边界处理均达标，非原则性红线问题，予以通过。
+
