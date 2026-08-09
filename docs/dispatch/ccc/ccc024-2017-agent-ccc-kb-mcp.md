@@ -88,6 +88,18 @@
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：线路图未受影响，当前任务按既定计划完成。
 
+## 机审区
+
+**机审：通过**（2026-08-09 · 2017 机审席）
+
+审查摘要：
+- **范围**：卡分支相对切出点仅改动 `docs/dispatch/ccc/ccc024-2017-agent-ccc-kb-mcp.md` 一个文件（+27/-14，write-back）。`git diff origin/main` 所见 ccc027-032 卡"删除"为分支基准差异（切出点早于 main 出卡 `228b20e7`），非执行体所为，无越界。
+- **意图**：按 ccc-plan-011 阶段一 1.2，将 CCC `server.kb.mcp_server` stdio 接入 2017 执行 Agent（OpenCode + Claude Code）并重建 v2 索引。范围限定 2017 用户级配置 + `--reindex`，不碰仓代码/registry/卡/看板，符合卡红线。
+- **配置/实现**：复用既存 `server.kb.mcp_server`（薄驱动调用既有能力），无新依赖、无架构风险；操作对象为 2017（`fan@192.168.3.116`），配置前已备份 `.bak-ccc-kb`。
+- **验收证据**：回写区报告 `--health` documents=126、sections 含 lessons/projects/decisions/nodes-paths 四域齐全；OpenCode 实测 `knowledge_search` 命中 lessons 返回带 score 教训。运行面证据与目录结构自洽。
+- **维护区 Doc-Gate**：四问逐项勾选并填写真实说明，无占位。
+- **结论**：无可修问题、无原则性红线问题。通过。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
