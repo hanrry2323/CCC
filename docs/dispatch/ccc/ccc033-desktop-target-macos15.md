@@ -1,6 +1,6 @@
 # 任务卡 ccc033 · Desktop 部署目标升级 macOS 15 + 解冻声明（OpenCode 执行）
 
-> 关联：ccc-plan-012 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-012 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
