@@ -73,6 +73,19 @@ OpsView 指标可视化改用系统 Swift Charts（ccc-plan 切片）。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：项目整体下一步仍按 ccc-plan 中的大卡序列正常稳步执行。
 
+## 机审区
+
+机审：通过
+
+审查摘要（2017 机审席 · 原则性 Code Review）：
+- **范围合规**：commit `f3cd9711` 仅改 `desktop/Sources/CCCDesktop/OpsView.swift`，在卡白名单（OpsView.swift + Components/**）内；未触碰无关文件、不写 QuantHive 业务、不恢复旧编排，无越界。
+- **字段/类型匹配**：使用的 `res.cpu`/`mem_pct`/`disk_pct`（Double?）与 `sparklines.load_ratio`/`mem_pct`（String?）均与 `desktop/Sources/CCCDesktop/BoardOpsModels.swift` 定义一致，无字段错配。
+- **parseSparkline 正确性**：逐字符解析经 Swift 实测验证——空格/下划线→0.0，块字符▂▃▄▅▆▇█ 等距映射 1/7..7/7，未知字符容错 0.5；无越界/崩溃风险。blocks 前导空格由 `char == " "` 分支在首次判定吸收，逻辑自洽。
+- **单位一致**：CPU `*100`、mem/disk 直接用百分比，两个图 scale 均 0...100，无单位错配。
+- **边界守卫**：可选值 `?? 0` 容错；趋势图 x 域 `0...max(1, count-1)` 防空/负；`!trendPoints.isEmpty` 防空白曲线。ValueLabel 用 `value.as(Int.self)` 空安全。
+- **维护区四问**：逐项勾选并填实际说明，无占位，Doc-Gate 完成钩子满足。
+- **无原则性红线**：无安全漏洞、无系统性与架构隐患；复用系统 Swift Charts，无新增依赖，符合 ccc-plan-012 切片意图。
+
 ## 批注落实
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
