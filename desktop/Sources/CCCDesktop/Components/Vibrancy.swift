@@ -69,6 +69,8 @@ struct SoftRow: View {
             )
         }
         .buttonStyle(.plain)
+        .powHoverSpring()
+        .powSpringClick()
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
         .accessibilityLabel(title)
