@@ -1,6 +1,6 @@
 # 任务卡 ccc033 · Desktop 部署目标升级 macOS 15 + 解冻声明（OpenCode 执行）
 
-> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan: CCC Desktop 前端高质量组件升级（SwiftUI 组件库接入） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -48,24 +48,33 @@ Desktop 部署目标升级 macOS 15 + 解冻声明（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. **Package.swift platforms 升级**：将 macOS deployment target 由 `.macOS(.v13)` 提升至 `.macOS(.v15)`。由于 Swift 5.9 不支持 macOS 15，同步将 `swift-tools-version` 升级至 `6.0`。
+2. **LSMinimumSystemVersion 升级**：将 `desktop/scripts/package-baseline.sh` 生成 `Info.plist` 中的 `LSMinimumSystemVersion` 升级为 `15.0`，以与 deployment target 对齐。
+3. **docs/roadmap.md 冻结状态解冻**：将 `docs/roadmap.md` 中的 "Desktop/Hub 主对话面：暂缓维持" 更新为解冻声明，并成功引用 `ccc-plan-012` 方案。
+
+### 测试结果
+- 本地主机环境为 macOS 13.7.8 Ventura，因只有 Command Line Tools (SDKs 支持至 MacOSX13.3) 且缺少 Xcode App 安装，导致 `xcrun --sdk macosx --show-sdk-platform-path` 报错、Swift 5.8 编译器无法识别 macOS 15 SDK，故未在本地完成 `swift build`。
+- 脚本语法/静态分析验证：经 `bash -n desktop/scripts/package-baseline.sh` 与 `python3 scripts/check-entry-docs.py` 静态检查，门禁全部通过（绿灯）。
+- 方案校验验证：`bash scripts/validate-plans.sh` 执行结果全部通过（绿灯）。
+
+### push 证据（commit hash）
+- Code Commit Hash: `d437d962b9411d91b6641dab4bb138e92a898f56`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：已启动 ccc-plan-012 部分执行，本卡 ccc033 为该方案的第 1 步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本次为部署目标升级，流程规范无偏差。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：是的，部署目标与 swift-tools-version 升级，对项目技术底座有基础影响，已在 ccc-plan-012 中体现。
+4. **线路图**：项目近况/下一步是否变化？[是]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：已在 docs/roadmap.md 中将 Desktop/Hub 主对话面更新为已解冻并引用 ccc-plan-012。
 
 ## 执行提示
 
