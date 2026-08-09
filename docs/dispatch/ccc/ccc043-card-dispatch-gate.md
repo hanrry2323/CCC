@@ -56,7 +56,7 @@
 - **测试结果**：
   1. 新增 `server/tests/test_card_dispatch_gate.py`，完美测试了「本地过期但远端已占用编号」时编号查重被拒、自动编号跳过并自增的场景；
   2. 运行 `server/tests` 下全部 721 个单元测试全绿通过。
-- **push 证据**：分支 `codex/ccc043-card-dispatch-gate`
+- **push 证据**：分支 `codex/ccc043-card-dispatch-gate`，Commit Hash: `7ecb78cc1d49e385733440152270be27e5137d45`
 
 ## 维护区
 
