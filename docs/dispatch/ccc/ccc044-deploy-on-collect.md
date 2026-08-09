@@ -74,6 +74,19 @@
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
 
+## 机审区
+
+**机审方**：Claude Code（2017）· 机审：通过
+
+- **范围** ✓：`git diff merge-base..HEAD` 仅改卡内白名单 4 文件（卡本体 / onboarding.md / approve-merge.sh / kickstart-ccc.sh），无越界、无 `## 验收区`、未置「已关闭」。
+- **验收1** ✓：`approve-merge.sh` 收口后 `deploy_check_2017` 检查 2017 生产 HEAD vs origin/main，落后则调 `deploy-ccc.sh`；路径覆盖（本地生产目录 / 同机 worktree / SSH 192.168.3.116 三级回退），`set -euo pipefail` 守卫健全。
+- **验收2** ✓：`deploy-ccc.sh` → `kickstart-ccc.sh` 链路；kickstart 的 `SERVICE_TARGETS` + `PROCESS_NAMES` 已补 `com.ccc.board-scheduler`（`server.board.scheduler`），三服务覆盖达成。
+- **验收3** ✓：onboarding.md §6.1 补「合入后须部署检查」说明 + approve-merge 头注释同步。
+- **验收4** ✓：deploy 原子流 = `git pull --ff-only` → pytest → kickstart 三服务热重启；真实链路闭环。
+- **维护区（Doc-Gate）** ✓：四问逐项 `[是/否]` 勾选 + 非占位说明；方案同步声明引用 ccc-plan-015 状态「已确认」且 卡 ccc044 确列其关联卡（转卡后回填）——声明属实。
+- **就地修复**：单卡合入后提示「已自动触发部署检查」逐卡打印，但 deploy 仅在整批收口后（且全批成功）才触发——改文案为「批次全部收口后将自动触发…」，与真实时序一致。commit `a898616f`，bash -n 通过。
+- 注：分支相对 origin/main 3 ahead / 2 behind（origin/main 缺本 feature），属合入前 rebase 交接，非本卡缺陷。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
