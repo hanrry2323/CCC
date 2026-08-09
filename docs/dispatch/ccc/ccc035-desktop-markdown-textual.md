@@ -118,3 +118,17 @@ MarkdownText 改用 Textual 渲染（聊天/方案卡 Markdown）（ccc-plan 切
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过**
+
+**审查范围**：`desktop/Sources/CCCDesktop/Components/MarkdownText.swift` + `desktop/Package.swift`（均落卡内声明范围）。
+
+**审查摘要**（2017 机审席 · 原则性 Code Review）：
+1. **公共 API 保留 ✓**：`MarkdownText(source:)` 对外接口不变（`source` 必填 + `font`/`foreground` 默认值），调用方 `ContentView.swift:1538/1626` 零改动，符合验收标准 1。
+2. **单换行行为归纳保留 ✓**：`preprocessMarkdown` 把普通段落行尾补 `"  "`（soft→hard break），并正确豁免标题/列表/引用/表格/分隔线/有序列表及代码块内逐字行——与原「每行为独立显示行」刻意决策一致；代码块 fence 进出用 `inCodeBlock` 保护，块内空白/内容逐字保留。
+3. **API 与库现实核对 ✓**：`StructuredText(markdown:)`、`.textual.textSelection(.enabled)`、`.textual.structuredTextStyle(.gitHub)` 均为 textual `main` 分支公开 API（已对证库 README/示例），非臆造接口。
+4. **维护区四问**：已逐项勾选并填说明（同步已述 ccc-plan-012 部分执行；教训/README/线路图判定合理），完整通过 Doc-Gate。
+5. **机审可修问题已就地修复**：原提交在 Package.swift 一股脑引入 `SwiftUIX` + `swiftui-introspect` + `Textual` 三依赖，但全仓仅 `import Textual`，前两者零引用属死依赖（增构建耗时 + 无关第三方包）。已移除多余两依赖、仅保留 text，并 commit+push（`6409ea5e`）。
+6. **边界/风险备注（不阻断）**：构建验证依赖具备 macOS 15 SDK 的 CI/环境（本地 Ventura 无法跑），属机械门禁裁决范畴；表格/含 `|` 行不补硬换行属可接受的最小渲染差异。
