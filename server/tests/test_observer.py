@@ -120,3 +120,32 @@ def test_run_observer_output(mock_list_plans, mock_load_dispatch_cards, mock_loa
         assert snapshot["projects_count"] == 0
         assert snapshot["cards_count"] == 0
         assert snapshot["plans_count"] == 0
+
+
+def test_weight_scoring_and_report_ordering():
+    from server.engine.observer import score_finding, generate_patrol_report, DEFAULT_SCORING_RULES
+    f1 = {
+        "id": "missing_roadmap_section_qb",
+        "title": "missing roadmap qb",
+        "project": "qb",
+        "type": "missing_section",
+        "cross_confirm": 0.5,
+    }
+    f2 = {
+        "id": "status_drift_hp004",
+        "title": "status drift hp004",
+        "project": "hp",
+        "type": "drift",
+        "cross_confirm": 1.0,
+    }
+    scored1 = score_finding(f1, DEFAULT_SCORING_RULES)
+    scored2 = score_finding(f2, DEFAULT_SCORING_RULES)
+    assert scored1["weight"] == 0.5 * 3 * 2
+    assert scored2["weight"] == 1.0 * 2 * 3
+    findings = [scored1, scored2]
+    findings.sort(key=lambda x: x["weight"], reverse=True)
+    assert findings[0]["id"] == "status_drift_hp004"
+    report = generate_patrol_report(findings, "test-report")
+    assert "status drift hp004" in report
+    assert "missing roadmap qb" in report
+    assert "scripts/new-card.sh" in report
