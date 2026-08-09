@@ -1,6 +1,6 @@
 # 任务卡 ccc041 · 2017 Engine 执行并发上限（≤3 worktree，配置化）（OpenCode 执行）
 
-> 关联：ccc-plan-013 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-013 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
