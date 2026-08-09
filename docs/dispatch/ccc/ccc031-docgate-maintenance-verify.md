@@ -86,6 +86,25 @@
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：项目近况和下一步暂无变化，无需更新 roadmap.md。
 
+## 机审区
+
+**机审：通过**
+
+审卡范围：docgate 维护区四问真实性交叉核对（ccc031），2017 机审席 Code Review。
+
+- **范围**：改动严格落在卡白名单内（`server/board/docgate.py` 新建、`scripts/approve-merge.sh`、`server/board/prompt_inject.py`、`server/tests/` + 卡文件回写）。未越界 registry / validate.py / 卡正文；红线无违反（分支卡内，未直推 main）。
+- **Doc-Gate（维护区四问）**：四问全部勾选 `[否]/[否]/[否]/[否]` 且说明为实情非占位；`verify_maintenance` 对本卡返回 `ok=True`。事实核对：`ccc-plan-011` 无实体方案文件（plans 仅到 010）、无新增教训/README/roadmap 变更，声明与实现一致。
+- **验收实现**：
+  - 真实填卡样本 → `ok=True`（成功测试 + 本卡自证）
+  - 填假样本（Q1 声明[是]但方案无本卡 / Q2 引用不存在文件）→ `ok=False` 且 problems 精确注明缺失项（已实测拦截）
+  - `approve-merge.sh` check_maintenance 由「只查非空」升级为调用 `docgate.verify_maintenance`，假卡拒绝合入
+  - `prompt_inject.py` 审计指令升级，把语义级（文件在但内容对不上）复核绑定到审计席，满足 needs_llm 设计意图
+- **测试**：`server/tests/test_writeback_gate.py` 6/6 绿（含新增 success / failed 两例）；全仓 `server/tests/` 的 5 个失败（HTTP 超时 / plans JS 静态契约）均在 ccc031 未触碰的文件中，属环境性既有失败，与本卡无关。
+- **非阻塞备注**：提交重排了无关 meltdown 测试缩进（无害）；choice 校验集对四问统一含「是/否/有/无」（继承旧门禁同款，模板已约束）。均已低于可修阈值，不动以保 diff 干净。
+- **回写证据**：代码在分支 HEAD `47fd6cf0`，卡回写 hash `21c3741a` 为 rebase 前同树提交，内容一致。
+
+本卡维护区完整、实现正确、架构合理，予以通过。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
