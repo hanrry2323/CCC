@@ -1,4 +1,4 @@
-# 任务卡 clw006 · resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（OpenCode 执行）
+# 任务卡 clw007 · resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（OpenCode 执行）
 
 > 关联：ccc-plan: clw007 会话恢复工作目录 + 小缺陷修复 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-09
 
