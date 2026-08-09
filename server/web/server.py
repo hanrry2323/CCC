@@ -2259,6 +2259,20 @@ def _start_card_watcher():
     t.start()
 
 
+class _CCCThreadingHTTPServer(ThreadingHTTPServer):
+    """并发 HTTP 服务。
+
+    2026-08-09 修复：原 create_server 在 ``ThreadingHTTPServer(...)`` 构造
+    （内部已 ``listen(5)``）之后才赋值 ``request_queue_size = 128``——属性
+    赋值发生在 bind/activate 之后，对 backlog 无效（死代码），实际 backlog
+    一直是 5。浏览器并发拉 20+ 静态资源时 accept 队列溢出，macOS 内核直接
+    RST 掐断连接（tcpdump 实锤：SYN 后 ~7ms 收到 116:7788 的 RST），
+    CSS/JS 模块加载失败 → 计划页从未挂载。改为类属性，listen 生效前即生效。
+    """
+
+    request_queue_size = 128
+
+
 def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建 HTTP 服务实例（不启动）。
 
@@ -2266,11 +2280,7 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
     挂起期间 /health、/board/*、第二路 /conversation 被网络层阻塞的 P1 问题
     （T42 独立复现实锤）。
     """
-    server = ThreadingHTTPServer((host, port), _APIHandler)
-    # 2026-08-05 修复：默认 request_queue_size=5，浏览器并发拉静态资源（20+ 连接）
-    # 时连接队列溢出 → ERR_CONNECTION_RESET；调大队列消除并发连接失败。
-    server.request_queue_size = 128
-    return server
+    return _CCCThreadingHTTPServer((host, port), _APIHandler)
 
 
 def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
