@@ -241,7 +241,120 @@ def _clean_snippet(snippet: str, doc_id: str) -> str:
     return f"  - [{doc_id}] {text}"
 
 
-def build_executor_hint(project_prefix: str, title: str = "", card_context: str = "") -> str:
+def _parse_related_field(card_content: str) -> str:
+    """提取卡内容中的关联字段。"""
+    if not card_content:
+        return ""
+    for line in card_content.splitlines():
+        line = line.strip()
+        if line.startswith(">"):
+            # 用 · 分割
+            parts = [p.strip() for p in line.lstrip(">").split("·")]
+            for part in parts:
+                if ":" in part or "：" in part:
+                    subparts = re.split(r"[:：]", part, maxsplit=1)
+                    if len(subparts) == 2 and subparts[0].strip() == "关联":
+                        return subparts[1].strip()
+    return ""
+
+
+def _parse_plan_ref(related_text: str) -> tuple[str, str] | None:
+    """解析关联字段中的方案前缀和编号。
+    
+    例如: "ccc-plan-011 卡1" -> ("ccc", "011")
+    """
+    match = re.search(r"\b([a-zA-Z0-9]+)-plan-(\d+)\b", related_text, re.IGNORECASE)
+    if match:
+        return match.group(1).lower(), match.group(2)
+    return None
+
+
+def _get_plan_summary(prefix: str, num: str) -> str:
+    """读取并解析方案摘要。"""
+    plans_dir = _PROJECT_ROOT / "docs" / "projects" / prefix / "plans"
+    if not plans_dir.is_dir():
+        return ""
+    
+    plan_files = list(plans_dir.glob(f"{num}-*.md"))
+    if not plan_files:
+        return ""
+    
+    try:
+        plan_content = plan_files[0].read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.warning("读取方案文件失败 %s: %s", plan_files[0], exc)
+        return ""
+    
+    # 提取目标：支持 ## 目标 或 ## 0. 一句话目标
+    m_target = re.search(r"##\s+(?:\d+\.\s+)?(?:一句话)?目标\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", plan_content, re.DOTALL)
+    target = m_target.group(1).strip() if m_target else ""
+    
+    # 提取验收标准
+    m_criteria = re.search(r"##\s+验收标准\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", plan_content, re.DOTALL)
+    criteria = m_criteria.group(1).strip() if m_criteria else ""
+    
+    if not target and not criteria:
+        return ""
+    
+    def clean_block(text: str) -> str:
+        # 去除 markdown 复选框 - [ ] 或 - [x]
+        text = re.sub(r"- \[[ xX]\]\s*", "", text)
+        # 去除列表行首 - 或 *
+        text = re.sub(r"^[-*]\s*", "", text, flags=re.MULTILINE)
+        # 替换多个空白字符为一个空格
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+    
+    target_clean = clean_block(target).rstrip("。")
+    criteria_clean = clean_block(criteria).rstrip("。")
+    
+    parts = []
+    if target_clean:
+        parts.append(f"目标：{target_clean}")
+    if criteria_clean:
+        parts.append(f"验收标准：{criteria_clean}")
+    
+    summary = "。".join(parts)
+    if summary:
+        summary += "。"
+    if len(summary) > 400:
+        summary = summary[:397] + "..."
+    return summary
+
+
+def _get_project_recent_lines(prefix: str) -> list[str]:
+    """读取并解析项目 README 的「线路/近况」节，返回最多 3 条。"""
+    readme_path = _PROJECT_ROOT / "docs" / "projects" / prefix.lower() / "README.md"
+    if not readme_path.is_file():
+        return []
+    
+    try:
+        raw = readme_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    
+    m = re.search(r"##\s*线路\s*/\s*近况\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", raw, re.DOTALL)
+    if not m:
+        m = re.search(r"##\s*线路近况\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", raw, re.DOTALL)
+    
+    if not m:
+        return []
+    
+    section_content = m.group(1).strip()
+    
+    lines = []
+    for line in section_content.splitlines():
+        line = line.strip()
+        if line.startswith("-") or line.startswith("*"):
+            item = re.sub(r"^[-*]\s*", "", line).strip()
+            if item:
+                lines.append(item)
+                if len(lines) >= 3:
+                    break
+    return lines
+
+
+def build_executor_hint(project_prefix: str, title: str = "", card_context: str = "", card_content: str = "") -> str:
     """生成「执行提示」——给开发大模型（OpenCode）的专用指令。
 
     从 KB 提取项目专属的开发技能、常用命令、关键模块和守则，
@@ -266,6 +379,22 @@ def build_executor_hint(project_prefix: str, title: str = "", card_context: str 
     lines = [f"- 项目：{name}（{role}）"]
     if mac2017_path:
         lines.append(f"- 仓库路径：{mac2017_path}（Mac2017）")
+
+    # 提取关联方案摘要
+    related_field = _parse_related_field(card_content)
+    if related_field:
+        plan_ref = _parse_plan_ref(related_field)
+        if plan_ref:
+            plan_prefix, plan_num = plan_ref
+            plan_summary = _get_plan_summary(plan_prefix, plan_num)
+            if plan_summary:
+                lines.append(f"- 关联方案摘要：{plan_summary}")
+
+    # 提取项目线路/近况
+    recent_lines = _get_project_recent_lines(project_prefix)
+    if recent_lines:
+        recent_str = "\n".join(f"  - {line}" for line in recent_lines)
+        lines.append(f"- 项目线路/近况：\n{recent_str}")
 
     # KB 技能指南（优先：含具体命令和守则）
     if kb_skill:
@@ -375,11 +504,11 @@ def inject_hints(
             return ""
         content = card_path_obj.read_text(encoding="utf-8")
 
-    executor_hint = build_executor_hint(project_prefix, title, card_context)
+    executor_hint = build_executor_hint(project_prefix, title, card_context, card_content=content)
     auditor_hint = build_auditor_hint(project_prefix, title, card_context)
 
     # 替换「## 执行提示」段：只替换空段或纯占位段
-    executor_placeholder = re.compile(r"(##\s*执行提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL)
+    executor_placeholder = re.compile(r"(^##\s*执行提示.*?\n)(.*?)(?=\n^##\s|\Z)", re.DOTALL | re.MULTILINE)
     exec_match = executor_placeholder.search(content)
     if exec_match:
         existing = exec_match.group(2).strip()
@@ -392,7 +521,7 @@ def inject_hints(
             )
 
     # 替换「## 机审提示」段
-    auditor_placeholder = re.compile(r"(##\s*机审提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL)
+    auditor_placeholder = re.compile(r"(^##\s*机审提示.*?\n)(.*?)(?=\n^##\s|\Z)", re.DOTALL | re.MULTILINE)
     audit_match = auditor_placeholder.search(content)
     if audit_match:
         existing = audit_match.group(2).strip()
@@ -462,8 +591,17 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    card_content = ""
+    if args.card_path and args.card_path != "-":
+        card_path_obj = Path(args.card_path)
+        if card_path_obj.is_file():
+            try:
+                card_content = card_path_obj.read_text(encoding="utf-8")
+            except Exception:
+                pass
+
     if args.executor_only:
-        print(build_executor_hint(args.project, args.title, args.context))
+        print(build_executor_hint(args.project, args.title, args.context, card_content=card_content))
         return
 
     if args.auditor_only:

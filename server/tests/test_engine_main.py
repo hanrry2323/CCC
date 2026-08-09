@@ -2223,6 +2223,90 @@ class TestPromptInjection:
         log_content = log_file.read_text(encoding="utf-8")
         # 旧卡无提示段 → 不含注入标记
 
+    def test_prompt_inject_plan_extracted(self, tmp_path: Path) -> None:
+        """关联含方案编号 → 提取方案并注入摘要。"""
+        from server.board.prompt_inject import build_executor_hint
+        
+        # 1. 准备一个方案文件
+        plan_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plan_dir.mkdir(parents=True)
+        plan_file = plan_dir / "011-loop-observer-architecture.md"
+        plan_file.write_text(
+            "# 方案 · Loop Observer 架构\n\n"
+            "> 项目：ccc · 编号：ccc-plan-011 · 状态：已确认\n\n"
+            "## 目标\n"
+            "实现执行 Agent 心智注入，自动拼入关联方案摘要。\n\n"
+            "## 验收标准\n"
+            "- [ ] 在提示中看到关联方案摘要。\n",
+            encoding="utf-8"
+        )
+        
+        # 2. 准备一个项目 README
+        project_dir = tmp_path / "docs" / "projects" / "ccc"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        readme_file = project_dir / "README.md"
+        readme_file.write_text(
+            "# CCC\n\n"
+            "## 线路 / 近况\n\n"
+            "- 近况1\n"
+            "- 近况2\n",
+            encoding="utf-8"
+        )
+        
+        # 我们需要临时修改 _PROJECT_ROOT
+        import server.board.prompt_inject
+        orig_root = server.board.prompt_inject._PROJECT_ROOT
+        server.board.prompt_inject._PROJECT_ROOT = tmp_path
+        try:
+            # 3. 准备卡内容
+            card_content = (
+                "# 任务卡 ccc023 · 执行\n"
+                "> 关联：ccc-plan-011 卡1 · 执行体：OpenCode · 状态：待分派 · 日期：2026-08-09\n"
+            )
+            hint = build_executor_hint("ccc", title="test", card_content=card_content)
+            assert "关联方案摘要：目标：实现执行 Agent 心智注入，自动拼入关联方案摘要。验收标准：在提示中看到关联方案摘要。" in hint
+            assert "项目线路/近况：" in hint
+            assert "近况1" in hint
+            assert "近况2" in hint
+        finally:
+            server.board.prompt_inject._PROJECT_ROOT = orig_root
+
+    def test_prompt_inject_non_plan_related(self, tmp_path: Path) -> None:
+        """关联占位 (无方案编号) → 不注入降级。"""
+        from server.board.prompt_inject import build_executor_hint
+        
+        import server.board.prompt_inject
+        orig_root = server.board.prompt_inject._PROJECT_ROOT
+        server.board.prompt_inject._PROJECT_ROOT = tmp_path
+        try:
+            card_content = (
+                "# 任务卡 ccc023 · 执行\n"
+                "> 关联：阶段 3 P1 · 执行体：OpenCode · 状态：待分派 · 日期：2026-08-09\n"
+            )
+            hint = build_executor_hint("ccc", title="test", card_content=card_content)
+            # 无方案编号 -> 不注入「关联方案摘要：」行
+            assert "关联方案摘要" not in hint
+        finally:
+            server.board.prompt_inject._PROJECT_ROOT = orig_root
+
+    def test_prompt_inject_plan_not_found(self, tmp_path: Path) -> None:
+        """方案不存在 → 不抛错。"""
+        from server.board.prompt_inject import build_executor_hint
+        
+        import server.board.prompt_inject
+        orig_root = server.board.prompt_inject._PROJECT_ROOT
+        server.board.prompt_inject._PROJECT_ROOT = tmp_path
+        try:
+            card_content = (
+                "# 任务卡 ccc023 · 执行\n"
+                "> 关联：ccc-plan-999 卡1 · 执行体：OpenCode · 状态：待分派 · 日期：2026-08-09\n"
+            )
+            # 方案 999 不存在，应不抛错且不注入
+            hint = build_executor_hint("ccc", title="test", card_content=card_content)
+            assert "关联方案摘要" not in hint
+        finally:
+            server.board.prompt_inject._PROJECT_ROOT = orig_root
+
 
 class TestValidateCardStateAfterWriteback:
     """执行体回写后卡头状态合法性校验（mx028 事故复盘）。"""
