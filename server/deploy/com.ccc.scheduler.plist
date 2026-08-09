@@ -17,7 +17,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>python3</string>
+    <string>$PYTHON_BIN</string>
     <string>-m</string>
     <string>server.engine.scheduler</string>
     <string>--config</string>
@@ -50,7 +50,7 @@
   <string>$LOG_DIR/scheduler.stderr.log</string>
 
   <key>UserName</key>
-  <string>fan</string>
+  <string>$USERNAME</string>
 
   <key>ThrottleInterval</key>
   <integer>5</integer>
