@@ -1,6 +1,6 @@
 # 任务卡 mx028 · RSS feed validation before add（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：mx · 日期：2026-08-09
 
 ## 目标
 
@@ -118,3 +118,16 @@
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 验收区
+
+**验收人**：Claude Code · 日期：2026-08-09
+
+**审查结论**：通过。
+
+- 范围：仅 `src/backend/core/src/service/rss/service.rs`，零越界
+- 测试：RSS 37 全绿（含 3 新增），core 全量 426 全绿
+- 安全：`#[cfg(test)]` 隔离 mock 逻辑，生产 SSRF 不受影响
+- 功能：HTTP HEAD → 200 + Content-Type 校验，失败返回明确错误
+
+**合入说明**：机审因执行体首次写回状态错误（completed→已回写）被跳过，人工补审通过，手动合入。
