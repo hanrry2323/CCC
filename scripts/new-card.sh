@@ -222,6 +222,14 @@ read -r -d '' CARD_BODY <<EOF || true
 ## 批注落实
 
 （若卡含 \`## 人工批注\`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+
+## 执行提示
+
+（中枢在出卡时注入，执行体（开发大模型）读到本节后优先遵循。）
+
+## 机审提示
+
+（中枢在出卡时注入，验收体（机审大模型）读到本节后优先遵循。）
 EOF
 
 if [[ "$DRY_RUN" == true ]]; then
@@ -232,6 +240,16 @@ fi
 
 mkdir -p "$PREFIX_DIR"
 printf '%s\n' "$CARD_BODY" > "$CARD_PATH"
+
+# ── 中枢 Prompt 注入：从 registry + README + KB 生成 LLM 专用提示段 ──
+# 注入执行提示（给开发大模型）和机审提示（给验收大模型），
+# 仅当卡文件含空占位段时才注入，已有内容不覆盖。
+if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.prompt_inject "$CARD_PATH" --project "$PROJECT_PREFIX" --title "$TITLE" ); then
+  [[ "$QUIET" != true ]] && echo "[OK] 提示段注入成功"
+else
+  # 注入失败不阻塞出卡（提示段为可选增强）
+  [[ "$QUIET" != true ]] && echo "[WARN] 提示段注入失败（卡已生成，提示段保持占位符）" >&2
+fi
 
 # ── 联动 validate 门禁：不合规卡拒绝并删除 ──
 # ccc003 修复：validate 前先刷新卡片索引（走 server.board 加载/落盘，使新卡入索引），
