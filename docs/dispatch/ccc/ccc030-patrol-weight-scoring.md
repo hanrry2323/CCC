@@ -140,3 +140,17 @@
   - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
 
     打回原因注明缺失项；执行体补维护区后重试。
+
+## 机审区
+
+**机审：通过** · 2017 验收席 Claude Code · 日期：2026-08-09
+
+审查摘要：
+- **范围合规**：改动仅在 `server/engine/observer.py` + `server/tests/test_observer.py` + 报告产物 `docs/notes/`。未触碰 new-card.sh / registry / validate.py，符合红线 1；无自动出卡/自动合入（红线 3），报告仅打印命令不执行。
+- **实现正确性**：`weight = cross_confirm × impact × frequency` 公式落实；`broken_link`（impact=4/frequency=4）权重最高，满足「断链/失配类排序靠前」验收点；红/黄/蓝旗分级合理（threshold 10/4）。
+- **测试**：`pytest server/tests/test_observer.py` 全绿（含新增 weight 计算/排序/命令格式用例）；本地 `--once` 实跑产出带权重报告，扫描可真实检测出 6 条发现（roadmap 缺席/状态漂移）。
+- **就地修复**：`generate_patrol_report` 原信任调用方预排序，但其表头承诺「按权重降序」——已改为函数内部自洽排序并补 `test_patrol_report_sorts_unsorted_input` 覆盖（原问题归类为可修小问题，已修复）。
+- **完成钩子**：`## 维护区` 四问均已勾选并填实质说明，无占位。
+- 遗留可继续优化项（非阻断，不构成打回）：`scan_findings` 单函数承载 5 类扫描，后续可拆成按 finding-type 的小函数提升可维护性。
+
+合入批准前需老板侧 `scripts/approve-merge.sh` 终验。
