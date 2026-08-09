@@ -76,6 +76,19 @@ Desktop 部署目标升级 macOS 15 + 解冻声明（ccc-plan 切片）。
 4. **线路图**：项目近况/下一步是否变化？[是]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：已在 docs/roadmap.md 中将 Desktop/Hub 主对话面更新为已解冻并引用 ccc-plan-012。
 
+## 机审区
+
+**机审：通过**
+
+审查摘要（2017 机审席 · 原则性 Code Review）：
+
+- **范围核验**：改动严格落在卡声明白名单内（`desktop/Package.swift`、`desktop/scripts/package-baseline.sh`、`docs/roadmap.md` + 任务卡自身）；无越界文件、无 `git add -A`、无直推 main、无编写 `## 验收区`、状态未置「已关闭」。
+- **代码质量/架构**：`Package.swift` 将 deployment target 由 `.macOS(.v13)` 提升至 `.macOS(.v15)`，并因 Swift 5.9 不支持 macOS 15 而同步将 `swift-tools-version` 升至 `6.0`——这是达成该平台目标所需的最小正确改动，无冗余改动；`package-baseline.sh` 中 `LSMinimumSystemVersion` 由 `13.0` 升至 `15.0`，使打包 `Info.plist` 与 deployment target 对齐，一致无漂移；`docs/roadmap.md` 冻结项「Desktop/Hub 主对话面」正确解冻并引用 ccc-plan-012。测试目录 `desktop/Tests/**` 无任何 macOS 版本相关硬编码，平台升级无需测试改动，属声明范围内「无需改动」项。
+- **边界安全**：本地主机为 macOS 13.7.8 / 仅有 CLT 无 Xcode App，无法构建 macOS 15 SDK，回写区已如实注明未跑原因（对应验收标准第 3 条「或注明未跑原因」的豁免条款），未虚报 build/test 结果；静态门禁（`bash -n`、`check-entry-docs.py`、`validate-plans.sh`）绿灯已记录。
+- **Doc-Gate**：维护区四问逐项勾选并填写实质说明（方案同步/README/线路图均勾「是」并点名落点，教训沉淀勾「无」理由成立），无占位或复制模板现象；卡头状态已更新为「已回写」。
+
+未发现需就地修复的可修问题，亦无原则性红线问题。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
