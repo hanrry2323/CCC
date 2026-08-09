@@ -1,6 +1,6 @@
 # 任务卡 T51 · 知识库 MCP 优化（Claude Code 执行）
 
-> 关联：ccc-plan-005 · 依据：老板点名「自建知识库 MCP 与优化做好」；现状=kb MCP（stdio）存在但无真实调用方，大脑直连 search.py，索引全量重建
+> 关联：ccc-plan-001 · 依据：老板点名「自建知识库 MCP 与优化做好」；现状=kb MCP（stdio）存在但无真实调用方，大脑直连 search.py，索引全量重建
 > 执行体：Claude Code · 验收：Codex（严格）· 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-04
 > 重出记录：2026-08-04 原卡作废（M1 worktree 方向不符）；2017 执行环境跑通（T53）后按 Engine 自动派发重出。
 > 工作目录：`/Users/fan/program/ccc-dev-ws`（2017 开发 worktree）；分支：`codex/t51-kb-mcp-optimize`（先 `git fetch origin main && git checkout -b codex/t51-kb-mcp-optimize origin/main`）

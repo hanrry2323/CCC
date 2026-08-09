@@ -1,6 +1,6 @@
 # 任务卡 ccc019 · engine gate skip metrics（OpenCode 执行）
 
-> 关联：ccc-plan-005 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 目标
 
