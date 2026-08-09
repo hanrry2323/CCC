@@ -114,6 +114,22 @@ case "$DISPATCH_DIR" in
 esac
 PREFIX_DIR="$TARGET_DIR/$PROJECT_PREFIX"
 
+# ── 出卡前先 git fetch origin main ──
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git remote | grep -q "^origin$"; then
+    git fetch origin main >/dev/null 2>&1 || true
+  fi
+fi
+
+# 计算相对路径，供 git ls-tree 使用
+REL_PREFIX_DIR=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  GIT_ROOT="$(git rev-parse --show-toplevel)"
+  if [[ "$PREFIX_DIR" == "$GIT_ROOT"/* ]]; then
+    REL_PREFIX_DIR="${PREFIX_DIR#"$GIT_ROOT"/}"
+  fi
+fi
+
 # ── 编号：--id 覆盖 or 前缀内自动自增（同前缀最大序号 +1，三位补零） ──
 next_num=0
 if [[ -d "$PREFIX_DIR" ]]; then
@@ -125,6 +141,17 @@ if [[ -d "$PREFIX_DIR" ]]; then
       (( n > next_num )) && next_num=$n
     fi
   done
+fi
+
+if [[ -n "$REL_PREFIX_DIR" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    base="$(basename "$f" .md)"
+    if [[ "$base" =~ ^"$PROJECT_PREFIX"([0-9]{3}) ]]; then
+      n=$((10#${BASH_REMATCH[1]}))
+      (( n > next_num )) && next_num=$n
+    fi
+  done < <(git ls-tree -r --name-only origin/main -- "$REL_PREFIX_DIR" 2>/dev/null || true)
 fi
 
 if [[ -n "$ID_OVERRIDE" ]]; then
@@ -146,6 +173,17 @@ if [[ -n "$ID_OVERRIDE" ]]; then
         exit 3
       fi
     done
+    # 查重：在 origin/main 中同前缀同序号已存在也拒绝
+    if [[ -n "$REL_PREFIX_DIR" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+      while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        existing="$(basename "$f" .md)"
+        if [[ "$existing" =~ ^"$PROJECT_PREFIX"([0-9]{3}) && "${BASH_REMATCH[1]}" == "$id_num" ]]; then
+          echo "[ERROR] 卡编号冲突：${ID_OVERRIDE} 与 ${existing} 重复（${PROJECT_PREFIX}${id_num} 已存在于 origin/main）" >&2
+          exit 3
+        fi
+      done < <(git ls-tree -r --name-only origin/main -- "$REL_PREFIX_DIR" 2>/dev/null || true)
+    fi
   else
     echo "[ERROR] --id 格式非法: $ID_OVERRIDE（须 <前缀><三位序号>[-slug]，如 ccc064-auto-naming）" >&2
     exit 3
@@ -209,6 +247,13 @@ CARD_PATH="$PREFIX_DIR/$CARD_FILE"
 if [[ -e "$CARD_PATH" ]]; then
   echo "[ERROR] 同名卡已存在：$CARD_PATH" >&2
   exit 3
+fi
+
+if [[ -n "$REL_PREFIX_DIR" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+  if git ls-tree -r --name-only origin/main -- "$REL_PREFIX_DIR" 2>/dev/null | grep -q -x "${REL_PREFIX_DIR}/${CARD_FILE}"; then
+    echo "[ERROR] 同名卡已存在于 origin/main：$CARD_FILE" >&2
+    exit 3
+  fi
 fi
 
 # ── 卡骨架 ──
