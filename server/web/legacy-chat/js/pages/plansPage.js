@@ -186,7 +186,7 @@ function render() {
         <span class="plans-count">${_plans.length} 个方案</span>
       </div>
       ${renderToolbar()}
-      <div class="plans-list" id="plans-list">
+      <div class="plans-grid plans-list" id="plans-list">
         ${renderList()}
       </div>
       <div class="plans-detail" id="plans-detail" style="display:none"></div>
