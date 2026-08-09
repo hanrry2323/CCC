@@ -1,6 +1,6 @@
 # 任务卡 hp018 · HP 数据节点就绪：PG backtest 库初始化+首轮回填+增量 cron+备份（OpenCode 执行）
 
-> 关联：INT-075 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-09
+> 关联：INT-075 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-09
 
 ## 目标
 
@@ -38,3 +38,9 @@ HP PostgreSQL backtest 数据库完整初始化，首轮历史 K 线回填，增
 ## 回写要求
 
 完成后更新本卡验收区，Engine 自动回写 INT-075。
+
+## 验收区
+
+**合入批准** · 日期：2026-08-09
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
