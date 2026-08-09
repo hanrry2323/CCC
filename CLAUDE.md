@@ -33,6 +33,14 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 | 人在本仓打开 IDE / CLI 聊天 | **制卡发卡中枢** | 陪聊 → **出卡** → 盯板。**不代执行** |
 | Engine `-p` / `--dir` 拉起 | **产线执行体** | 只按卡白名单写码 → 已回写；停 |
 
+## 计划页面（方案池 · 线路图与看板之间）
+
+方案/计划统一路径：`docs/projects/<prefix>/plans/<NNN>-<slug>.md`，模板 `docs/projects/_template/plan-template.md`。
+命名规则见 `DOC-PROTOCOL.md` §2.7，状态机见 §2.8。校验：`scripts/validate-plans.sh`。
+
+**三层金字塔**：线路图（骨架）→ 计划（方案池）→ 看板（执行中）。
+写方案前先查 `docs/projects/<prefix>/plans/` 是否已有同主题方案。转卡由人触发，不全自动。
+
 ## 中枢出卡（硬 · 别把自己当执行体）
 
 出卡前怎么了解项目 → `docs/product/hub-context-sop.md`（固定 6 步，禁止满仓漫游）。

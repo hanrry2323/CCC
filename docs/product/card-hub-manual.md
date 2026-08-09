@@ -30,6 +30,12 @@
 - 每项目一页档案：`docs/projects/<prefix>/README.md`
 - `forbidden: true` 或 `qh` → **不出卡**，按 registry 改门禁
 
+## 2.5. 查方案（计划页面）
+
+- 方案池：`docs/projects/<prefix>/plans/`（模板 `_template/plan-template.md`，命名 `DOC-PROTOCOL.md` §2.7）
+- 校验：`scripts/validate-plans.sh`
+- 转卡：方案确认后在计划页面（`#/plans`）点「转为任务卡」，脚本调 `new-card.sh` 生成任务卡进看板。**转卡由人触发，不全自动。**
+
 ## 3. 出卡（唯一入口脚本）
 
 ```bash
