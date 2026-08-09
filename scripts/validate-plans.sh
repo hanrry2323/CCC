@@ -103,9 +103,9 @@ validate_file() {
 
   # ── 7. 状态校验 ──
   local status
-  status=$(echo "$head_content" | grep '状态：' | head -1 | sed -E 's/.*状态：([^>]*).*/\1/' | tr -d ' ')
+  status=$(echo "$head_content" | grep '状态：' | head -1 | sed -E 's/.*状态：([^ ·]+).*/\1/' | tr -d ' ')
   if [ -n "$status" ] && ! echo "$status" | grep -qE "^($VALID_STATES)"; then
-    red "  FAIL 状态非法: $status（须为: $VALID_STATES）"
+    red "  FAIL 状态非法: ${status}（须为: ${VALID_STATES}）"
     ERRORS=$((ERRORS + 1))
     return
   fi
