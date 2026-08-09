@@ -51,7 +51,7 @@
 
 **重构收口任务卡**：[`dispatch/T31`](dispatch/T31-refactor-closeout-docs-baseline.md)～[`T35`](dispatch/T35-refactor-closeout-hangover-regression.md)（文档基线 / Engine 真派发 / 硬编码 / 死码 / 回归）。  
 **自动化基建（T52）**：[`automation-base.md`](automation-base.md)（出卡模板 / 一键放行 / 壳复验 / 卡头门禁 CI+pre-commit）。  
-**现行开发方向（2026-08-04 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）与前端四板块架构见 qx-map `__archive__/decisions/`。  
+**现行开发方向（2026-08-09 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）见 qx-map `__archive__/decisions/`；前端六板块（对话/看板/计划/线路图/运维/控制台）以计划页面为方案池，见 `docs/projects/<prefix>/plans/`。
 **日常短读**：本 §0 → [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) → `architecture.md` → `STARTUP-BRIEF.md`。
 
 ---
