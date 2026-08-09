@@ -1,6 +1,6 @@
 # 任务卡 hp021 · search result relevance scoring display（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-09
 
 ## 目标
 
@@ -46,11 +46,21 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 1. 实现说明
+- 改进了 Dashboard 前端搜索结果页面 `Search.tsx`。
+- 新增对 Tab 点击的实际过滤支持，切换 Tab 时能够针对性过滤显示「全部」、「文档」、「片段」和「笔记」类别。
+- 支持在各类别结果中正确计算并实时显示各 Tab 的具体命中结果数。
+- 增加了「笔记」分类搜索结果的分组显示，并在「笔记」搜索结果中同样展示了其匹配度评分（score）。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- 在 `/Users/fan/program/apps/hp/local/graph/dashboard` 路径下运行 `npm run test`，9 项测试全部顺利通过。
+- 运行 `npm run build` 打包发布成功，构建无任何报错或警告。
+
+### 3. push 证据
+- 业务仓 (hp) 提交 Hash: `bd0d5271d7df65f0f94adac8733915acd64cf0af`
+- 业务仓分支: `codex/hp021-search-result-relevance-scoring-display`
 
 ## 执行提示
 
