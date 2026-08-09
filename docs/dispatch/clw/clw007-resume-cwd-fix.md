@@ -72,6 +72,17 @@ resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（ccc-plan �
 ### 3. Push 证据 (Commit Hash)
 - 业务仓（clwarp）提交：[e3d3dd4b4cd2140020b64267d2ee07b0c285dc17](https://github.com/hanrry2323/clwarp/commit/e3d3dd4b4cd2140020b64267d2ee07b0c285dc17) 已经推送至 `codex/clw007-resume-cwd-fix` 分支。
 
+## 维护区
+
+1. **方案同步**：[是] 关联方案 clw-plan-001 阶段 3 后修复卡
+   - 说明：clw007 为 clw003 代码审查发现的 P1/P2 缺陷修复，方案转卡计划新增该卡（clw006 编号留位打包卡）。
+2. **教训沉淀**：[有] 恢复会话必须携带工作目录，否则 codex/opencode 上下文错位
+   - 说明：代码审查发现 resume 未传 working_directory 的功能缺陷，已随本卡修复；教训已同步 clw 复盘。
+3. **档案/README**：[否] 无项目档案变更
+   - 说明：本卡为缺陷修复，项目档案近况由合入后统一更新。
+4. **线路图**：[是] 下一步 = clw006 打包验收（最后一张）
+   - 说明：clw001-005、clw007 已收口，clw006 打包卡待出。
+
 ## 执行提示
 
 - 项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。）
