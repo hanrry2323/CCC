@@ -421,11 +421,11 @@ def convert_plan(
     except OSError:
         return {"error": "读取方案文件失败"}
 
-    # 状态检查：草案不可直接转卡
+    # 状态检查：只允许已确认/部分执行转卡
     current_fields = _extract_header_fields(content)
     current_status = current_fields.get("状态", "").split("·")[0].strip()
-    if current_status == "草案":
-        return {"error": "草案状态不可转卡，请先将方案状态改为「已确认」"}
+    if current_status not in ("已确认", "部分执行"):
+        return {"error": f"当前状态「{current_status}」不可转卡，只有「已确认」或「部分执行」状态可以转卡"}
 
     # 提取转卡计划
     plan_section = ""

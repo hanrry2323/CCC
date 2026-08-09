@@ -376,7 +376,17 @@ class TestConvertPlan:
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
         assert "error" in result
-        assert "草案" in result["error"]
+        assert "不可转卡" in result["error"]
+
+    def test_convert_completed_rejected(self, tmp_path: Path):
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已完成",
+                       plan_section="- test card")
+        rel = str(p.relative_to(tmp_path))
+        result = convert_plan(tmp_path, rel_path=rel)
+        assert "error" in result
+        assert "不可转卡" in result["error"]
 
 # ── 6. helpers ──
 
