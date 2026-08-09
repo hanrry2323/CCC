@@ -81,7 +81,7 @@ def _extract_acceptance(content: str) -> dict[str, int]:
             continue
         if in_section and line.strip().startswith("##"):
             break
-        if in_section:
+        if in_section and line.strip():
             total += 1
             if "[x]" in line.lower():
                 done += 1
