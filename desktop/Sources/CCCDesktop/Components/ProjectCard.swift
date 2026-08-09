@@ -32,12 +32,6 @@ struct ProjectCard: View {
                             .font(.system(size: 13.5, weight: .regular))
                             .foregroundStyle(isSelected ? CCCTheme.ink : CCCTheme.secondary)
                             .lineLimit(1)
-                        if !statusLine.isEmpty {
-                            Text(statusLine)
-                                .font(.system(size: 11, weight: .light))
-                                .foregroundStyle(statusLineColor)
-                                .lineLimit(1)
-                        }
                     }
                     Spacer(minLength: 4)
                 }
@@ -73,8 +67,6 @@ struct ProjectCard: View {
             LocatorCopyButton(
                 text: CardLocator.line(project: project.id, kind: "project", id: project.id, title: project.name)
             )
-            trailingStatus
-                .frame(minWidth: 12, alignment: .trailing)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -97,7 +89,7 @@ struct ProjectCard: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(project.name)，\(statusLine.isEmpty ? "空闲" : statusLine)")
+        .accessibilityLabel("\(project.name)，空闲")
     }
 
     private func openProject() {
@@ -149,52 +141,4 @@ struct ProjectCard: View {
         }
     }
 
-    @ViewBuilder
-    private var trailingStatus: some View {
-        switch primaryKind {
-        case .chatting:
-            ProgressView()
-                .controlSize(.mini)
-                .help("对话生成中")
-                .accessibilityLabel("对话生成中")
-        case .unread:
-            Circle()
-                .fill(CCCTheme.unread)
-                .frame(width: 9, height: 9)
-                .help("有未读回复")
-                .accessibilityLabel("有未读")
-        case .boardFail:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(CCCTheme.nodeFail)
-                .help("编排异常")
-        case .boardBusy:
-            TimelineView(.periodic(from: .now, by: 0.8)) { timeline in
-                let on = Int(timeline.date.timeIntervalSinceReferenceDate * 10) % 16 < 10
-                Image(systemName: "gearshape.2.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(CCCTheme.nodeRunning)
-                    .opacity(on ? 1 : 0.35)
-            }
-            .help("编排执行中")
-        case .idle:
-            Color.clear.frame(width: 9, height: 9)
-        }
-    }
-
-    private enum PrimaryKind {
-        case chatting, unread, boardFail, boardBusy, idle
-    }
-
-    private var primaryKind: PrimaryKind {
-        .idle
-    }
-
-    private var statusLine: String {
-        ""
-    }
-
-    private var statusLineColor: Color {
-        CCCTheme.faint
-    }
 }
