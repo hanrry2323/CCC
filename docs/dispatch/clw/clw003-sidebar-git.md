@@ -1,6 +1,6 @@
 # 任务卡 clw003 · 侧边栏完善 + 中文化 + Git 变更指示器（OpenCode 执行）
 
-> 关联：ccc-plan: clw003 侧边栏完善 + 中文化 + Git 变更指示器 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-09
+> 关联：ccc-plan: clw003 侧边栏完善 + 中文化 + Git 变更指示器 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-09
 
 ## 目标
 
