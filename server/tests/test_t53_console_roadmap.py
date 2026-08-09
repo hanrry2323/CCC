@@ -48,7 +48,7 @@ class TestConsolePage:
 
 
 class TestRoadmapPage:
-    """线路图：按项目聚合渲染契约。"""
+    """线路图：ARCH 体系架构图库渲染契约。"""
 
     @staticmethod
     def _roadmap() -> str:
@@ -56,16 +56,14 @@ class TestRoadmapPage:
 
     def test_renders_by_project_data(self) -> None:
         text = self._roadmap()
-        assert "by_project" in text
-        assert "roadmap-proj-row" in text
+        assert "/board/arch" in text
+        assert "arch-stage" in text
 
     def test_project_name_count_separated(self) -> None:
-        """修正「INT-12047」「阶段 3 P12」乱分组：项目名与计数之间加分隔。"""
         text = self._roadmap()
-        assert "roadmap-proj-total" in text
-        # 项目名与计数显式用「· 共 N 卡」分隔，不再数字紧贴
-        assert "· 共 " in text and " 卡" in text
+        assert "arch-gallery-title" in text
+        assert "共 " in text and " 张架构图" in text
 
     def test_hint_mentions_project_aggregation(self) -> None:
         text = self._roadmap()
-        assert "按项目聚合" in text
+        assert "集群全景架构图" in text
