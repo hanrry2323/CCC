@@ -14,6 +14,8 @@ import pytest
 
 from server.board.registry import ProjectEntry
 from server.board.models import BoardItem
+from server.engine import observer
+
 from server.engine.observer import (
     _get_current_state,
     should_run,

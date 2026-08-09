@@ -285,6 +285,15 @@ def generate_patrol_report(findings: list[dict[str, Any]], report_name: str) -> 
         cmd = f'scripts/new-card.sh --project {proj} --title "修复：{clean_title}" --related "patrol: {report_name}"'
         lines.append(f"- 针对 `{f.get('id')}`:\n  ```bash\n  {cmd}\n  ```")
     return '\n'.join(lines)
+
+DEFAULT_SCORING_RULES = {
+    "broken_link": {"impact": 4, "frequency": 4},
+    "drift": {"impact": 2, "frequency": 3},
+    "missing_four_questions": {"impact": 2, "frequency": 1},
+    "missing_section": {"impact": 3, "frequency": 2},
+}
+
+
 def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     """定时只读巡检入口。
 
@@ -522,7 +531,7 @@ def run_patrol(repo_root: Path) -> list[dict[str, Any]]:
     return findings
 def write_report(findings: list[dict[str, Any]], repo_root: Path) -> Path:
     """产出巡查报告至 docs/notes/ 目录"""
-    today_str = datetime.now().strftime('%Y-%m-%d')
+    today_str = datetime.datetime.now().strftime('%Y-%m-%d')
     report_name = f'{today_str}-ccc-patrol.md'
     notes_dir = repo_root / 'docs' / 'notes'
     notes_dir.mkdir(parents=True, exist_ok=True)
@@ -530,7 +539,7 @@ def write_report(findings: list[dict[str, Any]], repo_root: Path) -> Path:
     red_cnt = sum((1 for f in findings if f['severity'] == 'RED'))
     yel_cnt = sum((1 for f in findings if f['severity'] == 'YELLOW'))
     blu_cnt = sum((1 for f in findings if f['severity'] == 'BLUE'))
-    content = f"# CCC 巡查与一致性交叉验证风险报告 ({today_str})\n\n> 自动生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n> 风险概览：🔴 红旗 {red_cnt} 处 · 🟡 黄旗 {yel_cnt} 处 · 🔵 蓝旗 {blu_cnt} 处\n\n---\n\n## 巡查发现清单\n\n| 严重程度 | 对象 (acting_on) | 发现分类 | 交叉确认 | 证据 (位置) | 详细描述 |\n| :---: | :--- | :--- | :---: | :--- | :--- |\n"
+    content = f"# CCC 巡查与一致性交叉验证风险报告 ({today_str})\n\n> 自动生成时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n> 风险概览：🔴 红旗 {red_cnt} 处 · 🟡 黄旗 {yel_cnt} 处 · 🔵 蓝旗 {blu_cnt} 处\n\n---\n\n## 巡查发现清单\n\n| 严重程度 | 对象 (acting_on) | 发现分类 | 交叉确认 | 证据 (位置) | 详细描述 |\n| :---: | :--- | :--- | :---: | :--- | :--- |\n"
     for f in sorted(findings, key=lambda x: (x['severity'] == 'RED', x['acting_on']), reverse=True):
         sev_icon = '🔴 红旗' if f['severity'] == 'RED' else '🟡 黄旗' if f['severity'] == 'YELLOW' else '🔵 蓝旗'
         cross_cell = '✅ 交叉确认' if f.get('cross_confirm', 0.0) == 1.0 else '—'
