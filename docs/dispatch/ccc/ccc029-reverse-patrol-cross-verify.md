@@ -87,6 +87,18 @@
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
 
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-09）
+
+**审查摘要**：
+- 范围核对：改动仅限 `server/engine/observer.py` + `server/tests/test_observer.py` + 卡文件 + 产出 `docs/notes/2026-08-09-ccc-patrol.md`；未触碰 registry/卡内容/方案/roadmap 数据。
+- 目标达成：逆向巡查（方案已完成无关联卡 / 卡关方案未推进 / 已完成但卡未关）与 cross_confirm（同一 acting_on 治理+逆向双视角命中 → RED + cross_confirm=1.0 + 【交叉确认】）均已实现；`--once` 实测 15 处 RED 交叉确认，命中目标样本 `ccc-plan-010`。
+- 逻辑验证（机审自跑，非引擎代判）：`pytest server/tests/test_observer.py` → 2 passed；`python -m server.engine.observer --once` → 400 异常、ccc-plan-010 双视角命中。
+- 维护区四问：已逐项勾选并填实质说明，符合完成钩子。
+- 可修问题（已就地修复）：断言6报告文案「未回答 of」→「未作答」，消除英文残留口误；测试复跑仍绿。
+- 边界记录（不阻塞）：交叉验证按「同一 acting_on 实体 + gov/rev 双 type 命中」判定，与验收标准2措辞一致，但会把同一实体上不同疑点的命中整体标红，属「同一疑点」粒度的后续可收紧项；assertion 1/7 的 evidence 定位略粗略，不影响检测正确性。
+
 ## 执行提示
 
 - 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）

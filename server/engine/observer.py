@@ -151,7 +151,7 @@ def run_patrol(repo_root: Path) -> list[dict[str, Any]]:
                         "assertion": 6,
                         "acting_on": card_id,
                         "severity": "YELLOW",
-                        "msg": f"卡 {card_id} 的 维护区 包含未回答 of 占位符 [是/否] 或 [有/无]。",
+                        "msg": f"卡 {card_id} 的 维护区 包含未作答占位符 [是/否] 或 [有/无]。",
                         "evidence": f"{rel_path}:{placeholder_line}",
                         "cross_confirm": 0.0,
                     })
