@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ── scripts/kickstart-ccc.sh ──
-# 幂等重启 com.ccc.engine 与 com.ccc.web-server（P5 灭：防部署悬挂与热自愈）
+# 幂等重启 com.ccc.engine、com.ccc.web-server 与 com.ccc.board-scheduler（P5 灭：防部署悬挂与热自愈）
 #
 # 用法：
 #   ./scripts/kickstart-ccc.sh
@@ -15,10 +15,11 @@ UID_VAL="$(id -u)"
 SERVICE_TARGETS=(
   "gui/${UID_VAL}/com.ccc.engine"
   "gui/${UID_VAL}/com.ccc.web-server"
+  "gui/${UID_VAL}/com.ccc.board-scheduler"
 )
 
 # 备用进程名
-PROCESS_NAMES=("server.engine.main" "server.web.server")
+PROCESS_NAMES=("server.engine.main" "server.web.server" "server.board.scheduler")
 
 kickstart_service() {
   local service="$1"
@@ -36,6 +37,8 @@ kickstart_service() {
   local matched_pname=""
   if [[ "${name}" == *"engine"* ]]; then
     matched_pname="server.engine.main"
+  elif [[ "${name}" == *"board-scheduler"* ]]; then
+    matched_pname="server.board.scheduler"
   else
     matched_pname="server.web.server"
   fi

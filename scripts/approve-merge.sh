@@ -9,6 +9,7 @@
 # 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
 # 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡）；
 #       CCC 仓能 ff 则 ff-merge；否则 --close-only / 分支已在 main → 只关卡。
+#       【合入后须部署检查】：成功合入后自动检查 2017 生产 vs 主干，落后则触发热重启部署。
 # 合入前 main 卡头允许滞后；本脚本写关闭态。
 
 set -euo pipefail
@@ -407,7 +408,70 @@ PY
   echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
 
   git push origin main
-  echo "[OK] 合入批准完成：${id} → 请 2017 pull（部署流程）"
+  echo "[OK] 合入批准完成：${id} → 已自动触发部署检查"
+}
+
+deploy_check_2017() {
+  local prod_repo="/Users/fan/program/CCC"
+  echo "== 正在触发 2017 生产部署检查 =="
+
+  # 1. 如果当前运行路径就是 2017 生产目录，直接本地执行 deploy-ccc.sh
+  if [[ "${PROJECT_ROOT}" == "${prod_repo}" ]]; then
+    echo "[INFO] 当前已在 2017 生产目录中，直接运行部署流程..."
+    if "${prod_repo}/scripts/deploy-ccc.sh"; then
+      echo "[OK] 2017 生产部署成功！"
+    else
+      echo "[ERROR] 2017 生产部署失败！" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  # 2. 如果在本地能找到 2017 生产目录（说明在同一个系统的其它 worktree 里）
+  if [[ -d "${prod_repo}/.git" ]]; then
+    echo "[INFO] 检测到本地 2017 生产目录，检查是否需要同步部署..."
+    git -C "${prod_repo}" fetch -q origin >/dev/null 2>&1 || true
+    local prod_h remote_h
+    prod_h="$(git -C "${prod_repo}" rev-parse HEAD 2>/dev/null || echo '')"
+    remote_h="$(git -C "${prod_repo}" rev-parse origin/main 2>/dev/null || echo '')"
+    if [[ -n "$prod_h" && "$prod_h" != "$remote_h" ]]; then
+      echo "[INFO] 2017 生产 HEAD (${prod_h:0:7}) 落后于 origin/main (${remote_h:0:7})，开始部署..."
+      if "${prod_repo}/scripts/deploy-ccc.sh"; then
+        echo "[OK] 2017 生产部署成功！"
+      else
+        echo "[ERROR] 2017 生产部署失败！" >&2
+        return 1
+      fi
+    else
+      echo "[OK] 2017 生产已经是最新 (${prod_h:0:7})，无需部署。"
+    fi
+    return 0
+  fi
+
+  # 3. 如果本地没有该目录，尝试通过 SSH 到 2017 生产机进行检查
+  echo "[INFO] 本地未找到 2017 生产目录，尝试通过 SSH 检查 192.168.3.116..."
+  local ssh_cmd="ssh -o BatchMode=yes -o ConnectTimeout=5 fan@192.168.3.116"
+  if ! $ssh_cmd "echo ping" >/dev/null 2>&1; then
+    echo "[WARN] 无法 SSH 连接 192.168.3.116，跳过 2017 部署检查。"
+    return 0
+  fi
+
+  local check_cmd="cd ${prod_repo} && git fetch -q origin && prod_h=\$(git rev-parse HEAD) && remote_h=\$(git rev-parse origin/main) && if [[ \"\$prod_h\" != \"\$remote_h\" ]]; then echo 'BEHIND'; else echo 'UP_TO_DATE'; fi"
+  local res
+  res=$($ssh_cmd "${check_cmd}" 2>/dev/null || echo "ERROR")
+  if [[ "$res" == "BEHIND" ]]; then
+    echo "[INFO] 2017 生产落后于 origin/main，通过 SSH 执行部署..."
+    if $ssh_cmd "cd ${prod_repo} && ./scripts/deploy-ccc.sh"; then
+      echo "[OK] 2017 生产通过 SSH 部署成功！"
+    else
+      echo "[ERROR] 2017 生产通过 SSH 部署失败！" >&2
+      return 1
+    fi
+  elif [[ "$res" == "UP_TO_DATE" ]]; then
+    echo "[OK] 2017 生产通过 SSH 检查：已经是最新，无需部署。"
+  else
+    echo "[WARN] 通过 SSH 检查 2017 生产状态失败，返回值为: ${res}"
+  fi
 }
 
 FAILED=0
@@ -422,3 +486,7 @@ if [[ "$FAILED" -gt 0 ]]; then
   exit 1
 fi
 echo "[OK] 全部合入批准完成（${#IDS[@]}）"
+
+if [[ ${#IDS[@]} -gt 0 ]]; then
+  deploy_check_2017
+fi

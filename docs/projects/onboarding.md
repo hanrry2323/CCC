@@ -154,7 +154,13 @@
         ▼
 合入批准（approve-merge.sh 机械门禁 check_maintenance）
   缺维护区/占位 → 拒绝合入
+        │
+        ▼
+自动部署检查（deploy-ccc.sh）
+  合入后自动检查 2017 生产 vs 主干，若落后则执行自动热重启部署
 ```
+
+> **注意**：合入后须部署检查。在「合入批准」执行成功后，系统会自动对比 2017 生产环境与 origin/main。若落后则自动调用 `scripts/deploy-ccc.sh` 与 `scripts/kickstart-ccc.sh`，拉取最新主干并热重启 `com.ccc.engine`、`com.ccc.web-server` 与 `com.ccc.board-scheduler` 三大核心服务，完成生产闭环。
 
 ### 6.2 维护区四问（new-card.sh 模板自动生成）
 
