@@ -1,6 +1,6 @@
 # 任务卡 ccc027 · Loop Observer只读巡查框架：scheduler挂载（OpenCode 执行）
 
-> 关联：ccc-plan-011 卡5 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09
+> 关联：ccc-plan-011 卡5 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-09
 
 ## 基准文件（先看）
 
@@ -55,24 +55,42 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- 新建了 `server/engine/observer.py` 巡查模块，实现了 `run_observer` 核心流程。
+- 设计了自建调度门槛，支持「每日1次」使用 `last-run.json` 时间戳对比，以及「合入后触发」对比 `git log origin/main` 较最新的 merge commit 哈希与 `cards.index.jsonl` 的文件修改时间和大小，确保只在变更或到达日周期时进行快照运行。
+- 在 `server/engine/scheduler.py:_default_registry()` 中延迟引入并注册了只读的 `loop-observer` 定时任务。
+- 新建了 `server/deploy/com.ccc.scheduler.plist` 作为进程编排模板，用于 launchd 部署 and 常驻定时拉起。
+- 确保所有引入仅限只读加载器，不调用写或变更接口。
+
+### 2. 测试结果
+- 新建并成功运行 `server/tests/test_observer.py` 包含:
+  - `test_ast_import_whitelist`: 语法分析（AST）校验白名单，确保 `observer.py` 绝对没有引入 `server.engine.store` 或 plans 改写/创建动作。
+  - `test_should_run_scenarios`: 精确模拟在“首次运行”、“未过24小时且无任何变更”、“24小时已过”、“Git commit发生变更”、“cards.index.jsonl发生变化”等 5 种场景下的门槛拦截与激活。
+  - `test_run_observer_output`: 模拟注册表/卡/计划加载，验证生成的 snapshot.json、last-run.json 等文件结构及其 projects, cards_states, plans_states 数据字段完整性。
+- 通过 `--once` 参数对 `scheduler.py` 启动的运行日志、首次运行与第二轮 skipped 拦截进行测试确认，结果全部全绿符合预期：
+  `pytest server/tests/test_engine_scheduler.py server/tests/test_observer.py` -> 13 passed / 34 passed (with cluster tests)。
+
+### 3. commit + push 证据
+- 提交哈希 (commit hash)：`307f0090` (branch: `codex/ccc027-loop-observer-framework`)
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：已在 ccc-plan-011 中同步记录本卡进入执行与回写阶段。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：按标准只读机制与 AST 校验白名单设计，无额外特异性教训沉淀。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
+   - 说明：在 `server/engine/` 下新建了 `observer.py` 作为定时巡查模块，并新建了 `server/deploy/com.ccc.scheduler.plist` 进程编排模板，不影响主体技术栈。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：项目近况完全符合原本规划。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+无批注
 
 ## 执行提示
 
