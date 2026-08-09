@@ -8,16 +8,12 @@ let package = Package(
         .executable(name: "CCCDesktop", targets: ["CCCDesktop"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/SwiftUIX/SwiftUIX.git", branch: "master"),
-        .package(url: "https://github.com/siteline/swiftui-introspect.git", from: "1.3.0"),
         .package(url: "https://github.com/gonzalezreal/textual.git", branch: "main")
     ],
     targets: [
         .executableTarget(
             name: "CCCDesktop",
             dependencies: [
-                "SwiftUIX",
-                .product(name: "SwiftUIIntrospect", package: "swiftui-introspect"),
                 .product(name: "Textual", package: "textual")
             ],
             path: "Sources/CCCDesktop"
