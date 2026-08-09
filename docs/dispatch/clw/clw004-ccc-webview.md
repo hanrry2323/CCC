@@ -1,6 +1,6 @@
 # 任务卡 clw004 · CCC WebView 面板 + 自动化入口（OpenCode 执行）
 
-> 关联：ccc-plan: clw004 CCC WebView + 自动化 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-09
+> 关联：ccc-plan: clw004 CCC WebView + 自动化 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：clw · 日期：2026-08-09
 
 ## 目标
 
@@ -46,11 +46,26 @@ CCC WebView 面板 + 自动化入口（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 实现说明
+1. **Rust 后端实现 (`src-tauri/src/webview.rs`)**:
+   - 暴露 `get_ccc_board_url` 命令，优先从 `CCC_BOARD_URL` 环境变量读取看板地址，未找到时依次检索 `~/.clwarp/config.json` 与 `~/.clwarp/settings.json`，最后静默回退至 `http://192.168.3.116:7788`。
+   - 暴露 `check_ccc_board_status` 命令，通过解析 URL 并利用 Rust 原生 `std::net::TcpStream::connect_timeout` (超时 1 秒) 高效验证服务是否可达，零外部网络依赖，绝不产生多余进程与写入。
+   - 将此两命令注册并挂载于 `src-tauri/src/lib.rs` 中。
+2. **前端界面实现 (`src/App.tsx`, `src/i18n/index.ts`)**:
+   - 侧边栏（Sidebar）新增“CCC 看板”项，采用极富视觉质感的 clipboard 📋 徽标与色彩对齐方案。
+   - 采用条件显隐方式 (`display`) 渲染 PTY 终端与 CCC 看板视图，在极速切换看板与终端的同时，**绝不阻塞、破坏或终结现有的 PTY 终端会话**。
+   - 在加载 CCC 视图时，异步检测连接性，若服务未就绪，提供中文友好提示（服务未就绪、检查配置等），并赋予重试入口。若就绪则正常加载 `iframe` 内嵌 `/board` 看板页面，状态与样式无缝整合。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+- 前端构建成功：运行 `npm run build` 产出 0 error。
+- 后端编译成功：运行 `cargo build --release` 产出 0 error。
+- 代码风格检查：oxlint & cargo check 均无警告/报错。
+
+### Push 证据
+- 业务仓 `clwarp` 提交哈希 (commit hash): `43670535f7f30352d06fe0ae3c0f455cb3e7d51d`
+- 业务仓推送分支: `codex/clw004-ccc-webview`
 
 ## 执行提示
 
