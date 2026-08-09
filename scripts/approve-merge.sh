@@ -408,7 +408,7 @@ PY
   echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
 
   git push origin main
-  echo "[OK] 合入批准完成：${id} → 已自动触发部署检查"
+  echo "[OK] 合入批准完成：${id} → 批次全部收口后将自动触发 2017 部署检查"
 }
 
 deploy_check_2017() {
