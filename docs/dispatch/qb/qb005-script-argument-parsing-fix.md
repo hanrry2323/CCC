@@ -95,7 +95,7 @@
 - **目标达成**：`parse_args()` 用 `argparse.ArgumentParser` 统一接管 `--dry-run/--dr/--full/-f/--sections`；空值 `--sections "   "` 走 `parser.error(...)` 友好报错，缺失值由 argparse 原生 `expected one argument` 接管，两项验收点均达成，回写区承诺与实现一致。
 - **范围合规**：合并基准 `merge-base` 之前的 `stage5` 改动（commit 7e6ebecc）早已在 main 上，非本卡引入；本分支相对 main 的净差异仅 stress_qb 一个脚本。
 - **语义对齐**：`--full`/`--dry-run`/`--sections` 从 `sys.argv in` 改为 argparse，probe 执行与 sections 分派逻辑未变，零业务逻辑改动。
-- **记录（不越界修复）**：「零业务逻辑改动」红线约束下未改动；存在两处**既有**缺陷，非本卡引入，可后续单卡处理——① `print_results()` 成功路径未给 `exit_code` 赋值，else 分支后 `return exit_code` 会抛 `UnboundLocalError`；② `elif "thin" in test_sections and not test_sections` 中 `not test_sections` 恒为 False，`thin` 分支为死代码。
+- **记录（复核既有备注）**：前审备注的两处「缺陷」经复核——① 我判定为**误报**：`print_results()` 顶部 `exit_code = 0` 已正确初始化（main 上第 238 行，qb005 未改动），失败路径赋 1、成功路径回 0，**不存在 UnboundLocalError**，前审误读代码，本条撤回；② `elif "thin" in test_sections and not test_sections`（main 第 336 行，非本卡引入）确为**既有死代码**——列表空时 `"thin" in []` 为 False、非空时 `not test_sections` 为 False，该分支永不触发，属潜在意图落差但无害；卡红线「零业务逻辑改动」禁止本卡处理，建议后续单卡修正，不在本卡范围。
 
 
 
