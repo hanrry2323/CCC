@@ -1,6 +1,6 @@
 # 任务卡 qb005 · script argument parsing fix（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：qb · 日期：2026-08-09
+> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：qb · 日期：2026-08-09
 
 ## 目标
 
@@ -46,11 +46,26 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 1. 实现说明
+- 引入了 `argparse` 标准库模块对 `stress_qb_feature_probe.py` 进行重构。
+- 保留了原有的环境变量 `DRY_RUN` 与 `FULL_TEST` 的校验逻辑。
+- 将 `--dry-run/--dr`，`--full/-f`，和 `--sections` 选项完全移植至 `ArgumentParser` 统一管理。
+- 增加了空参数/缺失参数友好报错：如果提供了空的 `--sections ""` 或未填写具体 section，通过 `parser.error` 自动抛出易读的错误报告。
+- 运行 `ruff` 完成了格式化与无用导入/无用变量（`json`，`start_time`）的清理。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试结果
+- 在 `/Users/fan/program/apps/qb` 下测试命令：
+  - `python3 scripts/stress_qb_feature_probe.py --dry-run` -> 运行正常，输出所有 dry_run 阶段执行。
+  - `python3 scripts/stress_qb_feature_probe.py --sections ""` -> 触发 argparse 友好报错：`error: --sections argument cannot be empty`。
+  - `python3 scripts/stress_qb_feature_probe.py --sections` -> 触发 argparse 友好报错：`error: argument --sections: expected one argument`。
+- `ruff check` 与 `ruff format` 均顺利通过，无任何违规或代码警示。
+
+### 3. Push 证据
+- 业务仓改动已提交并推送。
+- 分支：`codex/qb005-script-argument-parsing-fix`
+- Commit Hash: `7050391c175f36e81369e5273e03aa6a910f030b`
 
 ## 执行提示
 
