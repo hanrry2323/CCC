@@ -6,6 +6,7 @@
 3. create_plan: 自动编号递增；非法前缀拒绝；校验失败自删
 4. update_plan: 非法状态拒绝；内容替换保留头部
 5. convert_plan: 缺「转卡计划」段报错
+6. 前端渲染契约：plansPage.js 结构验证
 """
 
 from __future__ import annotations
@@ -27,6 +28,9 @@ from server.board.plans import (
     _extract_title,
     _extract_acceptance,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PAGES_DIR = PROJECT_ROOT / "server" / "web" / "legacy-chat" / "js" / "pages"
 
 
 # ── helpers ──
@@ -370,3 +374,63 @@ class TestHelpers:
         a = _extract_acceptance(content)
         assert a["total"] == 3
         assert a["done"] == 2
+
+
+# ── 7. 前端渲染契约 ──
+
+class TestPlansPageContract:
+    """plansPage.js 前端渲染契约（静态断言，无 JS 运行时）。"""
+
+    @staticmethod
+    def _page() -> str:
+        return (PAGES_DIR / "plansPage.js").read_text(encoding="utf-8")
+
+    def test_file_exists(self) -> None:
+        assert (PAGES_DIR / "plansPage.js").exists()
+
+    def test_exports_mount(self) -> None:
+        text = self._page()
+        assert "export async function mountPlans" in text
+        assert "export function unmountPlans" in text
+
+    def test_api_endpoints(self) -> None:
+        """验证前端调用了正确的 API 端点。"""
+        text = self._page()
+        assert "/plans/list" in text
+        assert "/plans/detail" in text
+        assert "/plans/create" in text
+        assert "/plans/update" in text
+        assert "/plans/convert" in text
+
+    def test_filter_controls(self) -> None:
+        """验证筛选控件存在。"""
+        text = self._page()
+        assert "plans-filter-project" in text
+        assert "plans-filter-status" in text
+        assert "plans-search" in text
+
+    def test_convert_button(self) -> None:
+        """验证转卡按钮存在且由人触发（confirm 弹窗）。"""
+        text = self._page()
+        assert "转为任务卡" in text
+        assert "confirm" in text
+
+    def test_create_form(self) -> None:
+        """验证新建表单存在。"""
+        text = self._page()
+        assert "plans-btn-new" in text
+        assert "plans-form-overlay" in text
+        assert "plans-form-project" in text
+        assert "plans-form-title" in text
+
+    def test_status_filter_options(self) -> None:
+        """验证状态筛选包含五态。"""
+        text = self._page()
+        for s in ["草案", "已确认", "部分执行", "已完成", "作废"]:
+            assert s in text, f"Missing status: {s}"
+
+    def test_auto_refresh(self) -> None:
+        """验证 30s 自动刷新。"""
+        text = self._page()
+        assert "setInterval" in text
+        assert "30000" in text
