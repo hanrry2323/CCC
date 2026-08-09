@@ -88,6 +88,8 @@ PLAN_TITLE="$(
 PROJECT="$(
   "$PYTHON_BIN" -c "import json,sys; print(json.load(sys.stdin)['project'])" <<<"$MAP_JSON"
 )"
+# 方案编号（A1 修复 2026-08-10）：关联字段用 <prefix>-plan-<NNN> 而非标题，对齐 Doc-Gate Q1
+PLAN_NUM="$(basename "$PLAN_FILE" .md | cut -d- -f1 | grep -E '^[0-9]{3}$' || echo "")"
 SLICE_COUNT="$(
   "$PYTHON_BIN" -c "import json,sys; print(len(json.load(sys.stdin)['slices']))" <<<"$MAP_JSON"
 )"
@@ -115,7 +117,7 @@ while IFS= read -r row; do
     --slug "$slug" \
     --executor "$executor" \
     --dispatch-dir "$DISPATCH_DIR" \
-    --related "ccc-plan: ${PLAN_TITLE}" \
+    --related "${PROJECT}-plan-${PLAN_NUM}" \
     --quiet
 
   CARD_PATH="$(find "$DISPATCH_DIR/$PROJECT" -maxdepth 1 -name "${PROJECT}[0-9][0-9][0-9]-${slug}.md" | head -1)"
