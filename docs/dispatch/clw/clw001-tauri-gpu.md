@@ -83,6 +83,25 @@
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
 
+## 机审区
+
+**机审**：通过 · 日期：2026-08-09
+
+**审查摘要**（原则级 Code Review，界 audit 席）：
+
+**范围/红线**：改动严格限定在卡内白名单（Cargo.toml / main.rs / lib.rs / terminal.rs / tauri.conf.json / src/ / package.json）；分支 `codex/clw001-tauri-gpu`，未直推 main；无 AGENTS.md / CLAUDE.md 注入；已 grep 全量提交树确认零触碰 `~/.claude/`、`~/.codex/`、`~/.shellsight/` 与 `/Users/` 绝对路径。数据目录卡内声明 `~/.clwarp/`，本阶段未读写任何数据目录，与 ShellSight 不冲突。
+
+**架构与边界**：`src-tauri/src/terminal.rs` 用 alacritty `tty::new` 建 PTY（fork+exec 默认 shell），封装 `TerminalSession` 统一生命周期；读走非阻塞（`WouldBlock` → 返回空 Vec，不崩/不忙转死锁），写带 flush；四命令经单人 `TerminalState` + Mutex 托管，session 不存在返回 `Err` 而非 panic。前端 `Terminal.tsx` 用 xterm.js v6，卸载时先 `readLoopActive=false` 再 `kill_terminal`，顺序正确，无泄漏。
+
+**非阻断观察（交后续阶段，不构成打回）**：
+1. 卡指令清单未含 resize 命令，PTY 尺寸固定 80×24；xterm 调整窗口时不会同步到 PTY，`claude` 全屏 TUI 排版可能异常——建议下一阶段补 `set_window_size`。
+2. `read_from_terminal` 遇 EOF 返回 Err，前端捕获后仍以 10ms 无限轮询（不终止也不退出），shell 退出后会一直空转调用后端；建议读到 EOF 时停轮询或降频。
+3. `package.json` 同时含 `@xterm/xterm`(v6) 与遗留 `xterm`(v5)，v5 属死依赖，后续可清理。
+4. `terminal.rs` `write` 内 `let file = ...; let handle = file;` 属冗余二次绑定，可并作一行（纯风格）。
+5. PTY 进程回收依赖 alacritty `Pty` 的 Drop 实现，本阶段未做显式 waitpid 兜底；后续多会话量级时建议补。
+
+以上均为阶段一骨架的可演进点，无害、不改即可交付。
+
 ## 执行提示
 
 - 项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。）
