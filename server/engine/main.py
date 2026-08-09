@@ -1132,6 +1132,43 @@ def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_card_state_after_writeback(card_path: Path) -> tuple[bool, str]:
+    """执行体回写后校验卡头「状态」字段是否合法。
+
+    执行体可能写出非标准状态值（如 "completed" 代替 "已回写"），
+    导致机审链路静默断裂。此校验在引擎收单时拦截非法状态，强制执行体修正。
+
+    返回 (ok, error_msg)。
+    """
+    if not card_path.is_file():
+        return True, ""  # 卡文件不存在则跳过
+
+    from server.board.models import STATES as _VALID_STATES
+
+    text = card_path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(">"):
+            continue
+        for seg in stripped[1:].split("·"):
+            seg = seg.strip()
+            if seg.startswith("状态："):
+                raw_state = seg[len("状态："):].strip()
+                from server.board.models import base_state as _base_state
+
+                base = _base_state(raw_state)
+                if base not in _VALID_STATES:
+                    return False, (
+                        f"卡头状态值非法: {raw_state!r}。"
+                        f"合法状态: {sorted(_VALID_STATES)}。"
+                        f"回写时必须将状态设为「已回写」，不可写 'completed'/'done' 等英文。"
+                    )
+                return True, ""
+    return True, ""  # 无状态行则放行（历史兼容）
+
+    return True, ""
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
@@ -1492,6 +1529,14 @@ def _dispatch_and_collect(
                         logger.warning("回写凭证校验失败: %s -> 打回", wb_err)
                         _emit(False, 0, "ok", [wb_err])
                         return False, [wb_err]
+
+                    # 卡头状态合法性校验：防止执行体写非法状态值（如 "completed"）
+                    # 导致机审链路静默断裂（mx028 事故）
+                    state_ok, state_err = validate_card_state_after_writeback(card_file_path)
+                    if not state_ok:
+                        logger.warning("卡头状态非法: %s -> 打回", state_err)
+                        _emit(False, 0, "ok", [state_err])
+                        return False, [state_err]
 
                     # 机械门禁：仅在 worktree_path 存在时生效
                     if worktree_path:

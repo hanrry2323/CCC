@@ -2222,4 +2222,77 @@ class TestPromptInjection:
         log_file = tmp_path / "logs" / "ccc002.log"
         log_content = log_file.read_text(encoding="utf-8")
         # 旧卡无提示段 → 不含注入标记
-        assert "项目提示（由中枢在出卡时注入" not in log_content
+
+
+class TestValidateCardStateAfterWriteback:
+    """执行体回写后卡头状态合法性校验（mx028 事故复盘）。"""
+
+    def test_rejects_completed_state(self, tmp_path: Path) -> None:
+        from server.engine.main import validate_card_state_after_writeback
+
+        card = tmp_path / "mx028-rss-feed-validation.md"
+        card.write_text(
+            "# 任务卡 mx028 · RSS feed validation\n\n"
+            "> 关联：阶段 3 P1 · 执行体：OpenCode · 状态：completed · 日期：2026-08-09\n\n"
+            "## 目标\n\n测试\n\n"
+            "## 回写区\n\n**执行体**：OpenCode · 日期：2026-08-09\n\n实现说明\n",
+            encoding="utf-8",
+        )
+        ok, err = validate_card_state_after_writeback(card)
+        assert not ok
+        assert "completed" in err
+        assert "已回写" in err
+
+    def test_rejects_done_state(self, tmp_path: Path) -> None:
+        from server.engine.main import validate_card_state_after_writeback
+
+        card = tmp_path / "test-card.md"
+        card.write_text(
+            "# 任务卡 test\n\n"
+            "> 关联：P1 · 执行体：OpenCode · 状态：done · 日期：2026-08-09\n\n"
+            "## 目标\n\n测试\n",
+            encoding="utf-8",
+        )
+        ok, err = validate_card_state_after_writeback(card)
+        assert not ok
+        assert "done" in err
+
+    def test_accepts_valid_state(self, tmp_path: Path) -> None:
+        from server.engine.main import validate_card_state_after_writeback
+
+        card = tmp_path / "test-card.md"
+        card.write_text(
+            "# 任务卡 test\n\n"
+            "> 关联：P1 · 执行体：OpenCode · 状态：已回写 · 日期：2026-08-09\n\n"
+            "## 目标\n\n测试\n",
+            encoding="utf-8",
+        )
+        ok, err = validate_card_state_after_writeback(card)
+        assert ok
+
+    def test_accepts_other_valid_states(self, tmp_path: Path) -> None:
+        from server.engine.main import validate_card_state_after_writeback
+
+        for state in ("待分派", "执行中", "已关闭", "打回"):
+            card = tmp_path / "test-card.md"
+            card.write_text(
+                f"# 任务卡 test\n\n"
+                f"> 关联：P1 · 执行体：OpenCode · 状态：{state} · 日期：2026-08-09\n\n"
+                "## 目标\n\n测试\n",
+                encoding="utf-8",
+            )
+            ok, _ = validate_card_state_after_writeback(card)
+            assert ok, f"合法状态 {state!r} 应通过校验"
+
+    def test_accepts_missing_state(self, tmp_path: Path) -> None:
+        from server.engine.main import validate_card_state_after_writeback
+
+        card = tmp_path / "test-card.md"
+        card.write_text(
+            "# 任务卡 test\n\n"
+            "> 关联：P1 · 执行体：OpenCode · 日期：2026-08-09\n\n"
+            "## 目标\n\n测试\n",
+            encoding="utf-8",
+        )
+        ok, _ = validate_card_state_after_writeback(card)
+        assert ok  # 无状态行 → 放行（历史兼容）

@@ -123,7 +123,7 @@
 
 **验收人**：Claude Code · 日期：2026-08-09
 
-**审查结论**：通过。
+**审查结论**：✅ 判定：通过。
 
 - 范围：仅 `src/backend/core/src/service/rss/service.rs`，零越界
 - 测试：RSS 37 全绿（含 3 新增），core 全量 426 全绿
