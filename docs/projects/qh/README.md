@@ -25,3 +25,11 @@
 
 - 禁止在 CCC 写 QuantHive 业务代码或任务卡
 - 禁止把双轨知识/决策混进 CCC 权威链
+
+---
+
+## 方案索引
+
+QuantHive 独立轨道，不进 CCC 自动流程。方案全文保留在 qx-map：
+
+- 工程开发计划：qx-map `__archive__/decisions/quanthive-工程开发计划-2026-08-04.md`

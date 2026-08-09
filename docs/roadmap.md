@@ -47,7 +47,8 @@
 ## 下一程挂账（产品）
 
 > **北星**：一个主 IDE 谈意图 → `ccc-plan` 确认后自动拆卡入队 → Engine+硬门禁静默跑 → 只在 RED 或待合入时找人 → 人审 diff 后「合入批准」。  
-> **2026-08-07**：下一程只挂北星竖切。冻结：不再挂「同义句/席位/Agent SOP」类项。竖切：[`product/north-star-slice.md`](product/north-star-slice.md)。
+> **2026-08-07**：下一程只挂北星竖切。冻结：不再挂「同义句/席位/Agent SOP」类项。竖切：[`product/north-star-slice.md`](product/north-star-slice.md)。  
+> **2026-08-09**：新方案/意向统一进「计划」页面（`#/plans`，路径 `docs/projects/<prefix>/plans/`）。本段不再新增挂账条目，已有条目逐步转为计划文档或直接出卡。
 
 | 项 | 意图 | 备注 |
 |----|------|------|
