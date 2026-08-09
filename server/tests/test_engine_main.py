@@ -2223,3 +2223,57 @@ class TestPromptInjection:
         log_content = log_file.read_text(encoding="utf-8")
         # 旧卡无提示段 → 不含注入标记
         assert "项目提示（由中枢在出卡时注入" not in log_content
+
+    def test_gate_skip_env_missing_metrics_logged(self, tmp_path: Path, monkeypatch) -> None:
+        """门禁命令不存在（环境缺失）→ 记录 structlog 指标并放行。"""
+        monkeypatch.chdir(tmp_path)
+        _init_src_repo(tmp_path)
+        worktree_base = tmp_path / "wt"
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="sh",
+            args_template="-c 'echo x >> work.txt && git add work.txt && git commit -qm w'",
+            worktree_base=str(worktree_base)
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_path = tmp_path / "T-skip.md"
+        card_path.write_text(
+            "# 任务卡 T-skip\n"
+            "> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-06\n\n"
+            "## 门禁\n\n"
+            "测试：nonexistent_binary_xyz123_abc --some-flag\n\n"
+            "## 回写区\n\n"
+            "已完成\n",
+            encoding="utf-8",
+        )
+        store.seed(Work(id="T-skip", role="开发执行体", card_path=str(card_path)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "DISPATCH_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_RETRY_ONCE": "false"
+        }
+
+        # Mock structlog metrics_logger to capture the log call
+        logged_events = []
+        from server.engine.main import metrics_logger
+        def mock_info(event, **kwargs):
+            logged_events.append((event, kwargs))
+
+        monkeypatch.setattr(metrics_logger, "info", mock_info)
+
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1  # 门禁跳过 → 放行，卡进入已回写
+
+        # Verify structlog metrics
+        assert len(logged_events) == 1
+        event, kwargs = logged_events[0]
+        assert event == "gate_skip"
+        assert kwargs["card"] == "T-skip"
+        assert kwargs["gate"] == "测试"
+        assert kwargs["reason"] == "env_missing"
