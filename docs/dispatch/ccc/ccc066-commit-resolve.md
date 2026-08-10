@@ -61,9 +61,9 @@
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
    - 说明：ccc-plan-019 范围内子项，方案状态待 ccc059-064 全关后统一推进
 2. **教训沉淀**：本卡是否产出可复用教训？[有]
-   - 说明：机审只验文本不钉 commit = 机审后漂移无兜底；门禁证据必须钉不可变对象（commit sha），文本可被重写
+   - 说明：教训已沉淀 docs/notes/2026-08-10-ccc-lessons.md（机审钉 commit / resolve_card 唯一性 / 分支名与卡文件名一致）
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
-   - 说明：新增 scripts/lib/card-resolve.sh 共享函数库与 scripts/tests/ 测试目录，已同步项目档案 README
+   - 说明：新增 scripts/lib/card-resolve.sh 共享函数库与 scripts/tests/ 测试目录，已同步 docs/projects/ccc/README.md（新增「共享库」行）
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：线路图无变化
 

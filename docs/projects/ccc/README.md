@@ -16,6 +16,7 @@
 - **前缀**：`ccc` → 卡在 `docs/dispatch/ccc/`
 - **taskable**：是（平台自身开发）
 - **出卡**：`scripts/new-card.sh --project ccc --title "..."`
+- **共享库**：`scripts/lib/`（resolve_card 等命令共享函数，勿在脚本内重复 `find | head -1` 猜卡）
 - **出卡前了解**：按 [`../../product/hub-context-sop.md`](../../product/hub-context-sop.md) **本仓本地**读码/图谱/看板即可，**无需 ssh**
 
 ## 基准文件（核心导航）
