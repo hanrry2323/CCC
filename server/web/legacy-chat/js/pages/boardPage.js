@@ -34,6 +34,7 @@ let _ws = 'all';
 let _wsNames = [];
 let _indicatorBusy = false;
 let _nameMap = {};
+let _readyForMergeInfo = null;
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -102,6 +103,11 @@ function html() {
     <span class="st" id="board-st">·</span>
   </div>
 
+  <div id="board-backlog-alert-banner" style="display:none; flex-shrink: 0; margin: 0 10px 10px 10px; padding: 10px; background: var(--ccc-bg-layer); border: 1px solid #ffccc7; border-radius: var(--ccc-radius-sm); color: #ff4d4f; font-size: 12px; font-weight: 500; align-items: center; justify-content: space-between; animation: board-live-pulse 1.6s ease-in-out infinite;">
+    <span id="board-backlog-alert-msg" style="flex: 1; margin-right: 10px;"></span>
+    <button type="button" class="hub-btn" id="board-backlog-alert-btn" style="background:#ff4d4f; color:#fff; border:none; padding:4px 8px; font-size:11px; cursor:pointer; border-radius: 3px;">去收卡</button>
+  </div>
+
   <div class="board-main" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
     <div class="board-layout" id="board-layout" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
       <div class="board-loading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ccc-text-muted); font-size: 12px;">加载看板中…</div>
@@ -140,6 +146,17 @@ function getFilteredCards() {
 function renderBoard() {
   const host = _root.querySelector('#board-layout');
   if (!host) return;
+
+  const alertBanner = _root.querySelector('#board-backlog-alert-banner');
+  if (alertBanner) {
+    if (_readyForMergeInfo && _readyForMergeInfo.backlog_alert && _readyForMergeInfo.warning) {
+      const msgEl = _root.querySelector('#board-backlog-alert-msg');
+      if (msgEl) msgEl.textContent = _readyForMergeInfo.warning;
+      alertBanner.style.display = 'flex';
+    } else {
+      alertBanner.style.display = 'none';
+    }
+  }
 
   const filteredCards = getFilteredCards();
 
@@ -380,11 +397,13 @@ function mergeDirtyFromRunning(cards, runningTasks) {
 async function loadBoard() {
   try {
     const project = _ws === 'all' ? '' : _ws;
-    const [r, running] = await Promise.all([
+    const [r, running, ready] = await Promise.all([
       getCards({ project, page_size: 1000 }),
       apiGet('/tasks/running').catch(() => ({ tasks: [] })),
+      apiGet('/board/ready_for_merge').catch(() => ({ count: 0 })),
     ]);
     _allCards = mergeDirtyFromRunning(r.cards || [], running.tasks || []);
+    _readyForMergeInfo = ready;
 
     renderBoard();
     refreshAllWsIndicators().catch(() => {});
@@ -457,6 +476,13 @@ function bind() {
   _root.querySelector('#board-dclose').addEventListener('click', () => {
     _root.querySelector('#board-dm').classList.remove('open');
   });
+
+  const alertBtn = _root.querySelector('#board-backlog-alert-btn');
+  if (alertBtn) {
+    alertBtn.addEventListener('click', () => {
+      location.hash = '#/console';
+    });
+  }
 
 }
 

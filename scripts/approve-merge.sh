@@ -474,6 +474,24 @@ deploy_check_2017() {
   fi
 }
 
+# ── C2: 待合入积压提醒 ──
+"$PYTHON_BIN" -c "
+import os, sys
+sys.path.insert(0, '.')
+try:
+    from server.board.loader import load_dispatch_cards
+    from server.board.queries import ready_for_merge
+    items = load_dispatch_cards('docs/dispatch')
+    payload = ready_for_merge(items)
+    warning = payload.get('warning')
+    if warning:
+        print('\n' + '='*60, file=sys.stderr)
+        print('[ALERT] ' + warning, file=sys.stderr)
+        print('='*60 + '\n', file=sys.stderr)
+except Exception as e:
+    pass
+" || true
+
 FAILED=0
 for id in "${IDS[@]}"; do
   if ! approve_one "$id"; then

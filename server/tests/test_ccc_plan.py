@@ -89,3 +89,47 @@ def test_ready_for_merge_only_audited() -> None:
     assert payload["count"] == 1
     assert payload["cards"][0]["id"] == "b"
     assert payload["cards"][0]["board_column"] == "已回写"
+
+
+def test_ready_for_merge_backlog_threshold() -> None:
+    import os
+    ready_items = [
+        BoardItem(
+            id=f"item_{i}",
+            title=f"title_{i}",
+            state="已回写",
+            project="ccc",
+            machine_audit_passed=True,
+        )
+        for i in range(5)
+    ]
+    # Default threshold is 5, count is 5 -> should trigger
+    payload = ready_for_merge(ready_items)
+    assert payload["count"] == 5
+    assert payload["backlog_alert"] is True
+    assert "warning" in payload
+    assert "积压" in payload["warning"]
+
+    # Explicit threshold as argument
+    payload_explicit = ready_for_merge(ready_items, threshold=6)
+    assert payload_explicit["backlog_alert"] is False
+    assert "warning" not in payload_explicit
+
+    # Threshold from environment variable CCC_BACKLOG_THRESHOLD
+    os.environ["CCC_BACKLOG_THRESHOLD"] = "3"
+    try:
+        payload_env = ready_for_merge(ready_items)
+        assert payload_env["backlog_alert"] is True
+        assert payload_env["threshold"] == 3
+    finally:
+        os.environ.pop("CCC_BACKLOG_THRESHOLD", None)
+
+    # Threshold from environment variable BACKLOG_THRESHOLD
+    os.environ["BACKLOG_THRESHOLD"] = "10"
+    try:
+        payload_env2 = ready_for_merge(ready_items)
+        assert payload_env2["backlog_alert"] is False
+        assert payload_env2["threshold"] == 10
+    finally:
+        os.environ.pop("BACKLOG_THRESHOLD", None)
+
