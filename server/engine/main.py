@@ -125,8 +125,12 @@ def probe_relay(url: str, timeout: int = 5) -> bool:
         return False
 
 
-def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tuple[bool, str]:
-    """识别基础设施故障（超时/网络/上游不可用）——这类失败不进业务重试预算、不打回。"""
+def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path, phase: str = "run") -> tuple[bool, str]:
+    """识别基础设施故障（超时/网络/上游不可用）——这类失败不进业务重试预算、不打回。
+
+    V4：只扫**当前阶段**的日志——执行阶段扫 ``{id}.log``，机审阶段扫 ``{id}.audit.log``。
+    原实现两日志都扫，旧 audit 日志中的上游特征会污染执行阶段的 infra 判定。
+    """
     keywords = [
         "connection error",
         "network error",
@@ -147,7 +151,7 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tu
     ]
     # 50x 仅在有 HTTP/状态码语义时判定基础设施失败；裸 "503"（行号/数值/端口）不误判
     status_5xx = re.compile(r"(?i)(?:http|status|错误|error|code)[^\n]{0,20}50[234]")
-    for log_name in (f"{work_id}.log", f"{work_id}.audit.log"):
+    for log_name in (f"{work_id}.log",) if phase != "audit" else (f"{work_id}.audit.log",):
         log_path = log_dir / log_name
         if not log_path.is_file():
             continue
@@ -767,16 +771,18 @@ def get_worktree_path(worktree_base: str, work_id: str) -> str:
     return f"{worktree_base}-{work_id_lower}"
 
 
-def _worktree_has_new_commit(worktree_path: str) -> bool:
-    """worktree 内相对 origin/main 是否有 ≥1 个未合入新 commit（产物证据之一）。
+def _worktree_has_new_commit(worktree_path: str, since_ref: str | None = None) -> bool:
+    """worktree 内相对 ``since_ref``（默认 origin/main）是否有 ≥1 个未合入新 commit（产物证据之一）。
 
-    命令失败（目录/分支不存在、非 git 等）一律视为无新 commit；不抛异常。
+    传 ``since_ref`` 为派发时记录的 origin/main tip（V2）：避免派发后他人合入导致
+    执行体躺着不动也被误判「有新 commit」。命令失败一律视为无新 commit；不抛异常。
     """
     if not worktree_path or not os.path.isdir(worktree_path):
         return False
+    base_ref = since_ref or "origin/main"
     try:
         res = subprocess.run(
-            ["git", "-C", worktree_path, "log", "origin/main..HEAD", "--oneline"],
+            ["git", "-C", worktree_path, "log", f"{base_ref}..HEAD", "--oneline"],
             capture_output=True,
             text=True,
             check=False,
@@ -1645,13 +1651,15 @@ def _dispatch_and_collect(
 
                     # 机械门禁：仅在 worktree_path 存在时生效
                     if worktree_path:
-                        has_commit = _worktree_has_new_commit(worktree_path)
+                        tip = _marker_dispatch_tip(log_dir, work.id)
+                        has_commit = _worktree_has_new_commit(worktree_path, since_ref=tip)
                         has_diff = _worktree_has_nonempty_diff(worktree_path)
                         if not (has_commit and has_diff):
                             logger.warning(
-                                "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
+                                "exit 0 但无有效产物: work=%s worktree=%s tip=%s commit=%s diff=%s → 打回",
                                 work.id,
                                 worktree_path,
+                                tip or "(无 tip 记录)",
                                 has_commit,
                                 has_diff,
                             )
@@ -1735,21 +1743,16 @@ def _dispatch_and_collect(
             _emit(True, 0, "ok")
             return True, []
 
-        # 检查是否为 P3 空提交信号 (Task 1)
+        # 检查是否为空提交信号 (V3 根修)：执行体空手交单（nothing to commit）→ 失败打回，
+        # 禁止拦截成假成功（原逻辑绕过产物门禁，是 clw006 空回写死循环的燃料）。
         try:
-            if log_path.is_file():
-                content = log_path.read_text(encoding="utf-8", errors="replace")
-                tail = content[-2000:]
-                keywords = [
-                    "nothing to commit",
-                    "no changes added to commit",
-                    "nothing added to commit",
-                    "no commit created",
-                ]
-                if any(kw in tail.lower() for kw in keywords) and "error:" not in tail.lower():
-                    logger.info("检测到空提交信号，拦截 nonzero exit 并判定成功: work=%s", work.id)
-                    _emit(True, 0, "ok", ["空提交完结（无改动可交）"])
-                    return True, []
+            if _detect_empty_commit_signal(log_path):
+                reason = "空提交信号（nothing to commit）：执行体无产物交单，禁止假成功"
+                logger.warning("检测到空提交信号 → 按失败打回: work=%s", work.id)
+                _emit(False, 1, "ok", [reason])
+                return False, [reason]
+        except Exception as e:
+            logger.warning("检查空提交日志异常: %s", e)
         except Exception as e:
             logger.warning("检查空提交日志异常: %s", e)
 
@@ -1896,6 +1899,7 @@ def _write_running_marker(
     *,
     engine_pid: int,
     child_pid: int | None = None,
+    dispatch_tip: str | None = None,
 ) -> Path:
     """写运行标记：主 ``pid=`` 优先子进程，否则 Engine；并保留 engine/child 字段。
 
@@ -1906,6 +1910,8 @@ def _write_running_marker(
     marker = log_dir / f"{work_id}.running"
     primary = child_pid if child_pid is not None else engine_pid
     lines = [f"engine_pid={engine_pid}\n", f"pid={primary}\n"]
+    if dispatch_tip:
+        lines.append(f"dispatch_tip={dispatch_tip}\n")
     if child_pid is not None:
         lines.append(f"child_pid={child_pid}\n")
     tmp = marker.with_suffix(marker.suffix + f".tmp.{time.time_ns()}")
@@ -1914,14 +1920,47 @@ def _write_running_marker(
     return marker
 
 
-def _claim_running_marker(log_dir: Path, work_id: str) -> Path:
-    """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。"""
-    return _write_running_marker(log_dir, work_id, engine_pid=os.getpid())
+def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = None) -> Path:
+    """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。
+
+    同时记录 ``dispatch_tip``：派发时刻 origin/main 的 commit（V2 产物门禁基准），
+    防「派发后他人合入 → 执行体未写码也被误判有产物」。
+    """
+    tip = ""
+    if main_repo is not None:
+        try:
+            res = subprocess.run(
+                ["git", "-C", str(main_repo), "rev-parse", "origin/main"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            if res.returncode == 0:
+                tip = res.stdout.strip()
+        except Exception:
+            tip = ""
+    return _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), dispatch_tip=tip or None)
 
 
 def _refresh_running_marker_child(log_dir: Path, work_id: str, child_pid: int) -> None:
-    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）。"""
-    _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), child_pid=child_pid)
+    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）；保留 dispatch_tip。"""
+    tip = _marker_dispatch_tip(log_dir, work_id)
+    _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), child_pid=child_pid, dispatch_tip=tip)
+
+
+def _marker_dispatch_tip(log_dir: Path, work_id: str) -> str | None:
+    """读运行标记里的 ``dispatch_tip=``（无则 None）。"""
+    try:
+        marker = log_dir / f"{work_id}.running"
+        if not marker.is_file():
+            return None
+        for ln in marker.read_text(encoding="utf-8").splitlines():
+            if ln.startswith("dispatch_tip="):
+                return ln[len("dispatch_tip=") :].strip() or None
+    except OSError:
+        return None
+    return None
 
 
 def _clear_running_marker(log_dir: Path, work_id: str) -> None:
@@ -2051,6 +2090,27 @@ def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
     return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭后才派发）"
 
 
+def _detect_empty_commit_signal(log_path: Path) -> bool:
+    """检测执行体日志尾部的空提交信号（nothing to commit 等）→ V3 禁止假成功。
+
+    仅当尾部含空提交关键字且无 ``error:`` 字样时判定为真。
+    """
+    if not log_path or not log_path.is_file():
+        return False
+    try:
+        content = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    tail = content[-2000:]
+    keywords = [
+        "nothing to commit",
+        "no changes added to commit",
+        "nothing added to commit",
+        "no commit created",
+    ]
+    return any(kw in tail.lower() for kw in keywords) and "error:" not in tail.lower()
+
+
 def _run_auto_worker(
     work: Work,
     registry: ExecutorRegistry,
@@ -2073,7 +2133,7 @@ def _run_auto_worker(
             outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
-            retryable, hint = is_retryable_failure(work.id, problems, log_dir)
+            retryable, hint = is_retryable_failure(work.id, problems, log_dir, phase="run")
             reasons = list(problems) if problems else ["执行失败"]
             if hint and hint not in reasons[0]:
                 reasons = [hint, *reasons]
@@ -2178,7 +2238,7 @@ def _run_audit_worker(
             audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
             is_mech = _is_mechanical_rejection_text(audit_text)
             business = _audit_output_indicates_rejection(audit_text) and not is_mech
-            retryable, hint = is_retryable_failure(work.id, reasons, log_dir)
+            retryable, hint = is_retryable_failure(work.id, reasons, log_dir, phase="audit")
 
             # 空回写判定：直接打回，不再无限 retry
             is_empty = False
@@ -2378,10 +2438,16 @@ def run_once(
             logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
             continue
 
-        # 占槽：先标执行中 + marker，再 submit（空位已按 occupancy 核算）
+        # 占槽：先标执行中 + marker（含派发 tip），再 submit（空位已按 occupancy 核算）
         work.transition(State.RUNNING)
         store.save_work(work)
-        _claim_running_marker(log_dir, work.id)
+        try:
+            from server.git_sync import resolve_repo_root
+
+            dispatch_main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        except Exception:
+            dispatch_main_repo = Path(__file__).resolve().parents[2]
+        _claim_running_marker(log_dir, work.id, main_repo=dispatch_main_repo)
 
         def _make_fn(w: Work = work) -> Any:
             def _fn() -> dict[str, int]:
