@@ -1,6 +1,6 @@
 # 任务卡 ccc044 · 部署并入收卡流程（approve-merge 部署检查 + deploy 补 board-scheduler）（OpenCode 执行）
 
-> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
