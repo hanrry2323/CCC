@@ -21,3 +21,9 @@
 - **现象**：ccc065 卡文件名 ccc065-engine-tip，开发时建分支 codex/ccc065-product-gate，engine 机审 worktree 用 codex/ccc065-engine-tip 找不到代码 → 零工件打回。
 - **根因**：engine worktree 分支名 = `codex/<卡文件名>`，开发分支名不一致导致代码在错误分支。
 - **解决方案**：出卡后 checkout 分支名必须等于 `codex/<卡文件名>`；开发中途改名需同步 force-push 到正确分支。
+
+### 4. 空提交假成功是死循环燃料——自愈/门禁类逻辑必须能实测验证
+
+- **现象**：engine 执行阶段把「nothing to commit, working tree clean」判为成功（exit 0 假成功），clw006 借此死循环。
+- **根因**：主门禁对「无产物」的判定只看 exit code，不看输出信号；自愈逻辑「好心拦截」反而绕过了门禁。
+- **解决方案**：空提交信号（nothing to commit 等）必须判失败并打回；自愈/门禁类逻辑必须有真实测试覆盖，禁止无法实测的「拦截」。落地：`_detect_empty_commit_signal` + `server/tests/test_engine_v2v3_gate.py`（V3 测试）。
