@@ -110,6 +110,83 @@ validate_file() {
     return
   fi
 
+  # ── 8. 方案级收尾校验 ──
+  # 8.1 方案「已完成」但验收未勾选 -> 报错
+  if [ "$status" = "已完成" ]; then
+    local in_acceptance=0
+    local unchecked_count=0
+    local total_count=0
+    while IFS= read -r line; do
+      if echo "$line" | grep -qE '^## 验收标准'; then
+        in_acceptance=1
+        continue
+      fi
+      if [ "$in_acceptance" -eq 1 ]; then
+        if echo "$line" | grep -qE '^##'; then
+          in_acceptance=0
+          break
+        fi
+        if echo "$line" | grep -qE '^[*-]\s*\[[ xX]*\]'; then
+          total_count=$((total_count + 1))
+          if echo "$line" | grep -qE '^[*-]\s*\[\s*\]'; then
+            unchecked_count=$((unchecked_count + 1))
+          fi
+        fi
+      fi
+    done < "$file"
+
+    if [ "$unchecked_count" -gt 0 ]; then
+      red "  FAIL 方案已完成但验收未勾选: $rel ($unchecked_count 个未勾选)"
+      ERRORS=$((ERRORS + 1))
+      return
+    fi
+  fi
+
+  # 8.2 方案关联卡全部关闭但方案状态仍为草案/已确认/部分执行（未推进） -> 报错
+  if [ "$status" = "草案" ] || [ "$status" = "已确认" ] || [ "$status" = "部分执行" ]; then
+    local cards_line
+    cards_line=$(echo "$head_content" | grep '关联卡：' | head -1 || true)
+    if [ -n "$cards_line" ]; then
+      local cards_part
+      cards_part=$(echo "$cards_line" | sed -E 's/^.*关联卡：//' | tr -d '\r\n')
+      if [ -n "$cards_part" ] && [ "$cards_part" != "无" ]; then
+        local has_cards=0
+        local all_closed=1
+        local open_cards=""
+        local card_count=0
+        
+        # Clean characters like · , and Chinese variants to spaces
+        local cleaned_cards=$(echo "$cards_part" | tr '·,()（）' ' ' | tr -s ' ')
+        for word in $cleaned_cards; do
+          if [[ "$word" =~ ^[a-zA-Z]+-?[0-9]+ ]]; then
+            card_count=$((card_count + 1))
+            has_cards=1
+            local card_file=""
+            card_file=$(find "$REPO_ROOT/docs/dispatch" \( -iname "${word}.md" -o -iname "${word}-*.md" \) -print -quit 2>/dev/null)
+            if [ -n "$card_file" ] && [ -f "$card_file" ]; then
+              local card_head=$(head -15 "$card_file" 2>/dev/null)
+              local c_status=$(echo "$card_head" | grep '状态：' | head -1 | sed -E 's/.*状态：([^ ·\t\r\n]+).*/\1/' | tr -d ' ' || true)
+              if [ "$c_status" != "已关闭" ]; then
+                all_closed=0
+                open_cards="$open_cards $word($c_status)"
+              fi
+            else
+              # If card file is not found, treat as not closed to be safe
+              all_closed=0
+              open_cards="$open_cards $word(文件未找到)"
+            fi
+          fi
+        done
+
+        if [ "$card_count" -gt 0 ] && [ "$all_closed" -eq 1 ]; then
+          red "  FAIL 方案关联卡已全部关闭但状态仍为 '$status': $rel"
+          ERRORS=$((ERRORS + 1))
+          return
+        fi
+      fi
+    fi
+  fi
+
   green "  OK   $rel"
 }
 

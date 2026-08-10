@@ -1,6 +1,6 @@
 # 任务卡 ccc055 · validate-plans.sh 方案级收尾校验（OpenCode 执行）
 
-> 关联：ccc-plan-017 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-017 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -47,24 +47,39 @@ validate-plans.sh 方案级收尾校验（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 实现说明
+1. **方案级收尾校验**：升级了 `scripts/validate-plans.sh`。对于每一个方案文件，提取状态与关联卡信息：
+   - 提取方案下的 `## 验收标准` 段落。若方案状态为 `已完成`，且发现任何未勾选的项（如 `- [ ]`），则报错并显示未勾选的具体项目数量。
+   - 提取方案头部的 `关联卡`。若方案状态为 `草案`、`已确认` 或 `部分执行`，且所关联的所有卡在 `docs/dispatch/` 中的状态均已置为 `已关闭`，则报错，提示方案应当已经推进。
+2. **测试覆盖**：在 `server/tests/test_plans.py` 中新增 `TestValidatePlansScript` 测试类，使用真实的 `validate-plans.sh` 脚本和模拟环境覆盖了包含合法方案、已完成但未勾选验收方案、已完成且全勾选方案，以及卡全关但方案未收尾方案，测试全部顺利通过。
+
+### 测试结果
+- 本地运行 `python3 -m pytest server/tests/test_plans.py`，全部 48 个测试（含 4 个新测试）完美通过：
+  ```
+  48 passed in 1.49s
+  ```
+- 静态分析及文档门禁全绿：
+  - `python3 scripts/check-entry-docs.py` -> `[OK] 入口文档门禁通过（零硬编码 + 必需指针齐全）`
+  - `python3 -m ruff check server/tests/test_plans.py` -> `All checks passed!`
+
+### push 证据
+- Branch: `codex/ccc055-validate-plans-delivery-gate`
+- Commit Hash: 189276f7671631cdecb12388b841989c7e6c4622
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：关联方案 `docs/projects/ccc/plans/017-delivery-gate.md` 的状态已从「已确认」推进至「部分执行」。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：无，纯门禁脚本升级与质量工具收尾。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：未改变任何项目结构或技术栈。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：未发生变化，路线图及项目近况完全吻合。
 
 ## 执行提示
 

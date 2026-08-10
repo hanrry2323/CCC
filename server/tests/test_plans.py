@@ -548,3 +548,120 @@ class TestPlansPageContract:
         assert "_detailPath" in text
         assert "_formOpen" in text
         assert "updateListOnly" in text
+
+
+# ── 8. validate-plans.sh 脚本测试 ──
+
+
+class TestValidatePlansScript:
+    """Test the scripts/validate-plans.sh script directly."""
+
+    @staticmethod
+    def _setup_script(tmp: Path) -> Path:
+        # Copy the real validate-plans.sh to tmp/scripts/
+        real_script = PROJECT_ROOT / "scripts" / "validate-plans.sh"
+        dest_dir = tmp / "scripts"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_script = dest_dir / "validate-plans.sh"
+        dest_script.write_text(real_script.read_text())
+        dest_script.chmod(0o755)
+        return dest_script
+
+    def test_script_valid_plan(self, tmp_path: Path):
+        _make_registry(tmp_path, ["ccc"])
+        script = self._setup_script(tmp_path)
+
+        # Create a valid card and a plan referring to it
+        # Cards are in docs/dispatch/
+        dispatch_dir = tmp_path / "docs" / "dispatch"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        card_file = dispatch_dir / "ccc001-test.md"
+        card_file.write_text("# 卡1\n\n> 状态：开发中\n")
+
+        # Create a plan (status: 部分执行)
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        plan_file = plans_dir / "001-test.md"
+        plan_file.write_text(
+            "# 方案 · 测试\n\n"
+            "> 项目：ccc · 编号：ccc-plan-001 · 状态：部分执行 · 作者：T · 工具：T\n"
+            "> 创建：2026-08-10 · 更新：2026-08-10\n"
+            "> 关联卡：ccc001\n"
+            "> 关联方案：无\n\n"
+            "## 目标\n\n测试\n\n"
+            "## 验收标准\n\n- [ ] 测试验收\n"
+        )
+
+        import subprocess
+        result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
+        assert result.returncode == 0
+
+    def test_script_completed_but_unchecked(self, tmp_path: Path):
+        _make_registry(tmp_path, ["ccc"])
+        script = self._setup_script(tmp_path)
+
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        plan_file = plans_dir / "001-test.md"
+        plan_file.write_text(
+            "# 方案 · 测试\n\n"
+            "> 项目：ccc · 编号：ccc-plan-001 · 状态：已完成 · 作者：T · 工具：T\n"
+            "> 创建：2026-08-10 · 更新：2026-08-10\n"
+            "> 关联卡：无\n"
+            "> 关联方案：无\n\n"
+            "## 目标\n\n测试\n\n"
+            "## 验收标准\n\n- [ ] 测试验收\n"
+        )
+
+        import subprocess
+        result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
+        assert result.returncode != 0
+        assert "验收未勾选" in result.stdout
+
+    def test_script_completed_and_checked(self, tmp_path: Path):
+        _make_registry(tmp_path, ["ccc"])
+        script = self._setup_script(tmp_path)
+
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        plan_file = plans_dir / "001-test.md"
+        plan_file.write_text(
+            "# 方案 · 测试\n\n"
+            "> 项目：ccc · 编号：ccc-plan-001 · 状态：已完成 · 作者：T · 工具：T\n"
+            "> 创建：2026-08-10 · 更新：2026-08-10\n"
+            "> 关联卡：无\n"
+            "> 关联方案：无\n\n"
+            "## 目标\n\n测试\n\n"
+            "## 验收标准\n\n- [x] 测试验收\n"
+        )
+
+        import subprocess
+        result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
+        assert result.returncode == 0
+
+    def test_script_cards_all_closed_but_not_advanced(self, tmp_path: Path):
+        _make_registry(tmp_path, ["ccc"])
+        script = self._setup_script(tmp_path)
+
+        dispatch_dir = tmp_path / "docs" / "dispatch"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        card_file = dispatch_dir / "ccc001-test.md"
+        card_file.write_text("# 卡1\n\n> 状态：已关闭\n")
+
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        plan_file = plans_dir / "001-test.md"
+        plan_file.write_text(
+            "# 方案 · 测试\n\n"
+            "> 项目：ccc · 编号：ccc-plan-001 · 状态：部分执行 · 作者：T · 工具：T\n"
+            "> 创建：2026-08-10 · 更新：2026-08-10\n"
+            "> 关联卡：ccc001\n"
+            "> 关联方案：无\n\n"
+            "## 目标\n\n测试\n\n"
+            "## 验收标准\n\n- [ ] 测试验收\n"
+        )
+
+        import subprocess
+        result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
+        assert result.returncode != 0
+        assert "关联卡已全部关闭但状态仍为" in result.stdout

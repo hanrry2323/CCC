@@ -1,6 +1,6 @@
 # 方案 · 交付流程建设（Delivery Gate 机制）
 
-> 项目：ccc · 编号：ccc-plan-017 · 状态：已确认 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-017 · 状态：部分执行 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
 > 关联卡：ccc054 · ccc055（转卡后回填）
 > 关联方案：无（2026-08-10 复盘遗留）
