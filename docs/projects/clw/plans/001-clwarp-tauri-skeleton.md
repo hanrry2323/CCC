@@ -18,7 +18,7 @@ ShellSight 评估后发现 Electron 内存 310MB+、xterm.js 渲染性能差。�
 
 技术架构：React 前端（TypeScript）→ Tauri 2.0 IPC → Rust 后端（alacritty_terminal + 会话管理 + Provider 控制 + 文件监听）→ macOS Metal GPU 渲染。
 
-分 6 张卡执行，依赖链：clw001 → clw002 → clw003 → clw004 → clw005 → clw006。
+分 7 张卡执行，依赖链：clw001 → clw002 → clw003 → clw004 → clw005 → clw006 → clw007。
 
 ## 验收标准
 
