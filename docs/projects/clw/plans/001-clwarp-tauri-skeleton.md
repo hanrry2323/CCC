@@ -28,6 +28,7 @@ ShellSight 评估后发现 Electron 内存 310MB+、xterm.js 渲染性能差。�
 - [x] clw004: 侧边栏点击 CCC 面板显示看板页面
 - [x] clw005: 所有设置可调整并持久化
 - [x] clw006: 打包为 dmg，安装到 /Applications，全链路验收通过
+- [x] clw007: 会话恢复工作目录 + 小缺陷修复
 
 ## 转卡计划
 
@@ -39,6 +40,7 @@ ShellSight 评估后发现 Electron 内存 310MB+、xterm.js 渲染性能差。�
 | clw004 | CCC WebView + 自动化 | clw003 | OpenCode |
 | clw005 | 设置面板 | clw004 | OpenCode |
 | clw006 | 打包 + 验收 | clw005 | OpenCode |
+| clw007 | 会话恢复工作目录 + 小缺陷修复 | clw006 | OpenCode |
 
 ## 备注
 
