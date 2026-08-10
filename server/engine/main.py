@@ -2804,6 +2804,22 @@ def run_once(
     return summary
 
 
+def _dispatch_dir_mtime(dispatch_dir: str) -> float:
+    """dispatch 目录（含卡子目录）最新 mtime，用于检测卡片变化（事件感知，2026-08-10）。"""
+    root = Path(dispatch_dir)
+    if not root.exists():
+        return 0.0
+    latest = 0.0
+    for p in root.rglob("*"):
+        try:
+            m = p.stat().st_mtime
+        except OSError:
+            continue
+        if m > latest:
+            latest = m
+    return latest
+
+
 def run_loop(
     registry: ExecutorRegistry,
     store: BoardStore,
@@ -2811,15 +2827,29 @@ def run_loop(
     heartbeat_interval: int,
     config_path: str | Path | None = None,
 ) -> None:
-    """持续模式：收割 + 补位心跳（不等待在途收单）。"""
+    """持续模式：收割 + 补位心跳（不等待在途收单）。
+
+    2026-08-10 事件感知：dispatch 目录 mtime 变化立即 run_once（写卡即响应），
+    无变化则轻量睡眠探测（2s），替代固定 heartbeat_interval 轮询延迟。
+    """
     logger.info("Engine 持续模式启动（收割+补位，真实派发/收单）")
+    dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
+    last_mtime = _dispatch_dir_mtime(dispatch_dir)
     while True:
         summary = run_once(registry, store, cfg, wait=False, config_path=config_path)
         summary = {**summary, "mode": "loop"}
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
         if summary["timed_out"] > 0:
             logger.warning("催单: 本轮 %d 个任务超时未回写", summary["timed_out"])
-        time.sleep(heartbeat_interval)
+        # 事件感知：等 dispatch 目录变化（写卡/回写/状态变更）即触发，或最长 heartbeat_interval 兜底
+        waited = 0.0
+        while waited < heartbeat_interval:
+            time.sleep(2)
+            waited += 2
+            if _dispatch_dir_mtime(dispatch_dir) != last_mtime:
+                last_mtime = _dispatch_dir_mtime(dispatch_dir)
+                logger.info("dispatch 目录变化，立即触发派发")
+                break
 
 
 def main(argv: list[str] | None = None) -> int:

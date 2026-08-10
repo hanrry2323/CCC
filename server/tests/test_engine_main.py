@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -2678,3 +2679,24 @@ class TestValidateCardStateAfterWriteback:
         )
         is_empty, reason = is_empty_writeback_or_placeholder(work, "")
         assert not is_empty, reason
+
+
+def test_dispatch_dir_mtime_detects_change(tmp_path) -> None:
+    """事件感知（2026-08-10）：dispatch 目录 mtime 变化可被检测。"""
+    from server.engine.main import _dispatch_dir_mtime
+
+    sub = tmp_path / "docs" / "dispatch"
+    sub.mkdir(parents=True)
+    assert _dispatch_dir_mtime(str(sub)) >= 0
+    m0 = _dispatch_dir_mtime(str(sub))
+    # 写一张卡 → mtime 应变化
+    time.sleep(0.05)
+    (sub / "ccc999-test.md").write_text("# 任务卡 ccc999\n", encoding="utf-8")
+    m1 = _dispatch_dir_mtime(str(sub))
+    assert m1 > m0, "写卡后 dispatch 目录 mtime 应增大"
+
+
+def test_dispatch_dir_mtime_missing_dir(tmp_path) -> None:
+    from server.engine.main import _dispatch_dir_mtime
+
+    assert _dispatch_dir_mtime(str(tmp_path / "no-such-dir")) == 0.0
