@@ -1,6 +1,6 @@
 # 任务卡 ccc043 · 出卡查重升级（fetch 远端 + 基于 origin/main 查重）（OpenCode 执行）
 
-> 关联：ccc-plan-014 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-014 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -47,24 +47,39 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+- **实现说明**：
+  1. 升级 `scripts/new-card.sh`，在出卡计算序号前先执行 `git fetch origin main`；
+  2. 获取 `origin/main` 跟踪分支上的 `docs/dispatch/<prefix>` 目录下的所有卡片文件列表，提取最大卡序号，并与本地卡片序号取最大值进行自增，同时进行同编号、同文件名查重校验；
+  3. 使 `scripts/plan-to-cards.sh` 批量出卡时通过调用的 `new-card.sh` 自动享受该防御机制。
+- **测试结果**：
+  1. 新增 `server/tests/test_card_dispatch_gate.py`，完美测试了「本地过期但远端已占用编号」时编号查重被拒、自动编号跳过并自增的场景；
+  2. 运行 `server/tests` 下全部 721 个单元测试全绿通过。
+- **push 证据**：分支 `codex/ccc043-card-dispatch-gate`，Commit Hash: `7ecb78cc1d49e385733440152270be27e5137d45`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `014-governance-gate-fixes.md` 已转卡（ccc042/ccc043），状态正常同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：无。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变项目结构或技术栈。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：纯脚本/测试加固，不涉及线路图或档案「线路/近况」。
 
-## 批注落实
+## 机审区
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+**机审：通过**（2017 机审席）
+
+审查摘要：
+- 改动范围与卡声明一致：`scripts/new-card.sh`、`server/tests/test_card_dispatch_gate.py`、卡文件本身，均在白名单（`scripts/new-card.sh` / `scripts/plan-to-cards.sh` / `server/tests/**`）内；无越界。
+- 实现合理：出卡前 `git fetch origin main`，自动编号取本地与 `origin/main` 双源最大值自增；显式 `--id` 与同名卡均做远端查重拒绝，杜绝撞号。`plan-to-cards.sh:114` 走 `new-card.sh`，相关格式沿用同源防御，满足验收 1/2/4。
+- 测试覆盖到位：`test_card_dispatch_gate.py` 构造「本地过期但远端已占用编号」场景（真实 git 临时仓库 + bare remote），验证显式 ID 撞号被拒（returncode 3 + 冲突提示）、自动编号自增跳过至下一号。实测单测通过（1 passed）。
+- 维护区四问已补齐（方案同步/教训/档案/线路图均勾选并填说明）；关联方案 `014-governance-gate-fixes.md` 已在转卡名单，声明属实。
 
 ## 执行提示
 
