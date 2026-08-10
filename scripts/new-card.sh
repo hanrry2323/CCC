@@ -21,6 +21,7 @@
 #   --executor "OpenCode"     卡头「执行体」（默认 $CCC_CARD_EXECUTOR 或 OpenCode）
 #   --acceptance "Claude Code" 卡头「验收」（默认自验收：与执行体同工具）
 #   --related "关联文本"       卡头「关联」字段（默认 "阶段 3 P1"）
+#   --depends "卡ID列表"       卡头「依赖」字段（逗号分隔卡 ID，如 "ccc042,ccc043"；空则无依赖）
 #   --dispatch engine|manual  卡头「派发」字段（默认 engine）
 #   --dispatch-dir <目录>     任务卡目录（默认 docs/dispatch；测试可用临时目录）
 #   --id <前缀><NNN>[-slug]   显式卡编号（跳过自增；如 ccc064-auto-naming）
@@ -43,6 +44,7 @@ EXECUTOR="${CCC_CARD_EXECUTOR:-OpenCode}"
 ACCEPTANCE_EXPLICIT=false
 ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-}"
 RELATED="${CCC_CARD_RELATED:-阶段 3 P1}"
+DEPENDS="${CCC_CARD_DEPENDS:-}"
 DISPATCH="${CCC_CARD_DISPATCH:-engine}"
 PYTHON_BIN="${CCC_PYTHON_BIN:-}"
 
@@ -63,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     --executor) EXECUTOR="$2"; shift 2 ;;
     --acceptance) ACCEPTANCE="$2"; ACCEPTANCE_EXPLICIT=true; shift 2 ;;
     --related) RELATED="$2"; shift 2 ;;
+    --depends) DEPENDS="$2"; shift 2 ;;
     --dispatch) DISPATCH="$2"; shift 2 ;;
     --dispatch-dir) DISPATCH_DIR="$2"; shift 2 ;;
     --id) ID_OVERRIDE="$2"; shift 2 ;;
@@ -101,17 +104,32 @@ if [[ ! "$PROJECT_PREFIX" =~ ^[a-z]{2,4}$ ]]; then
   echo "[ERROR] 前缀非法: ${PROJECT_PREFIX}（须 2-4 位小写字母；合法表见 docs/projects/registry.yaml · DOC-PROTOCOL §2）" >&2
   exit 2
 fi
-# QuantHive 禁止走 CCC（双轨独立）
-if [[ "$PROJECT_PREFIX" == "qh" ]]; then
-  echo "[ERROR] 前缀 qh（QuantHive）禁止走 CCC Engine 出卡；QuantHive 独立轨道开发" >&2
-  exit 2
-fi
 
 # 解析目标目录（相对路径按仓库根解析）
 case "$DISPATCH_DIR" in
   /*) TARGET_DIR="$DISPATCH_DIR" ;;
   *)  TARGET_DIR="$PROJECT_ROOT/$DISPATCH_DIR" ;;
 esac
+
+# 禁卡前缀（FORBIDDEN_CARD_PREFIXES，源自 registry）——禁止走 CCC Engine 出卡
+# 2026-08-10：从「硬编码 qh」升级为读 registry 禁卡表（ccc/qh 均在列）
+# 豁免：仅当 TARGET_DIR 在 PROJECT_ROOT 的 git 树内才拦截（测试用临时仓 dispatch-dir 不受限）
+PROJECT_ROOT_REAL="$(cd "$PROJECT_ROOT" && git rev-parse --show-toplevel 2>/dev/null)"
+if [[ -n "$PROJECT_ROOT_REAL" && "$TARGET_DIR" == "$PROJECT_ROOT_REAL"/* ]]; then
+  FORBIDDEN_PREFIXES="$(cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys; sys.path.insert(0, '.')
+from server.board.registry import forbidden_prefixes
+print(' '.join(sorted(forbidden_prefixes())))
+" 2>/dev/null)"
+  if [[ -z "$FORBIDDEN_PREFIXES" ]]; then
+    FORBIDDEN_PREFIXES="qh"
+  fi
+  case " $FORBIDDEN_PREFIXES " in
+    *" $PROJECT_PREFIX "*)
+      echo "[ERROR] 前缀 ${PROJECT_PREFIX} 在禁卡表（FORBIDDEN_CARD_PREFIXES: ${FORBIDDEN_PREFIXES}）——禁止走 CCC Engine 出卡（平台自研/独立轨道）" >&2
+      exit 2 ;;
+  esac
+fi
 PREFIX_DIR="$TARGET_DIR/$PROJECT_PREFIX"
 
 # ── 出卡前先 git fetch origin main ──
@@ -295,6 +313,7 @@ read -r -d '' CARD_BODY <<EOF || true
 # 任务卡 ${CARD_ID} · ${TITLE}（${EXECUTOR} 执行）
 
 > 关联：${RELATED} · 执行体：${EXECUTOR} · 验收：${ACCEPTANCE} · 状态：待分派 · 派发：${DISPATCH} · 项目：${PROJECT_PREFIX} · 日期：${TODAY}
+$([ -n "$DEPENDS" ] && echo "> 依赖：${DEPENDS}")
 
 ## 基准文件（先看）
 

@@ -28,7 +28,7 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
         capture_output=True,
     )
 
-    # 2. 准备 "other" 仓库（模拟远端，包含已提交卡片 ccc001-remote.md）
+    # 2. 准备 "other" 仓库（模拟远端，包含已提交卡片 clw001-remote.md）
     other = tmp_path / "other"
     other.mkdir()
     _git(other, "init", "-q", "-b", "main")
@@ -48,16 +48,16 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
     _git(local, "config", "user.email", "test@example.com")
     _git(local, "config", "user.name", "test")
 
-    # 4. 现在 "other" 写入 ccc001-remote.md，代表远端已经占用了 ccc001
-    dispatch_dir = other / "docs" / "dispatch" / "ccc"
+    # 4. 现在 "other" 写入 clw001-remote.md，代表远端已经占用了 clw001
+    dispatch_dir = other / "docs" / "dispatch" / "clw"
     dispatch_dir.mkdir(parents=True)
 
-    # 写入真实的 ccc001 卡，结构必须合规以防 validate 报错
+    # 写入真实的 clw001 卡，结构必须合规以防 validate 报错
     card_body = (
-        "# 任务卡 ccc001 · 远程卡（OpenCode 执行）\n\n"
-        "> 关联：TEST · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10\n\n"
+        "# 任务卡 clw001 · 远程卡（OpenCode 执行）\n\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-10\n\n"
         "## 基准文件（先看）\n\n"
-        "- 项目基准（README·权威索引）：`docs/projects/ccc/README.md`\n\n"
+        "- 项目基准（README·权威索引）：`docs/projects/clw/README.md`\n\n"
         "## 目标\n\n一句话描述目标\n\n"
         "## 红线（先看）\n\n1. 无\n\n"
         "## 范围\n\n- `server/`\n\n"
@@ -67,29 +67,29 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
         "## 人工批注\n\n无\n\n"
         "## 回写区\n\n**执行体**：OpenCode · 日期：\n"
     )
-    (dispatch_dir / "ccc001-remote.md").write_text(card_body, encoding="utf-8")
+    (dispatch_dir / "clw001-remote.md").write_text(card_body, encoding="utf-8")
     _git(other, "add", "-A")
-    _git(other, "commit", "-qm", "add ccc001-remote")
+    _git(other, "commit", "-qm", "add clw001-remote")
     _git(other, "push", "-q", "origin", "main")
 
     # 此时，在 local 仓库中：
-    # 1. 并没有拉取最新提交，本地 docs/dispatch/ccc/ 甚至都不存在，没有任何卡片。
+    # 1. 并没有拉取最新提交，本地 docs/dispatch/clw/ 甚至都不存在，没有任何卡片。
     # 2. 我们使用 local 运行 scripts/new-card.sh，看它是否能 fetch 远端并：
-    #    A. 自动跳过已被占用的 ccc001，自动分配 ccc002
-    #    B. 如果显式指定 --id ccc001，会报错拒绝。
+    #    A. 自动跳过已被占用的 clw001，自动分配 clw002
+    #    B. 如果显式指定 --id clw001，会报错拒绝。
 
     env = os.environ.copy()
     env["CCC_PYTHON_BIN"] = "python3"
 
-    # 测试 A：显式指定被占用的 --id ccc001-stale，应该被拒绝
+    # 测试 A：显式指定被占用的 --id clw001-stale，应该被拒绝
     res = subprocess.run(
         [
             "bash",
             str(new_card_script),
             "--title", "Stale ID Card",
-            "--project", "ccc",
-            "--id", "ccc001-stale",
-            "--related", "ccc-plan-007",
+            "--project", "clw",
+            "--id", "clw001-stale",
+            "--related", "clw-plan-007",
             "--dispatch-dir", str(local / "docs" / "dispatch"),
         ],
         cwd=str(local),
@@ -101,16 +101,16 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
     print("RES1 STDERR:\n", res.stderr)
     assert res.returncode == 3
     assert "卡编号冲突" in res.stderr
-    assert "ccc001" in res.stderr
+    assert "clw001" in res.stderr
 
-    # 测试 B：自动编号，应该自动生成 ccc002 而不是 ccc001
+    # 测试 B：自动编号，应该自动生成 clw002 而不是 clw001
     res2 = subprocess.run(
         [
             "bash",
             str(new_card_script),
             "--title", "Auto Increment Card",
-            "--project", "ccc",
-            "--related", "ccc-plan-007",
+            "--project", "clw",
+            "--related", "clw-plan-007",
             "--dispatch-dir", str(local / "docs" / "dispatch"),
         ],
         cwd=str(local),
@@ -121,8 +121,8 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
     print("RES2 STDOUT:\n", res2.stdout)
     print("RES2 STDERR:\n", res2.stderr)
     assert res2.returncode == 0
-    assert "ccc002" in res2.stdout
-    assert (local / "docs" / "dispatch" / "ccc" / "ccc002-auto-increment-card.md").is_file()
+    assert "clw002" in res2.stdout
+    assert (local / "docs" / "dispatch" / "clw" / "clw002-auto-increment-card.md").is_file()
 
 
 def test_new_card_flock_concurrency(tmp_path: Path) -> None:
@@ -153,8 +153,8 @@ def test_new_card_flock_concurrency(tmp_path: Path) -> None:
         "bash",
         str(new_card_script),
         "--title", "Concurrent Card",
-        "--project", "ccc",
-        "--related", "ccc-plan-007",
+        "--project", "clw",
+        "--related", "clw-plan-007",
         "--dispatch-dir", str(dispatch_dir),
     ]
 
@@ -172,10 +172,10 @@ def test_new_card_flock_concurrency(tmp_path: Path) -> None:
     assert p1.returncode == 0, f"P1 失败: {err1}"
     assert p2.returncode == 0, f"P2 失败: {err2}"
 
-    files = list((dispatch_dir / "ccc").glob("ccc[0-9][0-9][0-9]-*.md"))
+    files = list((dispatch_dir / "clw").glob("clw[0-9][0-9][0-9]-*.md"))
     assert len(files) == 2, f"期望 2 张卡，实际找到 {len(files)} 张: {files}"
 
     stems = sorted([f.stem for f in files])
-    assert stems[0].startswith("ccc001")
-    assert stems[1].startswith("ccc002")
+    assert stems[0].startswith("clw001")
+    assert stems[1].startswith("clw002")
 

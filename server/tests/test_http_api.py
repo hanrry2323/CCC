@@ -1406,7 +1406,8 @@ class TestTasksRunning:
         (log_dir / "T999.running").write_text("pid=1\n", encoding="utf-8")
         monkeypatch.setenv("EXECUTOR_LOG_DIR", str(log_dir))
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [
                 BoardItem(id="T999", title="测试运行中", state="执行中", executor="Claude Code"),
                 BoardItem(id="T1", title="待分派卡", state="待分派"),
@@ -1452,7 +1453,8 @@ class TestTasksRunning:
         subprocess.run(["git", "config", "user.name", "t"], cwd=wt, check=True, capture_output=True)
         (wt / "a.txt").write_text("a\n", encoding="utf-8")
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [BoardItem(id="T777", title="脏", state="执行中", executor="Claude Code")],
         )
         status, data = _get(api_server, "/tasks/running")
@@ -1467,7 +1469,8 @@ class TestTasksRunning:
         from server.board.models import BoardItem
 
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [
                 BoardItem(id="T1", title="待分派", state="待分派"),
                 BoardItem(
@@ -1502,7 +1505,8 @@ class TestTasksRunning:
         monkeypatch.delenv("EXECUTOR_LOG_DIR", raising=False)
         monkeypatch.delenv("CCC_CONFIG_ENV", raising=False)
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [BoardItem(id="T5", title="跑着", state="执行中", executor="X")],
         )
         status, data = _get(api_server, "/tasks/running")
@@ -1658,9 +1662,7 @@ class TestOpsRelayStats:
         from datetime import datetime
 
         now_ms = int(time.time() * 1000)
-        today_start_ms = int(
-            datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000
-        )
+        today_start_ms = int(datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000)
         usage = [
             {"timestamp": now_ms - 5000, "model": "flash"},
             {"timestamp": now_ms - 5000, "model": "code"},
@@ -1803,11 +1805,7 @@ class TestTaskTransition:
         token = _get_token(api_server)
         status, snap = _get(api_server, "/board/snapshot", token=token)
         assert status == 200
-        candidates = [
-            t["id"]
-            for col in ("打回", "待分派")
-            for t in snap["columns"].get(col, [])
-        ]
+        candidates = [t["id"] for col in ("打回", "待分派") for t in snap["columns"].get(col, [])]
         if not candidates:
             pytest.skip("无打回/待分派卡")
         task_id = candidates[0]
@@ -1965,12 +1963,13 @@ class TestProjectsEndpoint:
             assert p["is_taskable"] in (True, False)
 
     def test_taskable_flags(self, api_server):
-        """可下达任务：CCC/qb/medio-0；QuantHive 禁止经 CCC 派发。"""
+        """可下达任务：qb/medio-0；CCC 平台自研禁出卡（2026-08-10 红线）；QuantHive 禁止经 CCC 派发。"""
         status, data = _get(api_server, "/projects")
         assert status == 200
         by_name = {p["name"]: p for p in data["projects"]}
-        for required in ("CCC", "qb", "medio-0"):
+        for required in ("qb", "medio-0"):
             assert by_name[required]["is_taskable"] is True, f"{required} 应可下达任务"
+        assert by_name["CCC"]["is_taskable"] is False, "CCC 平台自研禁出卡（2026-08-10 红线）"
         assert by_name["QuantHive"]["is_taskable"] is False, "QuantHive 禁止 CCC taskable"
 
 
@@ -1996,8 +1995,10 @@ class TestThreadPersistence:
         )
         token = _get_token(api_server)
         status, data = _post(
-            api_server, "/conversation",
-            {"message": "你好世界", "thread_id": "qb::abc", "project": "qb"}, token=token,
+            api_server,
+            "/conversation",
+            {"message": "你好世界", "thread_id": "qb::abc", "project": "qb"},
+            token=token,
         )
         assert status == 200
         # 线程列表（鉴权开启时须带 token）
@@ -2033,7 +2034,9 @@ class TestThreadPersistence:
             lambda prompt, timeout: (True, "ok", None),
         )
         token = _get_token(api_server)
-        _post(api_server, "/conversation", {"message": "persist", "thread_id": "qb::keep", "project": "qb"}, token=token)
+        _post(
+            api_server, "/conversation", {"message": "persist", "thread_id": "qb::keep", "project": "qb"}, token=token
+        )
         # 模拟重启：清空内存会话历史后，重新加载磁盘
         from server.web import server as srv_mod
 
@@ -2064,8 +2067,10 @@ class TestThreadPersistence:
         _post(api_server, "/conversation", {"message": "title-me", "thread_id": "qb::r1", "project": "qb"}, token=token)
         # 重命名
         status, data = _post(
-            api_server, "/projects/qb/threads/qb%3A%3Ar1/rename",
-            {"title": "新标题"}, token=token,
+            api_server,
+            "/projects/qb/threads/qb%3A%3Ar1/rename",
+            {"title": "新标题"},
+            token=token,
         )
         assert status == 200
         _, threads = _get(api_server, "/projects/qb/threads", token=token)
@@ -2124,6 +2129,7 @@ class TestThreadPersistence:
 
         # 3. Test GET /cards with state filter
         from urllib.parse import quote
+
         status, data = _get(api_server, f"/cards?state={quote('执行中')}")
         assert status == 200
         assert data["total"] == 1
@@ -2254,6 +2260,7 @@ class TestCardsFallback:
 
         # 重建包含归档文件的索引
         from server.board.loader import load_dispatch_cards
+
         load_dispatch_cards(dispatch_dir, include_archived=True)
 
         # 1. 默认查询不含已归档任务卡

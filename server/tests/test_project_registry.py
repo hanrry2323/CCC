@@ -18,7 +18,7 @@ def test_prefixes_match_registry() -> None:
     clear_registry_cache()
     from_reg = card_prefixes()
     assert set(models.PREFIXES) == set(from_reg)
-    assert models.PREFIXES["ccc"] == from_reg["ccc"]
+    assert "ccc" not in models.PREFIXES  # 2026-08-10 平台自研禁出卡
     assert "qh" not in models.PREFIXES
 
 
@@ -28,11 +28,18 @@ def test_qh_forbidden() -> None:
     assert "qh" in models.FORBIDDEN_CARD_PREFIXES
 
 
-def test_taskable_includes_ccc_excludes_qh() -> None:
+def test_ccc_forbidden_platform_self_dev() -> None:
+    """2026-08-10 红线：CCC 平台自研禁出卡 → ccc 与 qh 同列禁卡表。"""
+    clear_registry_cache()
+    assert "ccc" in forbidden_prefixes()
+    assert "ccc" in models.FORBIDDEN_CARD_PREFIXES
+
+
+def test_taskable_excludes_ccc_and_qh() -> None:
     clear_registry_cache()
     names = taskable_names()
-    assert "CCC" in names or "ccc" in names
     assert "qb" in names
+    assert "CCC" not in names and "ccc" not in names  # ccc 禁出卡
     assert "QuantHive" not in names
     assert "qh" not in {n.lower() for n in names if n == "qh"}
 

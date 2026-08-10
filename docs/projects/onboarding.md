@@ -245,3 +245,4 @@
 2. 禁止手维派生层（种子/kb-seed/硬编码表）——不一致以 registry 为准，不一致就是 bug，报修不改表。
 3. 无方案关联的卡、无基准文件的卡 = 流程缺陷，机审打回。
 4. 业务仓入口文件（AGENTS/CLAUDE/README）不允许回归脚手架模板。
+5. **平台自研禁出卡（2026-08-10 红线）**：CCC 平台自身的开发与流程优化（改 `server/engine/` 派发/机审/门禁、`server/board/` validate/docgate、`scripts/` 出卡类、任何影响流程自我运行逻辑）**禁止写任务卡走 engine 自动派发**——registry 已把 ccc `taskable: false` 断根。一律 M1 主窗口直接开发 + 直接测试 + 异席机审（Claude Code/Codex 审）。理由：不完善的流程自我开发会「补丁卡→平台更不稳→更多补丁卡」自激增长，且机审主体与被审对象同源。
