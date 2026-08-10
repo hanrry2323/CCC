@@ -1590,6 +1590,50 @@ class TestAuditRejectionExitZero:
         assert _audit_rejection_reason("") is None
         assert _audit_rejection_reason("机审通过\n") is None
 
+    def test_audit_pass_not_fooled_by_prompt_wording(self) -> None:
+        """clw009 回归：prompt 含「机审：不通过（具体原因）」字样，但 agent 实际通过。
+
+        启动行 cmd= 后紧跟多行 prompt（含不通过字样），agent 输出「机审：通过」。
+        判定必须以 child_pid= 之后为准，不得把 prompt 字样当不通过。"""
+        text = (
+            "[ccc.engine] start work=clw009 phase=audit pid_pending cmd=claude -p 你是 2017 机审席。\n"
+            "- 原则性红线问题（范围系统性越界/核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出\n"
+            "通过则把「## 机审区」+「机审：通过」写进 worktree 卡文件。\n"
+            "[ccc.engine] child_pid=35986\n"
+            "Pushed successfully to `codex/clw009-terminal-overhaul`.\n"
+            "**机审：通过**\n"
+            "clw009 终端链路重做复审通过，核心整改已落地。\n"
+        )
+        from server.engine.main import (
+            _audit_output_indicates_pass,
+            _audit_output_indicates_rejection,
+            _audit_rejection_reason,
+        )
+
+        assert _audit_output_indicates_pass(text) is True
+        assert _audit_output_indicates_rejection(text) is False
+        assert _audit_rejection_reason(text) is None
+
+    def test_audit_rejection_still_detected_after_child_pid(self) -> None:
+        """真正的不通过（在 child_pid= 之后）仍被正确判定。"""
+        text = (
+            "[ccc.engine] start work=clw011 phase=audit pid_pending cmd=claude -p ...\n"
+            "通过则把「## 机审区」+「机审：通过」写进 worktree 卡文件。\n"
+            "[ccc.engine] child_pid=123\n"
+            "核查完成。\n"
+            "机审：不通过（维护区声明不实 + 核心业务意图未实现）\n"
+        )
+        from server.engine.main import (
+            _audit_output_indicates_pass,
+            _audit_output_indicates_rejection,
+            _audit_rejection_reason,
+        )
+
+        assert _audit_output_indicates_rejection(text) is True
+        assert _audit_output_indicates_pass(text) is False
+        reason = _audit_rejection_reason(text)
+        assert reason is not None and "维护区声明不实" in reason
+
 
 class TestEngineWorktree:
     """测试 Engine 自动按卡创建 worktree 功能。"""

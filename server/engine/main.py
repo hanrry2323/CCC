@@ -867,6 +867,36 @@ def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
     return flat_cand if flat_cand.is_file() else None
 
 
+def _audit_output_body(text: str) -> str:
+    """截取机审 agent 真实输出区（判定区），排除引擎启动行与注入的 prompt。
+
+    引擎 audit.log 格式：
+      [ccc.engine] start work=... phase=audit pid_pending cmd=...<prompt 单行>
+
+      [ccc.engine] child_pid=<pid>
+
+      <agent 真实输出>
+
+    陷阱（clw009 事故）：启动行 cmd= 后的 prompt 里含字面「\n」与多行文本，
+    prompt 里就有「输出「机审：不通过（具体原因）」并以非零退出」字样——
+    若只截到 start work 后的第一个真实换行，prompt 中段会被误当作 agent 判定区。
+    正确判定区 = ``[ccc.engine] child_pid=`` 之后（agent 输出起点）。
+    """
+    if not text:
+        return ""
+    for marker in ("[ccc.engine] child_pid=", "child_pid="):
+        idx = text.find(marker)
+        if idx >= 0:
+            return text[idx:]
+    # 无 child_pid（echo 类快输出/测试夹具）→ 回退到启动行后的首个真实换行
+    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
+        idx = text.find(marker)
+        if idx >= 0:
+            nl = text.find("\n", idx)
+            return text[nl + 1 :] if nl >= 0 else ""
+    return text
+
+
 def _audit_output_indicates_pass(text: str) -> bool:
     """从机审席 stdout/audit.log 判断是否已给出通过结论（ccc006）。
 
@@ -880,13 +910,7 @@ def _audit_output_indicates_pass(text: str) -> bool:
         return False
     from server.board.models import machine_audit_passed_text
 
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
+    body = _audit_output_body(text)
 
     if machine_audit_passed_text(body):
         return True
@@ -901,13 +925,7 @@ def _audit_output_indicates_rejection(text: str) -> bool:
     """
     if not text or not text.strip():
         return False
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
+    body = _audit_output_body(text)
     return ("机审：不通过" in body) or ("机审不通过" in body)
 
 
@@ -918,13 +936,7 @@ def _audit_rejection_reason(text: str) -> str | None:
     """
     if not text:
         return None
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
+    body = _audit_output_body(text)
     lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
     if not lines:
         return None
@@ -964,13 +976,7 @@ def _is_mechanical_rejection_text(text: str) -> bool:
     """是否包含机械问题特征（测试/编译/lint 失败、范围越界等）。"""
     if not text or not text.strip():
         return False
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
+    body = _audit_output_body(text)
 
     keywords = [
         "测试失败",
