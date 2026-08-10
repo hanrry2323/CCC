@@ -1,6 +1,6 @@
 # 任务卡 T62 · T-A5 历史归档与回顾 + /cards 兜底（Claude Code 执行）
 
-> 关联：ccc-plan-005· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-05
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t62 -b codex/t62-archive-review origin/main`，在其中工作；分支 `codex/t62-archive-review`
 > **分步提交纪律（硬）**：每块完成立即 commit+push；超时 7200s。
 
