@@ -124,3 +124,21 @@ Mac2017 `ai-loop-router-ccc`（6100 anthropic / 6102 openai-chat）已拉起并�
 | 红线 | 端口走 env、密钥不落 git、M1 零接触 ✅ |
 
 **关联问题（登记至 T26-R，非本卡缺陷）**：M1 工作树 `desktop/Sources/CCCDesktop/Models.swift` 存在一笔未提交的 85 行删除（删除了仍被引用的 `InboxProposal`/`ManualEpicForm`/`TaskTemplate`/`Phase`/`ProjectStats`），当前 `swift build` 编译失败——要求 Trae 恢复该文件（`git checkout -- desktop/Sources/CCCDesktop/Models.swift` 或补全被删类型），恢复构建绿 + 工作树仅剩预存 2 项。
+
+## 机审区
+
+**机审：通过**
+- 说明：历史卡，无存档证据，按看板已关闭态标注
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。
