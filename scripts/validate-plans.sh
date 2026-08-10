@@ -150,17 +150,14 @@ validate_file() {
       local cards_part
       cards_part=$(echo "$cards_line" | sed -E 's/^.*关联卡：//' | tr -d '\r\n')
       if [ -n "$cards_part" ] && [ "$cards_part" != "无" ]; then
-        local has_cards=0
         local all_closed=1
-        local open_cards=""
         local card_count=0
-        
+
         # Clean characters like · , and Chinese variants to spaces
         local cleaned_cards=$(echo "$cards_part" | tr '·,()（）' ' ' | tr -s ' ')
         for word in $cleaned_cards; do
           if [[ "$word" =~ ^[a-zA-Z]+-?[0-9]+ ]]; then
             card_count=$((card_count + 1))
-            has_cards=1
             local card_file=""
             card_file=$(find "$REPO_ROOT/docs/dispatch" \( -iname "${word}.md" -o -iname "${word}-*.md" \) -print -quit 2>/dev/null)
             if [ -n "$card_file" ] && [ -f "$card_file" ]; then
@@ -168,12 +165,10 @@ validate_file() {
               local c_status=$(echo "$card_head" | grep '状态：' | head -1 | sed -E 's/.*状态：([^ ·\t\r\n]+).*/\1/' | tr -d ' ' || true)
               if [ "$c_status" != "已关闭" ]; then
                 all_closed=0
-                open_cards="$open_cards $word($c_status)"
               fi
             else
               # If card file is not found, treat as not closed to be safe
               all_closed=0
-              open_cards="$open_cards $word(文件未找到)"
             fi
           fi
         done
