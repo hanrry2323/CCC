@@ -141,3 +141,22 @@ CLW 交付收尾示范（报告/CHANGELOG/tag/安装验证/roadmap）（ccc-plan
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过**（2026-08-10 · 2017 验收席）
+
+**范围核验**：HEAD commit `6816d5f5` 改动 5 文件，全部落在卡白名单（`docs/projects/clw/**` / `docs/roadmap.md` / `docs/releases/**`），无越界；未写 `## 验收区`、未置「已关闭」。
+
+**维护区（Doc-Gate）核验**：四问均已勾选并填实质说明，无占位/模板残留。
+- Q1 方案同步 [是]：`clw-plan-001` 状态 `已完成`，clw001-clw007 验收标准全 `[x]`（含本次补 clw007 项）——属实
+- Q2 教训沉淀 [无]：首个 Delivery Gate 落地示范，无新增缺陷教训——合理解释
+- Q3 档案/README [是]：`docs/projects/clw/README.md` 线近况已更新至 v0.1.0 发布——属实
+- Q4 线路图 [是]：`docs/roadmap.md` 业务线路 clw001→clw007 进度 `已交付`——属实
+
+**交付物声明核验**：
+- 交付报告 `docs/projects/clw/deliveries/clw-delivery-001.md`：含交付物清单全勾 / Gate 清单 / 版本信息 / 可复跑安装验证（dmg→/Applications→启动冒烟），结构符合 §7 Delivery Gate
+- CHANGELOG + RELEASE + tag v0.1.0（clwarp 业务仓，commit `3e954f9…`）——业务仓侧记录
+- roadmap / 档案 / 方案三处同步与卡改动一致
+
+**就地修复（小重构类）**：`docs/projects/clw/plans/001-clwarp-tauri-skeleton.md` 依赖链仍写「分 6 张卡执行」，与新增 clw007 不符 → 已改为 7 张并补 clw007 依赖链（commit `826ba2f4`），`validate-plans.sh` 全部通过。
