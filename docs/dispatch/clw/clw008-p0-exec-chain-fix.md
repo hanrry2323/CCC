@@ -1,6 +1,6 @@
 # 任务卡 clw008 · P0 执行链修复（GUI PATH / dev 端口 / 终止重启 / 泄漏 / HOME）（OpenCode 执行）
 
-> 关联：clw-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：clw · 日期：2026-08-10
+> 关联：clw-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -65,32 +65,24 @@ P0 执行链修复（GUI PATH / dev 端口 / 终止重启 / 泄漏 / HOME）（c
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：2026-08-10
-
-- **实现说明**：
-  1. **GUI 环境登录 shell 解析**：实现了在启动 `TerminalSession` 前通过 `get_login_shell_path()` 执行登录 shell `-l -c "echo $PATH"`，自动收集包含 `/opt/homebrew/bin`、`~/.local/bin` 和 `nvm` 在内的完整 PATH 环境变量。并且通过 `resolve_executable_path` 进行可执行二进制文件贪婪检索，生成绝对路径传递给 alacritty 终端，确保 Finder 双击启动 `.app` 也能完美拉起 CLI。同时将抓取到的 `PATH` 覆盖并注入到子进程的 `env` 中。
-  2. **dev 模式端口一致**：配置 `vite.config.ts` 指定 `server.port: 1420` , `strictPort: true`, `host: 'localhost'`，与 `tauri.conf.json` 的 `devUrl` 完美一致，防止白屏。
-  3. **「终止会话」**：改进 React 端的 `<App>` 布局，仅在 `sessionToResume !== null` 时渲染 `<TerminalComponent>`。点击终止会话后重置 `sessionToResume` 为 `null`，使其彻底卸载且不再次重新 `spawn_terminal` 裸 shell。
-  4. **StrictMode不泄露**：在 `<TerminalComponent>` 的 `useEffect` 中添加 `isCancelled` 取消哨兵。若 StrictMode 在异步拉起后端 Session 期间触发 unmount，组件将立即通过 `kill_terminal` 清理刚建立的 Session，彻底杜绝 orphaned PTY / CLI 进程泄露。
-  5. **HOME fallback 移除硬编码**：在 `src-tauri/src/session.rs` 中使用 `dirs::home_dir()` 动态、安全地获取系统级真实用户目录，彻底移除 `/Users/fan` 静态硬编码。
-- **测试结果**：
-  1. 前端 `npm run lint` && `npx tsc -b` && `vite build` 100% 成功通过。
-  2. 后端 `cargo check` && `cargo test` 100% 成功通过且无任何警告，`test_decode_claude_project_path` 在本地验证成功。
-- **Push 证据**：
-  - Commit Hash: `f80765b`
+**执行体**：OpenCode · 日期：
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：关联方案 `clw-plan-002` 的 P0 部分通过本卡已完成全部开发。
-2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：无。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：添加了 `dirs` 依赖库，已经在 Cargo.toml 中同步。
-4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：下一步 Linux 适配与 SSE 线路并未改变。
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：
+2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：
+4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：
+
+## 批注落实
+
+（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
 
 ## 执行提示
 
