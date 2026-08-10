@@ -1,3 +1,4 @@
+from pathlib import Path
 
 
 class TestV6AuditCommitPin:
@@ -19,9 +20,7 @@ class TestV6AuditCommitPin:
         from server.engine.main import _pin_audit_commit
 
         card = tmp_path / "w.md"
-        card.write_text(
-            "## 机审区\n\n机审：通过（被审 abcdef123456）\n", encoding="utf-8"
-        )
+        card.write_text("## 机审区\n\n机审：通过（被审 abcdef123456）\n", encoding="utf-8")
         assert _pin_audit_commit(str(card), "deadbeef00") is True
         text = card.read_text(encoding="utf-8")
         assert text.count("被审 ") == 1
