@@ -1,6 +1,6 @@
 # 任务卡 ccc054 · onboarding §7 项目交付收尾（Delivery Gate）+ delivery-template（OpenCode 执行）
 
-> 关联：ccc-plan-017 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-017 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -45,24 +45,29 @@ onboarding §7 项目交付收尾（Delivery Gate）+ delivery-template（ccc-pl
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+- **实现说明**：
+  - 在 `docs/projects/onboarding.md` 中新增了 §7「项目交付收尾（Delivery Gate）」。明确了卡级 Doc-Gate 与方案级 Delivery Gate 的分层设计与引用对应关系。
+  - 建立了包括交付报告、CHANGELOG、RELEASE、Git Tag 以及可复跑安装验证在内的五大交付物清单标准。
+  - 新建了 `docs/projects/_template/delivery-template.md`，用于引导各业务仓在交付和收尾方案时使用，其中详细规定了版本与一键可复跑安装运行命令的规范。
+- **测试结果**：
+  - 运行 `./scripts/validate-plans.sh` 通过了所有的方案静态格式检查。
+- **push 证据**：
+  - Commit Hash: `cabe4ab3d97f0bd7ca15b780efdf1ae9f62df9bc`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `ccc-plan-017` 状态已同步，当前本卡所属 slice 完成，方案处于「部分执行」状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：无。本卡属于文档与模板规范落地。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：否。未改变项目结构或技术栈，仅增加了交付规范文档。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：否。下一步计划在 `ccc055` 卡片中继续推进方案。
 
 ## 执行提示
 
