@@ -1,6 +1,6 @@
 # 任务卡 ccc043 · 出卡查重升级（fetch 远端 + 基于 origin/main 查重）（OpenCode 执行）
 
-> 关联：ccc-plan-014 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-014 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
