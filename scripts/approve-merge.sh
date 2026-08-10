@@ -18,6 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
+# shellcheck source=lib/card-resolve.sh
+source "$SCRIPT_DIR/lib/card-resolve.sh"
 USE_READY=false
 CLOSE_ONLY=false
 IDS=()
@@ -101,17 +103,6 @@ if [[ ${#IDS[@]} -eq 0 ]]; then
   usage
   exit 2
 fi
-
-resolve_card() {
-  local id="$1"
-  local hit
-  hit="$(find docs/dispatch -type f -name "${id}-*.md" 2>/dev/null | head -1 || true)"
-  if [[ -z "$hit" ]]; then
-    echo "[ERROR] 找不到卡：${id}" >&2
-    return 1
-  fi
-  echo "$hit"
-}
 
 check_audit() {
   local path="$1"
@@ -334,6 +325,26 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   if [[ "$audit_ok" != true ]]; then
     echo "[ERROR] ${id}: 分支信封无机审通过证据（origin/${branch} 卡无机审区，本地卡也无）" >&2
     return 1
+  fi
+
+  # V6：机审钉 commit——信封「机审：通过（被审 <sha>）」存在时，校验分支无漂移：
+  # 被审 sha..tip 之间只允许卡文件改动（机审区 pin 提交）；出现非卡改动 = 机审后漂移 → 拒绝。
+  local pinned
+  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | head -1 || true)"
+  if [[ -n "$pinned" ]]; then
+    local pin_sha
+    pin_sha="${pinned#被审 }"
+    if ! git rev-parse --verify "${pin_sha}^{commit}" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
+      return 1
+    fi
+    local drift_rc=0
+    git diff --quiet "${pin_sha}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
+    drift_rc=$?
+    if [[ "$drift_rc" -ne 0 ]]; then
+      echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审" >&2
+      return 1
+    fi
   fi
 
   # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）

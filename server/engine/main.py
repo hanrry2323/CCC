@@ -405,6 +405,49 @@ def _worktree_hint_for(work: Work, registry: ExecutorRegistry) -> str:
     return get_worktree_path(wt_base, work.id)
 
 
+def _worktree_branch_tip(worktree_hint: str, branch: str) -> str | None:
+    """读 worktree 分支远端 tip（机审启动前记录 = 被审 commit）。"""
+    if not worktree_hint:
+        return None
+    try:
+        res = subprocess.run(
+            ["git", "-C", worktree_hint, "rev-parse", f"origin/{branch}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if res.returncode == 0:
+            return res.stdout.strip() or None
+    except Exception:
+        return None
+    return None
+
+
+def _pin_audit_commit(card_path: str, sha: str) -> bool:
+    """机审信封钉被审 commit：把「机审：通过」改写为「机审：通过（被审 <sha12>）」（幂等）。
+
+    V6：合入前凭此行校验分支无漂移（机审通过后执行体再 push 非卡改动 → 拒绝合入）。
+    """
+    if not sha:
+        return True
+    try:
+        text = Path(card_path).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if "被审 " in text:
+        return True
+    m = re.search(r"^(机审：通过\s*)$", text, flags=re.MULTILINE)
+    if not m:
+        return True
+    text = text[: m.start()] + f"机审：通过（被审 {sha[:12]}）\n" + text[m.end() :]
+    try:
+        Path(card_path).write_text(text, encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
 def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
     """机审证据是否已在信封（**分支 git 证据**为准，生产卡兜底）。
 
@@ -1941,6 +1984,10 @@ def _run_machine_audit_after_writeback(
         )
         return True, []
     logger.info("拉起机审: work=%s acceptor=%s", work.id, acceptor)
+    audited_tip: str | None = None
+    if worktree_hint:
+        branch = f"codex/{Path(work.card_path).stem.lower()}"
+        audited_tip = _worktree_branch_tip(worktree_hint, branch)
     _claim_running_marker(log_dir, f"{work.id}-audit")
     try:
         ok, problems = _dispatch_and_collect(
@@ -1972,6 +2019,8 @@ def _run_machine_audit_after_writeback(
                 evidence=evidence,
             ):
                 return False, ["机审通过但机审区落盘到分支卡失败"]
+            if audited_tip:
+                _pin_audit_commit(str(wt_card), audited_tip)
             if not _commit_and_push_worktree_card(
                 worktree_hint,
                 work.card_path,
