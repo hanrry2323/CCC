@@ -17,8 +17,17 @@ from server.board.models import UNKNOWN, base_state
 
 # ── 冻结的卡头字段清单（契约 §1；唯一登记表，禁止各层自写解析） ──
 HEADER_FIELDS: tuple[str, ...] = (
-    "关联", "执行体", "验收", "状态", "日期",
-    "项目", "派发", "类型", "父卡", "会话", "thread_id",
+    "关联",
+    "执行体",
+    "验收",
+    "状态",
+    "日期",
+    "项目",
+    "派发",
+    "类型",
+    "父卡",
+    "会话",
+    "thread_id",
 )
 
 # 契约 §2 五态（卡头唯一合法状态）
@@ -74,6 +83,7 @@ def _normalize_type(raw: str) -> str:
 @dataclass(frozen=True)
 class CardHeader:
     """任务卡头契约单一 schema。"""
+
     id: str = UNKNOWN
     title: str = UNKNOWN
     related: str = ""
@@ -87,6 +97,7 @@ class CardHeader:
     parent: str = ""
     session: str = ""
     reject_count: int = 0
+    depends: str = ""
 
     @property
     def state_base(self) -> str:
@@ -127,4 +138,5 @@ class CardHeader:
             parent=meta.get("父卡", ""),
             session=(meta.get("会话", "").strip() or meta.get("thread_id", "").strip()),
             reject_count=reject_count,
+            depends=meta.get("依赖", ""),
         )

@@ -41,6 +41,28 @@ def _strip_parenthetical(value: str) -> str:
     return re.split(r"[（(]", value, maxsplit=1)[0].strip()
 
 
+_CARD_ID_TOKEN_RE = re.compile(r"[a-z]{2,4}\d{3}")
+
+
+def _parse_depends(raw: str) -> list[str]:
+    """解析卡头「依赖：」字段 → 卡 ID 列表。
+
+    支持逗号/顿号/空格分隔，去重保序；无有效卡 ID 返回空列表。
+    例：`依赖：ccc042, ccc043` → ["ccc042", "ccc043"]；`依赖：` → []。
+    """
+    if not raw:
+        return []
+    seen: list[str] = []
+    for token in re.split(r"[,，、\s]+", raw):
+        token = token.strip()
+        if not token:
+            continue
+        m = _CARD_ID_TOKEN_RE.search(token)
+        if m and m.group(0) not in seen:
+            seen.append(m.group(0))
+    return seen
+
+
 def _derive_project_from_related(related: str) -> str:
     """旧卡兼容：无「项目」字段时从「关联」首段推导项目名。
 
@@ -96,6 +118,7 @@ def parse_card(path: Path | str) -> BoardItem:
         type=header.card_type,
         parent=header.parent,
         thread_id=header.session,
+        depends_on=_parse_depends(header.depends),
         acceptance=normalize_tool(_strip_parenthetical(header.acceptance)) or UNKNOWN,
         archived=is_archived,
         machine_audit_passed=machine_audit_passed_text(text),
@@ -170,6 +193,7 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
 
 def _derive_card_type(path: Path) -> str:
     from server.board.validate import NEW_CARD_RE, OLD_CARD_RE
+
     stem = path.stem
     if NEW_CARD_RE.match(stem):
         return "new"
@@ -214,6 +238,7 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "card_type": item.type,
         "parent_card": item.parent,
         "thread_id": item.thread_id,
+        "depends_on": list(item.depends_on),
         "acceptance": item.acceptance,
         "archived": item.archived,
         "machine_audit_passed": item.machine_audit_passed,
@@ -293,11 +318,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
 
         entry = index_by_path.get(repo_path)
         # 缺 machine_audit_passed 的旧索引视为失效（M3：否则机审通过卡一直停在「机审」列）
-        cache_ok = (
-            entry is not None
-            and entry.get("mtime") == mtime
-            and "machine_audit_passed" in entry
-        )
+        cache_ok = entry is not None and entry.get("mtime") == mtime and "machine_audit_passed" in entry
         if cache_ok:
             item = BoardItem(
                 id=entry["id"],

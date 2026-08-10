@@ -130,6 +130,7 @@ class FileBoardStore:
     def list_work(self, state: State | None = None) -> list[Work]:
         """走索引列出 work (扫描仅用于重建/校验)。"""
         from server.board.loader import load_dispatch_cards, load_index_file
+
         load_dispatch_cards(self._dir)
 
         index_entries = load_index_file(self._dir)
@@ -174,7 +175,11 @@ class FileBoardStore:
                 if candidates:
                     for c in candidates:
                         stem = c.stem.lower()
-                        if stem == card_id.lower() or stem.startswith(card_id.lower() + "-") or stem.startswith(card_id.lower() + "_"):
+                        if (
+                            stem == card_id.lower()
+                            or stem.startswith(card_id.lower() + "-")
+                            or stem.startswith(card_id.lower() + "_")
+                        ):
                             matched_path = c
                             break
                     if not matched_path:
@@ -188,7 +193,11 @@ class FileBoardStore:
                 rel_path = entry.get("path", "")
                 abs_path = project_root / rel_path
 
-            retry_count = int(rt.get("retry_count") or 0) if rt.get("retry_count") is not None else _retry_count_from_state_str(str(raw_state or ""))
+            retry_count = (
+                int(rt.get("retry_count") or 0)
+                if rt.get("retry_count") is not None
+                else _retry_count_from_state_str(str(raw_state or ""))
+            )
             reason = str(rt.get("reason") or "")[:200]
 
             work = Work(
@@ -202,6 +211,7 @@ class FileBoardStore:
                 type=entry.get("card_type", "task"),
                 project=entry.get("project", ""),
                 parent=entry.get("parent_card", "") or "",
+                depends_on=list(entry.get("depends_on") or []),
                 acceptance=entry.get("acceptance", "") or "",
                 thread_id=entry.get("thread_id", ""),
                 retry_count=retry_count,
@@ -260,6 +270,7 @@ class FileBoardStore:
         # 写卡后失效：重新加载索引以同步最新状态
         try:
             from server.board.loader import load_dispatch_cards
+
             load_dispatch_cards(self._dir)
         except Exception:
             logger.exception("save_work: 索引失效重扫失败（不影响回写成功）")
@@ -292,6 +303,7 @@ class FileBoardStore:
             type=item.type,
             project=item.project,
             parent=item.parent or "",
+            depends_on=list(item.depends_on),
             thread_id=item.thread_id,
             acceptance=(item.acceptance or "") if item.acceptance != "未知" else "",
             retry_count=_retry_count_from_state_str(item.state or ""),

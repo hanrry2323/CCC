@@ -23,6 +23,7 @@ def _reset_engine_dispatch_pool() -> None:
     yield
     reset_dispatch_pool()
 
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = PROJECT_ROOT / "server" / "config" / "executors.example.json"
 
@@ -153,8 +154,7 @@ class TestRunOnceRealDispatch:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="w1", role="开发执行体", card_path=str(tmp_path / "card.md")))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         summary = run_once(reg, store, cfg)
         assert summary["scanned"] == 1
         assert summary["dispatched"] == 1
@@ -170,8 +170,12 @@ class TestRunOnceRealDispatch:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="w2", role="开发执行体"))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_RETRY_ONCE": "false"}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_RETRY_ONCE": "false",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -204,14 +208,16 @@ class TestRunOnceRealDispatch:
 
     def test_launch_failure_collected_as_rejected(self, tmp_path: Path) -> None:
         """命令不存在 → 启动失败 → 关闭重试时打回。"""
-        reg_path = _write_demo_registry(
-            tmp_path, command="/nonexistent/command/xyz", args_template=""
-        )
+        reg_path = _write_demo_registry(tmp_path, command="/nonexistent/command/xyz", args_template="")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="w3", role="开发执行体"))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_RETRY_ONCE": "false"}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_RETRY_ONCE": "false",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -225,8 +231,12 @@ class TestRunOnceRealDispatch:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="w4", role="开发执行体"))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "1", "EXECUTOR_RETRY_ONCE": "false"}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "1",
+            "EXECUTOR_RETRY_ONCE": "false",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -241,8 +251,7 @@ class TestRunOnceRealDispatch:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="t2", role="管理席"))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 0
         pending = store.list_work(state=State.TODO)
@@ -254,22 +263,18 @@ class TestRunOnceRealDispatch:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="t3", role="开发执行体", state=State.DONE))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         summary = run_once(reg, store, cfg)
         assert summary["scanned"] == 0
 
     def test_log_file_written(self, tmp_path: Path) -> None:
         """执行体 stdout 写入 {EXECUTOR_LOG_DIR}/{work_id}.log。"""
-        reg_path = _write_demo_registry(
-            tmp_path, command="echo", args_template="hello-{work_id}"
-        )
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="hello-{work_id}")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="w5", role="开发执行体"))
         log_dir = tmp_path / "logs"
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(log_dir),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(log_dir), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         run_once(reg, store, cfg)
         log_file = log_dir / "w5.log"
         assert log_file.is_file()
@@ -307,8 +312,7 @@ class TestRunOnceManualGui:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(Work(id="m1", role="开发执行体"))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 0
@@ -441,12 +445,14 @@ class TestRunOnceManualDispatch:
         store = InMemoryBoardStore()
         store.seed(
             Work(
-                id="m53", role="开发执行体", executor="demo",
-                card_path=str(tmp_path / "card.md"), dispatch="manual",
+                id="m53",
+                role="开发执行体",
+                executor="demo",
+                card_path=str(tmp_path / "card.md"),
+                dispatch="manual",
             )
         )
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         summary = run_once(reg, store, cfg)
         assert summary["scanned"] == 1
         assert summary["dispatched"] == 0
@@ -468,8 +474,7 @@ class TestRunOnceManualDispatch:
             encoding="utf-8",
         )
         store = FileBoardStore(tmp_path, reg)
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30"}
+        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"), "EXECUTOR_TIMEOUT_SECONDS": "30"}
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 0
         text = card.read_text(encoding="utf-8")
@@ -720,6 +725,55 @@ class TestFileBoardStore:
         parent.state = State.CLOSED
         assert _parent_blocks_dispatch(child, by_id) is None
 
+    def test_depends_on_blocks_dispatch(self) -> None:
+        from server.engine.main import _depends_on_blocks_dispatch
+
+        dep = Work(id="ccc042", role="开发执行体", state=State.DONE)
+        child = Work(id="ccc043", role="开发执行体", state=State.TODO, depends_on=["ccc042"])
+        by_id = {"ccc042": dep, "ccc043": child}
+        assert _depends_on_blocks_dispatch(child, by_id)
+        dep.state = State.CLOSED
+        assert _depends_on_blocks_dispatch(child, by_id) is None
+
+    def test_depends_on_no_block_no_deps(self) -> None:
+        from server.engine.main import _depends_on_blocks_dispatch
+
+        child = Work(id="ccc044", role="开发执行体", state=State.TODO)
+        assert _depends_on_blocks_dispatch(child, {"ccc044": child}) is None
+
+    def test_depends_on_missing_dep_no_block(self) -> None:
+        from server.engine.main import _depends_on_blocks_dispatch
+
+        child = Work(id="ccc045", role="开发执行体", state=State.TODO, depends_on=["ccc999"])
+        by_id = {"ccc045": child}
+        assert _depends_on_blocks_dispatch(child, by_id) is None
+
+    def test_depends_on_multiple_blocks(self) -> None:
+        from server.engine.main import _depends_on_blocks_dispatch
+
+        dep_a = Work(id="ccc042", role="开发执行体", state=State.CLOSED)
+        dep_b = Work(id="ccc043", role="开发执行体", state=State.TODO)
+        child = Work(id="ccc044", role="开发执行体", state=State.TODO, depends_on=["ccc042", "ccc043"])
+        by_id = {"ccc042": dep_a, "ccc043": dep_b, "ccc044": child}
+        assert _depends_on_blocks_dispatch(child, by_id)
+
+    def test_detect_dependency_cycle(self) -> None:
+        from server.engine.main import _detect_dependency_cycle
+
+        a = Work(id="ccc042", role="开发执行体", state=State.TODO, depends_on=["ccc043"])
+        b = Work(id="ccc043", role="开发执行体", state=State.TODO, depends_on=["ccc042"])
+        by_id = {"ccc042": a, "ccc043": b}
+        assert _detect_dependency_cycle(a, by_id)
+
+    def test_detect_dependency_no_cycle(self) -> None:
+        from server.engine.main import _detect_dependency_cycle
+
+        a = Work(id="ccc042", role="开发执行体", state=State.TODO, depends_on=["ccc043"])
+        b = Work(id="ccc043", role="开发执行体", state=State.TODO, depends_on=["ccc044"])
+        c = Work(id="ccc044", role="开发执行体", state=State.TODO)
+        by_id = {"ccc042": a, "ccc043": b, "ccc044": c}
+        assert _detect_dependency_cycle(a, by_id) is None
+
     def test_file_store_runtime_mode(self, tmp_path: Path) -> None:
         """有 log_dir：save_work 只写运行时 sidecar，卡文件保持 main 镜像。"""
         from server.board.loader import load_dispatch_cards
@@ -849,11 +903,7 @@ class TestFileBoardStore:
 
         # 场景 2：卡头缺失状态字段，正文含有「状态：」，应直接抛出 ValueError
         text_no_metadata_state = (
-            "# 任务卡 T81 · 无状态卡\n"
-            "> 关联：TEST · 执行体：demo\n"
-            "\n"
-            "## 目标\n"
-            "我们要检查状态：已关闭。\n"
+            "# 任务卡 T81 · 无状态卡\n> 关联：TEST · 执行体：demo\n\n## 目标\n我们要检查状态：已关闭。\n"
         )
         with pytest.raises(ValueError, match="未在卡头元数据行中找到「状态」段"):
             _replace_state_in_metadata(text_no_metadata_state, "执行中")
@@ -913,6 +963,7 @@ class TestParallelAndRelayGuard:
     def test_parallel_dispatch_concurrency(self, tmp_path: Path) -> None:
         """两张卡并发派发，各自独立执行、收单正确、互不阻塞，总时间小于串行。"""
         import time
+
         reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="1")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
@@ -1382,18 +1433,10 @@ class TestParallelAndRelayGuard:
         log_dir = tmp_path / "logs"
         assert (log_dir / "engine-metrics.jsonl").is_file()
         assert (log_dir / "worker-events.jsonl").is_file()
-        slot = json.loads(
-            (log_dir / "engine-metrics.jsonl")
-            .read_text(encoding="utf-8")
-            .splitlines()[-1]
-        )
+        slot = json.loads((log_dir / "engine-metrics.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         assert slot["exec_max"] == 1
         assert slot["audit_max"] == 1
-        worker = json.loads(
-            (log_dir / "worker-events.jsonl")
-            .read_text(encoding="utf-8")
-            .splitlines()[0]
-        )
+        worker = json.loads((log_dir / "worker-events.jsonl").read_text(encoding="utf-8").splitlines()[0])
         assert worker["work_id"] == "w1"
         assert worker["exit_kind"] in ("ok", "nonzero", "signal", "timeout", "launch_error")
 
@@ -1413,6 +1456,7 @@ class TestParallelAndRelayGuard:
 
         # Mock probe_relay to return True (success)
         import server.engine.main
+
         monkeypatch.setattr(server.engine.main, "probe_relay", lambda url, timeout=5: True)
 
         summary = run_once(reg, store, cfg)
@@ -1436,6 +1480,7 @@ class TestParallelAndRelayGuard:
 
         # Mock probe_relay to return False (failure)
         import server.engine.main
+
         monkeypatch.setattr(server.engine.main, "probe_relay", lambda url, timeout=5: False)
 
         summary = run_once(reg, store, cfg)
@@ -1662,7 +1707,9 @@ class TestEngineWorktree:
         # 1. 在 tmp_path 里初始化一个真实 git 仓库
         subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(tmp_path), check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True, capture_output=True
+        )
         (tmp_path / "foo.txt").write_text("hello", encoding="utf-8")
         subprocess.run(["git", "add", "foo.txt"], cwd=str(tmp_path), check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", "initial commit"], cwd=str(tmp_path), check=True, capture_output=True)
@@ -1969,9 +2016,7 @@ class TestAcceptanceGuard:
     def _write_card(path: Path, card_id: str, accepted: bool) -> None:
         body = "\n## 验收区\n✅ 判定：通过\n" if accepted else "\n## 目标\nx\n"
         path.write_text(
-            f"# 任务卡 {card_id} · 测试\n"
-            f"> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-05\n"
-            f"{body}",
+            f"# 任务卡 {card_id} · 测试\n> 关联：TEST · 执行体：demo · 状态：待分派 · 日期：2026-08-05\n{body}",
             encoding="utf-8",
         )
 
@@ -1981,10 +2026,15 @@ class TestAcceptanceGuard:
         reg = load_registry(reg_path)
         self._write_card(tmp_path / "T67-a.md", "T67-a", accepted=True)
         store = FileBoardStore(tmp_path, reg)
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": ""}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
         import logging
+
         with caplog.at_level(logging.WARNING, logger="ccc.engine"):
             summary = run_once(reg, store, cfg)
         assert summary["scanned"] == 1
@@ -2003,9 +2053,13 @@ class TestAcceptanceGuard:
         reg = load_registry(reg_path)
         self._write_card(tmp_path / "T67-b.md", "T67-b", accepted=False)
         store = FileBoardStore(tmp_path, reg)
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": ""}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 1
@@ -2019,9 +2073,13 @@ class TestAcceptanceGuard:
         self._write_card(tmp_path / "T67-c.md", "T67-c", accepted=True)
         self._write_card(tmp_path / "T67-d.md", "T67-d", accepted=False)
         store = FileBoardStore(tmp_path, reg)
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "2",
-               "EXECUTOR_PROBE_URL": ""}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "2",
+            "EXECUTOR_PROBE_URL": "",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["scanned"] == 2
         assert summary["dispatched"] == 1
@@ -2034,6 +2092,7 @@ class TestAcceptanceGuard:
     def test_is_card_accepted_cached_by_mtime(self, tmp_path: Path) -> None:
         """is_card_accepted 按 mtime 缓存；文件变化后重新判定。"""
         import server.engine.main as m
+
         card = tmp_path / "T67-e.md"
         card.write_text("# 任务卡 T67-e\n> 状态：待分派\n## 验收区\n✅\n", encoding="utf-8")
         assert m.is_card_accepted(str(card)) is True
@@ -2051,7 +2110,9 @@ def _init_src_repo(tmp_path: Path) -> None:
     """初始化一个带 origin/main 分支与初始 commit 的源仓库（worktree 的 `git worktree add` 来源）。"""
     subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(tmp_path), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True, capture_output=True
+    )
     (tmp_path / "base.txt").write_text("base", encoding="utf-8")
     subprocess.run(["git", "add", "base.txt"], cwd=str(tmp_path), check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "base commit"], cwd=str(tmp_path), check=True, capture_output=True)
@@ -2079,14 +2140,18 @@ class TestRunOnceFakeSuccessGuard:
         store = InMemoryBoardStore()
         card_path = tmp_path / "T-fake.md"
         card_path.write_text(
-            "# 任务卡 T-fake\n"
-            f"> 关联：TEST · 执行体：demo · 状态：{card_state} · 日期：2026-08-06\n",
+            f"# 任务卡 T-fake\n> 关联：TEST · 执行体：demo · 状态：{card_state} · 日期：2026-08-06\n",
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake", role="开发执行体", card_path=str(card_path)))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": "", "EXECUTOR_RETRY_ONCE": "false"}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_RETRY_ONCE": "false",
+        }
         return run_once(reg, store, cfg), store, worktree_base
 
     def test_exit_zero_no_product_rejected(self, tmp_path: Path, monkeypatch) -> None:
@@ -2117,9 +2182,13 @@ class TestRunOnceFakeSuccessGuard:
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake2", role="开发执行体", card_path=str(card_path)))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": ""}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["dispatched"] == 1
         assert summary["collected"] == 1
@@ -2142,9 +2211,14 @@ class TestRunOnceFakeSuccessGuard:
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake3", role="开发执行体", card_path=str(card_path)))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": "", "EXECUTOR_RETRY_ONCE": "false"}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_RETRY_ONCE": "false",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 0
         rejected = store.list_work(state=State.REJECTED)
@@ -2165,9 +2239,14 @@ class TestRunOnceFakeSuccessGuard:
             encoding="utf-8",
         )
         store.seed(Work(id="T-fake4", role="开发执行体", card_path=str(card_path)))
-        cfg = {"DATA_DIR": str(tmp_path), "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
-               "EXECUTOR_TIMEOUT_SECONDS": "30", "EXECUTOR_MAX_CONCURRENT": "1",
-               "EXECUTOR_PROBE_URL": "", "EXECUTOR_RETRY_ONCE": "false"}
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_PROBE_URL": "",
+            "EXECUTOR_RETRY_ONCE": "false",
+        }
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 0
         assert store.list_work(state=State.REJECTED)
@@ -2175,6 +2254,7 @@ class TestRunOnceFakeSuccessGuard:
     def test_audit_prompt_no_re_run_wording(self) -> None:
         """断言 MachineAuditPrompt 构造函数输出，且不含「复跑测试/复跑编译裁决」等表述。"""
         from server.engine.main import MachineAuditPrompt
+
         prompt_obj = MachineAuditPrompt(card_path="docs/dispatch/c1.md", work_id="c1", worktree="/tmp/wt")
         prompt_text = prompt_obj.build()
         assert "复跑测试" not in prompt_text
@@ -2192,7 +2272,7 @@ class TestRunOnceFakeSuccessGuard:
             tmp_path,
             command="sh",
             args_template="-c 'echo x >> work.txt && git add work.txt && git commit -qm w'",
-            worktree_base=str(worktree_base)
+            worktree_base=str(worktree_base),
         )
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
@@ -2215,7 +2295,7 @@ class TestRunOnceFakeSuccessGuard:
             "EXECUTOR_MAX_CONCURRENT": "1",
             "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
             "EXECUTOR_PROBE_URL": "",
-            "EXECUTOR_RETRY_ONCE": "false"
+            "EXECUTOR_RETRY_ONCE": "false",
         }
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 1  # 门禁代码级失败 → 放行进机审，卡进入已回写
@@ -2313,9 +2393,7 @@ class TestPromptInjection:
 
     def test_executor_prompt_gets_hint(self, tmp_path: Path) -> None:
         """卡含「## 执行提示」→ 执行体命令末尾包含提示内容。"""
-        reg_path = _write_demo_registry(
-            tmp_path, command="echo", args_template="work={work_id} card={card_path}"
-        )
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="work={work_id} card={card_path}")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
 
@@ -2364,9 +2442,7 @@ class TestPromptInjection:
 
     def test_no_hint_section_unchanged_behavior(self, tmp_path: Path) -> None:
         """卡无「## 执行提示」段 → 执行体行为与原来完全一致（不注入任何内容）。"""
-        reg_path = _write_demo_registry(
-            tmp_path, command="echo", args_template="work={work_id} card={card_path}"
-        )
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="work={work_id} card={card_path}")
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
 
@@ -2421,23 +2497,18 @@ class TestPromptInjection:
             "实现执行 Agent 心智注入，自动拼入关联方案摘要。\n\n"
             "## 验收标准\n"
             "- [ ] 在提示中看到关联方案摘要。\n",
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         # 2. 准备一个项目 README
         project_dir = tmp_path / "docs" / "projects" / "ccc"
         project_dir.mkdir(parents=True, exist_ok=True)
         readme_file = project_dir / "README.md"
-        readme_file.write_text(
-            "# CCC\n\n"
-            "## 线路 / 近况\n\n"
-            "- 近况1\n"
-            "- 近况2\n",
-            encoding="utf-8"
-        )
+        readme_file.write_text("# CCC\n\n## 线路 / 近况\n\n- 近况1\n- 近况2\n", encoding="utf-8")
 
         # 我们需要临时修改 _PROJECT_ROOT
         import server.board.prompt_inject
+
         orig_root = server.board.prompt_inject._PROJECT_ROOT
         server.board.prompt_inject._PROJECT_ROOT = tmp_path
         try:
@@ -2447,7 +2518,10 @@ class TestPromptInjection:
                 "> 关联：ccc-plan-011 卡1 · 执行体：OpenCode · 状态：待分派 · 日期：2026-08-09\n"
             )
             hint = build_executor_hint("ccc", title="test", card_content=card_content)
-            assert "关联方案摘要：目标：实现执行 Agent 心智注入，自动拼入关联方案摘要。验收标准：在提示中看到关联方案摘要。" in hint
+            assert (
+                "关联方案摘要：目标：实现执行 Agent 心智注入，自动拼入关联方案摘要。验收标准：在提示中看到关联方案摘要。"
+                in hint
+            )
             assert "项目线路/近况：" in hint
             assert "近况1" in hint
             assert "近况2" in hint
@@ -2459,12 +2533,12 @@ class TestPromptInjection:
         from server.board.prompt_inject import build_executor_hint
 
         import server.board.prompt_inject
+
         orig_root = server.board.prompt_inject._PROJECT_ROOT
         server.board.prompt_inject._PROJECT_ROOT = tmp_path
         try:
             card_content = (
-                "# 任务卡 ccc023 · 执行\n"
-                "> 关联：阶段 3 P1 · 执行体：OpenCode · 状态：待分派 · 日期：2026-08-09\n"
+                "# 任务卡 ccc023 · 执行\n> 关联：阶段 3 P1 · 执行体：OpenCode · 状态：待分派 · 日期：2026-08-09\n"
             )
             hint = build_executor_hint("ccc", title="test", card_content=card_content)
             # 无方案编号 -> 不注入「关联方案摘要：」行
@@ -2477,6 +2551,7 @@ class TestPromptInjection:
         from server.board.prompt_inject import build_executor_hint
 
         import server.board.prompt_inject
+
         orig_root = server.board.prompt_inject._PROJECT_ROOT
         server.board.prompt_inject._PROJECT_ROOT = tmp_path
         try:
@@ -2515,9 +2590,7 @@ class TestValidateCardStateAfterWriteback:
 
         card = tmp_path / "test-card.md"
         card.write_text(
-            "# 任务卡 test\n\n"
-            "> 关联：P1 · 执行体：OpenCode · 状态：done · 日期：2026-08-09\n\n"
-            "## 目标\n\n测试\n",
+            "# 任务卡 test\n\n> 关联：P1 · 执行体：OpenCode · 状态：done · 日期：2026-08-09\n\n## 目标\n\n测试\n",
             encoding="utf-8",
         )
         ok, err = validate_card_state_after_writeback(card)
@@ -2529,9 +2602,7 @@ class TestValidateCardStateAfterWriteback:
 
         card = tmp_path / "test-card.md"
         card.write_text(
-            "# 任务卡 test\n\n"
-            "> 关联：P1 · 执行体：OpenCode · 状态：已回写 · 日期：2026-08-09\n\n"
-            "## 目标\n\n测试\n",
+            "# 任务卡 test\n\n> 关联：P1 · 执行体：OpenCode · 状态：已回写 · 日期：2026-08-09\n\n## 目标\n\n测试\n",
             encoding="utf-8",
         )
         ok, err = validate_card_state_after_writeback(card)
@@ -2556,9 +2627,7 @@ class TestValidateCardStateAfterWriteback:
 
         card = tmp_path / "test-card.md"
         card.write_text(
-            "# 任务卡 test\n\n"
-            "> 关联：P1 · 执行体：OpenCode · 日期：2026-08-09\n\n"
-            "## 目标\n\n测试\n",
+            "# 任务卡 test\n\n> 关联：P1 · 执行体：OpenCode · 日期：2026-08-09\n\n## 目标\n\n测试\n",
             encoding="utf-8",
         )
         ok, _ = validate_card_state_after_writeback(card)
@@ -2578,29 +2647,34 @@ class TestValidateCardStateAfterWriteback:
         assert "缺失 ## 维护区 节" in reason
 
         # 2. 维护区为占位符
-        card.write_text("# 任务卡 ccc039\n## 维护区\n"
-                        "1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]\n"
-                        "   - 说明：占位\n"
-                        "2. **教训沉淀**：本卡是否产出可复用教训？[有/无]\n"
-                        "   - 说明：占位\n"
-                        "3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]\n"
-                        "   - 说明：占位\n"
-                        "4. **线路图**：项目近况/下一步是否变化？[是/否]\n"
-                        "   - 说明：占位\n", encoding="utf-8")
+        card.write_text(
+            "# 任务卡 ccc039\n## 维护区\n"
+            "1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]\n"
+            "   - 说明：占位\n"
+            "2. **教训沉淀**：本卡是否产出可复用教训？[有/无]\n"
+            "   - 说明：占位\n"
+            "3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]\n"
+            "   - 说明：占位\n"
+            "4. **线路图**：项目近况/下一步是否变化？[是/否]\n"
+            "   - 说明：占位\n",
+            encoding="utf-8",
+        )
         is_empty, reason = is_empty_writeback_or_placeholder(work, "")
         assert is_empty
         assert "未勾选或仍为占位" in reason or "包含占位文本" in reason or "格式不完整" in reason
 
         # 3. 维护区正常填写
-        card.write_text("# 任务卡 ccc039\n## 维护区\n"
-                        "1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]\n"
-                        "   - 说明：方案已同步更新\n"
-                        "2. **教训沉淀**：本卡是否产出可复用教训？[无]\n"
-                        "   - 说明：无教训沉淀\n"
-                        "3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]\n"
-                        "   - 说明：结构未改变\n"
-                        "4. **线路图**：项目近况/下一步是否变化？[否]\n"
-                        "   - 说明：无变化\n", encoding="utf-8")
+        card.write_text(
+            "# 任务卡 ccc039\n## 维护区\n"
+            "1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]\n"
+            "   - 说明：方案已同步更新\n"
+            "2. **教训沉淀**：本卡是否产出可复用教训？[无]\n"
+            "   - 说明：无教训沉淀\n"
+            "3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]\n"
+            "   - 说明：结构未改变\n"
+            "4. **线路图**：项目近况/下一步是否变化？[否]\n"
+            "   - 说明：无变化\n",
+            encoding="utf-8",
+        )
         is_empty, reason = is_empty_writeback_or_placeholder(work, "")
         assert not is_empty, reason
-

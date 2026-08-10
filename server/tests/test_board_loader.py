@@ -39,11 +39,40 @@ class TestParseCard:
         item = parse_card(_write(tmp_path, "T99.md", SAMPLE))
         assert item.id == "T99"
         assert item.state == "执行中"
-        assert item.project == "PRJ-X"          # 关联取括号前
-        assert item.executor == "示例执行体"      # 执行体取括号前
+        assert item.project == "PRJ-X"  # 关联取括号前
+        assert item.executor == "示例执行体"  # 执行体取括号前
         assert item.dispatched_at == "2026-07-28"  # 元数据日期
-        assert item.written_at == "2026-08-01"     # 回写区日期
+        assert item.written_at == "2026-08-01"  # 回写区日期
         assert item.reject_count == 0
+
+    def test_parse_depends_field(self, tmp_path: Path) -> None:
+        content = "# 任务卡 T99 · 示例\n\n> 关联：PRJ-X · 执行体：某工具 · 状态：待分派\n> 依赖：ccc042, ccc043\n"
+        item = parse_card(_write(tmp_path, "T99.md", content))
+        assert item.depends_on == ["ccc042", "ccc043"]
+
+    def test_parse_depends_cn_separators(self, tmp_path: Path) -> None:
+        content = (
+            "# 任务卡 T99 · 示例\n\n> 关联：PRJ-X · 执行体：某工具 · 状态：待分派\n> 依赖：ccc042、ccc043 ccc044\n"
+        )
+        item = parse_card(_write(tmp_path, "T99.md", content))
+        assert item.depends_on == ["ccc042", "ccc043", "ccc044"]
+
+    def test_parse_depends_empty(self, tmp_path: Path) -> None:
+        content = "# 任务卡 T99 · 示例\n\n> 关联：PRJ-X · 执行体：某工具 · 状态：待分派\n> 依赖：\n"
+        item = parse_card(_write(tmp_path, "T99.md", content))
+        assert item.depends_on == []
+
+    def test_parse_depends_missing_field(self, tmp_path: Path) -> None:
+        content = "# 任务卡 T99 · 示例\n\n> 关联：PRJ-X · 执行体：某工具 · 状态：待分派\n"
+        item = parse_card(_write(tmp_path, "T99.md", content))
+        assert item.depends_on == []
+
+    def test_parse_depends_dedupe(self, tmp_path: Path) -> None:
+        content = (
+            "# 任务卡 T99 · 示例\n\n> 关联：PRJ-X · 执行体：某工具 · 状态：待分派\n> 依赖：ccc042, ccc042, ccc043\n"
+        )
+        item = parse_card(_write(tmp_path, "T99.md", content))
+        assert item.depends_on == ["ccc042", "ccc043"]
 
     def test_parse_explicit_reject_count(self, tmp_path: Path) -> None:
         content = SAMPLE + "\n打回次数：2\n"
@@ -174,10 +203,7 @@ class TestSubdirScan:
     def test_scan_one_level_subdir_only(self, tmp_path: Path) -> None:
         """只扫一层子目录；二层（ccc/sub/）不扫（T54 目录规则）。"""
         (tmp_path / "ccc" / "deep").mkdir(parents=True)
-        deep_card = (
-            "# 任务卡 ccc101 · 二层\n"
-            "> 关联：CCC · 执行体：X · 状态：待分派 · 日期：2026-08-04\n"
-        )
+        deep_card = "# 任务卡 ccc101 · 二层\n> 关联：CCC · 执行体：X · 状态：待分派 · 日期：2026-08-04\n"
         _write(tmp_path / "ccc" / "deep", "ccc101-deep.md", deep_card)
         assert load_dispatch_cards(tmp_path) == []
 
@@ -232,4 +258,3 @@ class TestSubdirScan:
         save_index_file(entries, tmp_path)
         items2 = load_dispatch_cards(tmp_path)
         assert items2[0].machine_audit_passed is True
-

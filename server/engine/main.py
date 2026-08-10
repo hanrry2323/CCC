@@ -2197,6 +2197,51 @@ def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
     return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭后才派发）"
 
 
+def _depends_on_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
+    """显式依赖卡未关闭则阻断 AUTO 派发（保持待分派）。
+
+    依赖卡状态 ∈ {已关闭} 放行；∈ {待分派/执行中/已回写/打回} 阻塞；
+    依赖卡不存在/为空则视为无依赖（向后兼容存量卡）。
+    """
+    deps = list(getattr(work, "depends_on", None) or [])
+    if not deps:
+        return None
+    blocked: list[str] = []
+    for dep_id in deps:
+        dep = by_id.get(dep_id)
+        if dep is None:
+            continue  # 依赖卡不存在 → 不阻塞（避免假死；由出卡方保证存在）
+        if dep.state is not State.CLOSED:
+            blocked.append(f"{dep_id}({dep.state.value})")
+    if not blocked:
+        return None
+    return "依赖未完成: " + ", ".join(blocked)
+
+
+def _detect_dependency_cycle(work: Work, by_id: dict[str, Work]) -> str | None:
+    """检测依赖环：从 work 出发 DFS，若沿依赖链回到 work 自身则报环。
+
+    环判定：DFS 当前路径 stack 中出现重复节点即成环；返回环路径字符串。
+    """
+    visited: set[str] = set()
+
+    def visit(wid: str, stack: list[str]) -> str | None:
+        if wid in stack:
+            return " → ".join(stack + [wid])
+        visited.add(wid)
+        w = by_id.get(wid)
+        deps = list(getattr(w, "depends_on", None) or []) if w else []
+        for d in deps:
+            if d in visited and d not in stack:
+                continue
+            found = visit(d, stack + [wid])
+            if found:
+                return found
+        return None
+
+    return visit(work.id, [])
+
+
 def _detect_empty_commit_signal(log_path: Path) -> bool:
     """检测执行体日志尾部的空提交信号（nothing to commit 等）→ V3 禁止假成功。
 
@@ -2495,6 +2540,8 @@ def run_once(
     dispatched = 0
     probe_skips = 0
     parent_skips = 0
+    dep_skips = 0
+    cycle_skips = 0
     none_skips = 0
     queued = 0
     slots = pool.free_slots(max_concurrent, store, log_dir)
@@ -2520,6 +2567,16 @@ def run_once(
         if block:
             parent_skips += 1
             logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
+            continue
+        dep_block = _depends_on_blocks_dispatch(work, by_id)
+        if dep_block:
+            dep_skips += 1
+            logger.info("依赖卡未关闭，跳过派发: work=%s (%s)", work.id, dep_block)
+            continue
+        cycle = _detect_dependency_cycle(work, by_id)
+        if cycle:
+            cycle_skips += 1
+            logger.warning("检测到依赖环，跳过派发: work=%s 环=%s", work.id, cycle)
             continue
         decision = decide_work(work, registry)
         if decision is DispatchDecision.MANUAL:
@@ -2679,6 +2736,8 @@ def run_once(
         "dead_markers_cleaned": dead_markers_cleaned,
         "probe_skips": probe_skips,
         "parent_skips": parent_skips,
+        "dep_skips": dep_skips,
+        "cycle_skips": cycle_skips,
         "none_skips": none_skips,
         "queued": queued,
         "audit_dispatched": audit_dispatched,
@@ -2700,6 +2759,8 @@ def run_once(
                 "git_sync_detail": git_sync_detail,
                 "probe_skips": probe_skips,
                 "parent_skips": parent_skips,
+                "dep_skips": dep_skips,
+                "cycle_skips": cycle_skips,
                 "none_skips": none_skips,
                 "reclaimed": reclaimed,
                 "dispatched": dispatched,

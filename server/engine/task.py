@@ -22,6 +22,7 @@ from enum import Enum
 try:
     from enum import StrEnum
 except ImportError:
+
     class StrEnum(str, Enum):  # noqa: UP042
         pass
 
@@ -79,6 +80,7 @@ class Work:
     type: str = "task"
     project: str = ""
     parent: str = ""
+    depends_on: list[str] = field(default_factory=list)
     acceptance: str = ""
     thread_id: str = ""
     retry_count: int = 0
