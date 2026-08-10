@@ -2,13 +2,16 @@
 # V7 测试：resolve_card 唯一性断言（多命中报错，禁止 head -1 猜）。
 set -uo pipefail
 
+# 定位共享库：按脚本自身位置解析，适配任意 worktree/路径/用户（禁硬编码绝对路径）。
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/card-resolve.sh"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/docs/dispatch/ccc"
 touch "$TMP/docs/dispatch/ccc/ccc777-alpha.md"
 
 cd "$TMP"
-source /Users/apple/program/CCC/scripts/lib/card-resolve.sh
 
 R1="$(resolve_card ccc777)"
 [[ "$R1" == "docs/dispatch/ccc/ccc777-alpha.md" ]] || { echo "FAIL: 唯一命中未返回正确路径 ($R1)"; exit 1; }
