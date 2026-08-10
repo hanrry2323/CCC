@@ -13,8 +13,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -25,9 +29,15 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw009-terminal-overhaul`
+2. **事件推送替代轮询**：`terminal.rs` 把每会话 PTY 的读取改为常驻读循环（每会话一个读线程或 async task），读到输出用 `AppHandle::emit` 推 `terminal-output`（含 session id + bytes），PTY EOF / 子进程退出时 emit `terminal-exit`（含 session id + 退出码）；`lib.rs` 保留 `read_from_terminal` 作为兼容 fallback 但前端不再轮询。前端 `Terminal.tsx` 用 `@tauri-apps/api/event` 订阅事件，收到 output 写 xterm，收到 exit 停止监听、清 loading、显示"会话已结束"
+3. **resize**：后端加 `set_window_size(session_id, cols, rows)` command，调用 PTY 的 OnResize（TIOCSWINSZ）；前端引入 `@xterm/addon-fit`，终端容器 resize 时算 cols/rows 调 fit + invoke resize，并把 PTY 默认尺寸从硬编码 80×24 改为按容器初始测量
+4. **进程组清理**：spawn 时用 `setsid`（`Command::new(...).process_group(0)` 或 pre_exec setsid）创建新会话组；kill 时对进程组发 SIGTERM/SIGKILL（`kill(-pid)` 语义，Rust 用 `nix` 的 killpg 或 shell `kill -- -pid`），确保 agent 孙进程一并清理；kill 失败不阻塞 UI（已有后台线程方案保留）
+5. **UTF-8 边界**：读循环不要按固定 4KB 块直接 TextDecoder 解码，改为字节缓冲 + 完整 UTF-8 序列边界判定后解码（或前端用 streaming TextDecoder），杜绝块边界 `\uFFFD`
+6. **移除死依赖**：`package.json` 删除 `xterm@5.3.0`，只留 `@xterm/xterm`
+7. `cargo build --release` + `cargo test` + `tsc -b && vite build` 通过
+8. commit+push 到 `codex/clw009-terminal-overhaul`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 

@@ -13,8 +13,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -30,13 +34,19 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw012-eng-foundation`
+2. **CSP 与权限**：`tauri.conf.json` 的 `csp: null` 改为白名单（允许看板端点域名 + `tauri://localhost`）；`capabilities/default.json` 按实际使用明确权限（保持最小化，不放开不必要权限）
+3. **正式图标**：替换 `src-tauri/icons/` 下 Tauri 占位图标（icon 全家桶：icns/ico/png 各尺寸），用 clwarp 自己的品牌图标（先做一套简洁占位设计，避免再用默认 Tauri 图标）
+4. **CI**：新建 `.github/workflows/ci.yml`：lint（oxlint + cargo clippy）+ test（cargo test + vitest）+ build（tsc + vite build + cargo build --release）＋打包（tauri build），可在仓库跑通
+5. **测试补齐**：Rust 核心链路单测（session 解析、provider 命令构造、git_status 解析）；前端 vitest 补关键组件测试；Cargo.toml/package.json 加对应测试脚本与依赖
+6. **开发链路**：`package.json` 加 `tauri` script 与 `@tauri-apps/cli` devDependency（让 `npm run tauri dev/build` 可复跑）；`README.md`/`CLAUDE.md` 命令与实际一致
+7. `cargo test` + `tsc -b && vite build` + lint 全通过
+8. commit+push 到 `codex/clw012-eng-foundation`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 
-1. {'"CSP 从 null 改为白名单（允许看板端点 + tauri': '//localhost），capabilities 权限明确"'}
+1. CSP 从 null 改为白名单（允许看板端点与 tauri 本地域名），capabilities 权限明确
 2. 正式图标替换 Tauri 占位（icon 全家桶）
 3. CI 落地：GitHub Actions（lint + test + build + 打包 workflow）可在仓库跑通
 4. 测试补齐：Rust 核心链路单测（session 解析 / provider 命令构造 / git_status）、前端 vitest（关键组件）

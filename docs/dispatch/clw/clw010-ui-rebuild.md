@@ -13,8 +13,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -28,9 +32,16 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw010-ui-rebuild`
+2. **清模板残留**：删除/移除 `src/assets/react.svg`、`src/assets/vite.svg`、`src/assets/hero.png` 引用；`src/App.css`、`src/index.css` 删除 Vite 模板类（`.counter`/`.hero`/`#next-steps`/`#docs`/`.ticks` 等），`index.css` 的 `#root` 不再写死 `width:1126px; text-align:center`（与 flex 布局冲突）
+3. **组件化拆分**：把 `App.tsx` 巨型组件拆为 `src/components/` 下的 Sidebar / SessionList / SessionItem / GitBadge / TerminalView / SettingsPanel（本次只拆 UI 壳，SettingsPanel 的功能接线放 clw011）；props/state 分层清晰，不再全堆 App 一层；`providers` 数组与 `expandedProviders` 状态去双源真相
+4. **主题 + 响应式**：CSS 变量定义主题 token（色板/间距/字体），支持深色模式（`prefers-color-scheme`）；布局改为可拖拽分栏（侧边栏宽度可调），窗口 `minWidth`/`minHeight` 设置，终端区域保证 80 列放得下不裁切
+5. **状态友好**：会话启动加 loading 态（spinner/占位）；错误显示友好文案（后端错误码→中文提示映射，不直接糊 Rust 原始错误串）
+6. **i18n 补全**：`Terminal.tsx` 硬编码中文（"错误:"/"会话:"）收进 `src/i18n/index.ts`；`formatDate` 不再硬编码 `zh-CN`；`index.html` `lang="zh-CN"`；清理 i18n 未使用键
+7. **无障碍基础**：按钮加 `aria-label`/`type`、`+` 新会话按钮加 `type="button"`、focus 样式
+8. `tsc -b && vite build` + `cargo build --release` 通过
+9. commit+push 到 `codex/clw010-ui-rebuild`（勿直推 main）；卡头改为「已回写」
+10. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 

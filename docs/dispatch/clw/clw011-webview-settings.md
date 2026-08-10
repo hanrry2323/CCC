@@ -13,8 +13,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -30,9 +34,14 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw011-webview-settings`
+2. **设置存储层**：新建 `src-tauri/src/settings.rs`，实现 `Settings` 结构（workspace_paths / board_url / layout）与 `load_settings`/`save_settings` commands，读写 `~/.clwarp/config.json`（目录不存在则创建）；注册到 `lib.rs`。默认 `board_url` 用看板端点值，但必须从配置读，代码里不硬编码看板 IP
+3. **设置面板**：前端实现 `SettingsPanel`（可编辑 workspace 路径、看板 URL、布局偏好），调 `load_settings`/`save_settings`，保存后写入 `~/.clwarp/config.json`，重启应用生效
+4. **CCC 看板内嵌**：实现 WebView 加载 `board_url`（Tauri 用 `<webview>` 组件或 `WebviewWindow`，按版本选合适方式），侧边栏加入口；CSP 改为白名单（允许看板端点域名 + tauri 本地域名），不再 `csp:null`
+5. **文档声明对齐**：`CHANGELOG.md`/`README.md`/`RELEASE.md` 中"GPU 原生渲染/Metal"改为"xterm.js 渲染"；"spawning and persisting sessions"如实描述为"读取 CLI 历史会话，应用不持久化会话数据"；看板与设置面板功能如实标注版本
+6. 回归验证：`cargo build --release` + `cargo test` + `tsc -b && vite build`；`~/.clwarp/config.json` 写入后可读回一致
+7. commit+push 到 `codex/clw011-webview-settings`（勿直推 main）；卡头改为「已回写」
+8. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 

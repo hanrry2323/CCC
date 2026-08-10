@@ -13,8 +13,12 @@ P0 执行链修复（GUI PATH / dev 端口 / 终止重启 / 泄漏 / HOME）（c
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -30,9 +34,15 @@ P0 执行链修复（GUI PATH / dev 端口 / 终止重启 / 泄漏 / HOME）（c
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw008-p0-exec-chain-fix`
+2. **GUI PATH 修复（核心）**：spawn CLI（claude/codex/opencode）前解析登录 shell 环境。参考 Paseo `login-shell-env.ts` / VS Code shellEnv 思路（源码已下载在老板 M1 临时目录可对照）：在 Rust 侧 `provider.rs` 的 spawn/resume 前，执行 `$SHELL -lic 'echo $PATH'`（或 `export PATH` 方案）解析登录 shell 的 PATH，将结果注入子进程 env；若解析失败，回退到常见 CLI 路径探测（`~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin`、nvm 的 node 路径）并拼接到 PATH
+3. **dev 端口修复**：vite.config.ts 加 `server: { port: 1420, strictPort: true }`（对齐 tauri.conf.json devUrl）或把 devUrl 改为 5173，二选一保持一致
+4. **终止不再重启**：App.tsx `handleTerminateSession` 只调 `kill_terminal`，不清 `sessionToResume` 导致 Terminal 重新 spawn；终止后终端停留在"已终止"态而非新裸 shell
+5. **StrictMode 泄漏**：Terminal.tsx effect 内 async spawn 的 cleanup 要能 kill 未完成的 spawn（用 AbortController / flag，或同步跟踪 activeSessionId），卸载时不再泄漏子进程
+6. **HOME 去硬编码**：`session.rs` 的 `/Users/fan` 回退改为 `dirs::home_dir()`（Cargo.toml 加 `dirs` crate）或等效系统 API
+7. `cargo build --release` + `cargo test` + `tsc -b && vite build` 通过
+8. commit+push 到 `codex/clw008-p0-exec-chain-fix`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 
