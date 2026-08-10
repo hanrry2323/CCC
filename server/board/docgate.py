@@ -56,7 +56,7 @@ def extract_paths(note: str) -> list[str]:
     return [c for c in candidates if "/" in c or "." in c]
 
 
-def get_modified_files(repo_root: Path) -> list[str]:
+def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[str]:
     base_ref = "origin/main"
     try:
         subprocess.run(
@@ -68,6 +68,105 @@ def get_modified_files(repo_root: Path) -> list[str]:
         )
     except subprocess.CalledProcessError:
         base_ref = "main"
+
+    # Determine branch to check
+    branch_ref = None
+    card_id = None
+    if card_file:
+        try:
+            card_id = get_card_id(card_file)
+            stem = card_file.stem
+            # Resolve branch ref in order of preference
+            for b in [f"origin/codex/{stem}", f"codex/{stem}"]:
+                try:
+                    subprocess.run(
+                        ["git", "show-ref", "--verify", f"refs/remotes/{b}" if b.startswith("origin/") else f"refs/heads/{b}"],
+                        cwd=repo_root,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=True,
+                    )
+                    branch_ref = b
+                    break
+                except Exception:
+                    pass
+            if not branch_ref:
+                # If verify failed, try with rev-parse
+                for b in [f"origin/codex/{stem}", f"codex/{stem}"]:
+                    try:
+                        subprocess.run(
+                            ["git", "rev-parse", "--verify", b],
+                            cwd=repo_root,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            check=True,
+                        )
+                        branch_ref = b
+                        break
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    if branch_ref:
+        # Check if branch_ref is already merged into base_ref (ancestor check)
+        is_merged = False
+        try:
+            res_merged = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", branch_ref, base_ref],
+                cwd=repo_root,
+                capture_output=True,
+                check=False
+            )
+            if res_merged.returncode == 0:
+                is_merged = True
+        except Exception:
+            pass
+
+        diff_target = None
+        if is_merged and card_id:
+            try:
+                # Find commits on branch_ref containing the card_id in the message
+                res_commits = subprocess.run(
+                    ["git", "log", branch_ref, f"--grep={card_id}", "--format=%H"],
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                commits = [c.strip() for c in res_commits.stdout.splitlines() if c.strip()]
+                if commits:
+                    oldest_commit = commits[-1]
+                    diff_target = f"{oldest_commit}^..{branch_ref}"
+                else:
+                    diff_target = f"{branch_ref}^..{branch_ref}"
+            except Exception:
+                diff_target = f"{branch_ref}^..{branch_ref}"
+        else:
+            try:
+                res_mb = subprocess.run(
+                    ["git", "merge-base", base_ref, branch_ref],
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                mb = res_mb.stdout.strip()
+                diff_target = f"{mb}..{branch_ref}"
+            except Exception:
+                diff_target = f"{base_ref}...{branch_ref}"
+
+        try:
+            res = subprocess.run(
+                ["git", "diff", "--name-only", diff_target],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+        except Exception:
+            pass
 
     try:
         res = subprocess.run(
@@ -194,7 +293,7 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
                     problems.append(f"Q2 声明的教训文件不存在：{', '.join(q2_files)}")
 
         elif num == 3 and choice in ("`是`", "是"):
-            modified = get_modified_files(repo_root)
+            modified = get_modified_files(repo_root, card_file)
             card_id = get_card_id(card_file)
             prefix_m = re.match(r"^([a-z]{2,4})", card_id)
             prefix = prefix_m.group(1) if prefix_m else "ccc"
@@ -222,7 +321,7 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
                 )
 
         elif num == 4 and choice in ("`是`", "是"):
-            modified = get_modified_files(repo_root)
+            modified = get_modified_files(repo_root, card_file)
             card_id = get_card_id(card_file)
             prefix_m = re.match(r"^([a-z]{2,4})", card_id)
             prefix = prefix_m.group(1) if prefix_m else "ccc"

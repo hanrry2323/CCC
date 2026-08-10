@@ -337,3 +337,59 @@ def test_verify_maintenance_failed_cases(tmp_path: Path):
         assert any("Q2 声明的教训文件不存在" in p for p in problems)
         assert any("Q3 声明更新了项目档案" in p for p in problems)
         assert any("Q4 声明更新了线路图" in p for p in problems)
+
+
+def test_get_modified_files_branch_resolution(tmp_path: Path):
+    from server.board.docgate import get_modified_files
+    
+    card_file = tmp_path / "docs" / "dispatch" / "ccc" / "ccc101-test.md"
+    card_file.parent.mkdir(parents=True, exist_ok=True)
+    card_file.write_text("# 任务卡 ccc101\n", encoding="utf-8")
+    
+    # 1. Unmerged case: should call merge-base and get diff on mb..branch
+    with patch("subprocess.run") as mock_run:
+        # Mock subprocess runs
+        def fake_run(args, **kwargs):
+            m = MagicMock()
+            m.returncode = 0
+            if "rev-parse" in args and "origin/main" in args:
+                m.returncode = 0
+            elif "show-ref" in args and "origin/codex/ccc101-test" in args:
+                m.returncode = 0
+            elif "merge-base" in args and "--is-ancestor" in args:
+                # Is merged? -> No
+                m.returncode = 1
+            elif "merge-base" in args:
+                m.stdout = "fake_merge_base_hash\n"
+            elif "diff" in args and "fake_merge_base_hash..origin/codex/ccc101-test" in args:
+                m.stdout = "docs/projects/ccc/README.md\ndocs/roadmap.md\n"
+            return m
+            
+        mock_run.side_effect = fake_run
+        
+        res = get_modified_files(tmp_path, card_file)
+        assert "docs/projects/ccc/README.md" in res
+        assert "docs/roadmap.md" in res
+
+    # 2. Merged case (regression case for ccc040): should grep card ID and diff oldest_commit^..branch
+    with patch("subprocess.run") as mock_run:
+        def fake_run(args, **kwargs):
+            m = MagicMock()
+            m.returncode = 0
+            if "rev-parse" in args and "origin/main" in args:
+                m.returncode = 0
+            elif "show-ref" in args and "origin/codex/ccc101-test" in args:
+                m.returncode = 0
+            elif "merge-base" in args and "--is-ancestor" in args:
+                # Is merged? -> Yes
+                m.returncode = 0
+            elif "log" in args and "--grep=ccc101" in args:
+                m.stdout = "commit_1_hash\ncommit_2_hash\n"
+            elif "diff" in args and "commit_2_hash^..origin/codex/ccc101-test" in args:
+                m.stdout = "docs/projects/ccc/README.md\n"
+            return m
+            
+        mock_run.side_effect = fake_run
+        
+        res = get_modified_files(tmp_path, card_file)
+        assert res == ["docs/projects/ccc/README.md"]
