@@ -1,6 +1,6 @@
 # 任务卡 clw008 · P0 执行链修复（GUI PATH / dev 端口 / 终止重启 / 泄漏 / HOME）（OpenCode 执行）
 
-> 关联：clw-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-10
+> 关联：clw-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-10
 
 ## 基准文件（先看）
 
