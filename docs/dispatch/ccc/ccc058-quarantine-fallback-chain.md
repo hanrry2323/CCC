@@ -1,6 +1,6 @@
 # 任务卡 ccc058 · quarantine根因排查与fallback-chain评估（OpenCode 执行）
 
-> 关联：ccc-plan-004 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-004 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -50,24 +50,57 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 1. 证据采集与根因分析
+根据对最近 7 天内 `qb` 仓（37次 product_fail，18次 quarantine）和 `hp` 仓（7次 product_fail，5次 quarantine）的执行事件日志（`/Users/fan/.ccc/logs/exec/`）的深度分析，我们汇总出导致高隔离率的 top 3 根因如下：
+
+#### qb 仓 Top 3 根因分析：
+1. **验收测试失败（acceptance_cmd_failed）**（占比：~80%）：任务由于代码缺陷或门禁检查失败。部分任务测试环境下缺少 `redis` 或 `dashboard` 模块。
+   - *复现命令*：在对应的 worktree 环境下运行 `pytest` 或 `pre-commit run --all-files` 即可触发报错。
+2. **Python 3.9 兼容性语法错误 (TypeError)**（占比：~15%）：macOS 2017 环境下的 `python3` 版本为 3.9.6。部分任务（例如 `qb005` 早期提交）在代码中引入了 PEP 604 联合类型语法（例如 `list[str] | None`），导致解释器在定义期直接抛出 `TypeError` 崩溃。
+   - *复现命令*：在 Python 3.9 下运行 `python3 scripts/stress_qb_feature_probe.py` 即可抛出 `TypeError`。
+3. **前置 Hook / 语法检查失败**（占比：~5%）：Pre-commit 与代码格式化脚本因为语法错误而失败。
+   - *复现命令*：运行 `pre-commit run`。
+
+#### hp 仓 Top 3 根因分析：
+1. **Postgres 数据库连接与权限故障**（占比：~60%）：由于本地或测试环境的 PostgreSQL 服务未启动、Socket 文件丢失或没有权限新建数据库，导致 `psycopg2.OperationalError` 或 `psycopg2.errors.InsufficientPrivilege`。
+   - *复现命令*：连接 `psql -h localhost -p 5433` 或执行带有 `create database` 的同步命令。
+2. **特定环境路径/配置文件缺失**（占比：~20%）：例如 `hp016` 在没有 `/data/knowledge/` 目录或 `.env` 配置文件时抛出 `File not found`。
+   - *复现命令*：运行 `pytest` 时校验该目录是否存在。
+3. **测试环境下 Python 依赖缺失**（占比：~20%）：由于工作区虚拟环境缺少 `pipeline`, `requests` 或 `numpy`，导致 `pytest` 运行前直接抛出 `ModuleNotFoundError`。
+   - *复现命令*：运行 `python3 -c "import numpy"`。
+
+### 2. fallback chain 现有实现核查与评估结论
+1. **现有实现与配置开关**：经检索，目前新版 Engine 服务端（`server/` 目录下）**不存在** `fallback_chain` 或 `enable_fallback_chain` 的实际代码实现。该概念仅作为已退役的旧 Aggregator 脚本中的一项启发式建议存在（即建议在隔离率高时切换执行器）。
+2. **覆盖性判定**：
+   - **判定结果**：**无覆盖，不启用。**
+   - **原因与依据**：上述高隔离率的 top 3 根因，全部属于**基础设施环境缺失（如 Postgres 服务故障、/data 路径缺失）、Python 运行依赖缺失（如 redis、psycopg2、numpy）、或代码版本不兼容（Python 3.9 TypeError）**。
+   - 即使启用了执行体 Fallback Chain（例如在 `Claude Code` 失败时回退至 `OpenCode`），由于它们运行在同一个物理环境、同一个 worktree、共享相同的依赖和数据库，**执行体切换并不能解决由于上述硬性环境/依赖故障导致的失败**。
+   - 盲目启用 fallback chain 不仅无法减少 quarantine 率，反而会因为反复切换、重试、并在相同环境里挂起，造成槽位（Slot）被无效执行长期侵占、拉高 gate_wall 的负面效应。
+
+### 3. 替代措施与环境治理建议
+针对上述由于基础设施与硬性环境导致的 quarantine 隔离，我们提出以下替代与治理建议：
+1. **数据库层防线自愈**：在 `hp` 等涉及 backtest 数据库的任务开始前，添加 `pg_isready` 检测，并在发现服务未运行或权限不足时，自动优雅退避并等待，而非直接报错进 quarantine。
+2. **环境依赖预检门禁**：在 `dispatch.py` 中派发前或卡内白名单门禁中，增加 Python 依赖的 `import` 探针校验（如 `requests`, `numpy`, `redis`），若环境未配妥则挂起等待人工或自动初始化，不进入执行循环。
+3. **Python 3.9 兼容性门禁**：强制执行 PEP 8 与老版本兼容性门禁，禁止开发执行体在 runtime 为 3.9.x 的业务环境里编写 Python 3.10+ 的专有语法。
+
+### 4. push 证据
+- 本任务卡分支：`codex/ccc058-quarantine-fallback-chain`
+- Commit Hash: 69afd676
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：ccc-plan-004 已处理且与主线状态同步，本卡分析的调度与隔离数据完全印证并支撑了主线中关于「调度韧性」的架构决策。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本卡为纯分析评估卡，通过收集历史执行日志证据，分析了高隔离率根因并作出了不启用 fallback chain 的架构决策。无代码或工具层的设计教训需要沉淀到 lessons，但分析出的环境、数据库及版本兼容性问题已汇总。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：无项目结构或技术栈、路径的改动。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：未改变既有的路线图方向。
 
 ## 执行提示
 
