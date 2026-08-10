@@ -104,9 +104,9 @@ def test_p3_empty_commit_signal_success(tmp_path: Path):
          cfg = {"DISPATCH_DIR": str(tmp_path / "docs" / "dispatch")}
          ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
 
-         # 应该被成功拦截并返回 True
-         assert ok is True
-         assert problems == []
+         # V3 起空提交信号判失败打回（不假成功）
+         assert ok is False
+         assert any("空提交" in p or "退出码非 0" in p for p in problems)
 
 
     # 场景 2：退出码 1 且日志含 "error:" 且无空提交信号 -> 仍判失败
