@@ -355,12 +355,31 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     date_str = dt_obj.strftime('%Y-%m-%d')
     report_name = f'{date_str}-ccc-patrol'
     report_md = generate_patrol_report(scored_findings, report_name)
+    
+    # 巡查报告优先落 DATA_DIR/observer/
+    try:
+        observer_dir.mkdir(parents=True, exist_ok=True)
+        observer_report_path = observer_dir / f'{report_name}.md'
+        observer_report_path.write_text(report_md, encoding='utf-8')
+        logger.info('patrol report saved to %s', observer_report_path)
+    except Exception as e:
+        logger.error('failed to save report to DATA_DIR/observer: %s', e)
+
+    # 只有当内容发生变化时，才写入 docs/notes/
     notes_dir = PROJECT_ROOT / 'docs' / 'notes'
     try:
         notes_dir.mkdir(parents=True, exist_ok=True)
         report_path = notes_dir / f'{report_name}.md'
-        report_path.write_text(report_md, encoding='utf-8')
-        logger.info('patrol report saved to %s', report_path)
+        should_write = True
+        if report_path.exists():
+            existing_content = report_path.read_text(encoding='utf-8')
+            if existing_content == report_md:
+                should_write = False
+        if should_write:
+            report_path.write_text(report_md, encoding='utf-8')
+            logger.info('patrol report (changed) saved to docs/notes: %s', report_path)
+        else:
+            logger.info('patrol report unchanged, skipping docs/notes update')
     except Exception as e:
         logger.error('failed to save report to docs/notes: %s', e)
     try:
@@ -530,12 +549,10 @@ def run_patrol(repo_root: Path) -> list[dict[str, Any]]:
                     f['msg'] = '【交叉确认】' + f['msg']
     return findings
 def write_report(findings: list[dict[str, Any]], repo_root: Path) -> Path:
-    """产出巡查报告至 docs/notes/ 目录"""
+    """产出巡查报告至 DATA_DIR/observer/ 目录，且只有内容发生变化时才写 docs/notes/"""
     today_str = datetime.datetime.now().strftime('%Y-%m-%d')
     report_name = f'{today_str}-ccc-patrol.md'
-    notes_dir = repo_root / 'docs' / 'notes'
-    notes_dir.mkdir(parents=True, exist_ok=True)
-    report_path = notes_dir / report_name
+    
     red_cnt = sum(1 for f in findings if f['severity'] == 'RED')
     yel_cnt = sum(1 for f in findings if f['severity'] == 'YELLOW')
     blu_cnt = sum(1 for f in findings if f['severity'] == 'BLUE')
@@ -546,7 +563,39 @@ def write_report(findings: list[dict[str, Any]], repo_root: Path) -> Path:
         f_type = '逆向巡查' if f['type'] == 'reverse' else '治理一致性'
         content += f"| {sev_icon} | `{f['acting_on']}` | {f_type} | {cross_cell} | `{f['evidence']}` | {f['msg']} |\n"
     content += '\n---\n*本报告由 CCC 逆向巡查 Agent 自动生成并输出。只读，仅记录状态，不修改任何项目数据文件。*\n'
-    report_path.write_text(content, encoding='utf-8')
+    
+    # 优先落 DATA_DIR/observer/
+    data_dir = os.environ.get('CCC_DATA_DIR') or os.environ.get('DATA_DIR')
+    if data_dir:
+        observer_dir = Path(data_dir).resolve() / 'observer'
+    else:
+        observer_dir = repo_root / 'data' / 'observer'
+    try:
+        observer_dir.mkdir(parents=True, exist_ok=True)
+        observer_report_path = observer_dir / report_name
+        observer_report_path.write_text(content, encoding='utf-8')
+    except Exception as e:
+        logger.error('failed to save report to DATA_DIR/observer: %s', e)
+
+    # 只有当内容发生变化时，才写入 docs/notes/
+    notes_dir = repo_root / 'docs' / 'notes'
+    try:
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        report_path = notes_dir / report_name
+        should_write = True
+        if report_path.exists():
+            existing_content = report_path.read_text(encoding='utf-8')
+            if existing_content == content:
+                should_write = False
+        if should_write:
+            report_path.write_text(content, encoding='utf-8')
+            logger.info('patrol report (changed) saved to docs/notes: %s', report_path)
+        else:
+            logger.info('patrol report unchanged, skipping docs/notes update')
+    except Exception as e:
+        logger.error('failed to save report to docs/notes: %s', e)
+        report_path = observer_dir / report_name  # fallback
+        
     return report_path
 
 def main_reverse():

@@ -1,6 +1,6 @@
 # 任务卡 ccc046 · Loop Observer 调度启用 + 报告路径治理（OpenCode 执行）
 
-> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -48,24 +48,39 @@ Loop Observer 调度启用 + 报告路径治理（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+1. **实现说明**：
+   - 优化并治理了 `server/engine/observer.py` 的巡查报告输出路径，使巡查报告优先写入本地 `DATA_DIR/observer/`（利用 `CCC_DATA_DIR` 或 Fallback 到 `repo_root/data/observer/`）。
+   - 只有在巡查内容发生改变时才写入 `docs/notes/` 下的报告文件，彻底消除了无变化时带来的频繁 Git Dirty Churn。
+   - 治理了 `server/deploy/com.ccc.scheduler.plist` 进程编排模板，将硬编码的 `python3` 统一为 `$PYTHON_BIN` 模板占位，`UserName` 统一为 `$USERNAME`。
+   - 结合上游 `.gitignore` 修改，本地 existing 的 `*-ccc-patrol.md` 文件已成功通过 `git rm --cached` 移出跟踪，保证后续不会污染 Git。
+
+2. **测试结果**：
+   - 运行单元测试套件，`server/tests/test_observer.py` 14 个测试用例全部通过，测试通过率 100%。
+   - 运行全量 `pytest` 排除 `t53`，整体测试套件全部绿灯。
+
+3. **push 证据**：
+   - 分支：`codex/ccc046-observer-scheduler-enable`
+   - Commit Hash：`ce754fd6`
+   - 远端推送命令：`git push origin codex/ccc046-observer-scheduler-enable`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `ccc-plan-015` 目前属于「部分执行」，本卡切片已完成，关联关系均在卡头及方案中正确声明。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：无。本次为正常的重构与排雷工作，未生成新的架构级教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：否。未改变项目结构或项目技术栈，仅对报告路径及启动模板变量进行标准化调整。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：否。线路近况未发生偏转。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+（无人工批注）
 
 ## 执行提示
 
@@ -121,3 +136,23 @@ Loop Observer 调度启用 + 报告路径治理（ccc-plan 切片）。
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过**
+
+- 审查人：2017 机审席 · 日期：2026-08-10
+
+**审查摘要**：
+
+- **范围合规**：改动仅限卡声明范围（`server/engine/observer.py`、`server/deploy/com.ccc.scheduler.plist`、任务卡文件），无越界。
+- **代码质量/架构**：
+  - `observer.py` 巡查报告改为「优先落 DATA_DIR/observer/，仅内容变化才写 docs/notes/」，消除 patrol report 的 git churn，符合卡验收标准 2/3；快照/`last-run.json` 写入逻辑未受影响。
+  - 报告写入均 try/except 兜底，observer 写失败时 `write_report` 回退到 observer 目录，边界安全。
+  - plist 将硬编码 `python3`/`fan` 统一为 `$PYTHON_BIN`/`$USERNAME` 模板占位符，与文件既有 `$PROJECT_ROOT` 等占位符一致（该文件本为部署前渲染的模板）。
+  - 机审补一处注释完善：plist 头部占位变量说明新增 `$PYTHON_BIN` 一行（`ce754fd6` 后续提交）。
+- **测试**：`test_observer.py` 14 passed，与回写区声明一致。
+- **维护区**（Doc-Gate）：四问均已逐项勾选并填实质说明，非占位；方案同步 [是]、教训 [无]、档案 [否]、线路图 [否] 声明与卡改动一致，工件（test_observer.py、.gitignore squad 规则）真实存在。
+- **人工批注**：无，批注落实已填「无人工批注」。
+
+无原则性红线问题，通过。
