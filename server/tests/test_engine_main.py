@@ -2700,3 +2700,23 @@ def test_dispatch_dir_mtime_missing_dir(tmp_path) -> None:
     from server.engine.main import _dispatch_dir_mtime
 
     assert _dispatch_dir_mtime(str(tmp_path / "no-such-dir")) == 0.0
+
+
+def test_role_skill_injection() -> None:
+    """任务卡「角色」字段 → 注入对应 Skill（2026-08-10 通用智能体按任务变专家）。"""
+    from server.board.prompt_inject import _role_skill_hint
+
+    card = "# 任务卡 ccc999\n\n> 关联：clw · 执行体：OpenCode · 角色：前端设计\n"
+    hint = _role_skill_hint(card)
+    assert "前端设计" in hint
+    assert "ui-ux-pro-max" in hint
+
+    # 无角色 → 不注入
+    assert _role_skill_hint("# 任务卡 ccc999\n\n> 关联：clw\n") == ""
+
+    # 角色无 skill 映射（开发）→ 不注入
+    assert _role_skill_hint("# 任务卡 ccc999\n\n> 角色：开发\n") == ""
+
+    # 代码审查 → code-review skill
+    hint2 = _role_skill_hint("# 任务卡 ccc999\n\n> 角色：代码审查\n")
+    assert "code-review" in hint2

@@ -345,6 +345,42 @@ def _get_project_recent_lines(prefix: str) -> list[str]:
     return lines
 
 
+def _role_skill_hint(card_content: str) -> str:
+    """按任务卡「角色」字段查 role-skills.yaml，返回 Skill 注入提示。
+
+    机制（2026-08-10 老板洞察）：通用智能体按任务卡成为专家。
+    卡头「角色：<role>」→ 查映射表 → 注入「请加载 Skill：xxx」。
+    """
+    if not card_content:
+        return ""
+    import re
+
+    m = re.search(r"角色[:：]\s*([^\s·|]+)", card_content)
+    if not m:
+        return ""
+    role = m.group(1).strip()
+    cfg = _load_role_skills()
+    entry = cfg.get("roles", {}).get(role)
+    if not entry or not entry.get("skill"):
+        return ""
+    skill = entry["skill"]
+    source = entry.get("skill_source", "claude")
+    return f"- 角色：{role}（本卡专用）——请加载 Skill「{skill}」（来源 {source}），按该 Skill 的方法完成本卡任务"
+
+
+def _load_role_skills() -> dict:
+    """加载角色→Skill 映射表（server/config/role-skills.yaml，SSOT）。"""
+    import os
+    import yaml as _yaml
+
+    p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "role-skills.yaml")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return _yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
 def build_executor_hint(project_prefix: str, title: str = "", card_context: str = "", card_content: str = "") -> str:
     """生成「执行提示」——给开发大模型（OpenCode）的专用指令。
 
@@ -405,6 +441,9 @@ def build_executor_hint(project_prefix: str, title: str = "", card_context: str 
 
     if forbidden:
         lines.append(f"- 禁区：{forbidden}")
+    role_hint = _role_skill_hint(card_content)
+    if role_hint:
+        lines.append(role_hint)
     if card_context:
         lines.append(f"- 补充说明：{card_context}")
 

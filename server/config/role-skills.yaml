@@ -1,0 +1,54 @@
+# 角色 → Skill 映射（任务卡「角色」字段驱动 Skill 自动注入）
+# SSOT：本文件是唯一映射表。改角色映射只改这里。
+# 机制：任务卡头「角色：<role>」→ Engine 派发时按本表查 Skill 名 → 注入执行提示（请加载 Skill）。
+# 2026-08-10 建立 · 老板洞察「通用智能体按任务卡成为专家」。
+
+# 角色命名规范：短中文，任务卡「角色」字段用
+# skill_source: claude = ~/.claude/skills/<name>；opencode = ~/.opencode/skills/<name>
+
+roles:
+  # ── 开发类 ──
+  开发:
+    skill: ""
+    skill_source: claude
+    note: 默认开发角色，无需专用 skill
+  前端设计:
+    skill: ui-ux-pro-max
+    skill_source: opencode
+    note: UI/UX 设计智能（M1 ~/.opencode/skills/ui-ux-pro-max）
+  后端开发:
+    skill: ""
+    skill_source: claude
+    note: 默认后端开发
+  swift开发:
+    skill: code-review
+    skill_source: claude
+    note: Swift/Xcode 构建（clw 类）
+
+  # ── 审查类 ──
+  代码审查:
+    skill: code-review
+    skill_source: claude
+    note: 代码审查专家
+  文案检查:
+    skill: qx-auto-copycheck
+    skill_source: claude
+    note: 中英文文案/文档检查
+
+  # ── 巡检类 ──
+  巡检专家:
+    skill: daily-snapshot
+    skill_source: claude
+    note: 定时巡检（diff/红线/状态）
+
+  # ── 知识类 ──
+  知识维护:
+    skill: hp-kb-operations
+    skill_source: claude
+    note: HP 知识库读写
+
+  # ── 视频/多媒体类（2017 特有） ──
+  视频制作:
+    skill: motion-graphics
+    skill_source: claude
+    note: 视频/动效制作（2017 hyperframes 系列）
