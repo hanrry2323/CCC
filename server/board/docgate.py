@@ -31,6 +31,33 @@ def get_card_id(card_path: Path) -> str:
     return card_path.stem
 
 
+def _read_plan_from_repo(repo_root: Path, path: str) -> str | None:
+    """读方案文件内容：优先分支 worktree 文件，缺失/旧时回退 origin/main（平台文档权威源）。
+
+    Doc-Gate 修正（2026-08-10）：方案是平台侧文档，在 main 演进；执行体分支可能不含或含旧版。
+    Q1 校验方案关联卡/状态应基于 main 权威版本，而非分支快照（避免 clw008-012 死结）。
+    """
+    fp = repo_root / path
+    if fp.is_file():
+        try:
+            return fp.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo_root), "show", f"origin/main:{path}"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+        if res.returncode == 0 and res.stdout:
+            return res.stdout
+    except Exception:
+        pass
+    return None
+
+
 def extract_paths(note: str) -> list[str]:
     candidates = re.findall(r"[a-zA-Z0-9_/.-]+", note)
     return [c for c in candidates if "/" in c or "." in c]
@@ -237,14 +264,33 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
             else:
                 plan_prefix = plan_m.group(1)
                 plan_num = plan_m.group(2)
+                plan_rel = f"docs/projects/{plan_prefix}/plans/{plan_num}-"
+                plan_text = None
+                import glob as _glob
                 plans_dir = repo_root / "docs" / "projects" / plan_prefix / "plans"
-                plan_files = list(plans_dir.glob(f"{plan_num}-*.md"))
-                if not plan_files:
+                plan_files = list(plans_dir.glob(f"{plan_num}-*.md")) if plans_dir.is_dir() else []
+                if plan_files:
+                    try:
+                        plan_text = plan_files[0].read_text(encoding="utf-8")
+                    except Exception:
+                        plan_text = None
+                if plan_text is None:
+                    try:
+                        res = subprocess.run(
+                            ["git", "-C", str(repo_root), "ls-tree", "--name-only", "origin/main", plan_rel],
+                            capture_output=True, text=True, check=False, timeout=15,
+                        )
+                        names = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+                        if names:
+                            cand = _read_plan_from_repo(repo_root, plan_rel + names[0])
+                            if cand:
+                                plan_text = cand
+                    except Exception:
+                        pass
+                if plan_text is None:
                     problems.append(f"Q1 声明关联的方案文件不存在：docs/projects/{plan_prefix}/plans/{plan_num}-*.md")
                 else:
-                    plan_file = plan_files[0]
                     try:
-                        plan_text = plan_file.read_text(encoding="utf-8")
                         plan_fields = _extract_header_fields(plan_text)
                         plan_status = plan_fields.get("状态", "").split("·")[0].strip()
                         plan_cards = plan_fields.get("关联卡", "")
