@@ -87,7 +87,8 @@
 
 ### 4. push 证据
 - 本任务卡分支：`codex/ccc058-quarantine-fallback-chain`
-- Commit Hash: 69afd676
+- Commit Hash: 3f215747（本分支 HEAD，已 push 至 `origin/codex/ccc058-quarantine-fallback-chain`）
+- 备注：早期本地推送尝试产生的干净提交 69afd676（内容与 HEAD 相同）已被 3f215747 取代，未在分支上。
 
 ## 维护区
 
@@ -101,6 +102,18 @@
    - 说明：无项目结构或技术栈、路径的改动。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：未改变既有的路线图方向。
+
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-10）
+
+审查摘要：
+- **范围**：本卡改动仅 `docs/dispatch/ccc/ccc058-quarantine-fallback-chain.md` 一张卡文档（+47/-14），未触碰任何 qb/hp 业务仓或代码/配置文件，符合红线 1/3。
+- **证据可核**：`server/` 内核 grep 确认无 `fallback_chain` / `enable_fallback_chain` / `stats_recommend` 实现；legacy 存档确含 fallback 建议——「无覆盖，不启用」判定有据，且未盲启（红线 2 遵守）。
+- **架构合理性**：top 3 根因均属硬性环境/依赖/版本兼容故障，执行体切换无法解决，决策与替代治理建议（pg_isready 自愈 / import 探针门禁 / Python 3.9 兼容门禁）成立。
+- **维护区四问**：逐项勾选并填实质说明（[是]/[无]/[否]/[否]），引用工件（ccc-plan-004 已完成·含调度韧性主题）真实存在且与卡改动一致。
+- **可修问题**：回写区 push 证据 commit hash 由 69afd676 修正为实际 push 的 HEAD `3f215747`（早期干净提交已被取代），已就地修复并 commit+push。
+- **遗留提示**：验收标准 1 要求「统计表」——本卡以「分类百分比 + 复现命令」呈现 top 3 根因而非字面表格，信息完整但不建议据此补充不可复现的逐条计数；后续卡建议直接给事件计数统计表。
 
 ## 执行提示
 
