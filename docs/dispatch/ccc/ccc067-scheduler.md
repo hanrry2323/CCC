@@ -9,26 +9,34 @@
 
 ## 目标
 
-（一句话，可验收。）
+收尾 ccc027/ccc032 验收缺口：scheduler 常驻部署 + Playwright 浏览器实装 + 观测指标纳入自动调度，并强制首轮实测出报告。
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
+1. 2017 生产副本不手改；不恢复 Hub :7777 / 旧 scripts 编排。
 2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+- `server/deploy/com.ccc.scheduler.rendered.plist`（渲染部署模板）
+- scheduler 注册表新增 `observation-metrics` 任务（readonly）
+- `run_observation_metrics` 报告日期硬编码改动态
+- 2017 生产环境安装（playwright 1.48.0 + chromium、launchctl load scheduler）
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
+1. 渲染 scheduler plist → 部署 2017 → launchctl load 验证常驻
+2. 2017 装 playwright 1.48.0 + chromium，headless 实测 :7788/health
+3. observation-metrics 挂入 scheduler 注册表 + 日期动态化
+4. 强制首轮实测全链路并落盘报告
 2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
 3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. scheduler 常驻：`launchctl list | grep com.ccc.scheduler` 有 PID；`scheduler --once` 全任务链路跑通
+2. playwright 实机：headless 启动 + `GET :7788/health` 返回 200
+3. observation-metrics 自动调度：注册表可见 + `run_observation_metrics` 输出当日报告；首轮实测落盘 2026-08-10-ccc-patrol.md
 
 ## 回写要求
 
@@ -58,8 +66,8 @@
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
-   - 说明：ccc027/ccc032 验收缺口补全：scheduler 已部署、playwright 已装、观测指标已入自动调度，两卡原验收 #1 达标
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：无直接关联方案编号；本卡为 ccc027/ccc032 验收缺口收尾（scheduler 部署/playwright/观测调度），不涉及方案状态推进
 2. **教训沉淀**：本卡是否产出可复用教训？[有]
    - 说明：playwright 新版不支持 mac13，需锁 1.48.0；挂载常驻任务前先 --once 实测全链路再 load
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
