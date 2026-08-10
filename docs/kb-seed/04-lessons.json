@@ -43,18 +43,6 @@
       "id": "L28-L32",
       "title": "CCC 工程化教训系列",
       "summary": "涉及 verdict 文件必须写、agent 自主启用 CCC 红线、卡死立即止损、每步必 commit 等工程纪律。"
-    },
-    {
-      "id": "L33",
-      "title": "出卡后禁止改名/重编号（卡编号即派发现场）",
-      "summary": "clw006 事故：修复卡自动编号占用 clw006 后被改名 clw007，engine worktree/runtime/card_path 残留旧路径，执行体读不到卡 → 空回写 → 机审打回 → 无限重试死循环。",
-      "fix": "出卡后不改名/改 ID；方案链编号显式保留；附加卡用 --id 显式编号；改名必须同步清理 worktree+runtime+远端分支。"
-    },
-    {
-      "id": "L34",
-      "title": "空回写必须有重试上限，禁止无限打转",
-      "summary": "执行体找不到卡/无产物时回写为空，机审打回，engine 无限重试并可能误判 infra 冷却，卡在流程里打转不可观测。",
-      "fix": "回写无有效产物（diff 空/维护区占位）→ 机审直接打回进终态或人工介入；engine 区分真失败与空转。"
     }
   ],
   "external_brain_lessons": [
