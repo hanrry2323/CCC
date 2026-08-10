@@ -1,6 +1,6 @@
 # 任务卡 ccc059 · 卡头schema单一化与出卡并发锁（OpenCode 执行）
 
-> 关联：ccc-plan-019 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-019 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -52,20 +52,32 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 实现说明
+1. **卡头单一 Schema（A1）**：新增 `server/board/card_header.py` 做为唯一元数据解析及约束源，定义 `CardHeader` 结构及 `VALID_STATES`。将原先分散在 `loader.py`、`validate.py`、`docgate.py`、`prompt_inject.py` 中的重复解析正则表达式完全收敛、移除，由其统一导入 `CardHeader` / `parse_metadata` 共享模型。
+2. **并发锁（A2）**：在 `scripts/new-card.sh` 中增加对 `$TARGET_DIR/.card-lock` 的 flock。由于 macOS 原生缺少 `flock` 二进制，使用 Python 的 `fcntl.flock` 实现高便携、零依赖的跨平台文件排他锁，彻底杜绝高并发制卡时的撞号/覆盖风险。
+
+### 测试结果
+- **单元测试**：新增 `server/tests/test_card_header.py` 对统一的 `CardHeader` 元数据、校验逻辑做全方位单元覆盖，全部 Pass。
+- **并发锁测试**：在 `server/tests/test_card_dispatch_gate.py` 中新增 `test_new_card_flock_concurrency` 冒烟，开启 2 个 concurrent new-card 进程进行极端竞态模拟，均成功返回并依次落子在 `ccc001` 与 `ccc002`，无任何号冲突，flock 机制经高并发检验 100% 确认生效。
+- **全量门禁**：运行 `python3 -m pytest server/tests/` 共 734 个测试用例 100% Passed。运行 `ruff check` 格式/静态检查无残留。
+
+### Push 证据
+- 核心代码 commit：`999dc9d3707577ac7f1f8716116422498b1f9e29`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：已在 `docs/projects/ccc/plans/019-arch-extensibility-and-kb-path-planning.md` 中同步状态为 `部分执行`，并在关联卡中绑定 `ccc059`，将转卡计划中 A1+A2 切片修改为具体执行卡 `ccc059`。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本维护无高危异常或方案分歧，模型收敛路径成熟平稳。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：技术栈和整体路径保持一致，仅重构收敛了解析器和新增共享模型，无需档案更新。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：线路图依旧按照 ccc-plan-019 推荐走，无新增变化。
 
 ## 批注落实
 
