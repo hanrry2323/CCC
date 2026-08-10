@@ -128,8 +128,21 @@ sys.exit(0 if ok else 1)
 }
 
 # 完成钩子（Doc-Gate）机械门禁：维护区四问必须勾选且说明非空
+# 优先校验分支信封（origin/<branch>:<path>），main 卡在合入前滞后于分支；
+# 分支不可读（close-only/已合入）时回退本地卡。
 check_maintenance() {
   local path="$1"
+  local branch="${2:-}"
+  local tmp=""
+  if [[ -n "$branch" ]] && git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    tmp="$(mktemp)"
+    if ! git show "origin/${branch}:${path}" > "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      return 1
+    fi
+    path="$tmp"
+  fi
+  local ret=0
   "$PYTHON_BIN" -c "
 import sys
 from pathlib import Path
@@ -141,7 +154,9 @@ if not ok:
     sys.exit(1)
 print('[OK] 完成钩子：维护区四问已勾选且说明完整')
 sys.exit(0)
-" "$path"
+" "$path" || ret=1
+  if [[ -n "$tmp" ]]; then rm -f "$tmp"; fi
+  return "$ret"
 }
 
 # 外仓提示：registry.mac2017 非 CCC 本仓时打印分支/HEAD/是否已在业务 main（不自动 push）
@@ -321,8 +336,8 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
-  # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入
-  if ! check_maintenance "$path"; then
+  # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
+  if ! check_maintenance "$path" "$branch"; then
     echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
     return 1
   fi
