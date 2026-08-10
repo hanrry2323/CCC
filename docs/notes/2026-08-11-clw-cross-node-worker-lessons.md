@@ -13,11 +13,13 @@ clw019「前端设计角色注入验证」由 **W9（252 移动终端 Claude Cod
 
 ## 可复用教训
 
-1. **deploy key 每仓库一个**：同一 SSH 公钥不能跨仓库复用 → 每仓库生成独立 key + SSH config host 别名（github.com / github.com-qxmap / github.com-clwarp）
-2. **Windows 无 grep/head**：远程命令用 `findstr` / PowerShell，避免 grep 不可用
-3. **SSH 超时 ≠ 任务中断**：claude -p 在远程可能继续跑，SSH 断开后需 tasklist 确认 + 轮询产物
-4. **只读 Worker 的产物收口**：消费节点（read 权限）产出的报告，由主写源统一 commit/push，保证权威源单一写入口
-5. **manual 派发适合节点路由测试**：`派发：manual` 让 Engine 不抢占，由指定 Worker 认领
+1. **验证卡任务前提必须先核实（clw019 事故核心）**：首次任务"检查登录页 UI"——clwarp 是本地桌面驾驶舱**无登录页**，任务前提虚构 → AI 对着不存在的页面编了 4 条建议（幻觉式产出）。修正为真实组件后二次验证通过。**教训：出卡方必须先确认任务对象真实存在，验收标准必须含"产物可追溯"校验（每条建议引用真实文件:行号）**。
+2. **deploy key 每仓库一个**：同一 SSH 公钥不能跨仓库复用 → 每仓库生成独立 key + SSH config host 别名（github.com / github.com-qxmap / github.com-clwarp）
+3. **Windows 无 grep/head**：远程命令用 `findstr` / PowerShell，避免 grep 不可用
+4. **SSH 超时 ≠ 任务中断**：claude -p 在远程可能继续跑，SSH 断开后需 tasklist 确认 + 轮询产物
+5. **只读 Worker 的产物收口**：消费节点（read 权限）产出的报告，由主写源统一 commit/push，保证权威源单一写入口
+6. **跨仓收口走 M1 主写源**：2017 clwarp 工作区可能被其他 Agent 切到开发分支（codex/*），报告提交应从 M1 clone→add→push，绕开多 Agent 共用工作区的分支混乱
+7. **manual 派发适合节点路由测试**：`派发：manual` 让 Engine 不抢占，由指定 Worker 认领
 
 ## 意义
 
