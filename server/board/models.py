@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from server.board.registry import card_prefixes as _card_prefixes
 from server.board.registry import forbidden_prefixes as _forbidden_prefixes
@@ -99,9 +99,13 @@ def machine_audit_passed_text(text: str) -> bool:
 
                 # 匹配形如 `机审：通过` / `结论：通过` / `机审：不通过` / `结论：不通过`
                 # 采用 (不通过|通过) 确保「不通过」优先匹配，避免被「通过」子串截断
-                match = re.search(r'(机审|结论)\s*[:：]\s*(不通过|通过)', line_normalized)
+                match = re.search(r"(机审|结论)\s*[:：]\s*(不通过|通过)", line_normalized)
+                if not match:
+                    # 兼容 agent 输出格式 `**机审**：<评审人>· 结果：**通过**`（clw011 事故）
+                    # 「结果」字段在机审结论行内给出明确裁决 → 视为有效结论行
+                    match = re.search(r"结果\s*[:：]\s*(不通过|通过)", line_normalized)
                 if match:
-                    last_verdict = match.group(2)
+                    last_verdict = match.group(2) if match.lastindex >= 2 else match.group(1)
 
                 j += 1
 
@@ -157,6 +161,7 @@ class BoardItem:
     acceptance: str = UNKNOWN
     archived: bool = False
     machine_audit_passed: bool = False
+    depends_on: list[str] = field(default_factory=list)
     closed_at: str = ""
     audit_status: str = ""
 
@@ -169,6 +174,7 @@ class BoardItem:
             "state": self.state,
             "board_column": col,
             "machine_audit_passed": self.machine_audit_passed,
+            "depends_on": list(self.depends_on),
             "project": self.project,
             "executor": self.executor,
             "dispatched_at": self.dispatched_at,
