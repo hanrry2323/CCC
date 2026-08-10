@@ -1,6 +1,6 @@
 # 任务卡 ccc045 · 待合入积压提醒（≥N 张）（OpenCode 执行）
 
-> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 机审区
 
