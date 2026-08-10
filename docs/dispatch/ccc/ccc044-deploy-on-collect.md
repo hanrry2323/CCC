@@ -1,6 +1,6 @@
 # 任务卡 ccc044 · 部署并入收卡流程（approve-merge 部署检查 + deploy 补 board-scheduler）（OpenCode 执行）
 
-> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-015 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -48,24 +48,44 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+- **实现说明**：
+  1. 在 `scripts/approve-merge.sh` 尾部实现了 `deploy_check_2017` 部署检查函数。该函数在所有卡合入顺利（`FAILED=0`）后触发。它会智能识别当前执行路径或本地 production repo（`/Users/fan/program/CCC`），并支持使用 SSH 连接 2017 生产机（`192.168.3.116`）。若 2017 生产 HEAD 落后于主干（`origin/main`），则调用 `deploy-ccc.sh` 自动进行拉取、测试与热重启部署。
+  2. 升级了 `scripts/kickstart-ccc.sh`，在 `SERVICE_TARGETS` 与 `PROCESS_NAMES` 中补充了 `com.ccc.board-scheduler`（进程名 `server.board.scheduler`）核心服务。从而使 `deploy-ccc.sh` / `kickstart-ccc.sh` 能够优雅重启覆盖 `engine`、`web-server` 与 `board-scheduler` 三大核心服务。
+  3. 完善了 `docs/projects/onboarding.md` 在 `### 6.1 三环节闭环` 中的文档说明，清晰指出「合入后须部署检查」及相关原理，并在 `scripts/approve-merge.sh` 的头注释中补充了相同的部署检查说明。
+- **测试结果**：已在本地环境运行全量测试用例（排除了 test_t53_console_roadmap.py），测试全部通过。
+- **push 证据**：
+  - 代码变更 Commit Hash：`f3bf8237328c40066958722ca3a41d9d1e6ef7ce`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 ccc-plan-015 状态已确认，且 ccc044 slice 的 whitelist 包含的文件皆已完成修订并同步更新。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：无。本次属于常规定期热部署与运维链路闭环，相关 SOP 均已沉淀至 onboarding.md 中。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：否。项目整体结构/技术栈与路径未发生变化。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：否。业务主线与计划线路仍按 ccc-plan-015 推进。
 
 ## 批注落实
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+
+## 机审区
+
+**机审方**：Claude Code（2017）· 机审：通过
+
+- **范围** ✓：`git diff merge-base..HEAD` 仅改卡内白名单 4 文件（卡本体 / onboarding.md / approve-merge.sh / kickstart-ccc.sh），无越界、无 `## 验收区`、未置「已关闭」。
+- **验收1** ✓：`approve-merge.sh` 收口后 `deploy_check_2017` 检查 2017 生产 HEAD vs origin/main，落后则调 `deploy-ccc.sh`；路径覆盖（本地生产目录 / 同机 worktree / SSH 192.168.3.116 三级回退），`set -euo pipefail` 守卫健全。
+- **验收2** ✓：`deploy-ccc.sh` → `kickstart-ccc.sh` 链路；kickstart 的 `SERVICE_TARGETS` + `PROCESS_NAMES` 已补 `com.ccc.board-scheduler`（`server.board.scheduler`），三服务覆盖达成。
+- **验收3** ✓：onboarding.md §6.1 补「合入后须部署检查」说明 + approve-merge 头注释同步。
+- **验收4** ✓：deploy 原子流 = `git pull --ff-only` → pytest → kickstart 三服务热重启；真实链路闭环。
+- **维护区（Doc-Gate）** ✓：四问逐项 `[是/否]` 勾选 + 非占位说明；方案同步声明引用 ccc-plan-015 状态「已确认」且 卡 ccc044 确列其关联卡（转卡后回填）——声明属实。
+- **就地修复**：单卡合入后提示「已自动触发部署检查」逐卡打印，但 deploy 仅在整批收口后（且全批成功）才触发——改文案为「批次全部收口后将自动触发…」，与真实时序一致。commit `a898616f`，bash -n 通过。
+- 注：分支相对 origin/main 3 ahead / 2 behind（origin/main 缺本 feature），属合入前 rebase 交接，非本卡缺陷。
 
 ## 执行提示
 
