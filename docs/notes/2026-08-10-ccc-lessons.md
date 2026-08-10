@@ -27,3 +27,9 @@
 - **现象**：engine 执行阶段把「nothing to commit, working tree clean」判为成功（exit 0 假成功），clw006 借此死循环。
 - **根因**：主门禁对「无产物」的判定只看 exit code，不看输出信号；自愈逻辑「好心拦截」反而绕过了门禁。
 - **解决方案**：空提交信号（nothing to commit 等）必须判失败并打回；自愈/门禁类逻辑必须有真实测试覆盖，禁止无法实测的「拦截」。落地：`_detect_empty_commit_signal` + `server/tests/test_engine_v2v3_gate.py`（V3 测试）。
+
+### 5. Playwright 新版不支持旧 macOS——挂载常驻任务前先 --once 实测全链路
+
+- **现象**：ccc067 收尾时 2017 装 Playwright 最新版（>1.48）启动失败，报错指向 macOS 13 不兼容。
+- **根因**：Playwright 较新版本要求更高 macOS 版本；2017 是 macOS 13。
+- **解决方案**：锁 Playwright 1.48.0 + chromium；挂载 launchd 常驻任务前先用 `--once` 实测全链路（含浏览器启动、HTTP 访问、观测指标计算），确认后再 load。
