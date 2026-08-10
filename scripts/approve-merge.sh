@@ -128,34 +128,34 @@ sys.exit(0 if ok else 1)
 }
 
 # 完成钩子（Doc-Gate）机械门禁：维护区四问必须勾选且说明非空
-# 优先校验分支信封（origin/<branch>:<path>），main 卡在合入前滞后于分支；
-# 分支不可读（close-only/已合入）时回退本地卡。
+# 校验上下文 = 分支临时工作树（origin/<branch>），卡文件/方案文件/git diff 全部基于
+# 分支信封，与机审证据同源；分支不可读（close-only/已合入）时回退 main 工作区。
 check_maintenance() {
   local path="$1"
   local branch="${2:-}"
-  local tmp=""
+  local tmpwt=""
+  local repo_root="."
   if [[ -n "$branch" ]] && git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
-    tmp="$(mktemp)"
-    if ! git show "origin/${branch}:${path}" > "$tmp" 2>/dev/null; then
-      rm -f "$tmp"
+    tmpwt="$(mktemp -d)"
+    if ! git worktree add -q --detach "$tmpwt" "origin/${branch}" 2>/dev/null; then
+      rm -rf "$tmpwt"
       return 1
     fi
-    path="$tmp"
+    repo_root="$tmpwt"
   fi
   local ret=0
   "$PYTHON_BIN" -c "
 import sys
-from pathlib import Path
 sys.path.insert(0, '.')
 from server.board.docgate import verify_maintenance
-ok, problems = verify_maintenance(sys.argv[1], '.')
+ok, problems = verify_maintenance(sys.argv[1], sys.argv[2])
 if not ok:
     print('[ERROR] 完成钩子（维护区声明不实）：' + '；'.join(problems), file=sys.stderr)
     sys.exit(1)
 print('[OK] 完成钩子：维护区四问已勾选且说明完整')
 sys.exit(0)
-" "$path" || ret=1
-  if [[ -n "$tmp" ]]; then rm -f "$tmp"; fi
+" "$path" "$repo_root" || ret=1
+  if [[ -n "$tmpwt" ]]; then git worktree remove -f "$tmpwt" 2>/dev/null; rm -rf "$tmpwt"; fi
   return "$ret"
 }
 
