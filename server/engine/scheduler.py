@@ -194,7 +194,7 @@ def _default_registry() -> TaskRegistry:
 
     # 延迟导入避免��环依赖
     from server.engine.cluster import collect_cluster_status
-    from server.engine.observer import run_observer
+    from server.engine.observer import run_observation_metrics, run_observer
 
     registry.register(ScheduledTask(
         name="cluster-collect",
@@ -206,6 +206,12 @@ def _default_registry() -> TaskRegistry:
         name="loop-observer",
         task_type=TASK_TYPE_READONLY,
         run=run_observer,
+    ))
+
+    registry.register(ScheduledTask(
+        name="observation-metrics",
+        task_type=TASK_TYPE_READONLY,
+        run=run_observation_metrics,
     ))
 
     return registry
