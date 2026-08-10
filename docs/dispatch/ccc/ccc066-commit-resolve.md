@@ -123,3 +123,16 @@
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过（被审 2af68af5）**（2017 机审席 · 2026-08-10）
+
+审查摘要：
+- **范围**：本卡核心改动仅 5 文件（scripts/approve-merge.sh、scripts/lib/card-resolve.sh、scripts/tests/test-card-resolve.sh、server/engine/main.py、server/tests/test_engine_v2v3_gate.py），V6+V7 落地与回写区声明一致；未触碰 qb/hp 业务仓、运行面、密钥或无关文件。
+- **架构合理性（V6 机审钉 commit）**：机审启动前读 worktree 分支远端 tip 记录被审 sha，通过后把信封「机审：通过」改写为「机审：通过（被审 <sha12>）」（幂等，老信封无被审行不强制，兼容存量）；approve-merge 合入前解析被审 sha 并校验 `被审 sha..origin/<branch>` 间除 docs/dispatch/** 外无改动——机审后漂移即拒绝合入须重审。把验收从「验文本」升级为「钉不可变 commit」，原则正确。
+- **架构合理性（V7 resolve_card 唯一性）**：抽 `scripts/lib/card-resolve.sh` 共享库，多命中直接报错列全部候选（弃 head -1 猜），被 approve-merge.sh 复用，防实现漂移；test 覆盖唯一/找不到/二义性三态。正确。
+- **边界安全**：`_pin_audit_commit` 无 sha / 无「机审：通过」行均 no-op；`_worktree_branch_tip` 对 worktree 缺失/命令异常吞异常返回 None；approve 侧 sha 不可解析回显报错拒绝，不静默放过。安全性达标。
+- **维护区四问**：逐项勾选并填实质说明（[否]/[有]/[是]/[否]）；其中「[有] 教训沉淀」与「[是] 档案/README 同步（新增 scripts/lib、scripts/tests）」声明真实成立——新增工件均已在工作树存在且被 commit。
+- **可修问题（已就地修复并 commit+push）**：`scripts/tests/test-card-resolve.sh:11` 硬编码 `source /Users/apple/program/CCC/...` 绝对路径——该路径在本机(fan)不存在、且直接违背本卡所属 ccc019 P0「门禁适配 worktree」目标；已改为按 `BASH_SOURCE` 相对定位 `../lib/card-resolve.sh`，本机实跑 `bash scripts/tests/test-card-resolve.sh` 全过（exit 0），bash -n 两文件语法 OK，push 为分支 tag `2af68af5`。
+- **修复后自验通过**：机审判据非 pytest/编译/范围等机械指标（由机械门禁已裁决），仅作原则性 Code Review + 修正上述可修缺陷，均落地修复并推回。
