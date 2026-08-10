@@ -269,7 +269,60 @@ def _infra_cooldown_active(
         return False
 
 
+def _business_repo_has_new_commit(work: Work, worktree_path: str) -> bool:
+    """业务仓型任务（registry 指向外部仓）产物检查。
+
+    当 CCC worktree 无 commit 时（业务仓任务在外部仓开发），回退检查 registry 指向的
+    业务仓对应 codex 分支相对 origin/main 是否有新 commit。流程修正（2026-08-10）：
+    clw011 业务开发在 clwarp 仓，CCC worktree 只应含卡回写，机械门禁只看 worktree
+    会把业务仓产物误判为空回写 → 打回死循环。
+    """
+    if not work.project or not work.card_path:
+        return False
+    try:
+        from server.board.registry import load_projects
+
+        projects = load_projects()
+        entry = next(
+            (e for e in projects if (e.prefix and e.prefix == work.project) or e.id == work.project),
+            None,
+        )
+        if entry is None or not entry.path_mac2017:
+            return False
+        repo = Path(entry.path_mac2017).expanduser()
+        if not repo.is_dir():
+            return False
+    except Exception:
+        return False
+    branch = f"codex/{Path(work.card_path).stem.lower()}"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo), "log", "origin/main..origin/" + branch, "--oneline"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+    except Exception:
+        return False
+    if res.returncode != 0:
+        return False
+    return bool(res.stdout.strip())
+
+
 def is_empty_writeback_or_placeholder(work: Work, worktree_path: str) -> tuple[bool, str]:
+    """判定是否为空回写（回写 diff 为空 或 卡 ## 维护区 为模板占位/空白）。"""
+    if worktree_path:
+        has_commit = _worktree_has_new_commit(worktree_path)
+        has_diff = _worktree_has_nonempty_diff(worktree_path)
+        if not (has_commit and has_diff):
+            # 流程修正（2026-08-10）：业务仓型任务 worktree 无 commit 时，
+            # 回退检查业务仓对应 codex 分支产物（clw011 误打回根因）
+            if _business_repo_has_new_commit(work, worktree_path):
+                logger.info("worktree 无 commit 但业务仓分支有产物，放行: work=%s", work.id)
+            else:
+                return True, "回写 diff 为空（未在 worktree 内产生新 commit 或有效 diff）"
+
     """判定是否为空回写（回写 diff 为空 或 卡 ## 维护区 为模板占位/空白）。"""
     if worktree_path:
         has_commit = _worktree_has_new_commit(worktree_path)
