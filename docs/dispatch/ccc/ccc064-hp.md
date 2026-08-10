@@ -47,7 +47,7 @@ HP 调用路径收敛为单一权威入口：opencode.json 补 ccc-kb、hp-kb �
 
 卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
 **回写同时必须完成  四问**（完成钩子，未填=机审打回+合入拒绝）。  
-50: 机审由卡头「验收」方自动写 ；人审 diff 后听「合入批准」写 +已关闭。
+机审由卡头「验收」方自动写 ；人审 diff 后听「合入批准」写 +已关闭。
 
 ## 人工批注
 
@@ -68,7 +68,7 @@ HP 调用路径收敛为单一权威入口：opencode.json 补 ccc-kb、hp-kb �
 
 ### 3. Push 证据
 - **业务仓 (qx-map)** 变更已提交至独立同名分支 `codex/ccc064-hp`：
-  - **Commit Hash**：`eb6d7e596dfdf9bbff120f269550e0edf23101eb`
+  - **Commit Hash**：`eb6d7e56a8832494bc60b283cfdb4572ca04e6fc`
   - **Branch**：`codex/ccc064-hp`
   - **Push Result**：已成功推送至 origin（GitHub 仓库）。
 
@@ -139,3 +139,17 @@ HP 调用路径收敛为单一权威入口：opencode.json 补 ccc-kb、hp-kb �
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过** · 2026-08-10 · 验收席
+
+**审查摘要**
+- **范围/红线**：本卡为纯配置+技能文档收敛，不涉及 HP 服务代码改动。M1 `qx-map` 分支 `codex/ccc064-hp`（commit `eb6d7e56a8832494bc60b283cfdb4572ca04e6fc`）diff 仅 3 个白名单文件（`.claude/skills/qx-hpkb-query/SKILL.md`、`.reasonix/skills/hpkb-query/SKILL.md` 删除、`ide/mcp-manifest.md`），无越界；已 push 至 origin。CCC 侧回写 commit 仅改动本卡，未置已关闭、无 `## 验收区`。
+- **人工批注**：卡内 `## 人工批注` 为空（无批注），无需落实；执行体删除 `## 批注落实` 节符合模板「无批注可删本节」。
+- **配置同构核验**：2017 `~/.config/opencode/opencode.json` 与 M1 `qx-map/.mcp.json` 均含 `hp-kb`（http + `Accept: application/json, text/event-stream`）与 `ccc-kb`（stdio + `PYTHONPATH`）双配置，同构一致。
+- **技能单一主版**：`.reasonix` 分叉已删除；`qx-hpkb-query/SKILL.md` 第 9 行矛盾已修正（CLI 唯一 → MCP 首选），且 `domain 速查` 删重复、改引单点来源 `AGENTS.md`，避免双真值漂移。
+- **死引用清零**：`ide/mcp-manifest.md` 已移除 OpenCode 工作区 `~/.ccc/workspaces.json`（`ccc-sync-agent-roots.py`）死引用行。
+- **Doc-Gate 维护区四问**：逐项勾选并填实质说明，无占位。Q1 [是] 声明「ccc-plan-019 部分执行（A8 完成）」——已核对方案 `019` A8 调用路径收敛为 ccc064 对应项，工作属实（方案池状态仍为草案，因按 A6 规则由合入关闭时自动推进，属预期）；Q3/Q4 否定声明与改动一致。
+- **就地修正可修问题**：① 回写 commit 误引入的 `50:` 行缀已清除；② push 证据 commit hash 原文不实（`eb6d7e596d…` 为坏对象），已更正为真实哈希 `eb6d7e56a8832494bc60b283cfdb4572ca04e6fc`（分支 `codex/ccc064-hp`、origin 存在该提交）。
+- **结论**：业务笔意达成、无越界、无安全/架构红线，Doc-Gate 材料工作属实。发现的两处文档笔误已就地修复。
