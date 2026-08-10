@@ -71,6 +71,22 @@ docgate Q3/Q4 post-merge 校验修复（ccc-plan 切片）。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：项目近况及下一步规划没有发生变化。
 
+## 机审区
+
+**机审：通过**
+
+审查者：2017 机审席（验收席独立审查）· 日期：2026-08-10
+
+审查摘要：
+- 维护区（Doc-Gate 四问）已逐项勾选并填真实说明，无占位。Q1[是] 声明经查证属实：`ccc-plan-014`（状态已确认）关联卡含 `ccc042`；Q2[无]/Q3[否]/Q4[否] 与改动（纯代码修复，未改结构/路径/近况）一致。声明无虚报。
+- 范围合规：改动仅 `server/board/docgate.py` + `server/tests/test_writeback_gate.py`，在卡声明范围内；卡头仅置「已回写」，未写验收区、未置已关闭。
+- 原则性 Code Review 通过：
+  - `get_modified_files` 增加可选 `card_file` 参数（签名向后兼容，既有调用方不受影响），基于「分支 merge-base..branch」对比，摆脱工作区 vs origin/main 的耦合——满足卡内验收标准 #1。
+  - 对已合入卡（回归样例 ccc040 类）走 `git log --grep=<card_id>` 取旧提交 → `oldest^..branch` 精确界定卡片改动，满足标准 #2。
+  - 分支不可解析时优雅降级到原 `git diff base_ref`，无崩溃路径；Q1/Q2 逻辑未改动，满足标准 #3。
+  - 新增 `test_get_modified_files_branch_resolution` 覆盖合并前/合并后两分支；`test_writeback_gate.py` 7 例及 docgate/validate/board_validate 全绿，满足标准 #4。
+- 机械门禁（编译/测试/范围）由引擎裁决，本席不再重复检查。
+
 ## 批注落实
 
 （若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
