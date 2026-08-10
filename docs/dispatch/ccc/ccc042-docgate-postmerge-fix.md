@@ -1,6 +1,6 @@
 # 任务卡 ccc042 · docgate Q3/Q4 post-merge 校验修复（OpenCode 执行）
 
-> 关联：ccc-plan-014 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-014 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -47,20 +47,29 @@ docgate Q3/Q4 post-merge 校验修复（ccc-plan 切片）。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+- 实现说明：
+  1. 修改了 `server/board/docgate.py` 中的 `get_modified_files` 函数，增加可选参数 `card_file`。
+  2. 当 `card_file` 存在时，解析文件名推导分支名（如 `codex/ccc042-docgate-postmerge-fix`），并检测该分支是否已合入 `main`。
+  3. 若分支未合入，使用 `merge-base..branch`（即 `git diff mb..branch`）对比文件，避免因为 main 分支领先而导致错误，不再用工作区对比。
+  4. 若分支已合入（如回归测试中的已合入卡 ccc040），提取其 commit 中首个包含卡号的 commit 的父节点，进行 `oldest_commit^..branch` 的对比。
+  5. 优化 `verify_maintenance` 调用 `get_modified_files` 传参。
+- 测试结果：新增测试用例 `test_get_modified_files_branch_resolution` 覆盖新逻辑，包含合并前 and 合并后的情况。`pytest` 单元测试全绿通过（722+7 个用例）。
+- push 证据：已推送至分支 `codex/ccc042-docgate-postmerge-fix`，Commit Hash: 6135eaa0
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `ccc-plan-014`（治理门禁系统性修复）状态已确认，且卡 `ccc042` 已关联并执行。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：仅针对 docgate 门禁自身 post-merge 合入后对比失效的边界情况进行修复，无其他业务或技术教训需要沉淀。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变项目结构、技术栈或任何路径。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况及下一步规划没有发生变化。
 
 ## 批注落实
 
