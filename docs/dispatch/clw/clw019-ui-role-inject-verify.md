@@ -1,6 +1,6 @@
-# 任务卡 clw019 · 前端设计角色注入验证：检查登录页UI结构（OpenCode 执行）
+# 任务卡 clw019 · 前端设计角色注入验证：审查设置面板与会话列表UI（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：W9 · 验收：Claude Code · 状态：已回写 · 派发：manual · 项目：clw · 日期：2026-08-11
+> 关联：阶段 3 P1 · 执行体：W9 · 验收：Claude Code · 状态：待分派 · 派发：manual · 项目：clw · 日期：2026-08-11
 
 > 角色：前端设计
 
@@ -11,7 +11,9 @@
 
 ## 目标
 
-验证「任务卡角色 → Skill 自动注入」全链路：本卡带「角色：前端设计」，执行体（W9 = 252 移动终端 Claude Code）应按执行提示加载 ui-ux-pro-max Skill，用前端设计视角检查 clwarp 登录页 UI 结构，产出 UI 改进建议。这是集群 Worker 池「通用智能体按任务变专家」+「跨节点 Worker 路由」机制的第一个真实样例。
+验证「任务卡角色 → Skill 自动注入」全链路：本卡带「角色：前端设计」，执行体（W9 = 252 移动终端 Claude Code）应按执行提示加载 ui-ux-pro-max Skill，用前端设计视角审查 clwarp **真实存在的 UI 组件**（设置面板 SettingsPanel / 会话列表 SessionList / 侧边栏 Sidebar），产出 UI 改进建议。这是集群 Worker 池「通用智能体按任务变专家」+「跨节点 Worker 路由」机制的第一个真实样例。
+
+> 2026-08-11 修正：原任务"检查登录页"前提虚构——clwarp 是本地桌面驾驶舱，无登录页/鉴权概念。已改为审查真实组件，避免幻觉式产出。
 
 ## 红线（先看）
 
@@ -23,17 +25,25 @@
 
 - 执行节点：**W9 = 252（192.168.3.252）移动终端 Claude Code**（跨节点 Worker 路由测试）
 - 按执行提示加载 `ui-ux-pro-max` Skill（252 `~/.claude/skills/` 或 opencode skills）
-- 检查 clwarp 登录页 UI 结构（`C:\Users\win\clwarp\src\` 下登录相关组件）
+- 审查真实存在的 UI 组件（`C:\Users\win\clwarp\src\components\`）：SettingsPanel.tsx / SessionList.tsx / SessionItem.tsx / Sidebar.tsx
 - 产出：`docs/notes/clw019-ui-review-2026-08-11.md`（UI 改进建议，含配色/排版/UX 维度）
 
 ## 步骤
 
 1. 读本卡 + 加载 ui-ux-pro-max Skill（按执行提示）。
-2. 定位 clwarp 登录页组件（`C:\Users\win\clwarp\src\`，grep login/登录）。
-3. 按 ui-ux-pro-max 的设计准则检查 UI 结构，记录问题点。
+2. **先核实组件真实存在**：`ls C:\Users\win\clwarp\src\components\` 确认 SettingsPanel.tsx / SessionList.tsx / SessionItem.tsx / Sidebar.tsx 都在（只审真实组件，禁止对不存在的 UI 编建议）。
+3. 按 ui-ux-pro-max 的设计准则检查上述真实组件 UI 结构，记录问题点（每个问题点必须引用真实文件:行号）。
 4. 写审查报告到 `C:\Users\win\clwarp\docs\notes\clw019-ui-review-2026-08-11.md`（252 本地产出）。
 5. 报告提交由主写源 M1 统一收口（252 只读消费，不直 push）；卡头由 M1 更新「已回写」。
 6. **停手**：252 只做审查+报告产出；禁止改 clwarp 源码、禁止写机审区/验收区/置已关闭。
+
+## 验收标准
+
+1. 执行体明确说明已加载 ui-ux-pro-max Skill（回写区/报告里体现）。
+2. 审查报告 `docs/notes/clw019-ui-review-2026-08-11.md` 存在，含 ≥3 条具体 UI 建议（配色/排版/UX 至少两维度），**每条引用真实文件:行号**。
+3. **产物真实性校验**：报告引用的组件必须真实存在（`src/components/` 下可查到）；若引用了不存在的组件/页面（如"登录页"），判定为幻觉产出，机审打回。
+4. 未改任何 clwarp 源码（只读审查）。
+5. 卡头已回写 + 状态正确。
 
 ## 验收标准
 
@@ -54,11 +64,9 @@
 
 ## 回写区
 
-**执行体**：W9（252 移动终端 Claude Code）· 日期：2026-08-11
+**执行体**：W9（252 移动终端 Claude Code）· 日期：
 
-- 完成内容：按「角色：前端设计」加载 ui-ux-pro-max Skill，只读审查 clwarp 登录页 UI，产出 4 项建议（配色/排版/UX/一致性）
-- 报告位置：`clwarp/docs/notes/clw019-ui-review-2026-08-11.md`（已提交 clwarp main）
-- 验证结论：跨节点 Worker 路由成功——252(W9) 认领执行，角色→Skill 注入生效
+> 2026-08-11 修正后待重新执行：原执行产物（登录页审查）因任务前提虚构作废，已改为审查真实组件，重新执行后填回写。
 
 ## 维护区
 
