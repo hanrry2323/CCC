@@ -1,6 +1,6 @@
 # 任务卡 clw019 · 前端设计角色注入验证：检查登录页UI结构（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-11
+> 关联：阶段 3 P1 · 执行体：W9 · 验收：Claude Code · 状态：待分派 · 派发：manual · 项目：clw · 日期：2026-08-11
 
 > 角色：前端设计
 
@@ -11,7 +11,7 @@
 
 ## 目标
 
-验证「任务卡角色 → Skill 自动注入」全链路：本卡带「角色：前端设计」，执行体（OpenCode）应按执行提示加载 ui-ux-pro-max Skill，用前端设计视角检查 clwarp 登录页 UI 结构，产出 UI 改进建议。这是集群 Worker 池「通用智能体按任务变专家」机制的第一个真实样例。
+验证「任务卡角色 → Skill 自动注入」全链路：本卡带「角色：前端设计」，执行体（W9 = 252 移动终端 Claude Code）应按执行提示加载 ui-ux-pro-max Skill，用前端设计视角检查 clwarp 登录页 UI 结构，产出 UI 改进建议。这是集群 Worker 池「通用智能体按任务变专家」+「跨节点 Worker 路由」机制的第一个真实样例。
 
 ## 红线（先看）
 
@@ -21,18 +21,19 @@
 
 ## 范围
 
-- 按执行提示加载 `ui-ux-pro-max` Skill（`~/.config/opencode/skills/ui-ux-pro-max/`）
-- 检查 clwarp 登录页 UI 结构（`src/` 或 `src/components/` 下登录相关组件）
+- 执行节点：**W9 = 252（192.168.3.252）移动终端 Claude Code**（跨节点 Worker 路由测试）
+- 按执行提示加载 `ui-ux-pro-max` Skill（252 `~/.claude/skills/` 或 opencode skills）
+- 检查 clwarp 登录页 UI 结构（`C:\Users\win\clwarp\src\` 下登录相关组件）
 - 产出：`docs/notes/clw019-ui-review-2026-08-11.md`（UI 改进建议，含配色/排版/UX 维度）
 
 ## 步骤
 
 1. 读本卡 + 加载 ui-ux-pro-max Skill（按执行提示）。
-2. 定位 clwarp 登录页组件（grep login/登录）。
+2. 定位 clwarp 登录页组件（`C:\Users\win\clwarp\src\`，grep login/登录）。
 3. 按 ui-ux-pro-max 的设计准则检查 UI 结构，记录问题点。
-4. 写审查报告到 `docs/notes/clw019-ui-review-2026-08-11.md`。
-5. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-6. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+4. 写审查报告到 `C:\Users\win\clwarp\docs\notes\clw019-ui-review-2026-08-11.md`（252 本地产出）。
+5. 报告提交由主写源 M1 统一收口（252 只读消费，不直 push）；卡头由 M1 更新「已回写」。
+6. **停手**：252 只做审查+报告产出；禁止改 clwarp 源码、禁止写机审区/验收区/置已关闭。
 
 ## 验收标准
 
