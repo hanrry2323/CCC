@@ -4,6 +4,7 @@ import re
 import subprocess
 from pathlib import Path
 
+
 def _extract_header_fields(content: str) -> dict[str, str]:
     fields: dict[str, str] = {}
     lines = content.split("\n")
@@ -63,18 +64,14 @@ def get_modified_files(repo_root: Path) -> list[str]:
             cwd=repo_root,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=True
+            check=True,
         )
     except subprocess.CalledProcessError:
         base_ref = "main"
 
     try:
         res = subprocess.run(
-            ["git", "diff", "--name-only", base_ref],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=True
+            ["git", "diff", "--name-only", base_ref], cwd=repo_root, capture_output=True, text=True, check=True
         )
         return [line.strip() for line in res.stdout.splitlines() if line.strip()]
     except Exception:
@@ -82,9 +79,10 @@ def get_modified_files(repo_root: Path) -> list[str]:
 
 
 def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
-    if "## 维护区" not in text:
+    m = re.search(r"^## 维护区\s*$", text, re.M)
+    if not m:
         return {}
-    seg = text.split("## 维护区", 1)[1]
+    seg = text[m.end() :]
     seg = seg.split("## ", 1)[0]
 
     results = {}
@@ -100,11 +98,7 @@ def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
         note_m = re.search(r"^\s+-\s+说明：\s*(.*)$", sub_seg, re.M)
         note = note_m.group(1).strip() if note_m else ""
 
-        results[num] = {
-            "name": name,
-            "choice": choice,
-            "note": note
-        }
+        results[num] = {"name": name, "choice": choice, "note": note}
     return results
 
 
@@ -179,7 +173,9 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
                         has_card = bool(re.search(rf"\b{card_id}\b", plan_cards, re.I))
                         has_status = plan_status in ("部分执行", "已完成")
                         if not (has_card or has_status):
-                            problems.append(f"Q1 方案同步校验失败。方案 {plan_prefix}-plan-{plan_num} 状态为「{plan_status}」且关联卡「{plan_cards}」中不包含本卡 ID「{card_id}」")
+                            problems.append(
+                                f"Q1 方案同步校验失败。方案 {plan_prefix}-plan-{plan_num} 状态为「{plan_status}」且关联卡「{plan_cards}」中不包含本卡 ID「{card_id}」"
+                            )
                     except Exception as e:
                         problems.append(f"Q1 读取方案文件失败: {e}")
 
@@ -221,7 +217,9 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
             if not file_exists:
                 problems.append(f"Q3 声明更新了项目档案[是]，但指定的项目档案文件不存在：{', '.join(q3_files)}")
             elif not file_has_diff:
-                problems.append(f"Q3 声明更新了项目档案[是]，但指定的项目档案文件 {', '.join(q3_files)} 在当前分支上没有检测到相对 origin/main 的修改")
+                problems.append(
+                    f"Q3 声明更新了项目档案[是]，但指定的项目档案文件 {', '.join(q3_files)} 在当前分支上没有检测到相对 origin/main 的修改"
+                )
 
         elif num == 4 and choice in ("`是`", "是"):
             modified = get_modified_files(repo_root)
@@ -246,6 +244,8 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
             if not file_exists:
                 problems.append(f"Q4 声明更新了线路图[是]，但指定的文件不存在：{', '.join(q4_files)}")
             elif not file_has_diff:
-                problems.append(f"Q4 声明更新了线路图[是]，但指定的文件 {', '.join(q4_files)} 在当前分支上没有检测到相对 origin/main 的修改")
+                problems.append(
+                    f"Q4 声明更新了线路图[是]，但指定的文件 {', '.join(q4_files)} 在当前分支上没有检测到相对 origin/main 的修改"
+                )
 
     return len(problems) == 0, problems
