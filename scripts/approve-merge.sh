@@ -295,6 +295,61 @@ path.write_text(text2, encoding='utf-8')
 " "$path" "$today"
 }
 
+# ── sync_plan_cards：卡关闭后自动同步方案「关联卡」（ccc062）──
+# 卡头「关联」含 prefix-plan-NNN 时，把本卡 ID 追加到方案「关联卡」字段。
+# 无方案编号则跳过（如 phase-3 关联、无方案卡）。
+sync_plan_cards() {
+  local path="$1"
+  "$PYTHON_BIN" - "$path" <<'PY'
+import re, sys
+from pathlib import Path
+sys.path.insert(0, ".")
+from server.board.plans import update_plan
+from server.board.docgate import get_card_id
+
+card_path = Path(sys.argv[1])
+try:
+    text = card_path.read_text(encoding="utf-8")
+except OSError:
+    print(f"[skip] 无法读取卡文件: {card_path}")
+    raise SystemExit(0)
+
+card_id = get_card_id(card_path)
+related = re.search(r"关联：([^\n·]*)", text)
+related = related.group(1) if related else ""
+plan_m = re.search(r"([a-z]{2,4})-plan-([0-9]{3})", related)
+if not plan_m:
+    print(f"[skip] {card_id} 卡头无 prefix-plan-NNN 关联方案，跳过方案关联卡同步")
+    raise SystemExit(0)
+
+plan_prefix, plan_num = plan_m.group(1), plan_m.group(2)
+plans_dir = Path("docs") / "projects" / plan_prefix / "plans"
+matches = sorted(plans_dir.glob(f"{plan_num}-*.md"))
+if not matches:
+    print(f"[warn] {card_id} 关联方案文件不存在: docs/projects/{plan_prefix}/plans/{plan_num}-*.md")
+    raise SystemExit(0)
+
+rel_path = str(Path("docs") / "projects" / plan_prefix / "plans" / matches[0].name)
+plan_text = matches[0].read_text(encoding="utf-8")
+cur_cards = ""
+m = re.search(r"关联卡：([^\n]*)", plan_text)
+if m:
+    cur_cards = m.group(1).strip()
+
+existing = [c.strip() for c in cur_cards.split(",") if c.strip()] if cur_cards else []
+if card_id in existing:
+    print(f"[skip] {card_id} 已在方案 {plan_prefix}-plan-{plan_num} 关联卡中")
+    raise SystemExit(0)
+
+new_cards = ", ".join(existing + [card_id])
+result = update_plan(Path("."), rel_path=rel_path, cards=new_cards)
+if "error" in result:
+    print(f"[warn] 方案关联卡同步失败: {result['error']}")
+else:
+    print(f"[ok] {card_id} 已加入方案 {plan_prefix}-plan-{plan_num} 关联卡: {new_cards}")
+PY
+}
+
 approve_one() {
   local id="$1"
   local path stem branch
@@ -391,6 +446,7 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
 
   close_card "$path"
+  sync_plan_cards "$path"
   git add -- "$path"
   if ! git diff --cached --quiet; then
     git commit -m "$(cat <<EOF

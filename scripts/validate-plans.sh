@@ -22,9 +22,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLANS_DIR="$REPO_ROOT/docs/projects"
 
-# 从 registry.yaml 提取有效前缀（排除 null）
-VALID_PREFIXES=$(grep -E '^\s+- prefix:' "$REPO_ROOT/docs/projects/registry.yaml" | \
-  grep -v 'null' | awk '{print $3}' | sort -u || true)
+# 从 registry.yaml 提取有效前缀（唯一真值：server/board/registry.py，消除 grep 双解析，ccc062）
+# PYTHONPATH 指向本脚本真实所在仓（registry.py 定义处），兼容测试复制到临时目录的场景。
+_CCC_ROOT_ABS="$(cd "$(dirname "$0")/.." && pwd)"
+VALID_PREFIXES=$(PYTHONPATH="$_CCC_ROOT_ABS" python3 -c "
+import sys
+from server.board.registry import card_prefixes
+print('\\n'.join(sorted(card_prefixes(sys.argv[1]))))
+" "$REPO_ROOT/docs/projects/registry.yaml" 2>/dev/null || true)
 
 # 有效状态
 VALID_STATES="草案|已确认|部分执行|已完成|作废"

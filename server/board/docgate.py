@@ -251,12 +251,23 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
 
                         has_card = bool(re.search(rf"\b{card_id}\b", plan_cards, re.I))
                         has_status = plan_status in ("部分执行", "已完成")
-                        if not (has_card or has_status):
-                            problems.append(
-                                f"Q1 方案同步校验失败。方案 {plan_prefix}-plan-{plan_num} 状态为「{plan_status}」且关联卡「{plan_cards}」中不包含本卡 ID「{card_id}」"
-                            )
+                        # Q1 收紧（ccc062）：方案同步[是] = 方案已推进（部分执行/已完成）且关联卡含本卡，两者都需满足（AND）
+                        if not (has_card and has_status):
+                            missing = []
+                            if not has_status:
+                                missing.append(f"方案 {plan_prefix}-plan-{plan_num} 状态为「{plan_status}」（须为部分执行/已完成）")
+                            if not has_card:
+                                missing.append(f"方案关联卡「{plan_cards}」中不包含本卡 ID「{card_id}」")
+                            problems.append("Q1 方案同步校验失败。" + "；".join(missing))
                     except Exception as e:
                         problems.append(f"Q1 读取方案文件失败: {e}")
+
+        elif num == 1 and choice in ("`否`", "否"):
+            # Q1 收紧（ccc062）：勾选[否]但卡头含方案编号 → 须在说明里讲清为何不推进（防随意[否]规避）
+            related = meta.get("关联", "")
+            if re.search(r"([a-z]{2,4})-plan-([0-9]{3})", related):
+                if "方案" not in note and "不推进" not in note and "无" not in note:
+                    problems.append("Q1 勾选了方案同步[否]，但卡头含方案编号且说明未解释为何不推进（须在说明中说明，如：无方案编号/方案不涉及/待统一推进）")
 
         elif num == 2 and choice in ("`有`", "有"):
             paths = extract_paths(note)
