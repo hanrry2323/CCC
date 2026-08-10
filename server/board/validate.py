@@ -30,6 +30,7 @@ from pathlib import Path
 
 from server.board.models import PREFIXES, FORBIDDEN_CARD_PREFIXES, base_state, BoardItem
 from server.board.roles import acceptance_issue
+from server.board.card_header import is_task_card_text, parse_metadata, card_id
 
 VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
 # 新卡强制含「验收」；交叉对由 roles.acceptance_issue 校验
@@ -52,13 +53,9 @@ class CardIssue:
     severity: str = "error"  # error=阻断（退出码 1）；warn=提示（退出码 0）
 
 
-# 卡头标题行（``# 任务卡 <ID>``），须行首锚定——正文/说明里出现 ``# 任务卡`` 字面量不算
-_CARD_TITLE_LINE_RE = re.compile(r"^#\s*任务卡\s", re.MULTILINE)
-
-
 def _has_card_title(path: Path) -> bool:
     """是否任务卡（行首含 ``# 任务卡`` 卡头标题）；排除 T-mapping.md 等说明文档。"""
-    return bool(_CARD_TITLE_LINE_RE.search(path.read_text(encoding="utf-8")))
+    return is_task_card_text(path.read_text(encoding="utf-8"))
 
 
 def _header_lines(card: Path) -> list[str]:
@@ -72,12 +69,7 @@ def _header_metadata(card: Path) -> dict[str, str]:
     历史卡把 关联/执行体/状态/日期 分布在多个 ``>`` 行，只查首行会误报；
     与 `server/board/loader._parse_metadata` 一致语义合并解析。
     """
-    from server.board.loader import _parse_metadata  # noqa: PLC0415
-
-    meta: dict[str, str] = {}
-    for line in _header_lines(card):
-        meta.update(_parse_metadata(line))
-    return meta
+    return parse_metadata(card.read_text(encoding="utf-8"))
 
 
 def _body_has(card: Path, marker: str) -> bool:
@@ -158,8 +150,7 @@ def _header_card_id(card: Path) -> str:
     ``# 任务卡 T52 · 自动化基建``（仅编号），统一取 ``T<N>`` 前缀即可；
     新卡取 ``<prefix><NNN>``（可带 ``-<slug>``，数字部分一致）。
     """
-    m = re.search(r"#\s*任务卡\s+([^\s·]+)", card.read_text(encoding="utf-8"))
-    return m.group(1).strip() if m else ""
+    return card_id(card.read_text(encoding="utf-8"))
 
 
 def _header_number(card: Path) -> str:

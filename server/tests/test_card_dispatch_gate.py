@@ -51,7 +51,7 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
     # 4. 现在 "other" 写入 ccc001-remote.md，代表远端已经占用了 ccc001
     dispatch_dir = other / "docs" / "dispatch" / "ccc"
     dispatch_dir.mkdir(parents=True)
-    
+
     # 写入真实的 ccc001 卡，结构必须合规以防 validate 报错
     card_body = (
         "# 任务卡 ccc001 · 远程卡（OpenCode 执行）\n\n"
@@ -123,3 +123,59 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
     assert res2.returncode == 0
     assert "ccc002" in res2.stdout
     assert (local / "docs" / "dispatch" / "ccc" / "ccc002-auto-increment-card.md").is_file()
+
+
+def test_new_card_flock_concurrency(tmp_path: Path) -> None:
+    # 获取真实的项目根目录
+    project_root = Path(__file__).resolve().parents[2]
+    new_card_script = project_root / "scripts" / "new-card.sh"
+
+    bare = tmp_path / "bare.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+
+    local = tmp_path / "local"
+    _git(tmp_path, "clone", "-q", str(bare), "local")
+    _git(local, "config", "user.email", "test@example.com")
+    _git(local, "config", "user.name", "test")
+
+    # 创建 initial commit
+    (local / "README.md").write_text("initial", encoding="utf-8")
+    _git(local, "add", "README.md")
+    _git(local, "commit", "-qm", "init")
+    _git(local, "push", "-q", "-u", "origin", "main")
+
+    env = os.environ.copy()
+    env["CCC_PYTHON_BIN"] = "python3"
+
+    dispatch_dir = local / "docs" / "dispatch"
+
+    args = [
+        "bash",
+        str(new_card_script),
+        "--title", "Concurrent Card",
+        "--project", "ccc",
+        "--related", "ccc-plan-007",
+        "--dispatch-dir", str(dispatch_dir),
+    ]
+
+    p1 = subprocess.Popen(args, cwd=str(local), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    p2 = subprocess.Popen(args, cwd=str(local), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    out1, err1 = p1.communicate()
+    out2, err2 = p2.communicate()
+
+    print("P1 STDOUT:\n", out1)
+    print("P1 STDERR:\n", err1)
+    print("P2 STDOUT:\n", out2)
+    print("P2 STDERR:\n", err2)
+
+    assert p1.returncode == 0, f"P1 失败: {err1}"
+    assert p2.returncode == 0, f"P2 失败: {err2}"
+
+    files = list((dispatch_dir / "ccc").glob("ccc[0-9][0-9][0-9]-*.md"))
+    assert len(files) == 2, f"期望 2 张卡，实际找到 {len(files)} 张: {files}"
+
+    stems = sorted([f.stem for f in files])
+    assert stems[0].startswith("ccc001")
+    assert stems[1].startswith("ccc002")
+

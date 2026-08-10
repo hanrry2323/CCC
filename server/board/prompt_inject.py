@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from server.board.card_header import parse_metadata
+
 logger = logging.getLogger("ccc.prompt_inject")
 
 # ── 项目根目录（相对于本文件） ──
@@ -243,19 +245,8 @@ def _clean_snippet(snippet: str, doc_id: str) -> str:
 
 def _parse_related_field(card_content: str) -> str:
     """提取卡内容中的关联字段。"""
-    if not card_content:
-        return ""
-    for line in card_content.splitlines():
-        line = line.strip()
-        if line.startswith(">"):
-            # 用 · 分割
-            parts = [p.strip() for p in line.lstrip(">").split("·")]
-            for part in parts:
-                if ":" in part or "：" in part:
-                    subparts = re.split(r"[:：]", part, maxsplit=1)
-                    if len(subparts) == 2 and subparts[0].strip() == "关联":
-                        return subparts[1].strip()
-    return ""
+    meta = parse_metadata(card_content)
+    return meta.get("关联", "").strip()
 
 
 def _parse_plan_ref(related_text: str) -> tuple[str, str] | None:

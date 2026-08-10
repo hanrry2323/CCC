@@ -1,0 +1,130 @@
+"""任务卡头契约单一 schema（A1 · ccc059）。
+
+loader / validate / docgate / prompt_inject 统一从这里 import 卡头解析与字段清单，
+禁止各层自写 regex 解析卡头。
+
+冻结期（红线）：不改现有字段名/语义；HEADER_FIELDS 为唯一字段登记表，
+新增字段必须先在方案/规范中定稿，再在此登记。
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Self
+
+from server.board.models import UNKNOWN, base_state
+
+# ── 冻结的卡头字段清单（契约 §1；唯一登记表，禁止各层自写解析） ──
+HEADER_FIELDS: tuple[str, ...] = (
+    "关联", "执行体", "验收", "状态", "日期",
+    "项目", "派发", "类型", "父卡", "会话", "thread_id",
+)
+
+# 契约 §2 五态（卡头唯一合法状态）
+VALID_STATES: frozenset[str] = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
+# 「派发」合法值（缺省 engine）
+DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine"})
+# 「类型」合法值（缺省 task）
+TYPE_VALUES: frozenset[str] = frozenset({"epic", "task"})
+
+_META_PAIR_RE = re.compile(r"^\s*([^：\s][^：]*?)\s*[:：]\s*(.+?)\s*$")
+_TITLE_RE = re.compile(r"^#\s*任务卡\s+(\S+)\s*[·\-]\s*(.+?)\s*$", re.MULTILINE)
+_CARD_TITLE_RE = re.compile(r"^#\s*任务卡\s", re.MULTILINE)
+_ID_RE = re.compile(r"^#\s*任务卡\s+([^\s·]+)", re.MULTILINE)
+_REJECT_RE = re.compile(r"打回次数\s*[:：]\s*(\d+)")
+
+
+def parse_metadata(text: str) -> dict[str, str]:
+    """解析 `>` 元数据行的 `key：value` 对（唯一实现；loader/validate/docgate/prompt_inject 共用）。"""
+    meta: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith(">"):
+            continue
+        body = line.lstrip(">").strip()
+        for part in re.split(r"·", body):
+            match = _META_PAIR_RE.match(part)
+            if match:
+                meta[match.group(1).strip()] = match.group(2).strip()
+    return meta
+
+
+def card_id(text: str) -> str:
+    """取卡头 `# 任务卡 <ID>` 的 ID（行首锚定）；未匹配返回空串。"""
+    m = _ID_RE.search(text)
+    return m.group(1).strip() if m else ""
+
+
+def is_task_card_text(text: str) -> bool:
+    """是否任务卡卡头（行首含 `# 任务卡`）；T-mapping.md 等说明文档返回 False。"""
+    return bool(_CARD_TITLE_RE.search(text))
+
+
+def _normalize_dispatch(raw: str) -> str:
+    value = (raw or "").strip().lower()
+    return value if value in DISPATCH_VALUES else "engine"
+
+
+def _normalize_type(raw: str) -> str:
+    value = (raw or "").strip().lower()
+    return value if value in TYPE_VALUES else "task"
+
+
+@dataclass(frozen=True)
+class CardHeader:
+    """任务卡头契约单一 schema。"""
+    id: str = UNKNOWN
+    title: str = UNKNOWN
+    related: str = ""
+    executor: str = UNKNOWN
+    acceptance: str = UNKNOWN
+    state: str = UNKNOWN
+    dispatched_at: str = UNKNOWN
+    project: str = ""
+    dispatch: str = "engine"
+    card_type: str = "task"
+    parent: str = ""
+    session: str = ""
+    reject_count: int = 0
+
+    @property
+    def state_base(self) -> str:
+        return base_state(self.state)
+
+    def validate(self) -> list[str]:
+        problems: list[str] = []
+        if self.state != UNKNOWN and self.state_base not in VALID_STATES:
+            problems.append(f"状态值非法: {self.state!r}（合法={sorted(VALID_STATES)}）")
+        return problems
+
+    @classmethod
+    def from_text(cls, text: str, fallback_id: str = "") -> Self:
+        meta = parse_metadata(text)
+        title_match = _TITLE_RE.search(text)
+        if title_match:
+            card_id_val, title = title_match.group(1), title_match.group(2).strip()
+        else:
+            card_id_val, title = fallback_id or UNKNOWN, UNKNOWN
+
+        reject_match = _REJECT_RE.search(text)
+        reject_count = int(reject_match.group(1)) if reject_match else 0
+        state = meta.get("状态", UNKNOWN)
+        if reject_count == 0 and base_state(state) == "打回":
+            reject_count = 1
+
+        return cls(
+            id=card_id_val,
+            title=title,
+            related=meta.get("关联", ""),
+            executor=meta.get("执行体", UNKNOWN),
+            acceptance=meta.get("验收", UNKNOWN),
+            state=state,
+            dispatched_at=meta.get("日期", UNKNOWN),
+            project=meta.get("项目", ""),
+            dispatch=_normalize_dispatch(meta.get("派发", "")),
+            card_type=_normalize_type(meta.get("类型", "")),
+            parent=meta.get("父卡", ""),
+            session=(meta.get("会话", "").strip() or meta.get("thread_id", "").strip()),
+            reject_count=reject_count,
+        )

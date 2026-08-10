@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from server.board.card_header import parse_metadata, card_id
+
 
 def _extract_header_fields(content: str) -> dict[str, str]:
     fields: dict[str, str] = {}
@@ -12,40 +14,18 @@ def _extract_header_fields(content: str) -> dict[str, str]:
     for line in lines[:30]:
         if line.startswith(">"):
             in_header = True
-            text = line.lstrip("> ").strip()
-            for segment in text.split("·"):
-                segment = segment.strip()
-                m = re.match(r"([^：]+)：(.+)", segment)
-                if m:
-                    key = m.group(1).strip()
-                    val = m.group(2).strip()
-                    if key not in fields:
-                        fields[key] = val
+            fields.update(parse_metadata(line))
         elif in_header and not line.startswith(">"):
             break
     return fields
 
 
-def _parse_metadata(text: str) -> dict[str, str]:
-    meta: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line.startswith(">"):
-            continue
-        body = line.lstrip(">").strip()
-        for part in re.split(r"·", body):
-            match = re.match(r"^\s*([^：\s][^：]*?)\s*[:：]\s*(.+?)\s*$", part)
-            if match:
-                meta[match.group(1).strip()] = match.group(2).strip()
-    return meta
-
-
 def get_card_id(card_path: Path) -> str:
     try:
         text = card_path.read_text(encoding="utf-8")
-        m = re.search(r"^#\s*任务卡\s+(\S+)", text, re.M)
-        if m:
-            return m.group(1).strip()
+        cid = card_id(text)
+        if cid:
+            return cid
     except Exception:
         pass
     return card_path.stem
@@ -218,7 +198,7 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
     except Exception as e:
         return False, [f"读取任务卡失败: {e}"]
 
-    meta = _parse_metadata(text)
+    meta = parse_metadata(text)
     state = meta.get("状态", "")
     if "已关闭" in state or "作废" in state:
         return True, []

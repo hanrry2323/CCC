@@ -1,8 +1,8 @@
 # 方案 · CCC 架构扩展性基线 + 知识库路径规划（前期定规则防走弯路）
 
-> 项目：ccc · 编号：ccc-plan-019 · 状态：草案 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-019 · 状态：部分执行 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
-> 关联卡：待转卡（见转卡计划）
+> 关联卡：ccc059
 > 关联方案：ccc-plan-004（系统化升级·已完成，本方案为其扩展性收口）
 
 ## 目标
@@ -93,7 +93,7 @@
 
 | 卡 | 内容 | 执行体 |
 |----|------|--------|
-| ccc0XX | A1 卡头单一 schema + A2 出卡 flock（合并，同属卡流程层） | OpenCode |
+| ccc059 | A1 卡头单一 schema + A2 出卡 flock（合并，同属卡流程层） | OpenCode |
 | ccc0XX | A3 模型出口上游恢复 + 规则（含配置备份与验证） | OpenCode |
 | ccc0XX | A4 告警推送 + watchdog 挂载 | OpenCode |
 | ccc0XX | A5 registry 收敛 + A6 方案卡同步闭环（代码改动较大，单列） | OpenCode |

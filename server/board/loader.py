@@ -23,24 +23,17 @@ from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state, board_column, machine_audit_passed_text
 from server.board.roles import normalize_tool
+from server.board.card_header import CardHeader, parse_metadata, is_task_card_text
 
 logger = logging.getLogger("ccc.board.loader")
 
-# `# 任务卡 T3 · 标题`（MULTILINE：^/$ 按行锚定）
-_TITLE_RE = re.compile(r"^#\s*任务卡\s+(\S+)\s*[·\-]\s*(.+?)\s*$", re.MULTILINE)
-# 元数据行内的 `key：value`（`>` 行，`·` 分隔）
-_META_PAIR_RE = re.compile(r"^\s*([^：\s][^：]*?)\s*[:：]\s*(.+?)\s*$")
 # 回写区日期：`**日期**：YYYY-MM-DD`
 _WRITTEN_RE = re.compile(r"\*\*日期\*\*\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
-# 显式打回次数：`打回次数：N`
-_REJECT_RE = re.compile(r"打回次数\s*[:：]\s*(\d+)")
 
-# 「派发」字段合法值（缺省 engine）
-_DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine"})
 # 推导出的项目名不得含这些字符（长句/引号/括号 → 非项目前缀，归「未分类」）
 _GARBLED_RE = re.compile(r"[「」『』【】\"'<>（）()]")
-# 卡头标题行：`# 任务卡 <ID>`（行首锚定；正文/说明里出现 `# 任务卡` 字面量不算）
-_CARD_TITLE_RE = re.compile(r"^#\s*任务卡\s", re.MULTILINE)
+
+_parse_metadata = parse_metadata
 
 
 def _strip_parenthetical(value: str) -> str:
@@ -68,33 +61,12 @@ def _derive_project_from_related(related: str) -> str:
     return seg
 
 
-def _resolve_project(meta: dict[str, str]) -> str:
+def _resolve_project(header: CardHeader) -> str:
     """项目名：卡头「项目」字段优先；缺省从「关联」首段推导。"""
-    explicit = meta.get("项目", "").strip()
+    explicit = (header.project or "").strip()
     if explicit:
         return _strip_parenthetical(explicit)
-    return _derive_project_from_related(meta.get("关联", UNKNOWN))
-
-
-def _resolve_dispatch(meta: dict[str, str]) -> str:
-    """派发方式：manual|engine（缺省 engine；非法值回落 engine）。"""
-    raw = (meta.get("派发", "") or "").strip().lower()
-    return raw if raw in _DISPATCH_VALUES else "engine"
-
-
-def _parse_metadata(text: str) -> dict[str, str]:
-    """解析 `>` 元数据行的 `key：value` 对。"""
-    meta: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line.startswith(">"):
-            continue
-        body = line.lstrip(">").strip()
-        for part in re.split(r"·", body):
-            match = _META_PAIR_RE.match(part)
-            if match:
-                meta[match.group(1).strip()] = match.group(2).strip()
-    return meta
+    return _derive_project_from_related(header.related or UNKNOWN)
 
 
 def _parse_written_at(text: str) -> str:
@@ -106,44 +78,25 @@ def _parse_written_at(text: str) -> str:
 def parse_card(path: Path | str) -> BoardItem:
     """解析单张任务卡；字段缺失容错标「未知」。"""
     text = Path(path).read_text(encoding="utf-8")
-
-    title_match = _TITLE_RE.search(text)
-    if title_match:
-        card_id, title = title_match.group(1), title_match.group(2).strip()
-    else:
-        card_id, title = Path(path).stem, UNKNOWN
-
-    meta = _parse_metadata(text)
-
-    reject_match = _REJECT_RE.search(text)
-    reject_count = int(reject_match.group(1)) if reject_match else 0
-    # 状态为「打回」（含括号变体如 `打回（原因）`）时隐含至少 1 次打回
-    if reject_count == 0 and base_state(meta.get("状态", UNKNOWN)) == "打回":
-        reject_count = 1
-
-    card_type = meta.get("类型", "task").strip().lower()
-    if card_type not in ("epic", "task"):
-        card_type = "task"
-    parent_card = meta.get("父卡", "").strip()
+    header = CardHeader.from_text(text, fallback_id=Path(path).stem)
 
     p = Path(path)
     is_archived = "docs/archive" in p.as_posix() or "docs/archive" in p.resolve().as_posix()
 
     return BoardItem(
-        id=card_id,
-        title=title,
-        state=meta.get("状态", UNKNOWN),
-        project=_resolve_project(meta),
-        executor=_strip_parenthetical(meta.get("执行体", UNKNOWN)),
-        dispatched_at=meta.get("日期", UNKNOWN),
+        id=header.id,
+        title=header.title,
+        state=header.state,
+        project=_resolve_project(header),
+        executor=_strip_parenthetical(header.executor),
+        dispatched_at=header.dispatched_at,
         written_at=_parse_written_at(text),
-        reject_count=reject_count,
-        dispatch=_resolve_dispatch(meta),
-        type=card_type,
-        parent=parent_card,
-        thread_id=meta.get("会话", "").strip() or meta.get("thread_id", "").strip(),
-        acceptance=normalize_tool(_strip_parenthetical(meta.get("验收", UNKNOWN)))
-        or UNKNOWN,
+        reject_count=header.reject_count,
+        dispatch=header.dispatch,
+        type=header.card_type,
+        parent=header.parent,
+        thread_id=header.session,
+        acceptance=normalize_tool(_strip_parenthetical(header.acceptance)) or UNKNOWN,
         archived=is_archived,
         machine_audit_passed=machine_audit_passed_text(text),
     )
@@ -152,7 +105,7 @@ def parse_card(path: Path | str) -> BoardItem:
 def _is_task_card(path: Path) -> bool:
     """是否任务卡：行首含 `# 任务卡` 卡头标题；T-mapping.md 等说明文档跳过。"""
     try:
-        return bool(_CARD_TITLE_RE.search(path.read_text(encoding="utf-8")))
+        return is_task_card_text(path.read_text(encoding="utf-8"))
     except (UnicodeDecodeError, OSError) as exc:
         logger.warning("跳过无法读取的文件 %s: %s", path, exc)
         return False

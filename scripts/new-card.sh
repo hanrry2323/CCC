@@ -131,6 +131,22 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # ── 编号：--id 覆盖 or 前缀内自动自增（同前缀最大序号 +1，三位补零） ──
+# ── 出卡并发锁（A2）：<dispatch-dir>/.card-lock，同前缀并发出卡编号互斥 ──
+# macOS 无 flock 二进制 → 用 python3 fcntl（PYTHON_BIN 已解析）
+LOCK_FILE="$TARGET_DIR/.card-lock"
+mkdir -p "$TARGET_DIR"
+exec 9>"$LOCK_FILE"
+if ! "$PYTHON_BIN" -c '
+import fcntl, sys
+try:
+    fcntl.flock(9, fcntl.LOCK_EX)
+except OSError as exc:
+    print(f"[ERROR] 获取出卡锁失败: {exc}", file=sys.stderr)
+    sys.exit(1)
+'; then
+  exit 3
+fi
+
 next_num=0
 if [[ -d "$PREFIX_DIR" ]]; then
   for f in "$PREFIX_DIR"/"$PROJECT_PREFIX"[0-9][0-9][0-9]-*.md; do
