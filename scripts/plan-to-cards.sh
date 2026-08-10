@@ -159,7 +159,20 @@ text = text.replace('听「验收看板」后写', '听「合入批准」后写'
 path.write_text(text, encoding='utf-8')
 " "$CARD_PATH" "$acc_json" "$wl_json" "$stitle"
 
-  if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.validate "$DISPATCH_DIR" ); then
+  # validate 只拦截本项目（$PROJECT）前缀的 error，历史其他项目的 error 不阻塞本批转卡
+  if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.validate import validate_cards
+issues = validate_cards('$DISPATCH_DIR')
+errs = [i for i in issues if i.severity == 'error' and i.card_id.startswith('$PROJECT')]
+if errs:
+    print(f'卡头校验发现 {len(errs)} 个本项目 error：', file=sys.stderr)
+    for e in errs:
+        print(f'  [{e.card_id}] {e.path}: {e.reason}', file=sys.stderr)
+    sys.exit(1)
+print('[OK] 本项目卡头校验通过')
+" ); then
     echo "[ERROR] validate 失败：$CARD_PATH" >&2
     exit 1
   fi

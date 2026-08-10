@@ -14,8 +14,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -28,10 +32,14 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw013-settings-wiring`
+2. **删空壳**：删除 `src/components/SettingsPanel.tsx`（纯 UI 壳、零 invoke），App.tsx 的 import 改指向 `src/SettingsPanel.tsx`（真实现，含 load_settings/save_settings/board_url/workspace_paths/layout）
+3. **接线**：SettingsPanel 保存后调 `save_settings` 落盘 `~/.clwarp/config.json`，保存成功触发 App 重新 `load_settings`（board_url 即时生效，去掉「重启生效」误导文案）
+4. **配置消费**：`workspace_paths` 接入 `spawn_terminal`（新会话默认 cwd，terminal.rs 的 spawn 命令带 working_directory）；`layout` 接入布局应用；若 0.3.0 不消费则从 SettingsPanel 移除对应字段（避免假配置）
+5. **补测试**：SettingsPanel 组件测试（mock load/save，断言保存后触发刷新）
+6. `tsc -b && vite build` + `cargo build --release` 通过
+7. commit+push 到 `codex/clw013-settings-wiring`（勿直推 main）；卡头改为「已回写」
+8. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. 删除 src/components/SettingsPanel.tsx 空壳，App.tsx 改引 src/SettingsPanel.tsx 真实现（load_settings/save_settings/board_url/workspace_paths/layout 全接线）

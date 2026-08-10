@@ -14,8 +14,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -28,10 +32,15 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw015-terminal-lifecycle`
+2. **StrictMode 泄漏**：Terminal.tsx 的 spawn 加竞态守卫（cleanup 用同步 flag 标记已卸载，async spawn 完成时检测 flag 则 kill 未决 PTY 并返回；或 cleanup 直接杀未决 spawn）；main.tsx 保留 StrictMode，dev 模式重复开终端后验证无残留子进程（`ps aux | grep claude/codex/opencode`）
+3. **视图切换不杀会话**：App.tsx 切 showBoard/showSettings 时不清 TerminalView 的 session（App 层保活 activePtyId/sessionToResume），切回后现场保留；会话真正退出（terminal-exit）时 App 联动清理 header 状态（activePtyId/sessionToResume/mode-indicator/terminate 按钮）
+4. **loading 死锁**：TerminalView.handleSessionCreated 成功/失败都 setLocalLoading(false)，失败时错误文案可见不被 spinner 遮挡
+5. **事件时序**：terminal.rs 的 spawn 先 `sessions.insert` 再启动读线程（避免秒退死会话入 map）；读线程就绪（有读线程且可写）后再返回 invoke；前端 listen 与 invoke 的竞态用会话级输出缓冲或启动握手修复（spawn 后初始输出不丢、秒退正确收尾）
+6. **死命令清理**：`read_from_terminal`/`set_window_size`/`kill_session` 从 terminal.rs/lib.rs 注册与实现移除（前端已用事件推送/resize_terminal/kill_terminal）
+7. `tsc -b && vite build` + `cargo build --release` 通过
+8. commit+push 到 `codex/clw015-terminal-lifecycle`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. StrictMode 双挂载不再泄漏 PTY：dev 模式重复打开/切换终端后无残留 claude/codex/opencode 子进程（进程数验证）

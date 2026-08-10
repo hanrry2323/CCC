@@ -22,6 +22,7 @@
 #   --acceptance "Claude Code" 卡头「验收」（默认自验收：与执行体同工具）
 #   --related "关联文本"       卡头「关联」字段（默认 "阶段 3 P1"）
 #   --depends "卡ID列表"       卡头「依赖」字段（逗号分隔卡 ID，如 "ccc042,ccc043"；空则无依赖）
+#   --role "角色名"            卡头「角色」字段（如 "前端设计"；Engine 按 role-skills.yaml 注入对应 Skill）
 #   --dispatch engine|manual  卡头「派发」字段（默认 engine）
 #   --dispatch-dir <目录>     任务卡目录（默认 docs/dispatch；测试可用临时目录）
 #   --id <前缀><NNN>[-slug]   显式卡编号（跳过自增；如 ccc064-auto-naming）
@@ -45,6 +46,7 @@ ACCEPTANCE_EXPLICIT=false
 ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-}"
 RELATED="${CCC_CARD_RELATED:-阶段 3 P1}"
 DEPENDS="${CCC_CARD_DEPENDS:-}"
+ROLE="${CCC_CARD_ROLE:-}"
 DISPATCH="${CCC_CARD_DISPATCH:-engine}"
 PYTHON_BIN="${CCC_PYTHON_BIN:-}"
 
@@ -66,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --acceptance) ACCEPTANCE="$2"; ACCEPTANCE_EXPLICIT=true; shift 2 ;;
     --related) RELATED="$2"; shift 2 ;;
     --depends) DEPENDS="$2"; shift 2 ;;
+    --role) ROLE="$2"; shift 2 ;;
     --dispatch) DISPATCH="$2"; shift 2 ;;
     --dispatch-dir) DISPATCH_DIR="$2"; shift 2 ;;
     --id) ID_OVERRIDE="$2"; shift 2 ;;
@@ -314,6 +317,7 @@ read -r -d '' CARD_BODY <<EOF || true
 
 > 关联：${RELATED} · 执行体：${EXECUTOR} · 验收：${ACCEPTANCE} · 状态：待分派 · 派发：${DISPATCH} · 项目：${PROJECT_PREFIX} · 日期：${TODAY}
 $([ -n "$DEPENDS" ] && echo "> 依赖：${DEPENDS}")
+$([ -n "$ROLE" ] && echo "> 角色：${ROLE}")
 
 ## 基准文件（先看）
 
@@ -414,7 +418,18 @@ load_dispatch_cards(sys.argv[1])
   exit 1
 fi
 
-if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.validate "$TARGET_DIR" ); then
+if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.validate import validate_cards
+issues = validate_cards(sys.argv[1])
+errs = [i for i in issues if i.severity == 'error' and i.card_id.startswith(sys.argv[2])]
+if errs:
+    print(f'卡头校验发现 {len(errs)} 个本项目 error：', file=sys.stderr)
+    for e in errs:
+        print(f'  [{e.card_id}] {e.path}: {e.reason}', file=sys.stderr)
+    sys.exit(1)
+" "$TARGET_DIR" "$PROJECT_PREFIX" ); then
   [[ "$QUIET" != true ]] && echo "[OK] 出卡成功 + validate 通过: $CARD_PATH"
   exit 0
 else

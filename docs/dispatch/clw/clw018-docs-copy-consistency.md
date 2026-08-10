@@ -14,8 +14,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -27,10 +31,13 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw018-docs-copy-consistency`
+2. **去 GPU 字样**：src/i18n/index.ts 副标题「GPU 加速的原生 PTY 终端界面」→ xterm.js 如实描述；App.tsx 设置按钮关闭态「✕ 终止」→ 独立词条（closeSettings）；看板按钮「📋 看板」进 i18n
+3. **i18n/locale**：formatDate 传 zh-CN（不跟随系统 locale）；index.html lang=zh-CN
+4. **文档对齐**：RELEASE.md 指向 v0.2.0 交付报告（现指向 v0.1.0 且声称 Metal GPU）；CHANGELOG 与实现一致（无 GPU 残留声明）
+5. `tsc -b && vite build` 通过
+6. commit+push 到 `codex/clw018-docs-copy-consistency`（勿直推 main）；卡头改为「已回写」
+7. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. i18n 副标题去 GPU 加速字样（xterm.js 如实）；App.tsx 设置按钮关闭态独立文案（不再复用✕终止）、看板按钮文案进 i18n

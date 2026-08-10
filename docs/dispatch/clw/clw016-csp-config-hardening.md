@@ -14,8 +14,12 @@ CSP/看板/配置健壮性（CSP 动态化 / 原子写 / HOME 去硬编码 / PAT
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -28,10 +32,15 @@ CSP/看板/配置健壮性（CSP 动态化 / 原子写 / HOME 去硬编码 / PAT
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw016-csp-config-hardening`
+2. **CSP 动态化**：tauri.conf.json 的 frame-src/connect-src 改为跟随 config 的 board_url（或在 app 启动时按 load_settings 动态注入 CSP；或统一代理看板请求）；去掉 `script-src 'unsafe-eval'`（vite build 产物不需要）
+3. **看板 iframe**：App.tsx 的 board iframe 加 loading/失败态 + sandbox（白屏有反馈）；board_url 空时显示引导而非空白
+4. **配置原子写**：settings.rs 的 save_settings 用 tmp+rename（写临时文件再 rename，防写一半损坏）；load_settings 解析失败时自动备份重建（不丢数据）
+5. **HOME 去硬编码**：settings.rs/session.rs 全量统一 `dirs::home_dir()`，删除 `/Users/fan` 兜底（4 处）；board_url 默认值 `192.168.3.116:7788` 文档化（README/CHANGELOG 注明），不散落源码硬编码
+6. **PATH 缓存**：登录 shell PATH 一次性解析+缓存（state 级，AppState 存 login_path）+ 超时（如 5s）；spawn/resume 不再每次跑 `$SHELL -lc 'echo $PATH'`，profile 挂起有超时兜底
+7. `cargo build --release` + `cargo test` 通过
+8. commit+push 到 `codex/clw016-csp-config-hardening`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. CSP frame-src/connect-src 跟随 config 的 board_url（或统一代理看板请求），改 board_url 后 iframe 不被拦；script-src 去掉 unsafe-eval

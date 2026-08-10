@@ -14,8 +14,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -29,10 +33,15 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw017-eng-green-dispatch`
+2. **CI 修绿**：git_status.rs 的测试改为纯函数/临时目录（不依赖 `/Users/fan/...` 本机路径，macos runner 必绿）；settings.rs 测试用 tempfile 隔离（不写真实 $HOME）；跑 `cargo test` + `cargo clippy -D warnings` 在干净环境全过
+3. **CI 产出**：.github/workflows/ci.yml 的 `tauri build` 去掉 `--no-bundle`，上传 DMG artifact；加 cargo cache + `--locked`
+4. **前端测试补强**：SessionList 分组/折叠、SettingsPanel 保存、TerminalView 挂载/卸载真实用例（mock `@tauri-apps/api/event` + xterm resize）
+5. **死代码清理**：`@xterm/addon-fit` 死依赖（Terminal.tsx 用 ResizeObserver）确认去留；cargo clippy 清零
+6. **签名/分发**：tauri.conf.json 配 signingIdentity（或提供 spctl 说明文档）；可选 tauri-action 自动 Release
+7. `cargo test` + `tsc -b && vite build` + lint 全通过
+8. commit+push 到 `codex/clw017-eng-green-dispatch`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. CI 修绿：git_status.rs 测试改纯函数/临时目录不依赖本机路径；settings.rs 测试用 tempfile 隔离；cargo test + clippy -D warnings 在干净 runner 全过

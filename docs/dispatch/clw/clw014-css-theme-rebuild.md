@@ -14,8 +14,12 @@ CSS/主题层重建（P0 根修：清模板 + 真实样式层 + token + 深色�
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -31,10 +35,14 @@ CSS/主题层重建（P0 根修：清模板 + 真实样式层 + token + 深色�
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw014-css-theme-rebuild`
+2. **清模板**：`src/App.css`、`src/index.css` 删除全部 Vite 模板类（.counter/.hero/#next-steps/.ticks/.social 等）；删除 `src/assets/hero.png`、`react.svg`、`vite.svg`、`public/icons.svg`、`public/favicon.svg`（换应用图标，与 src-tauri/icons/ 一致）
+3. **补真实样式**：为 App 实际使用的 35+ 类写样式——app-container（flex 行布局）、sidebar（固定宽）、resize-handle（宽度+cursor:col-resize+防选）、main-view、header-panel、footer-panel、provider-group、session-item、git-badge、spinner（role=status）、alert-error 等
+4. **主题 token**：index.css 定义 `--primary-color/--error-color/--warning-color/--text-muted` 等 CSS 变量（组件已引用）；Terminal.tsx 的 xterm 主题从 token 注入；删除 `#root{width:1126px;text-align:center}`
+5. **窗口**：tauri.conf.json 窗口默认 1000×700
+6. `tsc -b && vite build` 通过；肉眼/截图验证布局：sidebar 可拖拽、终端撑满不塌缩、深色模式生效
+7. commit+push 到 `codex/clw014-css-theme-rebuild`（勿直推 main）；卡头改为「已回写」
+8. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. App.css/index.css 的 Vite 模板类（.counter/.hero/#next-steps/.ticks/.social 等）全部删除，无残留
