@@ -911,6 +911,29 @@ def _audit_output_indicates_rejection(text: str) -> bool:
     return ("机审：不通过" in body) or ("机审不通过" in body)
 
 
+def _audit_rejection_reason(text: str) -> str | None:
+    """从 audit 文本提取「不通过」的结论文本（结论行 + 后续说明摘要）。
+
+    返回供机审打回原因使用的可读字符串；无明确结论 → None（调用方兜底）。
+    """
+    if not text:
+        return None
+    body = text
+    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
+        idx = text.find(marker)
+        if idx >= 0:
+            nl = text.find("\n", idx)
+            body = text[nl + 1 :] if nl >= 0 else ""
+            break
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    for ln in lines:
+        if "机审：不通过" in ln or "机审不通过" in ln:
+            return re.sub(r"\s+", " ", ln)[:400]
+    return None
+
+
 class MachineAuditPrompt:
     """机审/验收席系统 Prompt 构造器。
 
@@ -930,6 +953,8 @@ class MachineAuditPrompt:
             "- 只做原则性 Code Review（包括代码实现质量、边界安全、架构隐患、人工批注落实等）；\n"
             f"- 发现可修问题 → 在 worktree {self.worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
             "- 原则性红线问题（如范围系统性越界、核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出。\n"
+            "⚠️ 打回时必须在最后真正执行非零退出（exit 1）：引擎按 audit 文本「机审：不通过」判定业务打回，"
+            "但仅靠文字声明而 exit 0 会造成收单歧义。\n"
             f"通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {self.card_path}，engine 会提交推送）。"
             "禁止改动与任务无关的文件、禁止编写 ## 验收区、禁止置卡状态为已关闭。"
         )
@@ -1740,6 +1765,21 @@ def _dispatch_and_collect(
                                             logger.warning("卡 %s 门禁【范围】未通过: %s", work.id, range_err)
                                             _emit(False, 1, "ok", [range_err])
                                             return False, [range_err]
+            # F3（2026-08-10）：机审路径 exit 0 但 audit 明确「机审：不通过」→ 按失败返回。
+            # 双重保险：机审 agent 打回时 exit code 可能为 0（claude -p 声称非零退出不可靠），
+            # 仅凭 exit 0 会把「不通过」误判为通过（F1 在 _run_machine_audit_after_writeback 也兜底）。
+            if log_phase == "audit":
+                _audit_log = log_dir / f"{work.id}.audit.log"
+                _audit_text = _read_text_best_effort(_audit_log)
+                if _audit_output_indicates_rejection(_audit_text):
+                    _reason = _audit_rejection_reason(_audit_text) or "机审：不通过"
+                    logger.warning(
+                        "机审 exit 0 但 audit 含「不通过」→ 按失败返回: work=%s reason=%s",
+                        work.id,
+                        _reason,
+                    )
+                    _emit(False, 1, "ok", [_reason])
+                    return False, [_reason]
             _emit(True, 0, "ok")
             return True, []
 
@@ -2045,6 +2085,14 @@ def _run_machine_audit_after_writeback(
     audit_log = log_dir / f"{work.id}.audit.log"
     audit_text = _read_text_best_effort(audit_log)
 
+    # 业务结论优先（F1 根修，2026-08-10）：audit 文本明确「机审：不通过」→ 业务打回，
+    # 与 exit code 无关。机审 agent 打回时可能 exit 0（claude -p 声称非零退出不可靠），
+    # 仅凭 exit code 会把「不通过」误判为通过/落盘失败 → 进 infra 冷却死循环（clw009 事故）。
+    if _audit_output_indicates_rejection(audit_text):
+        rejection = _audit_rejection_reason(audit_text) or "机审：不通过"
+        logger.warning("机审明确不通过（业务，按 audit 文本判定）: work=%s reason=%s", work.id, rejection)
+        return False, [rejection]
+
     if not ok and not _audit_output_indicates_pass(audit_text):
         return False, problems or ["机审执行失败"]
 
@@ -2236,8 +2284,19 @@ def _run_audit_worker(
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
             audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
+            # F2（2026-08-10）：audit 明确「机审：不通过」→ 业务打回，不受 is_mech 压过。
+            # is_mech 的「范围越界/超出范围」等关键词本意是识别无业务结论时的机械失败特征，
+            # 但机审席打回理由常含「范围系统性越界」——若被 is_mech 抢判，业务打回会落入
+            # infra 冷却死循环（clw009 事故）。业务结论（「机审：不通过」）永远优先。
+            has_rejection = _audit_output_indicates_rejection(audit_text)
             is_mech = _is_mechanical_rejection_text(audit_text)
-            business = _audit_output_indicates_rejection(audit_text) and not is_mech
+            business = has_rejection and not is_mech
+            if has_rejection and is_mech:
+                logger.warning(
+                    "机审 audit 含「不通过」结论且命中机械关键词（is_mech 抢占）: work=%s → 按业务打回处理",
+                    work.id,
+                )
+                business = True
             retryable, hint = is_retryable_failure(work.id, reasons, log_dir, phase="audit")
 
             # 空回写判定：直接打回，不再无限 retry

@@ -10,7 +10,7 @@ import pytest
 
 from server.config.loader import ConfigError
 from server.engine.dispatch import load_registry
-from server.engine.main import main, run_once, _read_card_section
+from server.engine.main import main, run_once, _read_card_section, _audit_rejection_reason
 from server.engine.pool import reset_dispatch_pool
 from server.engine.store import FileBoardStore, InMemoryBoardStore
 from server.engine.task import State, Work
@@ -1508,6 +1508,87 @@ class TestParallelAndRelayGuard:
         assert w.id == "ret2"
         assert w.state is State.REJECTED
         assert any("超时" in p for p in w.problems)
+
+
+class TestAuditRejectionExitZero:
+    """F1/F2/F3（2026-08-10）：机审 agent 打回但 exit code=0 时必须按业务打回，
+    不得落入 infra 冷却死循环（clw009/clw010 卡死事故）。"""
+
+    def test_audit_rejection_exit_zero_is_business_reject(self, tmp_path: Path) -> None:
+        """exit 0 + audit「机审：不通过」→ 业务打回（回待分派重试），不计 infra。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo 机审：不通过; echo 核心业务意图未实现; exit 0'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "ez1.md"
+        card_file.write_text("# 任务卡 ez1\n", encoding="utf-8")
+        store.seed(Work(id="ez1", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["audit_failed"] == 1, summary
+        assert summary["audit_failed_infra"] == 0, summary
+        todo = store.list_work(state=State.TODO)
+        assert todo and todo[0].id == "ez1"
+        assert todo[0].retry_count == 1
+
+    def test_audit_rejection_with_range_keyword_still_business(self, tmp_path: Path) -> None:
+        """audit 含「不通过」+「范围越界」关键词 → 业务打回优先，不被 is_mech 抢占落 infra。"""
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="echo",
+            args_template="ok {work_id}",
+            audit_command="sh",
+            audit_args_template="-c 'echo 机审：不通过; echo 范围系统性越界; exit 0'",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        card_file = tmp_path / "ez2.md"
+        card_file.write_text("# 任务卡 ez2\n", encoding="utf-8")
+        store.seed(Work(id="ez2", role="开发执行体", card_path=str(card_file)))
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+
+        summary = run_once(reg, store, cfg)
+        assert summary["audit_failed"] == 1, summary
+        assert summary["audit_failed_infra"] == 0, summary
+        assert store.list_work(state=State.TODO), "应回待分派重试而非 infra 冷却"
+
+    def test_audit_rejection_reason_extracts_line(self) -> None:
+        text = (
+            "[ccc.engine] start work=clw009 phase=audit cmd=...\n"
+            "[ccc.engine] child_pid=123\n"
+            "逐项核查完成。\n"
+            "机审：不通过（维护区声明不实 + 核心业务意图未实现）\n"
+            "原因：后端核心功能全部缺位。\n"
+        )
+        reason = _audit_rejection_reason(text)
+        assert reason is not None
+        assert "机审：不通过" in reason
+
+    def test_audit_rejection_reason_empty(self) -> None:
+        assert _audit_rejection_reason("") is None
+        assert _audit_rejection_reason("机审通过\n") is None
 
 
 class TestEngineWorktree:
