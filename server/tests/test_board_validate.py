@@ -67,33 +67,33 @@ class TestT54Naming:
         return _write_card(tmp / subdir, name, "待分派", hdr_id=hdr_id)
 
     def test_valid_new_style_card_pass(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "ccc", "ccc901-test.md", "ccc901")
+        self._new_card(tmp_path, "clw", "clw901-test.md", "clw901")
         assert _errors(validate_cards(tmp_path)) == []
 
     def test_new_card_number_unique_across_prefixes(self, tmp_path: Path) -> None:
-        """编号跨项目唯一：不同前缀同序号（ccc901 / qb901）不冲突。"""
-        self._new_card(tmp_path, "ccc", "ccc901-test.md", "ccc901")
+        """编号跨项目唯一：不同前缀同序号（clw901 / qb901）不冲突。"""
+        self._new_card(tmp_path, "clw", "clw901-test.md", "clw901")
         self._new_card(tmp_path, "qb", "qb901-test.md", "qb901")
         assert _errors(validate_cards(tmp_path)) == []
 
     def test_new_card_duplicate_number_rejected(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "ccc", "ccc901-a.md", "ccc901")
-        self._new_card(tmp_path, "ccc", "ccc901-b.md", "ccc901")
+        self._new_card(tmp_path, "clw", "clw901-a.md", "clw901")
+        self._new_card(tmp_path, "clw", "clw901-b.md", "clw901")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
-        assert "ccc901 重复" in issues[0].reason
+        assert "clw901 重复" in issues[0].reason
 
     def test_new_card_at_root_rejected(self, tmp_path: Path) -> None:
-        _write_card(tmp_path, "ccc902-root.md", "待分派", hdr_id="ccc902")
+        _write_card(tmp_path, "clw902-root.md", "待分派", hdr_id="clw902")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
         assert "必须位于子目录" in issues[0].reason
 
     def test_new_card_wrong_subdir_rejected(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "qb", "ccc903-wrong.md", "ccc903")
+        self._new_card(tmp_path, "qb", "clw903-wrong.md", "clw903")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
-        assert "与前缀 'ccc' 不符" in issues[0].reason
+        assert "与前缀 'clw' 不符" in issues[0].reason
 
     def test_unknown_prefix_rejected(self, tmp_path: Path) -> None:
         self._new_card(tmp_path, "xyz", "xyz001-foo.md", "xyz001")
@@ -102,7 +102,7 @@ class TestT54Naming:
         assert "未知前缀" in issues[0].reason
 
     def test_header_number_mismatch_rejected(self, tmp_path: Path) -> None:
-        self._new_card(tmp_path, "ccc", "ccc904-mismatch.md", "ccc905")
+        self._new_card(tmp_path, "clw", "clw904-mismatch.md", "clw905")
         issues = _errors(validate_cards(tmp_path))
         assert len(issues) == 1
         assert "与文件名" in issues[0].reason
@@ -128,22 +128,22 @@ class TestT54Naming:
 
     def test_old_style_card_in_subdir_warns(self, tmp_path: Path) -> None:
         """旧卡样式文件位于子目录 → 提示（不阻断），要求子目录只放新规则卡。"""
-        self._new_card(tmp_path, "ccc", "T92-old.md", "T92")
+        self._new_card(tmp_path, "clw", "T92-old.md", "T92")
         issues = validate_cards(tmp_path)
         assert _errors(issues) == []
         assert any("位于子目录" in i.reason for i in issues)
 
     def test_index_reconciliation_detects_mismatch(self, tmp_path: Path) -> None:
         """测试索引对账：手动篡改索引后对账报错。"""
-        p = self._new_card(tmp_path, "ccc", "ccc100-reconcile.md", "ccc100")
+        p = self._new_card(tmp_path, "clw", "clw100-reconcile.md", "clw100")
         issues = validate_cards(tmp_path)
         assert _errors(issues) == []
 
         from server.board.loader import get_index_path, load_index_file, save_index_file
         index_entries = load_index_file(tmp_path)
-        assert "ccc100" in index_entries
+        assert "clw100" in index_entries
 
-        index_entries["ccc100"]["title"] = "Mismatched Title"
+        index_entries["clw100"]["title"] = "Mismatched Title"
         save_index_file(index_entries, tmp_path)
 
         issues = validate_cards(tmp_path)
@@ -249,12 +249,12 @@ def test_acceptance_consistency(tmp_path: Path) -> None:
 
 def test_self_acceptance_new_card(tmp_path: Path) -> None:
     """新卡自验收：执行体=验收；Codex 验收 = error；交叉（OpenCode→Claude）= error。"""
-    sub = tmp_path / "ccc"
+    sub = tmp_path / "clw"
     sub.mkdir()
-    bad = sub / "ccc900-self-bad.md"
+    bad = sub / "clw900-self-bad.md"
     bad.write_text(
-        "# 任务卡 ccc900 · 自验收坏\n"
-        "> 关联：TEST · 执行体：OpenCode · 验收：Codex · 状态：待分派 · 项目：ccc · 日期：2026-08-06\n"
+        "# 任务卡 clw900 · 自验收坏\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：Codex · 状态：待分派 · 项目：clw · 日期：2026-08-06\n"
         "## 目标\nx\n\n## 验收标准\nx\n",
         encoding="utf-8",
     )
@@ -262,10 +262,10 @@ def test_self_acceptance_new_card(tmp_path: Path) -> None:
     assert any("Codex" in i.reason for i in errs)
 
     bad.unlink()
-    cross = sub / "ccc901-cross-now-invalid.md"
+    cross = sub / "clw901-cross-now-invalid.md"
     cross.write_text(
-        "# 任务卡 ccc901 · 交叉不再合法\n"
-        "> 关联：TEST · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 项目：ccc · 日期：2026-08-07\n"
+        "# 任务卡 clw901 · 交叉不再合法\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 项目：clw · 日期：2026-08-07\n"
         "## 目标\nx\n\n## 验收标准\nx\n",
         encoding="utf-8",
     )
@@ -275,10 +275,10 @@ def test_self_acceptance_new_card(tmp_path: Path) -> None:
     ), "交叉不匹配应提示自验收规则（不阻断）"
 
     cross.unlink()
-    good = sub / "ccc902-self-ok.md"
+    good = sub / "clw902-self-ok.md"
     good.write_text(
-        "# 任务卡 ccc902 · 自验收好\n"
-        "> 关联：TEST · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 项目：ccc · 日期：2026-08-07\n"
+        "# 任务卡 clw902 · 自验收好\n"
+        "> 关联：TEST · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 项目：clw · 日期：2026-08-07\n"
         "## 目标\nx\n\n## 验收标准\nx\n",
         encoding="utf-8",
     )

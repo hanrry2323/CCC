@@ -26,8 +26,7 @@ def _registry(entries: list[tuple[str, str, str]]) -> ExecutorRegistry:
     """构造临时注册表（role, category, binding）。"""
     return ExecutorRegistry(
         tuple(
-            ExecutorEntry(role=role, category=category, binding=binding, note="")
-            for role, category, binding in entries
+            ExecutorEntry(role=role, category=category, binding=binding, note="") for role, category, binding in entries
         )
     )
 
@@ -57,6 +56,43 @@ def _cli_entry(
         args_template=args_template,
         workdir=workdir,
     )
+
+
+class TestWorkerIdAddressing:
+    """2026-08-10 标签寻址：执行体字段支持 W 号（W4 等）映射到 worker_id。"""
+
+    def _reg_with_worker_ids(self) -> ExecutorRegistry:
+        return ExecutorRegistry(
+            (
+                ExecutorEntry(role="开发执行体", category="可后台 CLI", binding="OpenCode", note="", worker_id="W4"),
+                ExecutorEntry(role="开发执行体", category="可后台 CLI", binding="Claude Code", note="", worker_id="W2"),
+                ExecutorEntry(role="验收席", category="可后台 CLI", binding="Claude Code", note="", worker_id="W1"),
+            )
+        )
+
+    def test_cli_entry_for_worker_id(self) -> None:
+        reg = self._reg_with_worker_ids()
+        entry = reg.cli_entry_for_worker_id("W4")
+        assert entry is not None and entry.binding == "OpenCode"
+        assert reg.cli_entry_for_worker_id("W9") is None
+
+    def test_cli_entry_for_binding_accepts_worker_id(self) -> None:
+        reg = self._reg_with_worker_ids()
+        entry = reg.cli_entry_for_binding("W4")
+        assert entry is not None and entry.binding == "OpenCode"
+        entry2 = reg.cli_entry_for_binding("OpenCode")
+        assert entry2 is not None and entry2.binding == "OpenCode"
+
+    def test_role_for_binding_accepts_worker_id(self) -> None:
+        reg = self._reg_with_worker_ids()
+        assert reg.role_for_binding("W4") == "开发执行体"
+        assert reg.role_for_binding("W1") == "验收席"
+        assert reg.role_for_binding("OpenCode") == "开发执行体"
+
+    def test_rows_for_worker_id(self) -> None:
+        reg = self._reg_with_worker_ids()
+        rows = reg.rows_for_worker_id("W2")
+        assert len(rows) == 1 and rows[0].binding == "Claude Code"
 
 
 class TestLoadRegistry:
@@ -285,16 +321,10 @@ class TestDecideWork:
         """
         reg = load_registry(REGISTRY_PATH)
         # 已知角色 + 未知执行体 → 沿用角色决策
-        assert decide_work(
-            Work(id="t39-5a", role="开发执行体", executor="GhostTool"), reg
-        ) is DispatchDecision.AUTO
-        assert decide_work(
-            Work(id="t39-5b", role="管理席", executor="GhostTool"), reg
-        ) is DispatchDecision.NONE
+        assert decide_work(Work(id="t39-5a", role="开发执行体", executor="GhostTool"), reg) is DispatchDecision.AUTO
+        assert decide_work(Work(id="t39-5b", role="管理席", executor="GhostTool"), reg) is DispatchDecision.NONE
         # 空角色 + 未知执行体 → NONE
-        assert decide_work(
-            Work(id="t39-5c", role="", executor="GhostTool"), reg
-        ) is DispatchDecision.NONE
+        assert decide_work(Work(id="t39-5c", role="", executor="GhostTool"), reg) is DispatchDecision.NONE
 
     def test_no_executor_unknown_role_none(self) -> None:
         """④ 补充：无 executor + 未知角色 → NONE（回退路径）。"""
@@ -336,20 +366,10 @@ class TestDecideWork:
         from server.engine.dispatch import ExecutorRegistry, ExecutorEntry, decide_work
 
         entry_global = ExecutorEntry(
-            role="开发执行体",
-            category="可后台 CLI",
-            binding="OpenCode",
-            note="",
-            command="opencode",
-            project=""
+            role="开发执行体", category="可后台 CLI", binding="OpenCode", note="", command="opencode", project=""
         )
         entry_qb = ExecutorEntry(
-            role="开发执行体",
-            category="可后台 CLI",
-            binding="QBExecutor",
-            note="",
-            command="qb-exec",
-            project="qb"
+            role="开发执行体", category="可后台 CLI", binding="QBExecutor", note="", command="qb-exec", project="qb"
         )
 
         reg = ExecutorRegistry((entry_global, entry_qb))
@@ -378,9 +398,7 @@ class TestBuildCommand:
 
     def test_renders_all_placeholders(self) -> None:
         """四个占位符全部替换。"""
-        entry = _cli_entry(
-            args_template="--dir {workdir} --card {card_path} --role {role} {work_id}"
-        )
+        entry = _cli_entry(args_template="--dir {workdir} --card {card_path} --role {role} {work_id}")
         cmd = build_command(
             entry,
             work_id="w1",
@@ -402,17 +420,13 @@ class TestBuildCommand:
     def test_uses_entry_workdir_over_default(self) -> None:
         """entry.workdir 非空时优先用 entry.workdir。"""
         entry = _cli_entry(args_template="{workdir}", workdir="/custom")
-        cmd = build_command(
-            entry, work_id="w1", role="r", card_path="", default_workdir="/data"
-        )
+        cmd = build_command(entry, work_id="w1", role="r", card_path="", default_workdir="/data")
         assert cmd == ["echo", "/custom"]
 
     def test_uses_default_workdir_when_entry_empty(self) -> None:
         """entry.workdir 留空时用 default_workdir。"""
         entry = _cli_entry(args_template="{workdir}", workdir="")
-        cmd = build_command(
-            entry, work_id="w1", role="r", card_path="", default_workdir="/data"
-        )
+        cmd = build_command(entry, work_id="w1", role="r", card_path="", default_workdir="/data")
         assert cmd == ["echo", "/data"]
 
     def test_unknown_placeholder_kept_literal(self) -> None:
@@ -461,9 +475,7 @@ class TestBuildCommand:
     def test_quoted_args_split_correctly(self) -> None:
         """含引号的参数模板被 shlex 正确拆分。"""
         entry = _cli_entry(args_template='-p "请按任务卡 {card_path} 完成 {work_id}"')
-        cmd = build_command(
-            entry, work_id="w1", role="r", card_path="/path/T1.md", default_workdir="/data"
-        )
+        cmd = build_command(entry, work_id="w1", role="r", card_path="/path/T1.md", default_workdir="/data")
         assert cmd == ["echo", "-p", "请按任务卡 /path/T1.md 完成 w1"]
 
     def test_build_command_with_worktree(self) -> None:
@@ -478,4 +490,3 @@ class TestBuildCommand:
             worktree="/Users/fan/program/ccc-dev-ws-t64",
         )
         assert cmd == ["echo", "--dir", "/Users/fan/program/ccc-dev-ws-t64", "-p", "完成 T64"]
-

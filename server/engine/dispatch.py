@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shlex
 from dataclasses import dataclass
 from enum import Enum
@@ -25,8 +26,10 @@ from enum import Enum
 try:
     from enum import StrEnum
 except ImportError:
+
     class StrEnum(str, Enum):  # noqa: UP042
         pass
+
 
 from pathlib import Path
 from string import Formatter
@@ -50,9 +53,9 @@ ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role"
 class DispatchDecision(StrEnum):
     """派发决策。"""
 
-    AUTO = "auto"      # 可后台 CLI → Engine 自动拉起
+    AUTO = "auto"  # 可后台 CLI → Engine 自动拉起
     MANUAL = "manual"  # 手动 GUI → 挂起等人
-    NONE = "none"      # 管理席/验收席（分类「—」）/未知角色 → 不派发
+    NONE = "none"  # 管理席/验收席（分类「—」）/未知角色 → 不派发
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,7 @@ class ExecutorEntry:
     workdir: str = ""
     worktree_base: str = ""
     project: str = ""
+    worker_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,23 @@ class ExecutorRegistry:
                 return proj_entries
         return [e for e in binding_entries if not e.project]
 
+    def rows_for_worker_id(self, worker_id: str, project: str = "") -> list[ExecutorEntry]:
+        """返回与 Worker ID（W4 等）匹配的全部注册行（2026-08-10 标签寻址）。"""
+        wid_entries = [e for e in self.entries if e.worker_id == worker_id]
+        if project:
+            proj_entries = [e for e in wid_entries if e.project == project]
+            if proj_entries:
+                return proj_entries
+        return [e for e in wid_entries if not e.project]
+
+    def cli_entry_for_worker_id(self, worker_id: str, project: str = "") -> ExecutorEntry | None:
+        """返回与 Worker ID 匹配的首个「可后台 CLI」行；无则 None（2026-08-10 标签寻址）。"""
+        rows = self.rows_for_worker_id(worker_id, project=project)
+        for e in rows:
+            if e.category == "可后台 CLI":
+                return e
+        return None
+
     def cli_entry_for_role(self, role: str, project: str = "") -> ExecutorEntry | None:
         """返回该角色的首个「可后台 CLI」行；无则 None。优先匹配项目。"""
         rows = self.rows_for_role(role, project=project)
@@ -114,7 +135,14 @@ class ExecutorRegistry:
         return None
 
     def cli_entry_for_binding(self, tool_name: str, project: str = "") -> ExecutorEntry | None:
-        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。优先匹配项目。"""
+        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。优先匹配项目。
+
+        2026-08-10 标签寻址：tool_name 为 Worker ID（如 W4）时优先按 worker_id 匹配。
+        """
+        if re.fullmatch(r"W\d+", tool_name.strip() or ""):
+            wid = self.cli_entry_for_worker_id(tool_name.strip(), project=project)
+            if wid is not None:
+                return wid
         rows = self.rows_for_binding(tool_name, project=project)
         for e in rows:
             if e.category == "可后台 CLI":
@@ -122,7 +150,17 @@ class ExecutorRegistry:
         return None
 
     def role_for_binding(self, tool_name: str, project: str = "") -> str | None:
-        """反向查找：工具名 → 角色（优先可后台 CLI 行）。优先匹配项目。"""
+        """反向查找：工具名 → 角色（优先可后台 CLI 行）。优先匹配项目。
+
+        2026-08-10 标签寻址：tool_name 为 Worker ID（如 W4）时按 worker_id 反查角色。
+        """
+        if re.fullmatch(r"W\d+", tool_name.strip() or ""):
+            wid_rows = self.rows_for_worker_id(tool_name.strip(), project=project)
+            for e in wid_rows:
+                if e.category == "可后台 CLI":
+                    return e.role
+            for e in wid_rows:
+                return e.role
         rows = self.rows_for_binding(tool_name, project=project)
         for e in rows:
             if e.category == "可后台 CLI":
@@ -163,10 +201,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
             raise ValueError(f"executors[{idx}] 缺字段: {sorted(missing)}")
         category = raw["分类"]
         if category not in VALID_CATEGORIES:
-            raise ValueError(
-                f"executors[{idx}] 分类 '{category}' 非法 "
-                f"(allowed: {sorted(VALID_CATEGORIES)})"
-            )
+            raise ValueError(f"executors[{idx}] 分类 '{category}' 非法 (allowed: {sorted(VALID_CATEGORIES)})")
         command = raw.get("命令", "")
         args_template = raw.get("参数模板", "")
         workdir = raw.get("工作目录", "")
@@ -174,9 +209,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
         # 可后台 CLI 行必须有命令（参数模板允许空，表示无参数）
         if category == "可后台 CLI":
             if not command:
-                raise ValueError(
-                    f"executors[{idx}] 可后台 CLI 行缺派发字段: ['命令']"
-                )
+                raise ValueError(f"executors[{idx}] 可后台 CLI 行缺派发字段: ['命令']")
             # 校验参数模板占位符合法（模板非空时）
             if args_template:
                 _validate_placeholders(args_template, idx)
@@ -191,6 +224,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
                 workdir=workdir,
                 worktree_base=worktree_base,
                 project=raw.get("项目", ""),
+                worker_id=raw.get("worker_id", ""),
             )
         )
     return ExecutorRegistry(tuple(entries))
@@ -201,8 +235,7 @@ def _validate_placeholders(template: str, idx: int) -> None:
     for _literal, field_name, _spec, _conv in Formatter().parse(template):
         if field_name and field_name not in ALLOWED_PLACEHOLDERS:
             raise ValueError(
-                f"executors[{idx}] 参数模板含未知占位符 '{field_name}' "
-                f"(allowed: {sorted(ALLOWED_PLACEHOLDERS)})"
+                f"executors[{idx}] 参数模板含未知占位符 '{field_name}' (allowed: {sorted(ALLOWED_PLACEHOLDERS)})"
             )
 
 
@@ -285,9 +318,7 @@ def build_command(
         ValueError: entry 不是可后台 CLI 行、或命令为空。
     """
     if entry.category != "可后台 CLI":
-        raise ValueError(
-            f"build_command 仅适用于可后台 CLI 行，收到分类 '{entry.category}'"
-        )
+        raise ValueError(f"build_command 仅适用于可后台 CLI 行，收到分类 '{entry.category}'")
     if not entry.command:
         raise ValueError("可后台 CLI 行命令为空，无法构造启动命令")
 
