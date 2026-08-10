@@ -1,6 +1,6 @@
 # 任务卡 ccc064 · HP调用路径单一权威入口收敛（OpenCode 执行）
 
-> 关联：ccc-plan-019 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-10
+> 关联：ccc-plan-019 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-10
 
 ## 基准文件（先看）
 
@@ -47,7 +47,7 @@ HP 调用路径收敛为单一权威入口：opencode.json 补 ccc-kb、hp-kb �
 
 卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
 **回写同时必须完成  四问**（完成钩子，未填=机审打回+合入拒绝）。  
-机审由卡头「验收」方自动写 ；人审 diff 后听「合入批准」写 +已关闭。
+50: 机审由卡头「验收」方自动写 ；人审 diff 后听「合入批准」写 +已关闭。
 
 ## 人工批注
 
@@ -55,24 +55,35 @@ HP 调用路径收敛为单一权威入口：opencode.json 补 ccc-kb、hp-kb �
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 1. 实现说明
+- **配置同构**：核对并确认了 `~/.config/opencode/opencode.json` 和 `qx-map/.mcp.json` 的同构性，均包含带有 `Accept: application/json, text/event-stream` 请求头的 `hp-kb` 及 `ccc-kb` 服务。
+- **技能收敛**：删除 M1 `/Users/apple/qx-map` 下的 `.reasonix/skills/hpkb-query` 冗余分叉技能；修正 `.claude/skills/qx-hpkb-query/SKILL.md` 中关于 CLI 是唯一路径的自相矛盾，纠正为以 MCP 为首选，并移除重复的 `domain 速查` 列表，改引单点来源 `AGENTS.md`。
+- **清理死引用**：删除 `ide/mcp-manifest.md` 中关于已退役脚本 `ccc-sync-agent-roots.py` 与 `~/.ccc/workspaces.json` 的 OpenCode 工作区 MCP 死引用行。
+
+### 2. 测试结果
+- **可用性测试**：经实测，OpenCode 会话中的 ccc-kb 与 hp-kb 工具已完全调通并正常运行。
+- **配置与规则一致性**：各工具配置契约均与 qx-map `AGENTS.md`「知识库操作 SOP」单源真值完全一致，符合 A8 调用路径收敛要求。
+
+### 3. Push 证据
+- **业务仓 (qx-map)** 变更已提交至独立同名分支 `codex/ccc064-hp`：
+  - **Commit Hash**：`eb6d7e596dfdf9bbff120f269550e0edf23101eb`
+  - **Branch**：`codex/ccc064-hp`
+  - **Push Result**：已成功推送至 origin（GitHub 仓库）。
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 ccc-plan-019 状态为部分执行（A8 完成），本卡 ccc064 已完成并更新。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：常规配置收敛与引用清理，未产生新模式教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅清理死引用和对齐同构，项目整体结构/路径未发生改变。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况及北星线路无变动。
 
 ## 执行提示
 
@@ -119,7 +130,7 @@ HP 调用路径收敛为单一权威入口：opencode.json 补 ccc-kb、hp-kb �
 
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
-- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+  - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
 
 - **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。
 
