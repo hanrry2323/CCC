@@ -32,29 +32,32 @@ def get_card_id(card_path: Path) -> str:
 
 
 def _read_plan_from_repo(repo_root: Path, path: str) -> str | None:
-    """读方案文件内容：优先分支 worktree 文件，缺失/旧时回退 origin/main（平台文档权威源）。
+    """读方案文件内容：git 仓库场景优先 origin/main（平台权威），否则读文件系统。
 
-    Doc-Gate 修正（2026-08-10）：方案是平台侧文档，在 main 演进；执行体分支可能不含或含旧版。
-    Q1 校验方案关联卡/状态应基于 main 权威版本，而非分支快照（避免 clw008-012 死结）。
+    Doc-Gate 修正（2026-08-10）：方案是平台侧文档，在 main 演进；执行体分支可能含旧版
+    （关联卡占位，如 clw012 分支 002）。git 仓库场景 Q1 校验基于 main 权威版本；
+    非 git 场景（测试/纯文件）读文件系统。
     """
+    is_git = (repo_root / ".git").exists()
+    if is_git:
+        try:
+            res = subprocess.run(
+                ["git", "-C", str(repo_root), "show", f"origin/main:{path}"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=15,
+            )
+            if res.returncode == 0 and res.stdout:
+                return res.stdout
+        except Exception:
+            pass
     fp = repo_root / path
     if fp.is_file():
         try:
             return fp.read_text(encoding="utf-8")
         except Exception:
             pass
-    try:
-        res = subprocess.run(
-            ["git", "-C", str(repo_root), "show", f"origin/main:{path}"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
-        )
-        if res.returncode == 0 and res.stdout:
-            return res.stdout
-    except Exception:
-        pass
     return None
 
 
@@ -264,29 +267,32 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
             else:
                 plan_prefix = plan_m.group(1)
                 plan_num = plan_m.group(2)
-                plan_rel = f"docs/projects/{plan_prefix}/plans/{plan_num}-"
+                plan_prefix_dir = f"docs/projects/{plan_prefix}/plans/"
                 plan_text = None
-                import glob as _glob
-                plans_dir = repo_root / "docs" / "projects" / plan_prefix / "plans"
-                plan_files = list(plans_dir.glob(f"{plan_num}-*.md")) if plans_dir.is_dir() else []
-                if plan_files:
-                    try:
-                        plan_text = plan_files[0].read_text(encoding="utf-8")
-                    except Exception:
-                        plan_text = None
-                if plan_text is None:
+                if (repo_root / ".git").exists():
                     try:
                         res = subprocess.run(
-                            ["git", "-C", str(repo_root), "ls-tree", "--name-only", "origin/main", plan_rel],
+                            ["git", "-C", str(repo_root), "ls-tree", "--name-only", "origin/main", plan_prefix_dir],
                             capture_output=True, text=True, check=False, timeout=15,
                         )
-                        names = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
-                        if names:
-                            cand = _read_plan_from_repo(repo_root, plan_rel + names[0])
-                            if cand:
-                                plan_text = cand
+                        for nm in res.stdout.splitlines():
+                            nm = nm.strip()
+                            base = nm.rsplit("/", 1)[-1]
+                            if base.startswith(f"{plan_num}-") and base.endswith(".md"):
+                                cand = _read_plan_from_repo(repo_root, plan_prefix_dir + base)
+                                if cand:
+                                    plan_text = cand
+                                    break
                     except Exception:
                         pass
+                else:
+                    plans_dir = repo_root / "docs" / "projects" / plan_prefix / "plans"
+                    files = list(plans_dir.glob(f"{plan_num}-*.md")) if plans_dir.is_dir() else []
+                    if files:
+                        try:
+                            plan_text = files[0].read_text(encoding="utf-8")
+                        except Exception:
+                            plan_text = None
                 if plan_text is None:
                     problems.append(f"Q1 声明关联的方案文件不存在：docs/projects/{plan_prefix}/plans/{plan_num}-*.md")
                 else:
