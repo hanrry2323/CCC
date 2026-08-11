@@ -1,6 +1,6 @@
 # 方案 · 集群 Worker 池（Cluster Worker Pool）蓝图
 
-> 项目：ccc · 编号：ccc-plan-020 · 状态：A 轨四项全部落地（Worker 模型/认领协议/role-skills 一致性）；待 252 实跑闭环 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-020 · 状态：A 轨四项 + 收尾全部完成（平台根治落地）；252 实跑挂账等网络 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-11
 > 关联卡：clw019（跨节点路由实证，已回写）
 > 关联方案：011-loop-observer-architecture（巡查）、014-delivery-gate-sop（交付）、007-100卡基线、021-sidecar-lifecycle-contract
@@ -394,3 +394,52 @@ Engine(2017)                          Worker W9(252)                   Git origi
 2. **skill 全量收仓**：SSOT 引用全部 skill 收进仓（claude-skills 补 4 个），消除节点本地 skill 双源
 3. **观测**：sync-skills --check 结果入 Loop Observer（节点 skill 健康度）
 4. **A 轨整体**：四项全完成 → 集群 Worker 池可用性验证（252 实跑 + 并发扩展）
+
+---
+
+# A 轨收尾汇总（2026-08-11 · 平台根治全部落地）
+
+> 状态：**A 轨四项 + 收尾全部完成**。集群机制（认领协议/skill 同步/clw020 闭环含机审）已实证。
+> 252 实跑挂账（SSH banner 超时客观阻塞，等网络修复或 252 本机操作）。
+
+## A 轨交付总览
+
+| 项 | 状态 | 交付 | 证据 |
+|----|------|------|------|
+| 第 1 项 sidecar 生命周期契约 | ✅ | ccc-plan-021 + 四分支收口 + 收敛器入 run_once | 全仓测试绿 |
+| 第 2 项 Worker 模型 + 认领协议 | ✅ | REMOTE 决策/worker-claim/_claim_round/超时回收/机审 remote | test_worker_routing 13 用例 + clw020 闭环 |
+| 第 3 项 机审打回可执行性 | ✅ | 机审 SOP 定稿（a78f0cb0） | — |
+| 第 4 项 role-skills 一致性 | ✅ | skill 进仓 + sync-skills + 派发动态注入 + 认领前校验 | test_role_skills 9 用例 |
+| **收尾** skill 全量收仓 | ✅ | SSOT 6 skill 全在仓（5 claude + 1 opencode） | M1/2017 --check OK |
+| **收尾** sync-skills 定时 | ✅ | 2017 com.ccc.sync-skills（每日 3:00）+ M1 同款（3:15） | launchctl list 可见 |
+| **挂账** 252 实跑 | ⏸ | onboarding SOP 已给命令清单 | 252 SSH banner 超时 |
+
+## skill 收仓清单（SSOT 全覆盖）
+
+| skill | 角色 | 来源 |
+|-------|------|------|
+| ui-ux-pro-max | 前端设计 | M1 ~/.opencode/skills → opencode-skills/ |
+| code-review | 代码审查/swift开发 | 2017 ~/.claude/skills → claude-skills/ |
+| daily-snapshot | 巡检专家 | 2017 ~/.claude/skills |
+| hp-kb-operations | 知识维护 | 2017 ~/.claude/skills |
+| motion-graphics | 视频制作 | 2017 ~/.claude/skills（23 文件） |
+| qx-auto-copycheck | 文案检查 | qx-map .claude/skills |
+
+## 遗留问题
+
+| 级 | 问题 | 状态 |
+|----|------|------|
+| P1 | 252 SSH banner 超时（客观网络） | 等网络修复或 252 本机操作（onboarding SOP） |
+| P3 | 252 节点定时认领未配 | 252 接入时配（schtasks 命令在 SOP） |
+| P3 | sync-skills 无循环观测 | 建议后续入 Loop Observer |
+
+## 建议下一步
+
+1. **252 网络修复后实跑**（关键路径）：252 本机配计划任务 → REMOTE 卡真跨节点执行 → 集群实证
+2. **集群并发扩展验证**：多 Worker 同时认领不同卡（认领冲突 CAS 是前置）
+3. **平台观测**：claim/skill 健康度入 Loop Observer，数据反哺调度
+
+## 状态更新
+
+- 020 方案 → **A 轨四项 + 收尾全部完成**；集群 Worker 池机制就绪，待 252 实跑闭环（外部网络条件）
+- 平台侧（Engine/认领/skill）不再有建造型阻塞
