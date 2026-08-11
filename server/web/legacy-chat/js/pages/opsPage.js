@@ -159,18 +159,15 @@ function renderLoop(loopData) {
   const nEl = _root.querySelector('#loop-count');
   if (!el) return;
   const reports = loopData?.loop_reports || [];
-  // 合并所有报告 findings（最新报告优先，去重）
-  const findings = [];
-  const seen = new Set();
-  for (const r of reports) {
-    for (const f of r.findings || []) {
-      const key = `${f.project}:${f.title}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      // 每个条目带自己的扫描时间（时间轴式）
-      findings.push({ ...f, _report: r.name, _ts: f.ts || r.mtime || 0, _cmd: r.commands?.[findings.length] || '' });
-    }
-  }
+  // 只取最新一份报告（每份是"当时全量扫描"，最新代表当前真实状态；旧报告是过期快照，避免残留误报）
+  const latest = reports[0] || {};
+  const _cmds = latest.commands || [];
+  const findings = (latest.findings || []).map((f, i) => ({
+    ...f,
+    _report: latest.name,
+    _ts: f.ts || latest.mtime || 0,
+    _cmd: _cmds[i] || '',
+  }));
   if (nEl) nEl.textContent = String(findings.length);
   if (!findings.length) {
     el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
