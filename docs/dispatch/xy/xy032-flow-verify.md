@@ -1,6 +1,6 @@
 # 任务卡 xy032 · 流程验证：xianyu worktree 冒烟（小颗粒）（OpenCode 执行）
 
-> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-12
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-12
 
 
 
