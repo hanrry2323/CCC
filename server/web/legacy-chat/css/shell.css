@@ -2841,6 +2841,7 @@ body.ro-viewer [data-write] {
   overflow: hidden;
   height: 100%;
   min-width: 0;
+  max-width: none;
 }
 .board-col-pair {
   display: grid;
