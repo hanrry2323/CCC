@@ -131,7 +131,7 @@ function renderLoop(loopData) {
           (f) => `<tr>
             <td>${esc(f.weight)}</td>
             <td>${esc(f.project)}</td>
-            <td>${esc(f.title)}</td>
+            <td>${esc(summarizeFinding(f.title))}</td>
             <td><code>${esc(f.acting_on)}</code></td>
           </tr>`
         )
@@ -143,13 +143,33 @@ function renderLoop(loopData) {
       return `<div class="ops-loop-report">
         <div class="ops-loop-head">
           <strong>${esc(r.name)}</strong>
-          <span class="muted">${(r.findings || []).length} 发现 · ${commands.length} 建议命令</span>
+          <span class="muted">${(r.findings || []).length} 项待处理 · ${commands.length} 条转卡命令</span>
         </div>
         ${rows ? `<table class="ops-table"><thead><tr><th>权重</th><th>项目</th><th>发现</th><th>对象</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="ops-empty">无表格发现</div>'}
         ${cmdBlocks}
       </div>`;
     })
     .join('');
+}
+
+/** 把技术化长标题归纳成用户能看懂的一句话（2026-08-11 老板反馈优化）。
+ *  例：「任务卡 clw001 状态漂移：roadmap.md 标注「已交付」，但看板/卡文件实际状态为「已关闭」」
+ *      → 「clw001 已交付但实际已关闭」
+ *  规则：去掉固定前缀，保留「项目卡号 + 核心矛盾」。
+ */
+function summarizeFinding(title) {
+  if (!title) return '';
+  let t = String(title);
+  // 去掉「任务卡 xxx 状态漂移：」前缀 → 保留矛盾主体
+  t = t.replace(/^任务卡\s*([a-z0-9]+)\s*状态漂移：/, '$1 状态漂移：');
+  // 去掉 roadmap 技术路径，只留「标注 X，实际 Y」
+  t = t.replace(/roadmap\.md\s*标注/, '标注');
+  t = t.replace(/看板\/卡文件实际状态/, '实际');
+  // 项目缺席类：去掉技术路径
+  t = t.replace(/项目\s*([a-z0-9]+)\s*缺席 roadmap\.md 的业务线路段落/, '$1 项目缺少路线图段落');
+  // 再压缩长句
+  if (t.length > 40) t = t.slice(0, 40) + '…';
+  return t;
 }
 
 async function poll() {

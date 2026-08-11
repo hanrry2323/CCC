@@ -1119,7 +1119,8 @@ body.hub-mode #app {
 }
 
 .ops-cmd {
-  background: var(--ccc-surface-elevated, #111);
+  background: var(--ccc-bg-surface);
+  color: var(--ccc-text-base);
   border: 1px solid var(--ccc-border-subtle);
   border-radius: 4px;
   padding: 6px 8px;
