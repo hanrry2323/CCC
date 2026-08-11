@@ -889,6 +889,8 @@ def gather_mcp_metrics(log_dir: Path) -> dict[str, Any]:
         for path in log_dir.glob("*.log"):
             try:
                 content = path.read_text(encoding="utf-8", errors="replace")
+                # M7: 清洗 ANSI 色码（\x1b[...m），否则正则匹配不到 ⚙ 工具名 → 假数据 0 次
+                content = re.sub(r"\x1b\[[0-9;]*m", "", content)
                 calls = re.findall("⚙\\s*(?:ccc-kb_kb_|kb_)\\w+", content)
                 total_calls += len(calls)
             except Exception:
