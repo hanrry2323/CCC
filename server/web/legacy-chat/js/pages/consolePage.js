@@ -1,36 +1,25 @@
 /**
- * consolePage.js — 控制台（T30：新协议版）
+ * consolePage.js — 控制台（系统健康 + 配置中心 · ccc-plan-026）
  *
- * 数据源（全部走新服务端）：
- *   - 状态计数 KPI：GET /board/states → {状态: count} 或 GET /cards?project=X 聚合
- *   - 需注意清单：复用 TaskCard/TaskCardList (打回 / 执行中 / 已回写待合入)
- *   - 待合入列表优先 GET /board/ready_for_merge（机审通过可合入批准）
- *   - 后台任务进程面板 (T53)
- *   - 运维告警数：GET /ops/summary → overview.alert_count
- *   - 项目列表：GET /board/summaries → {summaries: {项目: snapshot}}
+ * 定位：系统健康与平台配置中心，不再是「简化看板」。
+ * 模块：系统总览 / 集群节点 / 服务网址(端口探索) / 中转站 / 后台任务进程 / 工程入口 / 设置。
  *
- * 旧字段（today_events / failures / risks / dashboard）已下线，保留占位提示。
- *
- * 写操作（reopen / move / create）已禁用：服务端不暴露。
+ * 数据源：
+ *   /ops/summary      → 总览 + 节点
+ *   /ops/ports        → 服务网址三态（lsof 全量发现）
+ *   /ops/relay-stats  → 中转站状态
+ *   /ops/hp-health    → HP 知识库节点探活
+ *   /board/states、/board/ready_for_merge → 工程入口
+ *   /tasks/running    → 后台任务进程（8s 轮询）
+ *   /ops/concurrency  → 并发槽位
+ *   /config           → 设置（只读）
  */
 
 import { apiGet } from '../api.js';
-import { TaskCardList } from '../components/taskCardList.js';
-import { fmtTaskCopy, renderWorktreeBadges } from '../components/taskCard.js';
 
 let _root = null;
-let _timer = null;   // 看板快照轮询（15s）
-let _rtimer = null;  // 后台任务进程轮询（8s，T53）
-let _ws = 'all';
-
-let _activeList = null;
-let _abnList = null;
-let _writtenList = null;
-let _allCards = [];
-
-let _isPolling = false;
-let _loadingTimeout = null;
-let _pollAbortController = null;
+let _timer = null;    // 系统/工程 15s
+let _rtimer = null;   // 后台任务 8s
 
 function esc(s) {
   if (s == null) return '';
@@ -39,393 +28,280 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function getBaseState(state) {
-  if (!state) return '待分派';
-  const clean = state.split(/[（(]/)[0].trim();
-  const STATES = ['待分派', '执行中', '已回写', '已关闭', '打回'];
-  if (STATES.includes(clean)) {
-    return clean;
-  }
-  return '待分派';
-}
-
-async function copyTextToClipboard(text) {
-  const payload = String(text || '');
-  if (!payload) return false;
-  try {
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      await navigator.clipboard.writeText(payload);
-      return true;
-    }
-  } catch (_) { /* fall through */ }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = payload;
-    ta.setAttribute('readonly', '');
-    ta.style.cssText =
-      'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    ta.setSelectionRange(0, payload.length);
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return !!ok;
-  } catch (_) {
-    return false;
-  }
+function pill(ok, label) {
+  return `<span class="console-pill ${ok ? 'ok' : 'bad'}">${esc(label)}</span>`;
 }
 
 function html() {
   return `
-<div class="console-page hub-page" style="padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-  <div class="console-banner" style="flex-shrink: 0; margin-bottom: 12px;">
-    控制台为简化看板；详细运维请用 <a href="#/ops">运维页</a> 或任务卡 / Engine。
-  </div>
-  <div class="console-bar" style="flex-shrink: 0; margin-bottom: 16px;">
+<div class="console-page hub-page">
+  <div class="console-bar">
     <h2>控制台</h2>
-    <button type="button" class="hub-btn" id="console-ws">工作区: <span id="console-ws-label">全部</span></button>
-    <a class="hub-btn" href="#/ops" id="console-ops-link">运维告警 <span class="badge" id="console-ops-n">0</span></a>
+    <span class="console-sub">系统健康 · 配置中心</span>
     <span style="flex:1"></span>
-    <button type="button" class="hub-btn primary" id="console-to-board">打开看板</button>
-  </div>
-  <div class="console-kpi" id="console-kpi" style="flex-shrink: 0;">
-    <div class="console-kw"><div class="label">加载中…</div></div>
+    <button type="button" class="hub-btn" id="console-refresh">刷新</button>
   </div>
 
-  <div class="console-scroll-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding-right: 4px;">
-    <div class="console-section">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">打回 <span class="badge" id="console-abn-n">0</span></h3>
-        <a class="hub-btn text" href="#/board" style="font-size: 11px; text-decoration: none; color: var(--ccc-text-accent);">去看板看全部 &raquo;</a>
+  <!-- ① 系统总览 -->
+  <div id="console-overview" class="console-card console-overview"><div class="console-empty">加载中…</div></div>
+
+  <!-- ② 主区 -->
+  <div class="console-grid">
+    <div class="console-left">
+      <div class="console-card">
+        <h4 class="console-card-title">集群节点 <span id="console-node-n" class="badge">0</span></h4>
+        <div id="console-nodes"><div class="console-empty">加载中…</div></div>
       </div>
-      <div class="console-tasks-wrapper" id="console-abn-wrapper"></div>
-    </div>
-
-    <div class="console-section">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">执行中 <span class="badge" id="console-active-n">0</span></h3>
-        <a class="hub-btn text" href="#/board" style="font-size: 11px; text-decoration: none; color: var(--ccc-text-accent);">去看板看全部 &raquo;</a>
+      <div class="console-card">
+        <h4 class="console-card-title">服务网址（端口探索） <span id="console-port-n" class="badge">0</span></h4>
+        <div id="console-ports"><div class="console-empty">加载中…</div></div>
       </div>
-      <div class="console-tasks-wrapper" id="console-active-wrapper"></div>
-    </div>
-
-    <div class="console-section">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">已回写待合入 <span class="badge" id="console-written-n">0</span></h3>
-        <a class="hub-btn text" href="#/board" style="font-size: 11px; text-decoration: none; color: var(--ccc-text-accent);">去看板看全部 &raquo;</a>
-      </div>
-      <div class="console-tasks-wrapper" id="console-written-wrapper"></div>
-    </div>
-
-    <div class="console-section">
-      <h3 style="margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px;">后台任务进程 <span class="badge" id="console-running-n">0</span></h3>
-      <div class="console-tasks" id="console-running" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px;"></div>
-    </div>
-
-    <div class="console-section" style="margin-bottom: 12px;">
-      <h3 style="margin: 0 0 12px 0;">最近失败 / 今日动态</h3>
-      <div class="console-feed">
-        <p class="ops-hint">旧 <code>/api/failures</code> / <code>/api/dashboard</code> 端点已下线。请 SSH 查 <code>~/.ccc/stats/failures.jsonl</code> 或看运维页 / 任务卡状态。</p>
+      <div class="console-card">
+        <h4 class="console-card-title">中转站</h4>
+        <div id="console-relay"><div class="console-empty">加载中…</div></div>
       </div>
     </div>
+    <div class="console-right">
+      <div class="console-card">
+        <h4 class="console-card-title">工程入口</h4>
+        <div id="console-kpi" class="console-kpi"><div class="console-empty">加载中…</div></div>
+        <div id="console-ready" class="console-ready"></div>
+      </div>
+      <div class="console-card">
+        <h4 class="console-card-title">后台任务进程</h4>
+        <div id="console-running" class="console-running"><div class="console-empty">当前无后台任务</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ 设置 -->
+  <div class="console-card">
+    <h4 class="console-card-title">设置（只读）</h4>
+    <div id="console-settings" class="console-settings"><div class="console-empty">加载中…</div></div>
   </div>
 </div>`;
 }
 
-function renderKPI(counts) {
-  const c = counts || {};
-  const values = [
-    { k: '待分派', label: '待分派', desc: '尚未执行' },
-    { k: '执行中', label: '执行中', desc: '正在跑' },
-    { k: '已回写', label: '已回写', desc: '待合入批准' },
-    { k: '已关闭', label: '已关闭', desc: '已归档' },
-    { k: '打回', label: '打回', desc: '需介入' },
-  ];
-  const box = _root.querySelector('#console-kpi');
-  if (!box) return;
-  box.innerHTML = values
-    .map((item) => {
-      const v = Number(c[item.k] || 0);
-      return `<div class="console-kw"><div class="label">${esc(item.label)}</div><div class="big">${v}</div><div class="desc">${esc(item.desc)}</div></div>`;
-    })
-    .join('');
-}
+/* ── ① 系统总览 ────────────────────────────── */
 
-function fmtElapsed(secs) {
-  if (secs == null) return '--';
-  const s = Math.max(0, Math.round(secs));
-  if (s < 60) return s + 's';
-  if (s < 3600) return Math.floor(s / 60) + 'm' + Math.round(s % 60) + 's';
-  return Math.floor(s / 3600) + 'h' + Math.round((s % 3600) / 60) + 'm';
-}
-
-function runningCard(t) {
-  const tail = (t.log_tail || []).slice(-5);
-  const tailHtml = tail.length ? tail.map((l) => esc(l)).join('<br>') : '（无日志）';
-  const recent = t.last_activity_at
-    ? (Date.now() - new Date(t.last_activity_at).getTime()) < 30000
-    : false;
-  const active = t.last_activity_at ? recent : (t.elapsed_s != null);
-  const label = t.last_activity_at ? (active ? '活动' : '空闲') : '运行中';
-  const color = '#2f7dd1'; // Blue tone for running background processes
-  const dirty = renderWorktreeBadges(t);
-
-  return `
-    <div class="board-task-card board-card board-card-work state-running running"
-         data-id="${esc(t.work_id)}"
-         style="border-left-color: ${color}; --state-bar: ${color}; cursor: default; margin-bottom: 0;">
-      <div class="board-card-row">
-        <span class="board-card-id id">${esc(t.work_id)}</span>
-        <span class="board-card-state state-running">${esc(label)}</span>
-      </div>
-      <div class="board-card-title ti" style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${esc(t.title || t.work_id)}</div>
-
-      <div style="font-size: 11px; color: var(--ccc-text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-        <span>@${esc(t.executor || '')}</span>
-        <span class="board-card-stats">${dirty}</span>
-        <span>·</span>
-        <span>已用时 ${fmtElapsed(t.elapsed_s)}</span>
-        <span style="flex:1"></span>
-        <span>日志尾 ${tail.length} 行</span>
-      </div>
-
-      <!-- indeterminate 进度条：无百分比进度，用 shimmer 滑动光带表示「进行中」 -->
-      <div style="height:6px;border-radius:3px;background:var(--ccc-bg-hover);overflow:hidden;margin-bottom:8px">
-        <div style="height:100%;background:linear-gradient(90deg,var(--ccc-bg-hover),#2f7dd1,var(--ccc-bg-hover));background-size:200% 100%;animation:shimmer 1.6s linear infinite"></div>
-      </div>
-
-      <pre style="margin:0;font-family:var(--ccc-font-mono);font-size:10px;line-height:1.5;color:var(--ccc-text-secondary);white-space:pre-wrap;word-break:break-all;max-height:96px;overflow:hidden;background:var(--ccc-bg-layer);border-radius:6px;padding:8px">${tailHtml}</pre>
-    </div>
-  `;
-}
-
-function renderRunning(tasks) {
-  const el = _root.querySelector('#console-running');
-  const nEl = _root.querySelector('#console-running-n');
-  if (nEl) nEl.textContent = String(tasks.length);
+function renderOverview(summary, relay) {
+  const el = _root.querySelector('#console-overview');
   if (!el) return;
-  if (!tasks.length) {
-    el.innerHTML = '<div class="console-empty">当前无后台任务</div>';
+  const severity = (summary && summary.severity) || '—';
+  const sevCls = severity === 'green' ? 'ok' : severity === 'red' ? 'attn' : 'warn';
+  const ov = (summary && summary.overview) || {};
+  const machines = ov.machines || [];
+  const total = machines.length;
+  const reachable = machines.filter((m) => m.reachable).length;
+  const services = ov.services || [];
+  const svcRunning = services.filter((s) => s.running).length;
+  const relayOk = !relay || relay.healthy !== false;
+  el.innerHTML = `
+    <div class="console-overview-row">
+      <span class="console-sev ${sevCls}"><span class="console-dot"></span>${esc(severity === 'green' ? '系统健康' : severity === 'red' ? '系统异常' : '有注意项')}</span>
+      <span class="console-overview-line">${esc((summary && summary.human_line) || '—')}</span>
+      <span class="console-overview-chips">
+        <span class="ops-chip">节点 ${reachable}/${total}</span>
+        <span class="ops-chip">服务 ${svcRunning}/${services.length}</span>
+        ${relay ? `<span class="ops-chip ${relayOk ? '' : 'alert'}">中转站 ${relayOk ? '正常' : '异常'}</span>` : ''}
+      </span>
+    </div>`;
+}
+
+/* ── ② 集群节点 ─────────────────────────────── */
+
+function renderNodes(summary, hp) {
+  const el = _root.querySelector('#console-nodes');
+  if (!el) return;
+  const machines = ((summary && summary.overview) || {}).machines || [];
+  const nEl = _root.querySelector('#console-node-n');
+  if (nEl) nEl.textContent = String(machines.length + (hp && hp.configured ? 1 : 0));
+  const cards = machines.map((m) => `<div class="console-node ${m.reachable ? 'up' : 'down'}">
+    <div class="console-node-head"><b>${esc(m.name || '')}</b>${pill(!!m.reachable, m.reachable ? '在线' : '不可达')}</div>
+    <div class="console-node-meta">${esc(m.ip || '')} · ${esc(m.role || '')} · ${m.alive_ports || 0}/${m.port_count || 0} 端口</div>
+  </div>`);
+  if (hp && hp.configured) {
+    cards.push(`<div class="console-node ${hp.reachable ? 'up' : 'down'}">
+      <div class="console-node-head"><b>HP 知识库</b>${pill(!!hp.reachable, hp.reachable ? '在线' : '不可达')}</div>
+      <div class="console-node-meta">${esc(hp.host || '')}:${esc(String(hp.port || ''))} · ${hp.latency_ms != null ? `${hp.latency_ms}ms` : ''}</div>
+    </div>`);
+  }
+  el.innerHTML = cards.length ? cards.join('') : '<div class="console-empty">未配置集群节点</div>';
+}
+
+/* ── 服务网址（端口探索三态） ────────────────── */
+
+function renderPorts(portsData) {
+  const el = _root.querySelector('#console-ports');
+  if (!el) return;
+  const ports = (portsData && portsData.ports) || [];
+  const nEl = _root.querySelector('#console-port-n');
+  if (nEl) nEl.textContent = String(ports.length);
+  const groups = {
+    active_known: ports.filter((p) => p.status === 'active_known'),
+    active_unknown: ports.filter((p) => p.status === 'active_unknown'),
+    registered_stale: ports.filter((p) => p.status === 'registered_stale'),
+  };
+  const groupHTML = (list, label, tone) => list.length
+    ? `<div class="console-port-group">
+        <div class="console-port-group-h"><span class="console-dot ${tone}"></span>${label}<span class="badge">${list.length}</span></div>
+        ${list.map((p) => `<a class="console-port-item" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">
+          <b>${esc(p.name || p.command || `端口 ${p.port}`)}</b><span>${p.port}</span><i>${p.status === 'active_unknown' ? `进程 ${esc(p.command || '')} ${esc(p.pid || '')} · 未识别` : p.status === 'registered_stale' ? '登记未运行' : '运行中'}</i>
+        </a>`).join('')}
+      </div>` : '';
+  const gone = (portsData && portsData.gone_ports) || [];
+  const goneHTML = gone.length
+    ? `<div class="console-port-group"><div class="console-port-group-h"><span class="console-dot gone"></span>历史端口（今日已消失）<span class="badge">${gone.length}</span></div>
+        <div class="console-gone-list">${gone.map((p) => `<span>${p}</span>`).join('')}</div></div>` : '';
+  el.innerHTML = ports.length
+    ? groupHTML(groups.active_known, '活跃服务', 'ok')
+      + groupHTML(groups.active_unknown, '监听未识别（待确认）', 'warn')
+      + groupHTML(groups.registered_stale, '登记未运行', 'gone')
+      + goneHTML
+    : '<div class="console-empty">无端口数据</div>';
+}
+
+/* ── 中转站 ─────────────────────────────────── */
+
+function renderRelay(relay) {
+  const el = _root.querySelector('#console-relay');
+  if (!el) return;
+  if (!relay) {
+    el.innerHTML = '<div class="console-empty">中转站数据不可用</div>';
     return;
   }
-  el.innerHTML = tasks.map(runningCard).join('');
+  const t = relay.today || {};
+  const d = relay.delta_10s || {};
+  el.innerHTML = `
+    <div class="console-relay-row">
+      ${pill(relay.healthy !== false, relay.healthy !== false ? '正常' : '异常')}
+      ${relay.alert ? `<span class="console-relay-alert">${esc(relay.alert)}</span>` : ''}
+      <span class="console-relay-delta">近 10s <b>+${d.total || 0}</b></span>
+    </div>
+    <div class="console-relay-stats">
+      <span class="console-relay-stat"><b>${t.total || 0}</b>今日总请求</span>
+      <span class="console-relay-stat"><b>${t.code || 0}</b>code</span>
+      <span class="console-relay-stat"><b>${t.flash || 0}</b>flash</span>
+      <span class="console-relay-stat"><b>${t.pro || 0}</b>Pro</span>
+    </div>`;
+}
+
+/* ── 工程入口 ───────────────────────────────── */
+
+function renderKPI(states) {
+  const el = _root.querySelector('#console-kpi');
+  if (!el) return;
+  const counts = (states && states.counts) || {};
+  const order = ['待分派', '执行中', '机审', '已回写', '打回'];
+  const tones = { '待分派': '#a39e93', '执行中': '#c47a2c', '机审': '#8b6cc1', '已回写': '#3d9a5f', '打回': '#c44' };
+  const items = order.map((s) => `<a class="console-kpi-item" href="#/board" title="去看板 ${s}">
+    <b style="color:${tones[s]}">${counts[s] || 0}</b><span>${s}</span>
+  </a>`).join('');
+  el.innerHTML = items || '<div class="console-empty">无卡数据</div>';
+}
+
+function renderReady(merge) {
+  const el = _root.querySelector('#console-ready');
+  if (!el) return;
+  const count = (merge && merge.count) || 0;
+  const returned = 0;
+  el.innerHTML = count
+    ? `<a class="console-ready" href="#/board" title="待合入卡"><span>待合入</span><b>${count}</b> 去合入 →</a>`
+    : '';
+}
+
+/* ── 后台任务进程（T53 契约保留） ────────────── */
+
+function renderRunning(tasks, concurrency) {
+  const el = _root.querySelector('#console-running');
+  if (!el) return;
+  const slots = (concurrency && concurrency.slots) || {};
+  const head = slots.exec_max
+    ? `<div class="console-running-head">执行槽 ${slots.exec_max} · 机审槽 ${slots.audit_max}</div>` : '';
+  const list = (tasks && tasks.tasks) || [];
+  if (!list.length) {
+    el.innerHTML = head + '<div class="console-empty">当前无后台任务</div>';
+    return;
+  }
+  el.innerHTML = head + list.slice(0, 10).map((t) => `
+    <div class="console-task ${t.indeterminate ? 'running' : ''}">
+      <div class="console-task-row">
+        <b>${esc(t.id || '')}</b>
+        <span class="ops-todo-type">${esc(t.phase || t.kind || '')}</span>
+        <span class="console-task-time">已用时 ${esc(t.elapsed_s != null ? t.elapsed_s + 's' : '—')}${t.last_activity_at ? ` · 最后活动 ${esc(t.last_activity_at)}` : ''}</span>
+      </div>
+      <div class="console-task-tail" title="日志尾">${esc((t.log_tail || '').slice(-160))}</div>
+      ${t.indeterminate ? '<div class="console-task-progress indeterminate"></div>' : ''}
+    </div>`).join('');
+}
+
+/* ── 设置（只读） ───────────────────────────── */
+
+function renderSettings(config, concurrency) {
+  const el = _root.querySelector('#console-settings');
+  if (!el) return;
+  const slots = (concurrency && concurrency.slots) || {};
+  const groups = [
+    ['服务', config && config.ports ? [
+      ['Web', config.ports.web || '—'],
+      ['看板', config.ports.board || '—'],
+      ['Engine', config.ports.engine || '—'],
+      ['中转站', config.ports.relay || '—'],
+    ] : []],
+    ['模型', config && config.models ? config.models.map((m) => [m, '']) : []],
+    ['并发', [
+      ['执行槽', slots.exec_max || '—'],
+      ['机审槽', slots.audit_max || '—'],
+    ]],
+    ['版本', config && config.version ? [['平台', config.version]] : []],
+  ];
+  el.innerHTML = groups.map(([title, rows]) => rows.length
+    ? `<div class="console-settings-group"><h5>${esc(title)}</h5>${rows.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>`
+    : '').join('') || '<div class="console-empty">配置不可用</div>';
+}
+
+/* ── 轮询 ───────────────────────────────────── */
+
+async function pollSystem() {
+  const [summary, ports, relay, hp, states, ready, config, concurrency] = await Promise.all([
+    apiGet('/ops/summary').catch(() => null),
+    apiGet('/ops/ports').catch(() => null),
+    apiGet('/ops/relay-stats').catch(() => null),
+    apiGet('/ops/hp-health').catch(() => null),
+    apiGet('/board/states').catch(() => null),
+    apiGet('/board/ready_for_merge').catch(() => null),
+    apiGet('/config').catch(() => null),
+    apiGet('/ops/concurrency').catch(() => null),
+  ]);
+  renderOverview(summary, relay);
+  renderNodes(summary, hp);
+  renderPorts(ports);
+  renderRelay(relay);
+  renderKPI(states);
+  renderReady(ready);
+  renderSettings(config, concurrency);
 }
 
 async function pollRunning() {
-  try {
-    const data = await apiGet('/tasks/running');
-    renderRunning((data && data.tasks) || []);
-  } catch (_) { /* 后台任务面板失败不阻断整体 */ }
-}
-
-function triggerLoadingTimeout() {
-  if (_loadingTimeout) {
-    clearTimeout(_loadingTimeout);
-  }
-  _loadingTimeout = setTimeout(() => {
-    if (_abnList && _abnList.loading) {
-      _abnList.loading = false;
-      _abnList.scroller.innerHTML = `<div class="board-empty" style="color:#a33a2c;">数据加载异常，请尝试手动刷新</div>`;
-    }
-    if (_activeList && _activeList.loading) {
-      _activeList.loading = false;
-      _activeList.scroller.innerHTML = `<div class="board-empty" style="color:#a33a2c;">数据加载异常，请尝试手动刷新</div>`;
-    }
-    if (_writtenList && _writtenList.loading) {
-      _writtenList.loading = false;
-      _writtenList.scroller.innerHTML = `<div class="board-empty" style="color:#a33a2c;">数据加载异常，请尝试手动刷新</div>`;
-    }
-  }, 5000);
-}
-
-async function poll() {
-  if (_isPolling) return;
-  _isPolling = true;
-
-  if (_pollAbortController) {
-    _pollAbortController.abort();
-  }
-  _pollAbortController = new AbortController();
-  const signal = _pollAbortController.signal;
-
-  try {
-    let counts;
-    if (_ws === 'all') {
-      // 1. 状态计数接 /board/states，真实状态
-      counts = await apiGet('/board/states', { signal });
-      const data = await apiGet('/cards?page_size=1000', { signal });
-      _allCards = data.cards || [];
-    } else {
-      // 2. 状态计数接 /cards 聚合（按项目过滤）
-      const data = await apiGet('/cards?project=' + encodeURIComponent(_ws) + '&page_size=1000', { signal });
-      _allCards = data.cards || [];
-      counts = { '待分派': 0, '执行中': 0, '已回写': 0, '已关闭': 0, '打回': 0 };
-      for (const card of _allCards) {
-        const state = getBaseState(card.state || card.status || '待分派');
-        counts[state] = (counts[state] || 0) + 1;
-      }
-    }
-
-    renderKPI(counts);
-
-    // Filter cards for lists (slice each to ≤10)
-    const abnCards = _allCards.filter(c => getBaseState(c.state || c.status) === '打回');
-    const activeCards = _allCards.filter(c => getBaseState(c.state || c.status) === '执行中');
-    // 待合入：优先 ready_for_merge（质量门已过）；失败则回退看板列「已回写」
-    let writtenCards = [];
-    try {
-      const ready = await apiGet('/board/ready_for_merge', { signal });
-      writtenCards = (ready && ready.cards) || [];
-    } catch (_) {
-      writtenCards = _allCards.filter(
-        (c) => (c.board_column || '') === '已回写' || (
-          getBaseState(c.state || c.status) === '已回写' && c.machine_audit_passed
-        )
-      );
-    }
-
-    // Update section badges
-    const abnBadge = _root.querySelector('#console-abn-n');
-    if (abnBadge) abnBadge.textContent = String(abnCards.length);
-
-    const activeBadge = _root.querySelector('#console-active-n');
-    if (activeBadge) activeBadge.textContent = String(activeCards.length);
-
-    const writtenBadge = _root.querySelector('#console-written-n');
-    if (writtenBadge) writtenBadge.textContent = String(writtenCards.length);
-
-    // Populate TaskCardList instances
-    if (_abnList) _abnList.setItems(abnCards.slice(0, 10));
-    if (_activeList) _activeList.setItems(activeCards.slice(0, 10));
-    if (_writtenList) _writtenList.setItems(writtenCards.slice(0, 10));
-
-  } catch (err) {
-    if (err && err.name === 'AbortError') {
-      return; // 忽略被 abort 产生的异常，保持 UI 最新状态
-    }
-    const box = _root.querySelector('#console-kpi');
-    if (box) box.innerHTML = `<div class="console-empty">加载失败: ${esc(err?.message || String(err))}</div>`;
-
-    if (_abnList) _abnList.showError(err);
-    if (_activeList) _activeList.showError(err);
-    if (_writtenList) _writtenList.showError(err);
-  } finally {
-    _isPolling = false;
-    if (_loadingTimeout) {
-      clearTimeout(_loadingTimeout);
-      _loadingTimeout = null;
-    }
-  }
-
-  // 运维告警数（来自 /ops/summary）
-  try {
-    const agg = await apiGet('/ops/summary', { signal });
-    const badge = _root.querySelector('#console-ops-n');
-    if (badge) {
-      const alertCount = (agg.overview && agg.overview.alert_count) || 0;
-      badge.textContent = String(alertCount);
-    }
-  } catch (_) { /* ops optional */ }
-
-  const label = _root.querySelector('#console-ws-label');
-  if (label) label.textContent = _ws === 'all' ? '全部' : _ws;
-}
-
-async function loadWorkspaceList() {
-  try {
-    const data = await apiGet('/board/summaries');
-    const summaries = (data && data.summaries) || {};
-    return ['all', ...Object.keys(summaries).sort()];
-  } catch (_) {
-    return ['all'];
-  }
+  const [tasks, concurrency] = await Promise.all([
+    apiGet('/tasks/running').catch(() => null),
+    apiGet('/ops/concurrency').catch(() => null),
+  ]);
+  renderRunning(tasks, concurrency);
 }
 
 export async function mountConsole(el) {
-  if (!_root) {
-    _root = el;
-    el.innerHTML = html();
-
-    // Initialize list instances
-    const onCardClick = (card, id) => {
-      window.__PENDING_DETAIL_ID__ = id;
-      const task = _allCards.find(x => x.id === id);
-      if (task && (task.project || task.workspace)) {
-        try {
-          localStorage.setItem('ccc_hub_last_project', task.project || task.workspace);
-        } catch (_) {}
-      }
-      location.hash = '#/board';
-    };
-
-    const onCopyClick = async (btn, id) => {
-      const task = _allCards.find(x => x.id === id) || { id, title: '' };
-      const ok = await copyTextToClipboard(fmtTaskCopy(task, task.state || task.status));
-      if (ok) {
-        window.showToast?.('已复制任务块，可粘贴到对话', 'success');
-      } else {
-        window.showToast?.('复制失败：请长按选中后手动复制', 'error');
-      }
-    };
-
-    const abnWrapper = _root.querySelector('#console-abn-wrapper');
-    if (abnWrapper) {
-      _abnList = new TaskCardList(abnWrapper, { onCardClick, onCopyClick });
-      _abnList.scroller.style.display = 'grid';
-      _abnList.scroller.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
-      _abnList.scroller.style.gap = '12px';
-      _abnList.scroller.style.overflowY = 'visible';
-    }
-
-    const activeWrapper = _root.querySelector('#console-active-wrapper');
-    if (activeWrapper) {
-      _activeList = new TaskCardList(activeWrapper, { onCardClick, onCopyClick });
-      _activeList.scroller.style.display = 'grid';
-      _activeList.scroller.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
-      _activeList.scroller.style.gap = '12px';
-      _activeList.scroller.style.overflowY = 'visible';
-    }
-
-    const writtenWrapper = _root.querySelector('#console-written-wrapper');
-    if (writtenWrapper) {
-      _writtenList = new TaskCardList(writtenWrapper, { onCardClick, onCopyClick });
-      _writtenList.scroller.style.display = 'grid';
-      _writtenList.scroller.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
-      _writtenList.scroller.style.gap = '12px';
-      _writtenList.scroller.style.overflowY = 'visible';
-    }
-
-    _root.querySelector('#console-to-board').addEventListener('click', () => {
-      location.hash = '#/board';
-    });
-
-    _root.querySelector('#console-ws').addEventListener('click', async () => {
-      try {
-        const keys = await loadWorkspaceList();
-        const idx = keys.indexOf(_ws);
-        _ws = keys[(idx + 1) % keys.length];
-
-        if (_abnList) _abnList.showLoading();
-        if (_activeList) _activeList.showLoading();
-        if (_writtenList) _writtenList.showLoading();
-        triggerLoadingTimeout();
-
-        await poll();
-      } catch (_) { /* ignore */ }
-    });
-  }
-
-  if (_abnList) _abnList.showLoading();
-  if (_activeList) _activeList.showLoading();
-  if (_writtenList) _writtenList.showLoading();
-  triggerLoadingTimeout();
-
-  await poll();
-  await pollRunning();
-
-  if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 15000);
-  if (!_rtimer) _rtimer = setInterval(() => pollRunning().catch(() => {}), 8000);
+  _root = el;
+  el.innerHTML = html();
+  el.querySelector('#console-refresh')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#console-refresh');
+    btn.disabled = true;
+    await Promise.all([pollSystem(), pollRunning()]);
+    btn.disabled = false;
+  });
+  await Promise.all([pollSystem(), pollRunning()]);
+  _timer = setInterval(pollSystem, 15000);
+  _rtimer = setInterval(pollRunning, 8000);
 }
 
 export function unmountConsole() {
@@ -437,16 +313,5 @@ export function unmountConsole() {
     clearInterval(_rtimer);
     _rtimer = null;
   }
-  if (_loadingTimeout) {
-    clearTimeout(_loadingTimeout);
-    _loadingTimeout = null;
-  }
-  if (_pollAbortController) {
-    _pollAbortController.abort();
-    _pollAbortController = null;
-  }
-  _activeList = null;
-  _abnList = null;
-  _writtenList = null;
   _root = null;
 }

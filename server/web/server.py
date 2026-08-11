@@ -772,6 +772,31 @@ def _build_ports_payload() -> dict[str, Any]:
     }
 
 
+def _build_hp_health() -> dict[str, Any]:
+    """HP 知识库节点探活（CLUSTER_HP_TARGET=host:port，未配置返回 configured=false）。"""
+    import time as _t
+
+    target = os.environ.get("CLUSTER_HP_TARGET", "").strip()
+    if not target:
+        return {"configured": False, "reachable": None, "host": "", "port": None, "latency_ms": None, "url": ""}
+    host, _, port_s = target.rpartition(":")
+    try:
+        port = int(port_s)
+    except ValueError:
+        return {"configured": True, "reachable": None, "host": host, "port": None, "latency_ms": None, "url": target}
+    t0 = _t.time()
+    ns = check_tcp_reachable(host, port)
+    latency = round((_t.time() - t0) * 1000)
+    return {
+        "configured": True,
+        "host": host,
+        "port": port,
+        "reachable": ns.reachable,
+        "latency_ms": latency,
+        "url": f"http://{host}:{port}",
+    }
+
+
 def _build_ops_summary() -> dict[str, Any]:
     """构造 OpsSummary 兼容子集（对齐桌面端可消费字段）。
 
@@ -2336,6 +2361,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         except OSError as exc:
             self._send_json({"error": f"端口扫描失败: {exc}"}, 500)
 
+    def _handle_ops_hp_health(self):
+        """GET /ops/hp-health → HP 知识库节点探活 + 延迟。"""
+        self._send_json(_build_hp_health())
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
         raw_path = self.path.split("?")[0]
@@ -2395,6 +2424,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/ports":
             self._handle_ops_ports()
+            return
+        if path == "/ops/hp-health":
+            self._handle_ops_hp_health()
             return
         if path == "/loop/findings":
             self._handle_loop_findings()
