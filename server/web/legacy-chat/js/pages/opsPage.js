@@ -13,6 +13,8 @@ import { apiGet } from '../api.js';
 
 let _root = null;
 let _timer = null;
+let _loopData = null;
+let _showAll = false;
 
 function esc(s) {
   if (s == null) return '';
@@ -158,6 +160,7 @@ function renderLoop(loopData) {
   const el = _root.querySelector('#ops-loop');
   const nEl = _root.querySelector('#loop-count');
   if (!el) return;
+  _loopData = loopData;
   const reports = loopData?.loop_reports || [];
   // 只取最新一份报告（每份是"当时全量扫描"，最新代表当前真实状态；旧报告是过期快照，避免残留误报）
   const latest = reports[0] || {};
@@ -176,8 +179,8 @@ function renderLoop(loopData) {
   // 按风险等级排序（r1 高风险 → r2 风险 → r3 建议），同级按时间新→旧
   const order = { r1: 0, r2: 1, r3: 2 };
   findings.sort((a, b) => order[riskOf(a)] - order[riskOf(b)] || (b._ts || 0) - (a._ts || 0));
-  el.innerHTML = findings
-    .slice(0, 12)
+  const shown = _showAll ? findings : findings.slice(0, 12);
+  el.innerHTML = shown
     .map((f) => {
       const r = riskOf(f);
       const t = typeOf(f);
@@ -185,7 +188,7 @@ function renderLoop(loopData) {
       return `<div class="ops-todo-item ${r}">
         <span class="ops-priority ${r}">${riskLabel(r)}</span>
         <div class="ops-todo-body">
-          <div class="ops-todo-title">${esc(summarizeFinding(f.title))}</div>
+          <div class="ops-todo-title">${esc(f.human_title || summarizeFinding(f.title))}</div>
           <div class="ops-todo-meta">
             <span class="ops-todo-type">${esc(t)}</span>
             <span class="ops-todo-proj">${esc(f.project || '')}</span>
@@ -196,7 +199,8 @@ function renderLoop(loopData) {
         </div>
       </div>`;
     })
-    .join('');
+    .join('')
+    + (findings.length > 12 ? `<button type="button" class="hub-btn" id="ops-todo-more">${_showAll ? '收起' : `展开全部（${findings.length} 条）`}</button>` : '');
   // 绑定「转卡」按钮：点击复制命令 + 提示
   el.querySelectorAll('button[data-cmd]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -210,6 +214,13 @@ function renderLoop(loopData) {
       }
     });
   });
+  const moreBtn = el.querySelector('#ops-todo-more');
+  if (moreBtn) {
+    moreBtn.addEventListener('click', () => {
+      _showAll = !_showAll;
+      if (_loopData) renderLoop(_loopData);
+    });
+  }
 }
 
 /** 时间戳 → 「X 分钟/小时前」 */

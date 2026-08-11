@@ -563,40 +563,75 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
 # ── 运维接口辅助（T21：/ops/summary，cluster 采集 + board 派生 severity） ──
 
 
+_OPS_COLLECT_CACHE: dict[str, Any] = {"key": None, "ts": 0.0, "machines": None, "services": None}
+_OPS_COLLECT_TTL = 10.0
+
+
+def _ops_collect_cached() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """集群采集短缓存（10s TTL）：ops 15s / console 8s 轮询共享，避免重复 TCP 探活。
+
+    缓存 key 含采集相关 env，env 变化（测试/重配）自动失效。
+    """
+    import time as _t
+
+    cfg_key = (
+        os.environ.get("CLUSTER_TARGETS", ""),
+        os.environ.get("CLUSTER_PORT_NAMES", ""),
+        os.environ.get("CLUSTER_SERVICES", ""),
+    )
+    now = _t.time()
+    cached = _OPS_COLLECT_CACHE
+    if (
+        cached["key"] == cfg_key
+        and cached["machines"] is not None
+        and now - cached["ts"] < _OPS_COLLECT_TTL
+    ):
+        return cached["machines"], cached["services"]
+    machines = _collect_ops_nodes()
+    services = _collect_ops_services()
+    cached.update(key=cfg_key, ts=now, machines=machines, services=services)
+    return machines, services
+
+
 def _collect_ops_nodes() -> list[dict[str, Any]]:
-    """采集集群节点状态（TCP 可达性），返回 OpsMachine 兼容字典列表。
+    """采集集群节点状态（TCP 可达性），并行探测，返回 OpsMachine 兼容字典列表。
 
     目标来自 CLUSTER_TARGETS env（逗号分隔 host:port）；空则返回空列表。
     """
     cfg = {"CLUSTER_TARGETS": os.environ.get("CLUSTER_TARGETS", "")}
     targets = parse_cluster_targets(cfg)
-    machines: list[dict[str, Any]] = []
-    for host, port in targets:
+    if not targets:
+        return []
+    # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server,4100:relay-anthropic），
+    # 无配置则用通用名 port-{port}，避免硬编码端口到名称的映射
+    port_names_env = os.environ.get("CLUSTER_PORT_NAMES", "")
+    port_names: dict[int, str] = {}
+    for pair in port_names_env.split(","):
+        pair = pair.strip()
+        if ":" in pair:
+            k, v = pair.split(":", 1)
+            try:
+                port_names[int(k.strip())] = v.strip()
+            except ValueError:
+                continue
+
+    def _probe(item: tuple[str, int]) -> dict[str, Any]:
+        host, port = item
         ns = check_tcp_reachable(host, port)
-        # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server,4100:relay-anthropic），
-        # 无配置则用通用名 port-{port}，避免硬编码端口到名称的映射
-        port_names_env = os.environ.get("CLUSTER_PORT_NAMES", "")
-        port_names: dict[int, str] = {}
-        for pair in port_names_env.split(","):
-            pair = pair.strip()
-            if ":" in pair:
-                k, v = pair.split(":", 1)
-                try:
-                    port_names[int(k.strip())] = v.strip()
-                except ValueError:
-                    continue
         port_name = port_names.get(port, f"port-{port}")
-        machines.append(
-            {
-                "name": port_name,
-                "ip": host,
-                "role": port_name,
-                "reachable": ns.reachable,
-                "alive_ports": 1 if ns.reachable else 0,
-                "port_count": 1,
-            }
-        )
-    return machines
+        return {
+            "name": port_name,
+            "ip": host,
+            "role": port_name,
+            "reachable": ns.reachable,
+            "alive_ports": 1 if ns.reachable else 0,
+            "port_count": 1,
+        }
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(targets)))) as ex:
+        return list(ex.map(_probe, targets))
 
 
 def _collect_ops_services() -> list[dict[str, Any]]:
@@ -633,8 +668,7 @@ def _build_ops_summary() -> dict[str, Any]:
     """
     import datetime
 
-    machines = _collect_ops_nodes()
-    services = _collect_ops_services()
+    machines, services = _ops_collect_cached()
     collected_at = datetime.datetime.now().isoformat(timespec="seconds")
 
     # down_ports：不可达节点
@@ -2046,6 +2080,19 @@ class _APIHandler(BaseHTTPRequestHandler):
         import re as _re
         from pathlib import Path as _Path
 
+        def _summarize_finding(title: str) -> str:
+            """技术标题 → 用户可读一句（与前端兜底逻辑同构，后端真值优先）。"""
+            t = str(title or "")
+            t = _re.sub(r"^任务卡\s*([a-z0-9]+)\s*状态漂移：", r"\1 状态漂移：", t)
+            t = t.replace("roadmap.md 标注", "标注")
+            t = t.replace("看板/卡文件实际状态", "实际")
+            t = _re.sub(r"项目\s*([a-z0-9]+)\s*缺席 roadmap\.md 的业务线路段落", r"\1 项目缺少路线图段落", t)
+            t = _re.sub(r"方案\s*([a-z0-9\-]+)\s*已完成但关联卡未关闭", r"\1 方案已完成但卡未关", t)
+            t = _re.sub(r"卡\s*([a-z0-9]+)\s*缺维护区四问", r"\1 卡缺维护区填写", t)
+            if len(t) > 40:
+                t = t[:40] + "…"
+            return t
+
         data_dir = _config_value("DATA_DIR", "data")
         observer_dir = _Path(data_dir).resolve() / "observer"
         reports: list[dict[str, Any]] = []
@@ -2066,13 +2113,14 @@ class _APIHandler(BaseHTTPRequestHandler):
                     if in_table and ln.strip().startswith("|"):
                         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
                         if len(cells) >= 6:
-                            findings.append(
-                                {
-                                    "weight": cells[0],
-                                    "severity": _severity_from_weight(cells[0]),
-                                    "title": cells[4],
-                                    "project": cells[5],
-                                    "acting_on": cells[6].strip("`"),
+                                findings.append(
+                                    {
+                                        "weight": cells[0],
+                                        "severity": _severity_from_weight(cells[0]),
+                                        "title": cells[4],
+                                        "human_title": _summarize_finding(cells[4]),
+                                        "project": cells[5],
+                                        "acting_on": cells[6].strip("`"),
                                     "evidence": cells[7].strip("`") if len(cells) > 7 else "",
                                     "ts": f.stat().st_mtime,
                                 }

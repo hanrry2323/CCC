@@ -200,11 +200,21 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
         except Exception as e:
             logger.error("failed to read roadmap: %s", e)
     if roadmap_content:
+        # 双解析器收敛（ccc-plan-022）：roadmap 业务线路解析统一走 roadmap_parser，
+        # 巡检与线路图页面共用同一真值（卡号规则/状态归一/漂移判定一致）
+        from server.board.roadmap_parser import load_roadmap_sections
+
+        sections = load_roadmap_sections(
+            roadmap_path,
+            cards_by_id={cid: str(c.get("state", "")) for cid, c in cards_by_id.items()},
+            by_project={cid: str(c.get("project", "")) for cid, c in cards_by_id.items()},
+        )
+        section_projects = {s.get("project") for s in sections}
+        roadmap_lines = roadmap_content.splitlines()
         for p in projects_list:
             if p.taskable and p.prefix:
                 prefix = p.prefix
-                pattern = f"##\\s*业务线路\\s*[（(]\\s*{prefix}\\s*[）)]"
-                if not re.search(pattern, roadmap_content):
+                if prefix not in section_projects:
                     findings.append(
                         {
                             "id": f"missing_roadmap_section_{prefix}",
@@ -216,38 +226,25 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                             "evidence": "docs/roadmap.md:1",
                         }
                     )
-        pattern_card = "\\|\\s*\\*\\*([a-zA-Z0-9\\-]+)\\*\\*\\s*\\|[^|]+\\|\\s*([^|\\s]+)\\s*\\|"
-        matches = re.findall(pattern_card, roadmap_content)
-        roadmap_lines = roadmap_content.splitlines()
-        for card_id_raw, r_status in matches:
-            card_id_key = card_id_raw.lower()
-            if card_id_key in cards_by_id:
-                card = cards_by_id[card_id_key]
-                real_status = card.get("state", "").strip()
-
-                def normalize_state(s: str) -> str:
-                    s = s.strip()
-                    if s in ("已合入", "已关闭", "已完成", "已交付", "released", "closed", "delivered"):
-                        return "closed"
-                    if s in ("已回写", "verified", "testing", "待验收", "机审"):
-                        return "verified"
-                    if s in ("执行中", "in_progress", "开发中"):
-                        return "in_progress"
-                    if s in ("待分派", "pending", "planned"):
-                        return "pending"
-                    return s
-
-                if normalize_state(r_status) != normalize_state(real_status):
+        for s in sections:
+            proj = s.get("project", "")
+            for mile in s.get("milestones", []):
+                for card in mile.get("cards", []):
+                    if not card.get("drift"):
+                        continue
+                    cid_raw = card["card_id"]
+                    cid_key = cid_raw.lower()
+                    real_status = cards_by_id.get(cid_key, {}).get("state", "")
                     line_no = 1
                     for idx, line in enumerate(roadmap_lines):
-                        if f"**{card_id_raw}**" in line:
+                        if f"**{cid_raw}**" in line:
                             line_no = idx + 1
                             break
                     findings.append(
                         {
-                            "id": f"status_drift_{card_id_key}",
-                            "title": f"任务卡 {card_id_raw} 状态漂移：roadmap.md 标注「{r_status}」，但看板/卡文件实际状态为「{real_status}」",
-                            "project": card.get("project", "ccc"),
+                            "id": f"status_drift_{cid_key}",
+                            "title": f"任务卡 {cid_raw} 状态漂移：roadmap.md 标注「{card.get('progress', '')}」，但看板/卡文件实际状态为「{real_status}」",
+                            "project": card.get("project") or proj or "ccc",
                             "type": "drift",
                             "cross_confirm": 0.5,
                             "acting_on": "docs/roadmap.md",

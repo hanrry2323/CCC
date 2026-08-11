@@ -114,6 +114,54 @@ def test_run_observer_output(mock_list_plans, mock_load_dispatch_cards, mock_loa
         assert snapshot['cards_count'] == 0
         assert snapshot['plans_count'] == 0
 
+
+@patch('server.engine.observer.load_dispatch_cards')
+@patch('server.engine.observer.list_plans')
+@patch('server.engine.observer.load_projects')
+def test_scan_findings_roadmap_uses_single_parser(
+    mock_load_projects, mock_list_plans, mock_load_dispatch_cards, tmp_path
+):
+    """roadmap 巡检与线路图页面共用 roadmap_parser：缺段落 + 漂移判定一致（ccc-plan-022）。"""
+    from types import SimpleNamespace
+
+    from server.engine.observer import scan_findings
+
+    mock_load_projects.return_value = [
+        SimpleNamespace(prefix='xy', taskable=True),
+        SimpleNamespace(prefix='qh', taskable=True),
+    ]
+    mock_list_plans.return_value = []
+    mock_load_dispatch_cards.return_value = [
+        SimpleNamespace(to_dict=lambda: {'id': 'xy001', 'state': '已合入', 'project': 'xy', 'path': 'x'}),
+        SimpleNamespace(to_dict=lambda: {'id': 'xy002', 'state': '执行中', 'project': 'xy', 'path': 'x'}),
+    ]
+
+    roadmap = tmp_path / 'docs' / 'roadmap.md'
+    roadmap.parent.mkdir(parents=True, exist_ok=True)
+    roadmap.write_text(
+        "## 业务线路（xy）\n"
+        "\n"
+        "### 里程碑（2026-08-07 挂账）\n"
+        "\n"
+        "| 卡号 | 意图 | 进度 |\n"
+        "|------|------|------|\n"
+        "| **xy001** | 正常 | 已合入 |\n"
+        "| **xy002** | 漂移 | 已合入 |\n",
+        encoding='utf-8',
+    )
+
+    findings = scan_findings({'SCHEDULER_DISPATCH_DIR': ''}, tmp_path)
+
+    # qh 缺段落；xy 有段落
+    assert any(f['id'] == 'missing_roadmap_section_qh' for f in findings)
+    assert not any(f['id'] == 'missing_roadmap_section_xy' for f in findings)
+    # xy001 一致不报；xy002 漂移（roadmap 已合入 vs 实际执行中）
+    drift = [f for f in findings if f['id'] == 'status_drift_xy002']
+    assert len(drift) == 1
+    assert '标注「已合入」' in drift[0]['title']
+    assert '实际状态为「执行中」' in drift[0]['title']
+    assert drift[0]['evidence'] == 'docs/roadmap.md:8'
+
 def test_weight_scoring_and_report_ordering():
     from server.engine.observer import DEFAULT_SCORING_RULES
     f1 = {'id': 'missing_roadmap_section_qb', 'title': 'missing roadmap qb', 'project': 'qb', 'type': 'missing_section', 'cross_confirm': 0.5}
