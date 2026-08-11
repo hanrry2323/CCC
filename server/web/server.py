@@ -260,7 +260,7 @@ def _ensure_chat_bridge() -> None:
         pass
     token = _chat_bridge_token()
     remote = (
-        f"cd {_PROJECT_ROOT} && nohup env CCC_CHAT_BRIDGE_PORT={port} "
+        f"cd ~/program/CCC && nohup env CCC_CHAT_BRIDGE_PORT={port} "
         f"CCC_CHAT_BRIDGE_TOKEN={token} CCC_CHAT_DATA_DIR=/Users/apple/.ccc-chat "
         f"/opt/homebrew/bin/python3 -m server.web.chat_bridge > /tmp/chat-bridge.log 2>&1 < /dev/null &"
     )
