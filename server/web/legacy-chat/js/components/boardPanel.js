@@ -50,6 +50,7 @@ export async function openBoardPanel() {
     panel.innerHTML = `
       <div class="board-panel-header">
         <span class="board-panel-title">任务卡流</span>
+        <span class="board-panel-ready" id="board-panel-ready" title="待合入（机审通过可合入）"></span>
         <div class="board-panel-actions">
           <a class="artifact-btn" id="board-full-link" href="#/board" title="完整看板">↗</a>
           <button type="button" class="artifact-btn" id="board-refresh" title="刷新">⟳</button>
@@ -149,6 +150,12 @@ export async function refreshBoardPanel(opts = {}) {
   try {
     const res = await getCards({ project: ws === 'all' ? '' : ws, page_size: 1000 });
     const all = res.cards || [];
+    try {
+      const ready = await apiGet('/board/ready_for_merge');
+      const el = document.getElementById('board-panel-ready');
+      const n = (ready && ready.count) || 0;
+      if (el) el.textContent = n ? `待合入 ${n}` : '';
+    } catch (_) { /* 板务徽章可选 */ }
     try {
       const running = await apiGet('/tasks/running');
       const byId = new Map();

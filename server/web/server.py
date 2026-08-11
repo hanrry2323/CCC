@@ -231,6 +231,15 @@ def _load_persisted_threads() -> None:
 # 启动加载已持久化的会话历史（T47 会话恢复）
 _load_persisted_threads()
 
+
+def _chat_bridge_url() -> str:
+    """M1 对话桥地址（配置后 /conversation 与 threads 走代理）。"""
+    return os.environ.get("CCC_CHAT_BRIDGE_URL", "").strip()
+
+
+def _chat_bridge_token() -> str:
+    return os.environ.get("CCC_CHAT_BRIDGE_TOKEN", "").strip()
+
 # ── 免鉴权的路径前缀 ──
 # /tasks/running 与 /projects 同组（T53：控制台后台任务进程面板数据源，免登录白名单）
 _NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects", "/tasks/running", "/cards", "/cards/search"})
@@ -1732,7 +1741,16 @@ class _APIHandler(BaseHTTPRequestHandler):
         model = str(body.get("model") or "").strip()
         project = str(body.get("project") or "").strip() or _project_of_thread_id(thread_id)
         if body.get("stream"):
+            bridge = _chat_bridge_url()
+            if bridge:
+                # M1 对话桥代理：SSE 透传（原版 Claude Code，无 brain 人格/档位）
+                self._proxy_chat_stream(bridge, message, thread_id, project)
+                return
             self._handle_conversation_stream(message, thread_id, model, project)
+            return
+        bridge = _chat_bridge_url()
+        if bridge:
+            self._send_json({"error": "M1 对话桥仅支持 stream=true（前端已默认流式）"}, 400)
             return
         history = list(_conv_list_for(thread_id))
         success, reply, status = call_brain(message, history, session_key=thread_id or None, model=model or None)
@@ -1863,6 +1881,30 @@ class _APIHandler(BaseHTTPRequestHandler):
         qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
         thread_id = (qs.get("thread_id", [""])[0] or "").strip()
         after_raw = (qs.get("after", [""])[0] or "").strip()
+        bridge = _chat_bridge_url()
+        if bridge:
+            import urllib.request
+            from urllib.parse import quote
+
+            project = _project_of_thread_id(thread_id) or "ccc"
+            url = (
+                f"{bridge.rstrip('/')}/chat/history?project={quote(project)}"
+                f"&thread_id={quote(thread_id)}"
+            )
+            if after_raw:
+                url += f"&after={quote(after_raw)}"
+            req = urllib.request.Request(url)
+            token = _chat_bridge_token()
+            if token:
+                req.add_header("Authorization", f"Bearer {token}")
+            try:
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            except Exception as exc:
+                self._send_json({"error": f"对话桥历史不可达: {exc}"}, 503)
+                return
+            self._send_json(data)
+            return
         if not after_raw:
             # 向后兼容：全量返回（含 seq 光标）
             conv = _conv_list_for(thread_id)
@@ -2598,6 +2640,24 @@ class _APIHandler(BaseHTTPRequestHandler):
             from urllib.parse import unquote
 
             project = unquote(path[len("/projects/") : -len("/threads")])
+            bridge = _chat_bridge_url()
+            if bridge:
+                import urllib.request
+                from urllib.parse import quote
+
+                url = f"{bridge.rstrip('/')}/projects/{quote(project)}/threads"
+                req = urllib.request.Request(url)
+                token = _chat_bridge_token()
+                if token:
+                    req.add_header("Authorization", f"Bearer {token}")
+                try:
+                    with urllib.request.urlopen(req, timeout=8) as resp:
+                        data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                except Exception as exc:
+                    self._send_json({"error": f"对话桥会话列表不可达: {exc}"}, 503)
+                    return
+                self._send_json(data)
+                return
             self._send_json({"threads": session_store.list_threads(project)})
             return
         if path == "/conversation":
@@ -2741,6 +2801,47 @@ class _APIHandler(BaseHTTPRequestHandler):
             # 同步清内存中的该会话历史（长轮询/断连引用一并释放）
             _thread_conversations.pop(thread_id, None)
             self._send_json({"ok": True})
+
+    def _proxy_chat_stream(self, bridge: str, message: str, thread_id: str, project: str) -> None:
+        """转发 POST /chat 到 M1 对话桥，SSE 流式透传。"""
+        import urllib.error
+        import urllib.request
+
+        token = _chat_bridge_token()
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(
+            bridge.rstrip("/") + "/chat",
+            data=json.dumps(
+                {"message": message, "thread_id": thread_id, "project": project},
+                ensure_ascii=False,
+            ).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=190)
+        except urllib.error.HTTPError as exc:
+            self._send_json({"error": f"对话桥返回 {exc.code}: {exc.read().decode('utf-8', errors='replace')[:200]}"}, 503)
+            return
+        except Exception as exc:
+            self._send_json({"error": f"M1 对话服务不可达: {exc}"}, 503)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        try:
+            while True:
+                chunk = resp.read(4096)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
             return
         self._send_404()
 

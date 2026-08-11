@@ -2937,6 +2937,14 @@ body.ro-viewer [data-write] {
   text-overflow: ellipsis;
 }
 .board-run-line.dim { color: #aaa; font-family: inherit; }
+.board-panel-ready {
+  font-size: 11px;
+  color: #a35f18;
+  font-weight: 650;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: rgba(217, 130, 43, 0.12);
+}
 .board-card-stream {
   margin: 5px 0 3px;
   padding: 6px 8px;
