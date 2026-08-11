@@ -2461,15 +2461,21 @@ class _APIHandler(BaseHTTPRequestHandler):
         streams: dict[str, dict] = {}
         for cid in ids:
             key = cid.lower()
-            name = f"{key}-audit.log" if col_by_id.get(key) == "机审" else f"{key}.log"
-            path = (log_dir / name) if log_dir else None
-            pos = 0
-            if path is not None and path.is_file():
-                try:
-                    pos = path.stat().st_size
-                except OSError:
-                    pos = 0
-            streams[key] = {"path": path, "pos": pos, "id": cid}
+            files: dict[str, dict] = {}
+            for source, fname in (("main", f"{key}.log"), ("audit", f"{key}-audit.log")):
+                path = (log_dir / fname) if log_dir else None
+                pos = 0
+                if path is not None and path.is_file():
+                    try:
+                        pos = path.stat().st_size
+                    except OSError:
+                        pos = 0
+                files[source] = {"path": path, "pos": pos}
+            # snapshot 源：机审 marker 或列=机审 → audit；否则主日志
+            auditing = col_by_id.get(key) == "机审"
+            if log_dir is not None and _marker_alive_web(log_dir, key, audit=True):
+                auditing = True
+            streams[key] = {"files": files, "id": cid, "snapshot_source": "audit" if auditing else "main"}
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -2484,19 +2490,21 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         try:
             for cid, s in streams.items():
-                lines = _tail_lines_file(s["path"], 3) if s["path"] is not None else []
+                src = s["files"][s["snapshot_source"]]
+                lines = _tail_lines_file(src["path"], 3) if src["path"] is not None else []
                 emit("snapshot", {"work_id": s["id"], "lines": lines})
             last_beat = time.time()
             while True:
                 time.sleep(0.8)
                 for cid, s in streams.items():
-                    if s["path"] is None or not s["path"].is_file():
-                        continue
-                    lines, pos = _log_delta(s["path"], s["pos"])
-                    if lines:
-                        s["pos"] = pos
-                        for ln in lines:
-                            emit("log", {"work_id": s["id"], "line": ln})
+                    for source, f in s["files"].items():
+                        if f["path"] is None or not f["path"].is_file():
+                            continue
+                        lines, pos = _log_delta(f["path"], f["pos"])
+                        if lines:
+                            f["pos"] = pos
+                            for ln in lines:
+                                emit("log", {"work_id": s["id"], "line": ln, "source": source})
                 if time.time() - last_beat >= 15:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
