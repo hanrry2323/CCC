@@ -41,6 +41,8 @@ let _dense = false;                      // 卡片密度
 let _searchQ = '';
 let _colCardIds = { '执行中': [], '机审': [] }; // 上栏可见卡 id（运行流对应）
 let _es = null;                          // /tasks/stream SSE 连接
+let _esSig = '';                         // 当前 SSE 订阅签名（ids 未变复用连接）
+let _runColSig = {};                     // 执行中/机审列渲染签名（消闪烁）
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -310,11 +312,14 @@ function _streamIds() {
 function _connectStream() {
   if (!_root) return;
   const ids = _streamIds();
+  const sig = ids.join(',');
+  if (_es && _esSig === sig) return; // ids 未变：复用连接，不重建（消闪烁/重置）
   if (_es) {
     _es.close();
     _es = null;
   }
   if (!ids.length) return;
+  _esSig = sig;
   _es = new EventSource('/tasks/stream?ids=' + encodeURIComponent(ids.join(',')));
   _es.addEventListener('snapshot', (e) => {
     try {
@@ -354,6 +359,9 @@ function _connectStream() {
 function renderRunCol(col, cards) {
   const el = _root.querySelector(`#col-list-${col}`);
   if (!el) return;
+  const sig = cards.map((c) => [c.id, c.board_column || c.state, c.tool_calls, c.audit_runs, c.audit_status || ''].join(':')).join('|');
+  if (sig === _runColSig[col]) return; // 数据未变不重建（消闪烁）
+  _runColSig[col] = sig;
   el.innerHTML = cards.length
     ? cards.map((c) => renderTaskCard(c, { stream: true })).join('')
     : '<div class="board-empty">暂无任务</div>';
