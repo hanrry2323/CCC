@@ -177,3 +177,4 @@ docs/dispatch/cards.index.jsonl
 # 巡查报告生成物（Observer 产出，不跟踪；ccc046 将迁往 DATA_DIR）
 docs/notes/*-ccc-patrol.md
 docs/notes/*-ccc-reverse-patrol.md
+docs/dispatch/.card-lock
