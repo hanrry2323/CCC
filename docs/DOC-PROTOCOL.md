@@ -36,7 +36,7 @@
 - [`product/hub-context-sop.md`](product/hub-context-sop.md)（中枢出卡前了解项目 · 允许/禁止表）
 - [`product/accept-board-sop.md`](product/accept-board-sop.md)（别名指向合入批准，见 north-star-slice）
 - [`product/machine-audit-flow.md`](product/machine-audit-flow.md)
-- [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)（Desktop 恢复时）
+- [`product/ccc-desktop-architecture.md`](archive/ccc-desktop-architecture.md)（Desktop 恢复时）
 
 ---
 

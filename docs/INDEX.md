@@ -102,7 +102,7 @@
 | [`product/desktop-opencode-parity.md`](archive/desktop-opencode-parity.md) | OpenCode 完善度计分（已交付勾选） |
 | [`product/desktop-usability-9.5-plan.md`](archive/desktop-usability-9.5-plan.md) | 可用性冲刺计划（多为已做） |
 | [`product/desktop-flow-rail-ux.md`](archive/desktop-flow-rail-ux.md) | 右栏 UX SSOT |
-| [`product/deprecate-web-hub.md`](product/deprecate-web-hub.md) | 网页 Hub 降级说明 |
+| [`product/deprecate-web-hub.md`](archive/ccc-legacy-2026-08-02/product/deprecate-web-hub.md) | 网页 Hub 降级说明 |
 
 ---
 
