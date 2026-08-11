@@ -10,7 +10,7 @@
  */
 
 import { apiGet } from '../api.js';
-import { buildTimelineSVG, cardListHTML, riskHTML } from './roadmapTimeline.js';
+import { buildTimelineSVG, cardListHTML, riskHTML } from '../roadmapTimeline.js';
 
 let _root = null;
 let _timer = null;
