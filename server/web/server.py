@@ -2058,6 +2058,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                     "project": cells[5],
                                     "acting_on": cells[6].strip("`"),
                                     "evidence": cells[7].strip("`") if len(cells) > 7 else "",
+                                    "ts": f.stat().st_mtime,
                                 }
                             )
                     elif in_table and not ln.strip().startswith("|"):

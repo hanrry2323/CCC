@@ -130,28 +130,24 @@ function renderLoop(loopData) {
   // 合并所有报告 findings（最新报告优先，去重）
   const findings = [];
   const seen = new Set();
-  let latestTs = 0;
   for (const r of reports) {
-    if (r.mtime > latestTs) latestTs = r.mtime;
     for (const f of r.findings || []) {
       const key = `${f.project}:${f.title}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      findings.push({ ...f, _report: r.name, _cmd: r.commands?.[findings.length] || '' });
+      // 每个条目带自己的扫描时间（时间轴式）
+      findings.push({ ...f, _report: r.name, _ts: f.ts || r.mtime || 0, _cmd: r.commands?.[findings.length] || '' });
     }
   }
   if (nEl) nEl.textContent = String(findings.length);
-  // 扫描时间
-  const scanLabel = latestTs ? ` · 巡查于 ${agoText(latestTs)}` : '';
-  const header = `<div class="ops-todo-scan">待处理 ${findings.length} 项${esc(scanLabel)}</div>`;
   if (!findings.length) {
-    el.innerHTML = header + '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
+    el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
     return;
   }
-  // 按优先级排序
+  // 按优先级排序（同优先级按时间新→旧）
   const order = { p1: 0, p2: 1, p3: 2 };
-  findings.sort((a, b) => order[priorityOf(a.weight)] - order[priorityOf(b.weight)]);
-  el.innerHTML = header + findings
+  findings.sort((a, b) => order[priorityOf(a.weight)] - order[priorityOf(b.weight)] || (b._ts || 0) - (a._ts || 0));
+  el.innerHTML = findings
     .slice(0, 12)
     .map((f) => {
       const p = priorityOf(f.weight);
@@ -162,6 +158,7 @@ function renderLoop(loopData) {
           <div class="ops-todo-title">${esc(summarizeFinding(f.title))}</div>
           <div class="ops-todo-meta">
             <span class="ops-todo-proj">${esc(f.project || '')}</span>
+            <span class="ops-todo-time" title="${esc(f._ts ? new Date(f._ts * 1000).toLocaleString() : '')}">${agoText(f._ts)}</span>
             ${f.acting_on ? `<code>${esc(f.acting_on)}</code>` : ''}
           </div>
           ${cmd ? `<button type="button" class="hub-btn" data-cmd="${esc(cmd)}" title="复制转卡命令到 M1 执行">转卡</button>` : ''}
