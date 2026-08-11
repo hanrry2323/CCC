@@ -38,6 +38,9 @@ OPTIONAL_KEYS: dict[str, str] = {
     # 集群采集
     "CLUSTER_TARGETS": "",
     "CLUSTER_SERVICES": "",
+    "CLUSTER_PORT_NAMES": "",
+    "CLUSTER_BUSINESS_PORTS": "",
+    "CLUSTER_HP_TARGET": "",
     # 中转站部署模板占位（T4，部署前手动替换，可选）
     "CCC_RELAY_PROJECT_ROOT": "",
     "LOOP_ANTHROPIC_PORT": "",

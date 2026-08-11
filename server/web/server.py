@@ -669,6 +669,29 @@ def _parse_port_map(raw: str) -> dict[int, str]:
     return out
 
 
+_CONFIG_ENV_CACHE: dict[str, Any] = {"ts": 0.0, "cfg": None}
+
+
+def _env_or_config(key: str, default: str = "") -> str:
+    """env 优先，回退读 config.env（支持新键无需改 launchd plist）。"""
+    import time as _t
+
+    v = os.environ.get(key, "")
+    if v:
+        return v
+    now = _t.time()
+    cached = _CONFIG_ENV_CACHE
+    if cached["cfg"] is None or now - cached["ts"] > 5:
+        try:
+            from server.config.loader import load_config
+
+            cached["cfg"] = load_config(str(_PROJECT_ROOT / "server" / "config" / "config.env"))
+        except Exception:
+            cached["cfg"] = {}
+        cached["ts"] = now
+    return str((cached["cfg"] or {}).get(key, default))
+
+
 def _scan_listening_ports() -> list[dict[str, Any]]:
     """lsof 全量扫描本机 TCP 监听端口（自动发现，零配置）。"""
     try:
@@ -705,8 +728,8 @@ def _build_ports_payload() -> dict[str, Any]:
     import json as _json
 
     listening = _scan_listening_ports()
-    known = _parse_port_map(os.environ.get("CLUSTER_PORT_NAMES", ""))
-    business = _parse_port_map(os.environ.get("CLUSTER_BUSINESS_PORTS", ""))
+    known = _parse_port_map(_env_or_config("CLUSTER_PORT_NAMES"))
+    business = _parse_port_map(_env_or_config("CLUSTER_BUSINESS_PORTS"))
     all_maps = {**business, **known}
     by_port = {p["port"]: p for p in listening}
 
@@ -776,7 +799,7 @@ def _build_hp_health() -> dict[str, Any]:
     """HP 知识库节点探活（CLUSTER_HP_TARGET=host:port，未配置返回 configured=false）。"""
     import time as _t
 
-    target = os.environ.get("CLUSTER_HP_TARGET", "").strip()
+    target = _env_or_config("CLUSTER_HP_TARGET", "").strip()
     if not target:
         return {"configured": False, "reachable": None, "host": "", "port": None, "latency_ms": None, "url": ""}
     host, _, port_s = target.rpartition(":")
