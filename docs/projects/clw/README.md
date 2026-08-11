@@ -18,6 +18,20 @@
 - **出卡**：`scripts/new-card.sh --project clw --title "..."`；执行 cwd 写在卡内（2017 apps/clwarp）
 - **技术栈**：Tauri 2.0（Rust + React/TypeScript）+ xterm.js 终端渲染
 
+## 技术栈定稿（唯一权威 · 2026-08-11）
+
+> 本节约束 clwarp 全部方案/卡/文档的技术栈口径；不一致处以本节约束。演进史见 clw-plan-001「技术栈演进声明」。
+
+| 层 | 定稿技术 | 说明 |
+|----|---------|------|
+| 壳 | **Tauri 2.0**（Rust） | 桌面壳 + IPC |
+| 后端 | **Rust + alacritty_terminal** | alacritty **仅作 PTY**（会话/信号/退出），不参与渲染 |
+| 前端 | **React 19 + TypeScript** | UI 层 |
+| 终端渲染 | **@xterm/xterm（xterm.js）** | 前端渲染；事件推送 + resize + UTF-8 |
+| 会话持久化 | `~/.clwarp/config.json` | 应用配置；CLI 会话历史为**读取**不写入 |
+
+**演进史**：v0.1.0 方案声明「alacritty + Metal GPU 渲染」→ v0.2.0 实测纠偏为「xterm.js 渲染」（001 标注演进）；v0.2.0 起定为 xterm.js，002/003 方案及本表一致，无冲突。
+
 ## 基准文件（核心导航）
 
 | 项 | 位置 |

@@ -1,6 +1,6 @@
 # CCC 发展路线图
 
-> **现行叙事**：[`VISION.md`](VISION.md) · **版本**：根目录 `VERSION`（v0.70.0）  
+> **现行叙事**：[`ENGINEERING-CANON.md`](ENGINEERING-CANON.md)（VISION 已 RETRACTED 2026-08-11）· **版本**：根目录 `VERSION`（v0.70.0）  
 > **权威链**：[`INDEX.md`](INDEX.md) §0 · 文档怎么写：[`DOC-PROTOCOL.md`](DOC-PROTOCOL.md)  
 > **历史正文**（v0.19–v0.26 等）：[`archive/roadmap-history-v0.19-v0.26.md`](archive/roadmap-history-v0.19-v0.26.md)（史；勿覆盖「当前方向」）。
 
@@ -434,7 +434,7 @@
 
 ## 业务线路（clw）
 
-### clwarp 统一 AI 桌面驾驶舱（2026-08-09 挂账 · clw-plan-001 · 2026-08-10 追加 clw-plan-002）
+### clwarp 统一 AI 桌面驾驶舱（2026-08-09 挂账 · clw-plan-001/002 · 2026-08-11 追加 clw-plan-003）
 
 | 卡号 | 意图 | 进度 |
 |------|------|------|
