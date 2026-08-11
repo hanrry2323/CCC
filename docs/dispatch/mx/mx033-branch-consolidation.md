@@ -1,7 +1,7 @@
 # 任务卡 mx033 · 分支收口（未合并分支审查合入 + tag 补打）（OpenCode 执行）
 
 > 关联：mx-plan-002
-> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派（重投 2026-08-12） · 派发：engine · 依赖：mx032 · 项目：mx · 日期：2026-08-12
+> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 依赖：mx032 · 项目：mx · 日期：2026-08-12
 
 
 
