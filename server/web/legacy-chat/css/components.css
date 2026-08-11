@@ -4202,6 +4202,8 @@
   align-items: start;
   min-height: 68vh;
 }
+.plans-flow.no-anim,
+.plans-flow.no-anim * { transition: none !important; }
 @media (max-width: 1280px) {
   .plans-flow { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 }

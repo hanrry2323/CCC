@@ -258,12 +258,7 @@ function render() {
     <div class="plans-page">
       ${renderToolbar()}
       <div class="plans-flow" id="plans-flow">
-        ${filteredPlans().length === 0 ? `
-          <div class="plans-empty-all">
-            <div class="plans-empty-ic">${icon('file')}</div>
-            <p>没有匹配的方案</p>
-            <button type="button" class="ptool-btn-plain" id="plans-empty-clear">清除筛选</button>
-          </div>` : STATUSES.map(renderColumn).join('')}
+        ${STATUSES.map(renderColumn).join('')}
       </div>
       <div class="plans-detail" id="plans-detail" style="display:none"></div>
       <div class="plans-form-overlay" id="plans-form-overlay" style="display:none"></div>
@@ -275,9 +270,7 @@ function render() {
 function updateListOnly() {
   const flowEl = _root?.querySelector('#plans-flow');
   const countEl = _root?.querySelector('.plans-total');
-  if (flowEl) flowEl.innerHTML = filteredPlans().length === 0
-    ? `<div class="plans-empty-all"><div class="plans-empty-ic">${icon('file')}</div><p>没有匹配的方案</p><button type="button" class="ptool-btn-plain" id="plans-empty-clear">清除筛选</button></div>`
-    : STATUSES.map(renderColumn).join('');
+  if (flowEl) flowEl.innerHTML = STATUSES.map(renderColumn).join('');
   if (countEl) countEl.textContent = filteredPlans().length;
   bindEvents();
   applyFlowColumns();
@@ -302,8 +295,10 @@ function bindEvents() {
       const st = flow ? flow.scrollTop : 0;
       _filterProject = btn.dataset.proj || '';
       root.querySelectorAll('.ptool-proj').forEach(b => b.classList.toggle('on', b === btn));
+      flow?.classList.add('no-anim');
       render();
       if (flow) flow.scrollTop = st;
+      requestAnimationFrame(() => flow?.classList.remove('no-anim'));
     });
   });
 

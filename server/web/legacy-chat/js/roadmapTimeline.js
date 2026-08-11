@@ -186,7 +186,7 @@ export function milestonePanelHTML(detail, mile) {
     <div class="rm2-card">
       <span class="rm2-card-id">${esc(c.card_id)}</span>
       <span class="rm2-card-intent">${esc(c.intent)}</span>
-      <span class="rm2-card-state ${_stateTone(c)}">${esc(c.progress || '未标注')}</span>
+      <span class="rm2-card-state ${_stateTone(c)}" title="${c.real_state ? `真实状态：${esc(c.real_state)}` : ''}">${esc(c.real_state || c.progress || '未标注')}</span>
       ${c.drift ? `<span class="rm-flag drift">漂移</span>` : ''}
       ${c.missing ? `<span class="rm-flag missing">缺失</span>` : ''}
       ${(c.drift || c.missing) ? `<a class="rm-goto" href="#/board" title="去看板">→</a>` : ''}
