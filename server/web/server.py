@@ -3026,6 +3026,23 @@ def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
     """创建并启动 HTTP 服务（阻塞）。"""
     _start_card_watcher()
 
+    def _bridge_heartbeat() -> None:
+        """M1 对话桥保活心跳：30s 检查，挂了经 ssh 拉起（断链自愈）。"""
+        import threading
+
+        def _loop():
+            while True:
+                try:
+                    if _chat_bridge_url():
+                        _ensure_chat_bridge()
+                except Exception:
+                    logger.exception("bridge heartbeat failed")
+                time.sleep(30)
+
+        threading.Thread(target=_loop, daemon=True, name="ccc-bridge-heartbeat").start()
+
+    _bridge_heartbeat()
+
     def _warmup() -> None:
         """启动后台预热：首屏 /cards、/tasks/running 冷缓存重算提前完成。"""
         import threading
