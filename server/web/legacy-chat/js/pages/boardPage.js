@@ -39,6 +39,7 @@ let _collapsedCols = {};                  // 全部列默认展开（老板 2026
 let _colOpen = {};                       // 列体折叠（头部按钮）
 let _dense = false;                      // 卡片密度
 let _searchQ = '';
+let _runTimer = null;                    // 运行面板轮询（8s）
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -183,7 +184,8 @@ function renderBoard() {
               <span class="ct" id="ct-${col}">0</span>
               <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
             </div>
-            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
+            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex-direction: column; overflow: hidden; flex: 1; min-height: 160px; padding: 8px; gap: 6px;"></div>
+            ${col === '执行中' || col === '机审' ? `<div class="board-col-run" id="runpanel-${col}"><div class="board-run-empty">等待任务进程…</div></div>` : ''}
           </div>
         `).join('')}
         ${foldedCols.length ? `<div class="board-fold-bar" id="board-fold-bar" style="display:flex;flex-direction:column;gap:8px;justify-content:center;padding:10px;">
@@ -295,6 +297,58 @@ function updateSummary() {
   const total = getFilteredCards().length;
   const wsDisplay = _ws === 'all' ? '全部' : (_nameMap[_ws] || _ws);
   el.textContent = wsDisplay + ` · 共 ${total} 张`;
+}
+
+/* ── 列内实时运行面板（老板 2026-08-12：执行中/机审 下栏显示后台任务进程）── */
+
+function fmtElapsedRun(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m${String(Math.floor(s % 60)).padStart(2, '0')}s`;
+  return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+}
+
+function renderRunItem(t) {
+  const last = Array.isArray(t.log_tail) && t.log_tail.length ? t.log_tail[t.log_tail.length - 1] : '';
+  const ins = Number(t.lines_insert) || 0;
+  const del = Number(t.lines_delete) || 0;
+  return `<div class="board-run-item ${t.metrics_live ? 'live' : ''}">
+    <div class="board-run-top">
+      <b>${esc(t.work_id || '')}</b>
+      ${t.executor && t.executor !== '未知' ? `<span class="board-run-exec">@${esc(t.executor)}</span>` : ''}
+      <span class="board-run-time">⏱ ${esc(fmtElapsedRun(t.elapsed_s))}${t.last_activity_at ? ` · ${esc(t.last_activity_at)}` : ''}</span>
+    </div>
+    <div class="board-run-log" title="日志尾">${esc(last || '（暂无日志）')}</div>
+    <div class="board-run-meta">
+      <span>调用 ${t.tool_calls || 0}</span>
+      ${t.dirty_files ? `<span>文件 ${t.dirty_files}</span>` : ''}
+      ${ins + del ? `<span>±${ins}/−${del}</span>` : ''}
+      <i class="${t.metrics_live ? 'on' : ''}">${t.metrics_live ? '● 运行中' : '○ 空闲'}</i>
+    </div>
+  </div>`;
+}
+
+async function pollRunPanels() {
+  if (!_root) return;
+  try {
+    const data = await apiGet('/tasks/running');
+    const tasks = (data && data.tasks) || [];
+    const byCol = {};
+    for (const t of tasks) {
+      const col = t.board_column || '';
+      if (col === '执行中' || col === '机审') (byCol[col] = byCol[col] || []).push(t);
+    }
+    for (const col of ['执行中', '机审']) {
+      const el = _root.querySelector(`#runpanel-${col}`);
+      if (!el) continue;
+      const list = byCol[col] || [];
+      el.innerHTML = list.length
+        ? list.slice(0, 8).map(renderRunItem).join('')
+        : '<div class="board-run-empty">无运行进程</div>';
+    }
+  } catch (e) {
+    /* 轮询失败静默，下轮重试 */
+  }
 }
 
 function classifyWsStatus(payload) {
@@ -559,12 +613,18 @@ export async function mountBoard(el) {
   await loadConfig();
   await loadBoard();
   _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+  await pollRunPanels();
+  _runTimer = setInterval(pollRunPanels, 8000);
 }
 
 export function unmountBoard() {
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
+  }
+  if (_runTimer) {
+    clearInterval(_runTimer);
+    _runTimer = null;
   }
   _colLists = {};
   _root = null;
