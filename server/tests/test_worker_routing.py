@@ -190,3 +190,92 @@ class TestClaimProtocol:
         # 卡头认领字段已被清（超时回收）
         text = card.read_text(encoding="utf-8")
         assert "认领：" not in text.split("\n")[2]
+
+
+class TestAuditRemoteCard:
+    """机审 remote 适配（ccc-plan-020 v2）：无 worktree → 分支信封 git show 读机审区。"""
+
+    @staticmethod
+    def _make_git_repo(tmp_path: Path) -> Path:
+        """建临时 git 仓：main + codex/clwX 分支（分支卡含机审区）。"""
+        import subprocess
+
+        repo = tmp_path / "repo"
+        repo.mkdir(parents=True)
+        def _run(*args: str) -> None:
+            subprocess.run(list(args), cwd=repo, capture_output=True, check=True)
+        _run("git", "init", "-q")
+        _run("git", "config", "user.email", "t@t")
+        _run("git", "config", "user.name", "t")
+        # main 上的卡（无机审区）
+        d = repo / "docs" / "dispatch" / "clw"
+        d.mkdir(parents=True)
+        card = d / "rcard.md"
+        card.write_text(
+            "# 任务卡 rcard\n\n> 关联：· 执行体：W9 · 状态：已回写 · 派发：scheduler · 项目：clw\n\n## 目标\n任务。\n",
+            encoding="utf-8",
+        )
+        _run("git", "add", ".")
+        _run("git", "commit", "-qm", "main card")
+        _run("git", "branch", "codex/rcard")
+        # codex 分支上的卡（含机审区）
+        _run("git", "checkout", "-q", "codex/rcard")
+        card.write_text(
+            "# 任务卡 rcard\n\n> 关联：· 执行体：W9 · 状态：已回写 · 派发：scheduler · 项目：clw\n\n## 目标\n任务。\n\n## 机审区\n\n**机审：通过**\n",
+            encoding="utf-8",
+        )
+        _run("git", "add", ".")
+        _run("git", "commit", "-qm", "card with audit")
+        _run("git", "checkout", "-q", "main")
+        _run("git", "remote", "add", "origin", ".")
+        # 让 origin/codex/rcard 存在
+        subprocess.run(
+            ["git", "update-ref", "refs/remotes/origin/codex/rcard", "HEAD", "--no-deref"],
+            cwd=repo,
+            check=True,
+        )
+        # origin/codex/rcard 应指向含机审区的 commit（切回分支取 tip）
+        _run("git", "checkout", "-q", "codex/rcard")
+        tip = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+        subprocess.run(
+            ["git", "update-ref", "refs/remotes/origin/codex/rcard", tip],
+            cwd=repo,
+            check=True,
+        )
+        _run("git", "checkout", "-q", "main")
+        return repo
+
+    def test_remote_card_audit_evidence_from_branch(self, tmp_path: Path) -> None:
+        """remote 卡无 worktree → 分支信封 git show origin/codex/<card> 读机审区通过。"""
+        from server.engine.main import _audit_evidence_passed
+
+        repo = self._make_git_repo(tmp_path)
+        w = _work("rcard", executor="W9", dispatch="scheduler")
+        # worktree_hint 空（remote 无本地 worktree）+ main_repo 指向测试仓
+        assert _audit_evidence_passed(w, "", main_repo=repo) is True
+
+    def test_remote_card_no_audit_falls_back_to_prod(self, tmp_path: Path) -> None:
+        """remote 分支无机审区 → 回退生产卡（main 卡也无 → False）。"""
+        from server.engine.main import _audit_evidence_passed
+
+        repo = tmp_path / "repo2"
+        repo.mkdir(parents=True)
+        import subprocess
+
+        def _run(*args: str) -> None:
+            subprocess.run(list(args), cwd=repo, capture_output=True, check=True)
+        _run("git", "init", "-q")
+        _run("git", "config", "user.email", "t@t")
+        _run("git", "config", "user.name", "t")
+        d = repo / "docs" / "dispatch" / "clw"
+        d.mkdir(parents=True)
+        card = d / "rcard2.md"
+        card.write_text(
+            "# 任务卡 rcard2\n\n> 关联：· 执行体：W9 · 状态：已回写 · 派发：scheduler · 项目：clw\n\n## 目标\n。\n",
+            encoding="utf-8",
+        )
+        _run("git", "add", ".")
+        _run("git", "commit", "-qm", "c")
+        _run("git", "remote", "add", "origin", ".")
+        w = _work("rcard2", executor="W9", dispatch="scheduler")
+        assert _audit_evidence_passed(w, "", main_repo=repo) is False

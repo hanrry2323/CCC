@@ -547,11 +547,26 @@ def _pin_audit_commit(card_path: str, sha: str) -> bool:
     return True
 
 
-def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
+def _is_remote_work(work: Work) -> bool:
+    """判定卡是否为远端 Worker 卡（认领协议）：执行体 W 号 或 派发 scheduler|remote。
+
+    remote 卡无本地 worktree → 机审/证据检查走分支信封（ccc-plan-020 v2）。
+    """
+    import re as _re
+
+    if work.dispatch in ("scheduler", "remote"):
+        return True
+    return bool(_re.fullmatch(r"W\d+", (work.executor or "").strip()))
+
+
+def _audit_evidence_passed(work: Work, worktree_hint: str, main_repo: Path | None = None) -> bool:
     """机审证据是否已在信封（**分支 git 证据**为准，生产卡兜底）。
 
     只认进 git 的证据：worktree 卡文件有标记但分支没有（commit 被吞的洞）
     不算通过，避免死结（xy016 事故）。
+
+    remote 卡（无本地 worktree）：走分支信封 —— `git show origin/<codex分支>:<卡>` 读机审区，
+    生产卡兜底作为最终 fallback（ccc-plan-020 v2 · 机审 remote 适配）。
     """
     if worktree_hint:
         wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
@@ -573,6 +588,27 @@ def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
 
                 if machine_audit_passed_text(res.stdout):
                     return True
+        return _card_machine_audit_passed(work.card_path)
+    # remote 卡（无本地 worktree）：分支信封读机审区
+    if _is_remote_work(work) and work.card_path:
+        try:
+            repo = main_repo if main_repo is not None else Path(__file__).resolve().parents[2]
+            branch = f"codex/{Path(work.card_path).stem.lower()}"
+            rel = Path(work.card_path).as_posix()
+            res = subprocess.run(
+                ["git", "-C", str(repo), "show", f"origin/{branch}:{rel}"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if res.returncode == 0:
+                from server.board.models import machine_audit_passed_text
+
+                if machine_audit_passed_text(res.stdout):
+                    return True
+        except Exception:
+            pass
     return _card_machine_audit_passed(work.card_path)
 
 
