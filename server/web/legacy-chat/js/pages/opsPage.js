@@ -145,20 +145,14 @@ function renderReview(mergeData, cards) {
     <a class="ops-goto-board" href="#/board" title="去看板处理">去处理 →</a>
   </div>`;
   const htmlParts = [];
-  if (mergeCards.length) {
-    htmlParts.push(`<div class="ops-subgroup"><h5>待合入审查（${mergeCards.length}）</h5>${mergeCards.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type">待合入</span>')).join('')}</div>`);
-  }
-  if (returned.length) {
-    htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type returned">打回</span>')).join('')}</div>`);
-  }
-  if (auditing.length) {
-    htmlParts.push(`<div class="ops-subgroup"><h5>机审中（${auditing.length} · 进行中）</h5>${auditing.slice(0, 8).map((c) => `<div class="ops-review-item">
+  htmlParts.push(`<div class="ops-subgroup"><h5>待合入审查（${mergeCards.length}）</h5>${mergeCards.length ? mergeCards.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type">待合入</span>')).join('') : '<div class="ops-empty">无待合入</div>'}</div>`);
+  htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.length ? returned.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type returned">打回</span>')).join('') : '<div class="ops-empty">无打回卡</div>'}</div>`);
+  htmlParts.push(`<div class="ops-subgroup"><h5>机审中（${auditing.length} · 进行中）</h5>${auditing.length ? auditing.slice(0, 8).map((c) => `<div class="ops-review-item">
       <span class="ops-review-id">${esc(c.id || '')}</span>
       <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
       <span class="ops-review-proj">${esc(c.project || '')}</span>
       <span class="ops-todo-type">机审中</span>
-    </div>`).join('')}</div>`);
-  }
+    </div>`).join('') : '<div class="ops-empty">无机审中</div>'}</div>`);
   el.innerHTML = htmlParts.length
     ? htmlParts.join('')
     : '<div class="ops-empty">无待审查项 🎉</div>';

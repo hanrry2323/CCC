@@ -4319,12 +4319,13 @@
 }
 .pcard-head .pcard-open svg { width: 13px; height: 13px; }
 .pcard-title {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 650;
   color: #1c1c1e;
   line-height: 1.45;
   margin: 0 0 6px;
   flex: none;
+  min-height: 2.9em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
