@@ -655,6 +655,123 @@ def _collect_ops_services() -> list[dict[str, Any]]:
     return services
 
 
+def _parse_port_map(raw: str) -> dict[int, str]:
+    """解析 'port:name,port:name' → {port: name}。"""
+    out: dict[int, str] = {}
+    for pair in (raw or "").split(","):
+        pair = pair.strip()
+        if ":" in pair:
+            k, v = pair.split(":", 1)
+            try:
+                out[int(k.strip())] = v.strip()
+            except ValueError:
+                continue
+    return out
+
+
+def _scan_listening_ports() -> list[dict[str, Any]]:
+    """lsof 全量扫描本机 TCP 监听端口（自动发现，零配置）。"""
+    try:
+        out = subprocess.run(
+            ["lsof", "-iTCP", "-sTCP:LISTEN", "-n", "-P"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        ).stdout
+    except Exception:
+        return []
+    ports: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 9:
+            continue
+        cmd, pid = parts[0], parts[1]
+        addr = parts[8]
+        port_s = addr.rsplit(":", 1)[-1]
+        if not port_s.isdigit() or int(port_s) <= 0:
+            continue
+        port = int(port_s)
+        if (cmd, port) in seen:
+            continue
+        seen.add((cmd, port))
+        ports.append({"command": cmd, "pid": pid, "port": port})
+    return ports
+
+
+def _build_ports_payload() -> dict[str, Any]:
+    """端口探索：监听全量 + 三态分类 + 业务映射 + 快照 diff。"""
+    import datetime as _dt
+    import json as _json
+
+    listening = _scan_listening_ports()
+    known = _parse_port_map(os.environ.get("CLUSTER_PORT_NAMES", ""))
+    business = _parse_port_map(os.environ.get("CLUSTER_BUSINESS_PORTS", ""))
+    all_maps = {**business, **known}
+    by_port = {p["port"]: p for p in listening}
+
+    ports: list[dict[str, Any]] = []
+    for port in sorted(by_port):
+        info = by_port[port]
+        name = all_maps.get(port)
+        ports.append(
+            {
+                "port": port,
+                "pid": info["pid"],
+                "command": info["command"],
+                "name": name or "",
+                "url": f"http://127.0.0.1:{port}",
+                "status": "active_known" if name else "active_unknown",
+            }
+        )
+    for port in sorted(set(all_maps) - set(by_port)):
+        ports.append(
+            {
+                "port": port,
+                "pid": None,
+                "command": "",
+                "name": all_maps[port],
+                "url": f"http://127.0.0.1:{port}",
+                "status": "registered_stale",
+            }
+        )
+
+    # 快照 diff：今日 vs 昨日（消失端口 = 历史使用）
+    data_dir = Path(_config_value("DATA_DIR", "data")).resolve()
+    ports_dir = data_dir / "ports"
+    today = _dt.date.today().isoformat()
+    new_ports: list[int] = []
+    gone_ports: list[int] = []
+    try:
+        ports_dir.mkdir(parents=True, exist_ok=True)
+        prev = None
+        for f in sorted(ports_dir.glob("*.json")):
+            if f.stem != today:
+                try:
+                    prev = _json.loads(f.read_text(encoding="utf-8"))
+                except Exception:
+                    prev = None
+        now_set = set(by_port)
+        if prev is not None:
+            prev_set = set(int(x) for x in prev.get("ports", []))
+            new_ports = sorted(now_set - prev_set)
+            gone_ports = sorted(prev_set - now_set)
+        (ports_dir / f"{today}.json").write_text(
+            _json.dumps({"date": today, "ports": sorted(now_set)}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+    return {
+        "ports": ports,
+        "listening_count": len(listening),
+        "scan_at": _dt.datetime.now().isoformat(timespec="seconds"),
+        "new_ports": new_ports,
+        "gone_ports": gone_ports,
+    }
+
+
 def _build_ops_summary() -> dict[str, Any]:
     """构造 OpsSummary 兼容子集（对齐桌面端可消费字段）。
 
@@ -1085,7 +1202,7 @@ def _compose_board_items(items):
     from dataclasses import replace
 
     from server.engine.runtime_state import read_card_state
-    from server.web.audit_evidence import branch_card_audit_passed
+    from server.web.audit_evidence import branch_card_audit_passed, branch_card_state
 
     log_dir = _executor_log_dir()
     runtime = read_card_state(log_dir) if log_dir else {}
@@ -1118,6 +1235,14 @@ def _compose_board_items(items):
             new_state = item.state
         else:
             new_state = str(rt["state"]) if rt.get("state") else item.state
+        # 分支信封状态（2026-08-12 · 与 engine store 同语义）：磁盘 main 镜像未合入前
+        # 永远旧值 + sidecar 收单后清除 → 已回写/已关闭/打回终态从远端 codex/<slug> 分支卡读。
+        if base_state(new_state) in ("待分派", "执行中") and not rt.get("state"):
+            rel = path_by_id.get(item.id)
+            if rel and repo_root is not None:
+                branch_state = branch_card_state(repo_root, rel, "codex/" + Path(rel).stem.lower())
+                if branch_state:
+                    new_state = branch_state
         audited = item.machine_audit_passed
         closed_at = item.closed_at
         audit_status = item.audit_status
@@ -2204,6 +2329,13 @@ class _APIHandler(BaseHTTPRequestHandler):
         """GET /ops/relay-stats → 中转站今日请求（总/Pro/flash/code）+ 近10s增量 + 健康。"""
         self._send_json(_compute_relay_stats())
 
+    def _handle_ops_ports(self):
+        """GET /ops/ports → 集群端口全量探索（监听 + 三态分类 + 快照历史）。"""
+        try:
+            self._send_json(_build_ports_payload())
+        except OSError as exc:
+            self._send_json({"error": f"端口扫描失败: {exc}"}, 500)
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
         raw_path = self.path.split("?")[0]
@@ -2260,6 +2392,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/relay-stats":
             self._handle_ops_relay_stats()
+            return
+        if path == "/ops/ports":
+            self._handle_ops_ports()
             return
         if path == "/loop/findings":
             self._handle_loop_findings()
