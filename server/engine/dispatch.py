@@ -218,8 +218,11 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
         args_template = raw.get("参数模板", "")
         workdir = raw.get("工作目录", "")
         worktree_base = raw.get("worktree_base", "")
-        # 可后台 CLI 行必须有命令（参数模板允许空，表示无参数）
-        if category == "可后台 CLI":
+        transport = raw.get("transport", "local")
+        # 可后台 CLI 行必须有命令（参数模板允许空，表示无参数）。
+        # 例外：远端 Worker（transport=git/ssh + worker_id）走认领协议，无本地命令（ccc-plan-020 v2）。
+        is_remote = transport in ("git", "ssh") and bool(raw.get("worker_id", ""))
+        if category == "可后台 CLI" and not is_remote:
             if not command:
                 raise ValueError(f"executors[{idx}] 可后台 CLI 行缺派发字段: ['命令']")
             # 校验参数模板占位符合法（模板非空时）
@@ -237,6 +240,10 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
                 worktree_base=worktree_base,
                 project=raw.get("项目", ""),
                 worker_id=raw.get("worker_id", ""),
+                host=raw.get("host", ""),
+                transport=transport,
+                worker_status=raw.get("worker_status", ""),
+                remote_workdir=raw.get("remote_workdir", ""),
             )
         )
     return ExecutorRegistry(tuple(entries))
