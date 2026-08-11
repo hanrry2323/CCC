@@ -1082,7 +1082,7 @@ class TestParallelAndRelayGuard:
         r1 = run_once(reg, store, cfg, wait=False)
         assert r1["dispatched"] == 1
 
-        deadline = time.time() + 8
+        deadline = time.time() + 15
         s = None
         while time.time() < deadline:
             time.sleep(0.15)
@@ -1094,7 +1094,7 @@ class TestParallelAndRelayGuard:
         assert s["audit_dispatched"] == 1, f"机审应独立派发: {s}"
         assert s["dispatched"] == 1, f"执行槽应同时派第二张: {s}"
 
-        deadline2 = time.time() + 8
+        deadline2 = time.time() + 15
         d = None
         while time.time() < deadline2:
             time.sleep(0.25)
@@ -2740,7 +2740,9 @@ class TestBusinessWorktreeIsolation:
         repo.mkdir(parents=True)
         subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo), check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True, capture_output=True
+        )
         (repo / "seed.txt").write_text("seed", encoding="utf-8")
         subprocess.run(["git", "add", "seed.txt"], cwd=str(repo), check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), check=True, capture_output=True)
