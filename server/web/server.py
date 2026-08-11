@@ -1480,7 +1480,7 @@ def _try_json_line(line: str) -> dict | None:
         return None
 
 
-_RUNNING_TASKS_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_RUNNING_TASKS_CACHE: dict[str, Any] = {"ts": 0.0, "key": "", "data": None}
 _RUNNING_TASKS_TTL = 3.0
 
 
@@ -1493,7 +1493,12 @@ def _load_running_tasks() -> dict[str, Any]:
     - dirty / lines：worktree 落盘改动（force 刷新）。
     """
     now0 = time.time()
-    if _RUNNING_TASKS_CACHE["data"] is not None and now0 - _RUNNING_TASKS_CACHE["ts"] < _RUNNING_TASKS_TTL:
+    key = _log_activity_key(_executor_log_dir())
+    if (
+        _RUNNING_TASKS_CACHE["data"] is not None
+        and _RUNNING_TASKS_CACHE["key"] == key
+        and now0 - _RUNNING_TASKS_CACHE["ts"] < _RUNNING_TASKS_TTL
+    ):
         return _RUNNING_TASKS_CACHE["data"]
     from server.board.models import board_column as _board_column
     from server.web.exec_metrics import parse_work_call_counts, running_timing
@@ -1553,7 +1558,7 @@ def _load_running_tasks() -> dict[str, Any]:
         tasks.append(task)
     tasks.sort(key=lambda t: (t["elapsed_s"] is None, -(t["elapsed_s"] or 0)))
     result = {"tasks": tasks}
-    _RUNNING_TASKS_CACHE.update(ts=now0, data=result)
+    _RUNNING_TASKS_CACHE.update(ts=now0, key=key, data=result)
     return result
 
 
