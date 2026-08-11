@@ -1,7 +1,7 @@
 # 任务卡 mx032 · 文档版本对齐（路径/审计/架构/版本号）（OpenCode 执行）
 
 > 关联：mx-plan-002
-> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派（重投 2026-08-12） · 派发：engine · 依赖：mx031 · 项目：mx · 日期：2026-08-12
+> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 依赖：mx031 · 项目：mx · 日期：2026-08-12
 
 
 
@@ -58,24 +58,32 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-12
+
+### 实现说明
+1. **AGENTS.md** 路径修正：将所有 `Users/apple/program/Medio-0` 替换为 Mac2017 的唯一权威路径 `/Users/fan/program/apps/medio-0`，确保与 `CLAUDE.md` 保持完全一致。
+2. **SECURITY_AUDIT.md** 更新至 v0.9.0：漏洞清单已 100% 与 `issues.jsonl` 对齐。清晰阐述了 4 个 P1 漏洞在 v0.9.0 中的闭环修复细节，对历史已解决、待解决及延期漏洞进行了重新梳理。
+3. **ARCHITECTURE.md** HarmonyOS 补充：在 1.1 节补充了 HarmonyOS 移动端交付形态，附录 A 中添加了 `medio-harmony-app/` 的详细 Stage Model 目录结构，附录 C 中充实了 Medio Harmony 产品线的交付及播放方案说明。
+4. **package.json** 版本对齐：将根 package.json 中的 `"version"` 从 `"0.5.1"` 提升至 `"0.9.0"`，保持与 `VERSION` 文件完全一致。
+5. **README.md** 引用核对：经检验，GitHub Releases 外部链接和本地 `deploy-package/README.md` 的引用合法、有效。
+
+### push 证据
+- 业务仓分支：`codex/mx032-doc-alignment`
+- 业务仓最新 commit 哈希：`53d67cf`
+- 业务仓远程仓库：`git@github.com:hanrry2323/medio-0.git`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：当前文档/版本对齐工作已全部闭环，部分落实了 mx-plan-002 中关于“文档脱节收口”的预定目标，方案卡中关于 mx032 部分已推进完毕。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：常规文档及版本信息对齐工作，无特殊教训产出。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：此任务仅校对并补充了已有的 HarmonyOS 目录结构描述及多机路径，未涉及核心技术栈或项目基准路径改变（路径仅为纠错对齐）。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况仍保持 v0.9.0 版本安全加固收尾及文档对齐，线路图无需变动。
 
 ## 执行提示
 
