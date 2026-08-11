@@ -1570,6 +1570,27 @@ def _log_delta(path: Path, pos: int) -> tuple[list[str], int]:
         return [], pos
 
 
+def _filter_log_line(raw: str) -> str | None:
+    """日志行过滤：去 ANSI，丢弃引擎/工具痕迹/git 噪声，只保留含中文的主输出。"""
+    try:
+        from server.web.exec_metrics import strip_ansi
+
+        line = strip_ansi(raw).strip()
+    except Exception:
+        line = raw.strip()
+    if not line:
+        return None
+    if line.startswith("[ccc.engine]"):
+        return None
+    if line.startswith(("→", "$", ">")):
+        return None
+    if re.fullmatch(r"[-_=]{3,}", line):
+        return None
+    if not re.search(r"[\u4e00-\u9fff]", line):
+        return None  # 只保留含中文的主输出（git/终端回声等丢弃）
+    return line
+
+
 class _APIHandler(BaseHTTPRequestHandler):
     """HTTP API 请求处理器。"""
 
@@ -2493,11 +2514,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         try:
             for cid, s in streams.items():
                 src = s["files"][s["snapshot_source"]]
-                lines = _tail_lines_file(src["path"], 3) if src["path"] is not None else []
+                raw_lines = _tail_lines_file(src["path"], 30) if src["path"] is not None else []
+                lines = [ln for ln in raw_lines if _filter_log_line(ln) is not None][-5:]
                 emit("snapshot", {"work_id": s["id"], "lines": lines})
             last_beat = time.time()
             while True:
-                time.sleep(0.8)
+                time.sleep(5.0)  # 统一看板刷新频率（老板 2026-08-12）
                 for cid, s in streams.items():
                     for source, f in s["files"].items():
                         if f["path"] is None or not f["path"].is_file():
@@ -2505,7 +2527,8 @@ class _APIHandler(BaseHTTPRequestHandler):
                         lines, pos = _log_delta(f["path"], f["pos"])
                         if lines:
                             f["pos"] = pos
-                            for ln in lines:
+                            kept = [ln for ln in lines if _filter_log_line(ln) is not None]
+                            for ln in kept:
                                 emit("log", {"work_id": s["id"], "line": ln, "source": source})
                 if time.time() - last_beat >= 15:
                     self.wfile.write(b": ping\n\n")

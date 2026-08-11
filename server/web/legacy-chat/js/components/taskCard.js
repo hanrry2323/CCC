@@ -113,7 +113,7 @@ export function renderTaskCard(t, opts = {}) {
   const tone = STATE_TONE[state] || 'pending';
   const color = STATE_COLORS[state] || '#a39e93';
   const streamHtml = opts.stream
-    ? `<div class="board-card-stream" data-stream-id="${escapeHtml(t.id)}">
+    ? `<div class="board-card-stream" data-stream-id="${escapeHtml(t.id)}" title="仅显示主要输出（中文主输出 · 5 秒刷新）">
         <div class="board-card-stream-lines"><div class="board-card-stream-empty">连接实时日志…</div></div>
       </div>`
     : '';
