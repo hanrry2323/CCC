@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -78,7 +79,7 @@ def _extract_title(content: str) -> str:
 
 
 def _extract_acceptance(content: str) -> dict[str, int]:
-    """提取验收标准完成情况。"""
+    """提取验收标准完成情况（只统计 checkbox 行，说明文字不计）。"""
     total = 0
     done = 0
     in_section = False
@@ -86,11 +87,14 @@ def _extract_acceptance(content: str) -> dict[str, int]:
         if line.strip().startswith("## 验收标准"):
             in_section = True
             continue
-        if in_section and line.strip().startswith("##"):
+        if in_section and line.strip().startswith("## "):
             break
-        if in_section and line.strip():
+        if in_section:
+            m = re.match(r"^\s*[-*]\s+\[([ xX])\]", line)
+            if not m:
+                continue
             total += 1
-            if "[x]" in line.lower():
+            if m.group(1) in ("x", "X"):
                 done += 1
     return {"total": total, "done": done}
 
@@ -390,17 +394,86 @@ def update_plan(
     return {"ok": True}
 
 
+_CONVERT_LOCK = threading.Lock()
+
+
+def _acquire_convert_lock(repo_root: Path, prefix: str):
+    """同前缀转卡互斥锁（fcntl 文件锁；无 fcntl 环境退化为进程内锁）。"""
+    lock_dir = repo_root / "docs" / "projects" / prefix / "plans"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lock_dir / f".convert-{prefix}.lock"
+    try:
+        import fcntl
+    except ImportError:
+        if not _CONVERT_LOCK.acquire(blocking=False):
+            return None
+        return ("thread", None)
+    try:
+        f = open(lock_path, "w")
+    except OSError:
+        return None
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return ("fcntl", f)
+
+
+def _release_convert_lock(handle, repo_root: Path, prefix: str) -> None:
+    kind, f = handle
+    if kind == "thread":
+        _CONVERT_LOCK.release()
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(f, fcntl.LOCK_UN)
+    finally:
+        f.close()
+        lock_path = repo_root / "docs" / "projects" / prefix / "plans" / f".convert-{prefix}.lock"
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _extract_created_card(stdout: str, prefix: str, repo_root: Path) -> tuple[Path, str] | None:
+    """从 new-card.sh 输出提取生成的卡文件（路径 + 卡 ID）。"""
+    fname_m = re.search(rf"({prefix}\d{{3}}-[a-z0-9][-a-z0-9]*\.md)", stdout)
+    if not fname_m:
+        return None
+    fname = fname_m.group(1)
+    path_m = re.search(rf"([^\s]*docs/dispatch/{prefix}/{re.escape(fname)})", stdout)
+    if path_m:
+        p = Path(path_m.group(1))
+        path = p if p.is_absolute() else repo_root / p
+    else:
+        path = repo_root / "docs" / "dispatch" / prefix / fname
+    return path, fname.split("-", 1)[0]
+
+
+def _rollback_created(files: list[Path]) -> None:
+    """删除本轮已生成的卡文件（转卡失败时回滚，保证重试不产生重复卡）。"""
+    for p in files:
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def convert_plan(
     repo_root: Path,
     *,
     rel_path: str,
+    no_push: bool = False,
 ) -> dict[str, Any]:
     """将方案转为任务卡。
 
     1. 读取方案的「转卡计划」段
-    2. 调 new-card.sh 生成任务卡
-    3. 自动推进方案状态为「部分执行」
-    4. 写入关联卡字段
+    2. 调 new-card.sh 生成任务卡（全部成功才推进状态；失败回滚已生成卡）
+    3. 自动推进方案状态为「部分执行」+ 写入关联卡
+    4. 默认 commit+push 到远端（no_push=True 供测试/无 git 环境跳过）
 
     Returns:
         {ok, cards: [card_id]} or {error}
@@ -415,6 +488,34 @@ def convert_plan(
 
     prefix = m.group(1)
 
+    # 红线（2026-08-10）：禁出卡前缀（如 ccc 平台自研）禁止转卡，方案仍可存在与查看
+    try:
+        from server.board.registry import forbidden_prefixes
+
+        if prefix in forbidden_prefixes(str(repo_root / "docs" / "projects" / "registry.yaml")):
+            return {"error": f"项目 {prefix} 为禁出卡前缀（平台自研红线），禁止转卡"}
+    except Exception:
+        pass
+
+    # 并发锁：同前缀同时只允许一个转卡，防重复出卡
+    lock_f = _acquire_convert_lock(repo_root, prefix)
+    if lock_f is None:
+        return {"error": f"{prefix} 有转卡进行中，请稍后重试"}
+    try:
+        return _convert_plan_locked(repo_root, rel_path=rel_path, prefix=prefix, no_push=no_push)
+    finally:
+        _release_convert_lock(lock_f, repo_root, prefix)
+
+
+def _convert_plan_locked(
+    repo_root: Path,
+    *,
+    rel_path: str,
+    prefix: str,
+    no_push: bool,
+) -> dict[str, Any]:
+    m = _PLAN_PATH_RE.match(rel_path)
+    plan_file = repo_root / rel_path
     try:
         content = plan_file.read_text()
     except OSError:
@@ -453,6 +554,7 @@ def convert_plan(
     if not new_card_script.exists():
         return {"error": "new-card.sh 不存在"}
 
+    created_files: list[Path] = []
     cards: list[str] = []
 
     # 按行拆分转卡计划，每行作为一张卡的标题
@@ -474,15 +576,21 @@ def convert_plan(
         )
 
         if result.returncode != 0:
+            _rollback_created(created_files)
             return {
                 "error": f"出卡失败: {card_title}\n{result.stderr or result.stdout}",
                 "cards": cards,
             }
 
-        # 从输出提取卡 ID（匹配 "创建: docs/dispatch/<prefix>/<prefix><NNN>-..." 或 "ID=<prefix><NNN>"）
-        card_match = re.search(rf"(?:ID=|创建:.*?/){prefix}(\d{{3}})", result.stdout)
-        if card_match:
-            cards.append(f"{prefix}{card_match.group(1)}")
+        created = _extract_created_card(result.stdout, prefix, repo_root)
+        if created is None:
+            _rollback_created(created_files)
+            return {
+                "error": f"出卡成功但无法解析卡文件路径: {card_title}\n{result.stdout}",
+                "cards": cards,
+            }
+        created_files.append(created[0])
+        cards.append(created[1])
 
     # 自动推进状态为「部分执行」+ 写入关联卡
     today = date.today().isoformat()
@@ -497,5 +605,45 @@ def convert_plan(
     current = re.sub(r"(关联卡：)([^\n]*)", f"\\1{card_list}", current, count=1)
 
     plan_file.write_text(current)
+
+    if no_push:
+        return {"ok": True, "cards": cards}
+
+    # commit+push：卡文件与方案状态同批提交，Engine 才能感知新卡
+    rel_paths = [str(p.relative_to(repo_root)) for p in created_files] + [rel_path]
+    plan_id = f"{prefix}-plan-{m.group(2)}"
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo_root), "add", "--", *rel_paths],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "commit",
+                "-m",
+                f"cards: convert-plan {plan_id} ({len(cards)} slices)",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo_root), "push"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        return {
+            "ok": False,
+            "error": f"卡已生成并推进方案状态，但提交/推送失败，需手动推送: {exc.stderr or exc.stdout}",
+            "cards": cards,
+            "partial": True,
+        }
 
     return {"ok": True, "cards": cards}

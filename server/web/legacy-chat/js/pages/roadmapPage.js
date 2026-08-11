@@ -10,7 +10,7 @@
  */
 
 import { apiGet } from '../api.js';
-import { buildTimelineSVG, cardListHTML, riskHTML } from '../roadmapTimeline.js';
+import { buildTimelineSVG, cardListHTML, riskHTML, esc } from '../roadmapTimeline.js';
 
 let _root = null;
 let _timer = null;
@@ -28,13 +28,6 @@ function html() {
   </div>
   <div id="roadmap-body"><div class="board-empty">加载中…</div></div>
 </div>`;
-}
-
-function esc(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
 }
 
 /* ── 一级页：项目卡片总览 ── */

@@ -61,10 +61,6 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function h(html) {
-  return String(html || '');
-}
-
 /** 内联 SVG 图标（lucide 风格，stroke=currentColor，16px） */
 function icon(name) {
   const p = {

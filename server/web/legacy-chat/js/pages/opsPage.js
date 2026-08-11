@@ -189,7 +189,7 @@ function renderLoop(loopData) {
           <div class="ops-todo-meta">
             <span class="ops-todo-type">${esc(t)}</span>
             <span class="ops-todo-proj">${esc(f.project || '')}</span>
-            <span class="ops-todo-time" title="${esc(f._ts ? new Date(f._ts * 1000).toLocaleString() : '')}">${agoText(f._ts)}</span>
+            <span class="ops-todo-time" title="${esc(f._ts ? new Date(f._ts * 1000).toLocaleString() : '')}">扫描于 ${agoText(f._ts)}</span>
             ${f.acting_on ? `<code>${esc(f.acting_on)}</code>` : ''}
           </div>
           ${cmd ? `<button type="button" class="hub-btn" data-cmd="${esc(cmd)}" title="复制转卡命令到 M1 执行">转卡</button>` : ''}

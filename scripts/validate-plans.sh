@@ -62,7 +62,8 @@ validate_file() {
   local slug=$(echo "$fname" | sed -E 's/^[0-9]{3}-(.*)\.md$/\1/')
 
   # ── 2. prefix 校验 ──
-  if ! echo "$VALID_PREFIXES" | grep -qxF "$prefix"; then
+  # ccc 平台自研方案允许存在与查看（2026-08-10 红线仅禁转卡，由 server/board/plans.py convert 拦截）
+  if ! echo "$VALID_PREFIXES" | grep -qxF "$prefix" && [ "$prefix" != "ccc" ]; then
     red "  FAIL 前缀不在 registry: $prefix"
     ERRORS=$((ERRORS + 1))
     return

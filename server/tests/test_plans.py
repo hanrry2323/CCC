@@ -79,8 +79,9 @@ def _make_plan(
     return p
 
 
-def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
+def _make_registry(tmp: Path, prefixes: list[str], forbidden: set[str] | None = None) -> Path:
     """构造最小 registry.yaml。"""
+    forbidden = forbidden or set()
     reg = tmp / "docs" / "projects" / "registry.yaml"
     reg.parent.mkdir(parents=True, exist_ok=True)
     lines = ["schema: ccc-project-registry-v1", "projects:"]
@@ -89,7 +90,7 @@ def _make_registry(tmp: Path, prefixes: list[str]) -> Path:
         lines.append(f"    id: {p}")
         lines.append(f"    name: {p}")
         lines.append("    taskable: true")
-        lines.append("    forbidden: false")
+        lines.append(f"    forbidden: {str(p in forbidden).lower()}")
         lines.append("    status: active")
     reg.write_text("\n".join(lines))
     return reg
@@ -100,6 +101,34 @@ def _make_validate_script(tmp: Path) -> Path:
     s = tmp / "scripts" / "validate-plans.sh"
     s.parent.mkdir(parents=True, exist_ok=True)
     s.write_text("#!/usr/bin/env bash\nexit 0\n")
+    s.chmod(0o755)
+    return s
+
+
+def _make_new_card_script(tmp: Path, *, fail_marker: str = "FAIL") -> Path:
+    """构造最小 new-card.sh mock：输出真实格式「出卡成功 + validate 通过: <path>」。"""
+    s = tmp / "scripts" / "new-card.sh"
+    s.parent.mkdir(parents=True, exist_ok=True)
+    body = f"""#!/usr/bin/env bash
+title=""
+project="ccc"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --title) title="$2"; shift 2 ;;
+    --project) project="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if printf '%s' "$title" | grep -q '{fail_marker}'; then
+  echo "[ERROR] mock fail: $title" >&2
+  exit 1
+fi
+f="docs/dispatch/${{project}}/${{project}}999-mock.md"
+mkdir -p "$(dirname "$f")"
+printf '# 任务卡 %s999\\n' "$project" > "$f"
+echo "[OK] 出卡成功 + validate 通过: $f"
+"""
+    s.write_text(body)
     s.chmod(0o755)
     return s
 
@@ -395,6 +424,43 @@ class TestConvertPlan:
         assert "error" in result
         assert "不可转卡" in result["error"]
 
+    def test_forbidden_prefix_rejected(self, tmp_path: Path):
+        """禁出卡前缀（平台自研红线）禁止转卡，方案仍可存在。"""
+        _make_registry(tmp_path, ["ccc"], forbidden={"ccc"})
+        _make_validate_script(tmp_path)
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="- alpha")
+        rel = str(p.relative_to(tmp_path))
+        result = convert_plan(tmp_path, rel_path=rel)
+        assert "error" in result
+        assert "禁出卡" in result["error"]
+
+    def test_convert_success_no_push(self, tmp_path: Path):
+        """成功路径：生成卡 + 状态推进 + 关联卡写入（no_push 跳过 git）。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_new_card_script(tmp_path)
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="- alpha")
+        rel = str(p.relative_to(tmp_path))
+        result = convert_plan(tmp_path, rel_path=rel, no_push=True)
+        assert result.get("ok") is True
+        assert result["cards"] == ["ccc999"]
+        content = p.read_text()
+        assert "状态：部分执行" in content
+        assert "关联卡：ccc999" in content
+        assert (tmp_path / "docs" / "dispatch" / "ccc" / "ccc999-mock.md").exists()
+
+    def test_convert_partial_failure_rolls_back(self, tmp_path: Path):
+        """部分失败：已生成卡回滚，方案状态不推进，重试不产生重复卡。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_new_card_script(tmp_path)
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="- alpha\n- FAIL")
+        rel = str(p.relative_to(tmp_path))
+        result = convert_plan(tmp_path, rel_path=rel)
+        assert "error" in result
+        assert not (tmp_path / "docs" / "dispatch" / "ccc" / "ccc999-mock.md").exists()
+        assert "状态：已确认" in p.read_text()
+
 
 # ── 6. helpers ──
 
@@ -441,6 +507,21 @@ class TestHelpers:
 - [x] 已完成
 - [ ] 未完成
 - [x] 已完成 2
+## 其他段
+"""
+        a = _extract_acceptance(content)
+        assert a["total"] == 3
+        assert a["done"] == 2
+
+    def test_extract_acceptance_ignores_prose(self):
+        """验收统计只计 checkbox 行，说明文字/子标题不计。"""
+        content = """## 验收标准
+
+- [x] 已完成
+说明文字不算
+- [ ] 未完成
+### 子标题
+- [x] 完成 2
 ## 其他段
 """
         a = _extract_acceptance(content)
