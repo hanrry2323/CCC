@@ -234,11 +234,46 @@ _load_persisted_threads()
 
 def _chat_bridge_url() -> str:
     """M1 对话桥地址（配置后 /conversation 与 threads 走代理）。"""
-    return os.environ.get("CCC_CHAT_BRIDGE_URL", "").strip()
+    return _env_or_config("CCC_CHAT_BRIDGE_URL", "").strip()
 
 
 def _chat_bridge_token() -> str:
-    return os.environ.get("CCC_CHAT_BRIDGE_TOKEN", "").strip()
+    return _env_or_config("CCC_CHAT_BRIDGE_TOKEN", "").strip()
+
+
+def _ensure_chat_bridge() -> None:
+    """M1 对话桥不可达时经 ssh 拉起（nohup 常驻；launchd 下 claude 子进程会挂起）。"""
+    url = _chat_bridge_url()
+    if not url:
+        return
+    m = re.match(r"http://([^:/]+):(\d+)", url)
+    if not m:
+        return
+    host, port = m.group(1), int(m.group(2))
+    import socket
+
+    try:
+        s = socket.create_connection((host, port), timeout=2)
+        s.close()
+        return
+    except OSError:
+        pass
+    token = _chat_bridge_token()
+    remote = (
+        f"cd {_PROJECT_ROOT} && nohup env CCC_CHAT_BRIDGE_PORT={port} "
+        f"CCC_CHAT_BRIDGE_TOKEN={token} CCC_CHAT_DATA_DIR=/Users/apple/.ccc-chat "
+        f"/opt/homebrew/bin/python3 -m server.web.chat_bridge > /tmp/chat-bridge.log 2>&1 < /dev/null &"
+    )
+    try:
+        subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=6", "-o", "BatchMode=yes", f"apple@{host}", remote],
+            capture_output=True,
+            text=True,
+            timeout=12,
+        )
+        time.sleep(2)
+    except Exception:
+        logger.exception("chat-bridge 拉起失败")
 
 # ── 免鉴权的路径前缀 ──
 # /tasks/running 与 /projects 同组（T53：控制台后台任务进程面板数据源，免登录白名单）
@@ -1741,11 +1776,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         model = str(body.get("model") or "").strip()
         project = str(body.get("project") or "").strip() or _project_of_thread_id(thread_id)
         if body.get("stream"):
-            bridge = _chat_bridge_url()
-            if bridge:
-                # M1 对话桥代理：SSE 透传（原版 Claude Code，无 brain 人格/档位）
-                self._proxy_chat_stream(bridge, message, thread_id, project)
-                return
+        bridge = _chat_bridge_url()
+        if bridge:
+            _ensure_chat_bridge()
+            # M1 对话桥代理：SSE 透传（原版 Claude Code，无 brain 人格/档位）
+            self._proxy_chat_stream(bridge, message, thread_id, project)
+            return
             self._handle_conversation_stream(message, thread_id, model, project)
             return
         bridge = _chat_bridge_url()
@@ -1883,6 +1919,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         after_raw = (qs.get("after", [""])[0] or "").strip()
         bridge = _chat_bridge_url()
         if bridge:
+            _ensure_chat_bridge()
             import urllib.request
             from urllib.parse import quote
 
@@ -2642,6 +2679,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             project = unquote(path[len("/projects/") : -len("/threads")])
             bridge = _chat_bridge_url()
             if bridge:
+                _ensure_chat_bridge()
                 import urllib.request
                 from urllib.parse import quote
 

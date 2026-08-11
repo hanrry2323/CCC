@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -93,14 +94,56 @@ def _run_claude_stream(prompt: str, project_root: str):
     env.pop("ANTHROPIC_BASE_URL", None)
     env.pop("ANTHROPIC_AUTH_TOKEN", None)
     env.pop("ANTHROPIC_API_KEY", None)
-    proc = subprocess.Popen(
-        [_claude_bin(), "-p", prompt, "--output-format", "stream-json", "--verbose"],
-        cwd=project_root,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
+    claude_bin = _claude_bin()
+    claude_cmd = [
+        claude_bin,
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+    # launchd 环境下 claude 会挂起（mach 锁等待）；用 launchctl asuser 包装回用户上下文
+    if os.environ.get("CCC_CHAT_BRIDGE_ASUSER", "").strip().lower() in ("1", "true", "yes", "on"):
+        home = str(Path.home())
+        claude_cmd = [
+            "launchctl",
+            "asuser",
+            str(os.getuid()),
+            "env",
+            f"HOME={home}",
+            "PATH=/usr/bin:/bin:/usr/sbin:/opt/homebrew/bin:" + home + "/.npm-global/bin",
+            *claude_cmd,
+        ]
+    # launchd 下 claude 直接子进程会挂起（mach 等待）；经本机 ssh 回环创建
+    # sshd 会话（正常用户环境）执行，桥进程仅作入口。
+    if os.environ.get("CCC_CHAT_BRIDGE_SSH_LOOP", "").strip().lower() in ("1", "true", "yes", "on"):
+        remote_cmd = (
+            f"cd {shlex.quote(project_root)} && exec {shlex.quote(claude_bin)} "
+            f"-p \"$(cat)\" --output-format stream-json --verbose"
+        )
+        proc = subprocess.Popen(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "127.0.0.1", remote_cmd],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        assert proc.stdin is not None
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+    else:
+        proc = subprocess.Popen(
+            claude_cmd,
+            cwd=project_root,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
     assert proc.stdout is not None
     for raw in proc.stdout:
         raw = raw.strip()
