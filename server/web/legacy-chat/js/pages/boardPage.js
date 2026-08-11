@@ -15,17 +15,17 @@ import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
 import { fmtTaskCopy } from '../components/taskCard.js';
 
-/** 看板列：五态派生，增加「机审」（已回写且无机审通过）。 */
-const FLOW_COLS = ['待分派', '执行中', '机审', '已回写', '打回', '已关闭'];
+/** 看板列（2026-08-12 重排）：第一竖列待分派/打回 + 执行中/机审（上下分栏）+ 已回写；已关闭删除。 */
+const FLOW_COLS = ['待分派', '打回', '执行中', '机审', '已回写'];
+const PAIR_COLS = ['待分派', '打回'];
+const RUN_COLS = ['执行中', '机审'];
 const COLORS = {
   待分派: '#a39e93',
   执行中: '#c47a2c',
   机审: '#8b6cc1',
   已回写: '#3d9a5f',
   打回: '#c44',
-  已关闭: '#5a7a9a',
 };
-const CLOSED_COL_LIMIT = 10;
 
 let _root = null;
 let _timer = null;
@@ -40,6 +40,7 @@ let _colOpen = {};                       // 列体折叠（头部按钮）
 let _dense = false;                      // 卡片密度
 let _searchQ = '';
 let _runTimer = null;                    // 运行面板轮询（8s）
+let _colCardIds = { '执行中': [], '机审': [] }; // 上栏可见卡 id（运行流对应）
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -171,33 +172,47 @@ function renderBoard() {
   }
 
   const filteredCards = getFilteredCards();
-  const visibleCols = FLOW_COLS.filter((col) => !_collapsedCols[col]);
-  const foldedCols = FLOW_COLS.filter((col) => _collapsedCols[col]);
 
   if (!host.querySelector('#board-flow')) {
     host.innerHTML = `
-      <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(320px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
-        ${visibleCols.map(col => `
-          <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 320px;">
+      <div class="board-flow-cols" id="board-flow">
+        <!-- 第一竖列：待分派 / 打回 上下各 50% -->
+        <div class="board-col-pair">
+          ${PAIR_COLS.map(col => `
+            <div class="board-half-col" data-col="${esc(col)}">
+              <div class="board-col-h">
+                <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span>
+                <span class="ct" id="ct-${col}">0</span>
+                <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
+              </div>
+              <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'};"></div>
+            </div>`).join('')}
+        </div>
+        <!-- 执行中 / 机审：上卡区 + 下运行流 -->
+        ${RUN_COLS.map(col => `
+          <div class="board-col run-col" data-col="${esc(col)}">
             <div class="board-col-h">
-              <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
+              <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span>
               <span class="ct" id="ct-${col}">0</span>
               <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
             </div>
-            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex-direction: column; overflow: hidden; ${col === '执行中' || col === '机审' ? 'flex: 0 1 auto;' : 'flex: 1;'} min-height: 120px; padding: 8px; gap: 6px;"></div>
-            ${col === '执行中' || col === '机审' ? `<div class="board-col-run" id="runpanel-${col}" style="flex: 1;"><div class="board-run-empty">等待任务进程…</div></div>` : ''}
+            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex: 0 1 auto;"></div>
+            <div class="board-col-run" id="runpanel-${col}"><div class="board-run-empty">等待任务进程…</div></div>
+          </div>`).join('')}
+        <!-- 已回写（待合入） -->
+        <div class="board-col" data-col="已回写">
+          <div class="board-col-h">
+            <span><span class="board-dot" style="background:${COLORS['已回写']}"></span>已回写</span>
+            <span class="ct" id="ct-已回写">0</span>
+            <button type="button" class="board-col-fold" data-fold-col="已回写" title="折叠/展开该列">${_colOpen['已回写'] ? '−' : '+'}</button>
           </div>
-        `).join('')}
-        ${foldedCols.length ? `<div class="board-fold-bar" id="board-fold-bar" style="display:flex;flex-direction:column;gap:8px;justify-content:center;padding:10px;">
-          ${foldedCols.map((col) => `<button type="button" class="board-fold-chip" data-expand-col="${esc(col)}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--ccc-border-subtle);border-radius:999px;background:var(--ccc-bg-layer);color:var(--ccc-text-muted);font-size:12px;cursor:pointer;white-space:nowrap;">
-            <span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)} <span id="ct-${col}" class="ct">0</span> · 展开
-          </button>`).join('')}
-        </div>` : ''}
+          <div class="board-col-body" id="col-list-已回写" style="display: ${_colOpen['已回写'] ? 'none' : 'flex'};"></div>
+        </div>
       </div>
     `;
 
     _colLists = {};
-    for (const col of visibleCols) {
+    for (const col of FLOW_COLS) {
       const colEl = host.querySelector(`#col-list-${col}`);
       if (colEl) {
         _colLists[col] = new TaskCardList(colEl, {
@@ -223,12 +238,6 @@ function renderBoard() {
         renderBoard();
       });
     });
-    host.querySelectorAll('[data-expand-col]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        _collapsedCols[btn.dataset.expandCol] = false;
-        renderBoard();
-      });
-    });
   }
 
   for (const col of FLOW_COLS) {
@@ -236,20 +245,6 @@ function renderBoard() {
       const colKey = c.board_column || c.state || c.status || '待分派';
       return colKey === col;
     });
-    if (col === '已关闭') {
-      stateCards = stateCards
-        .slice()
-        .sort((a, b) => {
-          const ta = a.closed_at || '';
-          const tb = b.closed_at || '';
-          if (ta === tb) return 0;
-          if (!ta) return 1;
-          if (!tb) return -1;
-          return tb.localeCompare(ta);
-        })
-        .slice(0, CLOSED_COL_LIMIT);
-    }
-
     const countEl = _root.querySelector(`#ct-${col}`);
     if (countEl) countEl.textContent = stateCards.length;
 
@@ -257,13 +252,16 @@ function renderBoard() {
       continue;
     }
 
-    if (col === '执行中' || col === '机审') {
+    if (RUN_COLS.includes(col)) {
       _kanbanPageSizes[col] = 3; // 老板 2026-08-12：这两列最多显示 3 张卡，下栏留给信息流
     } else if (!_kanbanPageSizes[col]) {
       _kanbanPageSizes[col] = 30;
     }
 
     const visibleCards = stateCards.slice(0, _kanbanPageSizes[col]);
+    if (RUN_COLS.includes(col)) {
+      _colCardIds[col] = visibleCards.map((c) => c.id).filter(Boolean);
+    }
 
     if (_colLists[col]) {
       _colLists[col].setItems(visibleCards);
@@ -296,7 +294,7 @@ function renderBoard() {
 function updateSummary() {
   const el = _root.querySelector('#board-st');
   if (!el) return;
-  const total = getFilteredCards().length;
+  const total = getFilteredCards().filter((c) => (c.board_column || c.state) !== '已关闭').length;
   const wsDisplay = _ws === 'all' ? '全部' : (_nameMap[_ws] || _ws);
   el.textContent = wsDisplay + ` · 共 ${total} 张`;
 }
@@ -335,8 +333,10 @@ async function pollRunPanels() {
       const el = _root.querySelector(`#runpanel-${col}`);
       if (!el) continue;
       const list = byCol[col] || [];
-      el.innerHTML = list.length
-        ? list.slice(0, 8).map(renderRunItem).join('')
+      const ids = _colCardIds[col] || [];
+      const shown = list.filter((t) => ids.includes(t.work_id));
+      el.innerHTML = shown.length
+        ? shown.map(renderRunItem).join('')
         : '<div class="board-run-empty">无运行进程</div>';
     }
   } catch (e) {

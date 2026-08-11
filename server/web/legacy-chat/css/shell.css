@@ -2824,6 +2824,49 @@ body.ro-viewer [data-write] {
 .ops-chip.alert { background: rgba(204, 68, 68, 0.12); color: #a33; }
 
 /* ══ 看板页升级 v2（列折叠/密度/搜索）══ */
+.board-flow-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  height: 100%;
+  overflow-x: auto;
+  padding: 10px 0;
+}
+.board-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--ccc-bg-layer);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-sm);
+  overflow: hidden;
+  height: 100%;
+  min-width: 0;
+}
+.board-col-pair {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  height: 100%;
+  min-width: 0;
+}
+.board-half-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--ccc-bg-layer);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-sm);
+  overflow: hidden;
+  min-height: 0;
+}
+.board-col-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+  min-height: 120px;
+  padding: 8px;
+  gap: 6px;
+}
 .board-col-fold {
   margin-left: auto;
   border: none;
@@ -2840,7 +2883,6 @@ body.ro-viewer [data-write] {
 
 /* 看板列内实时运行面板（执行中/机审 下栏） */
 .board-col-run {
-  flex: none;
   height: auto;
   min-height: 90px;
   overflow-y: auto;
@@ -2850,6 +2892,7 @@ body.ro-viewer [data-write] {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  flex: 1;
 }
 .board-run-empty {
   padding: 16px 8px;
