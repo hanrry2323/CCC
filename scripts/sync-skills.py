@@ -121,13 +121,22 @@ def sync_one(host: str, src_dir: Path, dst_rel: str, name: str, check_only: bool
             return
         log(f"SYNCED: {name} → {host}:{dst}")
         return
-    cmd = f"mkdir -p {dst_rel}"
+    # 本机用绝对路径；远端用 ~（ssh 命令展开），rsync 目标用探明的远端绝对路径
+    tail_kind = "claude" if "claude" in dst_rel else "opencode"
+    if not host:
+        mk_dst = dst
+        remote_home = str(Path.home())
+        rsync_dst = f"{remote_home}/.{tail_kind}/skills/{name}"
+    else:
+        mk_dst = dst_rel  # ssh 展开 ~
+        remote_home = remote_cmd(host, "echo $HOME") or ""
+        rsync_dst = f"{host}:{remote_home}/.{tail_kind}/skills/{name}"
+    cmd = f"mkdir -p {mk_dst}"
     remote_cmd(host, cmd)
-    dst_full = dst if not host else f"{host}:{dst}"
-    rsync_cmd = ["rsync", "-az", "--delete", "--exclude", "__pycache__", f"{src}/", f"{dst_full}/"]
+    rsync_cmd = ["rsync", "-az", "--delete", "--exclude", "__pycache__", f"{src}/", f"{rsync_dst}/"]
     res = subprocess.run(rsync_cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        log(f"SYNC FAIL: {name} → {dst_full}: {res.stderr.strip()[:120]}")
+        log(f"SYNC FAIL: {name} → {rsync_dst}: {res.stderr.strip()[:120]}")
         return
     log(f"SYNCED: {name} → {host or '本机'}:{dst}")
 
@@ -147,9 +156,14 @@ def main() -> None:
             continue
         host = meta["host"]
         windows = bool(meta.get("windows"))
-        # Windows 节点 skill 目录用绝对路径（~ 在 Windows OpenSSH 不展开）
-        oc_dir = "C:/Users/win/.opencode/skills" if windows else "~/.opencode/skills"
-        cl_dir = "C:/Users/win/.claude/skills" if windows else "~/.claude/skills"
+        # Windows 节点 skill 目录用绝对路径（~ 在 Windows OpenSSH 不展开）；
+        # 本机用绝对路径；类 Unix 远端用 ~（ssh 命令展开，rsync 目标用探明的远端绝对路径）
+        if windows:
+            oc_dir, cl_dir = "C:/Users/win/.opencode/skills", "C:/Users/win/.claude/skills"
+        elif not host:
+            oc_dir, cl_dir = SKILL_DIRS["opencode"][1], SKILL_DIRS["claude"][1]
+        else:
+            oc_dir, cl_dir = "~/.opencode/skills", "~/.claude/skills"
         log(f"── 节点 {node}（host={host or '本机'}）──")
         for name in opencode_names:
             sync_one(host, OPENCOTE_SRC, oc_dir, name, check_only, windows=windows)

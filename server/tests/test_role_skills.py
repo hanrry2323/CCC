@@ -80,12 +80,24 @@ class TestDispatchTimeInjection:
 
 
 class TestSkillInRepo:
-    """skill 本体进仓校验：SSOT 引用且已在仓的 skill 必须完整（SKILL.md 存在）。
+    """skill 本体进仓校验：SSOT 引用的每个 skill 必须在仓内 skill 目录存在。"""
 
-    A 轨第 4 项第一步：ui-ux-pro-max（opencode）与 code-review（claude）已进仓。
-    其余 SSOT 引用（qx-auto-copycheck/daily-snapshot/hp-kb-operations/motion-graphics）为节点本地
-    skill，待后续收仓——不视为错误，只统计。
-    """
+    def test_all_referenced_skills_in_repo(self) -> None:
+        """SSOT 引用的每个 skill（非空）在 opencode-skills 或 claude-skills 目录存在。"""
+        cfg = _load_role_skills()
+        roles = cfg.get("roles", {})
+        opencode_names = {d.name for d in OPENCOTE_SKILLS.iterdir() if d.is_dir()}
+        claude_names = {d.name for d in CLAUDE_SKILLS.iterdir() if d.is_dir()}
+        missing = []
+        for role, entry in roles.items():
+            skill = entry.get("skill", "")
+            source = entry.get("skill_source", "claude")
+            if not skill:
+                continue
+            repo_dir = opencode_names if source == "opencode" else claude_names
+            if skill not in repo_dir:
+                missing.append(f"{role}→{skill}({source})")
+        assert not missing, f"SSOT 引用但仓内缺失: {missing}"
 
     def test_skill_has_skil_md(self) -> None:
         """仓内每个 skill 目录含 SKILL.md（版本校验依据）。"""
