@@ -1,16 +1,12 @@
 /**
- * opsPage.js — 运维页（T30：新协议版）
+ * opsPage.js — 运维页（用户化重构 2026-08-11）
  *
- * 数据源：GET /ops/summary（唯一端点）
- *   返回：
- *     severity: "green" | "amber" | "red"
- *     human_line: "<一句话概览>"
- *     overview: { machines: [{name, ip, role, reachable, alive_ports, port_count}],
- *                 alert_count: N, down_ports: [...], generated_at }
- *   其余字段（risks/workspaces/daily/quality/docs/kb/deploy/ports/auto/...）旧 Hub
- *   大字段一律置空，本页不再渲染（避免误导）。
+ * 三层架构（数据源：/ops/summary + /loop/findings，纯前端不改后端）：
+ *   ① 健康仪表盘：severity + human_line → 一句话结论 + 色块
+ *   ② 待办清单：findings → 优先级(P1/P2/P3) + 人话摘要 + 操作按钮
+ *   ③ 技术详情：节点/端口/证据/命令 → 折叠，运维人员才展开
  *
- * 写操作（adopt/daily-review/run）已禁用：服务端不暴露。
+ * 设计原则：用户看「哪坏了、要紧不、要不要修」，Agent 细节折叠在后面。
  */
 
 import { apiGet } from '../api.js';
@@ -33,39 +29,43 @@ function pill(ok, label) {
 function html() {
   return `
 <div class="ops-page hub-page">
-  <div class="orch-hint">运维 · 走新服务端协议（/ops/summary）。2017 单端 :7788 四视图。</div>
   <div class="ops-bar">
     <h2>运维</h2>
-    <span class="ops-sub">集群节点 + 服务概览</span>
+    <span class="ops-sub">集群健康 · 待办 · 详情</span>
     <span style="flex:1"></span>
     <button type="button" class="hub-btn" id="ops-refresh">刷新</button>
   </div>
 
+  <!-- ① 健康仪表盘 -->
   <div class="ops-section">
-    <h3>状态</h3>
     <div id="ops-status" class="ops-card ops-status-bar"></div>
   </div>
 
+  <!-- ② 待办清单 -->
   <div class="ops-section">
-    <h3>集群节点 <span class="badge" id="ops-node-n">0</span></h3>
-    <div id="ops-machines" class="ops-card"></div>
-  </div>
-
-  <div class="ops-section">
-    <h3>Loop 巡查产出 <span class="badge" id="loop-count">0</span></h3>
+    <h3>待办清单 <span class="badge" id="loop-count">0</span></h3>
     <div id="ops-loop" class="ops-card"><div class="ops-empty">加载中…</div></div>
   </div>
 
+  <!-- ③ 技术详情（折叠） -->
   <div class="ops-section">
-    <h3>说明</h3>
-    <div class="ops-card">
-      <p class="ops-hint">本页只读 · 数据源 <code>/ops/summary</code> + <code>/loop/findings</code>。</p>
-      <p class="ops-hint">Loop 巡查产出（后台 Observer 生成）：风险发现 + 建议转卡命令。人审闸门——采纳 = 复制命令在 M1 执行 new-card.sh 转卡（Loop 只审不投，绝不自动出卡）。</p>
-      <p class="ops-hint">旧 Hub 大字段（risks / workspaces / daily / quality / docs / kb / deploy / ports / auto / relay 等）已下线；运维详情请用本页摘要、任务卡 / Engine，或 SSH 查 2017 日志。</p>
-      <p class="ops-hint">写操作（adopt / daily-review / run）已禁用：服务端不暴露。</p>
-    </div>
+    <details class="ops-fold">
+      <summary>技术详情（节点 / 端口 / 原始命令）</summary>
+      <div id="ops-detail" class="ops-detail-body">
+        <div id="ops-machines" class="ops-card"></div>
+      </div>
+    </details>
   </div>
 </div>`;
+}
+
+/* ── ① 健康仪表盘 ─────────────────────────────── */
+
+function healthLabel(severity) {
+  if (severity === 'green') return '健康';
+  if (severity === 'amber') return '有注意项';
+  if (severity === 'red') return '有问题';
+  return '未知';
 }
 
 function renderStatus(agg) {
@@ -78,25 +78,116 @@ function renderStatus(agg) {
   const machines = overview.machines || [];
   const total = machines.length;
   const reachable = machines.filter((m) => m.reachable).length;
+  const alerts = overview.alert_count || 0;
   el.innerHTML = `
-    <div class="ops-kv ${sevCls}" style="margin-bottom:8px;font-weight:600">
-      <span class="ops-pill ${severity === 'green' ? 'ok' : severity === 'red' ? 'bad' : 'warn'}">${esc(severity)}</span>
-      ${esc(human)}
-    </div>
-    <div class="ops-status-row">
-      ${pill(reachable === total && total > 0, total > 0 ? `节点 ${reachable}/${total} 可达` : '无节点配置')}
-      ${pill(severity !== 'red', severity === 'green' ? '绿' : severity === 'amber' ? '琥珀' : '红')}
+    <div class="ops-dash">
+      <div class="ops-dash-status ${sevCls}">
+        <span class="ops-dash-dot"></span>
+        <strong>${esc(healthLabel(severity))}</strong>
+      </div>
+      <div class="ops-dash-line">${esc(human)}</div>
+      <div class="ops-dash-stats">
+        <span class="ops-dash-stat">${total > 0 ? `${reachable}/${total} 节点在线` : '无节点配置'}</span>
+        ${alerts > 0 ? `<span class="ops-dash-stat alert">${alerts} 项告警</span>` : '<span class="ops-dash-stat">无告警</span>'}
+      </div>
     </div>`;
 }
 
+/* ── ② 待办清单 ───────────────────────────────── */
+
+/** 权重 → 优先级（D2 映射：≥4=P1红, 2-3=P2橙, <2=P3蓝） */
+function priorityOf(weightStr) {
+  const w = parseFloat(weightStr);
+  if (isNaN(w)) return 'p3';
+  if (w >= 4) return 'p1';
+  if (w >= 2) return 'p2';
+  return 'p3';
+}
+
+function priorityLabel(p) {
+  return { p1: '紧急', p2: '建议', p3: '信息' }[p] || '信息';
+}
+
+/** 把技术化长标题归纳成用户能看懂的一句话 */
+function summarizeFinding(title) {
+  if (!title) return '';
+  let t = String(title);
+  t = t.replace(/^任务卡\s*([a-z0-9]+)\s*状态漂移：/, '$1 状态漂移：');
+  t = t.replace(/roadmap\.md\s*标注/, '标注');
+  t = t.replace(/看板\/卡文件实际状态/, '实际');
+  t = t.replace(/项目\s*([a-z0-9]+)\s*缺席 roadmap\.md 的业务线路段落/, '$1 项目缺少路线图段落');
+  t = t.replace(/方案\s*([a-z0-9\-]+)\s*已完成但关联卡未关闭/, '$1 方案已完成但卡未关');
+  t = t.replace(/卡\s*([a-z0-9]+)\s*缺维护区四问/, '$1 卡缺维护区填写');
+  if (t.length > 40) t = t.slice(0, 40) + '…';
+  return t;
+}
+
+function renderLoop(loopData) {
+  const el = _root.querySelector('#ops-loop');
+  const nEl = _root.querySelector('#loop-count');
+  if (!el) return;
+  const reports = loopData?.loop_reports || [];
+  // 合并所有报告 findings（最新报告优先，去重）
+  const findings = [];
+  const seen = new Set();
+  for (const r of reports) {
+    for (const f of r.findings || []) {
+      const key = `${f.project}:${f.title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      findings.push({ ...f, _report: r.name, _cmd: r.commands?.[findings.length] || '' });
+    }
+  }
+  if (nEl) nEl.textContent = String(findings.length);
+  if (!findings.length) {
+    el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
+    return;
+  }
+  // 按优先级排序
+  const order = { p1: 0, p2: 1, p3: 2 };
+  findings.sort((a, b) => order[priorityOf(a.weight)] - order[priorityOf(b.weight)]);
+  el.innerHTML = findings
+    .slice(0, 12)
+    .map((f) => {
+      const p = priorityOf(f.weight);
+      const cmd = f._cmd || '';
+      return `<div class="ops-todo-item p${p}">
+        <span class="ops-priority ${p}">${priorityLabel(p)}</span>
+        <div class="ops-todo-body">
+          <div class="ops-todo-title">${esc(summarizeFinding(f.title))}</div>
+          <div class="ops-todo-meta">
+            <span class="ops-todo-proj">${esc(f.project || '')}</span>
+            ${f.acting_on ? `<code>${esc(f.acting_on)}</code>` : ''}
+          </div>
+          ${cmd ? `<button type="button" class="hub-btn" data-cmd="${esc(cmd)}" title="复制转卡命令到 M1 执行">转卡</button>` : ''}
+        </div>
+      </div>`;
+    })
+    .join('');
+  // 绑定「转卡」按钮：点击复制命令 + 提示
+  el.querySelectorAll('button[data-cmd]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const cmd = btn.getAttribute('data-cmd');
+      try {
+        navigator.clipboard.writeText(cmd);
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => { btn.textContent = '转卡'; }, 1500);
+      } catch (e) {
+        btn.textContent = '复制失败';
+      }
+    });
+  });
+}
+
+/* ── ③ 技术详情（折叠） ────────────────────────── */
+
 function renderMachines(agg) {
   const el = _root.querySelector('#ops-machines');
-  const nEl = _root.querySelector('#ops-node-n');
+  if (!el) return;
   const overview = agg.overview || {};
   const machines = overview.machines || [];
-  if (nEl) nEl.textContent = String(machines.length);
   if (!machines.length) {
-    el.innerHTML = '<div class="ops-empty">未配置集群节点（CLUSTER_TARGETS env 为空）</div>';
+    el.innerHTML = '<div class="ops-empty">未配置集群节点</div>';
     return;
   }
   el.innerHTML = machines
@@ -110,66 +201,6 @@ function renderMachines(agg) {
     </div>`
     )
     .join('');
-}
-
-function renderLoop(loopData) {
-  const el = _root.querySelector('#ops-loop');
-  const nEl = _root.querySelector('#loop-count');
-  if (!el) return;
-  const reports = loopData?.loop_reports || [];
-  if (nEl) nEl.textContent = String(reports.length);
-  if (!reports.length) {
-    el.innerHTML = '<div class="ops-empty">无 Loop 巡查报告（Observer 尚未产出）</div>';
-    return;
-  }
-  el.innerHTML = reports
-    .map((r) => {
-      const findings = (r.findings || []).slice(0, 8);
-      const commands = r.commands || [];
-      const rows = findings
-        .map(
-          (f) => `<tr>
-            <td>${esc(f.weight)}</td>
-            <td>${esc(f.project)}</td>
-            <td>${esc(summarizeFinding(f.title))}</td>
-            <td><code>${esc(f.acting_on)}</code></td>
-          </tr>`
-        )
-        .join('');
-      const cmdBlocks = commands
-        .slice(0, 3)
-        .map((c) => `<pre class="ops-cmd">${esc(c)}</pre>`)
-        .join('');
-      return `<div class="ops-loop-report">
-        <div class="ops-loop-head">
-          <strong>${esc(r.name)}</strong>
-          <span class="muted">${(r.findings || []).length} 项待处理 · ${commands.length} 条转卡命令</span>
-        </div>
-        ${rows ? `<table class="ops-table"><thead><tr><th>权重</th><th>项目</th><th>发现</th><th>对象</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="ops-empty">无表格发现</div>'}
-        ${cmdBlocks}
-      </div>`;
-    })
-    .join('');
-}
-
-/** 把技术化长标题归纳成用户能看懂的一句话（2026-08-11 老板反馈优化）。
- *  例：「任务卡 clw001 状态漂移：roadmap.md 标注「已交付」，但看板/卡文件实际状态为「已关闭」」
- *      → 「clw001 已交付但实际已关闭」
- *  规则：去掉固定前缀，保留「项目卡号 + 核心矛盾」。
- */
-function summarizeFinding(title) {
-  if (!title) return '';
-  let t = String(title);
-  // 去掉「任务卡 xxx 状态漂移：」前缀 → 保留矛盾主体
-  t = t.replace(/^任务卡\s*([a-z0-9]+)\s*状态漂移：/, '$1 状态漂移：');
-  // 去掉 roadmap 技术路径，只留「标注 X，实际 Y」
-  t = t.replace(/roadmap\.md\s*标注/, '标注');
-  t = t.replace(/看板\/卡文件实际状态/, '实际');
-  // 项目缺席类：去掉技术路径
-  t = t.replace(/项目\s*([a-z0-9]+)\s*缺席 roadmap\.md 的业务线路段落/, '$1 项目缺少路线图段落');
-  // 再压缩长句
-  if (t.length > 40) t = t.slice(0, 40) + '…';
-  return t;
 }
 
 async function poll() {
@@ -189,7 +220,7 @@ async function poll() {
   } catch (err) {
     const el = _root.querySelector('#ops-loop');
     if (el) {
-      el.innerHTML = `<div class="ops-empty">Loop 巡查加载失败: ${esc(err?.message || String(err))}</div>`;
+      el.innerHTML = `<div class="ops-empty">待办清单加载失败: ${esc(err?.message || String(err))}</div>`;
     }
   }
 }

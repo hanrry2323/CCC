@@ -1104,37 +1104,133 @@ body.hub-mode #app {
   font-weight: 500;
 }
 
-.ops-loop-report {
+/* ── 运维用户化（2026-08-11 重构） ── */
+
+/* 健康仪表盘 */
+.ops-dash {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 2px;
+  flex-wrap: wrap;
+}
+.ops-dash-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.ops-dash-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #888;
+}
+.ops-dash-status.ops-ok .ops-dash-dot { background: #2a9d4a; }
+.ops-dash-status.ops-warn .ops-dash-dot { background: #d9822b; }
+.ops-dash-status.ops-attn .ops-dash-dot { background: #c44; }
+.ops-dash-line {
+  color: var(--ccc-text-muted);
+  font-size: 13px;
+  flex: 1;
+  min-width: 200px;
+}
+.ops-dash-stats {
+  display: flex;
+  gap: 12px;
+}
+.ops-dash-stat {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.ops-dash-stat.alert {
+  color: #c44;
+  border-color: rgba(204, 68, 68, 0.4);
+}
+
+/* 待办清单 */
+.ops-todo-list,
+.ops-todo-item {
+  margin: 0;
+}
+.ops-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
   border: 1px solid var(--ccc-border-subtle);
   border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.ops-loop-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 8px;
+  border-left: 4px solid transparent;
 }
-
-.ops-cmd {
+.ops-todo-item.p1 { border-left-color: #c44; }
+.ops-todo-item.p2 { border-left-color: #d9822b; }
+.ops-todo-item.p3 { border-left-color: #3a7bd5; }
+.ops-priority {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+}
+.ops-priority.p1 { background: #c44; }
+.ops-priority.p2 { background: #d9822b; }
+.ops-priority.p3 { background: #3a7bd5; }
+.ops-todo-body {
+  flex: 1;
+  min-width: 0;
+}
+.ops-todo-title {
+  font-size: 13px;
+  font-weight: 550;
+  margin-bottom: 4px;
+}
+.ops-todo-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+.ops-todo-proj {
   background: var(--ccc-bg-surface);
-  color: var(--ccc-text-base);
   border: 1px solid var(--ccc-border-subtle);
   border-radius: 4px;
-  padding: 6px 8px;
-  font-size: 11px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  margin: 6px 0;
+  padding: 1px 6px;
+}
+.ops-todo-meta code {
+  font-size: 10px;
+  color: var(--ccc-text-muted);
+}
+.ops-todo-item button.hub-btn {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 12px;
 }
 
-.ops-empty {
+/* 折叠详情 */
+.ops-fold {
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px;
+}
+.ops-fold summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
   color: var(--ccc-text-muted);
-  font-size: 12px;
-  padding: 8px 0;
+  user-select: none;
+}
+.ops-fold summary:hover {
+  color: var(--ccc-text-base);
+}
+.ops-detail-body {
+  padding: 8px 12px 12px;
 }
 
 .ops-port-group h4 {
