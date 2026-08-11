@@ -1,6 +1,6 @@
 # 任务卡 qb006 · 流程验证：qb worktree 冒烟（小颗粒）（OpenCode 执行）
 
-> 关联：qb-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：qb · 日期：2026-08-12
+> 关联：qb-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：qb · 日期：2026-08-12
 
 
 
