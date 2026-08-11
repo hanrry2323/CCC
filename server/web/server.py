@@ -1516,6 +1516,7 @@ def _load_running_tasks() -> dict[str, Any]:
             "last_activity_at": None,
             "log_bytes": None,
             "tool_calls": None,
+            "audit_runs": None,
             "shell_calls": None,
             "dirty_files": metrics.get("dirty_files"),
             "lines_insert": metrics.get("lines_insert"),
@@ -1532,6 +1533,7 @@ def _load_running_tasks() -> dict[str, Any]:
             counts = parse_work_call_counts(log_dir, item.id)
             task["tool_calls"] = int(counts["tool_calls"] or 0) + int(counts["shell_calls"] or 0)
             task["shell_calls"] = counts["shell_calls"]
+            task["audit_runs"] = int(counts.get("audit_runs") or 0)
             # 尾部：优先当前阶段（audit 进行中看 audit.log，否则主 log）
             audit_log = log_dir / f"{item.id}.audit.log"
             main_log = log_dir / f"{item.id}.log"
@@ -2462,7 +2464,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         for cid in ids:
             key = cid.lower()
             files: dict[str, dict] = {}
-            for source, fname in (("main", f"{key}.log"), ("audit", f"{key}-audit.log")):
+            for source, fname in (("main", f"{key}.log"), ("audit", f"{key}.audit.log")):
                 path = (log_dir / fname) if log_dir else None
                 pos = 0
                 if path is not None and path.is_file():

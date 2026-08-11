@@ -64,6 +64,12 @@ export function renderWorktreeBadges(t) {
       `<span class="board-card-badge badge-calls" title="累计工具调用（开发+机审各阶段日志汇总；高水位跟卡走，不因换列归零）">调用 ${escapeHtml(String(Number(calls)))}</span>`
     );
   }
+  const auditRuns = t.audit_runs;
+  if (auditRuns != null && Number(auditRuns) > 0) {
+    parts.push(
+      `<span class="board-card-badge badge-audit" title="机审进程次数（累计，每次机审 1 次）">机审 ${escapeHtml(String(Number(auditRuns)))}</span>`
+    );
+  }
 
   const elapsed = t.elapsed_s;
   if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
