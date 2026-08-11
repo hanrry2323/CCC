@@ -252,11 +252,6 @@ class _Handler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self._cors()
-        self.end_headers()
-
         def emit(event: str, data: dict) -> None:
             payload = json.dumps(data, ensure_ascii=False)
             self.wfile.write(f"event: {event}\ndata: {payload}\n\n".encode())
@@ -290,6 +285,11 @@ class _Handler(BaseHTTPRequestHandler):
                         {"role": "assistant", "message": reply, "timestamp": now},
                     ],
                 )
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.end_headers()
 
 
 def create_server(port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
