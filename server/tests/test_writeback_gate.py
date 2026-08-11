@@ -35,11 +35,8 @@ def test_check_writeback_credentials(tmp_path: Path):
 
     # 3. 有内容但缺结构化凭证行 -> 放行（自由文本回写，凭证由分支存在性兜底）
     card_file.write_text(
-        "# 任务卡 xy101\n"
-        "## 回写区\n"
-        "**执行体**：demo\n"
-        "已完成，push 到 codex/xy101-wb 分支 Commit: aeb6c89\n",
-        encoding="utf-8"
+        "# 任务卡 xy101\n## 回写区\n**执行体**：demo\n已完成，push 到 codex/xy101-wb 分支 Commit: aeb6c89\n",
+        encoding="utf-8",
     )
     ok, err = check_writeback_credentials(card_file, "xy101-wb")
     assert ok is True
@@ -47,12 +44,7 @@ def test_check_writeback_credentials(tmp_path: Path):
 
     # 4. 结构化凭证行齐备同样放行
     card_file.write_text(
-        "# 任务卡 xy101\n"
-        "## 回写区\n"
-        "**执行体**：demo\n"
-        "分支: codex/xy101-wb\n"
-        "commit: aeb6c89\n",
-        encoding="utf-8"
+        "# 任务卡 xy101\n## 回写区\n**执行体**：demo\n分支: codex/xy101-wb\ncommit: aeb6c89\n", encoding="utf-8"
     )
     ok, err = check_writeback_credentials(card_file, "xy101-wb")
     assert ok is True
@@ -68,9 +60,8 @@ def test_p3_empty_commit_signal_success(tmp_path: Path):
     card_dir.mkdir(parents=True)
     card_file = card_dir / "xy105-empty.md"
     card_file.write_text(
-        "# 任务卡 xy105 · 测试\n"
-        "> 关联：TEST · 执行体：demo · 验收：Codex · 状态：执行中 · 日期：2026-08-08\n",
-        encoding="utf-8"
+        "# 任务卡 xy105 · 测试\n> 关联：TEST · 执行体：demo · 验收：Codex · 状态：执行中 · 日期：2026-08-08\n",
+        encoding="utf-8",
     )
 
     entry = ExecutorEntry(role="开发执行体", category="可后台 CLI", binding="demo", note="test", command="echo")
@@ -83,55 +74,59 @@ def test_p3_empty_commit_signal_success(tmp_path: Path):
     log_file = log_dir / "xy105.log"
 
     # 场景 1：退出码 1 且日志含 "nothing to commit" -> 成功 (不重试不打回)
-    with patch("server.git_sync.resolve_repo_root", return_value=Path("/fake/main_repo")), \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("server.engine.main.build_command", return_value=["echo", "test"]):
+    with (
+        patch("server.git_sync.resolve_repo_root", return_value=Path("/fake/main_repo")),
+        patch("subprocess.Popen") as mock_popen,
+        patch("server.engine.main.build_command", return_value=["echo", "test"]),
+    ):
+        # Mock process wait to return 1, writing our empty commit signal right before wait finishes
+        proc = MagicMock()
 
-         # Mock process wait to return 1, writing our empty commit signal right before wait finishes
-         proc = MagicMock()
-         def fake_wait(timeout=None):
-             log_file.write_text(
-                 "[ccc.engine] start work=xy105 phase=run pid_pending\n"
-                 "On branch codex/xy105\n"
-                 "nothing to commit, working tree clean\n",
-                 encoding="utf-8"
-             )
-             return 1
-         proc.wait.side_effect = fake_wait
-         proc.pid = 9999
-         mock_popen.return_value = proc
+        def fake_wait(timeout=None):
+            log_file.write_text(
+                "[ccc.engine] start work=xy105 phase=run pid_pending\n"
+                "On branch codex/xy105\n"
+                "nothing to commit, working tree clean\n",
+                encoding="utf-8",
+            )
+            return 1
 
-         cfg = {"DISPATCH_DIR": str(tmp_path / "docs" / "dispatch")}
-         ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
+        proc.wait.side_effect = fake_wait
+        proc.pid = 9999
+        mock_popen.return_value = proc
 
-         # V3 起空提交信号判失败打回（不假成功）
-         assert ok is False
-         assert any("空提交" in p or "退出码非 0" in p for p in problems)
+        cfg = {"DISPATCH_DIR": str(tmp_path / "docs" / "dispatch")}
+        ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
 
+        # V3 起空提交信号判失败打回（不假成功）
+        assert ok is False
+        assert any("空提交" in p or "退出码非 0" in p for p in problems)
 
     # 场景 2：退出码 1 且日志含 "error:" 且无空提交信号 -> 仍判失败
-    with patch("server.git_sync.resolve_repo_root", return_value=Path("/fake/main_repo")), \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("server.engine.main.build_command", return_value=["echo", "test"]):
+    with (
+        patch("server.git_sync.resolve_repo_root", return_value=Path("/fake/main_repo")),
+        patch("subprocess.Popen") as mock_popen,
+        patch("server.engine.main.build_command", return_value=["echo", "test"]),
+    ):
+        proc = MagicMock()
 
-         proc = MagicMock()
-         def fake_wait(timeout=None):
-             log_file.write_text(
-                 "[ccc.engine] start work=xy105 phase=run pid_pending\n"
-                 "error: failed to push some refs to github\n",
-                 encoding="utf-8"
-             )
-             return 1
-         proc.wait.side_effect = fake_wait
-         proc.pid = 9999
-         mock_popen.return_value = proc
+        def fake_wait(timeout=None):
+            log_file.write_text(
+                "[ccc.engine] start work=xy105 phase=run pid_pending\nerror: failed to push some refs to github\n",
+                encoding="utf-8",
+            )
+            return 1
 
-         cfg = {"DISPATCH_DIR": str(tmp_path / "docs" / "dispatch")}
-         ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
+        proc.wait.side_effect = fake_wait
+        proc.pid = 9999
+        mock_popen.return_value = proc
 
-         # 属于真失败，不应被拦截，返回 False
-         assert ok is False
-         assert any("退出码非 0: 1" in p for p in problems)
+        cfg = {"DISPATCH_DIR": str(tmp_path / "docs" / "dispatch")}
+        ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
+
+        # 属于真失败，不应被拦截，返回 False
+        assert ok is False
+        assert any("退出码非 0: 1" in p for p in problems)
 
 
 def test_writeback_gate_rejected_rules(tmp_path: Path):
@@ -148,7 +143,7 @@ def test_writeback_gate_rejected_rules(tmp_path: Path):
         "## 目标\nx\n"
         "## 验收标准\nx\n"
         "## 回写区\n",
-        encoding="utf-8"
+        encoding="utf-8",
     )
 
     entry = ExecutorEntry(
@@ -157,7 +152,7 @@ def test_writeback_gate_rejected_rules(tmp_path: Path):
         binding="demo",
         note="test",
         command="echo",
-        worktree_base=str(tmp_path / "wt")
+        worktree_base=str(tmp_path / "wt"),
     )
     reg = ExecutorRegistry((entry,))
 
@@ -172,65 +167,65 @@ def test_writeback_gate_rejected_rules(tmp_path: Path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # 模拟 sidecar 记录该卡已经成功收单，从而跳过重置重建以保持 worktree_path
-    from server.engine.runtime_state import write_card_state
-    write_card_state(log_dir, "xy106", state="已回写")
+    # sidecar 契约（ccc-plan-021）：不存流程终态，判定上次成功靠日志 ok:true 收单证据，
+    # 从而跳过重置重建以保持 worktree_path。
+    (log_dir / "xy106.log").write_text(json.dumps({"ok": True, "work_id": "xy106"}) + "\n", encoding="utf-8")
 
     # 1. 模拟 exit 0，且无远端凭证，且回写区空 -> 应被拦截并打回
-    with patch("server.git_sync.resolve_repo_root", return_value=tmp_path / "main"), \
-         patch("subprocess.run") as mock_run, \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("server.engine.main.build_command", return_value=["echo", "test"]):
+    with (
+        patch("server.git_sync.resolve_repo_root", return_value=tmp_path / "main"),
+        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen") as mock_popen,
+        patch("server.engine.main.build_command", return_value=["echo", "test"]),
+    ):
+        # show-ref for origin/codex/xy106-gate returns non-zero (remote deleted)
+        def fake_run(args, **kwargs):
+            m = MagicMock()
+            m.returncode = 1
+            return m
 
-         # show-ref for origin/codex/xy106-gate returns non-zero (remote deleted)
-         def fake_run(args, **kwargs):
-             m = MagicMock()
-             m.returncode = 1
-             return m
-         mock_run.side_effect = fake_run
+        mock_run.side_effect = fake_run
 
-         proc = MagicMock()
-         proc.wait.return_value = 0
-         mock_popen.return_value = proc
+        proc = MagicMock()
+        proc.wait.return_value = 0
+        mock_popen.return_value = proc
 
-         cfg = {"DISPATCH_DIR": str(tmp_path / "main" / "docs" / "dispatch")}
-         ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
+        cfg = {"DISPATCH_DIR": str(tmp_path / "main" / "docs" / "dispatch")}
+        ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
 
-         assert ok is False
-         assert any("空回写卡" in p for p in problems)
+        assert ok is False
+        assert any("空回写卡" in p for p in problems)
 
     # 2. 模拟 exit 0，且远端凭证成立 (machine_audit_passed_text == True) -> 豁免空回写检查
-    with patch("server.git_sync.resolve_repo_root", return_value=tmp_path / "main"), \
-         patch("subprocess.run") as mock_run, \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("server.engine.main.build_command", return_value=["echo", "test"]):
+    with (
+        patch("server.git_sync.resolve_repo_root", return_value=tmp_path / "main"),
+        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen") as mock_popen,
+        patch("server.engine.main.build_command", return_value=["echo", "test"]),
+    ):
+        # git show remote returns card content with audit pass!
+        def fake_run(args, **kwargs):
+            m = MagicMock()
+            if "git show" in " ".join(args) or "show" in args:
+                m.returncode = 0
+                # Card on remote branch has machine audit passed
+                m.stdout = "# 任务卡 xy106\n## 机审区\n结论：通过\n"
+            else:
+                m.returncode = 1
+            return m
 
-         # git show remote returns card content with audit pass!
-         def fake_run(args, **kwargs):
-             m = MagicMock()
-             if "git show" in " ".join(args) or "show" in args:
-                 m.returncode = 0
-                 # Card on remote branch has machine audit passed
-                 m.stdout = (
-                     "# 任务卡 xy106\n"
-                     "## 机审区\n"
-                     "结论：通过\n"
-                 )
-             else:
-                 m.returncode = 1
-             return m
-         mock_run.side_effect = fake_run
+        mock_run.side_effect = fake_run
 
-         proc = MagicMock()
-         proc.wait.return_value = 0
-         mock_popen.return_value = proc
+        proc = MagicMock()
+        proc.wait.return_value = 0
+        mock_popen.return_value = proc
 
-         cfg = {"DISPATCH_DIR": str(tmp_path / "main" / "docs" / "dispatch")}
-         ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
+        cfg = {"DISPATCH_DIR": str(tmp_path / "main" / "docs" / "dispatch")}
+        ok, problems = _dispatch_and_collect(work, registry=reg, cfg=cfg, log_dir=log_dir, timeout=30)
 
-         # 有远端凭证护航，忽略本地空回写校验，判定成功！
-         assert ok is True
-         assert problems == []
+        # 有远端凭证护航，忽略本地空回写校验，判定成功！
+        assert ok is True
+        assert problems == []
 
 
 def test_run_stage_melt_down_outcome_failed_metric(tmp_path: Path):
@@ -243,22 +238,23 @@ def test_run_stage_melt_down_outcome_failed_metric(tmp_path: Path):
     reg = ExecutorRegistry((entry,))
 
     cfg = {
-        "EXECUTOR_INFRA_MAX_STRIKES": "1", # 1次即熔断以快速测试
+        "EXECUTOR_INFRA_MAX_STRIKES": "1",  # 1次即熔断以快速测试
     }
 
     log_dir = tmp_path / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    with patch("server.engine.main._dispatch_and_collect", return_value=(False, ["503 Service Unavailable"])), \
-         patch("server.engine.main.is_retryable_failure", return_value=(True, "503 Service Unavailable")), \
-         patch("server.engine.runtime_state.read_card_state", return_value={"xy107": {"infra_count": 0}}), \
-         patch("server.engine.runtime_state.write_card_state"):
-
-          outcome = _run_auto_worker(work, reg, store, cfg, log_dir, timeout=30)
-          # 验证 熔断打回 时 failed = 1 统计数据闭环
-          assert outcome.get("failed") == 1
-          assert "infra" not in outcome
-          assert work.state == State.REJECTED
+    with (
+        patch("server.engine.main._dispatch_and_collect", return_value=(False, ["503 Service Unavailable"])),
+        patch("server.engine.main.is_retryable_failure", return_value=(True, "503 Service Unavailable")),
+        patch("server.engine.runtime_state.read_card_state", return_value={"xy107": {"infra_count": 0}}),
+        patch("server.engine.runtime_state.write_card_state"),
+    ):
+        outcome = _run_auto_worker(work, reg, store, cfg, log_dir, timeout=30)
+        # 验证 熔断打回 时 failed = 1 统计数据闭环
+        assert outcome.get("failed") == 1
+        assert "infra" not in outcome
+        assert work.state == State.REJECTED
 
 
 def test_verify_maintenance_success(tmp_path: Path):
@@ -276,17 +272,12 @@ def test_verify_maintenance_success(tmp_path: Path):
         "   - 说明：docs/projects/ccc/README.md\n"
         "4. **线路图**：[是]\n"
         "   - 说明：docs/roadmap.md\n",
-        encoding="utf-8"
+        encoding="utf-8",
     )
 
     plan_file = tmp_path / "docs" / "projects" / "ccc" / "plans" / "011-docgate.md"
     plan_file.parent.mkdir(parents=True, exist_ok=True)
-    plan_file.write_text(
-        "# 方案 · Doc-Gate\n"
-        "> 状态：部分执行\n"
-        "> 关联卡：ccc101\n",
-        encoding="utf-8"
-    )
+    plan_file.write_text("# 方案 · Doc-Gate\n> 状态：部分执行\n> 关联卡：ccc101\n", encoding="utf-8")
 
     (tmp_path / "docs" / "notes").mkdir(parents=True, exist_ok=True)
     (tmp_path / "docs" / "notes" / "test-lesson.md").touch()
@@ -295,7 +286,9 @@ def test_verify_maintenance_success(tmp_path: Path):
 
     from server.board.docgate import verify_maintenance
 
-    with patch("server.board.docgate.get_modified_files", return_value=["docs/projects/ccc/README.md", "docs/roadmap.md"]):
+    with patch(
+        "server.board.docgate.get_modified_files", return_value=["docs/projects/ccc/README.md", "docs/roadmap.md"]
+    ):
         ok, problems = verify_maintenance(card_file, tmp_path)
         assert ok is True
         assert not problems
@@ -316,17 +309,12 @@ def test_verify_maintenance_failed_cases(tmp_path: Path):
         "   - 说明：docs/projects/ccc/README.md\n"
         "4. **线路图**：[是]\n"
         "   - 说明：docs/roadmap.md\n",
-        encoding="utf-8"
+        encoding="utf-8",
     )
 
     plan_file = tmp_path / "docs" / "projects" / "ccc" / "plans" / "011-docgate.md"
     plan_file.parent.mkdir(parents=True, exist_ok=True)
-    plan_file.write_text(
-        "# 方案 · Doc-Gate\n"
-        "> 状态：草案\n"
-        "> 关联卡：无\n",
-        encoding="utf-8"
-    )
+    plan_file.write_text("# 方案 · Doc-Gate\n> 状态：草案\n> 关联卡：无\n", encoding="utf-8")
 
     from server.board.docgate import verify_maintenance
 
@@ -341,11 +329,11 @@ def test_verify_maintenance_failed_cases(tmp_path: Path):
 
 def test_get_modified_files_branch_resolution(tmp_path: Path):
     from server.board.docgate import get_modified_files
-    
+
     card_file = tmp_path / "docs" / "dispatch" / "ccc" / "ccc101-test.md"
     card_file.parent.mkdir(parents=True, exist_ok=True)
     card_file.write_text("# 任务卡 ccc101\n", encoding="utf-8")
-    
+
     # 1. Unmerged case: should call merge-base and get diff on mb..branch
     with patch("subprocess.run") as mock_run:
         # Mock subprocess runs
@@ -364,15 +352,16 @@ def test_get_modified_files_branch_resolution(tmp_path: Path):
             elif "diff" in args and "fake_merge_base_hash..origin/codex/ccc101-test" in args:
                 m.stdout = "docs/projects/ccc/README.md\ndocs/roadmap.md\n"
             return m
-            
+
         mock_run.side_effect = fake_run
-        
+
         res = get_modified_files(tmp_path, card_file)
         assert "docs/projects/ccc/README.md" in res
         assert "docs/roadmap.md" in res
 
     # 2. Merged case (regression case for ccc040): should grep card ID and diff oldest_commit^..branch
     with patch("subprocess.run") as mock_run:
+
         def fake_run(args, **kwargs):
             m = MagicMock()
             m.returncode = 0
@@ -388,8 +377,8 @@ def test_get_modified_files_branch_resolution(tmp_path: Path):
             elif "diff" in args and "commit_2_hash^..origin/codex/ccc101-test" in args:
                 m.stdout = "docs/projects/ccc/README.md\n"
             return m
-            
+
         mock_run.side_effect = fake_run
-        
+
         res = get_modified_files(tmp_path, card_file)
         assert res == ["docs/projects/ccc/README.md"]

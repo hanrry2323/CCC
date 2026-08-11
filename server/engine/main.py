@@ -379,23 +379,61 @@ def max_retries_from_cfg(cfg: dict[str, Any]) -> int:
         return 3
 
 
+def _is_manual_or_remote_executor(work: Work) -> bool:
+    """判定执行体是否为「不可自愈」类型：manual / W 号（跨节点 Worker 认领）。
+
+    sidecar 契约（ccc-plan-021）：manual/W 号卡由人工或远端 Worker 认领，
+    Engine 无本地 PID 可收单，打回后若残留 sidecar 流程态会挂死（clw019 根因）。
+    此类卡打回/重试出口必须立即 clear sidecar，磁盘卡为终态唯一权威。
+    """
+    ex = (work.executor or "").strip().lower()
+    if not ex:
+        return False
+    if "manual" in ex:
+        return True
+    # W 号（W1-W9）或跨节点 Worker 标识
+    import re as _re
+
+    return bool(_re.match(r"^w\d+$", ex))
+
+
 def _fail_retry_or_reject(
     work: Work,
     store: BoardStore,
     problems: list[str],
     cfg: dict[str, Any],
+    log_dir: str | Path | None = None,
 ) -> bool:
     """失败：写原因；未达上限 → 待分派并 ``retry_count+=1``；否则打回。
+
+    sidecar 契约（ccc-plan-021）：重试（可自愈）只写 retry_count、清流程态；
+    打回（不可自愈，含 manual/W 号卡）立即 clear sidecar，磁盘卡终态权威。
 
     Returns:
         True 若已回待分派（将再派）；False 若已打回。
     """
     max_r = max_retries_from_cfg(cfg)
     reasons = list(problems) if problems else ["失败（未附原因）"]
+    # 不可自愈类型（manual/W 号）：不打业务重试预算，直接打回 + 立即 clear sidecar
+    if _is_manual_or_remote_executor(work):
+        work.transition(State.REJECTED, problems=reasons)
+        store.save_work(work)
+        if log_dir:
+            from server.engine.runtime_state import clear_card_state
+
+            clear_card_state(log_dir, work.id)
+        logger.warning("不可自愈执行体（manual/远端）打回并清 sidecar: work=%s problems=%s", work.id, reasons[:2])
+        return False
     if work.retry_count < max_r:
         work.retry_count += 1
         work.transition(State.TODO, problems=reasons)
         store.save_work(work)
+        if log_dir:
+            from server.engine.runtime_state import write_card_state, clear_card_state
+
+            # 可自愈：写重试预算，清流程态残留（sidecar 不存流程终态）
+            write_card_state(log_dir, work.id, retry_count=work.retry_count)
+            clear_card_state(log_dir, work.id)
         logger.info(
             "失败回待分派重试: work=%s retry=%d/%d problems=%s",
             work.id,
@@ -406,6 +444,10 @@ def _fail_retry_or_reject(
         return True
     work.transition(State.REJECTED, problems=reasons)
     store.save_work(work)
+    if log_dir:
+        from server.engine.runtime_state import clear_card_state
+
+        clear_card_state(log_dir, work.id)
     logger.warning(
         "重试用尽打回: work=%s retry=%d/%d problems=%s",
         work.id,
@@ -1403,14 +1445,9 @@ def _dispatch_and_collect(
         try:
             target_path = Path(target_worktree).expanduser().resolve()
             if target_path.exists():
-                # 检查上次执行是否成功收单
-                from server.engine.runtime_state import read_card_state
-
-                rt = read_card_state(log_dir).get(work.id) or {}
+                # 检查上次执行是否成功收单（sidecar 契约：不存流程终态，
+                # 只信日志 ok:true 收单证据。原读 sidecar state=="已回写" 为孤儿逻辑已删除）
                 success = False
-                if rt.get("state") == "已回写":
-                    success = True
-
                 log_file = log_dir / f"{work.id}.log"
                 if not success and log_file.is_file():
                     try:
@@ -2279,9 +2316,10 @@ def _run_auto_worker(
             work.transition(State.DONE)
             store.save_work(work)
             logger.info("收单成功: work=%s → 已回写", work.id)
-            from server.engine.runtime_state import write_card_state
+            # sidecar 契约（ccc-plan-021）：成功出口 clear sidecar，无在途残留
+            from server.engine.runtime_state import clear_card_state
 
-            write_card_state(log_dir, work.id, infra_count=0)  # 成功清零连续 infra
+            clear_card_state(log_dir, work.id)
             outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
@@ -2308,6 +2346,10 @@ def _run_auto_worker(
                 reasons = [empty_reason, *reasons]
                 work.transition(State.REJECTED, problems=reasons)
                 store.save_work(work)
+                # sidecar 契约：打回出口 clear sidecar，磁盘终态权威
+                from server.engine.runtime_state import clear_card_state
+
+                clear_card_state(log_dir, work.id)
                 outcome["failed"] = 1
             elif retryable:
                 # 读 sidecar 的 infra_count
@@ -2327,12 +2369,10 @@ def _run_auto_worker(
                     reasons = [f"基础设施连续失败 {next_strikes} 次强制打回（可人工恢复后再派）", *reasons]
                     work.transition(State.REJECTED, problems=reasons)
                     store.save_work(work)
+                    # sidecar 契约：熔断打回出口 clear sidecar，磁盘终态权威（reason 在 problems）
+                    from server.engine.runtime_state import clear_card_state
 
-                    from server.engine.runtime_state import write_card_state
-
-                    write_card_state(
-                        log_dir, work.id, state=State.REJECTED.value, infra_count=next_strikes, reason=reasons[0]
-                    )
+                    clear_card_state(log_dir, work.id)
                     logger.error(
                         "基础设施故障连续失败超限（已触发熔断打回）: work=%s strikes=%d", work.id, next_strikes
                     )
@@ -2342,7 +2382,7 @@ def _run_auto_worker(
                     _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="run", infra_count=next_strikes)
                     outcome["infra"] = 1
             else:
-                retried = _fail_retry_or_reject(work, store, reasons, cfg)
+                retried = _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                 # 催单计数：仅最终打回时记 timed_out（回待分派不算）
                 if (not retried) and any("超时" in p for p in reasons):
                     outcome["timed_out"] = 1
@@ -2350,7 +2390,7 @@ def _run_auto_worker(
         logger.exception("Worker 异常: work=%s: %s", work.id, exc)
         try:
             if work.state in (State.RUNNING, State.DONE):
-                _fail_retry_or_reject(work, store, [f"worker 异常: {exc}"], cfg)
+                _fail_retry_or_reject(work, store, [f"worker 异常: {exc}"], cfg, log_dir)
         except Exception:
             logger.exception("Worker 异常后失败流转失败: work=%s", work.id)
     finally:
@@ -2381,9 +2421,10 @@ def _run_audit_worker(
         audit_timeout = _audit_timeout_seconds(cfg)
         ok, problems = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, audit_timeout)
         if ok:
-            from server.engine.runtime_state import write_card_state
+            # sidecar 契约（ccc-plan-021）：机审通过出口 clear sidecar，无在途残留
+            from server.engine.runtime_state import clear_card_state
 
-            write_card_state(log_dir, work.id, infra_count=0)  # 成功清零连续 infra
+            clear_card_state(log_dir, work.id)
             outcome["collected"] = 1
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
@@ -2423,9 +2464,13 @@ def _run_audit_worker(
                 reasons = [empty_reason, *reasons]
                 work.transition(State.REJECTED, problems=reasons)
                 store.save_work(work)
+                # sidecar 契约：机审空回写打回出口 clear sidecar
+                from server.engine.runtime_state import clear_card_state
+
+                clear_card_state(log_dir, work.id)
                 outcome["failed"] = 1
             elif business:
-                _fail_retry_or_reject(work, store, reasons, cfg)
+                _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                 outcome["failed"] = 1
                 logger.warning("机审不通过（业务）: work=%s → %s", work.id, work.state.value)
             elif retryable or _is_persistence_failure(reasons) or is_mech:
@@ -2449,6 +2494,7 @@ def _run_audit_worker(
                         store,
                         [*reasons, f"机审多次基础设施失败（已自动重试 {max_strikes} 次），回待分派人工跟进"],
                         cfg,
+                        log_dir,
                     )
                     outcome["failed"] = 1
                 else:
@@ -2463,14 +2509,14 @@ def _run_audit_worker(
                     )
                     outcome["infra"] = 1
             else:
-                _fail_retry_or_reject(work, store, reasons, cfg)
+                _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                 outcome["failed"] = 1
                 logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
     except Exception as exc:
         logger.exception("机审 worker 异常: work=%s: %s", work.id, exc)
         try:
             if work.state in (State.RUNNING, State.DONE):
-                _fail_retry_or_reject(work, store, [f"机审 worker 异常: {exc}"], cfg)
+                _fail_retry_or_reject(work, store, [f"机审 worker 异常: {exc}"], cfg, log_dir)
             outcome["failed"] = 1
         except Exception:
             logger.exception("机审异常后失败流转失败: work=%s", work.id)
@@ -2509,6 +2555,33 @@ def run_once(
     audit_pool = get_audit_pool()
     reclaimed = reclaim_orphaned_running(store, log_dir)
     dead_markers_cleaned = cleanup_dead_markers(log_dir)
+
+    # sidecar 契约（ccc-plan-021）：收敛器入 run_once——孤儿/终态残留 sidecar 自动清除，
+    # 去掉人工 sync-runtime-state 依赖。终态（已回写/打回/已关闭）由磁盘卡唯一权威。
+    from server.engine.runtime_state import read_card_state, clear_card_state
+
+    runtime_now = read_card_state(log_dir) if log_dir else {}
+    if runtime_now:
+        all_works = {w.id: w for w in store.list_work()}
+        for cid in list(runtime_now.keys()):
+            rec = runtime_now[cid]
+            w = all_works.get(cid)
+            if w is None:
+                # 孤儿记录：不对应任何卡 → 清除
+                clear_card_state(log_dir, cid)
+                logger.info("收敛器清除孤儿 sidecar: %s", cid)
+                continue
+            if rec.get("state") in (State.DONE.value, State.REJECTED.value, State.CLOSED.value):
+                # 终态残留（磁盘已是终态）→ 清除，磁盘卡权威。
+                # 例外：带 infra_cooldown_until 的记录是「冷却临时态」，保留（冷却到期自然失效）。
+                if rec.get("infra_cooldown_until"):
+                    continue
+                clear_card_state(log_dir, cid)
+                logger.info("收敛器清除终态残留 sidecar: %s state=%s", cid, rec.get("state"))
+            elif rec.get("state") == State.TODO.value and w.state is State.REJECTED:
+                # sidecar 待分派但磁盘已打回 → 清除（双源漂移收口）
+                clear_card_state(log_dir, cid)
+                logger.info("收敛器清除双源漂移 sidecar: %s", cid)
 
     git_sync_ok = True
     git_sync_detail = ""
