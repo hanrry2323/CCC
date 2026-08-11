@@ -100,7 +100,7 @@ async function openProject(project) {
           <h3>${esc(detail.project)} 线路图</h3>
           <span class="rm-detail-meta">${detail.counts.done} 已完成 · ${detail.counts.doing} 进行中 · ${detail.counts.planned} 待开发</span>
         </div>
-        ${buildTimelineSVG(detail)}
+        ${buildTimelineSVG(detail, 1200, 280)}
         <div id="rm-milestone-detail"></div>
         ${unplannedMilestonesHTML(detail)}
         ${riskHTML(detail)}

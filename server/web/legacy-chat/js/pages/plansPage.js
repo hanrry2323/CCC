@@ -52,6 +52,8 @@ let _projects = [];
 let _projectDisplay = {}; // prefix → 展示名
 let _detailPath = null;  // 当前打开的详情路径，null=列表视图
 let _formOpen = false;   // 新建表单是否打开
+let _hideClosed = false; // 只看未完成（隐藏已完成/作废列）
+let _collapsed = { '已完成': true, '作废': true }; // 终态列默认折叠，给活跃列腾宽度
 
 // ── 工具 ──
 
@@ -142,6 +144,7 @@ function filteredPlans() {
   const q = _searchQ.trim().toLowerCase();
   return _plans.filter(p => {
     if (_filterProject && p.project !== _filterProject) return false;
+    if (_hideClosed && (p.status === '已完成' || p.status === '作废')) return false;
     if (!q) return true;
     return (p.title || '').toLowerCase().includes(q)
       || (p.author || '').toLowerCase().includes(q)
@@ -185,7 +188,7 @@ function renderPlanItem(plan) {
           <span class="pcard-acc" title="验收 ${acc.done}/${acc.total}">
             <span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${accPct}%;background:${color}"></span></span>
             <span class="pcard-acc-num">${acc.done}/${acc.total}</span>
-          </span>` : ''}
+          </span>` : `<span class="pcard-acc-none">无验收项</span>`}
         ${cardChips ? `<span class="pcard-chips" title="关联卡实时状态">${cardChips}</span>` : ''}
         <span class="pcard-open">详情${icon('open')}</span>
       </div>
@@ -195,13 +198,15 @@ function renderPlanItem(plan) {
 function renderColumn(status) {
   const color = STATUS_COLORS[status];
   const items = filteredPlans().filter(p => p.status === status);
+  const collapsed = !!_collapsed[status];
   return `
-    <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
-      <header class="pcol-h">
+    <section class="pcol ${collapsed ? 'collapsed' : ''}" data-status="${esc(status)}" data-drop-status="${esc(status)}">
+      <header class="pcol-h" data-toggle-col="${esc(status)}" title="${collapsed ? '展开' : '折叠'}">
         <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
         <span class="pcol-count">${items.length}</span>
+        <span class="pcol-fold">${collapsed ? '▸' : '▾'}</span>
       </header>
-      <div class="pcol-body">
+      <div class="pcol-body" ${collapsed ? 'style="display:none"' : ''}>
         ${items.length ? items.map(renderPlanItem).join('') : `<div class="pcol-empty"><div class="pcol-empty-line"></div><span>暂无方案</span></div>`}
       </div>
     </section>`;
@@ -221,6 +226,7 @@ function renderToolbar() {
         ${icon('search')}
         <input type="search" id="plans-search" placeholder="搜索标题 / 作者 / 编号…" value="${esc(_searchQ)}" aria-label="搜索方案">
       </label>
+      <button type="button" class="ptool-toggle" id="plans-toggle-closed" title="只看未完成列">${_hideClosed ? '显示已完成' : '只看未完成'}</button>
       <button type="button" class="ptool-new" id="plans-btn-new">${icon('plus')}新建方案</button>
     </div>`;
 }
@@ -242,6 +248,7 @@ function render() {
       <div class="plans-form-overlay" id="plans-form-overlay" style="display:none"></div>
     </div>`;
   bindEvents();
+  applyFlowColumns();
 }
 
 function updateListOnly() {
@@ -252,6 +259,14 @@ function updateListOnly() {
     : STATUSES.map(renderColumn).join('');
   if (countEl) countEl.textContent = filteredPlans().length;
   bindEvents();
+  applyFlowColumns();
+}
+
+function applyFlowColumns() {
+  const flow = _root?.querySelector('#plans-flow');
+  if (!flow) return;
+  const visible = STATUSES.filter(s => !_collapsed[s]).length;
+  flow.style.gridTemplateColumns = `repeat(${Math.max(1, visible)}, minmax(0, 1fr))`;
 }
 
 // ── events ──
@@ -279,6 +294,17 @@ function bindEvents() {
     _filterProject = '';
     _searchQ = '';
     render();
+  });
+  root.querySelector('#plans-toggle-closed')?.addEventListener('click', () => {
+    _hideClosed = !_hideClosed;
+    render();
+  });
+  root.querySelectorAll('[data-toggle-col]').forEach((h) => {
+    h.addEventListener('click', (e) => {
+      const st = h.dataset.toggleCol;
+      _collapsed[st] = !_collapsed[st];
+      render();
+    });
   });
 
   // 条目 → 详情

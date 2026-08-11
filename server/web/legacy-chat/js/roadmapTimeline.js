@@ -89,9 +89,11 @@ export function cardListHTML(detail) {
       </div>
     </div>`;
   };
-  return `${rows('已完成', 'done', CARD_TONE.done)}
-          ${rows('进行中', 'doing', CARD_TONE.doing)}
-          ${rows('待开发', 'planned', CARD_TONE.planned)}`;
+  return `<div class="rm-groups">
+    ${rows('已完成', 'done', CARD_TONE.done)}
+    ${rows('进行中', 'doing', CARD_TONE.doing)}
+    ${rows('待开发', 'planned', CARD_TONE.planned)}
+  </div>`;
 }
 
 export function riskHTML(detail) {

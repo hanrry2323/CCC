@@ -51,10 +51,23 @@ function html() {
 
   <!-- ③ 技术详情（折叠） -->
   <div class="ops-section">
-    <details class="ops-fold">
-      <summary>技术详情（节点 / 端口 / 原始命令）</summary>
+    <details class="ops-fold" open>
+      <summary>诊断详情（节点 / 服务 / 管道）</summary>
       <div id="ops-detail" class="ops-detail-body">
-        <div id="ops-machines" class="ops-card"></div>
+        <div class="ops-detail-grid">
+          <div class="ops-card ops-detail-block">
+            <h4 class="ops-block-title">集群节点 <span id="ops-machines-count" class="badge">0</span></h4>
+            <div id="ops-machines"></div>
+          </div>
+          <div class="ops-card ops-detail-block">
+            <h4 class="ops-block-title">本地服务 <span id="ops-services-count" class="badge">0</span></h4>
+            <div id="ops-services"></div>
+          </div>
+          <div class="ops-card ops-detail-block">
+            <h4 class="ops-block-title">引擎管道</h4>
+            <div id="ops-pipeline"></div>
+          </div>
+        </div>
       </div>
     </details>
   </div>
@@ -290,8 +303,12 @@ function renderMachines(agg) {
   const machines = overview.machines || [];
   if (!machines.length) {
     el.innerHTML = '<div class="ops-empty">未配置集群节点</div>';
+    const nEl = _root.querySelector('#ops-machines-count');
+    if (nEl) nEl.textContent = '0';
     return;
   }
+  const nEl = _root.querySelector('#ops-machines-count');
+  if (nEl) nEl.textContent = String(machines.length);
   el.innerHTML = machines
     .map(
       (m) => `<div class="ops-machine ${m.reachable ? 'up' : 'down'}">
@@ -305,11 +322,45 @@ function renderMachines(agg) {
     .join('');
 }
 
+function renderServices(agg) {
+  const el = _root.querySelector('#ops-services');
+  if (!el) return;
+  const services = (agg.overview || {}).services || [];
+  const nEl = _root.querySelector('#ops-services-count');
+  if (nEl) nEl.textContent = String(services.length);
+  if (!services.length) {
+    el.innerHTML = '<div class="ops-empty">未配置服务清单（CLUSTER_SERVICES）</div>';
+    return;
+  }
+  el.innerHTML = services
+    .map((s) => `<div class="ops-machine ${s.running ? 'up' : 'down'}">
+      <div class="name">${esc(s.name)}</div>
+      <div class="status">${pill(!!s.running, s.running ? '运行中' : '未运行')}${s.pid ? `<span class="muted">PID ${esc(s.pid)}</span>` : ''}</div>
+    </div>`)
+    .join('');
+}
+
+function renderPipeline(agg) {
+  const el = _root.querySelector('#ops-pipeline');
+  if (!el) return;
+  const pipe = agg.pipeline || {};
+  const ok = pipe.git_sync_ok !== false && !(pipe.probe_skips || 0) && !(pipe.none_skips || 0);
+  const rows = [
+    ['git 同步', pipe.git_sync_ok === false ? '失败' : '正常'],
+    ['探活跳过', pipe.probe_skips || 0],
+    ['未派发绑定', pipe.none_skips || 0],
+  ];
+  el.innerHTML = `<div class="ops-pipe-status ${ok ? 'ok' : 'bad'}">${ok ? '管道健康' : '管道有注意项'}</div>
+    <div class="ops-kv">${rows.map(([k, v]) => `<span>${esc(k)}</span><strong>${esc(String(v))}</strong>`).join('')}</div>`;
+}
+
 async function poll() {
   try {
     const agg = await apiGet('/ops/summary');
     renderStatus(agg);
     renderMachines(agg);
+    renderServices(agg);
+    renderPipeline(agg);
   } catch (err) {
     const el = _root.querySelector('#ops-status');
     if (el) {
