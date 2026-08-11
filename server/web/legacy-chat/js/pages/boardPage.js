@@ -13,7 +13,7 @@
 import { apiGet, apiPost, getCards } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
-import { fmtTaskCopy } from '../components/taskCard.js';
+import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
 
 /** 看板列（2026-08-12 重排）：第一竖列待分派/打回 + 执行中/机审（上下分栏）+ 已回写；已关闭删除。 */
 const FLOW_COLS = ['待分派', '打回', '执行中', '机审', '已回写'];
@@ -188,7 +188,7 @@ function renderBoard() {
               <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'};"></div>
             </div>`).join('')}
         </div>
-        <!-- 执行中 / 机审：上卡区 + 下运行流 -->
+        <!-- 执行中 / 机审：完整独立栏，卡片下方跟该卡运行信息流 -->
         ${RUN_COLS.map(col => `
           <div class="board-col run-col" data-col="${esc(col)}">
             <div class="board-col-h">
@@ -196,8 +196,7 @@ function renderBoard() {
               <span class="ct" id="ct-${col}">0</span>
               <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
             </div>
-            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex: 0 1 auto;"></div>
-            <div class="board-col-run" id="runpanel-${col}"><div class="board-run-empty">等待任务进程…</div></div>
+            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'};"></div>
           </div>`).join('')}
         <!-- 已回写（待合入） -->
         <div class="board-col" data-col="已回写">
@@ -213,6 +212,7 @@ function renderBoard() {
 
     _colLists = {};
     for (const col of FLOW_COLS) {
+      if (RUN_COLS.includes(col)) continue; // 这两列手动渲染（卡片+运行块）
       const colEl = host.querySelector(`#col-list-${col}`);
       if (colEl) {
         _colLists[col] = new TaskCardList(colEl, {
@@ -248,7 +248,7 @@ function renderBoard() {
     const countEl = _root.querySelector(`#ct-${col}`);
     if (countEl) countEl.textContent = stateCards.length;
 
-    if (_collapsedCols[col] || !_colLists[col]) {
+    if (_collapsedCols[col]) {
       continue;
     }
 
@@ -261,6 +261,8 @@ function renderBoard() {
     const visibleCards = stateCards.slice(0, _kanbanPageSizes[col]);
     if (RUN_COLS.includes(col)) {
       _colCardIds[col] = visibleCards.map((c) => c.id).filter(Boolean);
+      renderRunCol(col, visibleCards);
+      continue;
     }
 
     if (_colLists[col]) {
@@ -319,25 +321,50 @@ function renderRunItem(t) {
   </div>`;
 }
 
+function renderRunCol(col, cards) {
+  const el = _root.querySelector(`#col-list-${col}`);
+  if (!el) return;
+  el.innerHTML = cards.length
+    ? cards.map((c) => `
+      <div class="board-run-cell">
+        ${renderTaskCard(c)}
+        <div class="board-run-block" data-run-id="${esc(c.id)}"><div class="board-run-empty">等待运行信息…</div></div>
+      </div>`).join('')
+    : '<div class="board-empty">暂无任务</div>';
+  el.querySelectorAll('.board-task-card').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.card-copy-btn')) return;
+      showDetail(card.dataset.id);
+    });
+  });
+  el.querySelectorAll('.card-copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const t = _allCards.find((x) => x.id === id) || { id, title: '' };
+      const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
+      if (ok) window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+      else window.showToast?.('复制失败', 'error');
+    });
+  });
+}
+
 async function pollRunPanels() {
   if (!_root) return;
   try {
     const data = await apiGet('/tasks/running');
     const tasks = (data && data.tasks) || [];
-    const byCol = {};
+    const byId = {};
     for (const t of tasks) {
-      const col = t.board_column || '';
-      if (col === '执行中' || col === '机审') (byCol[col] = byCol[col] || []).push(t);
+      if (t.work_id) byId[t.work_id] = t;
     }
-    for (const col of ['执行中', '机审']) {
-      const el = _root.querySelector(`#runpanel-${col}`);
+    for (const col of RUN_COLS) {
+      const el = _root.querySelector(`#col-list-${col}`);
       if (!el) continue;
-      const list = byCol[col] || [];
-      const ids = _colCardIds[col] || [];
-      const shown = list.filter((t) => ids.includes(t.work_id));
-      el.innerHTML = shown.length
-        ? shown.map(renderRunItem).join('')
-        : '<div class="board-run-empty">无运行进程</div>';
+      el.querySelectorAll('.board-run-block').forEach((block) => {
+        const t = byId[block.dataset.runId];
+        block.innerHTML = t ? renderRunItem(t) : '<div class="board-run-empty">无运行进程</div>';
+      });
     }
   } catch (e) {
     /* 轮询失败静默，下轮重试 */
