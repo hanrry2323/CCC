@@ -2737,7 +2737,7 @@ class TestBusinessWorktreeIsolation:
 
     def _make_biz_repo(self, tmp_path: Path, with_origin_main: bool = True) -> Path:
         repo = tmp_path / "bizrepo"
-        repo.mkdir()
+        repo.mkdir(parents=True)
         subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo), check=True, capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True, capture_output=True)
@@ -2851,3 +2851,135 @@ class TestBusinessWorktreeIsolation:
         # mx201 保持待分派（未被拉起、未被打回）
         by_id = {w.id: w for w in store.list_work()}
         assert by_id["mx201"].state is State.TODO
+
+    def test_ensure_business_worktree_force_rebuild(self, tmp_path: Path) -> None:
+        """脏 worktree（未收单 + 有改动）→ 强制重建，脏文件消失、分支重建。"""
+        repo = self._make_biz_repo(tmp_path)
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        work = Work(id="mx400", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx400-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        wt1, err1 = _ensure_business_worktree(work, proj, log_dir)
+        assert err1 is None and wt1 is not None
+        # 未收单（无 ok 日志）+ 制造脏改动 → 再次调用应强重建（重置失败 → remove --force + branch -D + add）
+        (Path(wt1) / "dirty.txt").write_text("dirty", encoding="utf-8")
+        wt2, err2 = _ensure_business_worktree(work, proj, log_dir)
+        assert err2 is None and wt2 is not None
+        assert not (Path(wt2) / "dirty.txt").exists()
+        # 分支已重建为 codex/mx400-test 且工作树可写
+        branch = subprocess.run(
+            ["git", "-C", str(Path(wt2)), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        assert branch == "codex/mx400-test"
+
+    def test_cleanup_business_worktrees_reaps_closed_protects_running(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """已关闭卡 worktree 回收；执行中（带 running marker）卡 worktree 保护不删。"""
+        import os
+
+        repo = self._make_biz_repo(tmp_path)
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        # _cleanup_business_worktrees 内部走 registry.load_projects → 注入测试仓
+        monkeypatch.setattr("server.board.registry.load_projects", lambda: (proj,))
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        closed_work = Work(
+            id="mx500",
+            role="开发执行体",
+            project="mx",
+            state=State.CLOSED,
+            card_path="docs/dispatch/mx/mx500-test.md",
+        )
+        running_work = Work(
+            id="mx501",
+            role="开发执行体",
+            project="mx",
+            state=State.RUNNING,
+            card_path="docs/dispatch/mx/mx501-test.md",
+        )
+        wt_c, _ = _ensure_business_worktree(closed_work, proj, log_dir)
+        wt_r, _ = _ensure_business_worktree(running_work, proj, log_dir)
+        assert wt_c and wt_r
+        log_dir.joinpath("mx501.running").write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+
+        from server.engine.main import _cleanup_business_worktrees
+
+        store = InMemoryBoardStore()
+        store.seed(closed_work, running_work)
+        cleaned = _cleanup_business_worktrees(store, log_dir)
+        assert cleaned == 1
+        assert not Path(wt_c).exists()
+        assert Path(wt_r).exists()
+
+    def test_is_retryable_worktree_infra_failure(self, tmp_path: Path) -> None:
+        """worktree/基础设施错误 → is_retryable_failure 判 infra（回待分派+冷却，不打回）。"""
+        from server.engine.main import is_retryable_failure
+
+        ok, hint = is_retryable_failure(
+            "mx600",
+            ["基础设施：业务仓 worktree 创建失败：git worktree add 失败"],
+            tmp_path,
+        )
+        assert ok is True
+        assert "基础设施" in hint
+
+    def test_run_once_cross_project_not_blocked(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A 仓 RUNNING 不挡 B 仓待分派卡（跨仓并行）。"""
+        monkeypatch.chdir(tmp_path)
+        import os
+
+        import server.engine.main as em
+
+        repo_mx = self._make_biz_repo(tmp_path / "mx-repo")
+        repo_xy = self._make_biz_repo(tmp_path / "xy-repo")
+        proj_mx = self._make_project(repo_mx, tmp_path / ".ccc-wt" / "mx")
+        proj_xy = ProjectEntry(
+            prefix="xy",
+            id="xianyu",
+            name="xianyu",
+            display="xianyu",
+            taskable=True,
+            forbidden=False,
+            status="active",
+            dossier="",
+            role="独立业务仓",
+            path_m1=None,
+            path_mac2017=str(repo_xy),
+            location="mac2017-apps",
+            isolation_worktree_root=str(tmp_path / ".ccc-wt" / "xy"),
+            isolation_max_concurrent=1,
+        )
+
+        def _fake_biz_project(work):
+            return proj_mx if work.project == "mx" else proj_xy if work.project == "xy" else None
+
+        monkeypatch.setattr(em, "_business_project", _fake_biz_project)
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        store.seed(
+            Work(id="mx700", role="开发执行体", project="mx", state=State.RUNNING),
+            Work(id="xy701", role="开发执行体", project="xy", card_path=str(tmp_path / "xy701.md")),
+        )
+        log_dir.joinpath("mx700.running").write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(log_dir),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "3",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        summary = run_once(reg, store, cfg)
+        # mx 仓 RUNNING 不挡 xy 仓待分派卡 → xy701 正常派发，不排队
+        assert summary["queued"] == 0
+        assert summary["dispatched"] == 1

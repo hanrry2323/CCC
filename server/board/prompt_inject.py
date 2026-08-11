@@ -411,7 +411,7 @@ def build_executor_hint(project_prefix: str, title: str = "", card_context: str 
                 f"- 项目仓（只读参考）：{mac2017_path}（Mac2017）——禁止在主仓目录切换卡分支或直接开发"
             )
             lines.append(
-                "- 代码工作区：由 CCC Engine 派发时注入独立 worktree（{biz_worktree}），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录"
+                "- 代码工作区：由 CCC Engine 派发时注入独立 worktree（见派发提示中的具体路径），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录"
             )
         else:
             lines.append(f"- 仓库路径：{mac2017_path}（Mac2017）")

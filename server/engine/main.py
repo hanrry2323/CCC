@@ -3119,17 +3119,18 @@ def run_once(
                 max_concurrent,
             )
             continue
-        # 业务仓并发闸门（2026-08-12 隔离升级）：同仓已有 RUNNING 卡 → 排队，不并发。
-        # 保守默认 max_concurrent=1；跨仓可并行。manual 挂起（假 RUNNING）同样挡并发。
+        # 业务仓并发闸门（2026-08-12 隔离升级）：同仓 RUNNING 卡达到 max_concurrent 才排队。
+        # 默认 max_concurrent=1（保守）；跨仓可并行。manual 挂起（假 RUNNING）同样计入。
         biz_project = _business_project(work)
         if biz_project:
             running_same_project = [
                 w for w in store.list_work(state=State.RUNNING) if w.project == work.project
             ]
-            if running_same_project:
+            if len(running_same_project) >= biz_project.isolation_max_concurrent:
                 queued += 1
                 logger.info(
-                    "同业务仓已有执行中卡，排队等待: work=%s project=%s running=%s",
+                    "同业务仓已达并发上限 %d，排队等待: work=%s project=%s running=%s",
+                    biz_project.isolation_max_concurrent,
                     work.id,
                     work.project,
                     [w.id for w in running_same_project],

@@ -132,6 +132,9 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-demo
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/cd
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
@@ -147,6 +150,9 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/clwarp
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/clw
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
