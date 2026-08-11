@@ -2846,8 +2846,9 @@ body.ro-viewer [data-write] {
   display: grid;
   grid-template-rows: 1fr 1fr;
   gap: 12px;
-  height: 100%;
+  height: auto;
   min-width: 0;
+  min-height: 0;
 }
 .board-half-col {
   display: flex;
@@ -2857,6 +2858,8 @@ body.ro-viewer [data-write] {
   border-radius: var(--ccc-radius-sm);
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
 }
 .board-col-body {
   display: flex;
