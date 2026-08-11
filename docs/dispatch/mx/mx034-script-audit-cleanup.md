@@ -1,7 +1,7 @@
 # 任务卡 mx034 · 脚本审查清理（异常大脚本 + 个人运维脚本迁出）（OpenCode 执行）
 
 > 关联：mx-plan-002
-> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派（重投 2026-08-12） · 派发：engine · 依赖：mx033 · 项目：mx · 日期：2026-08-12
+> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 依赖：mx033 · 项目：mx · 日期：2026-08-12
 
 
 
