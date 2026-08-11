@@ -1389,6 +1389,15 @@ class TestTaskDetail:
 class TestTasksRunning:
     """GET /tasks/running：执行中任务进程视图（免登录白名单 + 日志尾部）。"""
 
+    @pytest.fixture(autouse=True)
+    def _clear_running_cache(self):
+        """tasks/running 整表缓存按测试隔离（marker/mock 变化需即时重算）。"""
+        from server.web.server import _RUNNING_TASKS_CACHE
+
+        _RUNNING_TASKS_CACHE.update(ts=0.0, key="__reset__", data=None)
+        yield
+        _RUNNING_TASKS_CACHE.update(ts=0.0, key="__reset__", data=None)
+
     def test_whitelisted_requires_no_token(self, api_server):
         """鉴权开启时 /tasks/running 仍免登录 200（与 /projects 同白名单组）。"""
         status, data = _get(api_server, "/tasks/running")
