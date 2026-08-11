@@ -184,8 +184,8 @@ function renderBoard() {
               <span class="ct" id="ct-${col}">0</span>
               <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
             </div>
-            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex-direction: column; overflow: hidden; flex: 1; min-height: 160px; padding: 8px; gap: 6px;"></div>
-            ${col === '执行中' || col === '机审' ? `<div class="board-col-run" id="runpanel-${col}"><div class="board-run-empty">等待任务进程…</div></div>` : ''}
+            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex-direction: column; overflow: hidden; ${col === '执行中' || col === '机审' ? 'flex: 0 1 auto;' : 'flex: 1;'} min-height: 120px; padding: 8px; gap: 6px;"></div>
+            ${col === '执行中' || col === '机审' ? `<div class="board-col-run" id="runpanel-${col}" style="flex: 1;"><div class="board-run-empty">等待任务进程…</div></div>` : ''}
           </div>
         `).join('')}
         ${foldedCols.length ? `<div class="board-fold-bar" id="board-fold-bar" style="display:flex;flex-direction:column;gap:8px;justify-content:center;padding:10px;">
@@ -257,7 +257,9 @@ function renderBoard() {
       continue;
     }
 
-    if (!_kanbanPageSizes[col]) {
+    if (col === '执行中' || col === '机审') {
+      _kanbanPageSizes[col] = 3; // 老板 2026-08-12：这两列最多显示 3 张卡，下栏留给信息流
+    } else if (!_kanbanPageSizes[col]) {
       _kanbanPageSizes[col] = 30;
     }
 
@@ -269,7 +271,7 @@ function renderBoard() {
 
     const paginationEl = _root.querySelector(`#col-list-${col} .task-card-list-pagination`);
     if (paginationEl) {
-      if (stateCards.length > visibleCards.length) {
+      if (stateCards.length > visibleCards.length && col !== '执行中' && col !== '机审') {
         paginationEl.innerHTML = `
           <div style="display: flex; justify-content: center; padding: 6px;">
             <button type="button" class="hub-btn load-more-btn" style="width: 100%; font-size: 11px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-layer); color: var(--ccc-text-base); border-radius: 3px;">
@@ -309,22 +311,13 @@ function fmtElapsedRun(sec) {
 }
 
 function renderRunItem(t) {
-  const last = Array.isArray(t.log_tail) && t.log_tail.length ? t.log_tail[t.log_tail.length - 1] : '';
-  const ins = Number(t.lines_insert) || 0;
-  const del = Number(t.lines_delete) || 0;
+  const tail = Array.isArray(t.log_tail) ? t.log_tail.slice(-3) : [];
   return `<div class="board-run-item ${t.metrics_live ? 'live' : ''}">
     <div class="board-run-top">
       <b>${esc(t.work_id || '')}</b>
-      ${t.executor && t.executor !== '未知' ? `<span class="board-run-exec">@${esc(t.executor)}</span>` : ''}
-      <span class="board-run-time">⏱ ${esc(fmtElapsedRun(t.elapsed_s))}${t.last_activity_at ? ` · ${esc(t.last_activity_at)}` : ''}</span>
+      <span class="board-run-time">⏱ ${esc(fmtElapsedRun(t.elapsed_s))}</span>
     </div>
-    <div class="board-run-log" title="日志尾">${esc(last || '（暂无日志）')}</div>
-    <div class="board-run-meta">
-      <span>调用 ${t.tool_calls || 0}</span>
-      ${t.dirty_files ? `<span>文件 ${t.dirty_files}</span>` : ''}
-      ${ins + del ? `<span>±${ins}/−${del}</span>` : ''}
-      <i class="${t.metrics_live ? 'on' : ''}">${t.metrics_live ? '● 运行中' : '○ 空闲'}</i>
-    </div>
+    <div class="board-run-flow">${tail.length ? tail.map((l) => `<div class="board-run-line">${esc(l)}</div>`).join('') : '<div class="board-run-line dim">（暂无日志）</div>'}</div>
   </div>`;
 }
 
