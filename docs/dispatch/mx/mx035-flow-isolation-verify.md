@@ -1,6 +1,6 @@
 # 任务卡 mx035 · 流程隔离验证：业务仓 worktree 冒烟测试（OpenCode 执行）
 
-> 关联：mx-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-12
+> 关联：mx-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-12
 
 ## 机审区
 
