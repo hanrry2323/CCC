@@ -47,7 +47,9 @@ REQUIRED_FIELDS: frozenset[str] = frozenset({"角色", "分类", "当前绑定",
 # 「可后台 CLI」行必填的派发字段（T32 真实派发闭环）
 CLI_REQUIRED_FIELDS: frozenset[str] = frozenset({"命令", "参数模板"})
 # build_command 支持的占位符（参数模板里允许引用）
-ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role", "workdir", "worktree"})
+ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset(
+    {"work_id", "card_path", "role", "workdir", "worktree", "biz_worktree"}
+)
 
 
 class DispatchDecision(StrEnum):
@@ -338,6 +340,7 @@ def build_command(
     card_path: str,
     default_workdir: str,
     worktree: str = "",
+    biz_worktree: str = "",
 ) -> list[str]:
     """按注册表条目的命令 + 参数模板生成 argv 向量（绝不写死工具名）。
 
@@ -348,6 +351,7 @@ def build_command(
         card_path: 任务卡路径。
         default_workdir: entry.workdir 留空时用此值（来自 config 的 DATA_DIR）。
         worktree: 每卡独立 worktree 路径（可选）。
+        biz_worktree: 业务仓每卡独立 worktree 路径（2026-08-12 隔离升级；空 = 非业务仓型任务）。
 
     Returns:
         argv 列表，如 `["opencode", "--dir", "/data", "-p", "请按..."]`。
@@ -368,6 +372,7 @@ def build_command(
             role=role,
             workdir=workdir,
             worktree=worktree,
+            biz_worktree=biz_worktree,
         )
     )
     args = shlex.split(rendered)

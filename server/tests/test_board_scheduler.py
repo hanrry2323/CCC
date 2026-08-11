@@ -26,6 +26,15 @@ OUTPUT_DIR = str(PROJECT_ROOT / "server" / "web" / "data")
 OUTPUT_PATH = str(Path(OUTPUT_DIR) / "board.js")
 
 
+@pytest.fixture(autouse=True)
+def _no_auto_pull(monkeypatch: pytest.MonkeyPatch) -> None:
+    """禁止 export_safe 对真实开发仓跑 git sync（2026-08-12 事故修复卫生）：
+    sync 的 dispatch 强制对齐会清掉未提交/未 push 的恢复卡（mx030-034 事故卡）。
+    测试只测导出逻辑，不应触碰真实仓工作树。
+    """
+    monkeypatch.setenv("CCC_AUTO_PULL", "0")
+
+
 class TestExportSafe:
     """安全导出：成功 / 失败保留旧文件 + 临时文件清理。"""
 

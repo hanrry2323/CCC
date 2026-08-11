@@ -1,8 +1,8 @@
 # 方案 · 集群 Worker 池（Cluster Worker Pool）蓝图
 
 > 项目：ccc · 编号：ccc-plan-020 · 状态：A 轨四项 + 收尾全部完成（平台根治落地）；252 实跑挂账等网络 · 作者：OpenCode · 工具：OpenCode
-> 创建：2026-08-10 · 更新：2026-08-11
-> 关联卡：clw019（跨节点路由实证，已回写）
+> 创建：2026-08-10 · 更新：2026-08-12
+> 关联卡：clw019（跨节点路由实证，已回写）, clw020
 > 关联方案：011-loop-observer-architecture（巡查）、014-delivery-gate-sop（交付）、007-100卡基线、021-sidecar-lifecycle-contract
 
 ## 目标

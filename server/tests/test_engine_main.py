@@ -11,7 +11,15 @@ import pytest
 
 from server.config.loader import ConfigError
 from server.engine.dispatch import load_registry
-from server.engine.main import main, run_once, _read_card_section, _audit_rejection_reason
+from server.engine.main import (
+    main,
+    run_once,
+    _audit_rejection_reason,
+    _business_project,
+    _ensure_business_worktree,
+    _read_card_section,
+)
+from server.board.registry import ProjectEntry
 from server.engine.pool import reset_dispatch_pool
 from server.engine.store import FileBoardStore, InMemoryBoardStore
 from server.engine.task import State, Work
@@ -1762,7 +1770,7 @@ class TestEngineWorktree:
         assert "[codex/t64-auto-worktree" in log_file.read_text(encoding="utf-8")
 
     def test_run_once_with_worktree_failed_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """如果 git worktree 创建失败（例如不是 git 仓库），自动回退到默认工作目录而不丢失卡状态。"""
+        """2026-08-12 隔离升级：worktree 创建失败 = 基础设施故障，卡保持待分派 + 冷却，禁止回退默认目录。"""
         # 不初始化 git 仓库，直接 chdir 到 tmp_path
         monkeypatch.chdir(tmp_path)
 
@@ -1787,20 +1795,22 @@ class TestEngineWorktree:
             "EXECUTOR_PROBE_URL": "",
         }
 
-        # 执行 run_once 应该成功，因为有优雅的回退
+        # 执行 run_once：worktree 失败 → collected=0，计 worktrees_failed=1，卡留待分派
         summary = run_once(reg, store, cfg)
-        assert summary["collected"] == 1
+        assert summary["collected"] == 0
+        assert summary["worktrees_failed"] == 1
 
         # 验证 worktree 确实没有被成功创建
         expected_worktree_path = tmp_path / "wt-t64"
         assert not expected_worktree_path.exists()
 
-        # 验证日志，由于回退，wt 占位符应该被替换为空字符串
-        log_file = tmp_path / "logs" / "T64.log"
-        assert log_file.exists()
-        log_content = log_file.read_text(encoding="utf-8")
-        assert "work=T64" in log_content
-        assert "wt=" in log_content  # wt 被渲染为空字符串
+        # 卡保持待分派 + 基础设施冷却已记录（可自动续派，不打回）
+        from server.engine.runtime_state import read_card_state
+
+        rt = read_card_state(tmp_path / "logs").get("T64") or {}
+        assert rt.get("infra_count") == 1
+        assert rt.get("infra_cooldown_until")
+        assert rt.get("state") == "待分派"
 
     def test_cleanup_closed_worktree(self, tmp_path: Path) -> None:
         """已关闭 + 干净 + 已合入 → 移除；脏 worktree 保留（绝不强删）。"""
@@ -2720,3 +2730,124 @@ def test_role_skill_injection() -> None:
     # 代码审查 → code-review skill
     hint2 = _role_skill_hint("# 任务卡 ccc999\n\n> 角色：代码审查\n")
     assert "code-review" in hint2
+
+
+class TestBusinessWorktreeIsolation:
+    """2026-08-12 隔离升级：业务仓每卡 worktree 生命周期 + 并发闸门。"""
+
+    def _make_biz_repo(self, tmp_path: Path, with_origin_main: bool = True) -> Path:
+        repo = tmp_path / "bizrepo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True, capture_output=True)
+        (repo / "seed.txt").write_text("seed", encoding="utf-8")
+        subprocess.run(["git", "add", "seed.txt"], cwd=str(repo), check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), check=True, capture_output=True)
+        if with_origin_main:
+            subprocess.run(["git", "update-ref", "refs/remotes/origin/main", "HEAD"], cwd=str(repo), check=True)
+        return repo
+
+    def _make_project(self, repo: Path, root: Path) -> ProjectEntry:
+        return ProjectEntry(
+            prefix="mx",
+            id="medio-0",
+            name="medio-0",
+            display="medio-0",
+            taskable=True,
+            forbidden=False,
+            status="active",
+            dossier="",
+            role="独立业务仓",
+            path_m1=None,
+            path_mac2017=str(repo),
+            location="mac2017-apps",
+            isolation_worktree_root=str(root),
+            isolation_max_concurrent=1,
+        )
+
+    def test_business_worktree_created(self, tmp_path: Path) -> None:
+        repo = self._make_biz_repo(tmp_path)
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        work = Work(id="mx100", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx100-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        wt, err = _ensure_business_worktree(work, proj, log_dir)
+        assert err is None
+        assert wt is not None
+        assert (wt_root / "mx100").is_dir()
+        assert (Path(wt) / ".git").exists()
+        # 分支 codex/mx100-test 已创建且检出
+        branch = subprocess.run(
+            ["git", "-C", str(wt_root / "mx100"), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        assert branch == "codex/mx100-test"
+
+    def test_business_worktree_failed_no_origin(self, tmp_path: Path) -> None:
+        repo = self._make_biz_repo(tmp_path, with_origin_main=False)
+        proj = self._make_project(repo, tmp_path / ".ccc-wt" / "mx")
+        work = Work(id="mx101", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx101-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        wt, err = _ensure_business_worktree(work, proj, log_dir)
+        assert err is not None
+        assert "worktree" in err
+        assert wt is None
+
+    def test_business_worktree_reused_on_success(self, tmp_path: Path) -> None:
+        repo = self._make_biz_repo(tmp_path)
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        work = Work(id="mx102", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx102-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        wt1, err1 = _ensure_business_worktree(work, proj, log_dir)
+        assert err1 is None and wt1 is not None
+        # 上次成功收单（日志 ok:true）→ 复用同一 worktree，不重建
+        log_dir.joinpath("mx102.log").write_text('{"ok": true}\n', encoding="utf-8")
+        wt2, err2 = _ensure_business_worktree(work, proj, log_dir)
+        assert err2 is None
+        assert wt2 == wt1
+
+    def test_run_once_business_project_concurrency_gate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """同业务仓已有 RUNNING 卡 → 第二张排队，不并发（跨仓可并行）。"""
+        monkeypatch.chdir(tmp_path)
+        import os
+
+        import server.engine.main as em
+
+        repo = self._make_biz_repo(tmp_path)
+        proj = self._make_project(repo, tmp_path / ".ccc-wt" / "mx")
+        # 用测试仓替代真实 registry 的 mx 业务仓（真实路径在 2017，本机不存在）
+        monkeypatch.setattr(em, "_business_project", lambda work: proj)
+        reg_path = _write_demo_registry(tmp_path, command="echo", args_template="{work_id}")
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        # 同仓卡 A 已 RUNNING（带 marker），卡 B 待分派 → B 应排队
+        store.seed(
+            Work(id="mx200", role="开发执行体", project="mx", state=State.RUNNING),
+            Work(id="mx201", role="开发执行体", project="mx", card_path=str(tmp_path / "mx201.md")),
+        )
+        log_dir.joinpath("mx200.running").write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(log_dir),
+            "EXECUTOR_TIMEOUT_SECONDS": "30",
+            "EXECUTOR_MAX_CONCURRENT": "3",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["queued"] == 1
+        assert summary["dispatched"] == 0
+        # mx201 保持待分派（未被拉起、未被打回）
+        by_id = {w.id: w for w in store.list_work()}
+        assert by_id["mx201"].state is State.TODO

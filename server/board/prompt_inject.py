@@ -405,7 +405,16 @@ def build_executor_hint(project_prefix: str, title: str = "", card_context: str 
 
     lines = [f"- 项目：{name}（{role}）"]
     if mac2017_path:
-        lines.append(f"- 仓库路径：{mac2017_path}（Mac2017）")
+        # 2026-08-12 隔离升级：业务仓型项目禁止引导主目录开发，代码工作区由 Engine 派发注入
+        if proj.get("taskable"):
+            lines.append(
+                f"- 项目仓（只读参考）：{mac2017_path}（Mac2017）——禁止在主仓目录切换卡分支或直接开发"
+            )
+            lines.append(
+                "- 代码工作区：由 CCC Engine 派发时注入独立 worktree（{biz_worktree}），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录"
+            )
+        else:
+            lines.append(f"- 仓库路径：{mac2017_path}（Mac2017）")
 
     # 提取关联方案摘要
     related_field = _parse_related_field(card_content)

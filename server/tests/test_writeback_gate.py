@@ -197,6 +197,8 @@ def test_writeback_gate_rejected_rules(tmp_path: Path):
         assert any("空回写卡" in p for p in problems)
 
     # 2. 模拟 exit 0，且远端凭证成立 (machine_audit_passed_text == True) -> 豁免空回写检查
+    # 恢复收单日志（测试 1 阶段已把 xy106.log 归档为 run1），保证 worktree 复用路径成立
+    (log_dir / "xy106.log").write_text(json.dumps({"ok": True, "work_id": "xy106"}) + "\n", encoding="utf-8")
     with (
         patch("server.git_sync.resolve_repo_root", return_value=tmp_path / "main"),
         patch("subprocess.run") as mock_run,

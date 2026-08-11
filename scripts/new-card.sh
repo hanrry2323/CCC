@@ -231,42 +231,44 @@ if [[ -n "$ID_OVERRIDE" ]]; then
   CARD_ID="${id_prefix}${id_num}"
   [[ -n "$id_slug" ]] && SLUG_OVERRIDE="$id_slug"
 else
-  CARD_ID="$(printf '%s%03d' "$PROJECT_PREFIX" "$(( next_num + 1 ))")"
-  # 方案链编号保护 Check (Step 5)
-  if ! "$PYTHON_BIN" -c "
-import sys, re, os
-from pathlib import Path
-
-card_id = sys.argv[1]
-match = re.match(r'^([a-z]{2,4})(\d{3})$', card_id.lower())
-if not match:
-    sys.exit(0)
-pref, num_str = match.groups()
-num = int(num_str)
-
-projects_dir = Path('docs/projects')
-if not projects_dir.is_dir():
-    sys.exit(0)
-
-for p in projects_dir.glob('**/plans/*.md'):
-    try:
-        text = p.read_text(encoding="utf-8")
-        for line in text.splitlines():
-            if '关联卡：' in line:
-                ids = re.findall(r'([a-z]{2,4})(\d{3})', line.lower())
-                proj_ids = [int(n) for pr, n in ids if pr == pref]
-                if proj_ids:
-                    min_id, max_id = min(proj_ids), max(proj_ids)
-                    if min_id <= num <= max_id:
-                        print(f'[ERROR] 方案链编号保护：自动编号 {card_id} 落在方案 {p.name} 已声明的编号区间 [{pref}{min_id:03d}, {pref}{max_id:03d}] 内。为了防止吃掉方案链保留编号，要求显式使用 --id 编号，或者将附加卡/修复卡显式指定编号。', file=sys.stderr)
-                        sys.exit(1)
-    except Exception:
-        pass
-sys.exit(0)
-" "$CARD_ID"; then
-    exit 3
-fi
-  [[ "$QUIET" != true ]] && echo "[提示] 附加卡/修复卡建议使用 --id 显式编号，避免占用方案主链的自动编号空间。"
+  # 自动编号：跳过方案链保留编号（2026-08-12 · 统一保留表，出卡即避开，不再生成后删除）
+  RESERVED_IDS="$("$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.plan_reservations import plan_reserved_ids
+res = plan_reserved_ids().get('$PROJECT_PREFIX', set())
+print(' '.join(str(n) for n in sorted(res)))
+" 2>/dev/null)" || RESERVED_IDS=""
+  CANDIDATE="$(( next_num + 1 ))"
+  while :; do
+    if [[ "$CANDIDATE" -gt 999 ]]; then
+      echo "[ERROR] 项目 ${PROJECT_PREFIX} 自动编号空间已用尽（现有最大 ${next_num}，方案保留编号占满剩余区间），请使用 --id 显式指定或新增方案链。" >&2
+      exit 3
+    fi
+    # 跳过方案保留编号
+    if [[ " $RESERVED_IDS " == *" $CANDIDATE "* ]]; then
+      CANDIDATE=$((CANDIDATE + 1))
+      continue
+    fi
+    # 跳过同前缀已存在文件（含 origin/main 已有卡，next_num 已并入最大序号，此处兜底洞号）
+    CAND_NUM="$(printf '%03d' "$CANDIDATE")"
+    collision=""
+    for f in "$PREFIX_DIR"/"$PROJECT_PREFIX"[0-9][0-9][0-9]-*.md; do
+      [[ -e "$f" ]] || continue
+      base="$(basename "$f" .md)"
+      if [[ "$base" =~ ^"$PROJECT_PREFIX"([0-9]{3}) && "${BASH_REMATCH[1]}" == "$CAND_NUM" ]]; then
+        collision="$f"
+        break
+      fi
+    done
+    if [[ -n "$collision" ]]; then
+      CANDIDATE=$((CANDIDATE + 1))
+      continue
+    fi
+    break
+  done
+  CARD_ID="$(printf '%s%03d' "$PROJECT_PREFIX" "$CANDIDATE")"
+  [[ "$QUIET" != true ]] && echo "[提示] 自动编号 ${CARD_ID}（已跳过方案保留编号）；附加卡/修复卡建议使用 --id 显式编号。"
 fi
 
 # ── slug：显式 or 从标题派生（ASCII 词；中文标题回落 task）；T54 校验小写字母数字+单连字符 ──

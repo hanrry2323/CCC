@@ -236,27 +236,26 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         return [CardIssue("?", str(d), "目录不存在")]
     cards = _scan_cards(d)
 
-    # 方案链编号保护：扫描所有方案文件并提取已计划的卡编号 (Step 5)
-    plan_reservations = {}
-    try:
-        projects_dir = d.parents[1] / "docs" / "projects"
-        if not projects_dir.is_dir():
-            projects_dir = Path(__file__).resolve().parents[2] / "docs" / "projects"
-        if projects_dir.is_dir():
-            for p in projects_dir.glob("**/plans/*.md"):
-                try:
-                    text = p.read_text(encoding="utf-8")
-                    title_match = re.search(r"^#\s*方案\s*·\s*(.+)$", text, re.M)
-                    plan_title = title_match.group(1).strip() if title_match else p.stem
-                    for line in text.splitlines():
-                        if "关联卡：" in line:
-                            ids = re.findall(r"([a-z]{2,4}\d{3})", line.lower())
-                            for cid in ids:
-                                plan_reservations[cid] = (str(p), plan_title)
-                except Exception:
-                    pass
-    except Exception:
-        pass
+    # 方案链编号保护：统一走共享保留表（出卡/校验单一事实源，2026-08-12）
+    from server.board.plan_reservations import plan_reserved_card_titles, plan_reserved_ids
+
+    plan_reservations = plan_reserved_card_titles()
+    reserved_ids = plan_reserved_ids()
+
+    def _free_number_hint(prefix: str) -> str:
+        try:
+            taken = set()
+            for _path, _loc in cards:
+                _cid = _path.name.split(".")[0]
+                _m = re.fullmatch(r"([a-z]{2,4})(\d{3})", _cid.lower())
+                if _m and _m.group(1) == prefix:
+                    taken.add(int(_m.group(2)))
+            for _n in range(1, 1000):
+                if _n not in taken and _n not in reserved_ids.get(prefix, set()):
+                    return f"{prefix}{_n:03d}"
+        except Exception:
+            pass
+        return ""
 
     from server.board.loader import parse_card
 
@@ -311,15 +310,17 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                 else:
                     card_id_full = (prefix + num).lower()
                     if card_id_full in plan_reservations:
-                        plan_path, plan_title = plan_reservations[card_id_full]
+                        plan_title = plan_reservations[card_id_full]
                         meta = _header_metadata(path)
                         related = meta.get("关联", "")
                         if not re.search(r"[a-z]{2,4}-plan-\d{3}", related):
+                            free_hint = _free_number_hint(prefix)
+                            hint = f"可用编号示例：{free_hint}；" if free_hint else ""
                             issues.append(
                                 CardIssue(
                                     card_id,
                                     str(path),
-                                    f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明任何合法方案编号（<prefix>-plan-<NNN>），但该编号已被方案 {plan_title!r} 占用。请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+                                    f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明任何合法方案编号（<prefix>-plan-<NNN>），但该编号已被方案 {plan_title!r} 占用。{hint}请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
                                 )
                             )
         elif ctype == "old":

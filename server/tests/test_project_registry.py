@@ -57,6 +57,44 @@ def test_registry_locations_comply() -> None:
     assert check_path_locations() == []
 
 
+def test_isolation_fields_parsed() -> None:
+    """2026-08-12 隔离升级：业务仓项目解析 isolation 配置；平台例外不生成默认隔离根。"""
+    clear_registry_cache()
+    projects = {p.prefix: p for p in load_projects()}
+    for pref in ("mx", "xy", "hp", "qb"):
+        p = projects[pref]
+        assert p.isolation_worktree_root == f"/Users/fan/program/apps/.ccc-wt/{pref}"
+        assert p.isolation_max_concurrent == 1
+    # 平台例外（ccc）无 mac2017-apps 定位 → 默认隔离根为空
+    assert projects["ccc"].isolation_worktree_root == ""
+    assert check_path_locations() == []
+
+
+def test_isolation_worktree_root_out_of_tree(tmp_path: Path) -> None:
+    """显式配置越界隔离根 → check_path_locations 报问题。"""
+    clear_registry_cache()
+    projects = {p.prefix: p for p in load_projects()}
+    mx = projects["mx"]
+    evil = ProjectEntry(
+        prefix="mx",
+        id=mx.id,
+        name=mx.name,
+        display=mx.display,
+        taskable=True,
+        forbidden=False,
+        status="active",
+        dossier="",
+        role=mx.role,
+        path_m1=None,
+        path_mac2017=mx.path_mac2017,
+        location="mac2017-apps",
+        isolation_worktree_root="/tmp/evil-wt",
+        isolation_max_concurrent=1,
+    )
+    issues = check_path_locations([evil])
+    assert any("隔离 worktree 根越界" in i for i in issues)
+
+
 def test_check_path_locations_out_of_tree() -> None:
     """业务仓路径越界 → 问题清单；legacy 豁免。"""
     p = ProjectEntry(

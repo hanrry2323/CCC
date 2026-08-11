@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -46,6 +47,123 @@ from server.engine.pool import get_audit_pool, get_dispatch_pool
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
+
+# 业务仓 worktree 失败计数（2026-08-12 · 隔离升级）：进程内累计，run_once 汇总后清零
+_WORKTREE_FAILURES = 0
+_WORKTREE_FAILURES_LOCK = threading.Lock()
+
+
+def _bump_worktree_failures() -> None:
+    global _WORKTREE_FAILURES
+    with _WORKTREE_FAILURES_LOCK:
+        _WORKTREE_FAILURES += 1
+
+
+def _business_project(work: Work):
+    """按 work.project 找 registry 业务仓条目（须有 2017 路径 + 隔离根）。"""
+    if not work or not work.project:
+        return None
+    from server.board.registry import load_projects
+
+    for e in load_projects():
+        if ((e.prefix and e.prefix == work.project) or e.id == work.project) and e.path_mac2017 and e.isolation_worktree_root:
+            return e
+    return None
+
+
+def _business_worktree_path(project, work_id: str) -> Path:
+    """业务仓每卡 worktree 路径：`<隔离根>/<work_id>`。"""
+    return Path(project.isolation_worktree_root).expanduser() / work_id.lower()
+
+
+def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str | None, str | None]:
+    """确保业务仓每卡 worktree 存在；返回 (worktree_path | None, error | None)。
+
+    生命周期对齐 CCC worktree：成功收单复用 / 未收单重置 / 脏或分叉强重建。
+    失败返回错误（调用方记 infra 冷却，禁止回退业务仓主目录）。
+    """
+    repo = Path(project.path_mac2017).expanduser()
+    if not repo.is_dir():
+        return None, f"业务仓不存在: {repo}"
+    target = _business_worktree_path(project, work.id)
+    card_id_slug = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
+    branch = f"codex/{card_id_slug}"
+
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo), "fetch", "origin", "main"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except Exception as exc:
+        logger.warning("业务仓 fetch 失败（继续尝试）: %s (%s)", repo, exc)
+
+    def _try_add(new_branch: bool) -> tuple[int, str]:
+        if new_branch:
+            cmd = ["git", "-C", str(repo), "worktree", "add", str(target), "-b", branch, "origin/main"]
+        else:
+            cmd = ["git", "-C", str(repo), "worktree", "add", str(target), branch]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        return res.returncode, res.stderr.strip()
+
+    if target.exists():
+        # 上次执行是否成功收单（sidecar 契约：只信日志 ok:true）
+        success = False
+        log_file = log_dir / f"{work.id}.log"
+        if log_file.is_file():
+            try:
+                for line in reversed(log_file.read_text(encoding="utf-8", errors="replace").splitlines()):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(data, dict) and data.get("ok") is True:
+                        success = True
+                        break
+            except Exception:
+                pass
+        if success:
+            return str(target), None
+        # 未成功收单：重置
+        subprocess.run(["git", "checkout", "--", "."], cwd=target, capture_output=True, check=False)
+        subprocess.run(["git", "clean", "-fd"], cwd=target, capture_output=True, check=False)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=target, capture_output=True, text=True, check=False
+        )
+        is_clean = status.returncode == 0 and not status.stdout.strip()
+        if is_clean:
+            merge_base = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
+                cwd=target,
+                capture_output=True,
+                check=False,
+            )
+            if merge_base.returncode != 0:
+                is_clean = False
+        if is_clean:
+            return str(target), None
+        # 脏或分叉：强重建
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(target)], capture_output=True, check=False)
+        subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, check=False)
+        subprocess.run(["git", "-C", str(repo), "branch", "-D", branch], capture_output=True, check=False)
+        rc, err = _try_add(new_branch=True)
+        if rc != 0:
+            rc2, err2 = _try_add(new_branch=False)
+            if rc2 != 0:
+                return None, f"业务仓 worktree 重建失败: {err or err2}"
+        return str(target), None
+    else:
+        rc, err = _try_add(new_branch=True)
+        if rc != 0:
+            rc2, err2 = _try_add(new_branch=False)
+            if rc2 != 0:
+                return None, f"业务仓 worktree 创建失败: {err or err2}"
+        return str(target), None
 
 logger = logging.getLogger("ccc.engine")
 
@@ -131,6 +249,13 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path, phase
     V4：只扫**当前阶段**的日志——执行阶段扫 ``{id}.log``，机审阶段扫 ``{id}.audit.log``。
     原实现两日志都扫，旧 audit 日志中的上游特征会污染执行阶段的 infra 判定。
     """
+    # 2026-08-12 隔离升级：派发阶段返回的 worktree/基础设施错误直接判 infra（日志可能尚未落盘）
+    for problem in problems:
+        pl = problem.lower()
+        if "基础设施" in problem:
+            return True, f"基础设施特征: {problem[:80]}"
+        if "worktree" in pl and ("失败" in problem or "创建" in problem or "异常" in problem):
+            return True, f"基础设施特征: {problem[:80]}"
     keywords = [
         "connection error",
         "network error",
@@ -296,6 +421,14 @@ def _business_repo_has_new_commit(work: Work, worktree_path: str) -> bool:
         return False
     branch = f"codex/{Path(work.card_path).stem.lower()}"
     try:
+        # 2026-08-12 隔离升级：业务仓产物在 worktree 分支上，先 fetch 确保远端 ref 在场
+        subprocess.run(
+            ["git", "-C", str(repo), "fetch", "origin", branch],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
         res = subprocess.run(
             ["git", "-C", str(repo), "log", "origin/main..origin/" + branch, "--oneline"],
             capture_output=True,
@@ -861,6 +994,177 @@ def _cleanup_closed_worktrees(
                     logger.info("本地分支 %s 保留（分叉/进行中/未合入）", branch)
     except Exception as exc:
         logger.warning("分支清理过程异常: %s", exc)
+
+    # 业务仓 worktree 生命周期（2026-08-12 隔离升级）
+    cleaned += _cleanup_business_worktrees(store, log_dir)
+    return cleaned
+
+
+def _cleanup_business_worktrees(store: BoardStore, log_dir: Path) -> int:
+    """业务仓每卡 worktree 回收 + 本地残留分支清理。
+
+    与 CCC worktree 同一套保护语义：执行中/已回写卡保护现场不回收；
+    已关闭/打回/孤儿（分支引用全失）才回收；脏现场回收带 --force。
+    """
+    cleaned = 0
+    try:
+        from server.board.models import base_state
+        from server.board.registry import load_projects
+
+        projects = [p for p in load_projects() if p.isolation_worktree_root and p.path_mac2017]
+    except Exception:
+        return 0
+    if not projects:
+        return 0
+
+    all_works = store.list_work()
+    work_map = {w.id.lower(): w for w in all_works}
+
+    for proj in projects:
+        root = Path(proj.isolation_worktree_root).expanduser()
+        repo = Path(proj.path_mac2017).expanduser()
+        # 用 os.path.isdir（不经 Path.is_dir，避免测试 mock 与 FS 状态不一致）
+        if not os.path.isdir(root) or not os.path.isdir(repo):
+            continue
+
+        # 1. worktree 回收
+        for wt_dir in sorted(root.iterdir()):
+            if not wt_dir.is_dir():
+                continue
+            cid = wt_dir.name
+            work = work_map.get(cid)
+            is_running = (log_dir / f"{cid}.running").is_file() or (log_dir / f"{cid}-audit.running").is_file()
+            try:
+                status = subprocess.run(
+                    ["git", "-C", str(wt_dir), "status", "--porcelain", "-uall"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+                is_dirty = status.returncode != 0 or bool(status.stdout.strip())
+                should_reap = False
+                use_force = False
+
+                def _branch_refs_exist(branch: str) -> bool:
+                    if not branch:
+                        return False
+                    r_remote = subprocess.run(
+                        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/remotes/origin/{branch}"],
+                        capture_output=True,
+                        check=False,
+                    )
+                    r_local = subprocess.run(
+                        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/heads/{branch}"],
+                        capture_output=True,
+                        check=False,
+                    )
+                    return r_remote.returncode == 0 or r_local.returncode == 0
+
+                if is_running:
+                    should_reap = False
+                elif work:
+                    disk_base = base_state(work.state)
+                    if disk_base in ("待分派", "执行中", "已回写"):
+                        should_reap = False
+                    elif disk_base in ("已关闭", "打回"):
+                        should_reap = True
+                        if is_dirty:
+                            use_force = True
+                    else:
+                        # 未知状态（如作废）：分支引用全失才视为孤儿
+                        branch = f"codex/{Path(work.card_path).stem.lower()}" if work.card_path else f"codex/{cid}"
+                        if not _branch_refs_exist(branch):
+                            should_reap = True
+                            if is_dirty:
+                                use_force = True
+                else:
+                    # 无对应卡：detached/孤儿 worktree 回收；有分支引用的保守保留
+                    head_ref = subprocess.run(
+                        ["git", "-C", str(wt_dir), "symbolic-ref", "--short", "-q", "HEAD"],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    branch = head_ref.stdout.strip()
+                    if branch and _branch_refs_exist(branch):
+                        should_reap = False
+                    else:
+                        should_reap = True
+                        if is_dirty:
+                            use_force = True
+
+                if should_reap:
+                    cmd = ["git", "-C", str(repo), "worktree", "remove", str(wt_dir)]
+                    if use_force:
+                        cmd.append("--force")
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+                    if res.returncode == 0:
+                        subprocess.run(
+                            ["git", "-C", str(repo), "worktree", "prune"],
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                            check=False,
+                        )
+                        cleaned += 1
+                        logger.info("业务仓 worktree 已回收 (force=%s): %s", use_force, wt_dir)
+                    else:
+                        logger.warning("业务仓 worktree remove 失败: %s (%s)", wt_dir, res.stderr.strip())
+            except Exception as exc:
+                logger.warning("业务仓 worktree 清理异常（跳过）: %s (%s)", wt_dir, exc)
+
+        # 2. 本地残留分支清理（远端已删 / 卡已关闭且已合入 main）
+        try:
+            res_branches = subprocess.run(
+                ["git", "-C", str(repo), "branch", "--list", "codex/*"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res_branches.returncode == 0:
+                for line in res_branches.stdout.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("*"):
+                        continue
+                    branch = line.split()[-1]
+                    m = re.search(r"codex/([a-z]{2,4}\d{3})", branch)
+                    if not m:
+                        continue
+                    cid = m.group(1).lower()
+                    work = work_map.get(cid)
+                    remote_branch = f"origin/{branch}"
+                    res_verify = subprocess.run(
+                        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/remotes/{remote_branch}"],
+                        capture_output=True,
+                        check=False,
+                    )
+                    remote_exists = res_verify.returncode == 0
+                    should_delete = False
+                    if not remote_exists:
+                        should_delete = True
+                    elif work and base_state(work.state) == "已关闭":
+                        is_merged = (
+                            subprocess.run(
+                                ["git", "-C", str(repo), "merge-base", "--is-ancestor", remote_branch, "origin/main"],
+                                capture_output=True,
+                                check=False,
+                            ).returncode
+                            == 0
+                        )
+                        if is_merged:
+                            should_delete = True
+                    if should_delete:
+                        del_res = subprocess.run(
+                            ["git", "-C", str(repo), "branch", "-D", branch],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        if del_res.returncode == 0:
+                            logger.info("业务仓本地残留分支已删除: %s", branch)
+        except Exception as exc:
+            logger.warning("业务仓分支清理异常: %s", exc)
 
     return cleaned
 
@@ -1590,12 +1894,17 @@ def _dispatch_and_collect(
                                 str(target_path),
                                 branch_name,
                             ]
-                            res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
-                            if res_existing.returncode == 0:
-                                worktree_path = str(target_path)
-                                logger.info("Worktree 关联已有分支成功: %s", worktree_path)
-                            else:
-                                logger.warning("git worktree add 干净重建与关联均失败。")
+                        res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
+                        if res_existing.returncode == 0:
+                            worktree_path = str(target_path)
+                            logger.info("Worktree 关联已有分支成功: %s", worktree_path)
+                        else:
+                            # 2026-08-12 隔离升级：禁止静默回退默认工作目录，记 infra 冷却
+                            _bump_worktree_failures()
+                            return False, [
+                                "基础设施：worktree 干净重建与关联均失败（隔离强制，不回退默认目录）: "
+                                + (res_existing.stderr or res_add.stderr or "").strip()
+                            ]
                 else:
                     logger.info("上次执行已成功收单，重用 existing worktree: %s", target_worktree)
                     worktree_path = str(target_path)
@@ -1633,12 +1942,33 @@ def _dispatch_and_collect(
                         worktree_path = str(target_path)
                         logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                     else:
-                        logger.warning(
-                            "git worktree add 关联已有分支也失败: %s. 自动回退到默认工作目录行为。",
-                            res_existing.stderr.strip(),
-                        )
+                        # 2026-08-12 隔离升级：禁止静默回退默认工作目录，记 infra 冷却
+                        _bump_worktree_failures()
+                        return False, [
+                            "基础设施：worktree 创建与关联均失败（隔离强制，不回退默认目录）: "
+                            + (res_existing.stderr or res.stderr or "").strip()
+                        ]
         except Exception as exc:
-            logger.warning("创建/获取 worktree 过程发生异常: %s. 自动回退到默认工作目录行为。", exc)
+            # 2026-08-12 隔离升级：异常也不再静默回退
+            _bump_worktree_failures()
+            return False, [f"基础设施：worktree 创建过程异常（隔离强制，不回退默认目录）: {exc}"]
+
+    # ── 业务仓隔离（2026-08-12 事故修复）：业务仓型任务必须建每卡 worktree ──
+    # 执行阶段强制；机审阶段复用开发产物（远程卡走分支信封，不重复建仓）
+    biz_worktree_path = ""
+    if (log_phase or "run").strip().lower() == "run":
+        biz_project = _business_project(work)
+        if biz_project:
+            biz_worktree_path, biz_err = _ensure_business_worktree(work, biz_project, log_dir)
+            if biz_err:
+                _bump_worktree_failures()
+                logger.warning(
+                    "业务仓 worktree 失败（卡保持待分派+冷却，禁止回退主目录）: work=%s err=%s",
+                    work.id,
+                    biz_err,
+                )
+                return False, [f"基础设施：业务仓 worktree 创建失败：{biz_err}"]
+            logger.info("业务仓 worktree 就绪: work=%s path=%s", work.id, biz_worktree_path)
 
     # 在单测下，豁免对 mock/fake 临时卡的缺失校��
     import sys
@@ -1657,6 +1987,7 @@ def _dispatch_and_collect(
             card_path=work.card_path,
             default_workdir=default_workdir,
             worktree=worktree_path,
+            biz_worktree=biz_worktree_path,
         )
     except ValueError as exc:
         return False, [f"命令构造失败: {exc}"]
@@ -2788,6 +3119,22 @@ def run_once(
                 max_concurrent,
             )
             continue
+        # 业务仓并发闸门（2026-08-12 隔离升级）：同仓已有 RUNNING 卡 → 排队，不并发。
+        # 保守默认 max_concurrent=1；跨仓可并行。manual 挂起（假 RUNNING）同样挡并发。
+        biz_project = _business_project(work)
+        if biz_project:
+            running_same_project = [
+                w for w in store.list_work(state=State.RUNNING) if w.project == work.project
+            ]
+            if running_same_project:
+                queued += 1
+                logger.info(
+                    "同业务仓已有执行中卡，排队等待: work=%s project=%s running=%s",
+                    work.id,
+                    work.project,
+                    [w.id for w in running_same_project],
+                )
+                continue
         if probe_url and not probe_relay(probe_url):
             probe_skips += 1
             logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
@@ -2992,6 +3339,9 @@ def run_once(
     # 看板 in_flight = 全部执行中（含 manual 挂起）；CLI 空位另用 pool.occupancy
     in_flight = len(store.list_work(state=State.RUNNING))
     worktrees_cleaned = _cleanup_closed_worktrees(store, registry, cfg, log_dir)
+    global _WORKTREE_FAILURES
+    worktrees_failed = _WORKTREE_FAILURES
+    _WORKTREE_FAILURES = 0
     summary: dict[str, int] = {
         "mode": "once",
         "scanned": len(pending),
@@ -3014,6 +3364,7 @@ def run_once(
         "audit_failed": audit_failed,
         "audit_failed_infra": audit_failed_infra,
         "worktrees_cleaned": worktrees_cleaned,
+        "worktrees_failed": worktrees_failed,
         "claim_collected": claim_collected,
         "claim_reclaimed": claim_reclaimed,
         "claim_in_flight": claim_in_flight,
@@ -3045,6 +3396,7 @@ def run_once(
                 "audit_failed": audit_failed,
                 "audit_failed_infra": audit_failed_infra,
                 "worktrees_cleaned": worktrees_cleaned,
+                "worktrees_failed": worktrees_failed,
             },
         )
     except Exception:

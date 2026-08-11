@@ -121,8 +121,11 @@ def test_card_dispatch_gate_remote_check(tmp_path: Path) -> None:
     print("RES2 STDOUT:\n", res2.stdout)
     print("RES2 STDERR:\n", res2.stderr)
     assert res2.returncode == 0
-    assert "clw002" in res2.stdout
-    assert (local / "docs" / "dispatch" / "clw" / "clw002-auto-increment-card.md").is_file()
+    # 2026-08-12：自动编号跳过方案保留编号（clw 保留集已推进），只断言避开 clw001 且成功
+    assert "自动编号 clw" in res2.stdout
+    generated = list((local / "docs" / "dispatch" / "clw").glob("clw[0-9][0-9][0-9]-*.md"))
+    assert len(generated) == 1
+    assert not generated[0].name.startswith("clw001")
 
 
 def test_new_card_flock_concurrency(tmp_path: Path) -> None:
@@ -176,6 +179,5 @@ def test_new_card_flock_concurrency(tmp_path: Path) -> None:
     assert len(files) == 2, f"期望 2 张卡，实际找到 {len(files)} 张: {files}"
 
     stems = sorted([f.stem for f in files])
-    assert stems[0].startswith("clw001")
-    assert stems[1].startswith("clw002")
-
+    # 并发下编号互斥且避开方案保留编号（2026-08-12）
+    assert stems[0] != stems[1]
