@@ -2842,31 +2842,29 @@ class _APIHandler(BaseHTTPRequestHandler):
 
     def _proxy_chat_stream(self, bridge: str, message: str, thread_id: str, project: str) -> None:
         """转发 POST /chat 到 M1 对话桥，SSE 流式透传。"""
-        import urllib.error
-        import urllib.request
+        import http.client
 
+        m = re.match(r"http://([^:/]+):(\d+)", bridge)
+        if not m:
+            self._send_json({"error": f"对话桥地址非法: {bridge}"}, 500)
+            return
+        host, port = m.group(1), int(m.group(2))
         token = _chat_bridge_token()
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        req = urllib.request.Request(
-            bridge.rstrip("/") + "/chat",
-            data=json.dumps(
-                {"message": message, "thread_id": thread_id, "project": project},
-                ensure_ascii=False,
-            ).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
+        body = json.dumps(
+            {"message": message, "thread_id": thread_id, "project": project},
+            ensure_ascii=False,
+        ).encode("utf-8")
         try:
-            resp = urllib.request.urlopen(req, timeout=190)
-        except urllib.error.HTTPError as exc:
-            self._send_json({"error": f"对话桥返回 {exc.code}: {exc.read().decode('utf-8', errors='replace')[:200]}"}, 503)
-            return
+            conn = http.client.HTTPConnection(host, port, timeout=190)
+            conn.request("POST", "/chat", body=body, headers=headers)
+            resp = conn.getresponse()
         except Exception as exc:
             self._send_json({"error": f"M1 对话服务不可达: {exc}"}, 503)
             return
-        self.send_response(200)
+        self.send_response(resp.status)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
@@ -2880,6 +2878,11 @@ class _APIHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
             return
         self._send_404()
 
