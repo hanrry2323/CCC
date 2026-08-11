@@ -52,7 +52,7 @@ let _projects = [];
 let _projectDisplay = {}; // prefix → 展示名
 let _detailPath = null;  // 当前打开的详情路径，null=列表视图
 let _formOpen = false;   // 新建表单是否打开
-let _hideClosed = false; // 只看未完成（隐藏已完成/作废列）
+let _hideClosed = true;  // 默认只看未完成（隐藏已完成/作废列，给活跃列腾宽度）
 
 // ── 工具 ──
 
