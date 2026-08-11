@@ -1,6 +1,6 @@
 # 方案 · 集群 Worker 池（Cluster Worker Pool）蓝图
 
-> 项目：ccc · 编号：ccc-plan-020 · 状态：Worker 模型 + 认领协议已落地（A 轨第 2 项完成）；待 252 实跑闭环 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-020 · 状态：A 轨四项全部落地（Worker 模型/认领协议/role-skills 一致性）；待 252 实跑闭环 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-11
 > 关联卡：clw019（跨节点路由实证，已回写）
 > 关联方案：011-loop-observer-architecture（巡查）、014-delivery-gate-sop（交付）、007-100卡基线、021-sidecar-lifecycle-contract
@@ -352,3 +352,45 @@ Engine(2017)                          Worker W9(252)                   Git origi
 
 - 020 方案从「蓝图 + 执行计划 v2 设计」→ **Worker 模型 + 认领协议已落地**
 - 待办：252 实跑闭环（跨节点真执行）、巡检非绑定任务、集群并发验证
+
+---
+
+# A 轨第 4 项完成汇总（role-skills 一致性 · 2026-08-11）
+
+> 状态：**已完成并上线**（三步：skill 进仓 7be6a5e8 → 注入动态 1387d731）
+> 依据：ENGINEERING-CANON §五-2（role-skills 一致性）+ 红线 6
+
+## ① 交付清单
+
+| 项 | 落点 | 内容 |
+|----|------|------|
+| skill 进仓 | server/config/opencode-skills/ | ui-ux-pro-max 收进仓（544K 28 文件，无 __pycache__）；claude-skills/code-review 保留 |
+| 下发/校验 | scripts/sync-skills.py | 仓→M1/2017/252 节点 skill 目录 rsync 同步 + SKILL.md hash 版本一致性校验（--check） |
+| 派发时动态注入 | main.py _dispatch_and_collect | 派发时按卡「角色」实时查 role-skills.yaml 补注入（出卡烘死 → 派发刷新，存量卡改 yaml 也生效） |
+| 认领前 skill 校验 | worker-claim.sh | 认领执行前调 sync-skills --check，MISMATCH → 自动同步再执行 |
+
+## ② 测试结果
+
+- `test_role_skills.py` **8 用例全绿**：SSOT 加载/注入/未知角色/无角色/仓内完整性 + 派发时动态注入 2 + sync-skills hash 判定 1
+- 全仓 `server/tests/` 通过 + ruff 干净
+
+## ③ 生产验证
+
+- M1/2017 `sync-skills.py --check` 实测 hash 一致（ui-ux-pro-max/code-review）
+- engine 重启加载动态注入代码，心跳 claim_collected=1（clw020 认领收单）+ 机审正常
+- 无在途 AUTO 卡时重启（错峰），无回归
+
+## ④ 遗留问题
+
+| 级 | 问题 | 状态 |
+|----|------|------|
+| P2 | 其余 SSOT 引用 skill（qx-auto-copycheck/daily-snapshot/hp-kb-operations/motion-graphics）未进仓 | 待后续收仓（claude 节点本地 skill） |
+| P3 | 252 节点 skill 目录未配置（NODE_HOST_252 空） | 252 接入时填 |
+| P3 | sync-skills 无自动定时（需节点 cron/daemon 定期同步） | 集群落地时配 |
+
+## ⑤ 建议下一步
+
+1. **252 实跑闭环**（集群验证关键路径）：252 配置 cron 跑 worker-claim.sh + sync-skills，实测 clw020 类 REMOTE 卡跨节点执行 + skill 注入
+2. **skill 全量收仓**：SSOT 引用全部 skill 收进仓（claude-skills 补 4 个），消除节点本地 skill 双源
+3. **观测**：sync-skills --check 结果入 Loop Observer（节点 skill 健康度）
+4. **A 轨整体**：四项全完成 → 集群 Worker 池可用性验证（252 实跑 + 并发扩展）
