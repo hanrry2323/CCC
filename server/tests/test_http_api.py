@@ -294,13 +294,15 @@ class TestConversation:
     超时 504、失败 502、历史落盘、prompt 含上下文、鉴权不回归。"""
 
     @pytest.fixture(autouse=True)
-    def _clear_conversation_state(self):
+    def _clear_conversation_state(self, monkeypatch):
         """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
         from server.web import server as srv_mod
 
         srv_mod._conversations.clear()
         srv_mod._thread_conversations.clear()
         _clear_brain_env()
+        # 强制将 M1 对话桥设为空，确保对话代理测试完全隔离，不受本地 config.env 生产配置污染
+        monkeypatch.setattr("server.web.server._chat_bridge_url", lambda: "")
         yield
         srv_mod._conversations.clear()
         srv_mod._thread_conversations.clear()
