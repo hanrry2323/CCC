@@ -1,6 +1,6 @@
 # 任务卡 clw018 · 文档/文案一致性（去 GPU 字样 / i18n 补全 / RELEASE 对齐）（OpenCode 执行）
 
-> 关联：clw-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-11
+> 关联：clw-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-11
 
 
 ## 基准文件（先看）
