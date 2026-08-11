@@ -33,23 +33,23 @@ function html() {
 <div class="ops-page hub-page">
   <div class="ops-bar">
     <h2>运维</h2>
-    <span class="ops-sub">集群健康 · 待办 · 详情</span>
+    <span class="ops-sub">待办 · 健康 · 诊断</span>
     <span style="flex:1"></span>
     <button type="button" class="hub-btn" id="ops-refresh">刷新</button>
   </div>
 
-  <!-- ① 健康仪表盘 -->
-  <div class="ops-section">
-    <div id="ops-status" class="ops-card ops-status-bar"></div>
-  </div>
-
-  <!-- ② 待办清单 -->
+  <!-- ① 待办清单（主区） -->
   <div class="ops-section">
     <h3>待办清单 <span class="badge" id="loop-count">0</span> <span class="ops-scan-at" id="loop-scan-at"></span></h3>
-    <div id="ops-loop" class="ops-card"><div class="ops-empty">加载中…</div></div>
+    <div id="ops-loop" class="ops-card ops-main-card"><div class="ops-empty">加载中…</div></div>
   </div>
 
-  <!-- ③ 技术详情（折叠） -->
+  <!-- ② 健康状态（紧凑条） -->
+  <div class="ops-section">
+    <div id="ops-status" class="ops-card ops-health-bar"></div>
+  </div>
+
+  <!-- ③ 诊断详情（折叠） -->
   <div class="ops-section">
     <details class="ops-fold" open>
       <summary>诊断详情（节点 / 服务 / 管道）</summary>
@@ -96,34 +96,15 @@ function renderStatus(agg) {
   const alerts = overview.alert_count || 0;
   const services = overview.services || [];
   const svcRunning = services.filter((s) => s.running).length;
-  const pipe = agg.pipeline || {};
-  const pipeOk = pipe.git_sync_ok !== false && !(pipe.probe_skips || 0) && !(pipe.none_skips || 0);
-  const clusterCls = reachable === total ? 'ok' : reachable === 0 ? 'attn' : 'warn';
-  const svcCls = svcRunning === services.length ? 'ok' : 'attn';
   el.innerHTML = `
-    <div class="ops-dash">
-      <div class="ops-dash-status ${sevCls}">
-        <span class="ops-dash-dot"></span>
-        <strong>${esc(healthLabel(severity))}</strong>
-      </div>
-      <div class="ops-dash-line">${esc(human)}</div>
-      <div class="ops-dash-grid">
-        <div class="ops-dash-card ${clusterCls}">
-          <span class="ops-dash-card-label">集群</span>
-          <strong>${total > 0 ? `${reachable}/${total} 节点在线` : '无节点配置'}</strong>
-          <span class="ops-dash-card-note">${alerts > 0 ? `${alerts} 项告警` : '无告警'}</span>
-        </div>
-        <div class="ops-dash-card ${svcCls}">
-          <span class="ops-dash-card-label">服务</span>
-          <strong>${services.length ? `${svcRunning}/${services.length} 运行` : '未配置服务'}</strong>
-          <span class="ops-dash-card-note">${services.length ? 'pgrep 进程检测' : 'CLUSTER_SERVICES 未配置'}</span>
-        </div>
-        <div class="ops-dash-card ${pipeOk ? 'ok' : 'warn'}">
-          <span class="ops-dash-card-label">管道</span>
-          <strong>${pipe.git_sync_ok === false ? 'git sync 失败' : '引擎管道正常'}</strong>
-          <span class="ops-dash-card-note">${(pipe.probe_skips || 0) ? `探活跳过 ${pipe.probe_skips}` : ''}${(pipe.probe_skips || 0) && (pipe.none_skips || 0) ? ' · ' : ''}${(pipe.none_skips || 0) ? `未派发绑定 ${pipe.none_skips}` : ''}</span>
-        </div>
-      </div>
+    <div class="ops-health">
+      <span class="ops-health-sev ${sevCls}"><span class="ops-dash-dot"></span>${esc(healthLabel(severity))}</span>
+      <span class="ops-health-line">${esc(human)}</span>
+      <span class="ops-health-chips">
+        <span class="ops-chip">节点 ${reachable}/${total || 0}</span>
+        <span class="ops-chip">服务 ${svcRunning}/${services.length || 0}</span>
+        ${alerts > 0 ? `<span class="ops-chip alert">告警 ${alerts}</span>` : ''}
+      </span>
     </div>`;
 }
 

@@ -2636,3 +2636,184 @@ body.ro-viewer [data-write] {
 }
 .ops-fold[open] summary { margin-bottom: 12px; }
 .ops-empty { font-size: 13px; color: var(--ccc-text-muted, #999); }
+
+/* ══ 线路图二级页 v2（完全重构 · 垂直时间线 + 卡面板）══ */
+.rm2 { display: flex; flex-direction: column; gap: 16px; }
+.rm2-overview {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 15px 20px;
+}
+.rm2-name { font-size: 20px; font-weight: 700; color: #1c1c1e; }
+.rm2-name span { font-size: 12px; color: #999; margin-left: 8px; font-weight: 400; }
+.rm2-stats { display: flex; gap: 20px; }
+.rm2-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-size: 11px;
+  color: #999;
+}
+.rm2-stat b { font-size: 18px; color: #1c1c1e; line-height: 1.1; }
+.rm2-stat.done b { color: #2a9d4a; }
+.rm2-stat.doing b { color: #3a7bd5; }
+.rm2-stat.planned b { color: #999; }
+.rm2-stat.risk b { color: #c44; }
+.rm2-progress {
+  flex: 1;
+  min-width: 170px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.13);
+  overflow: hidden;
+}
+.rm2-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3a7bd5, #2a9d4a);
+}
+.rm2-body {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.rm2-rail-wrap {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 14px 12px;
+}
+.rm2-rail-title { font-size: 12px; color: #888; font-weight: 650; margin: 0 6px 10px; }
+.rm2-rail { position: relative; display: flex; flex-direction: column; gap: 4px; padding-left: 8px; }
+.rm2-rail-line {
+  position: absolute;
+  left: 21px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(120, 120, 120, 0.15);
+}
+.rm2-mile {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 9px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rm2-mile:hover { background: rgba(120, 120, 120, 0.08); }
+.rm2-mile.active { background: rgba(12, 74, 110, 0.08); }
+.rm2-mile-dot {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  border-radius: 999px;
+  background: #bbb;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.rm2-mile-dot.done { background: #2a9d4a; }
+.rm2-mile-dot.doing { background: #3a7bd5; }
+.rm2-mile-dot.risk { background: #c44; }
+.rm2-mile-dot.none { background: #d9d9d9; }
+.rm2-mile-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rm2-mile-title { font-size: 13px; font-weight: 600; color: #222; line-height: 1.4; }
+.rm2-mile-meta { font-size: 11.5px; color: #999; }
+.rm2-undated { margin: 10px 6px 4px; font-size: 11px; color: #aaa; font-weight: 650; }
+.rm2-panel-wrap {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 16px 18px;
+  min-height: 320px;
+}
+.rm2-panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.rm2-panel-head h4 { margin: 0; font-size: 16px; font-weight: 700; color: #1c1c1e; }
+.rm2-panel-date { font-size: 12px; color: #999; }
+.rm2-panel-count {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.12);
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+}
+.rm2-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+}
+.rm2-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #fafafa;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.rm2-card:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07); transform: translateY(-1px); }
+.rm2-card-id { font-weight: 700; color: #0c4a6e; font-size: 12.5px; }
+.rm2-card-intent { font-size: 12.5px; color: #333; line-height: 1.45; }
+.rm2-card-state {
+  align-self: flex-start;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.rm2-card-state.done { background: rgba(42, 157, 74, 0.13); color: #2a7d44; }
+.rm2-card-state.doing { background: rgba(58, 123, 213, 0.13); color: #2d63a8; }
+.rm2-card-state.planned { background: rgba(120, 120, 120, 0.13); color: #666; }
+.rm2-empty { padding: 60px 20px; text-align: center; color: #999; font-size: 13px; }
+
+/* ══ 运维页 v2（待办为主 · 健康一行）══ */
+.ops-main-card { min-height: 300px; }
+.ops-health {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.ops-health-sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ops-health-sev.ops-ok { background: rgba(42, 157, 74, 0.12); color: #2a7d44; }
+.ops-health-sev.ops-warn { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.ops-health-sev.ops-attn { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.ops-health-line { font-size: 13px; color: #333; min-width: 0; }
+.ops-health-chips { margin-left: auto; display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.ops-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.1);
+  font-size: 12px;
+  color: #555;
+  font-weight: 600;
+}
+.ops-chip.alert { background: rgba(204, 68, 68, 0.12); color: #a33; }

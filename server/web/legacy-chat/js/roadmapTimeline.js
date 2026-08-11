@@ -121,6 +121,87 @@ export function unplannedMilestonesHTML(detail) {
   </div>`;
 }
 
+/* ══ v2：线路图二级页完全重构（2026-08-12 老板指令）══
+ * 布局：顶部总览条 → 左垂直里程碑时间线 + 右卡面板 → 底部风险。
+ * 不再使用全宽 SVG 大图。 */
+
+function _closed(s) {
+  return /已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s || '');
+}
+
+function _stateTone(c) {
+  const s = c.real_state || c.progress || '';
+  if (_closed(s)) return 'done';
+  if (/已回写|执行中|开发中|机审|待验收|testing|verified|in_progress/.test(s)) return 'doing';
+  return 'planned';
+}
+
+function _mileTone(m) {
+  const cards = m.cards || [];
+  if (!cards.length) return 'none';
+  if (cards.every((c) => _closed(c.progress))) return 'done';
+  if (cards.some((c) => c.drift || c.missing)) return 'risk';
+  return 'doing';
+}
+
+export function buildTimelineOverview(detail) {
+  const c = detail.counts || {};
+  const cards = (detail.milestones || []).reduce((n, m) => n + (m.cards || []).length, 0);
+  const riskN = (detail.risks || []).length;
+  const pct = cards ? Math.round(((c.done || 0) / cards) * 100) : 0;
+  return `<div class="rm2-overview">
+    <div class="rm2-name">${esc(detail.project)}<span>线路图</span></div>
+    <div class="rm2-stats">
+      <span class="rm2-stat"><b>${cards}</b>总卡</span>
+      <span class="rm2-stat done"><b>${c.done || 0}</b>已完成</span>
+      <span class="rm2-stat doing"><b>${c.doing || 0}</b>进行中</span>
+      <span class="rm2-stat planned"><b>${c.planned || 0}</b>待开发</span>
+      ${riskN ? `<span class="rm2-stat risk"><b>${riskN}</b>风险</span>` : ''}
+    </div>
+    <div class="rm2-progress"><div class="rm2-progress-fill" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
+export function buildMilestoneRail(detail) {
+  const miles = detail.milestones || [];
+  const dated = miles.filter((m) => m.date);
+  const undated = miles.filter((m) => !m.date);
+  const item = (m) => `<button type="button" class="rm2-mile" data-idx="${detail.milestones.indexOf(m)}">
+    <span class="rm2-mile-dot ${_mileTone(m)}"></span>
+    <span class="rm2-mile-body">
+      <span class="rm2-mile-title">${esc(m.title)}</span>
+      <span class="rm2-mile-meta">${m.date ? esc(m.date) : '未排期'} · ${(m.cards || []).length} 卡</span>
+    </span>
+  </button>`;
+  return `<div class="rm2-rail">
+    <div class="rm2-rail-line" aria-hidden="true"></div>
+    ${dated.map(item).join('')}
+    ${undated.length ? `<div class="rm2-undated">未排期</div>${undated.map(item).join('')}` : ''}
+  </div>`;
+}
+
+export function milestonePanelHTML(detail, mile) {
+  const cards = (mile && mile.cards) || [];
+  return `<div class="rm2-panel">
+    <div class="rm2-panel-head">
+      <h4>${esc(mile ? mile.title : '未选择里程碑')}</h4>
+      ${mile && mile.date ? `<span class="rm2-panel-date">${esc(mile.date)}</span>` : ''}
+      <span class="rm2-panel-count">${cards.length} 卡</span>
+    </div>
+    ${cards.length
+      ? `<div class="rm2-cards">${cards.map((c) => `
+        <div class="rm2-card">
+          <span class="rm2-card-id">${esc(c.card_id)}</span>
+          <span class="rm2-card-intent">${esc(c.intent)}</span>
+          <span class="rm2-card-state ${_stateTone(c)}">${esc(c.progress || '未标注')}</span>
+          ${c.drift ? `<span class="rm-flag drift">漂移</span>` : ''}
+          ${c.missing ? `<span class="rm-flag missing">缺失</span>` : ''}
+          ${(c.drift || c.missing) ? `<a class="rm-goto" href="#/board" title="去看板">→</a>` : ''}
+        </div>`).join('')}</div>`
+      : '<div class="rm2-empty">该里程碑暂无关联卡</div>'}
+  </div>`;
+}
+
 export function esc(s) {
   if (s == null) return '';
   const d = document.createElement('div');
