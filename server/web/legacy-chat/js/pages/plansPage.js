@@ -178,17 +178,17 @@ function renderPlanItem(plan) {
       <div class="pcard-head">
         <span class="pcard-proj" style="background:${projTint};color:${projColor}">${esc(_projectDisplay[plan.project] || plan.project)}</span>
         <span class="pcard-id">#${esc(plan.num)}</span>
+        <span class="pcard-open">${icon('open')}</span>
       </div>
       <h3 class="pcard-title">${esc(title)}</h3>
       <div class="pcard-meta">${esc(plan.author)}<span class="pcard-dotsep">·</span>${esc(plan.tool)}</div>
-      ${tags.length ? `<div class="pcard-tags">${tags.join('')}</div>` : ''}
-      <div class="pcard-foot">
+      <div class="pcard-row">
+        ${tags.length ? `<span class="pcard-tags">${tags.join('')}</span>` : ''}
         ${accPct !== null ? `
           <span class="pcard-acc" title="验收 ${acc.done}/${acc.total}">
             <span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${accPct}%;background:${color}"></span></span>
             <span class="pcard-acc-num">${acc.done}/${acc.total}</span>
           </span>` : `<span class="pcard-acc-none">无验收项</span>`}
-        <span class="pcard-open">详情${icon('open')}</span>
       </div>
     </article>`;
 }
