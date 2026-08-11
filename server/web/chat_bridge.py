@@ -263,9 +263,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"messages": msgs[after:], "seq": len(msgs)})
             return
         if path == "/claude/sessions":
-            project = (qs.get("project", [""])[0] or "").strip()
             roots = _project_roots()
-            cwd = roots.get(project) or roots.get("ccc")
+            cwd = (qs.get("path", [""])[0] or "").strip() or roots.get(
+                (qs.get("project", [""])[0] or "").strip()
+            ) or roots.get("ccc")
             sessions: list[dict[str, Any]] = []
             if cwd:
                 d = _claude_projects_dir() / _cwd_encode(cwd)
@@ -291,11 +292,40 @@ class _Handler(BaseHTTPRequestHandler):
                     pass
             self._json({"sessions": sessions})
             return
+        if path == "/claude/projects":
+            out: list[dict[str, Any]] = []
+            root = _claude_projects_dir()
+            try:
+                for d in root.iterdir():
+                    if not d.is_dir():
+                        continue
+                    jsons = list(d.glob("*.jsonl"))
+                    if not jsons:
+                        continue
+                    decoded = "/" + d.name.lstrip("-").replace("-", "/")
+                    try:
+                        updated = int(max(f.stat().st_mtime for f in jsons))
+                    except OSError:
+                        updated = 0
+                    out.append(
+                        {
+                            "path": decoded,
+                            "name": Path(decoded).name or decoded,
+                            "count": len(jsons),
+                            "updated_at": updated,
+                        }
+                    )
+            except OSError:
+                pass
+            out.sort(key=lambda x: x["updated_at"], reverse=True)
+            self._json({"projects": out})
+            return
         if path == "/claude/messages":
-            project = (qs.get("project", [""])[0] or "").strip()
-            file = (qs.get("file", [""])[0] or "").strip()
             roots = _project_roots()
-            cwd = roots.get(project) or roots.get("ccc")
+            cwd = (qs.get("path", [""])[0] or "").strip() or roots.get(
+                (qs.get("project", [""])[0] or "").strip()
+            ) or roots.get("ccc")
+            file = (qs.get("file", [""])[0] or "").strip()
             msgs: list[dict[str, str]] = []
             if cwd and file and "/" not in file and ".." not in file:
                 p = _claude_projects_dir() / _cwd_encode(cwd) / file
@@ -320,12 +350,13 @@ class _Handler(BaseHTTPRequestHandler):
         message = str(body.get("message") or "").strip()
         thread_id = str(body.get("thread_id") or "").strip()
         project = str(body.get("project") or "").strip()
+        project_path = str(body.get("path") or "").strip()
         claude_session = str(body.get("claude_session") or "").strip()
         if not message or not project:
             self._json({"error": "message and project required"}, 400)
             return
         roots = _project_roots()
-        project_root = roots.get(project) or roots.get("ccc")
+        project_root = project_path or roots.get(project) or roots.get("ccc")
         if claude_session and "/" not in claude_session and ".." not in claude_session:
             history = _parse_claude_jsonl(
                 _claude_projects_dir() / _cwd_encode(project_root) / claude_session

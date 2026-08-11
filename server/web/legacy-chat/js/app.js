@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { generateId, desktopThreadId } from './utils.js';
-import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages } from './api.js';
+import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects } from './api.js';
 import { initChatStatus } from './chatStatus.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -315,12 +315,19 @@ async function init() {
   }
 
   try {
-    const projects = await loadProjects();
-    setupProjectSelect(projects);
-    initAppSidebar(projects);
-    const map = {};
-    for (const p of projects) map[p.id] = p.workspace || p.id;
-    state.set('projectWorkspaceMap', map);
+    let folders = [];
+    try {
+      folders = await loadClaudeProjects(); // Claude 工作区文件夹（IDE 风格左栏）
+    } catch (_) {
+      folders = [];
+    }
+    if (folders.length) {
+      initAppSidebar(folders);
+    } else {
+      const projects = await loadProjects();
+      setupProjectSelect(projects);
+      initAppSidebar(projects);
+    }
   } catch (e) {
     window.showToast('项目加载失败: ' + e.message, 'error');
     initAppSidebar([]);
@@ -470,19 +477,21 @@ async function init() {
   });
 
   document.addEventListener('open-claude-session', async (e) => {
-    const { project, file } = e.detail || {};
-    if (!project || !file) return;
+    const { project, path, file } = e.detail || {};
+    if (!file) return;
+    const cwd = path || project || 'ccc';
     try {
       window.__claudeSession__ = file; // 发送时 bridge 用该原生会话续接
-      state.set('currentProject', project);
-      const msgs = await loadClaudeMessages(project, file);
+      if (path) window.__claudeProjectPath__ = path;
+      state.set('currentProject', cwd.split('/').pop() || cwd);
+      const msgs = await loadClaudeMessages(cwd, file);
       loadMessages({ messages: msgs, title: 'Claude 历史' });
       state.set('currentSessionId', 'claude:' + file);
       const tabs = state.get('tabs') || [];
       const tab = tabs.find((t) => t.id === state.get('activeTabId'));
       if (tab) {
         tab.title = 'Claude 历史';
-        tab.projectId = project;
+        tab.projectId = cwd;
       }
       renderProjectTabs(state.get('activeTabId'));
       refreshSidebar();

@@ -117,15 +117,23 @@ export async function loadThreads(project) {
 }
 
 // Claude Code 原生历史（M1 ~/.claude/projects，按项目 cwd 分组）
-export async function loadClaudeSessions(project) {
+export async function loadClaudeProjects() {
   const base = _chatBase();
-  const data = await apiGet((base || '') + '/claude/sessions?project=' + encodeURIComponent(project));
+  const data = await apiGet((base || '') + '/claude/projects');
+  return data.projects || [];
+}
+
+export async function loadClaudeSessions(projectOrPath) {
+  const base = _chatBase();
+  const key = String(projectOrPath || '').startsWith('/') ? 'path' : 'project';
+  const data = await apiGet((base || '') + '/claude/sessions?' + key + '=' + encodeURIComponent(projectOrPath));
   return data.sessions || [];
 }
 
-export async function loadClaudeMessages(project, file) {
+export async function loadClaudeMessages(projectOrPath, file) {
   const base = _chatBase();
-  const data = await apiGet((base || '') + '/claude/messages?project=' + encodeURIComponent(project) + '&file=' + encodeURIComponent(file));
+  const key = String(projectOrPath || '').startsWith('/') ? 'path' : 'project';
+  const data = await apiGet((base || '') + '/claude/messages?' + key + '=' + encodeURIComponent(projectOrPath) + '&file=' + encodeURIComponent(file));
   return data.messages || [];
 }
 
@@ -334,6 +342,8 @@ export async function streamChat(
     const base = _chatBase();
     const claudeSession =
       (typeof window !== 'undefined' && window.__claudeSession__) || null;
+    const claudePath =
+      (typeof window !== 'undefined' && window.__claudeProjectPath__) || null;
     const resp = await _fetchWithAuth(
       base ? base + '/chat' : '/conversation',
       {
@@ -344,6 +354,7 @@ export async function streamChat(
           // T44：按会话分桶历史/分锁；模型档位覆盖
           thread_id: sessionId || null,
           project: state.get('currentProject') || projectId || 'ccc',
+          path: claudePath,
           claude_session: claudeSession,
           model: state.get('model') || null,
         }),
