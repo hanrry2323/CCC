@@ -325,11 +325,19 @@ def _is_persistence_failure(reasons: list[str]) -> bool:
     return any(("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r) for r in reasons)
 
 
-def _mark_branch_card_rejected(work: Work, registry: ExecutorRegistry, cfg: dict[str, Any], log_dir: Path) -> None:
-    """机审打回：把远端分支卡状态落「打回（机审：不通过）」并推送。
+def _mark_branch_card_state(
+    work: Work,
+    registry: ExecutorRegistry,
+    cfg: dict[str, Any],
+    log_dir: Path,
+    state_text: str,
+) -> None:
+    """机审打回：把远端分支卡状态落指定状态并推送。
 
     2026-08-12 终态权威补齐：分支信封与磁盘卡同属终态权威；机审打回若不改分支卡，
     下轮 FileBoardStore 又会把「已回写」残留读成 DONE → 无限机审（mx031/032 假机审根因）。
+    - 重试路径（回待分派）：落「待分派（机审打回·重试中）」，信封读不到 → 按磁盘 TODO 重试执行
+    - 重试耗尽：落「打回（机审：不通过）」，信封读打回 → 不再机审
     失败不阻断打回（打回本身已由磁盘/日志权威化）。
     """
     try:
@@ -344,7 +352,7 @@ def _mark_branch_card_rejected(work: Work, registry: ExecutorRegistry, cfg: dict
         text = card_file.read_text(encoding="utf-8")
         new_text, n = re.subn(
             r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)",
-            r"\g<1>打回（机审：不通过）",
+            rf"\g<1>{state_text}",
             text,
             count=1,
         )
@@ -3007,11 +3015,14 @@ def _run_audit_worker(
             logger.exception("机审异常后失败流转失败: work=%s", work.id)
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
-        # 2026-08-12 终态权威：机审打回 → 分支卡状态落「打回」，
+        # 2026-08-12 终态权威：机审打回 → 分支卡状态落对应终态/重试态，
         # 防分支信封把已回写残留读成 DONE 无限机审
-        if work.state is State.REJECTED:
+        if work.state is State.REJECTED or (
+            work.state is State.TODO and any("机审" in p or "不通过" in p for p in work.problems)
+        ):
             try:
-                _mark_branch_card_rejected(work, registry, cfg, log_dir)
+                state_text = "打回（机审：不通过）" if work.state is State.REJECTED else "待分派（机审打回·重试中）"
+                _mark_branch_card_state(work, registry, cfg, log_dir, state_text)
             except Exception:
                 logger.exception("机审打回落分支卡失败: work=%s", work.id)
     return outcome
