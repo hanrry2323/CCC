@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # 编排流程事件（右栏可视化）
 
 > Desktop 右栏订阅中心 Server 事件流。  

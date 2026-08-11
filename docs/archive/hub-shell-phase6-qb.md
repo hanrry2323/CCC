@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 > **状态：史（Hub 时期 · 2026-08-06 标注）。** 现行见 [`../INDEX.md`](../INDEX.md) §0 · [`../DOC-PROTOCOL.md`](../DOC-PROTOCOL.md)。
 >
 # Hub-Shell Phase6 — 第一笔真实业务仓

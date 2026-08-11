@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # 执行器插件契约（多执行面）
 
 > 自由编排的出口。Engine 扇出每张 work 时指定 `executor`。

@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # CCC 新架构总览（意图链解耦与多入口 · 草案）
 
 > **状态**：草案 · 2026-07-31 · **批准后并入 `loop-engineer-authority.md` 为准**

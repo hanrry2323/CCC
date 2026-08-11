@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文为 Hub 时期历史叙事，自述「禁止用本文旧段指导开发/运维」。对外叙事以 INDEX §0 + ENGINEERING-CANON 为准。
+
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
 > **⚠ 历史叙事 · 非现行架构（2026-08-05 再确认）** — 下文大量口径（Hub :7777、Desktop 主入口、sidecar、OpenCode 写码槽、`control.json`、能力包）属于 **Hub 时期**，已被 v0.70 重构取代。  

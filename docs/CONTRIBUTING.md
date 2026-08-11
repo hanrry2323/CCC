@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub 旧架构或标注「待核（T31 基线收口）」，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止据此判断现行架构；对外叙事以 INDEX §0 为准。
+
 # CCC CONTRIBUTING — 开发流程与 Review Rules（详尽工程版）
 
 > **状态：史（Hub / phases.json 协议 · 2026-08-06 标注）。** 现行开发走任务卡 + Engine，见 [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) · [`product/dev-channel.md`](product/dev-channel.md)。  

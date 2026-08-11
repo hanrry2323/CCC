@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # Context Manifest（F4-1）
 
 显式声明各角色 prompt 需要哪些 context 项，由 `board.context.build_role_context(role, task)` 按 `ROLE_CONTEXT_MANIFEST` 收集。信息分配可审计、可复用；不引入向量库 / RAG。

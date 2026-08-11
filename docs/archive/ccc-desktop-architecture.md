@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # CCC Desktop 产品架构 SSOT
 
 > 版本：2026-07-19 · 与 Cursor/Codex/WorkBuddy 同级的完整产品形态  

@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # Desktop Agent 交接：业务仓迁移与接入
 
 > **给 Desktop Agent / Hub·sidecar 的短交接**（日常心智）。  

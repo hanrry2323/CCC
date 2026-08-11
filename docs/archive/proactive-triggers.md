@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止引用；如需追溯见 docs/archive/ 或 git 历史。
+
 # Proactive 触发（CI / git hook → backlog）
 
 > F4-3：外部信号自动投递 bug epic。契约入口：[`hub-api-v1.md`](hub-api-v1.md) §3b。  

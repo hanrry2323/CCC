@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 v0.40 旧埋点体系（_failure_ledger/failures.jsonl），相关脚本已移除。现行观测 = Loop Observer（server/engine/observer.py）+ Engine 日志（~/.ccc/logs/engine.log）+ 看板 :7788 API。禁止引用本文旧机制。
+
 # CCC 可观测性 / 埋点（v0.40 权威）
 
 > 运维一句话：`python3 scripts/ccc-failure-report.py --last 20`  

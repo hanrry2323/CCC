@@ -185,7 +185,7 @@
 | **协议** | `docs/DOC-PROTOCOL.md` | 命名 / 注册 / 落点 / 单一真源 |
 | **蓝图** | `docs/projects/ccc/plans/020-cluster-worker-pool.md` | 集群 Worker 池方向 |
 | **接入** | `docs/bootstrap.md`（qx-map） | 新节点一键接入 |
-| **巡检** | `docs/observability.md` | 观测指标 |
+| **巡检** | `docs/projects/ccc/plans/011-loop-observer-architecture.md` | Loop Observer 观测指标 |
 
 **演进机制**：本规范按「十条规模」持续迭代——每完成一个阶段（如跨节点路由落地 / 前端验收 SOP 落地），把新经验并进对应原则或新增条，跑一遍三路验证再定稿。
 
