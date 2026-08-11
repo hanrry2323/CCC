@@ -1954,17 +1954,17 @@ def _dispatch_and_collect(
                                 str(target_path),
                                 branch_name,
                             ]
-                        res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
-                        if res_existing.returncode == 0:
-                            worktree_path = str(target_path)
-                            logger.info("Worktree 关联已有分支成功: %s", worktree_path)
-                        else:
-                            # 2026-08-12 隔离升级：禁止静默回退默认工作目录，记 infra 冷却
-                            _bump_worktree_failures()
-                            return False, [
-                                "基础设施：worktree 干净重建与关联均失败（隔离强制，不回退默认目录）: "
-                                + (res_existing.stderr or res_add.stderr or "").strip()
-                            ]
+                            res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
+                            if res_existing.returncode == 0:
+                                worktree_path = str(target_path)
+                                logger.info("Worktree 关联已有分支成功: %s", worktree_path)
+                            else:
+                                # 2026-08-12 隔离升级：禁止静默回退默认工作目录，记 infra 冷却
+                                _bump_worktree_failures()
+                                return False, [
+                                    "基础设施：worktree 干净重建与关联均失败（隔离强制，不回退默认目录）: "
+                                    + (res_existing.stderr or res_add.stderr or "").strip()
+                                ]
                 else:
                     logger.info("上次执行已成功收单，重用 existing worktree: %s", target_worktree)
                     worktree_path = str(target_path)
