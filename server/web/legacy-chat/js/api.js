@@ -57,6 +57,11 @@ async function _fetchWithAuth(path, options = {}, json = true) {
   return resp;
 }
 
+function _chatBase() {
+  // M1 对话桥直连（/config 下发）；空则走本机 /conversation 代理
+  return (typeof window !== 'undefined' && window.__CCC_CHAT_BRIDGE_URL__) || '';
+}
+
 export async function apiGet(path, options = {}) {
   const resp = await _fetchWithAuth(path, { method: 'GET', ...options }, false);
   if (!resp.ok) {
@@ -106,7 +111,8 @@ export async function loadProjects() {
 
 // T47：项目下会话列表（来自服务端会话存储，非本地 tabs）
 export async function loadThreads(project) {
-  const data = await apiGet('/projects/' + encodeURIComponent(project) + '/threads');
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/projects/' + encodeURIComponent(project) + '/threads');
   return data.threads || [];
 }
 
@@ -145,7 +151,11 @@ async function _fetchHistory(threadId) {
 
   let data;
   try {
-    data = await apiGet('/conversation' + qs, { signal });
+    const base = _chatBase();
+    const path = base
+      ? base + '/chat/history' + qs + '&project=' + encodeURIComponent(state.get('currentProject') || 'ccc')
+      : '/conversation' + qs;
+    data = await apiGet(path, { signal });
   } catch (err) {
     if (err && err.name === 'AbortError') {
       return { messages: [], seq: cur.seq };
@@ -230,8 +240,15 @@ export async function loadSkills(projectId, opts = {}) {
 }
 
 export async function loadHubConfig() {
-  const data = await apiGet('/health');
-  return { chat_session_max_live: 4, dialogue_url: '/' };
+  try {
+    const data = await apiGet('/config');
+    if (data && data.chat_bridge_url) {
+      window.__CCC_CHAT_BRIDGE_URL__ = data.chat_bridge_url;
+    }
+    return { chat_session_max_live: 4, dialogue_url: '/' };
+  } catch (e) {
+    return { chat_session_max_live: 4, dialogue_url: '/' };
+  }
 }
 
 export async function renameSession(id, project, title) {
@@ -297,8 +314,9 @@ export async function streamChat(
 
   // 构造单次流请求
   async function openStream() {
+    const base = _chatBase();
     const resp = await _fetchWithAuth(
-      '/conversation',
+      base ? base + '/chat' : '/conversation',
       {
         method: 'POST',
         body: JSON.stringify({
@@ -306,6 +324,7 @@ export async function streamChat(
           stream: true,
           // T44：按会话分桶历史/分锁；模型档位覆盖
           thread_id: sessionId || null,
+          project: state.get('currentProject') || projectId || 'ccc',
           model: state.get('model') || null,
         }),
         signal,

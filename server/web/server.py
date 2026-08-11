@@ -448,6 +448,8 @@ def _build_public_config() -> dict[str, Any]:
         "workspace_map": {},
         # 模型档位（T44：CCC_MODEL_TIERS，非敏感；档位选择器数据源）
         "models": _get_model_tiers(),
+        # M1 对话桥（前端直连；空则走本机 /conversation）
+        "chat_bridge_url": _chat_bridge_url(),
         "version": "v0.70.0",
     }
 

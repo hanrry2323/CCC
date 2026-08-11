@@ -184,11 +184,17 @@ class _Handler(BaseHTTPRequestHandler):
         expect = f"Bearer {token}"
         return (self.headers.get("Authorization") or "") == expect
 
+    def _cors(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
     def _json(self, data: dict, status: int = 200) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
@@ -243,6 +249,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
+        self._cors()
+        self.end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
         self.end_headers()
 
         def emit(event: str, data: dict) -> None:
