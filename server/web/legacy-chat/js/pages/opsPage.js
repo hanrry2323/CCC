@@ -130,7 +130,9 @@ function renderLoop(loopData) {
   // 合并所有报告 findings（最新报告优先，去重）
   const findings = [];
   const seen = new Set();
+  let latestTs = 0;
   for (const r of reports) {
+    if (r.mtime > latestTs) latestTs = r.mtime;
     for (const f of r.findings || []) {
       const key = `${f.project}:${f.title}`;
       if (seen.has(key)) continue;
@@ -139,14 +141,17 @@ function renderLoop(loopData) {
     }
   }
   if (nEl) nEl.textContent = String(findings.length);
+  // 扫描时间
+  const scanLabel = latestTs ? ` · 巡查于 ${agoText(latestTs)}` : '';
+  const header = `<div class="ops-todo-scan">待处理 ${findings.length} 项${esc(scanLabel)}</div>`;
   if (!findings.length) {
-    el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
+    el.innerHTML = header + '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
     return;
   }
   // 按优先级排序
   const order = { p1: 0, p2: 1, p3: 2 };
   findings.sort((a, b) => order[priorityOf(a.weight)] - order[priorityOf(b.weight)]);
-  el.innerHTML = findings
+  el.innerHTML = header + findings
     .slice(0, 12)
     .map((f) => {
       const p = priorityOf(f.weight);
@@ -177,6 +182,15 @@ function renderLoop(loopData) {
       }
     });
   });
+}
+
+/** 时间戳 → 「X 分钟/小时前」 */
+function agoText(ts) {
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (sec < 60) return '刚刚';
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  return `${Math.floor(sec / 86400)} 天前`;
 }
 
 /* ── ③ 技术详情（折叠） ────────────────────────── */
