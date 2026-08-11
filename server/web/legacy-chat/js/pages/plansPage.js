@@ -184,10 +184,10 @@ function renderPlanItem(plan) {
   ];
   const flowSegs = colOrder.map(([col, short]) => ({ col, short, n: (cs.cols || {})[col] || 0 }));
   const flowActive = flowSegs.filter((s) => s.n > 0);
-  const flowBar = flowActive.length
-    ? `<span class="pcard-flow-bar">${flowSegs.map((s) => s.n ? `<i class="flow-${s.col}" style="width:${Math.round((s.n / (cs.total || 1)) * 100)}%"></i>` : '').join('')}</span>`
-    : '<span class="pcard-flow-none">未转卡</span>';
-  const flowMeta = flowActive.map((s) => `${s.short}${s.n}`).join(' · ');
+  const flowBar = `<span class="pcard-flow-bar ${flowActive.length ? '' : 'empty'}">${flowActive.length
+    ? flowSegs.map((s) => s.n ? `<i class="flow-${s.col}" style="width:${Math.round((s.n / (cs.total || 1)) * 100)}%"></i>` : '').join('')
+    : ''}</span>`;
+  const flowMeta = flowActive.length ? flowActive.map((s) => `${s.short}${s.n}`).join(' · ') : '未转卡';
   const title = String(plan.title || '').replace('方案 · ', '');
 
   return `
@@ -196,7 +196,7 @@ function renderPlanItem(plan) {
       <div class="pcard-head">
         <span class="pcard-proj" style="background:${projTint};color:${projColor}">${esc(_projectDisplay[plan.project] || plan.project)}</span>
         <span class="pcard-id">#${esc(plan.num)}</span>
-        <span class="pcard-open">${icon('open')}</span>
+        <button type="button" class="pcard-open" title="查看方案详情">详情${icon('open')}</button>
       </div>
       <h3 class="pcard-title">${esc(title)}</h3>
       <div class="pcard-meta">${esc(plan.author)}<span class="pcard-dotsep">·</span>${esc(plan.tool)}</div>
@@ -210,7 +210,7 @@ function renderPlanItem(plan) {
           <span class="pcard-acc" title="验收 ${acc.done}/${acc.total}">
             <span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${accPct}%;background:${color}"></span></span>
             <span class="pcard-acc-num">${acc.done}/${acc.total}</span>
-          </span>` : `<span class="pcard-acc-none">无验收项</span>`}
+          </span>` : `<span class="pcard-acc-none">未验收</span>`}
       </div>
     </article>`;
 }
