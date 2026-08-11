@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Protocol
 
@@ -46,6 +47,46 @@ _STR_TO_STATE: dict[str, State] = {
     "已关闭": State.CLOSED,
     "打回": State.REJECTED,
 }
+
+
+def _branch_envelope_state(project_root: Path, entry: dict) -> str:
+    """远端 ``codex/<slug>`` 分支卡文件状态（分支信封 = 终态权威之一）。
+
+    磁盘 main 镜像在合入前永远旧值（待分派）；收单后 sidecar 按契约清除；
+    AUTO 业务仓卡的真值在执行体 push 的 codex 分支卡文件里。
+    分支不存在/读取失败返回空串（不覆盖现有判定，不阻断）。
+    """
+    raw_path = entry.get("path") or ""
+    if not raw_path:
+        return ""
+    try:
+        path = str(Path(raw_path).expanduser().resolve().relative_to(Path(project_root).expanduser().resolve()))
+    except ValueError:
+        path = str(raw_path).replace("\\", "/")
+    stem = Path(path).stem.lower()
+    branch = f"codex/{stem}"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(project_root), "show", f"origin/{branch}:{path}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception:
+        return ""
+    if res.returncode != 0:
+        return ""
+    from server.board.card_header import parse_metadata
+
+    try:
+        meta = parse_metadata(res.stdout)
+    except Exception:
+        return ""
+    state = (meta.get("状态") or "").strip()
+    if base_state(state) in ("已回写", "已关闭", "打回"):
+        return state
+    return ""
 
 
 def _retry_count_from_state_str(raw_state: str) -> int:
@@ -138,7 +179,12 @@ class FileBoardStore:
 
         runtime = read_card_state(self._log_dir) if self._log_dir else {}
         works: list[Work] = []
-        project_root = Path(__file__).resolve().parents[2]
+        try:
+            from server.git_sync import resolve_repo_root
+
+            project_root = resolve_repo_root(self._dir)
+        except Exception:
+            project_root = Path(__file__).resolve().parents[2]
 
         for entry in index_entries.values():
             # 归档卡不进 Engine 派发队列（看板 loader 已过滤；store 须对齐）
@@ -150,6 +196,13 @@ class FileBoardStore:
             # 若磁盘状态是「已关闭」「打回」，忽略 sidecar 状态。
             if base_state(raw_state) in ("待分派", "已回写", "执行中") and rt.get("state"):
                 raw_state = str(rt["state"])
+            # 分支信封（2026-08-12 · 终态权威补齐）：磁盘 main 镜像未合入前永远旧值，
+            # sidecar 收单后按契约清除 → 磁盘待分派会误重派、机审扫不到。
+            # 远端 codex/<slug> 分支卡是执行体回写后的真值，合并进状态判定。
+            if base_state(raw_state) in ("待分派", "执行中") and not rt.get("state"):
+                branch_state = _branch_envelope_state(project_root, entry)
+                if branch_state:
+                    raw_state = branch_state
             st = _state_from_str(raw_state)
             if st is None:
                 logger.warning(

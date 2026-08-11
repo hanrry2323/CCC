@@ -198,3 +198,80 @@ def test_trigger_scheduled_ops_deferred(tmp_path) -> None:
     assert ok
     assert any("ops003" in p for p in summary["pending"])
     assert not summary["triggered"]
+
+
+class TestBranchEnvelopeAuthority:
+    """2026-08-12：终态权威补齐——磁盘 main 镜像 + sidecar 清除后，远端 codex 分支信封为真值。
+
+    收单成功后 sidecar 按契约清除，磁盘卡（main 镜像）仍是待分派；
+    若不读分支信封，engine 会把已回写卡误判重派、机审永远扫不到（mx035 三连循环根因）。
+    """
+
+    def _make_repo_with_branch_card(self, tmp_path: Path, state: str) -> tuple[Path, dict]:
+        import subprocess
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@e"], cwd=repo, check=True, capture_output=True)
+        card = "docs/dispatch/mx/mx999-flow-test.md"
+        p = repo / card
+        p.parent.mkdir(parents=True)
+        p.write_text(
+            f"# 任务卡 mx999\n\n> 关联：mx-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：{state} · 项目：mx\n\n## 目标\nx\n\n## 维护区\n\n1. **方案同步**：[是]\n   - 说明：a\n2. **教训沉淀**：[有]\n   - 说明：b\n3. **档案/README**：[否]\n   - 说明：c\n4. **线路图**：[否]\n   - 说明：d\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "card"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "branch", "codex/mx999-flow-test"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "update-ref", "refs/remotes/origin/codex/mx999-flow-test", "codex/mx999-flow-test"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        # 模拟执行体回写：分支卡已回写，main 卡仍待分派
+        p.write_text(
+            p.read_text(encoding="utf-8").replace("状态：已回写", "状态：待分派").replace("状态：打回", "状态：待分派"),
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "main-stale"], cwd=repo, check=True, capture_output=True)
+        return repo, {"id": "mx999", "path": card, "state": "待分派", "executor": "OpenCode"}
+
+    def test_branch_envelope_reads_writeback_state(self, tmp_path: Path) -> None:
+        from server.engine.store import _branch_envelope_state
+
+        repo, entry = self._make_repo_with_branch_card(tmp_path, "已回写")
+        state = _branch_envelope_state(repo, entry)
+        assert state == "已回写"
+
+    def test_branch_envelope_missing_branch_returns_empty(self, tmp_path: Path) -> None:
+        from server.engine.store import _branch_envelope_state
+
+        repo, entry = self._make_repo_with_branch_card(tmp_path, "已回写")
+        entry2 = dict(entry)
+        entry2["path"] = "docs/dispatch/mx/mx888-nobranch.md"
+        assert _branch_envelope_state(repo, entry2) == ""
+
+    def test_file_store_merges_branch_envelope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """磁盘待分派 + sidecar 空 + 分支已回写 → list_work(DONE) 命中（不再误重派）。"""
+        import subprocess
+
+        from server.engine.store import FileBoardStore
+
+        repo, entry = self._make_repo_with_branch_card(tmp_path, "已回写")
+        dispatch_dir = repo / "docs" / "dispatch"
+        # 索引由 loader 生成（磁盘 main 卡待分派）
+        monkeypatch.chdir(repo)
+        # 用 InMemory registry（空注册表即可，role 反查允许空）
+        from server.engine.dispatch import ExecutorRegistry
+
+        reg = ExecutorRegistry(())
+        store = FileBoardStore(dispatch_dir, reg, log_dir=tmp_path / "logs")
+        done = store.list_work(state=State.DONE)
+        assert any(w.id == "mx999-flow-test" for w in done)
+        # 待分派队列不应再包含 mx999
+        todo = store.list_work(state=State.TODO)
+        assert all(w.id != "mx999-flow-test" for w in todo)

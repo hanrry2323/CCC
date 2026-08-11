@@ -456,13 +456,6 @@ def is_empty_writeback_or_placeholder(work: Work, worktree_path: str) -> tuple[b
             else:
                 return True, "回写 diff 为空（未在 worktree 内产生新 commit 或有效 diff）"
 
-    """判定是否为空回写（回写 diff 为空 或 卡 ## 维护区 为模板占位/空白）。"""
-    if worktree_path:
-        has_commit = _worktree_has_new_commit(worktree_path)
-        has_diff = _worktree_has_nonempty_diff(worktree_path)
-        if not (has_commit and has_diff):
-            return True, "回写 diff 为空（未在 worktree 内产生新 commit 或有效 diff）"
-
     card_file_path = Path(work.card_path)
     if worktree_path:
         wt_card = _worktree_card_candidate(worktree_path, work.card_path)
