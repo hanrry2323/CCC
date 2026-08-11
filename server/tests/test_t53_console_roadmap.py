@@ -61,9 +61,9 @@ class TestRoadmapPage:
 
     def test_project_name_count_separated(self) -> None:
         text = self._roadmap()
-        assert "roadmap-project-name" in text
-        assert "roadmap-milestone" in text
+        assert "rm-project-card" in text  # 项目卡片（图形化总览）
+        assert "buildTimelineSVG" in text  # SVG 时间线
 
     def test_hint_mentions_project_aggregation(self) -> None:
         text = self._roadmap()
-        assert "业务线路" in text
+        assert "线路图" in text

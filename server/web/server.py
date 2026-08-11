@@ -2242,6 +2242,29 @@ class _APIHandler(BaseHTTPRequestHandler):
                     "business_lines": _business,
                 }
             )
+        elif path.startswith("/board/roadmap/"):
+            # 单项目线路图详情（2026-08-12）：里程碑 + 卡分组 + 风险，供 SVG 渲染
+            _proj = path[len("/board/roadmap/") :]
+            try:
+                from server.board.roadmap_parser import (
+                    load_roadmap_sections,
+                    project_detail,
+                )
+
+                _rm_path = _PROJECT_ROOT / "docs" / "roadmap.md"
+                _cards_by_id = {}
+                _by_proj = {}
+                for _it in items:
+                    _cards_by_id[_it.id.lower()] = str(_it.state)
+                    _by_proj[_it.id.lower()] = str(_it.project or "")
+                _business = load_roadmap_sections(_rm_path, _cards_by_id, _by_proj)
+                _detail = project_detail(_business, _proj)
+            except Exception:
+                _detail = None
+            if _detail is None:
+                self._send_json({"error": f"项目 {_proj} 无业务线路"}, 404)
+            else:
+                self._send_json(_detail)
         elif path == "/board/states":
             self._send_json(states_response(items))
         elif path == "/board/ready_for_merge":

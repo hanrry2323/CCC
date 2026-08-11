@@ -49,8 +49,12 @@ def parse_business_lines(md: str) -> list[dict[str, Any]]:
         if not current_project:
             continue
         if line.startswith("### "):
+            title = line[4:].strip()
+            # 从标题提取日期（2026-08-07 挂账 / 2026-08-07 · xxx）
+            date_m = re.search(r"20\d{2}-\d{2}-\d{2}", title)
             current_milestone = {
-                "title": line[4:].strip(),
+                "title": title,
+                "date": date_m.group(0) if date_m else "",
                 "cards": [],
             }
             sections[-1]["milestones"].append(current_milestone)
@@ -110,3 +114,46 @@ def load_roadmap_sections(
     if cards_by_id is not None:
         sections = attach_card_states(sections, cards_by_id, by_project or {})
     return sections
+
+
+def card_group(progress: str, real_state: str | None) -> str:
+    """卡 → 状态分组（已完成/进行中/待开发/风险）。
+
+    优先级：风险（漂移/缺失）> 已完成 > 进行中 > 待开发。
+    """
+    p = progress or ""
+    r = normalize_state(real_state or "")
+    pn = normalize_state(p)
+    if pn == "closed" or r == "closed":
+        return "done"
+    if pn in ("in_progress", "verified") or r in ("in_progress", "verified"):
+        return "doing"
+    return "planned"
+
+
+def project_detail(
+    sections: list[dict[str, Any]], project: str
+) -> dict[str, Any] | None:
+    """单项目线路图数据：里程碑 + 卡分组统计 + 风险列表（供二级页/SVG 渲染）。"""
+    for s in sections:
+        if s.get("project") == project:
+            cards = [
+                c for m in s.get("milestones", []) for c in m.get("cards", [])
+            ]
+            groups = {"done": [], "doing": [], "planned": []}
+            risks = []
+            for c in cards:
+                g = card_group(c.get("progress", ""), c.get("real_state"))
+                groups[g].append(c)
+                if c.get("drift"):
+                    risks.append({"type": "drift", "card_id": c.get("card_id"), "detail": "roadmap 进度与卡状态不一致"})
+                if c.get("missing"):
+                    risks.append({"type": "missing", "card_id": c.get("card_id"), "detail": "卡文件不存在"})
+            return {
+                "project": project,
+                "milestones": s.get("milestones", []),
+                "groups": {k: v for k, v in groups.items()},
+                "counts": {k: len(v) for k, v in groups.items()},
+                "risks": risks,
+            }
+    return None

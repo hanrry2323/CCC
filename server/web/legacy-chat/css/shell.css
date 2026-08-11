@@ -1257,6 +1257,217 @@ body.hub-mode #app {
   padding: 8px 12px 12px;
 }
 
+/* ── 线路图（图形化 · 2026-08-12 v2） ── */
+
+.rm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.rm-project-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.rm-project-card:hover {
+  border-color: var(--ccc-text-accent);
+}
+
+.rm-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.rm-card-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rm-card-meta {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+
+.rm-progress-track {
+  height: 6px;
+  background: var(--ccc-border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.rm-progress-fill {
+  height: 100%;
+  background: #3d9a5f;
+  border-radius: 999px;
+}
+
+.rm-progress-label {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+
+.rm-card-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.rm-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.rm-tag.doing { background: rgba(58, 123, 213, 0.15); color: #3a7bd5; }
+.rm-tag.drift { background: rgba(217, 130, 43, 0.15); color: #d9822b; }
+.rm-tag.mile { background: var(--ccc-border-subtle); color: var(--ccc-text-muted); }
+
+.rm-hint {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* SVG 时间线 */
+.rm-svg {
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  margin: 12px 0;
+}
+
+.rm-node-title {
+  font-size: 11px;
+  fill: var(--ccc-text-base);
+}
+
+.rm-node-date {
+  font-size: 10px;
+  fill: var(--ccc-text-muted);
+}
+
+.rm-axis-label {
+  font-size: 10px;
+  fill: var(--ccc-text-muted);
+}
+
+.rm-empty {
+  font-size: 12px;
+  fill: var(--ccc-text-muted);
+}
+
+/* 二级页详情 */
+.rm-project-detail .rm-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.rm-detail-head h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.rm-detail-meta {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+}
+
+.rm-group {
+  margin: 12px 0;
+}
+
+.rm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rm-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.rm-group-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rm-card-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  max-width: 380px;
+}
+
+.rm-card-id {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.rm-card-intent {
+  color: var(--ccc-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rm-flag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.rm-flag.drift { background: #d9822b; }
+.rm-flag.missing { background: #c44; }
+
+.rm-risk {
+  border: 1px solid rgba(204, 68, 68, 0.4);
+  background: rgba(204, 68, 68, 0.06);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0;
+}
+
+.rm-risk-title {
+  color: #c44;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.rm-risk-item {
+  font-size: 12px;
+  color: var(--ccc-text-base);
+  padding: 2px 0;
+}
+
 /* ── 线路图（业务线路 · 2026-08-12） ── */
 
 .roadmap-project {
