@@ -4197,6 +4197,7 @@
 .plans-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: row;
   gap: 14px;
   align-items: start;
 }
