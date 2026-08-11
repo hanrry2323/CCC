@@ -1544,6 +1544,28 @@ def _load_running_tasks() -> dict[str, Any]:
     return {"tasks": tasks}
 
 
+def _tail_lines_file(path: Path, n: int = 3) -> list[str]:
+    """读文件最后 n 行（utf-8 容错，跳过空行）。"""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return [ln for ln in text.splitlines() if ln.strip()][-n:]
+    except OSError:
+        return []
+
+
+def _log_delta(path: Path, pos: int) -> tuple[list[str], int]:
+    """从 pos 偏移读新增行，返回 (行列表, 新偏移)。"""
+    try:
+        with open(path, "rb") as f:
+            f.seek(pos)
+            new = f.read()
+            pos = f.tell()
+        lines = [ln for ln in new.decode("utf-8", errors="replace").splitlines() if ln.strip()]
+        return lines, pos
+    except OSError:
+        return [], pos
+
+
 class _APIHandler(BaseHTTPRequestHandler):
     """HTTP API 请求处理器。"""
 
@@ -2413,6 +2435,73 @@ class _APIHandler(BaseHTTPRequestHandler):
         """GET /ops/hp-health → HP 知识库节点探活 + 延迟。"""
         self._send_json(_build_hp_health())
 
+    def _handle_tasks_stream(self):
+        """GET /tasks/stream?ids=a,b,c → SSE：snapshot 最近 3 行 + 日志增量 log 事件 + 15s 心跳。
+
+        机审列读 {id}.audit.log，其余读 {id}.log；断连/异常即线程退出。
+        """
+        import json as _json
+        from urllib.parse import parse_qs
+
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        ids = [x for x in qs.get("ids", [""])[0].split(",") if x.strip()]
+        log_dir = _executor_log_dir()
+
+        col_by_id: dict[str, str] = {}
+        try:
+            from server.board.models import board_column as _board_column
+
+            for item in _load_board_items():
+                col_by_id[item.id.lower()] = _board_column(item.state, bool(getattr(item, "machine_audit_passed", False)))
+        except OSError:
+            pass
+
+        streams: dict[str, dict] = {}
+        for cid in ids:
+            key = cid.lower()
+            name = f"{key}-audit.log" if col_by_id.get(key) == "机审" else f"{key}.log"
+            path = (log_dir / name) if log_dir else None
+            pos = 0
+            if path is not None and path.is_file():
+                try:
+                    pos = path.stat().st_size
+                except OSError:
+                    pos = 0
+            streams[key] = {"path": path, "pos": pos, "id": cid}
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        def emit(event: str, data: dict) -> None:
+            payload = _json.dumps(data, ensure_ascii=False)
+            self.wfile.write(f"event: {event}\ndata: {payload}\n\n".encode())
+            self.wfile.flush()
+
+        try:
+            for cid, s in streams.items():
+                lines = _tail_lines_file(s["path"], 3) if s["path"] is not None else []
+                emit("snapshot", {"work_id": s["id"], "lines": lines})
+            last_beat = time.time()
+            while True:
+                time.sleep(0.8)
+                for cid, s in streams.items():
+                    if s["path"] is None or not s["path"].is_file():
+                        continue
+                    lines, pos = _log_delta(s["path"], s["pos"])
+                    if lines:
+                        s["pos"] = pos
+                        for ln in lines:
+                            emit("log", {"work_id": s["id"], "line": ln})
+                if time.time() - last_beat >= 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
         raw_path = self.path.split("?")[0]
@@ -2442,6 +2531,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/tasks/running":
             # T53：执行中任务进程视图（免登录白名单，与 /projects 同组；须在 /tasks/{id} 之前）
             self._send_json(_load_running_tasks())
+            return
+        if path == "/tasks/stream":
+            # 执行中/机审卡内实时日志流（SSE：snapshot 最近 3 行 + 增量 log 事件 + 心跳）
+            self._handle_tasks_stream()
             return
         if path == "/cards":
             self._handle_cards_get()

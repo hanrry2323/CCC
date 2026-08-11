@@ -2937,18 +2937,31 @@ body.ro-viewer [data-write] {
   text-overflow: ellipsis;
 }
 .board-run-line.dim { color: #aaa; font-family: inherit; }
-.board-run-cell { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.board-run-block {
-  border-radius: 9px;
+.board-card-stream {
+  margin: 5px 0 3px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(250, 250, 250, 0.92);
   border: 1px solid rgba(0, 0, 0, 0.05);
-  background: rgba(250, 250, 250, 0.9);
-  padding: 8px 10px;
 }
-.board-run-block .board-run-empty {
-  padding: 6px 0;
-  text-align: left;
-  font-size: 11px;
+.board-card-stream-lines {
+  display: flex;
+  flex-direction: column-reverse;
+  height: 43px;
+  overflow: hidden;
+  gap: 1px;
 }
+.board-stream-line {
+  flex: none;
+  font-family: var(--ccc-font-mono, monospace);
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-card-stream-empty { font-size: 10.5px; color: #aaa; line-height: 1.4; }
 
 /* ══ 运维页 v3（项目工程化运维）══ */
 .ops-projects-grid {

@@ -39,9 +39,8 @@ let _collapsedCols = {};                  // 全部列默认展开（老板 2026
 let _colOpen = {};                       // 列体折叠（头部按钮）
 let _dense = false;                      // 卡片密度
 let _searchQ = '';
-let _runTimer = null;                    // 运行面板轮询（8s）
 let _colCardIds = { '执行中': [], '机审': [] }; // 上栏可见卡 id（运行流对应）
-let _tasksById = {};                     // work_id → 任务（运行块缓存）
+let _es = null;                          // /tasks/stream SSE 连接
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -302,35 +301,61 @@ function updateSummary() {
   el.textContent = wsDisplay + ` · 共 ${total} 张`;
 }
 
-/* ── 列内实时运行面板（老板 2026-08-12：执行中/机审 下栏显示后台任务进程）── */
+/* ── 卡内实时日志流（SSE · 3 行瀑布 · 统一 5 秒刷新）── */
 
-function fmtElapsedRun(sec) {
-  const s = Math.max(0, Number(sec) || 0);
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m${String(Math.floor(s % 60)).padStart(2, '0')}s`;
-  return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+function _streamIds() {
+  return [...new Set([...(_colCardIds['执行中'] || []), ...(_colCardIds['机审'] || [])])];
 }
 
-function renderRunItem(t) {
-  const tail = Array.isArray(t.log_tail) ? t.log_tail.slice(-3) : [];
-  return `<div class="board-run-item ${t.metrics_live ? 'live' : ''}">
-    <div class="board-run-top">
-      <b>${esc(t.work_id || '')}</b>
-      <span class="board-run-time">⏱ ${esc(fmtElapsedRun(t.elapsed_s))}</span>
-    </div>
-    <div class="board-run-flow">${tail.length ? tail.map((l) => `<div class="board-run-line">${esc(l)}</div>`).join('') : '<div class="board-run-line dim">（暂无日志）</div>'}</div>
-  </div>`;
+function _connectStream() {
+  if (!_root) return;
+  const ids = _streamIds();
+  if (_es) {
+    _es.close();
+    _es = null;
+  }
+  if (!ids.length) return;
+  _es = new EventSource('/tasks/stream?ids=' + encodeURIComponent(ids.join(',')));
+  _es.addEventListener('snapshot', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const box = _root.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(d.work_id)}"] .board-card-stream-lines`);
+      if (!box) return;
+      const lines = Array.isArray(d.lines) ? d.lines : [];
+      box.innerHTML = lines.length
+        ? lines.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('')
+        : '<div class="board-card-stream-empty">（暂无日志）</div>';
+    } catch (err) { /* 忽略坏事件 */ }
+  });
+  _es.addEventListener('log', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const box = _root.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(d.work_id)}"] .board-card-stream-lines`);
+      if (!box || !d.line) return;
+      const empty = box.querySelector('.board-card-stream-empty');
+      if (empty) empty.remove();
+      const div = document.createElement('div');
+      div.className = 'board-stream-line';
+      div.textContent = d.line;
+      box.appendChild(div);
+      while (box.children.length > 3) box.removeChild(box.firstChild); // 硬性 3 行
+    } catch (err) { /* 忽略坏事件 */ }
+  });
+  _es.onerror = () => {
+    if (!_root || !_es) return;
+    _root.querySelectorAll('.board-card-stream-lines').forEach((box) => {
+      if (!box.querySelector('.board-stream-line')) {
+        box.innerHTML = '<div class="board-card-stream-empty">连接中断，重连中…</div>';
+      }
+    });
+  };
 }
 
 function renderRunCol(col, cards) {
   const el = _root.querySelector(`#col-list-${col}`);
   if (!el) return;
   el.innerHTML = cards.length
-    ? cards.map((c) => `
-      <div class="board-run-cell">
-        ${renderTaskCard(c)}
-        <div class="board-run-block" data-run-id="${esc(c.id)}">${_tasksById[c.id] ? renderRunItem(_tasksById[c.id]) : '<div class="board-run-empty">等待运行信息…</div>'}</div>
-      </div>`).join('')
+    ? cards.map((c) => renderTaskCard(c, { stream: true })).join('')
     : '<div class="board-empty">暂无任务</div>';
   el.querySelectorAll('.board-task-card').forEach((card) => {
     card.addEventListener('click', (e) => {
@@ -348,32 +373,6 @@ function renderRunCol(col, cards) {
       else window.showToast?.('复制失败', 'error');
     });
   });
-}
-
-async function pollRunPanels() {
-  if (!_root) return;
-  try {
-    const data = await apiGet('/tasks/running');
-    const tasks = (data && data.tasks) || [];
-    const byId = {};
-    _tasksById = {};
-    for (const t of tasks) {
-      if (t.work_id) {
-        byId[t.work_id] = t;
-        _tasksById[t.work_id] = t;
-      }
-    }
-    for (const col of RUN_COLS) {
-      const el = _root.querySelector(`#col-list-${col}`);
-      if (!el) continue;
-      el.querySelectorAll('.board-run-block').forEach((block) => {
-        const t = byId[block.dataset.runId];
-        block.innerHTML = t ? renderRunItem(t) : '<div class="board-run-empty">无运行进程</div>';
-      });
-    }
-  } catch (e) {
-    /* 轮询失败静默，下轮重试 */
-  }
 }
 
 function classifyWsStatus(payload) {
@@ -522,6 +521,7 @@ async function loadBoard() {
 
     renderBoard();
     refreshAllWsIndicators().catch(() => {});
+    _connectStream(); // 5s 刷新统一在这里重建 SSE（上栏卡变化自动跟随）
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载看板失败', 'error');
   }
@@ -629,6 +629,7 @@ export async function mountBoard(el) {
     }
     await loadBoard();
     if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+    _connectStream();
     return;
   }
   _root = el;
@@ -638,8 +639,7 @@ export async function mountBoard(el) {
   await loadConfig();
   await loadBoard();
   _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
-  await pollRunPanels();
-  _runTimer = setInterval(pollRunPanels, 8000);
+  _connectStream();
 }
 
 export function unmountBoard() {
@@ -647,9 +647,9 @@ export function unmountBoard() {
     clearInterval(_timer);
     _timer = null;
   }
-  if (_runTimer) {
-    clearInterval(_runTimer);
-    _runTimer = null;
+  if (_es) {
+    _es.close();
+    _es = null;
   }
   _colLists = {};
   _root = null;
