@@ -41,6 +41,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CLUSTER_PORT_NAMES": "",
     "CLUSTER_BUSINESS_PORTS": "",
     "CLUSTER_HP_TARGET": "",
+    "CCC_CHAT_BRIDGE_URL": "",
+    "CCC_CHAT_BRIDGE_TOKEN": "",
     # 中转站部署模板占位（T4，部署前手动替换，可选）
     "CCC_RELAY_PROJECT_ROOT": "",
     "LOOP_ANTHROPIC_PORT": "",
