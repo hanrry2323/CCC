@@ -298,6 +298,46 @@ def _is_persistence_failure(reasons: list[str]) -> bool:
     return any(("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r) for r in reasons)
 
 
+def _mark_branch_card_rejected(work: Work, registry: ExecutorRegistry, cfg: dict[str, Any], log_dir: Path) -> None:
+    """机审打回：把远端分支卡状态落「打回（机审：不通过）」并推送。
+
+    2026-08-12 终态权威补齐：分支信封与磁盘卡同属终态权威；机审打回若不改分支卡，
+    下轮 FileBoardStore 又会把「已回写」残留读成 DONE → 无限机审（mx031/032 假机审根因）。
+    失败不阻断打回（打回本身已由磁盘/日志权威化）。
+    """
+    try:
+        wt_hint = _worktree_hint_for(work, registry)
+        if not wt_hint or not os.path.isdir(wt_hint) or not work.card_path:
+            return
+        if "docs/dispatch" not in work.card_path:
+            return
+        card_file = Path(wt_hint) / work.card_path
+        if not card_file.is_file():
+            return
+        text = card_file.read_text(encoding="utf-8")
+        new_text, n = re.subn(
+            r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)",
+            r"\g<1>打回（机审：不通过）",
+            text,
+            count=1,
+        )
+        if n == 0 or new_text == text:
+            return
+        card_file.write_text(new_text, encoding="utf-8")
+        branch = f"codex/{Path(work.card_path).stem.lower()}"
+        subprocess.run(["git", "add", "--", work.card_path], cwd=wt_hint, capture_output=True, check=False)
+        subprocess.run(
+            ["git", "commit", "-m", f"chore(engine): {work.id} 机审打回，状态落分支信封（防死循环）"],
+            cwd=wt_hint,
+            capture_output=True,
+            check=False,
+        )
+        subprocess.run(["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False)
+        logger.warning("机审打回已落分支卡状态: work=%s branch=%s", work.id, branch)
+    except Exception as exc:
+        logger.warning("机审打回落分支卡失败（不阻断打回）: work=%s (%s)", work.id, exc)
+
+
 def _infra_cooldown_seconds(cfg: dict[str, Any]) -> int:
     try:
         return max(0, int(cfg.get("EXECUTOR_INFRA_COOLDOWN_SECONDS") or 60))
@@ -2940,6 +2980,13 @@ def _run_audit_worker(
             logger.exception("机审异常后失败流转失败: work=%s", work.id)
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
+        # 2026-08-12 终态权威：机审打回 → 分支卡状态落「打回」，
+        # 防分支信封把已回写残留读成 DONE 无限机审
+        if work.state is State.REJECTED:
+            try:
+                _mark_branch_card_rejected(work, registry, cfg, log_dir)
+            except Exception:
+                logger.exception("机审打回落分支卡失败: work=%s", work.id)
     return outcome
 
 
