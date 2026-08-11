@@ -1,9 +1,9 @@
 # 方案 · 集群 Worker 池（Cluster Worker Pool）蓝图
 
-> 项目：ccc · 编号：ccc-plan-020 · 状态：蓝图（跨节点路由已实证，待巡检/并发验证后转执行计划） · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-020 · 状态：蓝图 + 执行计划 v2 设计中（Worker 模型+认领协议，A 轨第 2 项） · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-11
 > 关联卡：clw019（跨节点路由实证，已回写）
-> 关联方案：011-loop-observer-architecture（巡查）、014-delivery-gate-sop（交付）、007-100卡基线
+> 关联方案：011-loop-observer-architecture（巡查）、014-delivery-gate-sop（交付）、007-100卡基线、021-sidecar-lifecycle-contract
 
 ## 目标
 
@@ -180,3 +180,122 @@
 - **已实证（2026-08-11）**：跨节点 Worker 路由全链路（clw019）——252(W9) 认领执行 + 角色→Skill 注入生效 + 主写源收口
 - 252 验证是蓝图可行性的试金石，也是第一个「集群 Worker 池」真实节点
 - 待验证：252 定时巡检（非绑定）、2017+252 集群并发扩展
+
+---
+
+# 执行计划 v2 · Worker 模型 + 认领协议（A 轨第 2 项 · 跨节点真路由）
+
+> 依据：ENGINEERING-CANON §三-2（Engine 建造型假设 vs 集群 Worker）· 红线 6（平台自研 M1 直接开发）
+> 状态：**设计草案（待异席审）** · 2026-08-11
+> 核心目标：把「手动 GUI + manual 派发」两层补丁，换成**真正的 Worker 模型 + 认领协议**——Worker 是一级对象（带地址与状态），Engine 投递 + Worker 认领 + 收单，替代"Engine 只能本机 spawn"的建造型假设。
+
+## 一、现状根因（已核实）
+
+### RC4：决策/执行寻址语义相反
+- **执行路径** `cli_entry_for_binding`（dispatch.py:142）认 W 号：`re.fullmatch(r"W\d+")` → `cli_entry_for_worker_id`
+- **决策路径** `decide_work`（dispatch.py:285）用 `rows_for_binding(work.executor)`：W9 时 binding 匹配不到 → 回退 `decide(role)` → 角色含「开发执行体」OpenCode CLI 行 → **AUTO → 2017 本地拉起**
+- **实测**：`W9+engine` 会回退 2017 本地拉起（两层补丁里 W9 靠手动 GUI + manual 派发绕开，非真路由）
+
+### RC7：注册表双源漂移
+- `executors.example.json`：W1-W4 有 worker_id
+- `2017 生产 executors.json`：**W1-W4 无 worker_id**（仅 W9 有）
+- 两文件不一致 → 派发寻址不可信
+
+### Worker 现状
+`ExecutorEntry` 仅 `worker_id: str = ""`（追溯标签），无 host/transport/status——Worker 不是一级对象。
+
+## 二、Worker 模型设计（字段定义）
+
+`ExecutorEntry` 新增字段（向后兼容，缺省=本机）：
+
+```python
+host: str = ""            # Worker 地址：空=本机(2017)；"ssh://user@252" 或 "git://github.com:hanrry2323/qx-map" 等
+transport: str = "local"  # 传输通道："local"(本机 spawn) | "ssh"(远端 ssh) | "git"(认领协议，git 信道)
+worker_status: str = ""   # Worker 状态：""(未知/未登记) | "ready" | "busy" | "offline"（观测更新，非决策硬依赖）
+remote_workdir: str = ""  # 远端 worker 的工作目录（认领协议执行位置）
+```
+
+**Worker = 一级对象**：`worker_id` 是唯一键，`host/transport/worker_status` 描述其能力与位置。注册即接入（workers.md 登记 + executors.json 补行）。
+
+## 三、决策态（REMOTE）
+
+`DispatchDecision` 加 `REMOTE = "remote"`：
+
+| 决策态 | 条件 | 动作 |
+|--------|------|------|
+| **AUTO** | 执行体命中「可后台 CLI」且 `transport=local` | Engine 本机 spawn（现状不变） |
+| **REMOTE** | 执行体命中 `worker_id` 且 `transport=git/ssh` | **投递到远端 Worker 认领**（认领协议） |
+| **MANUAL** | 仅命中「手动 GUI」或 `派发：manual` | 挂起等人（仅真·人工） |
+| **NONE** | 席行/未知 | 不派发 |
+
+**RC4 修复**：`decide_work` 改认 worker_id（对齐执行路径 `cli_entry_for_binding`）：
+```
+work.executor = "W9" → rows_for_worker_id("W9") → 命中 → transport=git → REMOTE
+work.executor = "W4" → rows_for_worker_id("W4") → 命中 → transport=local → AUTO
+work.executor = "OpenCode" → rows_for_binding → transport=local → AUTO（向后兼容）
+```
+
+## 四、认领协议 v1（复用 git 信道）
+
+> 最省事的正确解：不引入新传输（RPC/队列），Worker 拉 origin + lock marker 认领，Engine 按 git 状态收单。
+
+```
+时序图（远端 Worker W9 认领卡 C）：
+
+Engine(2017)                          Worker W9(252)                   Git origin
+    │ 卡C 标「待认领」（REMOTE 决策）         │                              │
+    │── 写卡 C 卡头派发=REMOTE → origin ────►│                              │
+    │                                     │ 轮询 pull origin（cron/daemon）│
+    │                                     │←────────────── 拉到卡 C ──────┤
+    │                                     │ 认领：写 lock marker           │
+    │                                     │── 提交 {card}.claimed ←───────►│
+    │ 轮询 origin，见 claimed marker       │                              │
+    │── 卡 C 记「已认领/in_flight」───────►│                              │
+    │                                     │ 执行卡 C（走既有开发流程）       │
+    │                                     │── 回写卡 C → origin ─────────►│
+    │ 轮询 origin，见回写（已回写态）       │                              │
+    │── 按「认领/在途/回写」收单 ──────────►│                              │
+```
+
+**关键状态位**（`{card}.claimed` lock marker 约定）：
+- **待认领**：卡头 `派发=REMOTE` + `认领=待认领`（Engine 投递，无 Worker 认领）
+- **已认领**：卡头 `认领=W9`（Worker 写，标记谁在干）+ `认领时间`（追溯 + 超时）
+- **收单判定**：Engine 不再靠本地 PID（`pool.alive_ids`/marker），改看「认领位 + 回写态」——卡有 `认领=W9` 且磁盘卡到「已回写」→ 收单；有认领但超时未回写 → 回收待认领
+
+**Engine 侧**：
+- `_claim_marker_alive` 判定认领卡在途（替代 `_audit_marker_alive` 本地 PID 逻辑的远端版本）
+- 认领超时回收：`认领时间` 超 `EXECUTOR_TIMEOUT_SECONDS` 且未回写 → 清认领位回待认领
+- 收单不再依赖 `subprocess.Popen` 存活，改看 git 回写证据
+
+**Worker 侧**（新增脚本 `scripts/worker-claim.sh`）：
+- Worker daemon/cron 定期 `git pull` origin → 找 `派发=REMOTE 且 认领=待认领` 且 `执行体=W9` 的卡
+- 写 `认领=W9 + 认领时间` → push origin → 执行卡（读卡 → 走既有 worktree/回写链路）
+- 完成后回写卡 → push origin
+
+## 五、机审适配（remote 卡无本地 worktree）
+
+- **现状**：机审用 `_worktree_hint_for` 找本地 worktree → remote 卡无本地路径
+- **修复**：`_audit_evidence_passed`/`_run_machine_audit_after_writeback` 对 `transport=git/ssh` 的卡：
+  - 优先检查**业务仓/CCC 仓对应 codex 分支**的机审区证据（`git show origin/<branch>:<card>`）
+  - 无本地 worktree 时跳过 `_worktree_card_candidate`，走分支信封证据判定
+- **生产卡兜底路径正式化**：已有 `_card_machine_audit_passed(work.card_path)`（生产卡）分支，remote 卡默认走此
+
+## 六、落地步骤（设计审后执行）
+
+1. **ExecutorEntry 加字段** + DispatchDecision 加 REMOTE + decide_work 改认 worker_id（修 RC4）
+2. **2017 生产 executors.json 补 W1-W4 worker_id + host/transport**（修 RC7 双源漂移）
+3. **认领协议**：Engine 侧 `_claim_marker_alive` + 认领超时回收 + 收单改认领态；新增 `scripts/worker-claim.sh`
+4. **机审 remote 适配**：机审证据检查走分支信封
+5. **单测**（新增 `test_worker_routing.py`）：
+   - W9+engine → REMOTE（不本地拉起）✅
+   - W1-W4 各自命中（W4→AUTO local、W9→REMOTE）✅
+   - 认领协议闭环：待认领 → 认领 → 回写 → 收单
+   - 认领超时回收
+   - 机审 remote 卡走分支信封
+6. 提交推送 + 异席机审
+
+## 七、执行约束（错峰）
+
+- 动 Engine 内核（decide_work/收单）期间，B 轨 CLW 只出「不依赖状态机的卡」
+- 每步带单测自证 + 提交推送，异席机审
+- 平台自研红线：改 server/engine / server/board / scripts 一律 M1 直接开发，不走卡
