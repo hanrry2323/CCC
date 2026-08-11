@@ -2616,6 +2616,7 @@ def run_once(
     dep_skips = 0
     cycle_skips = 0
     none_skips = 0
+    remote_pending = 0
     queued = 0
     slots = pool.free_slots(max_concurrent, store, log_dir)
 
@@ -2662,6 +2663,18 @@ def run_once(
             work.transition(State.RUNNING)
             store.save_work(work)
             dispatched += 1
+            continue
+        if decision is DispatchDecision.REMOTE:
+            # 远端 Worker 认领（ccc-plan-020 v2 · clw020 事故修复）：
+            # REMOTE 卡保持待分派（不标执行中），由远端 Worker 认领后写「执行中」。
+            # Engine 不本地拉起、不占槽、不写 marker——未认领 = 待分派，不是假执行中。
+            remote_pending += 1
+            logger.info(
+                "远端卡待 Worker 认领（保持待分派，不标执行中）: work=%s role=%s executor=%s",
+                work.id,
+                work.role,
+                work.executor or "(未指定)",
+            )
             continue
         if decision is not DispatchDecision.AUTO:
             none_skips += 1

@@ -51,11 +51,18 @@ ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role"
 
 
 class DispatchDecision(StrEnum):
-    """派发决策。"""
+    """派发决策。
 
-    AUTO = "auto"  # 可后台 CLI → Engine 自动拉起
-    MANUAL = "manual"  # 手动 GUI → 挂起等人
-    NONE = "none"  # 管理席/验收席（分类「—」）/未知角色 → 不派发
+    - AUTO：可后台 CLI + 本机 transport → Engine 本机拉起
+    - REMOTE：远端 Worker 认领（执行体 W 号 / 派发 scheduler|REMOTE）→ 走认领协议，Engine 不本地拉起
+    - MANUAL：手动 GUI → 挂起等人
+    - NONE：管理席/验收席（分类「—」）/未知角色 → 不派发
+    """
+
+    AUTO = "auto"
+    REMOTE = "remote"  # 远端 Worker 认领（ccc-plan-020 执行计划 v2）
+    MANUAL = "manual"
+    NONE = "none"
 
 
 @dataclass(frozen=True)
@@ -83,6 +90,11 @@ class ExecutorEntry:
     worktree_base: str = ""
     project: str = ""
     worker_id: str = ""
+    # Worker 模型（ccc-plan-020 执行计划 v2 · A 轨第 2 项）
+    host: str = ""  # Worker 地址：空=本机；"ssh://user@252" 等
+    transport: str = "local"  # 传输通道：local(本机 spawn) | git(认领协议) | ssh
+    worker_status: str = ""  # Worker 状态："" | ready | busy | offline（观测更新）
+    remote_workdir: str = ""  # 远端 Worker 执行工作目录
 
 
 @dataclass(frozen=True)
@@ -267,12 +279,17 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
        - 未命中任何行（未知执行体）→ 回退 `decide(work.role, registry)`。
     2. 无 `work.executor`（卡未指定执行体）→ 回退 `decide(work.role, registry)`（现行为不变）。
 
+    REMOTE 决策态（ccc-plan-020 执行计划 v2 · clw020 事故修复）：
+    - `派发：scheduler` / `派发：remote` → REMOTE（远端 Worker 认领，Engine 不本地拉起）
+    - 执行体为 W 号（W1-W9）→ REMOTE（远端 Worker 认领；禁止回退角色决策本地拉起，修 RC4）
+    - REMOTE 卡未认领 = 保持待分派，不是执行中（防假执行中）
+
     Args:
         work: 待派发的 work 卡（含 executor / dispatch 字段）。
         registry: 执行体注册表。
 
     Returns:
-        DispatchDecision.AUTO / MANUAL / NONE。
+        DispatchDecision.AUTO / REMOTE / MANUAL / NONE。
     """
     if work.type == "epic":
         logger.info("Epic 卡不派发: work=%s", work.id)
@@ -281,7 +298,21 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     if work.dispatch == "manual":
         logger.info("manual 卡由管理席派发，Engine 不自动拉: work=%s", work.id)
         return DispatchDecision.NONE
+    # REMOTE：scheduler/remote 派发 → 远端 Worker 认领（clw020 事故：此前回退角色被本地拉起）
+    if work.dispatch in ("scheduler", "remote"):
+        logger.info("远端卡（派发=%s）→ REMOTE，Engine 不本地拉起: work=%s", work.dispatch, work.id)
+        return DispatchDecision.REMOTE
     if work.executor:
+        # 执行体为 W 号 → 按 Worker transport 决策（修 RC4：决策路径认 worker_id，不回退角色本地拉起）
+        if re.fullmatch(r"W\d+", work.executor.strip() or ""):
+            wid_rows = registry.rows_for_worker_id(work.executor.strip(), project=work.project)
+            if wid_rows:
+                # 本机 Worker（transport=local/空）→ AUTO 本地拉起；远端 → REMOTE 认领
+                if any(e.transport in ("local", "") for e in wid_rows):
+                    logger.info("本地 Worker 卡（执行体=%s transport=local）→ AUTO: work=%s", work.executor, work.id)
+                    return DispatchDecision.AUTO
+            logger.info("远端 Worker 卡（执行体=%s）→ REMOTE: work=%s", work.executor, work.id)
+            return DispatchDecision.REMOTE
         rows = registry.rows_for_binding(work.executor, project=work.project)
         if rows:
             if any(r.category == "可后台 CLI" for r in rows):
