@@ -2931,6 +2931,23 @@ class TestBusinessWorktreeIsolation:
         assert ok is True
         assert "基础设施" in hint
 
+    def test_worktree_branch_seed_prefers_remote_branch(self, tmp_path: Path) -> None:
+        """worktree 重建种子：远端同名分支存在 → 从其恢复；否则 origin/main（mx030 机审误打回根因）。"""
+        from server.engine.main import _worktree_branch_seed
+
+        repo = self._make_biz_repo(tmp_path)
+        # 远端分支不存在 → origin/main
+        assert _worktree_branch_seed(repo, "codex/mx900-unknown") == "origin/main"
+        # 远端分支存在（执行体已 push 产物）→ 从其恢复，不丢回写视图
+        subprocess.run(["git", "branch", "codex/mx901-test"], cwd=str(repo), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "update-ref", "refs/remotes/origin/codex/mx901-test", "codex/mx901-test"],
+            cwd=str(repo),
+            check=True,
+            capture_output=True,
+        )
+        assert _worktree_branch_seed(repo, "codex/mx901-test") == "origin/codex/mx901-test"
+
     def test_run_once_cross_project_not_blocked(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A 仓 RUNNING 不挡 B 仓待分派卡（跨仓并行）。"""
         monkeypatch.chdir(tmp_path)

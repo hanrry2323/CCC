@@ -76,6 +76,23 @@ def _business_worktree_path(project, work_id: str) -> Path:
     return Path(project.isolation_worktree_root).expanduser() / work_id.lower()
 
 
+def _worktree_branch_seed(repo: Path, branch: str) -> str:
+    """worktree 新分支的种子 ref。
+
+    远端同名分支存在 → 从其恢复（保留执行体已 push 的产物与卡回写）；
+    否则从 origin/main 新建。2026-08-12：强重建若一律从 main 新建，
+    会丢掉执行体回写视图 → 机审读占位卡 → 空回写误打回（mx030 根因）。
+    """
+    res = subprocess.run(
+        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/remotes/origin/{branch}"],
+        capture_output=True,
+        check=False,
+    )
+    if res.returncode == 0:
+        return f"origin/{branch}"
+    return "origin/main"
+
+
 def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str | None, str | None]:
     """确保业务仓每卡 worktree 存在；返回 (worktree_path | None, error | None)。
 
@@ -102,7 +119,17 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
 
     def _try_add(new_branch: bool) -> tuple[int, str]:
         if new_branch:
-            cmd = ["git", "-C", str(repo), "worktree", "add", str(target), "-b", branch, "origin/main"]
+            cmd = [
+                "git",
+                "-C",
+                str(repo),
+                "worktree",
+                "add",
+                str(target),
+                "-b",
+                branch,
+                _worktree_branch_seed(repo, branch),
+            ]
         else:
             cmd = ["git", "-C", str(repo), "worktree", "add", str(target), branch]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
@@ -1907,7 +1934,7 @@ def _dispatch_and_collect(
                             str(target_path),
                             "-b",
                             branch_name,
-                            "origin/main",
+                            _worktree_branch_seed(main_repo, branch_name),
                         ]
                         logger.info("正在干净重建 worktree: %s", " ".join(cmd_add))
                         res_add = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
@@ -1959,7 +1986,7 @@ def _dispatch_and_collect(
                     str(target_path),
                     "-b",
                     branch_name,
-                    "origin/main",
+                    _worktree_branch_seed(main_repo, branch_name),
                 ]
                 logger.info("正在创建 worktree: %s", " ".join(cmd_add))
                 res = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
