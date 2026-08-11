@@ -2181,3 +2181,107 @@ body.ro-viewer [data-write] {
   border-radius: 10px;
   background: #fff;
 }
+
+/* ── 线路图卡片化（ccc-plan-022 第三批）── */
+.rm-node { cursor: pointer; }
+.rm-node:hover circle { filter: brightness(1.15); }
+.rm-node:focus { outline: none; }
+.rm-node:focus circle { stroke: #fff; stroke-width: 2; }
+.rm-milestone-detail {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  background: var(--ccc-surface, #fff);
+}
+.rm-milestone-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rm-milestone-head span { color: var(--ccc-text-muted, #888); font-size: 12px; }
+.rm-milestone-cards { display: flex; flex-wrap: wrap; gap: 6px; }
+.rm-milestone-empty { color: var(--ccc-text-muted, #888); font-size: 12px; }
+.rm-unplanned {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ccc-border-subtle, #ccc);
+  border-radius: 10px;
+  background: rgba(138, 138, 138, 0.06);
+  font-size: 13px;
+}
+.rm-unplanned-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.rm-unplanned-item {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(138, 138, 138, 0.12);
+  color: var(--ccc-text-muted, #666);
+  font-size: 12px;
+}
+.rm-risk-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.rm-risk-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.rm-risk-card.drift { background: rgba(217, 130, 43, 0.12); color: #a35f18; }
+.rm-risk-card.missing { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.rm-risk-type {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: currentColor;
+  color: #fff;
+  font-size: 11px;
+}
+.rm-goto {
+  margin-left: auto;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 700;
+  padding: 0 4px;
+}
+.rm-goto:hover { color: #0c4a6e; }
+
+/* ── 运维页卡片化（ccc-plan-022 第三批）── */
+.ops-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.ops-dash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-left-width: 3px;
+}
+.ops-dash-card.ok { border-left-color: #2a9d4a; background: rgba(42, 157, 74, 0.06); }
+.ops-dash-card.warn { border-left-color: #d9822b; background: rgba(217, 130, 43, 0.07); }
+.ops-dash-card.attn { border-left-color: #c44; background: rgba(204, 68, 68, 0.07); }
+.ops-dash-card-label { font-size: 11px; color: var(--ccc-text-muted); }
+.ops-dash-card strong { font-size: 15px; font-weight: 650; }
+.ops-dash-card-note { font-size: 11px; color: var(--ccc-text-faint); }
+.ops-scan-at {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  font-weight: 400;
+  margin-left: 8px;
+}
+.ops-todo-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+.ops-act {
+  font-size: 12px;
+  padding: 2px 10px;
+}
+.ops-act:disabled { opacity: 0.6; }

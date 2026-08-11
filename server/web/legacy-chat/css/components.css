@@ -4087,3 +4087,33 @@
   .plans-loading { animation: none; }
   .plans-ic, .pcard, .pcard-acc-fill, .ptool-proj, .ptool-new, .ptool-btn-plain { transition: none; }
 }
+
+/* ── 计划页卡片化（ccc-plan-022 第三批）── */
+.pcard[draggable="true"] { cursor: grab; }
+.pcard[draggable="true"]:active { cursor: grabbing; }
+.pcard.dragging { opacity: 0.45; }
+.pcol.drag-over .pcol-body {
+  outline: 2px dashed var(--ccc-accent, #3a7bd5);
+  outline-offset: -4px;
+  border-radius: 10px;
+  background: rgba(58, 123, 213, 0.06);
+}
+.pcard-chips {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pcard-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.pcard-state-chip i { font-style: normal; opacity: 0.75; }
+.pcard-state-chip.ok { background: rgba(61, 154, 95, 0.14); color: #2e7a4c; }
+.pcard-state-chip.warn { background: rgba(196, 122, 44, 0.15); color: #a35f18; }
+.pcard-state-chip.muted { background: rgba(120, 120, 120, 0.12); color: #666; }

@@ -10,7 +10,7 @@
  */
 
 import { apiGet } from '../api.js';
-import { buildTimelineSVG, cardListHTML, riskHTML, esc } from '../roadmapTimeline.js';
+import { buildTimelineSVG, cardListHTML, riskHTML, unplannedMilestonesHTML, esc } from '../roadmapTimeline.js';
 
 let _root = null;
 let _timer = null;
@@ -35,8 +35,12 @@ function html() {
 function projectCard(section) {
   const miles = section.milestones || [];
   const allCards = miles.reduce((n, m) => n + (m.cards || []).length, 0);
+  // 口径与二级页一致：优先卡真实状态（normalize_state closed bucket），无真实状态才看 roadmap 标注
   const doneCards = miles.reduce(
-    (n, m) => n + (m.cards || []).filter((c) => c.progress && /已交付|已关闭|已完成/.test(c.progress)).length,
+    (n, m) => n + (m.cards || []).filter((c) => {
+      const s = c.real_state || c.progress || '';
+      return /已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s);
+    }).length,
     0
   );
   const plannedCards = allCards - doneCards;
@@ -89,7 +93,7 @@ async function openProject(project) {
   if (back) back.style.display = 'inline-block';
   body.innerHTML = '<div class="board-empty">加载线路图…</div>';
   try {
-    const detail = await apiGet(`/board/roadmap/${encodeURIComponent(project)}`);
+  const detail = await apiGet(`/board/roadmap/${encodeURIComponent(project)}`);
     body.innerHTML = `
       <div class="rm-project-detail">
         <div class="rm-detail-head">
@@ -97,12 +101,47 @@ async function openProject(project) {
           <span class="rm-detail-meta">${detail.counts.done} 已完成 · ${detail.counts.doing} 进行中 · ${detail.counts.planned} 待开发</span>
         </div>
         ${buildTimelineSVG(detail)}
+        <div id="rm-milestone-detail"></div>
+        ${unplannedMilestonesHTML(detail)}
         ${riskHTML(detail)}
         ${cardListHTML(detail)}
       </div>`;
+    bindMilestoneNodes(body, detail);
   } catch (err) {
     body.innerHTML = '<div class="board-empty">加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
+}
+
+function bindMilestoneNodes(body, detail) {
+  const box = body.querySelector('#rm-milestone-detail');
+  if (!box) return;
+  body.querySelectorAll('.rm-node').forEach((node) => {
+    const open = () => {
+      const idx = Number(node.dataset.idx || -1);
+      const mile = detail.milestones[idx];
+      if (!mile) return;
+      const cards = mile.cards || [];
+      box.innerHTML = `<div class="rm-milestone-detail">
+        <div class="rm-milestone-head"><strong>${esc(mile.title)}</strong>${mile.date ? `<span>${esc(mile.date)}</span>` : ''}</div>
+        ${cards.length
+          ? `<div class="rm-milestone-cards">${cards.map((c) => `<span class="rm-card-chip">
+              <span class="rm-card-id">${esc(c.card_id)}</span>
+              <span class="rm-card-intent">${esc(c.intent)}</span>
+              ${c.drift ? `<span class="rm-flag drift">漂移</span>` : ''}
+              ${c.missing ? `<span class="rm-flag missing">缺失</span>` : ''}
+            </span>`).join('')}</div>`
+          : '<div class="rm-milestone-empty">该里程碑暂无关联卡</div>'}
+      </div>`;
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    node.addEventListener('click', open);
+    node.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+  });
 }
 
 async function loadRoadmap() {

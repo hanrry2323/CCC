@@ -743,6 +743,7 @@ def _build_ops_summary() -> dict[str, Any]:
     return {
         "overview": {
             "machines": machines,
+            "services": services,
             "alert_count": len(down_ports) + len(pipeline_alerts),
             "down_ports": down_ports,
             "generated_at": collected_at,

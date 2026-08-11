@@ -45,6 +45,7 @@ function projectColor(prefix) {
 let _root = null;
 let _timer = null;
 let _plans = [];
+let _cardStates = {};   // card_id → 实时状态（关联卡徽标）
 let _filterProject = '';
 let _searchQ = '';
 let _projects = [];
@@ -106,8 +107,21 @@ async function loadProjects() {
   }
 }
 
+async function loadCards() {
+  try {
+    const data = await apiGet('/cards?page_size=500');
+    _cardStates = {};
+    for (const c of (data.cards || [])) {
+      if (c && c.id) _cardStates[String(c.id).toLowerCase()] = c.state || '';
+    }
+  } catch (e) {
+    _cardStates = {};
+  }
+}
+
 async function loadPlans() {
   if (!_projects.length) await loadProjects();
+  await loadCards();
   try {
     const data = await apiGet('/plans/list');
     _plans = data.plans || [];
@@ -145,10 +159,20 @@ function renderPlanItem(plan) {
   const acc = plan.acceptance || {};
   const accPct = acc.total > 0 ? Math.round((acc.done / acc.total) * 100) : null;
   const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
+  const cardChips = (cardsText ? cardsText.split(/[,，、\s]+/) : [])
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((cid) => {
+      const st = _cardStates[String(cid).toLowerCase()] || '';
+      const cls = /已关闭|已合入|已完成|已交付|released|closed|delivered/i.test(st) ? 'ok'
+        : /已回写|执行中|打回|机审/i.test(st) ? 'warn' : 'muted';
+      return `<span class="pcard-state-chip ${cls}" title="${esc(st || '未知状态')}">${esc(cid)}<i>${esc(st || '?')}</i></span>`;
+    })
+    .join('');
   const title = String(plan.title || '').replace('方案 · ', '');
 
   return `
-    <article class="pcard" data-path="${esc(plan.path)}" tabindex="0" role="button" aria-label="查看方案 ${esc(title)}">
+    <article class="pcard" data-path="${esc(plan.path)}" tabindex="0" role="button" draggable="true" aria-label="查看方案 ${esc(title)}">
       <span class="pcard-edge" style="background:${color}"></span>
       <div class="pcard-head">
         <span class="pcard-proj" style="background:${projTint};color:${projColor}">${esc(_projectDisplay[plan.project] || plan.project)}</span>
@@ -162,7 +186,7 @@ function renderPlanItem(plan) {
             <span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${accPct}%;background:${color}"></span></span>
             <span class="pcard-acc-num">${acc.done}/${acc.total}</span>
           </span>` : ''}
-        ${cardsText ? `<span class="pcard-chip" title="关联卡 ${esc(cardsText)}">${icon('tag')}<span>${esc(cardsText)}</span></span>` : ''}
+        ${cardChips ? `<span class="pcard-chips" title="关联卡实时状态">${cardChips}</span>` : ''}
         <span class="pcard-open">详情${icon('open')}</span>
       </div>
     </article>`;
@@ -172,7 +196,7 @@ function renderColumn(status) {
   const color = STATUS_COLORS[status];
   const items = filteredPlans().filter(p => p.status === status);
   return `
-    <section class="pcol" data-status="${esc(status)}">
+    <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
       <header class="pcol-h">
         <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
         <span class="pcol-count">${items.length}</span>
@@ -275,7 +299,53 @@ function bindEvents() {
       e.stopPropagation();
       open();
     });
+    // 拖拽：拖动卡片 → 目标列 drop 改状态（非法流转前端预判，后台白名单兜底）
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', card.dataset.path || '');
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
   });
+
+  root.querySelectorAll('.pcol').forEach(col => {
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      col.classList.add('drag-over');
+    });
+    col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+    col.addEventListener('drop', (e) => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const path = e.dataTransfer.getData('text/plain');
+      const target = col.dataset.dropStatus;
+      if (path && target) doMoveCard(path, target);
+    });
+  });
+}
+
+const STATE_FLOW = {
+  '草案': ['已确认', '作废'],
+  '已确认': ['部分执行', '作废'],
+  '部分执行': ['已完成', '作废'],
+  '已完成': [],
+  '作废': [],
+};
+
+async function doMoveCard(path, targetStatus) {
+  const plan = _plans.find((p) => p.path === path);
+  if (!plan) return;
+  const allowed = STATE_FLOW[plan.status] || [];
+  if (!allowed.includes(targetStatus)) {
+    alert(`状态流转非法：${plan.status} 不能直接到 ${targetStatus}`);
+    return;
+  }
+  if (plan.status === targetStatus) return;
+  try {
+    await apiPost('/plans/update', { path, status: targetStatus });
+    await loadPlans();
+  } catch (e) {
+    alert('状态更新失败: ' + e.message);
+  }
 }
 
 // ── detail ──
@@ -359,19 +429,22 @@ async function doUpdateStatus(path, status) {
 }
 
 async function doConvert(path) {
-  if (!confirm('确定将此方案转为任务卡？转卡后方案状态将自动推进为「部分执行」。')) return;
-
+  let cardCount = 0;
   try {
     const detail = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
     const planSection = (detail.content || '').split('## 转卡计划')[1];
     if (planSection) {
       const lines = planSection.split('\n').filter(l => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('##'));
+      cardCount = lines.length;
       if (lines.length > 8) {
         alert('转卡计划段最多 8 行，当前 ' + lines.length + ' 行。请精简后重试。');
         return;
       }
     }
   } catch (e) { /* 无法读取详情时跳过行数检查 */ }
+
+  const countText = cardCount > 0 ? `将生成 ${cardCount} 张任务卡，` : '';
+  if (!confirm(`确定将此方案转为任务卡？${countText}转卡后方案状态将自动推进为「部分执行」。`)) return;
 
   try {
     const result = await apiPost('/plans/convert', { path });

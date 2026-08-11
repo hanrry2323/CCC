@@ -9,7 +9,7 @@
  * 设计原则：用户看「哪坏了、要紧不、要不要修」，Agent 细节折叠在后面。
  */
 
-import { apiGet } from '../api.js';
+import { apiGet, apiPost } from '../api.js';
 
 let _root = null;
 let _timer = null;
@@ -45,7 +45,7 @@ function html() {
 
   <!-- ② 待办清单 -->
   <div class="ops-section">
-    <h3>待办清单 <span class="badge" id="loop-count">0</span></h3>
+    <h3>待办清单 <span class="badge" id="loop-count">0</span> <span class="ops-scan-at" id="loop-scan-at"></span></h3>
     <div id="ops-loop" class="ops-card"><div class="ops-empty">加载中…</div></div>
   </div>
 
@@ -81,6 +81,12 @@ function renderStatus(agg) {
   const total = machines.length;
   const reachable = machines.filter((m) => m.reachable).length;
   const alerts = overview.alert_count || 0;
+  const services = overview.services || [];
+  const svcRunning = services.filter((s) => s.running).length;
+  const pipe = agg.pipeline || {};
+  const pipeOk = pipe.git_sync_ok !== false && !(pipe.probe_skips || 0) && !(pipe.none_skips || 0);
+  const clusterCls = reachable === total ? 'ok' : reachable === 0 ? 'attn' : 'warn';
+  const svcCls = svcRunning === services.length ? 'ok' : 'attn';
   el.innerHTML = `
     <div class="ops-dash">
       <div class="ops-dash-status ${sevCls}">
@@ -88,9 +94,22 @@ function renderStatus(agg) {
         <strong>${esc(healthLabel(severity))}</strong>
       </div>
       <div class="ops-dash-line">${esc(human)}</div>
-      <div class="ops-dash-stats">
-        <span class="ops-dash-stat">${total > 0 ? `${reachable}/${total} 节点在线` : '无节点配置'}</span>
-        ${alerts > 0 ? `<span class="ops-dash-stat alert">${alerts} 项告警</span>` : '<span class="ops-dash-stat">无告警</span>'}
+      <div class="ops-dash-grid">
+        <div class="ops-dash-card ${clusterCls}">
+          <span class="ops-dash-card-label">集群</span>
+          <strong>${total > 0 ? `${reachable}/${total} 节点在线` : '无节点配置'}</strong>
+          <span class="ops-dash-card-note">${alerts > 0 ? `${alerts} 项告警` : '无告警'}</span>
+        </div>
+        <div class="ops-dash-card ${svcCls}">
+          <span class="ops-dash-card-label">服务</span>
+          <strong>${services.length ? `${svcRunning}/${services.length} 运行` : '未配置服务'}</strong>
+          <span class="ops-dash-card-note">${services.length ? 'pgrep 进程检测' : 'CLUSTER_SERVICES 未配置'}</span>
+        </div>
+        <div class="ops-dash-card ${pipeOk ? 'ok' : 'warn'}">
+          <span class="ops-dash-card-label">管道</span>
+          <strong>${pipe.git_sync_ok === false ? 'git sync 失败' : '引擎管道正常'}</strong>
+          <span class="ops-dash-card-note">${(pipe.probe_skips || 0) ? `探活跳过 ${pipe.probe_skips}` : ''}${(pipe.probe_skips || 0) && (pipe.none_skips || 0) ? ' · ' : ''}${(pipe.none_skips || 0) ? `未派发绑定 ${pipe.none_skips}` : ''}</span>
+        </div>
       </div>
     </div>`;
 }
@@ -172,6 +191,10 @@ function renderLoop(loopData) {
     _cmd: _cmds[i] || '',
   }));
   if (nEl) nEl.textContent = String(findings.length);
+  const scanEl = _root.querySelector('#loop-scan-at');
+  if (scanEl) {
+    scanEl.textContent = latest.mtime ? `上次扫描 ${agoText(latest.mtime)}` : '';
+  }
   if (!findings.length) {
     el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
     return;
@@ -196,6 +219,10 @@ function renderLoop(loopData) {
             ${f.acting_on ? `<code>${esc(f.acting_on)}</code>` : ''}
           </div>
           ${cmd ? `<button type="button" class="hub-btn" data-cmd="${esc(cmd)}" title="复制转卡命令到 M1 执行">转卡</button>` : ''}
+          <span class="ops-todo-actions">
+            <button type="button" class="hub-btn ops-act" data-adopt="${esc(f.title)}" data-decision="adopt" title="采纳为真问题，留档">采纳</button>
+            <button type="button" class="hub-btn ops-act" data-adopt="${esc(f.title)}" data-decision="reject" title="标记已处理/忽略，留档">已处理</button>
+          </span>
         </div>
       </div>`;
     })
@@ -211,6 +238,28 @@ function renderLoop(loopData) {
         setTimeout(() => { btn.textContent = '转卡'; }, 1500);
       } catch (e) {
         btn.textContent = '复制失败';
+      }
+    });
+  });
+  // 「采纳/已处理」→ POST /loop/adopt 留档（只记录，不自动出卡/不隐藏条目）
+  el.querySelectorAll('button[data-adopt]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const report = _loopData?.loop_reports?.[0]?.name || '';
+      const finding = btn.getAttribute('data-adopt') || '';
+      const decision = btn.getAttribute('data-decision') || 'reject';
+      btn.disabled = true;
+      try {
+        await apiPost('/loop/adopt', {
+          report,
+          finding,
+          decision,
+          reason: '运维页人工操作',
+        });
+        btn.textContent = '已留档 ✓';
+        setTimeout(() => { btn.textContent = decision === 'adopt' ? '采纳' : '已处理'; btn.disabled = false; }, 1500);
+      } catch (e) {
+        btn.textContent = '留档失败';
+        btn.disabled = false;
       }
     });
   });

@@ -40,7 +40,8 @@ export function buildTimelineSVG(detail, width = 900, height = 320) {
     const x = xOf(new Date(m.date).getTime());
     const y = top + (i % 2 === 0 ? 0 : 40); // 上下错开
     const tone = done === cards.length && cards.length > 0 ? CARD_TONE.done : planned > 0 ? CARD_TONE.planned : CARD_TONE.doing;
-    return { ...m, x, y, done, planned, tone, hasCards: cards.length > 0 };
+    const srcIdx = detail.milestones.indexOf(m);
+    return { ...m, x, y, done, planned, tone, hasCards: cards.length > 0, idx: srcIdx };
   });
 
   // 连接线
@@ -49,7 +50,8 @@ export function buildTimelineSVG(detail, width = 900, height = 320) {
     : '';
 
   const nodeEls = nodes.map((n) => `
-    <g class="rm-node">
+    <g class="rm-node" data-idx="${n.idx}" role="button" tabindex="0" aria-label="里程碑 ${esc(n.title)}">
+      <title>${esc(n.title)} · ${esc(n.date)} · 完成 ${n.done}/${n.cards.length}</title>
       <circle cx="${n.x}" cy="${n.y}" r="${n.hasCards ? 7 : 4}" fill="${n.tone}"/>
       <text x="${n.x}" y="${n.y - 16}" text-anchor="middle" class="rm-node-title">${esc(n.title.slice(0, 22))}</text>
       <text x="${n.x}" y="${n.y + 22}" text-anchor="middle" class="rm-node-date">${n.date}${n.hasCards ? ` · ${n.done}/${n.cards.length}` : ''}</text>
@@ -82,6 +84,7 @@ export function cardListHTML(detail) {
           <span class="rm-card-intent">${esc(c.intent)}</span>
           ${c.drift ? `<span class="rm-flag drift">漂移</span>` : ''}
           ${c.missing ? `<span class="rm-flag missing">缺失</span>` : ''}
+          ${(c.drift || c.missing) ? `<a class="rm-goto" href="#/board" title="去看板处理">→</a>` : ''}
         </div>`).join('')}
       </div>
     </div>`;
@@ -96,7 +99,23 @@ export function riskHTML(detail) {
   if (!risks.length) return '';
   return `<div class="rm-risk">
     <strong class="rm-risk-title">⚠ 风险提示（${risks.length}）</strong>
-    ${risks.map((r) => `<div class="rm-risk-item">[${r.type}] ${esc(r.card_id)} — ${esc(r.detail)}</div>`).join('')}
+    <div class="rm-risk-grid">
+      ${risks.map((r) => `<div class="rm-risk-card ${r.type === 'missing' ? 'missing' : 'drift'}">
+        <span class="rm-risk-type">${r.type === 'missing' ? '缺失' : '漂移'}</span>
+        <span class="rm-risk-body">${esc(r.card_id)} — ${esc(r.detail)}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+export function unplannedMilestonesHTML(detail) {
+  const noDate = (detail.milestones || []).filter((m) => !m.date);
+  if (!noDate.length) return '';
+  return `<div class="rm-unplanned">
+    <strong>未排期里程碑（${noDate.length}）</strong>
+    <div class="rm-unplanned-list">${noDate.map((m) =>
+      `<span class="rm-unplanned-item">${esc(m.title)}${m.cards && m.cards.length ? ` · ${m.cards.length} 卡` : ''}</span>`
+    ).join('')}</div>
   </div>`;
 }
 
