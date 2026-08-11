@@ -1480,6 +1480,10 @@ def _try_json_line(line: str) -> dict | None:
         return None
 
 
+_RUNNING_TASKS_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_RUNNING_TASKS_TTL = 3.0
+
+
 def _load_running_tasks() -> dict[str, Any]:
     """GET /tasks/running：执行中 + 机审中任务进程视图 + worktree / 日志指标。
 
@@ -1488,6 +1492,9 @@ def _load_running_tasks() -> dict[str, Any]:
     - 调用：汇总各阶段日志 ``→`` 等 + metrics sidecar 高水位；
     - dirty / lines：worktree 落盘改动（force 刷新）。
     """
+    now0 = time.time()
+    if _RUNNING_TASKS_CACHE["data"] is not None and now0 - _RUNNING_TASKS_CACHE["ts"] < _RUNNING_TASKS_TTL:
+        return _RUNNING_TASKS_CACHE["data"]
     from server.board.models import board_column as _board_column
     from server.web.exec_metrics import parse_work_call_counts, running_timing
     from server.web.worktree_dirty import get_worktree_metrics
@@ -1545,7 +1552,9 @@ def _load_running_tasks() -> dict[str, Any]:
                 task["log_tail"] = _tail_lines(audit_log, 5)
         tasks.append(task)
     tasks.sort(key=lambda t: (t["elapsed_s"] is None, -(t["elapsed_s"] or 0)))
-    return {"tasks": tasks}
+    result = {"tasks": tasks}
+    _RUNNING_TASKS_CACHE.update(ts=now0, data=result)
+    return result
 
 
 def _tail_lines_file(path: Path, n: int = 3) -> list[str]:
@@ -2867,6 +2876,21 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
 def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建并启动 HTTP 服务（阻塞）。"""
     _start_card_watcher()
+
+    def _warmup() -> None:
+        """启动后台预热：首屏 /cards、/tasks/running 冷缓存重算提前完成。"""
+        import threading
+
+        def _do():
+            try:
+                _enriched_cards()
+                _load_running_tasks()
+            except Exception:
+                logger.exception("warmup failed")
+
+        threading.Thread(target=_do, daemon=True, name="ccc-web-warmup").start()
+
+    _warmup()
     server = create_server(host, port)
     addr = server.server_address
     print(f"[web] HTTP API 启动于 http://{addr[0]}:{addr[1]}", file=sys.stderr)
