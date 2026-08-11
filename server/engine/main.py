@@ -534,37 +534,42 @@ def is_empty_writeback_or_placeholder(work: Work, worktree_path: str) -> tuple[b
     card_file_path = Path(work.card_path)
     if worktree_path:
         wt_card = _worktree_card_candidate(worktree_path, work.card_path)
-        if wt_card:
+        if wt_card and wt_card.is_file():
             card_file_path = wt_card
 
+    text = None
     if card_file_path.is_file():
         try:
             text = card_file_path.read_text(encoding="utf-8")
-            if "## 维护区" not in text:
-                return True, "缺失 ## 维护区 节（回写时必填）"
-            seg = text.split("## 维护区", 1)[1]
-            seg = seg.split("## ", 1)[0]
-
-            import re
-
-            items = re.findall(r"^(\d+)\. \*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]", seg, re.M)
-            if len(items) < 4:
-                return True, "## 维护区 四问格式不完整，仍为占位模板"
-
-            for num, name, choice in items:
-                choice_strip = choice.strip()
-                if "是/否" in choice_strip or "有/无" in choice_strip or choice_strip not in ("是", "否", "有", "无"):
-                    return True, f"## 维护区 第 {num} 问「{name.strip()}」未勾选或仍为占位"
-
-            notes = re.findall(r"^   - 说明：(.+)$", seg, re.M)
-            if len(notes) < 4:
-                return True, "## 维护区 说明少于 4 条，仍为占位模板"
-            for note in notes:
-                n_strip = note.strip()
-                if not n_strip or "占位" in n_strip or "逐项勾选" in n_strip or "说明：" in n_strip:
-                    return True, "## 维护区 说明为空或包含占位文本"
         except Exception as e:
             logger.warning("检查空回写/维护区异常: %s", e)
+    if text is None:
+        # 2026-08-12 v2：worktree 卡缺失/损坏 → 回退远端分支卡（执行体 push 的真值）
+        text = _read_branch_card_text(work)
+    if text:
+        if "## 维护区" not in text:
+            return True, "缺失 ## 维护区 节（回写时必填）"
+        seg = text.split("## 维护区", 1)[1]
+        seg = seg.split("## ", 1)[0]
+
+        import re
+
+        items = re.findall(r"^(\d+)\. \*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]", seg, re.M)
+        if len(items) < 4:
+            return True, "## 维护区 四问格式不完整，仍为占位模板"
+
+        for num, name, choice in items:
+            choice_strip = choice.strip()
+            if "是/否" in choice_strip or "有/无" in choice_strip or choice_strip not in ("是", "否", "有", "无"):
+                return True, f"## 维护区 第 {num} 问「{name.strip()}」未勾选或仍为占位"
+
+        notes = re.findall(r"^   - 说明：(.+)$", seg, re.M)
+        if len(notes) < 4:
+            return True, "## 维护区 说明少于 4 条，仍为占位模板"
+        for note in notes:
+            n_strip = note.strip()
+            if not n_strip or "占位" in n_strip or "逐项勾选" in n_strip or "说明：" in n_strip:
+                return True, "## 维护区 说明为空或包含占位文本"
 
     return False, ""
 
@@ -1347,6 +1352,36 @@ def _card_machine_audit_passed(card_path: str) -> bool:
     return machine_audit_passed_text(text)
 
 
+def _read_branch_card_text(work: Work) -> str | None:
+    """读远端 ``codex/<slug>`` 分支卡全文（git show）。
+
+    2026-08-12 v2：worktree 卡缺失/损坏时，分支卡是执行体 push 后的真值，
+    空回写/维护区检查回退到它，避免机审读占位卡误打回。
+    """
+    if not work or not work.card_path or "docs/dispatch" not in work.card_path:
+        return None
+    try:
+        from server.git_sync import resolve_repo_root
+
+        repo = resolve_repo_root("docs/dispatch")
+    except Exception:
+        return None
+    branch = f"codex/{Path(work.card_path).stem.lower()}"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo), "show", f"origin/{branch}:{work.card_path}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception:
+        return None
+    if res.returncode != 0:
+        return None
+    return res.stdout
+
+
 def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
     """worktree 内与生产卡相对路径对应的副本（机审常写在这里）。"""
     if not worktree_path or not card_path:
@@ -1851,140 +1886,73 @@ def _dispatch_and_collect(
         branch_name = f"codex/{card_id_slug}"
 
         try:
+            from server.git_sync import resolve_repo_root
+
+            main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        except Exception:
+            main_repo = Path(__file__).resolve().parents[2]
+
+        try:
             target_path = Path(target_worktree).expanduser().resolve()
             if target_path.exists():
-                # 检查上次执行是否成功收单（sidecar 契约：不存流程终态，
-                # 只信日志 ok:true 收单证据。原读 sidecar state=="已回写" 为孤儿逻辑已删除）
-                success = False
-                log_file = log_dir / f"{work.id}.log"
-                if not success and log_file.is_file():
-                    try:
-                        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-                        for line in reversed(lines):
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                data = json.loads(line)
-                                if isinstance(data, dict) and data.get("ok") is True:
-                                    success = True
-                                    break
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
-                if not success:
-                    logger.info("上次执行未成功收单，不直接复用 worktree: %s. 正在重置...", target_worktree)
-                    # 尝试重置: git checkout -- . && git clean -fd
-                    res_reset1 = subprocess.run(
-                        ["git", "checkout", "--", "."], cwd=target_worktree, capture_output=True, check=False
-                    )
-                    res_reset2 = subprocess.run(
-                        ["git", "clean", "-fd"], cwd=target_worktree, capture_output=True, check=False
-                    )
-
-                    # 检查是否真的干净了 (git status --porcelain)
-                    res_status = subprocess.run(
-                        ["git", "status", "--porcelain"],
-                        cwd=target_worktree,
+                # 2026-08-12 v2：worktree 是 git 管理的分支工作树，存在即可复用。
+                # 不再按「日志 ok:true」判定收单（收单后日志归档会误判未收单 → 强重建
+                # 毁执行现场 → 机审读占位卡 → 空回写打回循环）。仅当目录损坏（非 git）才重建。
+                res_git = subprocess.run(
+                    ["git", "-C", str(target_path), "rev-parse", "--git-dir"],
+                    capture_output=True,
+                    check=False,
+                )
+                if res_git.returncode == 0:
+                    worktree_path = str(target_path)
+                    logger.info("复用 existing worktree: %s", target_worktree)
+                else:
+                    logger.warning("worktree 目录损坏（非 git），移除重建: %s", target_worktree)
+                    subprocess.run(
+                        ["git", "-C", str(main_repo), "worktree", "remove", "--force", str(target_path)],
                         capture_output=True,
-                        text=True,
                         check=False,
                     )
-
-                    is_clean = (
-                        res_reset1.returncode == 0 and res_reset2.returncode == 0 and not res_status.stdout.strip()
+                    subprocess.run(
+                        ["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False
                     )
-
-                    if is_clean:
-                        # 检查分支是否与 origin/main 分叉
-                        res_merge_base = subprocess.run(
-                            ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
-                            cwd=target_worktree,
-                            capture_output=True,
-                            check=False,
-                        )
-                        if res_merge_base.returncode != 0:
-                            is_clean = False
-                            logger.warning("Worktree 分支已与 origin/main 分叉，将被强制重建: %s", target_worktree)
-
-                    if is_clean:
-                        logger.info("Worktree 重置干净成功: %s", target_worktree)
+                    cmd_add = [
+                        "git",
+                        "-C",
+                        str(main_repo),
+                        "worktree",
+                        "add",
+                        str(target_path),
+                        "-b",
+                        branch_name,
+                        _worktree_branch_seed(main_repo, branch_name),
+                    ]
+                    res_add = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
+                    if res_add.returncode == 0:
                         worktree_path = str(target_path)
+                        logger.info("Worktree 重建成功: %s", worktree_path)
                     else:
-                        logger.info("Worktree 重置失败或分支分叉，正在进行强制干净重建: %s", target_worktree)
-                        try:
-                            from server.git_sync import resolve_repo_root
-
-                            main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-                        except Exception:
-                            main_repo = Path(__file__).resolve().parents[2]
-
-                        subprocess.run(
-                            ["git", "-C", str(main_repo), "worktree", "remove", "--force", str(target_path)],
-                            capture_output=True,
-                            check=False,
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(main_repo), "branch", "-D", branch_name], capture_output=True, check=False
-                        )
-
-                        cmd_add = [
+                        cmd_add_existing = [
                             "git",
                             "-C",
                             str(main_repo),
                             "worktree",
                             "add",
                             str(target_path),
-                            "-b",
                             branch_name,
-                            _worktree_branch_seed(main_repo, branch_name),
                         ]
-                        logger.info("正在干净重建 worktree: %s", " ".join(cmd_add))
-                        res_add = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
-                        if res_add.returncode == 0:
+                        res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
+                        if res_existing.returncode == 0:
                             worktree_path = str(target_path)
-                            logger.info("Worktree 干净重建成功: %s", worktree_path)
+                            logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                         else:
-                            logger.warning(
-                                "git worktree add -b 失败: %s. 尝试关联已存在分支...", res_add.stderr.strip()
-                            )
-                            cmd_add_existing = [
-                                "git",
-                                "-C",
-                                str(main_repo),
-                                "worktree",
-                                "add",
-                                str(target_path),
-                                branch_name,
+                            _bump_worktree_failures()
+                            return False, [
+                                "基础设施：worktree 重建与关联均失败（隔离强制，不回退默认目录）: "
+                                + (res_existing.stderr or res_add.stderr or "").strip()
                             ]
-                            res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
-                            if res_existing.returncode == 0:
-                                worktree_path = str(target_path)
-                                logger.info("Worktree 关联已有分支成功: %s", worktree_path)
-                            else:
-                                # 2026-08-12 隔离升级：禁止静默回退默认工作目录，记 infra 冷却
-                                _bump_worktree_failures()
-                                return False, [
-                                    "基础设施：worktree 干净重建与关联均失败（隔离强制，不回退默认目录）: "
-                                    + (res_existing.stderr or res_add.stderr or "").strip()
-                                ]
-                else:
-                    logger.info("上次执行已成功收单，重用 existing worktree: %s", target_worktree)
-                    worktree_path = str(target_path)
             else:
-                # 尝试用新分支创建
-                try:
-                    from server.git_sync import resolve_repo_root
-
-                    main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-                except Exception:
-                    main_repo = Path(__file__).resolve().parents[2]
-
+                # 创建（seed 优先远端分支：执行体已 push 的产物/回写不丢）
                 cmd_add = [
                     "git",
                     "-C",
@@ -2003,14 +1971,20 @@ def _dispatch_and_collect(
                     logger.info("Worktree 创建成功: %s (分支 %s)", worktree_path, branch_name)
                 else:
                     logger.warning("git worktree add -b 失败: %s. 尝试关联已存在分支...", res.stderr.strip())
-                    # 尝试关联已存在的分支
-                    cmd_add_existing = ["git", "-C", str(main_repo), "worktree", "add", str(target_path), branch_name]
+                    cmd_add_existing = [
+                        "git",
+                        "-C",
+                        str(main_repo),
+                        "worktree",
+                        "add",
+                        str(target_path),
+                        branch_name,
+                    ]
                     res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
                     if res_existing.returncode == 0:
                         worktree_path = str(target_path)
                         logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                     else:
-                        # 2026-08-12 隔离升级：禁止静默回退默认工作目录，记 infra 冷却
                         _bump_worktree_failures()
                         return False, [
                             "基础设施：worktree 创建与关联均失败（隔离强制，不回退默认目录）: "

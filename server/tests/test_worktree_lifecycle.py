@@ -113,7 +113,7 @@ def test_cleanup_closed_worktrees_lifecycle(tmp_path: Path):
 
 
 def test_dispatch_and_collect_retry_reset_on_failure(tmp_path: Path):
-    """测试重试时不复用脏 worktree 规则。"""
+    """2026-08-12 v2：worktree 存在即复用（git 管理），不因日志归档误判重建毁执行现场。"""
     card_dir = tmp_path / "docs" / "dispatch" / "xy"
     card_dir.mkdir(parents=True)
     card_file = card_dir / "xy101-retry.md"
@@ -149,8 +149,8 @@ def test_dispatch_and_collect_retry_reset_on_failure(tmp_path: Path):
             m.returncode = 0
             m.stdout = ""
             m.stderr = ""
-            if "status --porcelain" in " ".join(args):
-                m.stdout = ""  # Clean status after reset
+            if "rev-parse --git-dir" in " ".join(args):
+                m.returncode = 0  # 是有效 git 工作树 → 直接复用
             return m
 
         mock_run.side_effect = fake_run
@@ -160,11 +160,14 @@ def test_dispatch_and_collect_retry_reset_on_failure(tmp_path: Path):
 
         calls = [" ".join(c[0][0]) for c in mock_run.call_args_list if isinstance(c[0][0], list)]
 
-        # 因为没有成功收单的日志或 sidecar 状态，应当执行 checkout 或 worktree clean/remove
+        # v2：worktree 存在且是 git → 直接复用，绝不重置/重建（毁执行现场）
         has_reset = any("checkout -- ." in c for c in calls)
         has_clean = any("clean -fd" in c for c in calls)
+        has_remove = any("worktree remove" in c for c in calls)
 
-        assert has_reset is True or any("worktree remove" in c for c in calls)
+        assert has_reset is False
+        assert has_clean is False
+        assert has_remove is False
 
 
 def test_dispatch_and_collect_retry_reuses_successful_worktree(tmp_path: Path):

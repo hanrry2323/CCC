@@ -181,7 +181,11 @@ def test_writeback_gate_rejected_rules(tmp_path: Path):
         # show-ref for origin/codex/xy106-gate returns non-zero (remote deleted)
         def fake_run(args, **kwargs):
             m = MagicMock()
-            m.returncode = 1
+            # 2026-08-12 v2：worktree 存在即复用 → rev-parse --git-dir 返回 0（有效 git 工作树）
+            if "rev-parse --git-dir" in " ".join(args):
+                m.returncode = 0
+            else:
+                m.returncode = 1
             return m
 
         mock_run.side_effect = fake_run
@@ -208,7 +212,9 @@ def test_writeback_gate_rejected_rules(tmp_path: Path):
         # git show remote returns card content with audit pass!
         def fake_run(args, **kwargs):
             m = MagicMock()
-            if "git show" in " ".join(args) or "show" in args:
+            if "rev-parse --git-dir" in " ".join(args):
+                m.returncode = 0
+            elif "git show" in " ".join(args) or "show" in args:
                 m.returncode = 0
                 # Card on remote branch has machine audit passed
                 m.stdout = "# 任务卡 xy106\n## 机审区\n结论：通过\n"
