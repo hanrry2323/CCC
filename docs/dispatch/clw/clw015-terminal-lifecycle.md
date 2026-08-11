@@ -1,6 +1,6 @@
 # 任务卡 clw015 · 终端生命周期修复（StrictMode 泄漏 / 视图切换杀会话 / loading 死锁 / 事件时序）（OpenCode 执行）
 
-> 关联：clw-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-11
+> 关联：clw-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-11
 
 
 ## 基准文件（先看）
