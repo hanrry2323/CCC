@@ -1,7 +1,7 @@
 # 任务卡 mx033 · 分支收口（未合并分支审查合入 + tag 补打）（OpenCode 执行）
 
 > 关联：mx-plan-002
-> 执行 cwd：`/Users/fan/program/apps/medio-0`（Mac2017 · `ssh -i ~/.ssh/id_ed25519_xianyu fan@192.168.3.116`） · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭（事故·2026-08-12 作废） · 派发：engine · 项目：mx · 日期：2026-08-12
+> 执行 cwd：Engine 派发注入业务仓 worktree（禁止主仓目录） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派（重投 2026-08-12） · 派发：engine · 依赖：mx032 · 项目：mx · 日期：2026-08-12
 
 
 
@@ -11,7 +11,7 @@
 - 项目基准（README·权威索引）：`docs/projects/mx/README.md`
 - 方案池：`docs/projects/mx/plans/`（关联方案见卡头「关联」）
 
-🔴 **本卡作废（2026-08-12 事故）**：因 Engine 派发缺失业务仓 WorkTree 隔离，本卡与 mx030-034 批卡在同一业务仓主目录反复切换分支互相覆盖导致事故。保留本卡仅作复盘证据，禁止执行、禁止改状态；隔离修复见 qx-map `__archive__/decisions/medio-0-worktree-事故复盘与修复方案-2026-08-12.md`。
+✅ **已修复重投（2026-08-12）**：worktree 隔离 + 终态权威修复后重新投入，复盘见 qx-map 决策档 `medio-0-worktree-事故复盘与修复方案-2026-08-12.md`。
 
 ## 目标
 
