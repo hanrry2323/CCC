@@ -145,7 +145,7 @@ export function renderTaskCard(t) {
           </button>
         </div>
       </div>
-      <div class="board-card-title ti" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(t.title || t.id)}">${escapeHtml(t.title || t.id)}</div>
+      <div class="board-card-title ti" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35;min-height:2.7em;" title="${escapeHtml(t.title || t.id)}">${escapeHtml(t.title || t.id)}</div>
       ${metricsBlock}
       <div class="board-card-meta">
         ${executor}

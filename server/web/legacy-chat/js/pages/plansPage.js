@@ -160,16 +160,16 @@ function renderPlanItem(plan) {
   const acc = plan.acceptance || {};
   const accPct = acc.total > 0 ? Math.round((acc.done / acc.total) * 100) : null;
   const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
-  const cardChips = (cardsText ? cardsText.split(/[,，、\s]+/) : [])
-    .filter(Boolean)
-    .slice(0, 4)
-    .map((cid) => {
-      const st = _cardStates[String(cid).toLowerCase()] || '';
-      const cls = /已关闭|已合入|已完成|已交付|released|closed|delivered/i.test(st) ? 'ok'
-        : /已回写|执行中|打回|机审/i.test(st) ? 'warn' : 'muted';
-      return `<span class="pcard-state-chip ${cls}" title="${esc(st || '未知状态')}">${esc(cid)}<i>${esc(st || '?')}</i></span>`;
-    })
-    .join('');
+  // 业务标签（老板 2026-08-12 评审）：计划 / 缺口 / 警示，不展示用户看不懂的卡 ID+状态
+  const tags = [];
+  const refIds = (cardsText ? cardsText.split(/[,，、\s]+/) : []).filter(Boolean);
+  const warnRefs = refIds.filter((cid) => {
+    const st = _cardStates[String(cid).toLowerCase()] || '';
+    return !st || !/已关闭|已合入|已完成|已交付|released|closed|delivered/i.test(st);
+  });
+  if (warnRefs.length) tags.push('<span class="pcard-tag warn">警示</span>');
+  if (accPct === null || acc.done < acc.total) tags.push('<span class="pcard-tag gap">缺口</span>');
+  if (plan.status === '已确认' || plan.status === '部分执行') tags.push('<span class="pcard-tag plan">计划</span>');
   const title = String(plan.title || '').replace('方案 · ', '');
 
   return `
@@ -181,13 +181,13 @@ function renderPlanItem(plan) {
       </div>
       <h3 class="pcard-title">${esc(title)}</h3>
       <div class="pcard-meta">${esc(plan.author)}<span class="pcard-dotsep">·</span>${esc(plan.tool)}</div>
+      ${tags.length ? `<div class="pcard-tags">${tags.join('')}</div>` : ''}
       <div class="pcard-foot">
         ${accPct !== null ? `
           <span class="pcard-acc" title="验收 ${acc.done}/${acc.total}">
             <span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${accPct}%;background:${color}"></span></span>
             <span class="pcard-acc-num">${acc.done}/${acc.total}</span>
           </span>` : `<span class="pcard-acc-none">无验收项</span>`}
-        ${cardChips ? `<span class="pcard-chips" title="关联卡实时状态">${cardChips}</span>` : ''}
         <span class="pcard-open">详情${icon('open')}</span>
       </div>
     </article>`;
@@ -274,9 +274,12 @@ function bindEvents() {
 
   root.querySelectorAll('.ptool-proj').forEach(btn => {
     btn.addEventListener('click', () => {
+      const flow = _root?.querySelector('#plans-flow');
+      const st = flow ? flow.scrollTop : 0;
       _filterProject = btn.dataset.proj || '';
       root.querySelectorAll('.ptool-proj').forEach(b => b.classList.toggle('on', b === btn));
       render();
+      if (flow) flow.scrollTop = st;
     });
   });
 

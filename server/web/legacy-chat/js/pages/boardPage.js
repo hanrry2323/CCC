@@ -35,6 +35,10 @@ let _wsNames = [];
 let _indicatorBusy = false;
 let _nameMap = {};
 let _readyForMergeInfo = null;
+let _collapsedCols = { '已关闭': true }; // 终态列默认折叠
+let _colOpen = {};                       // 列体折叠（头部按钮）
+let _dense = false;                      // 卡片密度
+let _searchQ = '';
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -100,6 +104,8 @@ function html() {
       <button type="button" class="hub-btn" id="board-refresh" title="刷新">刷新</button>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
+    <input type="search" id="board-search" placeholder="搜索卡…" style="padding:5px 10px;border:1px solid var(--ccc-border-subtle);border-radius:999px;background:#fff;font-size:12px;width:150px;outline:none;">
+    <button type="button" class="hub-btn" id="board-density" title="切换卡片密度">${_dense ? '舒适' : '紧凑'}</button>
     <span class="st" id="board-st">·</span>
   </div>
 
@@ -139,6 +145,11 @@ function getFilteredCards() {
     if (_ws !== 'all' && c.project !== _ws) {
       return false;
     }
+    if (_searchQ) {
+      const q = _searchQ.trim().toLowerCase();
+      const hit = (c.title || '').toLowerCase().includes(q) || (c.id || '').toLowerCase().includes(q) || (c.project || '').toLowerCase().includes(q);
+      if (!hit) return false;
+    }
     return true;
   });
 }
@@ -159,28 +170,36 @@ function renderBoard() {
   }
 
   const filteredCards = getFilteredCards();
+  const visibleCols = FLOW_COLS.filter((col) => !_collapsedCols[col]);
+  const foldedCols = FLOW_COLS.filter((col) => _collapsedCols[col]);
 
   if (!host.querySelector('#board-flow')) {
     host.innerHTML = `
-      <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(278px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
-        ${FLOW_COLS.map(col => `
-          <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 278px;">
+      <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(320px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
+        ${visibleCols.map(col => `
+          <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 320px;">
             <div class="board-col-h">
               <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
               <span class="ct" id="ct-${col}">0</span>
+              <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
             </div>
-            <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
+            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'}; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
           </div>
         `).join('')}
+        ${foldedCols.length ? `<div class="board-fold-bar" id="board-fold-bar" style="display:flex;flex-direction:column;gap:8px;justify-content:center;padding:10px;">
+          ${foldedCols.map((col) => `<button type="button" class="board-fold-chip" data-expand-col="${esc(col)}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--ccc-border-subtle);border-radius:999px;background:var(--ccc-bg-layer);color:var(--ccc-text-muted);font-size:12px;cursor:pointer;white-space:nowrap;">
+            <span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)} <span id="ct-${col}" class="ct">0</span> · 展开
+          </button>`).join('')}
+        </div>` : ''}
       </div>
     `;
 
     _colLists = {};
-    for (const col of FLOW_COLS) {
+    for (const col of visibleCols) {
       const colEl = host.querySelector(`#col-list-${col}`);
       if (colEl) {
         _colLists[col] = new TaskCardList(colEl, {
-          itemHeight: 118,
+          itemHeight: _dense ? 92 : 118,
           onCardClick: (card, id) => showDetail(id),
           onCopyClick: async (btn, id) => {
             const t = _allCards.find(x => x.id === id) || { id, title: '' };
@@ -195,6 +214,19 @@ function renderBoard() {
         _colLists[col].enableVirtualScroll(true);
       }
     }
+    host.querySelectorAll('[data-fold-col]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const col = btn.dataset.foldCol;
+        _colOpen[col] = !_colOpen[col];
+        renderBoard();
+      });
+    });
+    host.querySelectorAll('[data-expand-col]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        _collapsedCols[btn.dataset.expandCol] = false;
+        renderBoard();
+      });
+    });
   }
 
   for (const col of FLOW_COLS) {
@@ -218,6 +250,10 @@ function renderBoard() {
 
     const countEl = _root.querySelector(`#ct-${col}`);
     if (countEl) countEl.textContent = stateCards.length;
+
+    if (_collapsedCols[col] || !_colLists[col]) {
+      continue;
+    }
 
     if (!_kanbanPageSizes[col]) {
       _kanbanPageSizes[col] = 30;
@@ -443,6 +479,24 @@ async function showDetail(id) {
 }
 
 function bind() {
+  const searchEl = _root.querySelector('#board-search');
+  if (searchEl) {
+    let deb = null;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(deb);
+      deb = setTimeout(() => {
+        _searchQ = searchEl.value;
+        renderBoard();
+      }, 250);
+    });
+  }
+  _root.querySelector('#board-density')?.addEventListener('click', () => {
+    _dense = !_dense;
+    const btn = _root.querySelector('#board-density');
+    if (btn) btn.textContent = _dense ? '舒适' : '紧凑';
+    _colLists = {};
+    renderBoard();
+  });
   _root.querySelector('#board-ws-btns').addEventListener('click', (e) => {
     const btn = e.target.closest('.board-ws-btn');
     if (!btn) return;

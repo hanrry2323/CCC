@@ -182,6 +182,25 @@ export function buildMilestoneRail(detail) {
 
 export function milestonePanelHTML(detail, mile) {
   const cards = (mile && mile.cards) || [];
+  const cardHTML = (c) => `
+    <div class="rm2-card">
+      <span class="rm2-card-id">${esc(c.card_id)}</span>
+      <span class="rm2-card-intent">${esc(c.intent)}</span>
+      <span class="rm2-card-state ${_stateTone(c)}">${esc(c.progress || '未标注')}</span>
+      ${c.drift ? `<span class="rm-flag drift">漂移</span>` : ''}
+      ${c.missing ? `<span class="rm-flag missing">缺失</span>` : ''}
+      ${(c.drift || c.missing) ? `<a class="rm-goto" href="#/board" title="去看板">→</a>` : ''}
+    </div>`;
+  const risky = cards.filter((c) => c.drift || c.missing);
+  const done = cards.filter((c) => !risky.includes(c) && _closed(c.progress));
+  const doing = cards.filter((c) => !risky.includes(c) && !_closed(c.progress) && /已回写|执行中|开发中|机审|待验收|testing|verified|in_progress/.test(c.real_state || c.progress || ''));
+  const planned = cards.filter((c) => !risky.includes(c) && !done.includes(c) && !doing.includes(c));
+  const group = (title, list, tone, open) => list.length
+    ? `<details class="rm2-group" ${open ? 'open' : ''}>
+        <summary><span class="rm-dot" style="background:${tone}"></span>${title}<span class="rm2-group-count">${list.length}</span></summary>
+        <div class="rm2-cards">${list.map(cardHTML).join('')}</div>
+      </details>`
+    : '';
   return `<div class="rm2-panel">
     <div class="rm2-panel-head">
       <h4>${esc(mile ? mile.title : '未选择里程碑')}</h4>
@@ -189,15 +208,10 @@ export function milestonePanelHTML(detail, mile) {
       <span class="rm2-panel-count">${cards.length} 卡</span>
     </div>
     ${cards.length
-      ? `<div class="rm2-cards">${cards.map((c) => `
-        <div class="rm2-card">
-          <span class="rm2-card-id">${esc(c.card_id)}</span>
-          <span class="rm2-card-intent">${esc(c.intent)}</span>
-          <span class="rm2-card-state ${_stateTone(c)}">${esc(c.progress || '未标注')}</span>
-          ${c.drift ? `<span class="rm-flag drift">漂移</span>` : ''}
-          ${c.missing ? `<span class="rm-flag missing">缺失</span>` : ''}
-          ${(c.drift || c.missing) ? `<a class="rm-goto" href="#/board" title="去看板">→</a>` : ''}
-        </div>`).join('')}</div>`
+      ? `${group('风险', risky, '#c44', true)}
+         ${group('已完成', done, '#2a9d4a', true)}
+         ${group('进行中', doing, '#3a7bd5', true)}
+         ${group('待开发', planned, '#8a8a8a', false)}`
       : '<div class="rm2-empty">该里程碑暂无关联卡</div>'}
   </div>`;
 }

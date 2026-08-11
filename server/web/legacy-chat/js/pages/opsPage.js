@@ -1,20 +1,21 @@
 /**
- * opsPage.js — 运维页（用户化重构 2026-08-11）
+ * opsPage.js — 运维页（职责重构 2026-08-12）
  *
- * 三层架构（数据源：/ops/summary + /loop/findings，纯前端不改后端）：
- *   ① 健康仪表盘：severity + human_line → 一句话结论 + 色块
- *   ② 待办清单：findings → 优先级(P1/P2/P3) + 人话摘要 + 操作按钮
- *   ③ 技术详情：节点/端口/证据/命令 → 折叠，运维人员才展开
+ * 运维理念（老板 2026-08-12）：运维 = 项目工程化运维——
+ * 项目健康 / diff 审查 / 螺旋循环 / 代码健康监控。
+ * 系统健康（节点/服务/管道）是控制台职责，本页只留入口提示。
  *
- * 设计原则：用户看「哪坏了、要紧不、要不要修」，Agent 细节折叠在后面。
+ * 数据源：
+ *   /board/roadmap → 项目业务线路（项目健康）
+ *   /board/ready_for_merge → diff 审查队列（待合入）
+ *   /cards → 打回卡 / 各状态计数（螺旋循环）
+ *   /loop/findings → 代码健康发现（按项目聚合）
  */
 
-import { apiGet, apiPost } from '../api.js';
+import { apiGet } from '../api.js';
 
 let _root = null;
 let _timer = null;
-let _loopData = null;
-let _showAll = false;
 
 function esc(s) {
   if (s == null) return '';
@@ -23,250 +24,6 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function pill(ok, label) {
-  const cls = ok ? 'ops-pill ok' : 'ops-pill bad';
-  return `<span class="${cls}">${esc(label)}</span>`;
-}
-
-function html() {
-  return `
-<div class="ops-page hub-page">
-  <div class="ops-bar">
-    <h2>运维</h2>
-    <span class="ops-sub">待办 · 健康 · 诊断</span>
-    <span style="flex:1"></span>
-    <button type="button" class="hub-btn" id="ops-refresh">刷新</button>
-  </div>
-
-  <!-- ① 待办清单（主区） -->
-  <div class="ops-section">
-    <h3>待办清单 <span class="badge" id="loop-count">0</span> <span class="ops-scan-at" id="loop-scan-at"></span></h3>
-    <div id="ops-loop" class="ops-card ops-main-card"><div class="ops-empty">加载中…</div></div>
-  </div>
-
-  <!-- ② 健康状态（紧凑条） -->
-  <div class="ops-section">
-    <div id="ops-status" class="ops-card ops-health-bar"></div>
-  </div>
-
-  <!-- ③ 诊断详情（折叠） -->
-  <div class="ops-section">
-    <details class="ops-fold" open>
-      <summary>诊断详情（节点 / 服务 / 管道）</summary>
-      <div id="ops-detail" class="ops-detail-body">
-        <div class="ops-detail-grid">
-          <div class="ops-card ops-detail-block">
-            <h4 class="ops-block-title">集群节点 <span id="ops-machines-count" class="badge">0</span></h4>
-            <div id="ops-machines"></div>
-          </div>
-          <div class="ops-card ops-detail-block">
-            <h4 class="ops-block-title">本地服务 <span id="ops-services-count" class="badge">0</span></h4>
-            <div id="ops-services"></div>
-          </div>
-          <div class="ops-card ops-detail-block">
-            <h4 class="ops-block-title">引擎管道</h4>
-            <div id="ops-pipeline"></div>
-          </div>
-        </div>
-      </div>
-    </details>
-  </div>
-</div>`;
-}
-
-/* ── ① 健康仪表盘 ─────────────────────────────── */
-
-function healthLabel(severity) {
-  if (severity === 'green') return '健康';
-  if (severity === 'amber') return '有注意项';
-  if (severity === 'red') return '有问题';
-  return '未知';
-}
-
-function renderStatus(agg) {
-  const el = _root.querySelector('#ops-status');
-  if (!el) return;
-  const severity = agg.severity || '—';
-  const human = agg.human_line || '—';
-  const sevCls = severity === 'green' ? 'ops-ok' : severity === 'red' ? 'ops-attn' : 'ops-warn';
-  const overview = agg.overview || {};
-  const machines = overview.machines || [];
-  const total = machines.length;
-  const reachable = machines.filter((m) => m.reachable).length;
-  const alerts = overview.alert_count || 0;
-  const services = overview.services || [];
-  const svcRunning = services.filter((s) => s.running).length;
-  el.innerHTML = `
-    <div class="ops-health">
-      <span class="ops-health-sev ${sevCls}"><span class="ops-dash-dot"></span>${esc(healthLabel(severity))}</span>
-      <span class="ops-health-line">${esc(human)}</span>
-      <span class="ops-health-chips">
-        <span class="ops-chip">节点 ${reachable}/${total || 0}</span>
-        <span class="ops-chip">服务 ${svcRunning}/${services.length || 0}</span>
-        ${alerts > 0 ? `<span class="ops-chip alert">告警 ${alerts}</span>` : ''}
-      </span>
-    </div>`;
-}
-
-/* ── ② 待办清单 ───────────────────────────────── */
-
-/** 权重 → 优先级（D2 映射：≥4=P1红, 2-3=P2橙, <2=P3蓝） */
-function priorityOf(weightStr) {
-  const w = parseFloat(weightStr);
-  if (isNaN(w)) return 'p3';
-  if (w >= 4) return 'p1';
-  if (w >= 2) return 'p2';
-  return 'p3';
-}
-
-/** 后台 severity → 用户风险标签（双维标签之「风险等级」） */
-function riskOf(f) {
-  const sev = f.severity || '';
-  if (sev === '红旗') return 'r1';
-  if (sev === '黄旗') return 'r2';
-  if (sev === '蓝旗') return 'r3';
-  // 无 severity 时用 weight 兜底
-  return priorityOf(f.weight);
-}
-
-function riskLabel(r) {
-  return { r1: '高风险', r2: '风险', r3: '建议' }[r] || '建议';
-}
-
-/** 后台 type 或标题 → 用户巡查类型标签（双维标签之「类型」） */
-function typeOf(f) {
-  const t = f.type || '';
-  if (t) {
-    return (
-      {
-        missing_section: '缺失项',
-        drift: '状态漂移',
-        broken_link: '关联断裂',
-        missing_four_questions: '维护区缺失',
-      }[t] || '巡查项'
-    );
-  }
-  // 无 type 时从标题推导
-  const title = f.title || '';
-  if (title.includes('状态漂移') || title.includes('已交付')) return '状态漂移';
-  if (title.includes('缺席') || title.includes('缺少')) return '缺失项';
-  if (title.includes('关联了不存在') || title.includes('未全部关闭')) return '关联断裂';
-  if (title.includes('维护区')) return '维护区缺失';
-  return '巡查项';
-}
-
-/** 把技术化长标题归纳成用户能看懂的一句话 */
-function summarizeFinding(title) {
-  if (!title) return '';
-  let t = String(title);
-  t = t.replace(/^任务卡\s*([a-z0-9]+)\s*状态漂移：/, '$1 状态漂移：');
-  t = t.replace(/roadmap\.md\s*标注/, '标注');
-  t = t.replace(/看板\/卡文件实际状态/, '实际');
-  t = t.replace(/项目\s*([a-z0-9]+)\s*缺席 roadmap\.md 的业务线路段落/, '$1 项目缺少路线图段落');
-  t = t.replace(/方案\s*([a-z0-9\-]+)\s*已完成但关联卡未关闭/, '$1 方案已完成但卡未关');
-  t = t.replace(/卡\s*([a-z0-9]+)\s*缺维护区四问/, '$1 卡缺维护区填写');
-  if (t.length > 40) t = t.slice(0, 40) + '…';
-  return t;
-}
-
-function renderLoop(loopData) {
-  const el = _root.querySelector('#ops-loop');
-  const nEl = _root.querySelector('#loop-count');
-  if (!el) return;
-  _loopData = loopData;
-  const reports = loopData?.loop_reports || [];
-  // 只取最新一份报告（每份是"当时全量扫描"，最新代表当前真实状态；旧报告是过期快照，避免残留误报）
-  const latest = reports[0] || {};
-  const _cmds = latest.commands || [];
-  const findings = (latest.findings || []).map((f, i) => ({
-    ...f,
-    _report: latest.name,
-    _ts: f.ts || latest.mtime || 0,
-    _cmd: _cmds[i] || '',
-  }));
-  if (nEl) nEl.textContent = String(findings.length);
-  const scanEl = _root.querySelector('#loop-scan-at');
-  if (scanEl) {
-    scanEl.textContent = latest.mtime ? `上次扫描 ${agoText(latest.mtime)}` : '';
-  }
-  if (!findings.length) {
-    el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
-    return;
-  }
-  // 按风险等级排序（r1 高风险 → r2 风险 → r3 建议），同级按时间新→旧
-  const order = { r1: 0, r2: 1, r3: 2 };
-  findings.sort((a, b) => order[riskOf(a)] - order[riskOf(b)] || (b._ts || 0) - (a._ts || 0));
-  const shown = _showAll ? findings : findings.slice(0, 12);
-  el.innerHTML = shown
-    .map((f) => {
-      const r = riskOf(f);
-      const t = typeOf(f);
-      const cmd = f._cmd || '';
-      return `<div class="ops-todo-item ${r}">
-        <span class="ops-priority ${r}">${riskLabel(r)}</span>
-        <div class="ops-todo-body">
-          <div class="ops-todo-title">${esc(f.human_title || summarizeFinding(f.title))}</div>
-          <div class="ops-todo-meta">
-            <span class="ops-todo-type">${esc(t)}</span>
-            <span class="ops-todo-proj">${esc(f.project || '')}</span>
-            <span class="ops-todo-time" title="${esc(f._ts ? new Date(f._ts * 1000).toLocaleString() : '')}">扫描于 ${agoText(f._ts)}</span>
-            ${f.acting_on ? `<code>${esc(f.acting_on)}</code>` : ''}
-          </div>
-          ${cmd ? `<button type="button" class="hub-btn" data-cmd="${esc(cmd)}" title="复制转卡命令到 M1 执行">转卡</button>` : ''}
-          <span class="ops-todo-actions">
-            <button type="button" class="hub-btn ops-act" data-adopt="${esc(f.title)}" data-decision="adopt" title="采纳为真问题，留档">采纳</button>
-            <button type="button" class="hub-btn ops-act" data-adopt="${esc(f.title)}" data-decision="reject" title="标记已处理/忽略，留档">已处理</button>
-          </span>
-        </div>
-      </div>`;
-    })
-    .join('')
-    + (findings.length > 12 ? `<button type="button" class="hub-btn" id="ops-todo-more">${_showAll ? '收起' : `展开全部（${findings.length} 条）`}</button>` : '');
-  // 绑定「转卡」按钮：点击复制命令 + 提示
-  el.querySelectorAll('button[data-cmd]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const cmd = btn.getAttribute('data-cmd');
-      try {
-        navigator.clipboard.writeText(cmd);
-        btn.textContent = '已复制 ✓';
-        setTimeout(() => { btn.textContent = '转卡'; }, 1500);
-      } catch (e) {
-        btn.textContent = '复制失败';
-      }
-    });
-  });
-  // 「采纳/已处理」→ POST /loop/adopt 留档（只记录，不自动出卡/不隐藏条目）
-  el.querySelectorAll('button[data-adopt]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const report = _loopData?.loop_reports?.[0]?.name || '';
-      const finding = btn.getAttribute('data-adopt') || '';
-      const decision = btn.getAttribute('data-decision') || 'reject';
-      btn.disabled = true;
-      try {
-        await apiPost('/loop/adopt', {
-          report,
-          finding,
-          decision,
-          reason: '运维页人工操作',
-        });
-        btn.textContent = '已留档 ✓';
-        setTimeout(() => { btn.textContent = decision === 'adopt' ? '采纳' : '已处理'; btn.disabled = false; }, 1500);
-      } catch (e) {
-        btn.textContent = '留档失败';
-        btn.disabled = false;
-      }
-    });
-  });
-  const moreBtn = el.querySelector('#ops-todo-more');
-  if (moreBtn) {
-    moreBtn.addEventListener('click', () => {
-      _showAll = !_showAll;
-      if (_loopData) renderLoop(_loopData);
-    });
-  }
-}
-
-/** 时间戳 → 「X 分钟/小时前」 */
 function agoText(ts) {
   const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
   if (sec < 60) return '刚刚';
@@ -275,101 +32,215 @@ function agoText(ts) {
   return `${Math.floor(sec / 86400)} 天前`;
 }
 
-/* ── ③ 技术详情（折叠） ────────────────────────── */
+function _closed(s) {
+  return /已关闭|已合入|已完成|已交付|released|closed|delivered/i.test(s || '');
+}
 
-function renderMachines(agg) {
-  const el = _root.querySelector('#ops-machines');
-  if (!el) return;
-  const overview = agg.overview || {};
-  const machines = overview.machines || [];
-  if (!machines.length) {
-    el.innerHTML = '<div class="ops-empty">未配置集群节点</div>';
-    const nEl = _root.querySelector('#ops-machines-count');
-    if (nEl) nEl.textContent = '0';
-    return;
-  }
-  const nEl = _root.querySelector('#ops-machines-count');
-  if (nEl) nEl.textContent = String(machines.length);
-  el.innerHTML = machines
-    .map(
-      (m) => `<div class="ops-machine ${m.reachable ? 'up' : 'down'}">
-      <div class="name">${esc(m.name)}</div>
-      <div class="meta">${esc(m.ip)} · ${esc(m.role)}</div>
-      <div class="status">${pill(!!m.reachable, m.reachable ? '在线' : '不可达')}
-        <span class="muted">${esc(m.alive_ports || 0)}/${esc(m.port_count || 0)} 端口</span>
+function html() {
+  return `
+<div class="ops-page hub-page">
+  <div class="ops-bar">
+    <h2>运维</h2>
+    <span class="ops-sub">项目工程化运维 · diff 审查 · 螺旋循环 · 代码健康</span>
+    <span style="flex:1"></span>
+    <button type="button" class="hub-btn" id="ops-refresh">刷新</button>
+  </div>
+
+  <!-- ① 项目健康 -->
+  <div class="ops-section">
+    <h3>项目健康 <span class="ops-scan-at" id="ops-scan-at"></span></h3>
+    <div id="ops-projects" class="ops-projects-grid"><div class="ops-empty">加载中…</div></div>
+  </div>
+
+  <!-- ② 工程化待办（主区） -->
+  <div class="ops-section">
+    <h3>工程化待办 <span class="badge" id="ops-todo-count">0</span></h3>
+    <div class="ops-todo-grid">
+      <div class="ops-card ops-block">
+        <h4 class="ops-block-title">diff 审查 <span class="badge" id="ops-review-count">0</span></h4>
+        <div id="ops-review"><div class="ops-empty">加载中…</div></div>
       </div>
-    </div>`
-    )
-    .join('');
+      <div class="ops-card ops-block">
+        <h4 class="ops-block-title">代码健康发现 <span class="badge" id="ops-find-count">0</span></h4>
+        <div id="ops-findings"><div class="ops-empty">加载中…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ 螺旋循环 -->
+  <div class="ops-section">
+    <h3>螺旋循环 <span class="ops-scan-at">发现 → 转卡 → 执行 → 机审 → 合入</span></h3>
+    <div id="ops-loop-progress" class="ops-card"><div class="ops-empty">加载中…</div></div>
+  </div>
+
+  <div class="ops-sys-note">系统健康（节点 / 服务 / 管道 / 中转站）属控制台职责 → <a href="#/console">去控制台</a></div>
+</div>`;
 }
 
-function renderServices(agg) {
-  const el = _root.querySelector('#ops-services');
+/* ── ① 项目健康 ─────────────────────────────── */
+
+function projectStats(section) {
+  const cards = (section.milestones || []).flatMap((m) => m.cards || []);
+  const total = cards.length;
+  const done = cards.filter((c) => _closed(c.real_state || c.progress)).length;
+  const risk = cards.filter((c) => c.drift || c.missing).length;
+  return { total, done, risk, doing: total - done };
+}
+
+function renderProjects(roadmapData) {
+  const el = _root.querySelector('#ops-projects');
   if (!el) return;
-  const services = (agg.overview || {}).services || [];
-  const nEl = _root.querySelector('#ops-services-count');
-  if (nEl) nEl.textContent = String(services.length);
-  if (!services.length) {
-    el.innerHTML = '<div class="ops-empty">未配置服务清单（CLUSTER_SERVICES）</div>';
+  const lines = (roadmapData && roadmapData.business_lines) || [];
+  if (!lines.length) {
+    el.innerHTML = '<div class="ops-empty">无业务线路数据（roadmap.md 未配置）</div>';
     return;
   }
-  el.innerHTML = services
-    .map((s) => `<div class="ops-machine ${s.running ? 'up' : 'down'}">
-      <div class="name">${esc(s.name)}</div>
-      <div class="status">${pill(!!s.running, s.running ? '运行中' : '未运行')}${s.pid ? `<span class="muted">PID ${esc(s.pid)}</span>` : ''}</div>
-    </div>`)
-    .join('');
+  el.innerHTML = lines.map((s) => {
+    const st = projectStats(s);
+    const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
+    return `<div class="ops-proj-card ${st.risk ? 'risk' : st.total && st.done === st.total ? 'done' : 'active'}">
+      <div class="ops-proj-head"><b>${esc(s.project)}</b><span>${st.total} 卡</span></div>
+      <div class="ops-proj-bar"><div class="ops-proj-fill" style="width:${pct}%"></div></div>
+      <div class="ops-proj-stats">
+        <span>完成 ${st.done}</span><span>未完成 ${st.doing}</span>
+        ${st.risk ? `<span class="ops-proj-risk">风险 ${st.risk}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function renderPipeline(agg) {
-  const el = _root.querySelector('#ops-pipeline');
+/* ── ② diff 审查 + 代码健康发现 ──────────────── */
+
+function renderReview(mergeData, cards) {
+  const el = _root.querySelector('#ops-review');
+  const cnt = _root.querySelector('#ops-review-count');
   if (!el) return;
-  const pipe = agg.pipeline || {};
-  const ok = pipe.git_sync_ok !== false && !(pipe.probe_skips || 0) && !(pipe.none_skips || 0);
-  const rows = [
-    ['git 同步', pipe.git_sync_ok === false ? '失败' : '正常'],
-    ['探活跳过', pipe.probe_skips || 0],
-    ['未派发绑定', pipe.none_skips || 0],
-  ];
-  el.innerHTML = `<div class="ops-pipe-status ${ok ? 'ok' : 'bad'}">${ok ? '管道健康' : '管道有注意项'}</div>
-    <div class="ops-kv">${rows.map(([k, v]) => `<span>${esc(k)}</span><strong>${esc(String(v))}</strong>`).join('')}</div>`;
+  const mergeCards = (mergeData && mergeData.cards) || [];
+  const returned = (cards || []).filter((c) => (c.board_column || c.state) === '打回');
+  const total = mergeCards.length + returned.length;
+  if (cnt) cnt.textContent = String(total);
+  const item = (c, tag) => `<div class="ops-review-item">
+    <span class="ops-review-id">${esc(c.id || '')}</span>
+    <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
+    <span class="ops-review-proj">${esc(c.project || '')}</span>
+    ${tag}
+  </div>`;
+  const htmlParts = [];
+  if (mergeCards.length) {
+    htmlParts.push(`<div class="ops-subgroup"><h5>待合入审查（${mergeCards.length}）</h5>${mergeCards.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type">待合入</span>')).join('')}</div>`);
+  }
+  if (returned.length) {
+    htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type returned">打回</span>')).join('')}</div>`);
+  }
+  el.innerHTML = htmlParts.length
+    ? htmlParts.join('')
+    : '<div class="ops-empty">无待审查项 🎉</div>';
 }
+
+function renderFindings(loopData) {
+  const el = _root.querySelector('#ops-findings');
+  const cnt = _root.querySelector('#ops-find-count');
+  if (!el) return;
+  const reports = (loopData && loopData.loop_reports) || [];
+  const latest = reports[0] || {};
+  const findings = (latest.findings || []).map((f, i) => ({
+    ...f,
+    _ts: f.ts || latest.mtime || 0,
+    _cmd: (latest.commands || [])[i] || '',
+  }));
+  if (cnt) cnt.textContent = String(findings.length);
+  const scanEl = _root.querySelector('#ops-scan-at');
+  if (scanEl) scanEl.textContent = latest.mtime ? `上次巡检 ${agoText(latest.mtime)}` : '';
+  if (!findings.length) {
+    el.innerHTML = '<div class="ops-empty">代码健康无发现 🎉 项目治理干净</div>';
+    return;
+  }
+  const byProj = {};
+  for (const f of findings) {
+    (byProj[f.project || '其他'] = byProj[f.project || '其他'] || []).push(f);
+  }
+  const typeLabel = {
+    missing_section: '缺段落', drift: '状态漂移', broken_link: '关联断裂', missing_four_questions: '维护区缺失',
+  };
+  el.innerHTML = Object.entries(byProj).map(([proj, items]) => `
+    <div class="ops-subgroup">
+      <h5>${esc(proj)}（${items.length}）</h5>
+      ${items.slice(0, 10).map((f) => `
+        <div class="ops-review-item">
+          <span class="ops-todo-type">${esc(typeLabel[f.type] || '巡查')}</span>
+          <span class="ops-review-title">${esc(f.human_title || f.title || '')}</span>
+          <span class="ops-review-time">${agoText(f._ts)}</span>
+          ${f._cmd ? `<button type="button" class="hub-btn ops-act" data-cmd="${esc(f._cmd)}" title="复制转卡命令">转卡</button>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  el.querySelectorAll('button[data-cmd]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.getAttribute('data-cmd') || '';
+      try {
+        await navigator.clipboard.writeText(cmd);
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => { btn.textContent = '转卡'; }, 1500);
+      } catch (e) {
+        btn.textContent = '复制失败';
+      }
+    });
+  });
+}
+
+/* ── ③ 螺旋循环 ─────────────────────────────── */
+
+function renderLoopProgress(loopData, cards, mergeData) {
+  const el = _root.querySelector('#ops-loop-progress');
+  if (!el) return;
+  const findingsN = ((loopData && loopData.loop_reports && loopData.loop_reports[0] && loopData.loop_reports[0].findings) || []).length;
+  const col = (name) => (cards || []).filter((c) => (c.board_column || c.state) === name).length;
+  const segs = [
+    [findingsN, '发现'],
+    [col('待分派'), '转卡'],
+    [col('执行中'), '执行'],
+    [col('机审'), '机审'],
+    [((mergeData && mergeData.count) || 0), '合入'],
+  ];
+  el.innerHTML = `<div class="ops-loop-progress">
+    ${segs.map(([n, label], i) => `
+      <span class="ops-loop-seg ${n ? 'on' : ''}">
+        <b>${n}</b>${label}
+        ${i < segs.length - 1 ? '<i>→</i>' : ''}
+      </span>`).join('')}
+  </div>`;
+}
+
+/* ── poll ────────────────────────────────────── */
 
 async function poll() {
-  try {
-    const agg = await apiGet('/ops/summary');
-    renderStatus(agg);
-    renderMachines(agg);
-    renderServices(agg);
-    renderPipeline(agg);
-  } catch (err) {
-    const el = _root.querySelector('#ops-status');
-    if (el) {
-      el.innerHTML = `<div class="ops-kv ops-attn">运维采集失败: ${esc(err?.message || String(err))}</div>`;
-    }
-  }
-  try {
-    const loopData = await apiGet('/loop/findings');
-    renderLoop(loopData);
-  } catch (err) {
-    const el = _root.querySelector('#ops-loop');
-    if (el) {
-      el.innerHTML = `<div class="ops-empty">待办清单加载失败: ${esc(err?.message || String(err))}</div>`;
-    }
+  const [roadmap, loop, merge, cardsData] = await Promise.all([
+    apiGet('/board/roadmap').catch(() => null),
+    apiGet('/loop/findings').catch(() => null),
+    apiGet('/board/ready_for_merge').catch(() => null),
+    apiGet('/cards?page_size=500').catch(() => null),
+  ]);
+  const cards = (cardsData && cardsData.cards) || [];
+  renderProjects(roadmap);
+  renderReview(merge, cards);
+  renderFindings(loop);
+  renderLoopProgress(loop, cards, merge);
+  const cnt = _root.querySelector('#ops-todo-count');
+  if (cnt) {
+    const reviewN = ((merge && merge.cards) || []).length + cards.filter((c) => (c.board_column || c.state) === '打回').length;
+    const findN = ((loop && loop.loop_reports && loop.loop_reports[0] && loop.loop_reports[0].findings) || []).length;
+    cnt.textContent = String(reviewN + findN);
   }
 }
 
 export async function mountOps(el) {
   _root = el;
   el.innerHTML = html();
-  const refreshBtn = el.querySelector('#ops-refresh');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', async () => {
-      refreshBtn.disabled = true;
-      await poll();
-      refreshBtn.disabled = false;
-    });
-  }
+  el.querySelector('#ops-refresh')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#ops-refresh');
+    btn.disabled = true;
+    await poll();
+    btn.disabled = false;
+  });
   await poll();
   _timer = setInterval(poll, 15000);
 }

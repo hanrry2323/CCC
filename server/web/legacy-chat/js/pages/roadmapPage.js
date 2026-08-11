@@ -21,6 +21,7 @@ import {
 
 let _root = null;
 let _timer = null;
+let _rmFilter = 'all';
 
 function html() {
   return `
@@ -32,6 +33,12 @@ function html() {
       <button type="button" class="hub-btn" id="roadmap-back" style="display:none" title="返回项目列表">← 返回</button>
     </div>
     <span class="st" id="roadmap-st">·</span>
+  </div>
+  <div class="rm-filters" id="rm-filters">
+    <button type="button" class="rm-filter ${_rmFilter === 'all' ? 'on' : ''}" data-filter="all">全部</button>
+    <button type="button" class="rm-filter ${_rmFilter === 'doing' ? 'on' : ''}" data-filter="doing">进行中</button>
+    <button type="button" class="rm-filter ${_rmFilter === 'done' ? 'on' : ''}" data-filter="done">已完成</button>
+    <button type="button" class="rm-filter ${_rmFilter === 'risk' ? 'on' : ''}" data-filter="risk">有风险</button>
   </div>
   <div id="roadmap-body"><div class="board-empty">加载中…</div></div>
 </div>`;
@@ -55,6 +62,13 @@ function projectCard(section) {
     (n, m) => n + (m.cards || []).filter((c) => c.drift || c.missing).length,
     0
   );
+  const doingCards = miles.reduce(
+    (n, m) => n + (m.cards || []).filter((c) => {
+      const s = c.real_state || c.progress || '';
+      return !/已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s) && /已回写|执行中|开发中|机审|待验收|testing|verified|in_progress/.test(s);
+    }).length,
+    0
+  );
   const pct = allCards ? Math.round((doneCards / allCards) * 100) : 0;
   const proj = section.project || '';
   return `<button type="button" class="rm-project-card" data-project="${esc(proj)}" title="打开 ${esc(proj)} 线路图">
@@ -62,9 +76,15 @@ function projectCard(section) {
       <span class="rm-card-name">${esc(proj)}</span>
       <span class="rm-card-meta">${miles.length} 里程碑 · ${allCards} 卡</span>
     </div>
+    <div class="rm2-stats">
+      <span class="rm2-stat"><b>${allCards}</b>总卡</span>
+      <span class="rm2-stat done"><b>${doneCards}</b>已完成</span>
+      <span class="rm2-stat doing"><b>${doingCards}</b>进行中</span>
+      ${driftCount ? `<span class="rm2-stat risk"><b>${driftCount}</b>风险</span>` : ''}
+    </div>
     <div class="rm-progress">
       <div class="rm-progress-track"><div class="rm-progress-fill" style="width:${pct}%"></div></div>
-      <span class="rm-progress-label">已完成 ${doneCards}/${allCards}（${pct}%）</span>
+      <span class="rm-progress-label">完成率 ${pct}%</span>
     </div>
     <div class="rm-card-tags">
       <span class="rm-tag doing">待开发 ${plannedCards}</span>
@@ -77,13 +97,27 @@ function projectCard(section) {
 function renderOverview(data) {
   const host = _root.querySelector('#roadmap-body');
   const st = _root.querySelector('#roadmap-st');
-  const lines = data.business_lines || [];
-  if (st) st.textContent = `${lines.length} 个项目线路`;
-  if (!lines.length) {
+  const allLines = data.business_lines || [];
+  const filtered = allLines.filter((s) => {
+    const miles = s.milestones || [];
+    const all = miles.reduce((n, m) => n + (m.cards || []).length, 0);
+    const done = miles.reduce((n, m) => n + (m.cards || []).filter((c) => /已交付|已关闭|已完成|已合入|released|closed|delivered/.test(c.real_state || c.progress || '')).length, 0);
+    const doing = miles.reduce((n, m) => n + (m.cards || []).filter((c) => {
+      const s0 = c.real_state || c.progress || '';
+      return !/已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s0) && /已回写|执行中|开发中|机审|待验收|testing|verified|in_progress/.test(s0);
+    }).length, 0);
+    const risk = miles.reduce((n, m) => n + (m.cards || []).filter((c) => c.drift || c.missing).length, 0);
+    if (_rmFilter === 'done') return all > 0 && done === all;
+    if (_rmFilter === 'doing') return doing > 0;
+    if (_rmFilter === 'risk') return risk > 0;
+    return true;
+  });
+  if (st) st.textContent = `${filtered.length}/${allLines.length} 个项目线路`;
+  if (!allLines.length) {
     host.innerHTML = '<div class="board-empty">无业务线路（roadmap.md 未配置）</div>';
     return;
   }
-  host.innerHTML = `<div class="rm-grid">${lines.map(projectCard).join('')}</div>
+  host.innerHTML = `<div class="rm-grid">${filtered.map(projectCard).join('')}</div>
     <div class="rm-hint">点击项目卡片查看该项目的图形化线路图</div>`;
   host.querySelectorAll('.rm-project-card').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -156,6 +190,13 @@ function bind() {
   _root.querySelector('#roadmap-back')?.addEventListener('click', async () => {
     _root.querySelector('#roadmap-back').style.display = 'none';
     await loadRoadmap();
+  });
+  _root.querySelectorAll('.rm-filter').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _rmFilter = btn.dataset.filter || 'all';
+      _root.querySelectorAll('.rm-filter').forEach((x) => x.classList.toggle('on', x === btn));
+      loadRoadmap();
+    });
   });
 }
 
