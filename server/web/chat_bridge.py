@@ -276,7 +276,9 @@ class _Handler(BaseHTTPRequestHandler):
                         title = ""
                         for m in msgs:
                             if m["role"] == "user":
-                                title = m["content"].strip()[:40]
+                                title = m["content"].strip().splitlines()[0][:40]
+                                if title.startswith(("Human:", "Assistant:")):
+                                    title = title.split(":", 1)[1].strip()[:40]
                                 break
                         try:
                             updated = int(f.stat().st_mtime)
