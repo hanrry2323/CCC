@@ -1,6 +1,6 @@
 # 方案 · 集群 Worker 池（Cluster Worker Pool）蓝图
 
-> 项目：ccc · 编号：ccc-plan-020 · 状态：蓝图 + 执行计划 v2 设计中（Worker 模型+认领协议，A 轨第 2 项） · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-020 · 状态：Worker 模型 + 认领协议已落地（A 轨第 2 项完成）；待 252 实跑闭环 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-11
 > 关联卡：clw019（跨节点路由实证，已回写）
 > 关联方案：011-loop-observer-architecture（巡查）、014-delivery-gate-sop（交付）、007-100卡基线、021-sidecar-lifecycle-contract
@@ -299,3 +299,56 @@ Engine(2017)                          Worker W9(252)                   Git origi
 - 动 Engine 内核（decide_work/收单）期间，B 轨 CLW 只出「不依赖状态机的卡」
 - 每步带单测自证 + 提交推送，异席机审
 - 平台自研红线：改 server/engine / server/board / scripts 一律 M1 直接开发，不走卡
+
+---
+
+# A 轨第 2 项完成汇总（Worker 模型 + 认领协议 · 2026-08-11）
+
+> 状态：**已完成并上线**（设计 c9d40b86 → 三步改码 d02414fa / 22c2a442 / 8c40e151 / abe608aa）
+> 依据：ENGINEERING-CANON §三-2 + 红线 6（平台自研 M1 直接开发 + 异席机审）
+
+## ① 交付清单
+
+| 项 | 落点 | 内容 |
+|----|------|------|
+| REMOTE 决策态 | dispatch.py | `DispatchDecision.REMOTE`；decide_work 对 `派发=scheduler\|remote` + 执行体 W 号 → REMOTE，不回退角色本地拉起（修 RC4） |
+| 防假执行中 | main.py run_once | REMOTE 卡保持待分派（不标执行中/不占槽/不写 marker），Worker 认领后才写执行中（clw020 事故修复） |
+| Worker 模型字段 | dispatch.py | ExecutorEntry 加 `host/transport/worker_status/remote_workdir`；load_registry 解析 + 远端行豁免本地命令 |
+| RC7 修复 | 2017 executors.json | W9 行补 `transport=git` + 分类「可后台 CLI」 |
+| 认领脚本 | scripts/worker-claim.sh | Worker 侧：pull→找执行体=W号待分派卡→写卡头认领标记→执行→回写 |
+| 认领态收单 | main.py `_claim_round` | 有认领+已回写→收单；无认领→保持待分派；claim 字段进心跳 |
+| 超时回收 | main.py `_clear_claim_marker` | 认领超时→清卡头认领→卡回待分派可重认领（断点续传地基） |
+| 机审 remote | main.py `_audit_evidence_passed` | `_is_remote_work` 判定；无 worktree 走 `git show origin/<codex分支>:<卡>` 分支信封读机审区，生产卡兜底 |
+
+## ② 测试结果
+
+- `test_worker_routing.py`：**13 用例全绿**（Worker 路由 8：scheduler+W9→REMOTE 事故回归 / remote+W9 / W 号 local/remote / 工具名兼容 / manual→NONE / 未认领保持待分派；认领协议 3：in_flight / 未认领待分派 / 超时回收；机审 remote 2：分支信封读机审区 / 回退生产卡）
+- 全仓 `server/tests/` 通过 + ruff 干净
+- 相关改造带单测自证（d02414fa / 22c2a442 / 8c40e151 / abe608aa 各 commit 独立可查）
+
+## ③ 生产验证
+
+- 2017 engine 重启加载新代码，心跳含 `claim_collected/reclaimed/in_flight` 字段
+- **clw020 事故闭环**：修复前 W9+scheduler → 2017 本地拉起跑 5 次假执行中；修复后 → `远端卡待 Worker 认领（保持待分派）`，不再本地拉起
+- 看板 clw020 保持「待分派」等 252 Worker 认领（REMOTE 决策正确）
+
+## ④ 遗留问题
+
+| 级 | 问题 | 状态 |
+|----|------|------|
+| P1 | **Worker 侧 daemon 未部署**：worker-claim.sh 已就位，252 未配置 cron/daemon 定期跑认领 | 待 252 接入（B 轨/集群落地） |
+| P2 | **remote 卡机审执行**：`_run_machine_audit_after_writeback` 走 `_dispatch_and_collect` audit 路径，remote 无本地 worktree 时机审 agent 在 2017 审分支信封——已适配证据读，但机审拉起本身仍需 2017 验收席 CLI | 已可用，优化待后续 |
+| P3 | **认领冲突**：两 Worker 同时认领同卡（并发 lock）——当前靠「认领标记已存在跳过」，无原子 CAS | 集群并发扩展时补 |
+| P3 | **executors.example.json vs 2017 生产**：W1-W4 transport 字段 example 未同步补 | 文档收敛待做 |
+
+## ⑤ 建议下一步
+
+1. **252 Worker daemon 接入**：252 配置 cron/launchd 定期跑 `worker-claim.sh --claim-only` + 执行器，实测 clw020 类 REMOTE 卡真跨节点闭环
+2. **A 轨第 4 项 role-skills 一致性**：skill 进仓一键下发 + 注入点改派发时动态（配合 Worker 认领加载角色技能）
+3. **认领冲突原子化**：并发 Worker 池扩展前补 CAS（git lock marker 原子）
+4. **观测补强**：claim 字段进 Loop Observer（认领/回收/在途指标），数据反哺调度
+
+## 状态更新
+
+- 020 方案从「蓝图 + 执行计划 v2 设计」→ **Worker 模型 + 认领协议已落地**
+- 待办：252 实跑闭环（跨节点真执行）、巡检非绑定任务、集群并发验证
