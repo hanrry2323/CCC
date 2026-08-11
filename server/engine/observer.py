@@ -227,7 +227,7 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
 
                 def normalize_state(s: str) -> str:
                     s = s.strip()
-                    if s in ("已合入", "已关闭", "已完成", "released", "closed"):
+                    if s in ("已合入", "已关闭", "已完成", "已交付", "released", "closed", "delivered"):
                         return "closed"
                     if s in ("已回写", "verified", "testing", "待验收", "机审"):
                         return "verified"
