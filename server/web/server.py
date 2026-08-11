@@ -506,6 +506,26 @@ def _build_public_projects() -> list[dict[str, Any]]:
 
 _ARCH_INDEX_PATH = _PROJECT_ROOT / "server" / "web" / "data" / "arch" / "index.json"
 
+_STATIC_VERSION = ""
+
+
+def _compute_static_version() -> str:
+    """静态资源版本号 = 当前 git commit 短号（部署后自动变，浏览器强制拉新）。"""
+    global _STATIC_VERSION
+    if _STATIC_VERSION:
+        return _STATIC_VERSION
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(_PROJECT_ROOT), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        _STATIC_VERSION = r.stdout.strip() or "dev"
+    except Exception:
+        _STATIC_VERSION = "dev"
+    return _STATIC_VERSION
+
 
 def _load_arch_index() -> dict[str, Any]:
     """构造 GET /board/arch 响应：集群架构图图库（ARCH 体系）。
@@ -1565,6 +1585,11 @@ class _APIHandler(BaseHTTPRequestHandler):
         except OSError:
             self._send_404()
             return True
+        if ctype.startswith("text/html") or str(target).endswith(".html"):
+            text = body.decode("utf-8", errors="replace").replace(
+                "v=20260809t12", f"v={_compute_static_version()}"
+            )
+            body = text.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
