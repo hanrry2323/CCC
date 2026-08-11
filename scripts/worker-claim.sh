@@ -42,9 +42,7 @@ find_cards() {
 
 claim_one() {
     local card="$1"
-    local cname
     local ts
-    cname="$(basename "$card")"
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # 校验：状态=待分派 + 无认领
     if ! grep -q "状态：待分派" "$card"; then
@@ -76,9 +74,9 @@ card.write_text(text, encoding="utf-8")
 print(f"认领标记已写入: {card.name}")
 PY
     git add "$card"
-    git commit -q -m "claim($WORKER_ID): 认领 $cname"
+    git commit -q -m "claim($WORKER_ID): 认领 ${card_name:-unknown}"
     git push origin main >/dev/null 2>&1
-    log "已认领 $cname（$WORKER_ID @ $ts）"
+    log "已认领 ${card_name:-unknown}（$WORKER_ID @ $ts）"
     return 0
 }
 
