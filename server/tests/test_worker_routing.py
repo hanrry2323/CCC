@@ -134,3 +134,59 @@ class TestRemoteNoFakeRunning:
         assert works, "clw020 卡应存在"
         w = works[0]
         assert w.state is State.TODO, f"REMOTE 卡未认领应保持待分派，实际={w.state.value}"
+
+
+class TestClaimProtocol:
+    """认领协议收单（ccc-plan-020 v2）：认领态/收单/超时回收。"""
+
+    def _write_card(self, tmp_path: Path, cid: str, executor: str, dispatch: str, state: str, claim: str = "", claim_ts: str = "2026-08-11T00:00:00Z") -> Path:
+        d = tmp_path / "docs" / "dispatch" / "clw"
+        d.mkdir(parents=True, exist_ok=True)
+        card = d / f"{cid}.md"
+        header = f"> 关联：· 执行体：{executor} · 状态：{state} · 派发：{dispatch} · 项目：clw"
+        if claim:
+            header += f" · 认领：{claim} · 认领时间：{claim_ts}"
+        card.write_text(f"# 任务卡 {cid}\n\n{header}\n\n## 目标\n任务。\n", encoding="utf-8")
+        return card
+
+    def _run_once(self, tmp_path: Path, dispatch_rel: str = "docs/dispatch") -> dict:
+        store = InMemoryBoardStore()
+        dispatch_abs = str(tmp_path / dispatch_rel)
+        cfg = {
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "DISPATCH_DIR": dispatch_abs,
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "1",
+            "EXECUTOR_INFRA_COOLDOWN_SECONDS": "600",
+            "EXECUTOR_PROBE_URL": "",
+        }
+        return run_once(_registry(), store, cfg, wait=True)
+
+    def test_claimed_card_keeps_in_flight(self, tmp_path: Path) -> None:
+        """有认领 + 状态=待分派 + 未超时 → in_flight（Worker 执行中）。"""
+        from datetime import datetime, timezone
+
+        now_ts = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        self._write_card(tmp_path, "rc1", "W9", "scheduler", "待分派", claim="W9", claim_ts=now_ts)
+        summary = self._run_once(tmp_path)
+        assert summary["claim_in_flight"] == 1
+        assert summary["claim_collected"] == 0
+
+    def test_unclaimed_remote_stays_todo(self, tmp_path: Path) -> None:
+        """无认领 → 保持待分派（不标执行中），in_flight=0。"""
+        self._write_card(tmp_path, "rc2", "W9", "scheduler", "待分派")
+        summary = self._run_once(tmp_path)
+        assert summary["claim_in_flight"] == 0
+        assert summary["claim_collected"] == 0
+
+    def test_reclaimed_after_timeout(self, tmp_path: Path) -> None:
+        """认领超时（claim_ts 超 timeout）→ 回收认领（reclaimed），卡回待分派。"""
+        card = self._write_card(tmp_path, "rc3", "W9", "scheduler", "待分派", claim="W9")
+        # claim_ts 是 2026-08-11T00:00:00Z（过去很久），EXECUTOR_TIMEOUT=5s → 必超时
+        summary = self._run_once(tmp_path)
+        assert summary["claim_reclaimed"] == 1
+        assert summary["claim_in_flight"] == 0
+        # 卡头认领字段已被清（超时回收）
+        text = card.read_text(encoding="utf-8")
+        assert "认领：" not in text.split("\n")[2]

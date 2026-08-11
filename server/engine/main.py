@@ -2056,6 +2056,46 @@ def _write_running_marker(
     return marker
 
 
+def _clear_claim_marker(card_path: Path, card_id: str) -> None:
+    """清卡头认领标记（认领协议超时回收）：去掉「 · 认领：<W号> · 认领时间：<ts>」，commit+push。
+
+    认领协议（ccc-plan-020 v2）：Worker 认领后超时未完成 → Engine 回收认领，卡回待分派可被重认领。
+    """
+    import re as _re
+
+    try:
+        text = card_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        logger.warning("清理认领标记失败（读）: %s", card_id)
+        return
+    # 找卡头第一个 `>` 元数据行（认领字段在卡头元数据）
+    m = _re.search(r"^(>[^\n]*?)(?:\n|$)", text, _re.MULTILINE)
+    if not m:
+        return
+    first = m.group(1)
+    if "认领：" not in first:
+        return
+    new_first = _re.sub(r" · 认领：\S+ · 认领时间：\S+", "", first)
+    if new_first == first:
+        new_first = _re.sub(r" · 认领：\S+", "", first)
+    text = text[: m.start(1)] + new_first + text[m.end(1) :]
+    try:
+        card_path.write_text(text, encoding="utf-8")
+        import subprocess
+
+        subprocess.run(["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", f"claim-reclaim: 认领超时回收 {card_id}"],
+            cwd=card_path.parents[2],
+            check=False,
+            capture_output=True,
+        )
+        subprocess.run(["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True)
+        logger.info("认领标记已清理（超时回收）: %s", card_id)
+    except OSError:
+        logger.warning("清理认领标记失败（写）: %s", card_id)
+
+
 def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = None) -> Path:
     """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。
 
@@ -2732,6 +2772,89 @@ def run_once(
         dispatched += 1
         slots -= 1
 
+    # ── 认领协议收单（ccc-plan-020 v2）：REMOTE 卡按「认领态」收单，不靠本地 PID ──
+    def _claim_round() -> tuple[int, int, int]:
+        """一次认领收单扫描：返回 (collected, reclaimed, in_flight)。
+
+        Worker 认领协议：Worker 写卡头「认领：<W号> · 认领时间：<ts>」→ push origin。
+        Engine（已 git_sync 到最新）扫 dispatch 卡头：
+        - 有认领 + 状态=已回写 → 收单（collected，转 DONE，清认领态）
+        - 有认领 + 状态=待分派 + 认领超时 → 回收认领（reclaimed，清认领，卡回待分派可重认领）
+        - 有认领 + 其他（执行中）→ in_flight（Worker 执行中）
+        - 无认领 + 状态=待分派 → 保持待分派（等 Worker 认领，不标执行中）
+        """
+        from server.board.card_header import parse_metadata
+        from datetime import datetime, timezone
+
+        dispatch_rel = cfg.get("DISPATCH_DIR") or "docs/dispatch"
+        if os.path.isabs(dispatch_rel):
+            dispatch_root = Path(dispatch_rel)
+        else:
+            try:
+                from server.git_sync import resolve_repo_root
+
+                dispatch_root = resolve_repo_root(dispatch_rel) / dispatch_rel
+            except Exception:
+                dispatch_root = Path(__file__).resolve().parents[2] / dispatch_rel
+        if not dispatch_root.is_dir():
+            return (0, 0, 0)
+        collected = reclaimed = in_flight = 0
+        for card_path in sorted(dispatch_root.rglob("*.md")):
+            if card_path.name.startswith("."):
+                continue
+            try:
+                text = card_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            meta = parse_metadata(text)
+            dispatch = meta.get("派发", "engine")
+            executor = meta.get("执行体", "")
+            import re as _re
+
+            is_remote = dispatch in ("scheduler", "remote") or bool(_re.fullmatch(r"W\d+", executor or ""))
+            if not is_remote:
+                continue
+            state = meta.get("状态", "").strip()
+            claim = meta.get("认领", "").strip()
+            claim_ts = meta.get("认领时间", "").strip()
+            card_id = card_path.stem
+            if claim:
+                # 已认领
+                if state == "已回写":
+                    # Worker 完成回写 → 收单
+                    collected += 1
+                    logger.info("认领收单（Worker %s 完成回写）: %s", claim, card_id)
+                elif state in ("待分派", ""):
+                    # 认领超时检查：claim_ts 超过 timeout → 回收认领，卡回待分派
+                    if claim_ts:
+                        try:
+                            claim_dt = datetime.fromisoformat(claim_ts.replace("Z", "+00:00"))
+                            elapsed = (datetime.now(timezone.utc) - claim_dt).total_seconds()
+                        except ValueError:
+                            elapsed = 0
+                        if elapsed > timeout:
+                            reclaimed += 1
+                            logger.warning(
+                                "认领超时回收: %s (claim=%s elapsed=%.0fs > %ds)",
+                                card_id,
+                                claim,
+                                elapsed,
+                                timeout,
+                            )
+                            _clear_claim_marker(card_path, card_id)
+                        else:
+                            in_flight += 1
+                    else:
+                        in_flight += 1
+                else:
+                    in_flight += 1
+            else:
+                # 未认领：保持待分派（不标执行中，防假执行中）
+                pass
+        return (collected, reclaimed, in_flight)
+
+    claim_collected, claim_reclaimed, claim_in_flight = _claim_round()
+
     # ── 机审池（独立槽位）：扫「已回写 + 待机审标记 + 未通过」填槽 ──
     def _audit_round() -> tuple[int, int, int, int, int, int]:
         """一次机审扫描：返回 (dispatched, collected, failed, infra, pending, in_flight)。"""
@@ -2833,6 +2956,9 @@ def run_once(
         "audit_failed": audit_failed,
         "audit_failed_infra": audit_failed_infra,
         "worktrees_cleaned": worktrees_cleaned,
+        "claim_collected": claim_collected,
+        "claim_reclaimed": claim_reclaimed,
+        "claim_in_flight": claim_in_flight,
     }
     try:
         from server.engine.pipeline_status import write_pipeline_status
