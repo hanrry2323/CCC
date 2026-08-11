@@ -41,6 +41,7 @@ let _dense = false;                      // 卡片密度
 let _searchQ = '';
 let _runTimer = null;                    // 运行面板轮询（8s）
 let _colCardIds = { '执行中': [], '机审': [] }; // 上栏可见卡 id（运行流对应）
+let _tasksById = {};                     // work_id → 任务（运行块缓存）
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -328,7 +329,7 @@ function renderRunCol(col, cards) {
     ? cards.map((c) => `
       <div class="board-run-cell">
         ${renderTaskCard(c)}
-        <div class="board-run-block" data-run-id="${esc(c.id)}"><div class="board-run-empty">等待运行信息…</div></div>
+        <div class="board-run-block" data-run-id="${esc(c.id)}">${_tasksById[c.id] ? renderRunItem(_tasksById[c.id]) : '<div class="board-run-empty">等待运行信息…</div>'}</div>
       </div>`).join('')
     : '<div class="board-empty">暂无任务</div>';
   el.querySelectorAll('.board-task-card').forEach((card) => {
@@ -355,8 +356,12 @@ async function pollRunPanels() {
     const data = await apiGet('/tasks/running');
     const tasks = (data && data.tasks) || [];
     const byId = {};
+    _tasksById = {};
     for (const t of tasks) {
-      if (t.work_id) byId[t.work_id] = t;
+      if (t.work_id) {
+        byId[t.work_id] = t;
+        _tasksById[t.work_id] = t;
+      }
     }
     for (const col of RUN_COLS) {
       const el = _root.querySelector(`#col-list-${col}`);
