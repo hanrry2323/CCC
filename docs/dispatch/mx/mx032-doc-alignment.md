@@ -147,3 +147,20 @@
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过**（2017-08-12 · Flash 验收席）
+
+### 审查摘要
+
+**范围核对**（业务仓 `/Users/fan/program/apps/medio-0`，分支 `codex/mx032-doc-alignment`）：
+- 执行 commit `53d67cf` 仅改白名单内文件：`AGENTS.md`（路径修正）、`ARCHITECTURE.md`（补 Harmony 交付形态 + 目录结构）、`SECURITY_AUDIT.md`（对齐 v0.9.0）、`package.json`（version 0.5.1→0.9.0）。`README.md` 引用经核对合法（GitHub Releases 链接有效、`deploy-package/README.md` 真实存在），无需改动即满足验收。
+- 验收标准逐一满足：AGENTS.md 路径 `/Users/fan/program/apps/medio-0` 与 CLAUDE.md 一致 ✓；SECURITY_AUDIT 对齐 v0.9.0 ✓；ARCHITECTURE 覆盖 Harmony（medio-harmony-app 目录真实存在）✓；package.json==VERSION(v0.9.0) ✓；README 外部引用有效 ✓。
+
+**可修问题（就地修复并已提交 `e6ccff4` + push）**：
+- SECURITY_AUDIT.md 摘要与分节自相矛盾、且与 SSOT `issues.jsonl` 对齐不符：正文统计写成「Deferred 2 / Open 6」，且把 p7b.pem 归入「延期 v1.0」节；而 issues.jsonl 实测为 **deferred=1 / open=7**，p7b.pem 的状态是 `open`。已修正：摘要改 Deferred 1 / Open 7，Deferred 节只保留 SettingsPage（真正 deferred），p7b.pem 移入 Open 节并注明 SSOT 状态。现 prose、分节、SSOT 表三方调和（12 closed + 1 deferred + 7 open = 20）。
+
+**结构/边界**：改动纯文档 + package.json，无代码逻辑变更、无越界文件；机审未触碰业务源码。架构合理性符合 mx-plan-002「文档脱节收口」目标。
+
+**维护区（Doc-Gate）**：四问均已勾选并填实质说明（方案同步[是]/无教训[无]/无档案变更[否]/无线路图变化[否]），无占位。批注节为空（老板未留批注），无需落实。
