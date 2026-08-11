@@ -2288,6 +2288,11 @@ body.ro-viewer [data-write] {
 
 /* ══ 线路图重构 v2（2026-08-12 老板验收重做）══ */
 .roadmap-page { padding: 20px 22px 32px; max-width: 1600px; margin: 0 auto; }
+.roadmap-page, .ops-page, .board-page {
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .roadmap-page .board-toolbar {
   display: flex;
   align-items: center;

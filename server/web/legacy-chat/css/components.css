@@ -4123,6 +4123,9 @@
   padding: 20px 22px 32px;
   max-width: 1600px;
   margin: 0 auto;
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .plans-toolbar {
   display: flex;
