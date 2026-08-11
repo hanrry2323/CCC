@@ -118,17 +118,26 @@ function riskLabel(r) {
   return { r1: '高风险', r2: '风险', r3: '建议' }[r] || '建议';
 }
 
-/** 后台 type → 用户巡查类型标签（双维标签之「类型」） */
+/** 后台 type 或标题 → 用户巡查类型标签（双维标签之「类型」） */
 function typeOf(f) {
   const t = f.type || '';
-  return (
-    {
-      missing_section: '缺失项',
-      drift: '状态漂移',
-      broken_link: '关联断裂',
-      missing_four_questions: '维护区缺失',
-    }[t] || '巡查项'
-  );
+  if (t) {
+    return (
+      {
+        missing_section: '缺失项',
+        drift: '状态漂移',
+        broken_link: '关联断裂',
+        missing_four_questions: '维护区缺失',
+      }[t] || '巡查项'
+    );
+  }
+  // 无 type 时从标题推导
+  const title = f.title || '';
+  if (title.includes('状态漂移') || title.includes('已交付')) return '状态漂移';
+  if (title.includes('缺席') || title.includes('缺少')) return '缺失项';
+  if (title.includes('关联了不存在') || title.includes('未全部关闭')) return '关联断裂';
+  if (title.includes('维护区')) return '维护区缺失';
+  return '巡查项';
 }
 
 /** 把技术化长标题归纳成用户能看懂的一句话 */
