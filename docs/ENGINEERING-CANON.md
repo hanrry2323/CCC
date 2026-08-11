@@ -60,7 +60,9 @@
 
 ---
 
-## 二、验收体系（机审 + 审核 双层）
+## 二、验收体系（机审 + 审核 + Loop 三层）
+
+> 三层分工：**机审**（单卡立即审·窄而硬）→ **审核**（阶段整体验收）→ **Loop**（后台持续审·只审不投）。机审最窄最硬，主观标准移出机审。详见 [`product/machine-audit-sop.md`](product/machine-audit-sop.md) + [`product/loop-human-gate-sop.md`](product/loop-human-gate-sop.md)。
 
 ### 2.1 机审（本次开发质量）——现有，强化
 
