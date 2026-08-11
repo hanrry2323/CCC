@@ -1104,6 +1104,38 @@ body.hub-mode #app {
   font-weight: 500;
 }
 
+.ops-loop-report {
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.ops-loop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ops-cmd {
+  background: var(--ccc-surface-elevated, #111);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 6px 0;
+}
+
+.ops-empty {
+  color: var(--ccc-text-muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
 .ops-port-group h4 {
   margin: 0 0 6px;
   font-size: 12px;

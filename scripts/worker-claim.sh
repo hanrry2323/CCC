@@ -51,6 +51,14 @@ claim_one() {
     if grep -q "认领：" "$card"; then
         return 1
     fi
+    # 定时门禁（2026-08-11）：卡头「定时：HH:MM」未到点不认领（配合 scheduler 触发）
+    SCHEDULE_TIME="$(grep -oE "定时[:：][[:space:]]*[0-9]{2}:[0-9]{2}" "$card" | grep -oE "[0-9]{2}:[0-9]{2}" | head -1)"
+    if [ -n "$SCHEDULE_TIME" ]; then
+        NOW_TS="$(date +%H:%M)"
+        if [[ "$NOW_TS" < "$SCHEDULE_TIME" ]]; then
+            return 1  # 未到定时点，不认领
+        fi
+    fi
     # 3. 写认领标记
     python3 - "$card" "$WORKER_ID" "$ts" <<'PY'
 import sys

@@ -2875,9 +2875,13 @@ def run_once(
             if claim:
                 # 已认领
                 if state == "已回写":
-                    # Worker 完成回写 → 收单
+                    # Worker 完成回写 → 收单（清认领标记，消除残留观测噪声）
                     collected += 1
                     logger.info("认领收单（Worker %s 完成回写）: %s", claim, card_id)
+                    try:
+                        _clear_claim_marker(card_path, card_id)
+                    except Exception:
+                        logger.exception("收单清认领标记失败: %s", card_id)
                 elif state in ("待分派", ""):
                     # 认领超时检查：claim_ts 超过 timeout → 回收认领，卡回待分派
                     if claim_ts:

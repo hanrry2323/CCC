@@ -52,9 +52,15 @@ function html() {
   </div>
 
   <div class="ops-section">
+    <h3>Loop 巡查产出 <span class="badge" id="loop-count">0</span></h3>
+    <div id="ops-loop" class="ops-card"><div class="ops-empty">加载中…</div></div>
+  </div>
+
+  <div class="ops-section">
     <h3>说明</h3>
     <div class="ops-card">
-      <p class="ops-hint">本页只读 · 数据源 <code>/ops/summary</code>。</p>
+      <p class="ops-hint">本页只读 · 数据源 <code>/ops/summary</code> + <code>/loop/findings</code>。</p>
+      <p class="ops-hint">Loop 巡查产出（后台 Observer 生成）：风险发现 + 建议转卡命令。人审闸门——采纳 = 复制命令在 M1 执行 new-card.sh 转卡（Loop 只审不投，绝不自动出卡）。</p>
       <p class="ops-hint">旧 Hub 大字段（risks / workspaces / daily / quality / docs / kb / deploy / ports / auto / relay 等）已下线；运维详情请用本页摘要、任务卡 / Engine，或 SSH 查 2017 日志。</p>
       <p class="ops-hint">写操作（adopt / daily-review / run）已禁用：服务端不暴露。</p>
     </div>
@@ -106,6 +112,46 @@ function renderMachines(agg) {
     .join('');
 }
 
+function renderLoop(loopData) {
+  const el = _root.querySelector('#ops-loop');
+  const nEl = _root.querySelector('#loop-count');
+  if (!el) return;
+  const reports = loopData?.loop_reports || [];
+  if (nEl) nEl.textContent = String(reports.length);
+  if (!reports.length) {
+    el.innerHTML = '<div class="ops-empty">无 Loop 巡查报告（Observer 尚未产出）</div>';
+    return;
+  }
+  el.innerHTML = reports
+    .map((r) => {
+      const findings = (r.findings || []).slice(0, 8);
+      const commands = r.commands || [];
+      const rows = findings
+        .map(
+          (f) => `<tr>
+            <td>${esc(f.weight)}</td>
+            <td>${esc(f.project)}</td>
+            <td>${esc(f.title)}</td>
+            <td><code>${esc(f.acting_on)}</code></td>
+          </tr>`
+        )
+        .join('');
+      const cmdBlocks = commands
+        .slice(0, 3)
+        .map((c) => `<pre class="ops-cmd">${esc(c)}</pre>`)
+        .join('');
+      return `<div class="ops-loop-report">
+        <div class="ops-loop-head">
+          <strong>${esc(r.name)}</strong>
+          <span class="muted">${(r.findings || []).length} 发现 · ${commands.length} 建议命令</span>
+        </div>
+        ${rows ? `<table class="ops-table"><thead><tr><th>权重</th><th>项目</th><th>发现</th><th>对象</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="ops-empty">无表格发现</div>'}
+        ${cmdBlocks}
+      </div>`;
+    })
+    .join('');
+}
+
 async function poll() {
   try {
     const agg = await apiGet('/ops/summary');
@@ -115,6 +161,15 @@ async function poll() {
     const el = _root.querySelector('#ops-status');
     if (el) {
       el.innerHTML = `<div class="ops-kv ops-attn">运维采集失败: ${esc(err?.message || String(err))}</div>`;
+    }
+  }
+  try {
+    const loopData = await apiGet('/loop/findings');
+    renderLoop(loopData);
+  } catch (err) {
+    const el = _root.querySelector('#ops-loop');
+    if (el) {
+      el.innerHTML = `<div class="ops-empty">Loop 巡查加载失败: ${esc(err?.message || String(err))}</div>`;
     }
   }
 }

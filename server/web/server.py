@@ -2025,8 +2025,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         """GET /loop/findings → Loop Observer 巡查产出（运维看板类目·只读）。
 
         数据源：DATA_DIR/observer/*.md（observer.py 生成的巡查风险报告）。
-        返回：报告清单（最新 N 份）+ 每份的 findings 摘要。无报告 → 200 + 空。
+        返回：报告清单（最新 N 份）+ 每份的结构化 findings（表行）+ 建议转卡命令。
+        无报告 → 200 + 空。人审闸门数据源（采纳/不采纳/待定留档见 /loop/adopt）。
         """
+        import re as _re
         from pathlib import Path as _Path
 
         data_dir = _config_value("DATA_DIR", "data")
@@ -2037,15 +2039,88 @@ class _APIHandler(BaseHTTPRequestHandler):
             for f in files[:10]:
                 text = f.read_text(encoding="utf-8", errors="ignore")
                 head = [ln for ln in text.splitlines() if ln.strip()][:5]
+                # 解析风险发现表行（| 权重 | ... | 标题 | 项目 | acting_on | 证据 |）
+                findings: list[dict[str, Any]] = []
+                in_table = False
+                for ln in text.splitlines():
+                    if ln.strip().startswith("| 权重"):
+                        in_table = True
+                        continue
+                    if in_table and ln.strip().startswith("| ---"):
+                        continue
+                    if in_table and ln.strip().startswith("|"):
+                        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+                        if len(cells) >= 6:
+                            findings.append(
+                                {
+                                    "weight": cells[0],
+                                    "title": cells[4],
+                                    "project": cells[5],
+                                    "acting_on": cells[6].strip("`"),
+                                    "evidence": cells[7].strip("`") if len(cells) > 7 else "",
+                                }
+                            )
+                    elif in_table and not ln.strip().startswith("|"):
+                        in_table = False
+                # 解析建议转卡命令（```bash 块内 new-card.sh 行）
+                commands: list[str] = _re.findall(r"scripts/new-card\.sh[^\n]*", text)
                 reports.append(
                     {
                         "name": f.stem,
                         "mtime": f.stat().st_mtime,
                         "path": str(f),
                         "head": head,
+                        "findings": findings,
+                        "commands": [c.strip() for c in commands],
                     }
                 )
         self._send_json({"loop_reports": reports, "count": len(reports)})
+
+    def _handle_loop_adopt(self):
+        """POST /loop/adopt → 人审闸门：采纳/不采纳/待定 Loop 发现，留档。
+
+        只读侧的闸门记录（不自动出卡——出卡由 M1 执行 new-card.sh，Loop 只审不投）。
+        body: {"report": "<报告名>", "finding": "<标题或ID>", "decision": "adopt|reject|pending",
+               "reason": "<原因，可选>"}
+        留档：DATA_DIR/observer/.adopted.jsonl（追加，防重复转卡）。
+        """
+        import json as _json
+        import datetime as _dt
+        from pathlib import Path as _Path
+
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = _json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        except Exception:
+            self._send_json({"ok": False, "error": "bad body"}, 400)
+            return
+
+        report = str(body.get("report", "")).strip()
+        finding = str(body.get("finding", "")).strip()
+        decision = str(body.get("decision", "")).strip()
+        reason = str(body.get("reason", "")).strip()
+        if decision not in ("adopt", "reject", "pending"):
+            self._send_json({"ok": False, "error": "decision must be adopt|reject|pending"}, 400)
+            return
+
+        data_dir = _config_value("DATA_DIR", "data")
+        adopt_file = _Path(data_dir).resolve() / "observer" / ".adopted.jsonl"
+        try:
+            adopt_file.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "ts": _dt.datetime.now().isoformat(timespec="seconds"),
+                "report": report,
+                "finding": finding,
+                "decision": decision,
+                "reason": reason,
+            }
+            with adopt_file.open("a", encoding="utf-8") as f:
+                f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            self._send_json({"ok": False, "error": f"write failed: {exc}"}, 500)
+            return
+
+        self._send_json({"ok": True, "record": record})
 
     def _handle_ops_relay_stats(self):
         """GET /ops/relay-stats → 中转站今日请求（总/Pro/flash/code）+ 近10s增量 + 健康。"""
@@ -2171,6 +2246,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_conversation_post()
         elif m := self._match_thread_route(path, "rename"):
             self._handle_thread_rename(m[0], m[1])
+        elif path == "/loop/adopt":
+            self._handle_loop_adopt()
         elif path.startswith("/tasks/") and path.endswith("/transition"):
             task_id = path[len("/tasks/") : -len("/transition")].strip("/")
             self._handle_task_transition(task_id)
