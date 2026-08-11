@@ -1257,6 +1257,70 @@ body.hub-mode #app {
   padding: 8px 12px 12px;
 }
 
+/* ── 线路图（业务线路 · 2026-08-12） ── */
+
+.roadmap-project {
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.roadmap-project-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--ccc-bg-surface);
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+.roadmap-project-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.roadmap-project-meta {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+}
+
+.roadmap-drift-count {
+  color: #c44;
+  font-weight: 600;
+}
+
+.roadmap-milestone {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+.roadmap-milestone:last-child {
+  border-bottom: none;
+}
+
+.roadmap-milestone-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.roadmap-card.done .roadmap-progress { color: var(--ccc-text-muted); }
+.roadmap-card.warn .roadmap-progress { color: #d9822b; }
+.roadmap-card.doing .roadmap-progress { color: #3a7bd5; font-weight: 550; }
+
+.roadmap-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.roadmap-badge.drift { background: #d9822b; }
+.roadmap-badge.missing { background: #c44; }
+
 .ops-port-group h4 {
   margin: 0 0 6px;
   font-size: 12px;

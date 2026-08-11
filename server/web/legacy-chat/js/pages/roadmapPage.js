@@ -1,22 +1,18 @@
 /**
- * roadmapPage.js — 线路图（ARCH 体系 v1.0，2026-08-08 重构）
+ * roadmapPage.js — 线路图（业务线路 · 2026-08-12 升级）
  *
- * 数据源：GET /board/arch → {version, updated_at, gallery:[{project,title,arch_version,status,html}]}
- * 展示：顶部集群全景图（cluster）iframe + 项目图库（点击切换 iframe）。
- * Archify 产物 self-contained HTML，经 /arch/<file>.html 静态托管（legacy-chat/ 前缀自动托管）。
+ * 数据源：GET /board/roadmap → { overview, by_project, business_lines }
+ *   business_lines: [{ project, milestones: [{ title, cards: [{card_id, intent, progress, real_state, drift, missing}] }] }]
+ *
+ * 展示：按项目分区，每区显示业务线路里程碑 + 卡进度 + 漂移标记。
+ * 用户一眼看到：哪些项目在推进、哪些卡状态漂移/缺失。
  */
 
 import { apiGet } from '../api.js';
 
 let _root = null;
 let _timer = null;
-let _current = 'cluster';
-
-const STATUS_TONE = {
-  active: '#3d9a5f',
-  frozen: '#5a7a9a',
-  retired: '#a39e93',
-};
+let _active = null;
 
 function esc(s) {
   if (s == null) return '';
@@ -28,74 +24,92 @@ function esc(s) {
 function html() {
   return `
 <div class="roadmap-page hub-page">
-  <div class="orch-hint">线路图 · 集群全景架构图（ARCH 体系 v1.0 · 数据来自 /board/arch）。2026-08-08 重构。</div>
   <div class="board-toolbar">
-    <h2>线路图 · 架构图库</h2>
+    <h2>线路图</h2>
     <div class="board-toolbar-actions">
       <button type="button" class="hub-btn" id="roadmap-refresh" title="刷新">刷新</button>
     </div>
     <span class="st" id="roadmap-st">·</span>
   </div>
-  <div class="arch-gallery" id="arch-gallery"></div>
-  <div class="arch-stage" id="arch-stage">
-    <div class="settings-loading"><div class="spinner"></div><span>加载架构图...</span></div>
-  </div>
+  <div id="roadmap-body"><div class="board-empty">加载中…</div></div>
 </div>`;
 }
 
-function galleryItem(g, active) {
-  const tone = STATUS_TONE[g.status] || '#a39e93';
-  return `
-  <button type="button" class="arch-gallery-item${active ? ' is-active' : ''}" data-project="${esc(g.project)}">
-    <span class="board-dot" style="background:${tone}"></span>
-    <span class="arch-gallery-title">${esc(g.title)}</span>
-    <span class="arch-gallery-ver">arch ${esc(g.arch_version)}</span>
-  </button>`;
+function driftBadge(card) {
+  if (card.drift) {
+    return `<span class="roadmap-badge drift" title="roadmap 进度与卡真实状态不一致">漂移</span>`;
+  }
+  if (card.missing) {
+    return `<span class="roadmap-badge missing" title="卡文件不存在">缺失</span>`;
+  }
+  return '';
 }
 
-function renderGallery(gallery) {
-  const host = _root.querySelector('#arch-gallery');
-  host.innerHTML =
-    (gallery && gallery.length
-      ? gallery.map((g) => galleryItem(g, g.project === _current)).join('')
-      : '<div class="board-empty">暂无架构图（ARCH 图库未就绪）</div>') +
-    '<span class="arch-gallery-hint">点击项目查看其架构图</span>';
-  host.querySelectorAll('.arch-gallery-item').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      _current = btn.dataset.project;
-      loadGallery();
-      showStage(gallery);
-    });
-  });
+function progressTone(progress) {
+  const p = progress || '';
+  if (p.includes('已交付') || p.includes('已关闭') || p.includes('已完成')) return 'done';
+  if (p.includes('未合入') || p.includes('⚠️')) return 'warn';
+  if (p.includes('执行中') || p.includes('进行')) return 'doing';
+  return 'idle';
 }
 
-function showStage(gallery) {
-  const stage = _root.querySelector('#arch-stage');
-  const g = (gallery || []).find((x) => x.project === _current);
-  if (!g || !g.html) {
-    stage.innerHTML = '<div class="board-empty">未找到该图</div>';
+function cardRow(card) {
+  const tone = progressTone(card.progress);
+  const real = card.real_state ? ` · 卡状态:${esc(card.real_state)}` : '';
+  return `<tr class="roadmap-card ${tone}">
+    <td><strong>${esc(card.card_id)}</strong></td>
+    <td>${esc(card.intent)}</td>
+    <td class="roadmap-progress">${esc(card.progress)}${real}</td>
+    <td>${driftBadge(card)}</td>
+  </tr>`;
+}
+
+function milestoneBlock(mile) {
+  const cards = mile.cards || [];
+  return `<div class="roadmap-milestone">
+    <div class="roadmap-milestone-title">${esc(mile.title)}</div>
+    ${cards.length
+      ? `<table class="ops-table"><thead><tr><th>卡号</th><th>意图</th><th>进度</th><th></th></tr></thead><tbody>${cards.map(cardRow).join('')}</tbody></table>`
+      : '<div class="ops-empty">暂无卡</div>'}
+  </div>`;
+}
+
+function projectBlock(section) {
+  const miles = section.milestones || [];
+  const total = miles.reduce((n, m) => n + (m.cards || []).length, 0);
+  const driftCount = miles.reduce(
+    (n, m) => n + (m.cards || []).filter((c) => c.drift || c.missing).length,
+    0
+  );
+  return `<div class="roadmap-project" data-project="${esc(section.project)}">
+    <div class="roadmap-project-head">
+      <span class="roadmap-project-name">${esc(section.project)}</span>
+      <span class="roadmap-project-meta">${total} 卡 · ${miles.length} 里程碑${driftCount ? ` · <span class="roadmap-drift-count">${driftCount} 漂移</span>` : ''}</span>
+    </div>
+    ${miles.map(milestoneBlock).join('')}
+  </div>`;
+}
+
+function renderRoadmap(data) {
+  const host = _root.querySelector('#roadmap-body');
+  const st = _root.querySelector('#roadmap-st');
+  const lines = data.business_lines || [];
+  if (st) st.textContent = `${lines.length} 个项目线路`;
+  if (!lines.length) {
+    host.innerHTML = '<div class="board-empty">无业务线路（roadmap.md 未配置）</div>';
     return;
   }
-  stage.innerHTML = `
-    <div class="arch-stage-head">
-      <strong>${esc(g.title)}</strong>
-      <span class="arch-stage-meta">${esc(g.arch_version)} · ${esc(g.status)}</span>
-    </div>
-    <iframe class="arch-stage-frame" src="${esc(g.html)}" title="${esc(g.title)}" loading="lazy"></iframe>`;
+  host.innerHTML = lines.map(projectBlock).join('');
 }
 
 async function loadRoadmap() {
   if (!_root) return;
   try {
-    const data = await apiGet('/board/arch');
-    const gallery = data.gallery || [];
-    const st = _root.querySelector('#roadmap-st');
-    if (st) st.textContent = `共 ${gallery.length} 张架构图`;
-    renderGallery(gallery);
-    showStage(gallery);
+    const data = await apiGet('/board/roadmap');
+    renderRoadmap(data);
   } catch (err) {
-    const stage = _root.querySelector('#arch-stage');
-    if (stage) stage.innerHTML = '<div class="board-empty">架构图库不可用: ' + esc(err.message || String(err)) + '</div>';
+    const host = _root.querySelector('#roadmap-body');
+    if (host) host.innerHTML = '<div class="board-empty">线路图加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
 }
 

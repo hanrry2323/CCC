@@ -56,14 +56,14 @@ class TestRoadmapPage:
 
     def test_renders_by_project_data(self) -> None:
         text = self._roadmap()
-        assert "/board/arch" in text
-        assert "arch-stage" in text
+        assert "/board/roadmap" in text
+        assert "business_lines" in text
 
     def test_project_name_count_separated(self) -> None:
         text = self._roadmap()
-        assert "arch-gallery-title" in text
-        assert "共 " in text and " 张架构图" in text
+        assert "roadmap-project-name" in text
+        assert "roadmap-milestone" in text
 
     def test_hint_mentions_project_aggregation(self) -> None:
         text = self._roadmap()
-        assert "集群全景架构图" in text
+        assert "业务线路" in text

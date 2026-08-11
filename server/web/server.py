@@ -2222,10 +2222,24 @@ class _APIHandler(BaseHTTPRequestHandler):
         elif path == "/board/by_project":
             self._send_json(view_by_project(items))
         elif path == "/board/roadmap":
+            # 业务线路（2026-08-12）：解析 roadmap.md 分段 + 关联卡状态/漂移
+            try:
+                from server.board.roadmap_parser import load_roadmap_sections
+
+                _rm_path = _PROJECT_ROOT / "docs" / "roadmap.md"
+                _cards_by_id = {}
+                _by_proj = {}
+                for _it in items:
+                    _cards_by_id[_it.id.lower()] = str(_it.state)
+                    _by_proj[_it.id.lower()] = str(_it.project or "")
+                _business = load_roadmap_sections(_rm_path, _cards_by_id, _by_proj)
+            except Exception:
+                _business = []
             self._send_json(
                 {
                     "overview": roadmap_overview(items),
                     "by_project": roadmap_by_project(items),
+                    "business_lines": _business,
                 }
             )
         elif path == "/board/states":
