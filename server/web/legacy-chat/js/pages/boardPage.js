@@ -43,6 +43,7 @@ let _colCardIds = { '执行中': [], '机审': [] }; // 上栏可见卡 id（运
 let _es = null;                          // /tasks/stream SSE 连接
 let _esSig = '';                         // 当前 SSE 订阅签名（ids 未变复用连接）
 let _runColSig = {};                     // 执行中/机审列渲染签名（消闪烁）
+let _streamCache = {};                   // work_id → 最近中文行（卡片重建时恢复，刷新不冲掉）
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -321,15 +322,19 @@ function _connectStream() {
   if (!ids.length) return;
   _esSig = sig;
   _es = new EventSource('/tasks/stream?ids=' + encodeURIComponent(ids.join(',')));
+  const fillStream = (box, lines) => {
+    if (!box) return;
+    box.innerHTML = lines.length
+      ? lines.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('')
+      : '<div class="board-card-stream-empty">（暂无日志）</div>';
+  };
   _es.addEventListener('snapshot', (e) => {
     try {
       const d = JSON.parse(e.data);
       const box = _root.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(d.work_id)}"] .board-card-stream-lines`);
-      if (!box) return;
       const lines = Array.isArray(d.lines) ? d.lines : [];
-      box.innerHTML = lines.length
-        ? lines.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('')
-        : '<div class="board-card-stream-empty">（暂无日志）</div>';
+      _streamCache[d.work_id] = lines.slice(-5);
+      fillStream(box, _streamCache[d.work_id]);
     } catch (err) { /* 忽略坏事件 */ }
   });
   _es.addEventListener('log', (e) => {
@@ -337,6 +342,7 @@ function _connectStream() {
       const d = JSON.parse(e.data);
       const box = _root.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(d.work_id)}"] .board-card-stream-lines`);
       if (!box || !d.line) return;
+      _streamCache[d.work_id] = [...(_streamCache[d.work_id] || []), d.line].slice(-5);
       const empty = box.querySelector('.board-card-stream-empty');
       if (empty) empty.remove();
       const div = document.createElement('div');
@@ -365,6 +371,14 @@ function renderRunCol(col, cards) {
   el.innerHTML = cards.length
     ? cards.map((c) => renderTaskCard(c, { stream: true })).join('')
     : '<div class="board-empty">暂无任务</div>';
+  // 恢复缓存的中文行：刷新重建后没有新中文输出时，保持显示旧信息（老板 2026-08-12）
+  for (const c of cards) {
+    const box = el.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(c.id)}"] .board-card-stream-lines`);
+    const cached = _streamCache[c.id];
+    if (box && cached && cached.length) {
+      box.innerHTML = cached.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('');
+    }
+  }
   el.querySelectorAll('.board-task-card').forEach((card) => {
     card.addEventListener('click', (e) => {
       if (e.target.closest('.card-copy-btn')) return;
