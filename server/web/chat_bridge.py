@@ -303,6 +303,8 @@ class _Handler(BaseHTTPRequestHandler):
                     if not jsons:
                         continue
                     decoded = "/" + d.name.lstrip("-").replace("-", "/")
+                    if decoded.count("/") < 3 or "private-tmp" in decoded:
+                        continue
                     try:
                         updated = int(max(f.stat().st_mtime for f in jsons))
                     except OSError:
