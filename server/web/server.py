@@ -1983,6 +1983,7 @@ class _APIHandler(BaseHTTPRequestHandler):
 
     def _handle_ops_concurrency(self):
         """GET /ops/concurrency → 槽位上限 + 并发/进程埋点尾部（只读，供运维）。"""
+
         from server.config.loader import OPTIONAL_KEYS
 
         exec_max = _config_value(
@@ -2019,6 +2020,32 @@ class _APIHandler(BaseHTTPRequestHandler):
             data["engine_metrics_tail"] = []
             data["worker_events_tail"] = []
         self._send_json(data)
+
+    def _handle_loop_findings(self):
+        """GET /loop/findings → Loop Observer 巡查产出（运维看板类目·只读）。
+
+        数据源：DATA_DIR/observer/*.md（observer.py 生成的巡查风险报告）。
+        返回：报告清单（最新 N 份）+ 每份的 findings 摘要。无报告 → 200 + 空。
+        """
+        from pathlib import Path as _Path
+
+        data_dir = _config_value("DATA_DIR", "data")
+        observer_dir = _Path(data_dir).resolve() / "observer"
+        reports: list[dict[str, Any]] = []
+        if observer_dir.exists():
+            files = sorted(observer_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for f in files[:10]:
+                text = f.read_text(encoding="utf-8", errors="ignore")
+                head = [ln for ln in text.splitlines() if ln.strip()][:5]
+                reports.append(
+                    {
+                        "name": f.stem,
+                        "mtime": f.stat().st_mtime,
+                        "path": str(f),
+                        "head": head,
+                    }
+                )
+        self._send_json({"loop_reports": reports, "count": len(reports)})
 
     def _handle_ops_relay_stats(self):
         """GET /ops/relay-stats → 中转站今日请求（总/Pro/flash/code）+ 近10s增量 + 健康。"""
@@ -2080,6 +2107,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/relay-stats":
             self._handle_ops_relay_stats()
+            return
+        if path == "/loop/findings":
+            self._handle_loop_findings()
             return
         if path == "/plans/list":
             self._handle_plans_list()
