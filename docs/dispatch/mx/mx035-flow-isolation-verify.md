@@ -56,7 +56,7 @@
 
 - **实现说明**：在业务仓 worktree 中成功创建了 `docs/FLOW-VERIFY-20260812.md` 文件，包含卡号 mx035、验证时间与 worktree 路径，测试了独立 worktree 的隔离链路流程。
 - **测试结果**：文档成功生成并符合规范，在独立的 medio-0 业务仓工作区中顺利完成。
-- **push 证据**：commit hash 为 `2d8ae08b7cb5b5c91be862ef5cc8015fe4c64379` (已成功 push 至业务仓同名分支 `codex/mx035-flow-isolation-verify`)。
+- **push 证据**：commit hash 为 `2d8ae08915cc920de42d66d4a6f2476db0ed8ac1` (已成功 push 至业务仓同名分支 `codex/mx035-flow-isolation-verify`)。
 
 ## 维护区
 
