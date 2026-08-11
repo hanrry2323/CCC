@@ -1399,7 +1399,9 @@ def _executor_log_dir() -> Path | None:
     """
     raw = os.environ.get("EXECUTOR_LOG_DIR", "").strip()
     if not raw:
-        cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip()
+        cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip() or str(
+            _PROJECT_ROOT / "server" / "config" / "config.env"
+        )
         if cfg_path:
             try:
                 for line in Path(cfg_path).expanduser().read_text(encoding="utf-8").splitlines():
