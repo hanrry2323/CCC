@@ -1667,10 +1667,28 @@ def _dispatch_and_collect(
     _card_file = Path(worktree_path) / work.card_path if worktree_path else Path(work.card_path)
     _card_hint = _read_card_section(_card_file, _card_hint_section)
     if _card_hint:
+        # 派发时动态注入（ccc-plan-020 A 轨第 4 项）：按卡「角色」实时查 role-skills.yaml，
+        # 出卡后改 yaml 存量卡也能拿到最新映射（出卡时注入保留为默认，派发时刷新覆盖）。
+        _dyn_role_hint = ""
+        try:
+            _card_full = _card_file.read_text(encoding="utf-8", errors="replace")
+            from server.board.prompt_inject import _role_skill_hint
+
+            _dyn_role_hint = _role_skill_hint(_card_full)
+        except Exception:
+            pass
         # 注入：追加到最后一个参数（prompt 文本）末尾
         _hint_block = "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n" + _card_hint
+        if _dyn_role_hint:
+            _hint_block += "\n" + _dyn_role_hint
         cmd[-1] = cmd[-1] + _hint_block
-        logger.info("已注入 %s: work=%s (%d 字符)", _card_hint_section, work.id, len(_card_hint))
+        logger.info(
+            "已注入 %s: work=%s (%d 字符, 动态角色=%s)",
+            _card_hint_section,
+            work.id,
+            len(_card_hint),
+            bool(_dyn_role_hint),
+        )
 
     phase = (log_phase or "run").strip().lower() or "run"
 

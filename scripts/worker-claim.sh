@@ -100,7 +100,20 @@ if [ "$CLAIM_ONLY" = "--claim-only" ]; then
     exit 0
 fi
 
-# 4. 执行卡：读卡 → 调用执行工具 → 回写
+# 4. 执行卡前：skill 存在性校验（③ · ccc-plan-020 A 轨第 4 项）
+#    调 sync-skills.py --check 校验本节点 skill 与仓 hash 一致；MISMATCH → 自动同步再执行。
+log "skill 校验（认领前）..."
+if ! python3 "$CCC_REPO/scripts/sync-skills.py" --node "${WORKER_NODE:-M1}" --check 2>&1 | grep -q "MISMATCH"; then
+    log "skill 校验通过"
+else
+    log "skill 存在 MISMATCH → 自动同步"
+    python3 "$CCC_REPO/scripts/sync-skills.py" --node "${WORKER_NODE:-M1}" 2>&1 | tail -3
+    if python3 "$CCC_REPO/scripts/sync-skills.py" --node "${WORKER_NODE:-M1}" --check 2>&1 | grep -q "MISMATCH"; then
+        log "同步后仍 MISMATCH → 打标待处理（不阻塞执行，但记录）"
+    fi
+fi
+
+# 4b. 执行卡：读卡 → 调用执行工具 → 回写
 log "执行 $card_name ..."
 "$EXEC_TOOL" run --auto --dir "$CCC_REPO" \
     "请严格按任务卡 $claimed 完成（集群 Worker $WORKER_ID 认领执行）。先 Read 卡全文，按卡内要求开发；完成后把卡头「状态」改为「已回写」并填回写区，commit+push 到该卡对应分支。禁止自置已关闭。" \
