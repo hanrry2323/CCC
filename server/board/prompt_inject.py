@@ -490,8 +490,10 @@ def build_auditor_hint(project_prefix: str, title: str = "", card_context: str =
 
     lines.append("- 处理原则：")
     lines.append("  - 可修问题（命名/注释/小重构/补充测试）→ 在 worktree 就地修复并 commit+push，修完直接通过")
-    lines.append("  - 原则性红线问题（范围系统性越界/核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出")
+    lines.append("  - 原则性红线问题（范围系统性越界/核心业务意图违背/安全漏洞）→ 输出「机审：不通过（具体原因）」并以非零退出")
     lines.append("  - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决")
+    lines.append("  - 主观标准（美观/体验/设计品味）不判——记录建议即可，不得作为打回原因")
+    lines.append("  - **打回原因必须可执行**：格式「问题 → 文件:行号 + 唯一最佳动作」；禁止「体验不好/不规范」等不可执行表述（防死循环）")
     lines.append("- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭")
     lines.append("- **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。")
     lines.append(
