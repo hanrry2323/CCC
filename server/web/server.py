@@ -1776,12 +1776,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         model = str(body.get("model") or "").strip()
         project = str(body.get("project") or "").strip() or _project_of_thread_id(thread_id)
         if body.get("stream"):
-        bridge = _chat_bridge_url()
-        if bridge:
-            _ensure_chat_bridge()
-            # M1 对话桥代理：SSE 透传（原版 Claude Code，无 brain 人格/档位）
-            self._proxy_chat_stream(bridge, message, thread_id, project)
-            return
+            bridge = _chat_bridge_url()
+            if bridge:
+                _ensure_chat_bridge()
+                # M1 对话桥代理：SSE 透传（原版 Claude Code，无 brain 人格/档位）
+                self._proxy_chat_stream(bridge, message, thread_id, project)
+                return
             self._handle_conversation_stream(message, thread_id, model, project)
             return
         bridge = _chat_bridge_url()
