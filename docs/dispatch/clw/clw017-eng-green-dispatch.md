@@ -1,6 +1,6 @@
 # 任务卡 clw017 · 工程化修绿 + 分发（CI 真绿 / 测试补强 / 签名 / 死代码清理）（OpenCode 执行）
 
-> 关联：clw-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-11
+> 关联：clw-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-11
 
 
 ## 基准文件（先看）
