@@ -167,7 +167,11 @@ async function _fetchHistory(threadId) {
     }
   }
 
-  const msgs = data.messages || [];
+  // 历史消息字段兼容：{role,message}（会话存储）→ content（前端渲染）
+  const msgs = (data.messages || []).map((m) => ({
+    ...m,
+    content: m.content != null ? m.content : m.message,
+  }));
   const seq = data.seq || 0;
   if (!incremental || seq < cur.seq) {
     // 首拉全量 / 服务端 seq 重置 → 以本次返回为准（含 seq 回退清空）

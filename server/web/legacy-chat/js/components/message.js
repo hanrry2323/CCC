@@ -953,9 +953,9 @@ export function createEmptyState() {
   const el = document.createElement('div');
   el.className = 'empty-state';
   el.innerHTML =
-    '<div class="empty-brand">CCC</div>' +
-    '<div class="empty-state-title">直接输入你的目标</div>' +
-    '<div class="empty-state-hint">我会帮你规划、写任务卡、验收和维护看板。无需登录，直连即聊。</div>';
+    '<div class="empty-brand">Claude Code</div>' +
+    '<div class="empty-state-title">开始对话</div>' +
+    '<div class="empty-state-hint">直连 M1 原版 Claude Code · 流式输出 · 历史按项目续接</div>';
   return el;
 }
 
