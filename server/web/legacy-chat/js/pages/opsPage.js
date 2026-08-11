@@ -104,8 +104,31 @@ function priorityOf(weightStr) {
   return 'p3';
 }
 
-function priorityLabel(p) {
-  return { p1: '紧急', p2: '建议', p3: '信息' }[p] || '信息';
+/** 后台 severity → 用户风险标签（双维标签之「风险等级」） */
+function riskOf(f) {
+  const sev = f.severity || '';
+  if (sev === '红旗') return 'r1';
+  if (sev === '黄旗') return 'r2';
+  if (sev === '蓝旗') return 'r3';
+  // 无 severity 时用 weight 兜底
+  return priorityOf(f.weight);
+}
+
+function riskLabel(r) {
+  return { r1: '高风险', r2: '风险', r3: '建议' }[r] || '建议';
+}
+
+/** 后台 type → 用户巡查类型标签（双维标签之「类型」） */
+function typeOf(f) {
+  const t = f.type || '';
+  return (
+    {
+      missing_section: '缺失项',
+      drift: '状态漂移',
+      broken_link: '关联断裂',
+      missing_four_questions: '维护区缺失',
+    }[t] || '巡查项'
+  );
 }
 
 /** 把技术化长标题归纳成用户能看懂的一句话 */
@@ -144,19 +167,21 @@ function renderLoop(loopData) {
     el.innerHTML = '<div class="ops-empty">没有待处理事项 🎉 集群一切正常</div>';
     return;
   }
-  // 按优先级排序（同优先级按时间新→旧）
-  const order = { p1: 0, p2: 1, p3: 2 };
-  findings.sort((a, b) => order[priorityOf(a.weight)] - order[priorityOf(b.weight)] || (b._ts || 0) - (a._ts || 0));
+  // 按风险等级排序（r1 高风险 → r2 风险 → r3 建议），同级按时间新→旧
+  const order = { r1: 0, r2: 1, r3: 2 };
+  findings.sort((a, b) => order[riskOf(a)] - order[riskOf(b)] || (b._ts || 0) - (a._ts || 0));
   el.innerHTML = findings
     .slice(0, 12)
     .map((f) => {
-      const p = priorityOf(f.weight);
+      const r = riskOf(f);
+      const t = typeOf(f);
       const cmd = f._cmd || '';
-      return `<div class="ops-todo-item p${p}">
-        <span class="ops-priority ${p}">${priorityLabel(p)}</span>
+      return `<div class="ops-todo-item ${r}">
+        <span class="ops-priority ${r}">${riskLabel(r)}</span>
         <div class="ops-todo-body">
           <div class="ops-todo-title">${esc(summarizeFinding(f.title))}</div>
           <div class="ops-todo-meta">
+            <span class="ops-todo-type">${esc(t)}</span>
             <span class="ops-todo-proj">${esc(f.project || '')}</span>
             <span class="ops-todo-time" title="${esc(f._ts ? new Date(f._ts * 1000).toLocaleString() : '')}">${agoText(f._ts)}</span>
             ${f.acting_on ? `<code>${esc(f.acting_on)}</code>` : ''}

@@ -1227,6 +1227,21 @@ def _config_value(key: str, default: str) -> str:
     return default
 
 
+def _severity_from_weight(weight_str: str) -> str:
+    """weight → 风险等级（与 observer.score_finding 同规则）。
+    红旗 ≥10 / 黄旗 ≥4 / 蓝旗 <4。非数字 → 蓝旗。
+    """
+    try:
+        w = float(weight_str)
+    except (TypeError, ValueError):
+        return "蓝旗"
+    if w >= 10.0:
+        return "红旗"
+    if w >= 4.0:
+        return "黄旗"
+    return "蓝旗"
+
+
 def _try_json_line(line: str) -> dict | None:
     try:
         parsed = json.loads(line)
@@ -2054,6 +2069,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                             findings.append(
                                 {
                                     "weight": cells[0],
+                                    "severity": _severity_from_weight(cells[0]),
                                     "title": cells[4],
                                     "project": cells[5],
                                     "acting_on": cells[6].strip("`"),
