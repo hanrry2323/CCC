@@ -87,9 +87,23 @@ function projectStats(section) {
   return { total, done, risk, doing: total - done };
 }
 
-function renderProjects(roadmapData) {
+function renderProjects(roadmapData, cards, loopData) {
   const el = _root.querySelector('#ops-projects');
   if (!el) return;
+  const returnedBy = {};
+  const reviewBy = {};
+  for (const c of cards || []) {
+    const col = c.board_column || c.state;
+    const proj = c.project || '其他';
+    if (col === '打回') returnedBy[proj] = (returnedBy[proj] || 0) + 1;
+    if (col === '已回写' && c.machine_audit_passed) reviewBy[proj] = (reviewBy[proj] || 0) + 1;
+  }
+  const findingsBy = {};
+  const latestFindings = ((loopData && loopData.loop_reports && loopData.loop_reports[0] && loopData.loop_reports[0].findings) || []);
+  for (const f of latestFindings) {
+    const proj = f.project || '其他';
+    findingsBy[proj] = (findingsBy[proj] || 0) + 1;
+  }
   const lines = (roadmapData && roadmapData.business_lines) || [];
   if (!lines.length) {
     el.innerHTML = '<div class="ops-empty">无业务线路数据（roadmap.md 未配置）</div>';
@@ -98,12 +112,15 @@ function renderProjects(roadmapData) {
   el.innerHTML = lines.map((s) => {
     const st = projectStats(s);
     const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
+    const proj = s.project;
+    const issues = (reviewBy[proj] || 0) + (returnedBy[proj] || 0) + (findingsBy[proj] || 0);
     return `<div class="ops-proj-card ${st.risk ? 'risk' : st.total && st.done === st.total ? 'done' : 'active'}">
       <div class="ops-proj-head"><b>${esc(s.project)}</b><span>${st.total} 卡</span></div>
       <div class="ops-proj-bar"><div class="ops-proj-fill" style="width:${pct}%"></div></div>
       <div class="ops-proj-stats">
         <span>完成 ${st.done}</span><span>未完成 ${st.doing}</span>
         ${st.risk ? `<span class="ops-proj-risk">风险 ${st.risk}</span>` : ''}
+        ${issues ? `<span class="ops-proj-risk">待办 ${issues}</span>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -117,6 +134,7 @@ function renderReview(mergeData, cards) {
   if (!el) return;
   const mergeCards = (mergeData && mergeData.cards) || [];
   const returned = (cards || []).filter((c) => (c.board_column || c.state) === '打回');
+  const auditing = (cards || []).filter((c) => (c.board_column || c.state) === '机审');
   const total = mergeCards.length + returned.length;
   if (cnt) cnt.textContent = String(total);
   const item = (c, tag) => `<div class="ops-review-item">
@@ -124,6 +142,7 @@ function renderReview(mergeData, cards) {
     <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
     <span class="ops-review-proj">${esc(c.project || '')}</span>
     ${tag}
+    <a class="ops-goto-board" href="#/board" title="去看板处理">去处理 →</a>
   </div>`;
   const htmlParts = [];
   if (mergeCards.length) {
@@ -131,6 +150,14 @@ function renderReview(mergeData, cards) {
   }
   if (returned.length) {
     htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type returned">打回</span>')).join('')}</div>`);
+  }
+  if (auditing.length) {
+    htmlParts.push(`<div class="ops-subgroup"><h5>机审中（${auditing.length} · 进行中）</h5>${auditing.slice(0, 8).map((c) => `<div class="ops-review-item">
+      <span class="ops-review-id">${esc(c.id || '')}</span>
+      <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
+      <span class="ops-review-proj">${esc(c.project || '')}</span>
+      <span class="ops-todo-type">机审中</span>
+    </div>`).join('')}</div>`);
   }
   el.innerHTML = htmlParts.length
     ? htmlParts.join('')
@@ -220,7 +247,7 @@ async function poll() {
     apiGet('/cards?page_size=500').catch(() => null),
   ]);
   const cards = (cardsData && cardsData.cards) || [];
-  renderProjects(roadmap);
+  renderProjects(roadmap, cards, loop);
   renderReview(merge, cards);
   renderFindings(loop);
   renderLoopProgress(loop, cards, merge);

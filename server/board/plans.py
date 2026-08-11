@@ -453,6 +453,28 @@ def _extract_created_card(stdout: str, prefix: str, repo_root: Path) -> tuple[Pa
     return path, fname.split("-", 1)[0]
 
 
+def plan_card_states(repo_root: Path, cards: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """方案 → 关联卡在看板六列的分布（ccc-plan-024 流程条数据源）。
+
+    cards: 已富化卡列表（含 id / board_column / state）。
+    Returns:
+        {plan_rel_path: {"total": n, "cols": {"待分派": n, ...}}}
+    """
+    plans = list_plans(repo_root)
+    cards_by_id = {str(c.get("id", "")).lower(): c for c in cards if c.get("id")}
+    out: dict[str, dict[str, Any]] = {}
+    col_keys = ("待分派", "执行中", "机审", "已回写", "打回", "已关闭")
+    for p in plans:
+        ref = re.findall(r"([a-zA-Z]+[0-9]+)", p.get("cards") or "")
+        cols = {k: 0 for k in col_keys}
+        for cid in ref:
+            c = cards_by_id.get(cid.lower())
+            col = str((c or {}).get("board_column") or (c or {}).get("state") or "待分派")
+            cols[col] = cols.get(col, 0) + 1
+        out[p["path"]] = {"total": len(ref), "cols": cols}
+    return out
+
+
 def _rollback_created(files: list[Path]) -> None:
     """删除本轮已生成的卡文件（转卡失败时回滚，保证重试不产生重复卡）。"""
     for p in files:

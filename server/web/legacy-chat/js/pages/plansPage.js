@@ -46,6 +46,7 @@ let _root = null;
 let _timer = null;
 let _plans = [];
 let _cardStates = {};   // card_id → 实时状态（关联卡徽标）
+let _planCardStates = {}; // plan_path → {total, cols}（流程条，/plans/card-states）
 let _filterProject = '';
 let _searchQ = '';
 let _projects = [];
@@ -124,11 +125,16 @@ async function loadPlans() {
   if (!_projects.length) await loadProjects();
   await loadCards();
   try {
-    const data = await apiGet('/plans/list');
+    const [data, states] = await Promise.all([
+      apiGet('/plans/list'),
+      apiGet('/plans/card-states').catch(() => null),
+    ]);
     _plans = data.plans || [];
+    _planCardStates = (states && states.states) || {};
   } catch (e) {
     console.error('plans: load failed', e);
     _plans = [];
+    _planCardStates = {};
   }
   if (_detailPath || _formOpen) {
     updateListOnly();
@@ -170,6 +176,18 @@ function renderPlanItem(plan) {
   if (warnRefs.length) tags.push('<span class="pcard-tag warn">警示</span>');
   if (accPct === null || acc.done < acc.total) tags.push('<span class="pcard-tag gap">缺口</span>');
   if (plan.status === '已确认' || plan.status === '部分执行') tags.push('<span class="pcard-tag plan">计划</span>');
+  // 流程条：关联卡在看板六列的分布（ccc-plan-024）
+  const cs = _planCardStates[plan.path] || { total: 0, cols: {} };
+  const colOrder = [
+    ['待分派', '待派'], ['执行中', '执行'], ['机审', '机审'],
+    ['已回写', '待合入'], ['打回', '打回'], ['已关闭', '关闭'],
+  ];
+  const flowSegs = colOrder.map(([col, short]) => ({ col, short, n: (cs.cols || {})[col] || 0 }));
+  const flowActive = flowSegs.filter((s) => s.n > 0);
+  const flowBar = flowActive.length
+    ? `<span class="pcard-flow-bar">${flowSegs.map((s) => s.n ? `<i class="flow-${s.col}" style="width:${Math.round((s.n / (cs.total || 1)) * 100)}%"></i>` : '').join('')}</span>`
+    : '<span class="pcard-flow-none">未转卡</span>';
+  const flowMeta = flowActive.map((s) => `${s.short}${s.n}`).join(' · ');
   const title = String(plan.title || '').replace('方案 · ', '');
 
   return `
@@ -182,6 +200,10 @@ function renderPlanItem(plan) {
       </div>
       <h3 class="pcard-title">${esc(title)}</h3>
       <div class="pcard-meta">${esc(plan.author)}<span class="pcard-dotsep">·</span>${esc(plan.tool)}</div>
+      <div class="pcard-flow" title="关联卡流程分布（待分派/执行中/机审/待合入/打回/已关闭）">
+        ${flowBar}
+        ${flowMeta ? `<span class="pcard-flow-meta">${esc(flowMeta)}</span>` : ''}
+      </div>
       <div class="pcard-row">
         ${tags.length ? `<span class="pcard-tags">${tags.join('')}</span>` : ''}
         ${accPct !== null ? `
@@ -197,10 +219,12 @@ function renderColumn(status) {
   if (_hideClosed && (status === '已完成' || status === '作废')) return '';
   const color = STATUS_COLORS[status];
   const items = filteredPlans().filter(p => p.status === status);
+  const hints = { '草案': '待讨论', '已确认': '待排期', '部分执行': '已转卡', '已完成': '卡全关', '作废': '不执行' };
   return `
     <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
       <header class="pcol-h">
         <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
+        <span class="pcol-hint">${hints[status] || ''}</span>
         <span class="pcol-count">${items.length}</span>
       </header>
       <div class="pcol-body">

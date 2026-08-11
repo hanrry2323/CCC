@@ -1653,6 +1653,18 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         self._send_json({"plans": plans, "total": len(plans)})
 
+    def _handle_plans_card_states(self):
+        """GET /plans/card-states → 方案关联卡在看板六列分布（ccc-plan-024 流程条）。"""
+        from server.board.plans import plan_card_states
+
+        try:
+            cards = _enriched_cards(include_archived=False)
+            states = plan_card_states(_PROJECT_ROOT, cards)
+        except OSError as exc:
+            self._send_json({"error": f"方案卡状态读取失败: {exc}"}, 500)
+            return
+        self._send_json({"states": states})
+
     def _handle_plans_detail(self):
         """GET /plans/detail?path=docs/projects/ccc/plans/001-test.md"""
         from urllib.parse import parse_qs
@@ -2254,6 +2266,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/plans/list":
             self._handle_plans_list()
+            return
+        if path == "/plans/card-states":
+            self._handle_plans_card_states()
             return
         if path == "/plans/detail":
             self._handle_plans_detail()
