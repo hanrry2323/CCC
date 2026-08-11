@@ -1,6 +1,7 @@
 # 任务卡 mx033 · 分支收口（未合并分支审查合入 + tag 补打）（OpenCode 执行）
 
-> 关联：mx-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-12
+> 关联：mx-plan-002
+> 执行 cwd：`/Users/fan/program/apps/medio-0`（Mac2017 · `ssh -i ~/.ssh/id_ed25519_xianyu fan@192.168.3.116`） · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-12
 
 
 
