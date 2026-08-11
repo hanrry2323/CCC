@@ -8,11 +8,30 @@ import { showToast } from './toast.js';
 import { setProjectActive } from './composer.js';
 import { navigate, currentRoute } from '../router.js';
 // api.js 新增：loadThreads 拉项目下会话（服务端会话存储）
-import { loadThreads, deleteThread } from '../api.js';
+import { loadThreads, deleteThread, loadClaudeSessions } from '../api.js';
 
 let _projects = [];
 // T47：项目下服务端会话缓存（{projectId: [thread...]}），选中项目时懒加载
 let _serverThreads = {};
+let _claudeSessions = {};
+
+function fmtAgo(ts) {
+  if (!ts) return '';
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (sec < 3600) return `${Math.floor(sec / 60) || 1} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  return `${Math.floor(sec / 86400)} 天前`;
+}
+
+async function loadClaudeFor(pid) {
+  if (_claudeSessions[pid]) return;
+  try {
+    _claudeSessions[pid] = await loadClaudeSessions(pid);
+  } catch (_) {
+    _claudeSessions[pid] = [];
+  }
+  refreshSidebar();
+}
 
 function projectDisplayName(p) {
   if (!p) return '';
@@ -105,6 +124,7 @@ export function renderAppSidebar(projects) {
 
   // T47：选中项目懒加载其服务端会话（仅一次；后续由刷新驱动）
   if (activePid) loadServerThreads(activePid);
+  if (activePid) loadClaudeFor(activePid);
 
   let html = '';
   for (const p of _projects) {
@@ -179,6 +199,27 @@ export function renderAppSidebar(projects) {
             '</div>';
         }
       }
+      // Claude Code 原生历史（按项目 cwd 分组）
+      const claude = _claudeSessions[selected ? p.id : ''] || [];
+      if (claude.length) {
+        html += '<div class="sidebar-claude-group">Claude 历史</div>';
+        for (const s of claude.slice(0, 8)) {
+          html +=
+            '<div class="sidebar-thread-row sidebar-claude-row" data-claude-file="' +
+            escapeHtml(s.file) +
+            '" data-project="' +
+            escapeHtml(p.id) +
+            '" title="打开 Claude 原生会话">' +
+            '<span class="sidebar-thread-icon" aria-hidden="true">◈</span>' +
+            '<span class="sidebar-thread-title">' +
+            escapeHtml(s.title) +
+            '</span>' +
+            '<span class="sidebar-thread-actions"><span class="sidebar-thread-time">' +
+            (s.count ? `${s.count} 条 · ` : '') +
+            fmtAgo(s.updated_at) +
+            '</span></span></div>';
+        }
+      }
       html += '</div>';
     }
     html += '</div>';
@@ -204,6 +245,16 @@ export function renderAppSidebar(projects) {
   // 服务端会话行（data-server="1"）在本地无 tab：打开时物化 tab，删除走服务端。
   host.querySelectorAll('.sidebar-thread-row').forEach((row) => {
     const pid = row.closest('.project-card-wrap')?.dataset?.projectId;
+    if (row.dataset.claudeFile) {
+      row.addEventListener('click', () => {
+        document.dispatchEvent(
+          new CustomEvent('open-claude-session', {
+            detail: { project: row.dataset.project || pid, file: row.dataset.claudeFile },
+          })
+        );
+      });
+      return;
+    }
     const tabId = row.dataset.tabId;
     const sid = row.dataset.sid;
     if (row.dataset.server === '1') {

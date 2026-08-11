@@ -116,6 +116,19 @@ export async function loadThreads(project) {
   return data.threads || [];
 }
 
+// Claude Code 原生历史（M1 ~/.claude/projects，按项目 cwd 分组）
+export async function loadClaudeSessions(project) {
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/claude/sessions?project=' + encodeURIComponent(project));
+  return data.sessions || [];
+}
+
+export async function loadClaudeMessages(project, file) {
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/claude/messages?project=' + encodeURIComponent(project) + '&file=' + encodeURIComponent(file));
+  return data.messages || [];
+}
+
 // T47：删除项目下会话（仅删会话存储，不动任务卡）
 export async function deleteThread(project, threadId) {
   return apiDelete('/projects/' + encodeURIComponent(project) + '/threads/' + encodeURIComponent(threadId));
@@ -319,6 +332,8 @@ export async function streamChat(
   // 构造单次流请求
   async function openStream() {
     const base = _chatBase();
+    const claudeSession =
+      (typeof window !== 'undefined' && window.__claudeSession__) || null;
     const resp = await _fetchWithAuth(
       base ? base + '/chat' : '/conversation',
       {
@@ -329,6 +344,7 @@ export async function streamChat(
           // T44：按会话分桶历史/分锁；模型档位覆盖
           thread_id: sessionId || null,
           project: state.get('currentProject') || projectId || 'ccc',
+          claude_session: claudeSession,
           model: state.get('model') || null,
         }),
         signal,

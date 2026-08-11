@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { generateId, desktopThreadId } from './utils.js';
-import { loadProjects, loadSession, loadHubConfig } from './api.js';
+import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages } from './api.js';
 import { initChatStatus } from './chatStatus.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -440,6 +440,7 @@ async function init() {
 
   document.addEventListener('load-session', async (e) => {
     const { id } = e.detail;
+    window.__claudeSession__ = null; // 普通会话：清 Claude 续接标记
     try {
       snapshotActiveTab();
       const data = await loadSession(id, state.get('currentProject'));
@@ -465,6 +466,28 @@ async function init() {
       refreshSidebar();
     } catch (err) {
       window.showToast('加载对话失败', 'error');
+    }
+  });
+
+  document.addEventListener('open-claude-session', async (e) => {
+    const { project, file } = e.detail || {};
+    if (!project || !file) return;
+    try {
+      window.__claudeSession__ = file; // 发送时 bridge 用该原生会话续接
+      state.set('currentProject', project);
+      const msgs = await loadClaudeMessages(project, file);
+      loadMessages({ messages: msgs, title: 'Claude 历史' });
+      state.set('currentSessionId', 'claude:' + file);
+      const tabs = state.get('tabs') || [];
+      const tab = tabs.find((t) => t.id === state.get('activeTabId'));
+      if (tab) {
+        tab.title = 'Claude 历史';
+        tab.projectId = project;
+      }
+      renderProjectTabs(state.get('activeTabId'));
+      refreshSidebar();
+    } catch (err) {
+      window.showToast('加载 Claude 历史失败', 'error');
     }
   });
 

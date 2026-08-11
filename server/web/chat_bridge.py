@@ -78,6 +78,49 @@ def _context_inject(project: str) -> str:
     return f"（你在 CCC 体系的项目 {project} 中对话；项目文件已在当前工作目录。）\n"
 
 
+def _claude_projects_dir() -> Path:
+    return Path.home() / ".claude" / "projects"
+
+
+def _cwd_encode(path: str) -> str:
+    """Claude 原生会话目录编码：/Users/apple/program/CCC → -Users-apple-program-CCC。"""
+    return "-" + path.lstrip("/").replace("/", "-")
+
+
+def _parse_claude_jsonl(path: Path) -> list[dict[str, str]]:
+    """解析 Claude 原生 jsonl → [{role, content}]（仅 user/assistant 文本）。"""
+    out: list[dict[str, str]] = []
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if d.get("type") not in ("user", "assistant"):
+                continue
+            if d.get("isMeta") or d.get("isSidechain"):
+                continue
+            m = d.get("message")
+            c = m.get("content") if isinstance(m, dict) else m
+            if isinstance(c, list):
+                text = "".join(
+                    x.get("text", "")
+                    for x in c
+                    if isinstance(x, dict) and x.get("type") == "text"
+                )
+            else:
+                text = str(c or "")
+            text = text.strip()
+            if text and not text.startswith("<"):
+                out.append({"role": d["type"], "content": text})
+    except OSError:
+        pass
+    return out
+
+
 def _build_prompt(project: str, history: list[dict[str, Any]], message: str) -> str:
     parts = [_context_inject(project)]
     for m in history:
@@ -219,6 +262,44 @@ class _Handler(BaseHTTPRequestHandler):
             after = int(after_raw) if after_raw.isdigit() else 0
             self._json({"messages": msgs[after:], "seq": len(msgs)})
             return
+        if path == "/claude/sessions":
+            project = (qs.get("project", [""])[0] or "").strip()
+            roots = _project_roots()
+            cwd = roots.get(project) or roots.get("ccc")
+            sessions: list[dict[str, Any]] = []
+            if cwd:
+                d = _claude_projects_dir() / _cwd_encode(cwd)
+                try:
+                    files = sorted(d.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+                    for f in files[:30]:
+                        msgs = _parse_claude_jsonl(f)
+                        title = ""
+                        for m in msgs:
+                            if m["role"] == "user":
+                                title = m["content"].strip()[:40]
+                                break
+                        try:
+                            updated = int(f.stat().st_mtime)
+                        except OSError:
+                            updated = 0
+                        sessions.append(
+                            {"file": f.name, "title": title or "Claude 会话", "updated_at": updated, "count": len(msgs)}
+                        )
+                except OSError:
+                    pass
+            self._json({"sessions": sessions})
+            return
+        if path == "/claude/messages":
+            project = (qs.get("project", [""])[0] or "").strip()
+            file = (qs.get("file", [""])[0] or "").strip()
+            roots = _project_roots()
+            cwd = roots.get(project) or roots.get("ccc")
+            msgs: list[dict[str, str]] = []
+            if cwd and file and "/" not in file and ".." not in file:
+                p = _claude_projects_dir() / _cwd_encode(cwd) / file
+                msgs = _parse_claude_jsonl(p)
+            self._json({"messages": msgs})
+            return
         if path.startswith("/projects/") and path.endswith("/threads"):
             project = unquote(path[len("/projects/") : -len("/threads")])
             self._json({"threads": list_threads(project)})
@@ -237,12 +318,18 @@ class _Handler(BaseHTTPRequestHandler):
         message = str(body.get("message") or "").strip()
         thread_id = str(body.get("thread_id") or "").strip()
         project = str(body.get("project") or "").strip()
+        claude_session = str(body.get("claude_session") or "").strip()
         if not message or not project:
             self._json({"error": "message and project required"}, 400)
             return
         roots = _project_roots()
         project_root = roots.get(project) or roots.get("ccc")
-        history = load_thread(project, thread_id)
+        if claude_session and "/" not in claude_session and ".." not in claude_session:
+            history = _parse_claude_jsonl(
+                _claude_projects_dir() / _cwd_encode(project_root) / claude_session
+            )
+        else:
+            history = load_thread(project, thread_id)
         prompt = _build_prompt(project, history, message)
 
         self.send_response(200)
