@@ -21,6 +21,7 @@ skill 仓库：
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import subprocess
 import sys
@@ -31,9 +32,9 @@ OPENCOTE_SRC = PROJECT_ROOT / "server" / "config" / "opencode-skills"
 CLAUDE_SRC = PROJECT_ROOT / "server" / "config" / "claude-skills"
 
 NODES = {
-    "M1": {"host": ""},
-    "2017": {"host": "fan@192.168.3.116"},
-    "252": {"host": ""},  # TODO: 252 接入后填 ssh 目标
+    "M1": {"host": "", "windows": False},
+    "2017": {"host": "fan@192.168.3.116", "windows": False},
+    "252": {"host": "win@192.168.3.252", "windows": True},  # Windows Worker（W9）
 }
 
 HOME_DIR = Path.home()
@@ -51,34 +52,75 @@ def file_hash(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
-def remote_cmd(host: str, cmd: str) -> str:
+def remote_cmd(host: str, cmd: str, timeout: int = 45) -> str:
+    """执行远端命令；host 空=本机。SSH 不稳（252）用重试 + 长超时。"""
     if not host:
         res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
-    else:
-        res = subprocess.run(["ssh", "-o", "ConnectTimeout=8", host, cmd], capture_output=True, text=True)
-    return res.stdout.strip()
+        return res.stdout.strip()
+    last = ""
+    for _ in range(4):  # 重试容错（252 banner 超时已知问题）
+        try:
+            res = subprocess.run(
+                ["ssh", "-o", "ConnectTimeout=30", "-o", "BatchMode=yes", host, cmd],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            last = res.stdout.strip()
+            if last or "timed out" not in res.stderr.lower():
+                return last
+        except subprocess.TimeoutExpired:
+            last = ""
+    return last
 
 
-def remote_hash(host: str, path: str) -> str | None:
+def remote_hash(host: str, path: str, windows: bool = False) -> str | None:
+    if windows:
+        # Windows：用 python hashlib（md5 -q 不存在）
+        py = f"import hashlib;print(hashlib.md5(open(r'{path}','rb').read()).hexdigest())"
+        out = remote_cmd(host, f'python -c "{py}"')
+        return out if re_full_hex(out) else None
     out = remote_cmd(host, f"md5 -q {path} 2>/dev/null || md5sum {path} 2>/dev/null | awk '{{print $1}}'")
-    return out or None
+    return out if re_full_hex(out) else None
 
 
-def sync_one(host: str, src_dir: Path, dst_rel: str, name: str, check_only: bool) -> None:
+def re_full_hex(s: str) -> bool:
+    return bool(s and len(s) == 32 and all(c in "0123456789abcdef" for c in s.lower()))
+
+
+def sync_one(host: str, src_dir: Path, dst_rel: str, name: str, check_only: bool, windows: bool = False) -> None:
     src = src_dir / name
     if not src.is_dir():
         log(f"跳过（仓无 skill）: {name}")
         return
     dst = f"{dst_rel}/{name}"
     src_hash = file_hash(src / "SKILL.md")
-    dst_hash = remote_hash(host, f"{dst}/SKILL.md")
+    dst_hash = remote_hash(host, f"{dst}/SKILL.md", windows=windows)
     if check_only:
         if src_hash == dst_hash:
             log(f"OK: {name} @ {host or '本机'}（hash 一致）")
         else:
             log(f"MISMATCH: {name} @ {host or '本机'}（仓={src_hash} 节点={dst_hash or '缺失'}）→ 需 sync")
         return
-    # 下发（rsync --delete 保持与仓一致；排除 __pycache__）
+    # 下发：Windows 用 base64+python（rsync 不可用）；类 Unix 用 rsync
+    if windows:
+        b64 = base64.b64encode((src / "SKILL.md").read_bytes()).decode()
+        py = (
+            f"import base64,os,sys;"
+            f"d=r'{dst}';os.makedirs(d,exist_ok=True);"
+            f"open(os.path.join(d,'SKILL.md'),'wb').write(base64.b64decode(sys.stdin.read()))"
+        )
+        res = subprocess.run(
+            ["sh", "-c", f"echo '{b64}' | ssh -o ConnectTimeout=30 -o BatchMode=yes {host} 'python -c \"{py}\"'"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if res.returncode != 0:
+            log(f"SYNC FAIL: {name} → {dst}（Windows）: {res.stderr.strip()[:100]}")
+            return
+        log(f"SYNCED: {name} → {host}:{dst}")
+        return
     cmd = f"mkdir -p {dst_rel}"
     remote_cmd(host, cmd)
     dst_full = dst if not host else f"{host}:{dst}"
@@ -104,11 +146,15 @@ def main() -> None:
         if target and target != node:
             continue
         host = meta["host"]
+        windows = bool(meta.get("windows"))
+        # Windows 节点 skill 目录用绝对路径（~ 在 Windows OpenSSH 不展开）
+        oc_dir = "C:/Users/win/.opencode/skills" if windows else "~/.opencode/skills"
+        cl_dir = "C:/Users/win/.claude/skills" if windows else "~/.claude/skills"
         log(f"── 节点 {node}（host={host or '本机'}）──")
         for name in opencode_names:
-            sync_one(host, OPENCOTE_SRC, "~/.opencode/skills", name, check_only)
+            sync_one(host, OPENCOTE_SRC, oc_dir, name, check_only, windows=windows)
         for name in claude_names:
-            sync_one(host, CLAUDE_SRC, "~/.claude/skills", name, check_only)
+            sync_one(host, CLAUDE_SRC, cl_dir, name, check_only, windows=windows)
     log(f"完成（check={check_only}）")
 
 
