@@ -2947,7 +2947,7 @@ body.ro-viewer [data-write] {
 .board-card-stream-lines {
   display: flex;
   flex-direction: column-reverse;
-  height: 43px;
+  height: 71px;
   overflow: hidden;
   gap: 1px;
 }

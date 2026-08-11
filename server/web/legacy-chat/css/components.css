@@ -2556,7 +2556,7 @@
   color: var(--ccc-text-base);
   line-height: 1.4;
   word-break: break-word;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   letter-spacing: -0.01em;
 }
 .board-card-metrics {
@@ -2564,7 +2564,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 5px 6px;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   max-width: 100%;
 }
 .board-card-metrics:empty {
@@ -2584,6 +2584,10 @@
   font-size: 10px;
   color: var(--ccc-text-muted);
   min-height: 18px;
+}
+.board-card-meta-time {
+  margin-left: auto;
+  white-space: nowrap;
 }
 .board-card-badge {
   display: inline-flex;

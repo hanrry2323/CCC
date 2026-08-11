@@ -338,7 +338,7 @@ function _connectStream() {
       div.className = 'board-stream-line';
       div.textContent = d.line;
       box.appendChild(div);
-      while (box.children.length > 3) box.removeChild(box.firstChild); // 硬性 3 行
+      while (box.children.length > 5) box.removeChild(box.firstChild); // 硬性 5 行
     } catch (err) { /* 忽略坏事件 */ }
   });
   _es.onerror = () => {

@@ -156,8 +156,8 @@ export function renderTaskCard(t, opts = {}) {
       <div class="board-card-meta">
         ${executor}
         ${rejectHtml}
+        ${updatedHtml ? `<span class="board-card-meta-time">${updatedHtml}</span>` : ''}
       </div>
-      ${updatedHtml ? `<div class="board-card-foot">${updatedHtml}</div>` : ''}
       <div class="board-card-detail" hidden></div>
     </div>
   `;
