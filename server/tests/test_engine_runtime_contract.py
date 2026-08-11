@@ -156,3 +156,45 @@ class TestConverger:
         rec = read_card_state(tmp_path).get("c6")
         assert rec is not None
         assert rec.get("infra_cooldown_until") == "2026-08-11T23:59:59Z"
+
+
+def test_trigger_scheduled_ops_immediate(tmp_path) -> None:
+    """定时运维触发：无「定时」字段的 scheduler 卡首次扫描即触发（2026-08-11）。"""
+    from server.engine.observer import trigger_scheduled_ops
+
+    dispatch = tmp_path / "dispatch" / "ops"
+    dispatch.mkdir(parents=True)
+    log = tmp_path / "logs"
+    log.mkdir(parents=True)
+    (dispatch / "ops001-immediate.md").write_text(
+        "# 任务卡 ops001\n\n> 关联：ccc · 执行体：W9 · 状态：待分派 · 派发：scheduler\n", encoding="utf-8"
+    )
+    cfg = {
+        "SCHEDULER_DISPATCH_DIR": str(tmp_path / "dispatch"),
+        "EXECUTOR_LOG_DIR": str(log),
+    }
+    ok, summary = trigger_scheduled_ops(cfg)
+    assert ok
+    assert any("ops001" in t for t in summary["triggered"])
+
+
+def test_trigger_scheduled_ops_deferred(tmp_path) -> None:
+    """定时运维触发：定时未到的 scheduler 卡保持 pending（2026-08-11）。"""
+    from server.engine.observer import trigger_scheduled_ops
+
+    dispatch = tmp_path / "dispatch" / "ops"
+    dispatch.mkdir(parents=True)
+    log = tmp_path / "logs"
+    log.mkdir(parents=True)
+    (dispatch / "ops003-notyet.md").write_text(
+        "# 任务卡 ops003\n\n> 关联：ccc · 执行体：W9 · 状态：待分派 · 派发：scheduler · 定时：23:59\n",
+        encoding="utf-8",
+    )
+    cfg = {
+        "SCHEDULER_DISPATCH_DIR": str(tmp_path / "dispatch"),
+        "EXECUTOR_LOG_DIR": str(log),
+    }
+    ok, summary = trigger_scheduled_ops(cfg)
+    assert ok
+    assert any("ops003" in p for p in summary["pending"])
+    assert not summary["triggered"]

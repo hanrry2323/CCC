@@ -1160,3 +1160,69 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def trigger_scheduled_ops(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """定时运维任务触发（2026-08-11 · 集群运维 Agent 调取）。
+
+    扫描「派发：scheduler」的待分派卡：
+      - 卡头「定时：HH:MM」→ 到点才触发
+      - 无「定时」字段 → 首次扫描即触发
+    触发 = 写 sidecar state=待分派 + reason=scheduler_triggered:<ts>
+    （远端 Worker 认领时看到此标记即认领执行；Engine 不本地拉起。）
+
+    Returns:
+        (ok, {"triggered": [卡ID], "pending": [卡ID]})
+    """
+    dispatch_dir = cfg.get("SCHEDULER_DISPATCH_DIR", "")
+    if not dispatch_dir:
+        dispatch_dir = PROJECT_ROOT / "docs" / "dispatch"
+    dispatch_dir = Path(dispatch_dir)
+    log_dir = cfg.get("EXECUTOR_LOG_DIR", "")
+    if not log_dir:
+        log_dir = os.environ.get("EXECUTOR_LOG_DIR") or os.environ.get("CCC_LOG_DIR") or ""
+    if not log_dir:
+        logger.warning("trigger_scheduled_ops: 无 EXECUTOR_LOG_DIR，跳过")
+        return (True, {"triggered": [], "pending": [], "reason": "no log_dir"})
+
+    now_dt = datetime.datetime.now()
+    now_str = now_dt.strftime("%H:%M")
+    triggered: list[str] = []
+    pending: list[str] = []
+
+    from server.engine.runtime_state import write_card_state
+
+    for path in sorted(dispatch_dir.rglob("*.md")):
+        if path.name.startswith("."):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        meta = parse_metadata(text)
+        if meta.get("派发", "engine") != "scheduler":
+            continue
+        card_id = path.stem
+        state = meta.get("状态", "").strip()
+        # 只触发待分派卡（已触发/执行中/已关闭不重复触发）
+        if state and state not in ("待分派", ""):
+            continue
+        # 已触发过（sidecar 有 scheduler_triggered 标记）→ 不重复
+        from server.engine.runtime_state import read_card_state
+
+        rt = read_card_state(log_dir).get(card_id, {})
+        if "scheduler_triggered" in str(rt.get("reason", "")):
+            pending.append(card_id)
+            continue
+        # 定时字段：到点才触发
+        schedule = meta.get("定时", "").strip()
+        if schedule and now_str < schedule:
+            pending.append(card_id)
+            continue
+        write_card_state(
+            log_dir,
+            card_id,
+            state="待分派",
+            reason=f"scheduler_triggered:{now_dt.isoformat(timespec='seconds')}",
+        )
+        triggered.append(card_id)
+        logger.info("定时运维任务已触发: %s (schedule=%s)", card_id, schedule or "immediate")
+
+    return (True, {"triggered": triggered, "pending": pending})

@@ -44,6 +44,7 @@ class ScheduledTask:
         task_type: TASK_TYPE_READONLY 或 TASK_TYPE_CHANGE。
         run: 可调用对象，接收 config dict，返回 (ok: bool, summary: dict)。
     """
+
     name: str
     task_type: str
     run: Callable[[dict[str, Any]], tuple[bool, dict[str, Any]]]
@@ -51,9 +52,11 @@ class ScheduledTask:
 
 # ── 注册表 ──
 
+
 @dataclass
 class TaskRegistry:
     """定时任务注册表。"""
+
     tasks: list[ScheduledTask] = field(default_factory=list)
 
     def register(self, task: ScheduledTask) -> None:
@@ -68,6 +71,7 @@ class TaskRegistry:
 
 # ── 执行 ──
 
+
 def run_tasks(
     registry: TaskRegistry,
     cfg: dict[str, Any],
@@ -81,12 +85,14 @@ def run_tasks(
 
     for task in registry.list_readonly():
         ok, summary = task.run(cfg)
-        results.append({
-            "name": task.name,
-            "type": task.task_type,
-            "ok": ok,
-            "summary": summary,
-        })
+        results.append(
+            {
+                "name": task.name,
+                "type": task.task_type,
+                "ok": ok,
+                "summary": summary,
+            }
+        )
         if ok:
             logger.info("巡检任务 %s 完成: %s", task.name, summary)
         else:
@@ -95,32 +101,35 @@ def run_tasks(
     if dispatch_dir:
         for task in registry.list_change():
             ok, summary = task.run(cfg)
-            results.append({
-                "name": task.name,
-                "type": task.task_type,
-                "ok": ok,
-                "summary": summary,
-            })
+            results.append(
+                {
+                    "name": task.name,
+                    "type": task.task_type,
+                    "ok": ok,
+                    "summary": summary,
+                }
+            )
             if ok:
                 logger.info("变更任务 %s 完成: %s", task.name, summary)
             else:
                 logger.warning("变更任务 %s 失败: %s", task.name, summary)
     else:
         for task in registry.list_change():
-            logger.info(
-                "变更任务 %s 跳过（SCHEDULER_DISPATCH_DIR 未配置）", task.name
+            logger.info("变更任务 %s 跳过（SCHEDULER_DISPATCH_DIR 未配置）", task.name)
+            results.append(
+                {
+                    "name": task.name,
+                    "type": task.task_type,
+                    "ok": True,
+                    "summary": {"skipped": True, "reason": "dispatch_dir not configured"},
+                }
             )
-            results.append({
-                "name": task.name,
-                "type": task.task_type,
-                "ok": True,
-                "summary": {"skipped": True, "reason": "dispatch_dir not configured"},
-            })
 
     return results
 
 
 # ── CLI ──
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -188,31 +197,51 @@ def main(argv: list[str] | None = None) -> int:
 
 # ── 默认注册表 ──
 
+
 def _default_registry() -> TaskRegistry:
     """返回默认注册表（含集群采集巡检任务）。"""
     registry = TaskRegistry()
 
-    # 延迟导入避免��环依赖
+    # 延迟导入避免循环依赖
     from server.engine.cluster import collect_cluster_status
     from server.engine.observer import run_observation_metrics, run_observer
 
-    registry.register(ScheduledTask(
-        name="cluster-collect",
-        task_type=TASK_TYPE_READONLY,
-        run=collect_cluster_status,
-    ))
+    def _trigger_scheduled_ops_wrapper(cfg):
+        from server.engine.observer import trigger_scheduled_ops
 
-    registry.register(ScheduledTask(
-        name="loop-observer",
-        task_type=TASK_TYPE_READONLY,
-        run=run_observer,
-    ))
+        return trigger_scheduled_ops(cfg)
 
-    registry.register(ScheduledTask(
-        name="observation-metrics",
-        task_type=TASK_TYPE_READONLY,
-        run=run_observation_metrics,
-    ))
+    registry.register(
+        ScheduledTask(
+            name="cluster-collect",
+            task_type=TASK_TYPE_READONLY,
+            run=collect_cluster_status,
+        )
+    )
+
+    registry.register(
+        ScheduledTask(
+            name="loop-observer",
+            task_type=TASK_TYPE_READONLY,
+            run=run_observer,
+        )
+    )
+
+    registry.register(
+        ScheduledTask(
+            name="observation-metrics",
+            task_type=TASK_TYPE_READONLY,
+            run=run_observation_metrics,
+        )
+    )
+
+    registry.register(
+        ScheduledTask(
+            name="scheduled-ops-trigger",
+            task_type=TASK_TYPE_READONLY,
+            run=_trigger_scheduled_ops_wrapper,
+        )
+    )
 
     return registry
 
