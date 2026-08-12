@@ -182,10 +182,8 @@ if [[ ${#CREATED[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# ── Phase 2: 全量校验（所有卡通过后才 commit，失败则整体回滚）──
-VALIDATE_FAILED=false
-for card_path in "${CREATED[@]}"; do
-  if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+# ── Phase 2: 全量校验（一次 validate_cards 全树扫描，O(N) 而非逐卡 O(N²)）──
+if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
 import sys
 sys.path.insert(0, '.')
 from server.board.validate import validate_cards
@@ -198,12 +196,6 @@ if errs:
     sys.exit(1)
 print('[OK] 本项目卡头校验通过')
 " ); then
-    echo "[ERROR] validate 失败：$card_path" >&2
-    VALIDATE_FAILED=true
-  fi
-done
-
-if [[ "$VALIDATE_FAILED" == true ]]; then
   echo "[ERROR] 全量校验未通过，回滚所有临时卡" >&2
   for c in "${CREATED[@]}"; do rm -f "$c"; done
   exit 1

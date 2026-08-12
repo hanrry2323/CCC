@@ -31,9 +31,15 @@ cd "$CCC_REPO"
 
 log() { echo "[worker-claim:$WORKER_ID] $*"; }
 
-# 1. 同步
-git pull --rebase --autostash origin main >/dev/null 2>&1 || git pull origin main >/dev/null 2>&1
-log "已同步 origin/main: $(git rev-parse --short HEAD)"
+# 1. 同步（Fix #10：pull 失败必须退出，绝不带旧视图认领，否则认领基于过期状态）
+if git pull --rebase --autostash origin main >/dev/null 2>&1; then
+    log "已同步 origin/main（rebase）: $(git rev-parse --short HEAD)"
+elif git pull origin main >/dev/null 2>&1; then
+    log "已同步 origin/main（merge）: $(git rev-parse --short HEAD)"
+else
+    echo "[ERROR] git pull 失败，无法与 origin/main 对齐，终止认领（避免基于过期状态）" >&2
+    exit 2
+fi
 
 # 2. 扫描本 Worker 的待分派卡（执行体=W号 + 状态=待分派 + 无认领字段）
 find_cards() {
@@ -81,21 +87,37 @@ text = text[:m.start(1)] + new_first + text[m.end(1):]
 card.write_text(text, encoding="utf-8")
 print(f"认领标记已写入: {card.name}")
 PY
+    # Fix #10：认领 push 前记录当前 HEAD，push 失败可精确回滚认领标记，不留脏认领
+    local pre_claim_sha
+    pre_claim_sha="$(git rev-parse --short HEAD)"
     git add "$card"
     git commit -q -m "claim($WORKER_ID): 认领 ${card_name:-unknown}"
-    git push origin main >/dev/null 2>&1
-    log "已认领 ${card_name:-unknown}（$WORKER_ID @ $ts）"
-    return 0
+    if git push origin main >/dev/null 2>&1; then
+        log "已认领 ${card_name:-unknown}（$WORKER_ID @ $ts）"
+        return 0
+    fi
+    # push 失败：回滚本地认领提交（卡文件回到认领前状态），退出非 0 让上层感知
+    echo "[ERROR] 认领 push 失败，回滚认领标记: ${card_name:-unknown}" >&2
+    git reset --hard "$pre_claim_sha" >/dev/null 2>&1 || git checkout -- "$card" 2>/dev/null || true
+    return 3
 }
 
 card_name=""
 claimed=""
 for card in $(find_cards); do
     card_name="$(basename "$card")"
-    if claim_one "$card"; then
+    rc=0
+    claim_one "$card" || rc=$?  # 容忍非 0：rc=1 不可认领 / rc=3 push 失败已回滚
+    if [ "$rc" -eq 0 ]; then
         claimed="$card"
         break  # 一次认领一张，执行完再下一轮
     fi
+    if [ "$rc" -eq 3 ]; then
+        # Fix #10：认领 push 失败已回滚 → 直接失败退出，不再尝试其它卡
+        echo "[ERROR] 认领因 push 失败终止（已回滚认领）" >&2
+        exit 3
+    fi
+    # rc=1：该卡不可认领（状态/已认领/未到定时点），继续下一张
 done
 
 if [ -z "$claimed" ]; then

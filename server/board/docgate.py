@@ -126,7 +126,8 @@ def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[s
                 ["git", "merge-base", "--is-ancestor", branch_ref, base_ref],
                 cwd=repo_root,
                 capture_output=True,
-                check=False
+                check=False,
+                timeout=15,
             )
             if res_merged.returncode == 0:
                 is_merged = True
@@ -142,7 +143,8 @@ def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[s
                     cwd=repo_root,
                     capture_output=True,
                     text=True,
-                    check=True
+                    check=True,
+                    timeout=15,
                 )
                 commits = [c.strip() for c in res_commits.stdout.splitlines() if c.strip()]
                 if commits:
@@ -159,7 +161,8 @@ def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[s
                     cwd=repo_root,
                     capture_output=True,
                     text=True,
-                    check=True
+                    check=True,
+                    timeout=15,
                 )
                 mb = res_mb.stdout.strip()
                 diff_target = f"{mb}..{branch_ref}"
@@ -172,7 +175,8 @@ def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[s
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=15,
             )
             return [line.strip() for line in res.stdout.splitlines() if line.strip()]
         except Exception:
@@ -180,7 +184,8 @@ def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[s
 
     try:
         res = subprocess.run(
-            ["git", "diff", "--name-only", base_ref], cwd=repo_root, capture_output=True, text=True, check=True
+            ["git", "diff", "--name-only", base_ref], cwd=repo_root, capture_output=True, text=True, check=True,
+            timeout=15,
         )
         return [line.strip() for line in res.stdout.splitlines() if line.strip()]
     except Exception:

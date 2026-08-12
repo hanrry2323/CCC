@@ -36,9 +36,7 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
 }
 
 # 方案文件路径模式
-_PLAN_PATH_RE = re.compile(
-    r"^docs/projects/([a-z]{2,4})/plans/([0-9]{3})-([a-z0-9][-a-z0-9]*)\.md$"
-)
+_PLAN_PATH_RE = re.compile(r"^docs/projects/([a-z]{2,4})/plans/([0-9]{3})-([a-z0-9][-a-z0-9]*)\.md$")
 
 # 方案头部字段提取（匹配 "键：值" 格式）
 _FIELD_RE = re.compile(r"([^：]+)：(.+)")
@@ -236,6 +234,43 @@ def _next_num(repo_root: Path, prefix: str) -> str:
     return f"{max_n + 1:03d}"
 
 
+def _git_commit_push(repo_root: Path, rel_paths: list[str], message: str) -> tuple[bool, str]:
+    """对指定文件批量 commit + push；与 convert_plan 同规则（P0/P1 加固：方案文件落 git）。
+
+    Returns:
+        (ok, err) — push 失败返回 (False, err) 保留本地 commit，不吞错误、不循环重试。
+    """
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo_root), "add", "--", *rel_paths],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo_root), "commit", "-m", message],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo_root), "push"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()[:500]
+        return False, f"commit/push 失败，文件已落盘需手动处理: {detail}"
+    except (subprocess.SubprocessError, OSError) as exc:
+        return False, f"git 操作异常: {exc}"
+    logger.info("方案文件已 commit+push: %s", ", ".join(rel_paths))
+    return True, ""
+
+
 def create_plan(
     repo_root: Path,
     *,
@@ -257,16 +292,21 @@ def create_plan(
     if not author or not author.strip():
         return {"error": "作者不能为空"}
 
-    num = _next_num(repo_root, project)
-    slug = _title_to_slug(title)
-    plans_dir = repo_root / "docs" / "projects" / project / "plans"
-    plans_dir.mkdir(parents=True, exist_ok=True)
+    # 并发锁（Fix #9）：编号分配 + 写盘串行化，防两请求同取 next num 互相覆盖。
+    lock_f = _acquire_convert_lock(repo_root, project)
+    if lock_f is None:
+        return {"error": f"{project} 有方案创建/转卡进行中，请稍后重试"}
+    try:
+        num = _next_num(repo_root, project)
+        slug = _title_to_slug(title)
+        plans_dir = repo_root / "docs" / "projects" / project / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
 
-    today = date.today().isoformat()
-    plan_id = f"{project}-plan-{num}"
+        today = date.today().isoformat()
+        plan_id = f"{project}-plan-{num}"
 
-    # 构建完整方案文件
-    plan_content = f"""# 方案 · {title}
+        # 构建完整方案文件
+        plan_content = f"""# 方案 · {title}
 
 > 项目：{project} · 编号：{plan_id} · 状态：草案 · 作者：{author} · 工具：{tool}
 > 创建：{today} · 更新：{today}
@@ -275,26 +315,33 @@ def create_plan(
 
 {content}
 """
-    file_path = plans_dir / f"{num}-{slug}.md"
-    file_path.write_text(plan_content)
+        file_path = plans_dir / f"{num}-{slug}.md"
+        file_path.write_text(plan_content)
 
-    rel = str(file_path.relative_to(repo_root))
+        rel = str(file_path.relative_to(repo_root))
 
-    # 校验
-    validate_script = repo_root / "scripts" / "validate-plans.sh"
-    if validate_script.exists():
-        result = subprocess.run(
-            ["bash", str(validate_script), str(file_path)],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        if result.returncode != 0:
-            # 校验失败，删除文件
-            file_path.unlink(missing_ok=True)
-            return {"error": f"方案校验失败:\n{result.stderr or result.stdout}"}
+        # 校验
+        validate_script = repo_root / "scripts" / "validate-plans.sh"
+        if validate_script.exists():
+            result = subprocess.run(
+                ["bash", str(validate_script), str(file_path)],
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
+            )
+            if result.returncode != 0:
+                # 校验失败，删除文件
+                file_path.unlink(missing_ok=True)
+                return {"error": f"方案校验失败:\n{result.stderr or result.stdout}"}
 
-    return {"ok": True, "path": rel, "id": plan_id}
+        # Fix #8：commit+push 与 convert_plan 同规则
+        ok, err = _git_commit_push(repo_root, [rel], f"plans: create {plan_id} — {slug}")
+        if not ok:
+            return {"ok": True, "path": rel, "id": plan_id, "partial": True, "warning": err}
+
+        return {"ok": True, "path": rel, "id": plan_id}
+    finally:
+        _release_convert_lock(lock_f, repo_root, project)
 
 
 def _title_to_slug(title: str) -> str:
@@ -391,7 +438,12 @@ def update_plan(
 
     plan_file.write_text(current)
 
-    return {"ok": True}
+    # Fix #8：commit+push 与 convert_plan 同规则
+    ok, err = _git_commit_push(repo_root, [rel_path], f"plans: update {rel_path}")
+    if not ok:
+        return {"ok": True, "updated": True, "partial": True, "warning": err}
+
+    return {"ok": True, "updated": True}
 
 
 _CONVERT_LOCK = threading.Lock()

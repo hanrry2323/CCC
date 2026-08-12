@@ -158,8 +158,8 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
         if success:
             return str(target), None
         # 未成功收单：重置
-        subprocess.run(["git", "checkout", "--", "."], cwd=target, capture_output=True, check=False)
-        subprocess.run(["git", "clean", "-fd"], cwd=target, capture_output=True, check=False)
+        subprocess.run(["git", "checkout", "--", "."], cwd=target, capture_output=True, check=False, timeout=30)
+        subprocess.run(["git", "clean", "-fd"], cwd=target, capture_output=True, check=False, timeout=60)
         status = subprocess.run(
             ["git", "status", "--porcelain"], cwd=target, capture_output=True, text=True, check=False
         )
@@ -176,9 +176,9 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
         if is_clean:
             return str(target), None
         # 脏或分叉：强重建
-        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(target)], capture_output=True, check=False)
-        subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, check=False)
-        subprocess.run(["git", "-C", str(repo), "branch", "-D", branch], capture_output=True, check=False)
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(target)], capture_output=True, check=False, timeout=60)
+        subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, check=False, timeout=30)
+        subprocess.run(["git", "-C", str(repo), "branch", "-D", branch], capture_output=True, check=False, timeout=30)
         rc, err = _try_add(new_branch=True)
         if rc != 0:
             rc2, err2 = _try_add(new_branch=False)
@@ -198,6 +198,28 @@ logger = logging.getLogger("ccc.engine")
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
 MAX_MARKER_AGE_SECONDS = 7200  # 2h：running 标记超过此时间强制回收，防僵尸进程永久占用槽位
+
+# ── git 超时统一包装 ──
+_GIT_DEFAULT_TIMEOUT = 30  # 默认值（git 命令通常 <30s）
+
+
+def _git_run(
+    args: list[str],
+    timeout: int = _GIT_DEFAULT_TIMEOUT,
+    *,
+    cwd: Path | str | None = None,
+    check: bool = True,
+    capture: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """统一 git 调用：封装 timeout，避免磁盘锁/网络延迟永久阻塞。"""
+    return subprocess.run(
+        args,
+        cwd=str(cwd) if cwd else None,
+        capture_output=capture,
+        text=True,
+        timeout=timeout,
+        check=check,
+    )
 
 _probe_failures_count = 0
 
@@ -327,6 +349,21 @@ def _is_persistence_failure(reasons: list[str]) -> bool:
     return any(("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r) for r in reasons)
 
 
+def _write_pipeline_warning(event: str, work_id: str, detail: str) -> None:
+    """写 pipeline 告警状态（不抛异常，Engine 运行时自动采集）。"""
+    try:
+        from server.engine.pipeline_status import write_pipeline_status
+
+        write_pipeline_status(
+            event=event,
+            work_id=work_id,
+            detail=detail,
+            level="warning",
+        )
+    except Exception:
+        pass
+
+
 def _mark_branch_card_state(
     work: Work,
     registry: ExecutorRegistry,
@@ -362,14 +399,32 @@ def _mark_branch_card_state(
             return
         card_file.write_text(new_text, encoding="utf-8")
         branch = f"codex/{Path(work.card_path).stem.lower()}"
-        subprocess.run(["git", "add", "--", work.card_path], cwd=wt_hint, capture_output=True, check=False)
-        subprocess.run(
+
+        # 检查 rc：git add/commit/push 失败时保留脏现场 + 写告警
+        add = subprocess.run(["git", "add", "--", work.card_path], cwd=wt_hint, capture_output=True, check=False, timeout=30)
+        if add.returncode != 0:
+            logger.error("机审打回落分支 git add 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, add.stderr.strip()[:200])
+            _write_pipeline_warning("git_add_failed", work.id, f"git add 失败: {add.stderr.strip()[:200]}")
+            return
+
+        commit = subprocess.run(
             ["git", "commit", "-m", f"chore(engine): {work.id} 机审打回，状态落分支信封（防死循环）"],
             cwd=wt_hint,
             capture_output=True,
             check=False,
+            timeout=30,
         )
-        subprocess.run(["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False)
+        if commit.returncode != 0:
+            logger.error("机审打回落分支 git commit 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, commit.stderr.strip()[:200])
+            _write_pipeline_warning("git_commit_failed", work.id, f"git commit 失败: {commit.stderr.strip()[:200]}")
+            return
+
+        push = subprocess.run(["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False, timeout=60)
+        if push.returncode != 0:
+            logger.error("机审打回落分支 git push 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, push.stderr.strip()[:200])
+            _write_pipeline_warning("git_push_failed", work.id, f"git push 失败: {push.stderr.strip()[:200]}")
+            return
+
         logger.warning("机审打回已落分支卡状态: work=%s branch=%s", work.id, branch)
     except Exception as exc:
         logger.warning("机审打回落分支卡失败（不阻断打回）: work=%s (%s)", work.id, exc)
@@ -1904,6 +1959,7 @@ def _dispatch_and_collect(
                     ["git", "-C", str(target_path), "rev-parse", "--git-dir"],
                     capture_output=True,
                     check=False,
+                    timeout=15,
                 )
                 if res_git.returncode == 0:
                     worktree_path = str(target_path)
@@ -2534,14 +2590,14 @@ def _clear_claim_marker(card_path: Path, card_id: str) -> None:
         card_path.write_text(text, encoding="utf-8")
         import subprocess
 
-        subprocess.run(["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True)
+        subprocess.run(["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True, timeout=30)
         subprocess.run(
             ["git", "commit", "-m", f"claim-reclaim: 认领超时回收 {card_id}"],
             cwd=card_path.parents[2],
             check=False,
             capture_output=True,
         )
-        subprocess.run(["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True, timeout=60)
         logger.info("认领标记已清理（超时回收）: %s", card_id)
     except OSError:
         logger.warning("清理认领标记失败（写）: %s", card_id)

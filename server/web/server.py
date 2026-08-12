@@ -3028,7 +3028,13 @@ class _CCCThreadingHTTPServer(ThreadingHTTPServer):
         self._worker_semaphore = threading.BoundedSemaphore(32)
 
     def process_request(self, request: Any, client_address: Any) -> None:
-        """线程池限流：信号量满 → accept 阻塞，内核 backlog 缓冲溢出的连接。"""
+        """线程池限流：静态只读端点免限，其余受信号量控制。"""
+        # 静态端点（/health、/board/*）不占并发配额
+        path = request.requestline.split(" ")[1] if hasattr(request, 'requestline') else ""
+        path = path.split("?")[0].rstrip("/") or "/"
+        if path in ("/health",) or path.startswith("/board/"):
+            super().process_request(request, client_address)
+            return
         self._worker_semaphore.acquire()
         try:
             super().process_request(request, client_address)

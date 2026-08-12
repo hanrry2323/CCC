@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -131,6 +132,39 @@ def _build_prompt(project: str, history: list[dict[str, Any]], message: str) -> 
     return "\n\n".join(parts)
 
 
+def _terminate_proc(proc: subprocess.Popen[Any]) -> None:
+    """确保子进程及整个进程组结束：运行中则 killpg + wait（超时/断连兜底）。
+
+    自我误杀隔离：``preexec_fn=os.setsid`` 的 fork→setsid 竞态窗口内，子进程仍可能
+    属于本服务端进程组，直接 killpg 会连 Web 自身一起 SIGKILL。故 killpg 前校验
+    ``pgid > 1`` 且 ``pgid != os.getpgrp()``；无 pid / 非法 pgid / 取 pgid 失败一律
+    退化为 ``proc.kill()``。
+    """
+    if proc.poll() is None:
+        try:
+            pid = getattr(proc, "pid", None)
+            if pid is None:
+                proc.kill()
+            else:
+                try:
+                    pgid = os.getpgid(pid)
+                    if pgid > 1 and pgid != os.getpgrp():
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        proc.kill()
+                except OSError:
+                    proc.kill()
+        except OSError:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+    try:
+        proc.wait(timeout=1.0)
+    except Exception:
+        pass
+
+
 def _run_claude_stream(prompt: str, project_root: str):
     """调 M1 claude CLI（stream-json），逐事件产出 (type, payload) 或 None 结束。"""
     env = dict(os.environ)
@@ -171,12 +205,13 @@ def _run_claude_stream(prompt: str, project_root: str):
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            start_new_session=True,
         )
         assert proc.stdin is not None
         try:
             proc.stdin.write(prompt)
             proc.stdin.close()
-        except BrokenPipeError:
+        except (BrokenPipeError, subprocess.TimeoutExpired):
             pass
     else:
         proc = subprocess.Popen(
@@ -186,34 +221,37 @@ def _run_claude_stream(prompt: str, project_root: str):
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            start_new_session=True,
         )
     assert proc.stdout is not None
-    for raw in proc.stdout:
-        raw = raw.strip()
-        if not raw:
-            continue
-        try:
-            ev = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        etype = ev.get("type")
-        if etype == "assistant":
-            msg = ev.get("message") or {}
-            for block in msg.get("content") or []:
-                kind = block.get("type")
-                if kind == "text" and block.get("text"):
-                    yield ("text", {"text": block["text"]})
-                elif kind == "thinking" and block.get("thinking"):
-                    yield ("thinking", {"thinking": block["thinking"]})
-                elif kind == "tool_use" and block.get("name"):
-                    yield ("tool_use", {"name": block["name"], "input": block.get("input", {})})
-        elif etype == "result":
-            yield ("done", {})
-            break
-        elif etype == "system" and ev.get("subtype") == "error":
-            yield ("error", {"message": str(ev.get("message") or ev.get("error") or "claude error")})
-            break
-    proc.wait(timeout=10)
+    try:
+        for raw in proc.stdout:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                ev = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            etype = ev.get("type")
+            if etype == "assistant":
+                msg = ev.get("message") or {}
+                for block in msg.get("content") or []:
+                    kind = block.get("type")
+                    if kind == "text" and block.get("text"):
+                        yield ("text", {"text": block["text"]})
+                    elif kind == "thinking" and block.get("thinking"):
+                        yield ("thinking", {"thinking": block["thinking"]})
+                    elif kind == "tool_use" and block.get("name"):
+                        yield ("tool_use", {"name": block["name"], "input": block.get("input", {})})
+            elif etype == "result":
+                yield ("done", {})
+                break
+            elif etype == "system" and ev.get("subtype") == "error":
+                yield ("error", {"message": str(ev.get("message") or ev.get("error") or "claude error")})
+                break
+    finally:
+        _terminate_proc(proc)
 
 
 class _Handler(BaseHTTPRequestHandler):

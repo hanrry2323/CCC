@@ -269,9 +269,51 @@ def load_index_file(dispatch_dir: Path | str | None = None) -> dict[str, dict]:
     return entries
 
 
+def _index_lock_path(index_path: Path) -> Path:
+    """索引锁文件：与索引同目录的 <name>.lock，跨进程互斥（Fix #11）。留在磁盘上，
+    flock 锁依赖文件 inode，删锁文件会导致新进程对旧 inode 加锁而另一进程对新文件加锁失效。"""
+    return index_path.with_name(index_path.name + ".lock")
+
+
+def _index_lock_acquire(index_path: Path):
+    """获取索引跨进程写锁。返回文件句柄（须配 _index_lock_release）或 None（无 fcntl/失败退化为无锁）。"""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    lock_path = _index_lock_path(index_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        f = open(lock_path, "a")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f
+    except OSError:
+        return None
+
+
+def _index_lock_release(f) -> None:
+    if f is None:
+        return
+    try:
+        import fcntl as _f
+
+        _f.flock(f, _f.LOCK_UN)
+    finally:
+        f.close()
+
+
 def save_index_file(entries: dict[str, dict], dispatch_dir: Path | str | None = None) -> None:
     index_path = get_index_path(dispatch_dir)
     index_path.parent.mkdir(parents=True, exist_ok=True)
+    h = _index_lock_acquire(index_path)
+    try:
+        _write_index_entries(entries, index_path)
+    finally:
+        _index_lock_release(h)
+
+
+def _write_index_entries(entries: dict[str, dict], index_path: Path) -> None:
+    """无锁写索引（调用方须已持锁，如 _load_dispatch_cards_incremental 的主流程）。"""
     sorted_entries = sorted(entries.values(), key=lambda x: x["id"])
     tmp_path = index_path.with_suffix(".tmp")
     try:
@@ -286,6 +328,17 @@ def save_index_file(entries: dict[str, dict], dispatch_dir: Path | str | None = 
 
 def load_dispatch_cards_incremental(directory: Path | str, include_archived: bool = False) -> list[BoardItem]:
     """增量扫描任务卡：按 mtime 检测变化卡只重扫，写回索引并返回全部卡。"""
+    dispatch_dir = Path(directory)
+    # Fix #11：全量「读-改-写」持锁，防多进程并发扫描互相覆盖索引（后写者吃掉前写者）。
+    index_path = get_index_path(dispatch_dir)
+    holder = _index_lock_acquire(index_path)
+    try:
+        return _load_dispatch_cards_incremental(directory, include_archived=include_archived)
+    finally:
+        _index_lock_release(holder)
+
+
+def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bool = False) -> list[BoardItem]:
     dispatch_dir = Path(directory)
     index_entries = load_index_file(dispatch_dir)
 
@@ -372,7 +425,8 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                 continue
 
     if len(updated_entries) != len(index_entries) or updated:
-        save_index_file(updated_entries, dispatch_dir)
+        # 外层已在 load_dispatch_cards_incremental 持锁，这里直接无锁写，避免嵌套 flock 死锁
+        _write_index_entries(updated_entries, get_index_path(dispatch_dir))
 
     if not include_archived:
         items = [i for i in items if not i.archived]
