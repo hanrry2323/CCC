@@ -1,6 +1,6 @@
 # 任务卡 clw025 · 会话打开回归验证（0.3.0 加固验收：2017 实测清单 + 证据）（OpenCode 执行）
 
-> 关联：clw-plan-005 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-12
+> 关联：clw-plan-005 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-12
 
 
 
