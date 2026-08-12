@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -196,6 +197,7 @@ logger = logging.getLogger("ccc.engine")
 
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
+MAX_MARKER_AGE_SECONDS = 7200  # 2h：running 标记超过此时间强制回收，防僵尸进程永久占用槽位
 
 _probe_failures_count = 0
 
@@ -2119,6 +2121,7 @@ def _dispatch_and_collect(
             stderr=subprocess.STDOUT,
             cwd=worktree_path or entry.workdir or default_workdir or None,
             env=child_env,
+            start_new_session=True,  # 隔离进程组：kill 时杀全组，避免孙进程变僵尸
         )
         # 标记写入子进程 PID：Engine 重启时若 CLI 仍活，不得假打回
         _refresh_running_marker_child(log_dir, work.id, proc.pid)
@@ -2141,8 +2144,20 @@ def _dispatch_and_collect(
         try:
             returncode = proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            # killpg 杀全进程组（含孙进程），避免 proc.kill() 只杀直接子进程导致僵尸
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                logger.error("子进程 killpg 后仍超时（僵尸）: work=%s pid=%s", work.id, proc.pid)
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    pass
+                proc.wait()
             _emit(False, None, "timeout", [f"执行超时（{timeout}s 已 kill）"])
             return False, [f"执行超时（{timeout}s 已 kill）"]
         finally:
@@ -2431,8 +2446,12 @@ def cleanup_dead_markers(log_dir: Path) -> int:
     ``reclaim_orphaned_running`` 回收，会污染看板「进行中」视图并让 web 每轮
     对死卡做全套富化。此处按 PID 存活判定：标记内所有 PID 已死（或无 PID）→
     删除；任一 PID 存活（可能刚写完、子进程刚拉起）→ 保留，绝不误删在途任务。
+
+    此外，标记超过 ``MAX_MARKER_AGE_SECONDS``（2h）同样强制删除——即使 PID 存
+    活也不能让僵尸进程永久占用槽位（兜底回收）。
     """
     n = 0
+    now_ts = time.time()
     try:
         markers = list(log_dir.glob("*.running"))
     except OSError:
@@ -2442,11 +2461,16 @@ def cleanup_dead_markers(log_dir: Path) -> int:
             continue
         try:
             raw = marker.read_text(encoding="utf-8")
+            mtime = marker.stat().st_mtime
         except OSError:
             raw = ""
+            mtime = 0.0
         pids = _parse_running_marker_pids(raw)
         if any(_pid_alive(p) for p in pids):
-            continue
+            # 存活的 PID + 未超时 → 保留；超时 → 兜底强制回收
+            if mtime > 0 and (now_ts - mtime) < MAX_MARKER_AGE_SECONDS:
+                continue
+            logger.warning("标记超时强制回收（age=%ds，max=%ds）: %s", int(now_ts - mtime), MAX_MARKER_AGE_SECONDS, marker.name)
         try:
             marker.unlink(missing_ok=True)
             n += 1

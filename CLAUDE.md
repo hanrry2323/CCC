@@ -6,11 +6,12 @@
 
 ## 0. 自举必读（先读这个，五分钟上手）
 
-1. [`docs/product/card-hub-manual.md`](docs/product/card-hub-manual.md) — **制卡发卡操作手册**（任何工具的自举路径）
-2. [`docs/INDEX.md`](docs/INDEX.md) §0 — 权威链与北星
-3. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **卡命名定死** / 禁写哪里
-4. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源
-5. [`docs/projects/onboarding.md`](docs/projects/onboarding.md) — 从零到一准入 / **完成钩子 Doc-Gate（回写必填维护区四问）**
+1. [`docs/CCC-PRIME-DIRECTIVE.md`](docs/CCC-PRIME-DIRECTIVE.md) — **最高准则：三层全自动开发模式（线路图管未来，计划管当前，看板管正在进行时）**
+2. [`docs/product/card-hub-manual.md`](docs/product/card-hub-manual.md) — **制卡发卡操作手册**（任何工具的自举路径）
+3. [`docs/INDEX.md`](docs/INDEX.md) §0 — 权威链与北星
+4. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **卡命名定死** / 禁写哪里
+5. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源
+6. [`docs/projects/onboarding.md`](docs/projects/onboarding.md) — 从零到一准入 / **完成钩子 Doc-Gate（回写必填维护区四问）**
 
 ## 文档与项目注册（硬 · 读写必遵）
 

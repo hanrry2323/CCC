@@ -92,9 +92,13 @@ class TestRunTasks:
 
     def test_readonly_tasks_always_run(self) -> None:
         registry = TaskRegistry()
-        registry.register(ScheduledTask(
-            name="r1", task_type=TASK_TYPE_READONLY, run=_dummy_readonly_ok,
-        ))
+        registry.register(
+            ScheduledTask(
+                name="r1",
+                task_type=TASK_TYPE_READONLY,
+                run=_dummy_readonly_ok,
+            )
+        )
         results = run_tasks(registry, {"SCHEDULER_DISPATCH_DIR": ""})
         assert len(results) == 1
         assert results[0]["name"] == "r1"
@@ -102,9 +106,13 @@ class TestRunTasks:
 
     def test_change_tasks_skipped_without_dispatch_dir(self) -> None:
         registry = TaskRegistry()
-        registry.register(ScheduledTask(
-            name="c1", task_type=TASK_TYPE_CHANGE, run=_dummy_change_ok,
-        ))
+        registry.register(
+            ScheduledTask(
+                name="c1",
+                task_type=TASK_TYPE_CHANGE,
+                run=_dummy_change_ok,
+            )
+        )
         results = run_tasks(registry, {"SCHEDULER_DISPATCH_DIR": ""})
         assert len(results) == 1
         assert results[0]["name"] == "c1"
@@ -113,9 +121,13 @@ class TestRunTasks:
 
     def test_change_tasks_run_with_dispatch_dir(self) -> None:
         registry = TaskRegistry()
-        registry.register(ScheduledTask(
-            name="c1", task_type=TASK_TYPE_CHANGE, run=_dummy_change_ok,
-        ))
+        registry.register(
+            ScheduledTask(
+                name="c1",
+                task_type=TASK_TYPE_CHANGE,
+                run=_dummy_change_ok,
+            )
+        )
         results = run_tasks(registry, {"SCHEDULER_DISPATCH_DIR": "/tmp/dispatch"})
         assert len(results) == 1
         assert results[0]["name"] == "c1"
@@ -124,15 +136,27 @@ class TestRunTasks:
 
     def test_mixed_tasks(self) -> None:
         registry = TaskRegistry()
-        registry.register(ScheduledTask(
-            name="r1", task_type=TASK_TYPE_READONLY, run=_dummy_readonly_ok,
-        ))
-        registry.register(ScheduledTask(
-            name="r2", task_type=TASK_TYPE_READONLY, run=_dummy_readonly_fail,
-        ))
-        registry.register(ScheduledTask(
-            name="c1", task_type=TASK_TYPE_CHANGE, run=_dummy_change_ok,
-        ))
+        registry.register(
+            ScheduledTask(
+                name="r1",
+                task_type=TASK_TYPE_READONLY,
+                run=_dummy_readonly_ok,
+            )
+        )
+        registry.register(
+            ScheduledTask(
+                name="r2",
+                task_type=TASK_TYPE_READONLY,
+                run=_dummy_readonly_fail,
+            )
+        )
+        registry.register(
+            ScheduledTask(
+                name="c1",
+                task_type=TASK_TYPE_CHANGE,
+                run=_dummy_change_ok,
+            )
+        )
         results = run_tasks(registry, {"SCHEDULER_DISPATCH_DIR": "/tmp/dispatch"})
         assert len(results) == 3
         names = [r["name"] for r in results]
@@ -140,11 +164,49 @@ class TestRunTasks:
 
     def test_run_once_wrapper(self) -> None:
         registry = TaskRegistry()
-        registry.register(ScheduledTask(
-            name="r1", task_type=TASK_TYPE_READONLY, run=_dummy_readonly_ok,
-        ))
+        registry.register(
+            ScheduledTask(
+                name="r1",
+                task_type=TASK_TYPE_READONLY,
+                run=_dummy_readonly_ok,
+            )
+        )
         results = run_once(registry, {"SCHEDULER_DISPATCH_DIR": ""})
         assert len(results) == 1
+
+    def test_exception_task_isolated(self) -> None:
+        """任务抛异常：打日志标记 crashed，不中断后续任务（P0 加固）。"""
+
+        def _boom(cfg: dict) -> tuple[bool, dict]:
+            raise RuntimeError("boom")
+
+        registry = TaskRegistry()
+        registry.register(ScheduledTask(name="boom", task_type=TASK_TYPE_READONLY, run=_boom))
+        registry.register(ScheduledTask(name="ok", task_type=TASK_TYPE_READONLY, run=_dummy_readonly_ok))
+        results = run_tasks(registry, {"SCHEDULER_DISPATCH_DIR": ""})
+        by_name = {r["name"]: r for r in results}
+        assert by_name["boom"]["ok"] is False
+        assert by_name["boom"].get("crashed") is True
+        assert by_name["ok"]["ok"] is True
+        # 顺序保持注册序：boom 在前、ok 在后
+        assert [r["name"] for r in results] == ["boom", "ok"]
+
+    def test_timeout_task_abandoned(self) -> None:
+        """任务超时：超时自动放弃（ok=False/crashed），不阻塞后续任务（P0 加固）。"""
+
+        def _hang(cfg: dict) -> tuple[bool, dict]:
+            time.sleep(10)
+            return True, {}
+
+        registry = TaskRegistry()
+        registry.register(ScheduledTask(name="hang", task_type=TASK_TYPE_READONLY, run=_hang))
+        registry.register(ScheduledTask(name="fast", task_type=TASK_TYPE_READONLY, run=_dummy_readonly_ok))
+        results = run_tasks(registry, {"SCHEDULER_DISPATCH_DIR": "", "SCHEDULER_TASK_TIMEOUT": "1"})
+        by_name = {r["name"]: r for r in results}
+        assert by_name["hang"]["ok"] is False
+        assert by_name["hang"].get("crashed") is True
+        assert by_name["hang"]["summary"].get("timeout") is True
+        assert by_name["fast"]["ok"] is True
 
 
 class TestMainCli:
@@ -167,9 +229,7 @@ class TestMainCli:
         # 默认注册表含 cluster-collect 任务
         assert any(r["name"] == "cluster-collect" for r in results)
 
-    def test_once_with_interval_override(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_once_with_interval_override(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--once 可搭配 --interval（虽不影响单次，但应被解析）。"""
         env = _write_env(tmp_path)
         code = main(["--config", env, "--once", "--interval", "120"])

@@ -144,11 +144,12 @@ def _get_token_ttl() -> int:
 
 
 def _get_longpoll_timeout() -> int:
-    """长轮询默认超时（秒，CCC_WEB_LONGPOLL_TIMEOUT，默认 30）。"""
+    """长轮询默认超时（秒，CCC_WEB_LONGPOLL_TIMEOUT，默认 30，封顶 60）。"""
     try:
-        return max(0, int(os.environ.get("CCC_WEB_LONGPOLL_TIMEOUT", "30")))
+        raw = max(0, int(os.environ.get("CCC_WEB_LONGPOLL_TIMEOUT", "30")))
     except ValueError:
-        return 30
+        raw = 30
+    return min(raw, 60)
 
 
 def _conv_list_for(thread_id: str) -> list[dict[str, Any]]:
@@ -1825,6 +1826,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")  # 禁用代理缓冲，SSE 实时性
         self.end_headers()
         gen = stream_brain_events(
             message,
@@ -1835,8 +1837,15 @@ class _APIHandler(BaseHTTPRequestHandler):
         text_parts: list[str] = []
         done_text = ""
         finished_error: bool | None = None
+        last_event = time.monotonic()
+        SSE_IDLE_TIMEOUT = 60  # 60s 无数据即关闭，释放线程
         try:
             for event, payload in gen:
+                if time.monotonic() - last_event > SSE_IDLE_TIMEOUT:
+                    self.wfile.write("event: error\ndata: {\"error\":\"sse idle timeout\"}\n\n".encode())
+                    self.wfile.flush()
+                    break
+                last_event = time.monotonic()
                 if event == "text":
                     text_parts.append(payload.get("text", "") or "")
                 if event == "done":
@@ -3006,9 +3015,25 @@ class _CCCThreadingHTTPServer(ThreadingHTTPServer):
     一直是 5。浏览器并发拉 20+ 静态资源时 accept 队列溢出，macOS 内核直接
     RST 掐断连接（tcpdump 实锤：SYN 后 ~7ms 收到 116:7788 的 RST），
     CSS/JS 模块加载失败 → 计划页从未挂载。改为类属性，listen 生效前即生效。
+
+    2026-08-12 加固：① daemon_threads=True 避免进程退出时非 daemon 线程阻塞
+    shutdown；② 信号量限流 max_workers=32，防止无界线程创建耗尽内存。
     """
 
     request_queue_size = 128
+    daemon_threads = True
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._worker_semaphore = threading.BoundedSemaphore(32)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        """线程池限流：信号量满 → accept 阻塞，内核 backlog 缓冲溢出的连接。"""
+        self._worker_semaphore.acquire()
+        try:
+            super().process_request(request, client_address)
+        finally:
+            self._worker_semaphore.release()
 
 
 def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
