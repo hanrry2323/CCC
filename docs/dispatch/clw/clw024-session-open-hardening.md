@@ -1,6 +1,6 @@
 # 任务卡 clw024 · 会话打开链路加固（spawn/resume 可靠性：PATH 缓存 / 握手超时 / 错误透传）（OpenCode 执行）
 
-> 关联：clw-plan-005 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：clw · 日期：2026-08-12
+> 关联：clw-plan-005 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-12
 
 
 
