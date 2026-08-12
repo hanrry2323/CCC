@@ -16,8 +16,12 @@ codex 可执行性修复（P0 确定根因：codex not found → 会话打不开
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -29,10 +33,13 @@ codex 可执行性修复（P0 确定根因：codex not found → 会话打不开
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw023-codex-executability`
+2. **排查 codex 可执行性**：`which codex` / `ls ~/.codex/bin/codex ~/.local/bin/codex` 确认 2017 codex 是否安装；若已装（未在 PATH）→ 记录实际路径，确认 `get_login_shell_path_with_timeout` 的登录 shell PATH 是否覆盖（profile/zshrc 是否需要加）；若未装 → 记录"codex 未安装"事实
+3. **provider 预检**：`build_provider_command` 对 codex（及 claude/opencode 统一）加可执行性预检——spawn 前 `resolve_executable_path` 找不到 → 返回明确错误（`Err("codex 命令未找到，请确认已安装或在 PATH")`），不静默失败
+4. **前端降级**：Sidebar/SessionItem 对 codex 会话（若 codex 未安装）禁用恢复按钮 + 提示；`getFriendlyError` 覆盖 "command not found" / "未找到" 场景 → 中文友好文案
+5. `cargo build --release` + `tsc -b && vite build` 通过
+6. commit+push 到 `codex/clw023-codex-executability`（勿直推 main）；卡头改为「已回写」
+7. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. 排查 2017 codex 实际安装位置：已装 → 加入登录 shell PATH（profile/zshrc）；未装 → Sidebar codex 会话降级（禁用恢复 + 提示未安装，不白屏）

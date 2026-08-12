@@ -16,8 +16,12 @@
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件；改动只限卡内「范围」
+6. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
@@ -29,10 +33,14 @@
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
-
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，从 `main` 切分支 `codex/clw024-session-open-hardening`
+2. **PATH 缓存策略**：核查 `get_cached_path` 的 5s 缓存是否会导致 codex 安装后不生效；改为「spawn 失败时刷新 PATH 重试一次」或缓存失效时强制重解析（保证最新 login PATH）
+3. **握手超时**：`frontend_ready` 握手——CLI 启动慢/无初始输出时前端不应永久 loading；spawn 后加超时（如 15s）→ 无响应显示"连接超时，请重试"友好态
+4. **工作目录容错**：`resume_session` 的 claude project path 解码失败 → 回退默认工作目录（不失败退出）；opencode/codex path 无效 → 容错
+5. **错误透传**：spawn/resume 后端错误明确返回（不吞）；前端 Terminal.tsx catch 显示 `getFriendlyError` 结果（非裸 Rust 错误串）
+6. `cargo build --release` + `tsc -b && vite build` + vitest 通过
+7. commit+push 到 `codex/clw024-session-open-hardening`（勿直推 main）；卡头改为「已回写」
+8. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 ## 验收标准
 
 1. PATH 缓存策略修复：spawn/resume 拿到最新 login PATH（codex 后续安装不重启生效）
