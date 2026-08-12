@@ -3425,6 +3425,50 @@ body.ro-viewer [data-write] {
   gap: 4px;
   flex-wrap: wrap;
 }
+/* 里程碑分组（§4.1 检查项 1：分类 + 排序 + 空态） */
+.rm2-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.rm2-group:last-child { margin-bottom: 0; }
+.rm2-group-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ccc-border, #e0e0e0);
+}
+.rm2-group-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.rm2-group-hd.doing .rm2-group-dot { background: #3a7bd5; }
+.rm2-group-hd.done .rm2-group-dot { background: #2a9d4a; }
+.rm2-group-hd.planned .rm2-group-dot { background: #d9d9d9; }
+.rm2-group-label {
+  font-size: 13px;
+  font-weight: 650;
+  color: #1c1c1e;
+}
+.rm2-group-cnt {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  background: rgba(120,120,120,0.08);
+  padding: 1px 7px;
+  border-radius: 9px;
+  min-width: 18px;
+  text-align: center;
+}
+/* 左侧导航栏高亮（§4.1 检查项 2-3：点击反馈 + 关联联动） */
+.rm2-mile.active {
+  background: rgba(58, 123, 213, 0.10);
+  border-radius: 8px;
+}
+.rm2-mile.active .rm2-mile-title { color: #2d63a8; font-weight: 650; }
 .rm2-mile-progress-tags code {
   font-size: 11px;
   padding: 1px 6px;

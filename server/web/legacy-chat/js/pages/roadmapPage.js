@@ -154,10 +154,21 @@ function _railHTML(detail) {
 function _milestoneCardsHTML(detail) {
   const miles = detail.milestones || [];
   if (!miles.length) return '<div class="rm2-panel-wrap"><div class="rm2-empty">暂无里程碑</div></div>';
-  return `<div class="rm2-panel-wrap">
-    ${miles.map((m, i) => {
-      const tone = m.status === '已完成' ? 'done' : m.status === '进行中' ? 'doing' : 'planned';
-      return `<div class="rm2-mile-card" id="rm2-mile-${i}">
+
+  // 按状态分组：进行中 → 待确认 → 已完成
+  const groups = [
+    { key: 'doing', label: '进行中', miles: miles.filter(m => m.status === '进行中') },
+    { key: 'planned', label: '待确认', miles: miles.filter(m => m.status !== '进行中' && m.status !== '已完成') },
+    { key: 'done', label: '已完成', miles: miles.filter(m => m.status === '已完成') },
+  ];
+
+  let cardIdx = 0;
+  return `<div class="rm2-panel-wrap">${groups.map(g => {
+    if (!g.miles.length) return '';
+    const cards = g.miles.map(m => {
+      const idx = cardIdx++;
+      const tone = g.key === 'done' ? 'done' : g.key === 'doing' ? 'doing' : 'planned';
+      return `<div class="rm2-mile-card" id="rm2-mile-${idx}">
         <span class="rm2-mile-dot ${_milestoneDotClass(m.status)}"></span>
         <div class="rm2-mile-info">
           <span class="rm2-mile-title">${esc(m.title)}</span>
@@ -166,29 +177,77 @@ function _milestoneCardsHTML(detail) {
           ${_milestoneProgressHTML(m)}
         </div>
       </div>`;
-    }).join('')}
-  </div>`;
+    }).join('');
+    return `<div class="rm2-group">
+      <div class="rm2-group-hd ${g.key}">
+        <span class="rm2-group-dot"></span>
+        <span class="rm2-group-label">${esc(g.label)}</span>
+        <span class="rm2-group-cnt">${g.miles.length}</span>
+      </div>
+      ${cards}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function _setupRailNavigation(host) {
   const rail = host.querySelector('.rm2-rail');
   if (!rail) return;
-  rail.querySelectorAll('.rm2-mile').forEach((btn) => {
+
+  const panel = host.querySelector('.rm2-panel-wrap');
+  if (!panel) return;
+
+  const railBtns = Array.from(rail.querySelectorAll('.rm2-mile'));
+  const cards = Array.from(panel.querySelectorAll('.rm2-mile-card'));
+
+  if (!railBtns.length || !cards.length) return;
+
+  let _activeIdx = 0;
+  let _observer = null;
+
+  function _highlight(idx) {
+    if (idx < 0 || idx >= railBtns.length) return;
+    _activeIdx = idx;
+    railBtns.forEach((b, i) => b.classList.toggle('active', i === idx));
+  }
+
+  // 点击左侧导航项 → 右侧滚动到对应卡片
+  railBtns.forEach((btn, i) => {
     btn.addEventListener('click', () => {
-      const idx = btn.dataset.mileIdx;
-      const target = host.querySelector(`#rm2-mile-${idx}`);
-      // 高亮当前选中项
-      rail.querySelectorAll('.rm2-mile').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      // 滚动到对应里程碑卡片
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      _highlight(i);
+      if (cards[i]) {
+        cards[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
   });
+
+  // IntersectionObserver：右侧滚动时，左侧自动高亮对应项
+  if (typeof IntersectionObserver !== 'undefined') {
+    _observer = new IntersectionObserver(
+      (entries) => {
+        // 找到当前可见卡片中第一个（最靠上的）
+        let firstVisible = -1;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const idx = cards.indexOf(entry.target);
+            if (idx !== -1 && (firstVisible === -1 || idx < firstVisible)) {
+              firstVisible = idx;
+            }
+          }
+        }
+        if (firstVisible >= 0) {
+          _highlight(firstVisible);
+        }
+      },
+      { root: panel, threshold: 0.3, rootMargin: '-20px 0px 0px 0px' }
+    );
+    cards.forEach((card) => _observer.observe(card));
+  }
+
   // 默认选中第一个
-  const first = rail.querySelector('.rm2-mile');
-  if (first) first.classList.add('active');
+  _highlight(0);
+
+  // 暴露清理方法（unmount 时用）
+  host._rmObserver = _observer;
 }
 
 async function openProject(project) {
@@ -280,5 +339,10 @@ export function unmountRoadmap() {
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
+  }
+  // 清理 IntersectionObserver
+  if (_root && _root._rmObserver) {
+    _root._rmObserver.disconnect();
+    _root._rmObserver = null;
   }
 }
