@@ -862,8 +862,9 @@ def is_maintenance_complete(text: str) -> bool:
 
 def gather_mcp_metrics(log_dir: Path) -> dict[str, Any]:
     """指标 1：执行体能否经 ccc-kb 检索项目知识 (检查配置与调用次数)."""
-    opencode_conf = Path("/Users/fan/.config/opencode/opencode.json")
-    claude_conf = Path("/Users/fan/.claude/settings.json")
+    # 按当前用户解析配置路径（M1/2017 用户不同，避免绑定 /Users/fan）
+    opencode_conf = Path(os.path.expanduser("~/.config/opencode/opencode.json"))
+    claude_conf = Path(os.path.expanduser("~/.claude/settings.json"))
     opencode_ok = False
     if opencode_conf.is_file():
         try:
@@ -1088,7 +1089,8 @@ def run_observation_metrics(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         dispatch_dir = cfg.get("SCHEDULER_DISPATCH_DIR", "")
         if not dispatch_dir:
             dispatch_dir = PROJECT_ROOT / "docs" / "dispatch"
-        log_dir = cfg.get("EXECUTOR_LOG_DIR", "") or "/Users/fan/.ccc/logs/exec"
+        log_dir_env = os.environ.get("EXECUTOR_LOG_DIR", "").strip()
+        log_dir = cfg.get("EXECUTOR_LOG_DIR", "") or log_dir_env or str(Path(os.path.expanduser("~/.ccc/logs/exec")))
         data_dir = cfg.get("DATA_DIR", "") or os.environ.get("CCC_DATA_DIR") or "data"
         out_dir = Path(data_dir).resolve() / "observer"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -1114,7 +1116,11 @@ def main_metrics():
     parser = argparse.ArgumentParser(description="Loop Observer — 4 项观测指标采集")
     parser.add_argument("--once", action="store_true", help="单次跑出观测报告后退出")
     parser.add_argument("--dispatch-dir", default="docs/dispatch", help="任务卡分派目录")
-    parser.add_argument("--log-dir", default="/Users/fan/.ccc/logs/exec", help="执行日志目录")
+    parser.add_argument(
+        "--log-dir",
+        default=os.environ.get("EXECUTOR_LOG_DIR", os.path.expanduser("~/.ccc/logs/exec")),
+        help="执行日志目录",
+    )
     parser.add_argument("--output", default="docs/notes/2026-08-10-skill-mcp-observability.md", help="报告输出路径")
     args = parser.parse_args()
     dispatch_dir = Path(args.dispatch_dir)

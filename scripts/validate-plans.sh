@@ -25,7 +25,8 @@ PLANS_DIR="$REPO_ROOT/docs/projects"
 # 从 registry.yaml 提取有效前缀（唯一真值：server/board/registry.py，消除 grep 双解析，ccc062）
 # PYTHONPATH 指向本脚本真实所在仓（registry.py 定义处），兼容测试复制到临时目录的场景。
 _CCC_ROOT_ABS="$(cd "$(dirname "$0")/.." && pwd)"
-VALID_PREFIXES=$(PYTHONPATH="$_CCC_ROOT_ABS" python3 -c "
+PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
+VALID_PREFIXES=$(PYTHONPATH="$_CCC_ROOT_ABS" "$PYTHON_BIN" -c "
 import sys
 from server.board.registry import card_prefixes
 print('\\n'.join(sorted(card_prefixes(sys.argv[1]))))
@@ -170,7 +171,13 @@ validate_file() {
               local card_head=$(head -15 "$card_file" 2>/dev/null)
               local c_status=$(echo "$card_head" | grep '状态：' | head -1 | sed -E 's/.*状态：([^ ·\t\r\n]+).*/\1/' | tr -d ' ' || true)
               if [ "$c_status" != "已关闭" ]; then
-                all_closed=0
+                if [ "$c_status" = "待分派" ] || [ "$c_status" = "已回写" ]; then
+                  # 本地可能滞后（远端可能已关闭），不误判为未关闭；降级为黄色警告
+                  yellow "  WARN 方案关联卡本地状态为 '$c_status'（可能滞后，远端可能已关闭）: $word → $rel"
+                  WARNINGS=$((WARNINGS + 1))
+                else
+                  all_closed=0
+                fi
               fi
             else
               # If card file is not found, treat as not closed to be safe

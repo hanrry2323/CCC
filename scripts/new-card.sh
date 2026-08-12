@@ -437,9 +437,12 @@ if errs:
     sys.exit(1)
 " "$TARGET_DIR" "$PROJECT_PREFIX" ); then
   [[ "$QUIET" != true ]] && echo "[OK] 出卡成功 + validate 通过: $CARD_PATH"
+  # 机器可读精确路径（供 plan-to-cards 直接捕获，替代 find | head -1 歧义扫描）
+  echo "CARD_PATH=$CARD_PATH"
   exit 0
 else
   echo "[ERROR] validate 校验失败，已删除生成卡：$CARD_PATH" >&2
   rm -f "$CARD_PATH"
+  echo "CARD_PATH="
   exit 1
 fi

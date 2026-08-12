@@ -18,6 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
+# 跨机执行支持（默认保留 2017 生产）：SSH 目标主机（user@ip）与 2017 生产仓路径均可覆盖
+CCC_SSH_HOST="${CCC_SSH_HOST:-fan@192.168.3.116}"
+CCC_PROD_REPO="${CCC_PROD_REPO:-/Users/fan/program/CCC}"
 # shellcheck source=lib/card-resolve.sh
 source "$SCRIPT_DIR/lib/card-resolve.sh"
 USE_READY=false
@@ -153,7 +156,7 @@ sys.exit(0)
 # 外仓提示：registry.mac2017 非 CCC 本仓时打印分支/HEAD/是否已在业务 main（不自动 push）
 print_external_repo_hint() {
   local path="$1" branch="$2"
-  "$PYTHON_BIN" - "$path" "$branch" <<'PY' || true
+  "$PYTHON_BIN" - "$path" "$branch" "$CCC_SSH_HOST" <<'PY' || true
 import re, subprocess, sys
 from pathlib import Path
 
@@ -162,6 +165,7 @@ from server.board.registry import load_projects
 
 card = Path(sys.argv[1])
 branch = sys.argv[2]
+ssh_host = sys.argv[3]
 text = card.read_text(encoding="utf-8")
 m = re.search(r"项目：([^·\n]+)", text)
 prefix = m.group(1).strip() if m else ""
@@ -188,7 +192,7 @@ cmd = (
 )
 try:
     out = subprocess.check_output(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "fan@192.168.3.116", cmd],
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ssh_host, cmd],
         text=True,
         stderr=subprocess.DEVNULL,
         timeout=25,
@@ -206,7 +210,7 @@ PY
 # 跨仓收口：业务仓分支 ff 合入业务 main + 删分支（分叉则阻断整卡合入）
 close_business_repo() {
   local path="$1" branch="$2"
-  "$PYTHON_BIN" - "$path" "$branch" <<'PY'
+  "$PYTHON_BIN" - "$path" "$branch" "$CCC_SSH_HOST" <<'PY'
 import re, subprocess, sys
 from pathlib import Path
 
@@ -215,6 +219,7 @@ from server.board.registry import load_projects
 
 card = Path(sys.argv[1])
 branch = sys.argv[2]
+ssh_host = sys.argv[3]
 text = card.read_text(encoding="utf-8")
 m = re.search(r"项目：([^·\n]+)", text)
 prefix = m.group(1).strip() if m else ""
@@ -251,7 +256,7 @@ try:
             "ssh",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=5",
-            "fan@192.168.3.116",
+            ssh_host,
             cmd,
         ],
         text=True,
@@ -361,21 +366,32 @@ approve_one() {
   print_external_repo_hint "$path" "$branch"
 
   # 机审证据 = 分支信封（git show origin/<branch>:<卡路径> 含 机审：通过）
+  # 分支存在时信封是唯一权威，不回退本地卡（消除本地回退后门）。
   git fetch origin main >/dev/null 2>&1
   git fetch origin "$branch" >/dev/null 2>&1 || true
   local audit_ok=false
-  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
-    && git show "origin/${branch}:${path}" 2>/dev/null \
+  local has_branch=false
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    has_branch=true
+  fi
+
+  if $has_branch; then
+    # 分支存在 → 分支信封是唯一证据，不回退本地 docs/dispatch
+    if git show "origin/${branch}:${path}" 2>/dev/null \
       | "$PYTHON_BIN" -c "
 import sys
 sys.path.insert(0, '.')
 from server.board.models import machine_audit_passed_text
 sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
 "; then
-    audit_ok=true
-  elif check_audit "$path"; then
-    # 已合入/无分支（close-only）场景：本地卡机审区
-    audit_ok=true
+      audit_ok=true
+    fi
+  elif [[ "$CLOSE_ONLY" == true ]]; then
+    # close-only 且无分支：回退本地卡机审区（分支已删/已合入），加告警标记
+    if check_audit "$path"; then
+      echo "[WARN] ${id}: 分支已删除，回退本地卡机审区（close-only 模式，请人工确认机审证据）" >&2
+      audit_ok=true
+    fi
   fi
   if [[ "$audit_ok" != true ]]; then
     echo "[ERROR] ${id}: 分支信封无机审通过证据（origin/${branch} 卡无机审区，本地卡也无）" >&2
@@ -494,7 +510,7 @@ PY
 }
 
 deploy_check_2017() {
-  local prod_repo="/Users/fan/program/CCC"
+  local prod_repo="${CCC_PROD_REPO:-/Users/fan/program/CCC}"
   echo "== 正在触发 2017 生产部署检查 =="
 
   # 1. 如果当前运行路径就是 2017 生产目录，直接本地执行 deploy-ccc.sh
@@ -531,10 +547,10 @@ deploy_check_2017() {
   fi
 
   # 3. 如果本地没有该目录，尝试通过 SSH 到 2017 生产机进行检查
-  echo "[INFO] 本地未找到 2017 生产目录，尝试通过 SSH 检查 192.168.3.116..."
-  local ssh_cmd="ssh -o BatchMode=yes -o ConnectTimeout=5 fan@192.168.3.116"
+  echo "[INFO] 本地未找到 2017 生产目录，尝试通过 SSH 检查 ${CCC_SSH_HOST}..."
+  local ssh_cmd="ssh -o BatchMode=yes -o ConnectTimeout=5 ${CCC_SSH_HOST}"
   if ! $ssh_cmd "echo ping" >/dev/null 2>&1; then
-    echo "[WARN] 无法 SSH 连接 192.168.3.116，跳过 2017 部署检查。"
+    echo "[WARN] 无法 SSH 连接 ${CCC_SSH_HOST}，跳过 2017 部署检查。"
     return 0
   fi
 
