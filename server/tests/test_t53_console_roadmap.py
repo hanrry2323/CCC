@@ -57,12 +57,13 @@ class TestRoadmapPage:
     def test_renders_by_project_data(self) -> None:
         text = self._roadmap()
         assert "/board/roadmap" in text
-        assert "business_lines" in text
+        # Phase2：前端用 /board/roadmap（roadmap.py 数据模型），不再用 business_lines
+        assert "roadmaps" in text
 
     def test_project_name_count_separated(self) -> None:
         text = self._roadmap()
         assert "rm-project-card" in text  # 项目卡片（图形化总览）
-        assert "buildTimelineSVG" in text  # SVG 时间线
+        assert "roadmapTimeline" in text  # 时间线渲染移至独立模块（roadmapTimeline.js → buildTimelineSVG）
 
     def test_hint_mentions_project_aggregation(self) -> None:
         text = self._roadmap()

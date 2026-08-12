@@ -276,11 +276,12 @@ class TestUpdatePlan:
         assert result.get("ok")
         path = result["path"]
 
-        r2 = update_plan(tmp_path, rel_path=path, status="已确认")
+        # Phase2：create_plan 默认状态 = 已确认；更新为部分执行（合法流转）
+        r2 = update_plan(tmp_path, rel_path=path, status="部分执行")
         assert r2.get("ok")
 
         detail = get_plan(tmp_path, path)
-        assert detail["status"] == "已确认"
+        assert detail["status"] == "部分执行"
 
         (tmp_path / path).unlink()
 
@@ -315,7 +316,7 @@ class TestUpdatePlan:
         detail = get_plan(tmp_path, path)
         assert "新内容" in detail["content"]
         assert "项目：ccc" in detail["content"]  # 头部保留
-        assert "状态：草案" in detail["content"]  # 头部保留（未改状态）
+        assert "状态：已确认" in detail["content"]  # 头部保留（Phase2 默认已确认，未改状态）
 
         (tmp_path / path).unlink()
 
@@ -609,10 +610,12 @@ class TestPlansPageContract:
         assert "plans-form-title" in text
 
     def test_status_filter_options(self) -> None:
-        """验证状态筛选包含五态。"""
+        """验证状态筛选为四态（草案已移除 · Bug 8）。"""
         text = self._page()
-        for s in ["草案", "已确认", "部分执行", "已完成", "作废"]:
+        for s in ["已确认", "部分执行", "已完成", "作废"]:
             assert s in text, f"Missing status: {s}"
+        # 草案不再是流程列（Phase2 /plans/create 默认已确认，list 默认过滤草案）
+        assert "状态（草案/已确认" not in text
 
     def test_markdown_renders_links_and_tables(self) -> None:
         text = self._page()
@@ -674,6 +677,7 @@ class TestValidatePlansScript:
         )
 
         import subprocess
+
         result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
         assert result.returncode == 0
 
@@ -695,6 +699,7 @@ class TestValidatePlansScript:
         )
 
         import subprocess
+
         result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
         assert result.returncode != 0
         assert "验收未勾选" in result.stdout
@@ -717,6 +722,7 @@ class TestValidatePlansScript:
         )
 
         import subprocess
+
         result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
         assert result.returncode == 0
 
@@ -743,6 +749,7 @@ class TestValidatePlansScript:
         )
 
         import subprocess
+
         result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
         assert result.returncode != 0
         assert "关联卡已全部关闭但状态仍为" in result.stdout

@@ -1160,14 +1160,24 @@ class TestBoardRoadmap:
         token = _get_token(api_server)
         status, data = _get(api_server, "/board/roadmap", token=token)
         assert status == 200
-        # 线路图返回 overview + by_project
-        assert "overview" in data
-        assert "by_project" in data
-        assert isinstance(data["overview"], list)
-        assert isinstance(data["by_project"], list)
-        for bucket in data["overview"]:
-            assert "bucket" in bucket
-            assert "count" in bucket
+        # Phase2：/board/roadmap 改读 roadmap.py 的项目线路图（roadmaps），不再从 epic 卡派生 overview/by_project
+        assert "roadmaps" in data
+        assert "total" in data
+        assert isinstance(data["roadmaps"], list)
+
+    def test_roadmap_projects_200(self, api_server):
+        """GET /roadmap/projects（Phase2 新增）返回项目线路图列表。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/roadmap/projects", token=token)
+        assert status == 200
+        assert "roadmaps" in data
+        assert "total" in data
+        assert isinstance(data["roadmaps"], list)
+        # 真实仓库应有 docs/projects/<p>/roadmap.md；至少应返回结构合法
+        for rm in data["roadmaps"]:
+            assert "project" in rm
+            assert "drafts" in rm
+            assert "milestones" in rm
 
 
 class TestNotFound:

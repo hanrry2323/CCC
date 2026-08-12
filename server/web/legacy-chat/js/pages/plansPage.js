@@ -1,8 +1,8 @@
 /**
  * plansPage.js — 计划页面（#/plans · 方案池）
  *
- * 设计：方案池 = 五态流水线看板（与看板页同语言）。
- * 列 = 状态（草案/已确认/部分执行/已完成/作废），列内为紧凑方案条目：
+ * 设计：方案池 = 四态流水线看板（与看板页同语言）。
+ * 列 = 状态（已确认/部分执行/已完成/作废），列内为紧凑方案条目：
  * 项目徽标 + 编号 + 标题 + 作者/工具 + 验收进度条 + 关联卡。
  * 项目筛选为看板同款按钮组；点击条目进详情面板。
  *
@@ -15,9 +15,8 @@
 
 import { apiGet, apiPost } from '../api.js';
 
-const STATUSES = ['草案', '已确认', '部分执行', '已完成', '作废'];
+const STATUSES = ['已确认', '部分执行', '已完成', '作废'];
 const STATUS_COLORS = {
-  '草案': '#a39e93',
   '已确认': '#3d9a5f',
   '部分执行': '#c47a2c',
   '已完成': '#5a7a9a',
@@ -219,7 +218,7 @@ function renderColumn(status) {
   if (_hideClosed && (status === '已完成' || status === '作废')) return '';
   const color = STATUS_COLORS[status];
   const items = filteredPlans().filter(p => p.status === status);
-  const hints = { '草案': '待讨论', '已确认': '待排期', '部分执行': '已转卡', '已完成': '卡全关', '作废': '不执行' };
+  const hints = { '已确认': '待排期', '部分执行': '已转卡', '已完成': '卡全关', '作废': '不执行' };
   return `
     <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
       <header class="pcol-h">
@@ -362,7 +361,6 @@ function bindEvents() {
 }
 
 const STATE_FLOW = {
-  '草案': ['已确认', '作废'],
   '已确认': ['部分执行', '作废'],
   '部分执行': ['已完成', '作废'],
   '已完成': [],

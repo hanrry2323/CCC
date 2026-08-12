@@ -308,7 +308,7 @@ def create_plan(
         # 构建完整方案文件
         plan_content = f"""# 方案 · {title}
 
-> 项目：{project} · 编号：{plan_id} · 状态：草案 · 作者：{author} · 工具：{tool}
+> 项目：{project} · 编号：{plan_id} · 状态：已确认 · 作者：{author} · 工具：{tool}
 > 创建：{today} · 更新：{today}
 > 关联卡：无
 > 关联方案：无

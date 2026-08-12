@@ -1,23 +1,16 @@
 /**
- * roadmapPage.js — 线路图（图形化 · 2026-08-12 升级 v2）
+ * roadmapPage.js — 线路图（2026-08-12 升级 v3 · roadmap.py 数据模型）
  *
- * 一级页面：项目卡片总览（缩略时间线 + 状态统计，非文字列表）
- * 二级页面：单项目完整 SVG 线路图 + 卡分组 + 风险提示
+ * 一级页面：项目卡片总览（草案池 + 里程碑进度）
+ * 二级页面：单项目线路图（草案池 + 里程碑 + 进度条）
  *
  * 数据源：
- *   /board/roadmap → business_lines（一级页项目列表）
- *   /board/roadmap/<project> → 单项目详情（二级页）
+ *   /board/roadmap → roadmaps（一级页项目列表，来自 roadmap.py parse_roadmap）
+ *   /roadmap/<project> → 单项目详情（二级页）
  */
 
 import { apiGet } from '../api.js';
-import {
-  buildTimelineSVG,
-  buildTimelineOverview,
-  buildMilestoneRail,
-  milestonePanelHTML,
-  riskHTML,
-  esc,
-} from '../roadmapTimeline.js';
+import { esc } from '../roadmapTimeline.js';
 
 let _root = null;
 let _timer = null;
@@ -38,7 +31,6 @@ function html() {
     <button type="button" class="rm-filter ${_rmFilter === 'all' ? 'on' : ''}" data-filter="all">全部</button>
     <button type="button" class="rm-filter ${_rmFilter === 'doing' ? 'on' : ''}" data-filter="doing">进行中</button>
     <button type="button" class="rm-filter ${_rmFilter === 'done' ? 'on' : ''}" data-filter="done">已完成</button>
-    <button type="button" class="rm-filter ${_rmFilter === 'risk' ? 'on' : ''}" data-filter="risk">有风险</button>
   </div>
   <div id="roadmap-body"><div class="board-empty">加载中…</div></div>
 </div>`;
@@ -46,50 +38,38 @@ function html() {
 
 /* ── 一级页：项目卡片总览 ── */
 
-function projectCard(section) {
-  const miles = section.milestones || [];
-  const allCards = miles.reduce((n, m) => n + (m.cards || []).length, 0);
-  // 口径与二级页一致：优先卡真实状态（normalize_state closed bucket），无真实状态才看 roadmap 标注
-  const doneCards = miles.reduce(
-    (n, m) => n + (m.cards || []).filter((c) => {
-      const s = c.real_state || c.progress || '';
-      return /已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s);
-    }).length,
-    0
-  );
-  const plannedCards = allCards - doneCards;
-  const driftCount = miles.reduce(
-    (n, m) => n + (m.cards || []).filter((c) => c.drift || c.missing).length,
-    0
-  );
-  const doingCards = miles.reduce(
-    (n, m) => n + (m.cards || []).filter((c) => {
-      const s = c.real_state || c.progress || '';
-      return !/已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s) && /已回写|执行中|开发中|机审|待验收|testing|verified|in_progress/.test(s);
-    }).length,
-    0
-  );
-  const pct = allCards ? Math.round((doneCards / allCards) * 100) : 0;
-  const proj = section.project || '';
-  return `<button type="button" class="rm-project-card" data-project="${esc(proj)}" title="打开 ${esc(proj)} 线路图">
+function _progressPct(milestones) {
+  if (!milestones || !milestones.length) return 0;
+  // 统一口径：按里程碑数量算完成率（done / total），不再混用 linked_plans 计数（Bug 9）
+  const total = milestones.length;
+  const done = milestones.filter(m => m.status === '已完成').length;
+  return total > 0 ? Math.round((done / total) * 100) : 0;
+}
+
+function projectCard(roadmap) {
+  const miles = roadmap.milestones || [];
+  const drafts = roadmap.drafts || [];
+  const doneCount = miles.filter(m => m.status === '已完成').length;
+  const doingCount = miles.filter(m => m.status === '进行中').length;
+  const pct = _progressPct(miles);
+  return `<button type="button" class="rm-project-card" data-project="${esc(roadmap.project)}" title="打开 ${esc(roadmap.project)} 线路图">
     <div class="rm-card-top">
-      <span class="rm-card-name">${esc(proj)}</span>
-      <span class="rm-card-meta">${miles.length} 里程碑 · ${allCards} 卡</span>
+      <span class="rm-card-name">${esc(roadmap.project)}</span>
+      <span class="rm-card-meta">${drafts.length} 草案 · ${miles.length} 里程碑</span>
     </div>
     <div class="rm2-stats">
-      <span class="rm2-stat"><b>${allCards}</b>总卡</span>
-      <span class="rm2-stat done"><b>${doneCards}</b>已完成</span>
-      <span class="rm2-stat doing"><b>${doingCards}</b>进行中</span>
-      ${driftCount ? `<span class="rm2-stat risk"><b>${driftCount}</b>风险</span>` : ''}
+      <span class="rm2-stat"><b>${miles.length}</b>里程碑</span>
+      <span class="rm2-stat done"><b>${doneCount}</b>已完成</span>
+      ${doingCount ? `<span class="rm2-stat doing"><b>${doingCount}</b>进行中</span>` : ''}
+      ${drafts.length ? `<span class="rm2-stat planned"><b>${drafts.length}</b>草案</span>` : ''}
     </div>
     <div class="rm-progress">
       <div class="rm-progress-track"><div class="rm-progress-fill" style="width:${pct}%"></div></div>
       <span class="rm-progress-label">完成率 ${pct}%</span>
     </div>
     <div class="rm-card-tags">
-      <span class="rm-tag doing">待开发 ${plannedCards}</span>
-      ${driftCount ? `<span class="rm-tag drift">漂移 ${driftCount}</span>` : ''}
-      ${miles.length ? `<span class="rm-tag mile">里程碑 ${miles.length}</span>` : ''}
+      ${doingCount ? `<span class="rm-tag doing">进行中 ${doingCount}</span>` : ''}
+      ${drafts.length ? `<span class="rm-tag draft">草案 ${drafts.length}</span>` : ''}
     </div>
   </button>`;
 }
@@ -97,28 +77,23 @@ function projectCard(section) {
 function renderOverview(data) {
   const host = _root.querySelector('#roadmap-body');
   const st = _root.querySelector('#roadmap-st');
-  const allLines = data.business_lines || [];
-  const filtered = allLines.filter((s) => {
-    const miles = s.milestones || [];
-    const all = miles.reduce((n, m) => n + (m.cards || []).length, 0);
-    const done = miles.reduce((n, m) => n + (m.cards || []).filter((c) => /已交付|已关闭|已完成|已合入|released|closed|delivered/.test(c.real_state || c.progress || '')).length, 0);
-    const doing = miles.reduce((n, m) => n + (m.cards || []).filter((c) => {
-      const s0 = c.real_state || c.progress || '';
-      return !/已交付|已关闭|已完成|已合入|released|closed|delivered/.test(s0) && /已回写|执行中|开发中|机审|待验收|testing|verified|in_progress/.test(s0);
-    }).length, 0);
-    const risk = miles.reduce((n, m) => n + (m.cards || []).filter((c) => c.drift || c.missing).length, 0);
-    if (_rmFilter === 'done') return all > 0 && done === all;
-    if (_rmFilter === 'doing') return doing > 0;
-    if (_rmFilter === 'risk') return risk > 0;
+  const roadmaps = data.roadmaps || [];
+  const filtered = roadmaps.filter((rm) => {
+    if (_rmFilter === 'all') return true;
+    const miles = rm.milestones || [];
+    const doneCount = miles.filter(m => m.status === '已完成').length;
+    const doingCount = miles.filter(m => m.status === '进行中').length;
+    if (_rmFilter === 'done') return miles.length > 0 && doneCount === miles.length;
+    if (_rmFilter === 'doing') return doingCount > 0;
     return true;
   });
-  if (st) st.textContent = `${filtered.length}/${allLines.length} 个项目线路`;
-  if (!allLines.length) {
-    host.innerHTML = '<div class="board-empty">无业务线路（roadmap.md 未配置）</div>';
+  if (st) st.textContent = `${filtered.length}/${roadmaps.length} 个项目线路`;
+  if (!roadmaps.length) {
+    host.innerHTML = '<div class="board-empty">无线路图（roadmap.md 未配置）</div>';
     return;
   }
   host.innerHTML = `<div class="rm-grid">${filtered.map(projectCard).join('')}</div>
-    <div class="rm-hint">点击项目卡片查看该项目的图形化线路图</div>`;
+    <div class="rm-hint">点击项目卡片查看线路图详情</div>`;
   host.querySelectorAll('.rm-project-card').forEach((btn) => {
     btn.addEventListener('click', () => {
       openProject(btn.dataset.project);
@@ -128,45 +103,82 @@ function renderOverview(data) {
 
 /* ── 二级页：单项目线路图 ── */
 
+function _draftPoolHTML(drafts) {
+  if (!drafts || !drafts.length) return '';
+  return `<div class="rm2-drafts">
+    <strong class="rm2-drafts-title">草案池（${drafts.length}）</strong>
+    <div class="rm2-draft-list">
+      ${drafts.map(d => `<div class="rm2-draft-item">
+        <span class="rm2-draft-title">${esc(typeof d === 'string' ? d : d.title || '')}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function _milestoneProgressHTML(mile) {
+  const plans = mile.linked_plans || [];
+  if (!plans.length) return '';
+  return `<div class="rm2-mile-progress">
+    <span class="rm2-mile-progress-label">关联方案 ${plans.length}</span>
+    <span class="rm2-mile-progress-tags">${plans.map(p => `<code>${esc(p)}</code>`).join(' ')}</span>
+  </div>`;
+}
+
+function _milestoneListHTML(detail) {
+  const miles = detail.milestones || [];
+  if (!miles.length) return '<div class="rm2-empty">暂无里程碑</div>';
+  return `<div class="rm2-miles">
+    ${miles.map((m, i) => {
+      const tone = m.status === '已完成' ? 'done' : m.status === '进行中' ? 'doing' : 'planned';
+      return `<div class="rm2-mile-card">
+        <span class="rm2-mile-dot ${tone}"></span>
+        <div class="rm2-mile-info">
+          <span class="rm2-mile-title">${esc(m.title)}</span>
+          <span class="rm2-mile-status ${tone}">${esc(m.status)}</span>
+          ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
+          ${_milestoneProgressHTML(m)}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 async function openProject(project) {
   const back = _root.querySelector('#roadmap-back');
   const body = _root.querySelector('#roadmap-body');
   if (back) back.style.display = 'inline-block';
   body.innerHTML = '<div class="board-empty">加载线路图…</div>';
   try {
-    const detail = await apiGet(`/board/roadmap/${encodeURIComponent(project)}`);
-    const first = detail.milestones.find((m) => (m.cards || []).length) || detail.milestones[0];
+    const detail = await apiGet(`/roadmap/${encodeURIComponent(project)}`);
     body.innerHTML = `
       <div class="rm2">
-        ${buildTimelineOverview(detail)}
-        <div class="rm2-body">
-          <div class="rm2-rail-wrap">
-            <div class="rm2-rail-title">里程碑</div>
-            ${buildMilestoneRail(detail)}
-          </div>
-          <div class="rm2-panel-wrap">${milestonePanelHTML(detail, first)}</div>
-        </div>
-        ${riskHTML(detail)}
+        ${_overviewHTML(detail)}
+        ${_draftPoolHTML(detail.drafts)}
+        ${_milestoneListHTML(detail)}
       </div>`;
-    bindMilestoneRail(body, detail);
   } catch (err) {
     body.innerHTML = '<div class="board-empty">加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
 }
 
-function bindMilestoneRail(body, detail) {
-  const panel = body.querySelector('.rm2-panel-wrap');
-  if (!panel) return;
-  body.querySelectorAll('.rm2-mile').forEach((btn) => {
-    const open = () => {
-      const idx = Number(btn.dataset.idx || -1);
-      const mile = detail.milestones[idx];
-      if (!mile) return;
-      panel.innerHTML = milestonePanelHTML(detail, mile);
-      body.querySelectorAll('.rm2-mile').forEach((x) => x.classList.toggle('active', x === btn));
-    };
-    btn.addEventListener('click', open);
-  });
+/* Bug 7：二级页字段映射对齐 /roadmap/<project>（roadmap.py 模型：milestones 含 title/status/linked_plans/description）
+ * 不用 buildTimelineOverview（它读旧 /board/roadmap/<project> 的 counts/cards/risks 字段，新数据下全为 0）。 */
+function _overviewHTML(detail) {
+  const miles = (detail && detail.milestones) || [];
+  const doneN = miles.filter((m) => m.status === '已完成').length;
+  const doingN = miles.filter((m) => m.status === '进行中').length;
+  const plannedN = miles.length - doneN - doingN;
+  const pct = miles.length ? Math.round((doneN / miles.length) * 100) : 0;
+  return `<div class="rm2-overview">
+    <div class="rm2-name">${esc(detail.project)}<span>线路图</span></div>
+    <div class="rm2-stats">
+      <span class="rm2-stat"><b>${miles.length}</b>里程碑</span>
+      <span class="rm2-stat done"><b>${doneN}</b>已完成</span>
+      <span class="rm2-stat doing"><b>${doingN}</b>进行中</span>
+      <span class="rm2-stat planned"><b>${plannedN}</b>待确认</span>
+    </div>
+    <div class="rm2-progress"><div class="rm2-progress-fill" style="width:${pct}%"></div></div>
+  </div>`;
 }
 
 async function loadRoadmap() {

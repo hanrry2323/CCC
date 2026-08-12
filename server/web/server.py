@@ -97,8 +97,6 @@ from server.board.plans import (
 )
 from server.board.queries import (
     ready_for_merge,
-    roadmap_overview,
-    roadmap_by_project,
     states_response,
     view_by_project,
     view_recent,
@@ -274,6 +272,7 @@ def _ensure_chat_bridge() -> None:
         time.sleep(2)
     except Exception:
         logger.exception("chat-bridge 拉起失败")
+
 
 # ── 免鉴权的路径前缀 ──
 # /tasks/running 与 /projects 同组（T53：控制台后台任务进程面板数据源，免登录白名单）
@@ -647,11 +646,7 @@ def _ops_collect_cached() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     )
     now = _t.time()
     cached = _OPS_COLLECT_CACHE
-    if (
-        cached["key"] == cfg_key
-        and cached["machines"] is not None
-        and now - cached["ts"] < _OPS_COLLECT_TTL
-    ):
+    if cached["key"] == cfg_key and cached["machines"] is not None and now - cached["ts"] < _OPS_COLLECT_TTL:
         return cached["machines"], cached["services"]
     machines = _collect_ops_nodes()
     services = _collect_ops_services()
@@ -1693,9 +1688,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_404()
             return True
         if ctype.startswith("text/html") or str(target).endswith(".html"):
-            text = body.decode("utf-8", errors="replace").replace(
-                "v=20260809t12", f"v={_compute_static_version()}"
-            )
+            text = body.decode("utf-8", errors="replace").replace("v=20260809t12", f"v={_compute_static_version()}")
             body = text.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", ctype)
@@ -1842,7 +1835,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         try:
             for event, payload in gen:
                 if time.monotonic() - last_event > SSE_IDLE_TIMEOUT:
-                    self.wfile.write("event: error\ndata: {\"error\":\"sse idle timeout\"}\n\n".encode())
+                    self.wfile.write('event: error\ndata: {"error":"sse idle timeout"}\n\n'.encode())
                     self.wfile.flush()
                     break
                 last_event = time.monotonic()
@@ -1934,10 +1927,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             from urllib.parse import quote
 
             project = _project_of_thread_id(thread_id) or "ccc"
-            url = (
-                f"{bridge.rstrip('/')}/chat/history?project={quote(project)}"
-                f"&thread_id={quote(thread_id)}"
-            )
+            url = f"{bridge.rstrip('/')}/chat/history?project={quote(project)}&thread_id={quote(thread_id)}"
             if after_raw:
                 url += f"&after={quote(after_raw)}"
             req = urllib.request.Request(url)
@@ -1985,7 +1975,10 @@ class _APIHandler(BaseHTTPRequestHandler):
     # ── /plans/* 端点 ──
 
     def _handle_plans_list(self):
-        """GET /plans/list?project=&status=&q="""
+        """GET /plans/list?project=&status=&q=
+        Phase2：默认过滤掉「草案」状态（只返回已确认/部分执行/已完成/作废），
+        显式传 status=草案 才含草案；传 status 精确过滤。
+        """
         from urllib.parse import parse_qs
 
         qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
@@ -1998,6 +1991,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         except OSError as exc:
             self._send_json({"error": f"方案列表读取失败: {exc}"}, 500)
             return
+
+        # Phase2：默认排除「草案」（除非显式请求某个状态含草案）
+        if status is None:
+            plans = [p for p in plans if p.get("status") != "草案"]
 
         self._send_json({"plans": plans, "total": len(plans)})
 
@@ -2114,6 +2111,202 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json(result, 400)
         else:
             self._send_json(result)
+
+    # ── Phase2 线路图 API（roadmap.py）─────────────────────────────
+
+    _ROADMAP_PREFIX_RE = re.compile(r"^[a-z]{2,4}$")
+
+    def _roadmap_read(self, project: str) -> tuple[Any, str]:
+        """读项目 roadmap.md，返回 (parsed, text)。无文件/非法前缀返回 (None, '')。
+        前缀白名单校验防路径穿越（project 来自 URL 段）。"""
+        if not self._roadmap_project_ok(project):
+            return None, ""
+        from server.board import roadmap as _rm
+
+        _file = Path("docs") / "projects" / project / "roadmap.md"
+        if not _file.is_file():
+            return None, ""
+        _text = _file.read_text(encoding="utf-8", errors="replace")
+        return _rm.parse_roadmap(_text, project=project), _text
+
+    def _roadmap_project_ok(self, project: str) -> bool:
+        """项目前缀白名单校验（防路径穿越：project 来自 URL 段，只允许 a-z 2-4 位）。"""
+        return bool(project and self._ROADMAP_PREFIX_RE.match(project))
+
+    def _roadmap_git_commit(self, project: str, message: str) -> None:
+        """roadmap.md 变更落 git（commit + push，失败留脏现场 + 告警，不吞错误不重试）。"""
+        try:
+            subprocess.run(
+                ["git", "add", "--", f"docs/projects/{project}/roadmap.md"],
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", message],
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            subprocess.run(
+                ["git", "push"],
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error(
+                "roadmap 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
+            )
+
+    def _handle_roadmap_projects(self):
+        """GET /roadmap/projects — 全部项目线路图（草案池 + 里程碑）。"""
+        from server.board import roadmap as _rm
+
+        _projects = _rm.list_roadmaps()
+        _list = []
+        for _p in _projects:
+            _parsed, _ = self._roadmap_read(_p)
+            _parsed = _parsed or {}
+            _list.append(
+                {
+                    "project": _p,
+                    "drafts": [_d.title for _d in _parsed.get("drafts", [])],
+                    "milestones": [
+                        {
+                            "title": _m.title,
+                            "status": _m.status,
+                            "linked_plans": list(_m.linked_plans),
+                            "description": _m.description,
+                        }
+                        for _m in _parsed.get("milestones", [])
+                    ],
+                    "updated": _parsed.get("updated", ""),
+                }
+            )
+        self._send_json({"roadmaps": _list, "total": len(_list)})
+
+    def _handle_roadmap_detail(self, project: str):
+        """GET /roadmap/<prefix> — 单项目线路图（草案池 + 里程碑）。"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        _parsed, _ = self._roadmap_read(project)
+        if _parsed is None:
+            self._send_json({"error": f"项目 {project} 尚无 roadmap.md"}, 404)
+            return
+        self._send_json(
+            {
+                "project": project,
+                "drafts": [_d.title for _d in _parsed.get("drafts", [])],
+                "milestones": [
+                    {
+                        "title": _m.title,
+                        "status": _m.status,
+                        "linked_plans": list(_m.linked_plans),
+                        "description": _m.description,
+                    }
+                    for _m in _parsed.get("milestones", [])
+                ],
+                "updated": _parsed.get("updated", ""),
+            }
+        )
+
+    def _handle_roadmap_milestone_create(self, project: str):
+        """POST /roadmap/<prefix>/milestone {title, status?, description?, linked_plans?}"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+        title = (body.get("title", "") or "").strip()
+        if not title:
+            self._send_json({"error": "缺少 title"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.create_milestone(
+            project,
+            title,
+            status=(body.get("status") or "草案").strip(),
+            linked_plans=body.get("linked_plans"),
+            description=(body.get("description") or "").strip(),
+        )
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 新增里程碑 {title}")
+        self._send_json(_result, 201)
+
+    def _handle_roadmap_milestone_update(self, project: str, title: str):
+        """PUT /roadmap/<prefix>/milestone/<id> {status?, description?, linked_plans?}"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.update_milestone(
+            project,
+            title,
+            status=body.get("status"),
+            linked_plans=body.get("linked_plans"),
+            description=body.get("description"),
+        )
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 更新里程碑 {title}")
+        self._send_json(_result)
+
+    def _handle_roadmap_draft_create(self, project: str):
+        """POST /roadmap/<prefix>/draft {title}"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+        title = (body.get("title", "") or "").strip()
+        if not title:
+            self._send_json({"error": "缺少 title"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.create_draft(project, title)
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 新增草案 {title}")
+        self._send_json(_result, 201)
+
+    def _handle_roadmap_draft_promote(self, project: str, title: str):
+        """POST /roadmap/<prefix>/draft/<id>/promote — 草案升级（roadmap.promote_draft + git 落库）。"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.promote_draft(project, title)
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        # promote 写 roadmap.md（草案→里程碑）；若需同步建方案由 plans.create_plan 走其自身 commit。
+        # 此处 git 落库 roadmap.md 变更，失败保留脏现场。
+        self._roadmap_git_commit(project, f"roadmap({project}): 草案升级为里程碑 {title}")
+        self._send_json(_result)
 
     def _handle_cards_get(self):
         """GET /cards?project=&state=&page=&page_size="""
@@ -2474,14 +2667,14 @@ class _APIHandler(BaseHTTPRequestHandler):
                     if in_table and ln.strip().startswith("|"):
                         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
                         if len(cells) >= 6:
-                                findings.append(
-                                    {
-                                        "weight": cells[0],
-                                        "severity": _severity_from_weight(cells[0]),
-                                        "title": cells[4],
-                                        "human_title": _summarize_finding(cells[4]),
-                                        "project": cells[5],
-                                        "acting_on": cells[6].strip("`"),
+                            findings.append(
+                                {
+                                    "weight": cells[0],
+                                    "severity": _severity_from_weight(cells[0]),
+                                    "title": cells[4],
+                                    "human_title": _summarize_finding(cells[4]),
+                                    "project": cells[5],
+                                    "acting_on": cells[6].strip("`"),
                                     "evidence": cells[7].strip("`") if len(cells) > 7 else "",
                                     "ts": f.stat().st_mtime,
                                 }
@@ -2580,7 +2773,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             from server.board.models import board_column as _board_column
 
             for item in _load_board_items():
-                col_by_id[item.id.lower()] = _board_column(item.state, bool(getattr(item, "machine_audit_passed", False)))
+                col_by_id[item.id.lower()] = _board_column(
+                    item.state, bool(getattr(item, "machine_audit_passed", False))
+                )
         except OSError:
             pass
 
@@ -2751,26 +2946,37 @@ class _APIHandler(BaseHTTPRequestHandler):
         elif path == "/board/by_project":
             self._send_json(view_by_project(items))
         elif path == "/board/roadmap":
-            # 业务线路（2026-08-12）：解析 roadmap.md 分段 + 关联卡状态/漂移
+            # Phase2：改读 docs/projects/<prefix>/roadmap.md（roadmap.py），
+            # 不再从 epic 卡派生 overview/by_project。
             try:
-                from server.board.roadmap_parser import load_roadmap_sections
+                from server.board import roadmap as _roadmap_mod
 
-                _rm_path = _PROJECT_ROOT / "docs" / "roadmap.md"
-                _cards_by_id = {}
-                _by_proj = {}
-                for _it in items:
-                    _cards_by_id[_it.id.lower()] = str(_it.state)
-                    _by_proj[_it.id.lower()] = str(_it.project or "")
-                _business = load_roadmap_sections(_rm_path, _cards_by_id, _by_proj)
+                _projects = _roadmap_mod.list_roadmaps()
+                _roadmaps = []
+                for _p in _projects:
+                    _file = Path("docs") / "projects" / _p / "roadmap.md"
+                    _text = _file.read_text(encoding="utf-8", errors="replace")
+                    _parsed = _roadmap_mod.parse_roadmap(_text, project=_p)
+                    _roadmaps.append(
+                        {
+                            "project": _p,
+                            "drafts": [_d.title for _d in _parsed.get("drafts", [])],
+                            "milestones": [
+                                {
+                                    "title": _m.title,
+                                    "status": _m.status,
+                                    "linked_plans": list(_m.linked_plans),
+                                    "description": _m.description,
+                                }
+                                for _m in _parsed.get("milestones", [])
+                            ],
+                            "updated": _parsed.get("updated", ""),
+                        }
+                    )
+                self._send_json({"roadmaps": _roadmaps, "total": len(_roadmaps)})
             except Exception:
-                _business = []
-            self._send_json(
-                {
-                    "overview": roadmap_overview(items),
-                    "by_project": roadmap_by_project(items),
-                    "business_lines": _business,
-                }
-            )
+                logger.exception("roadmap 聚合失败")
+                self._send_json({"roadmaps": [], "total": 0})
         elif path.startswith("/board/roadmap/"):
             # 单项目线路图详情（2026-08-12）：里程碑 + 卡分组 + 风险，供 SVG 渲染
             _proj = path[len("/board/roadmap/") :]
@@ -2789,11 +2995,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                 _business = load_roadmap_sections(_rm_path, _cards_by_id, _by_proj)
                 _detail = project_detail(_business, _proj)
             except Exception:
+                logger.exception("roadmap 详情加载失败: %s", _proj)
                 _detail = None
             if _detail is None:
                 self._send_json({"error": f"项目 {_proj} 无业务线路"}, 404)
             else:
                 self._send_json(_detail)
+        elif path == "/roadmap/projects":
+            self._handle_roadmap_projects()
+        elif path.startswith("/roadmap/"):
+            _proj = path[len("/roadmap/") :].strip("/").split("?")[0]
+            self._handle_roadmap_detail(_proj)
         elif path == "/board/states":
             self._send_json(states_response(items))
         elif path == "/board/ready_for_merge":
@@ -2834,8 +3046,42 @@ class _APIHandler(BaseHTTPRequestHandler):
         elif path.startswith("/tasks/") and path.endswith("/transition"):
             task_id = path[len("/tasks/") : -len("/transition")].strip("/")
             self._handle_task_transition(task_id)
+        elif path.startswith("/roadmap/"):
+            self._dispatch_roadmap_post(path)
         else:
             self._send_404()
+
+    def _dispatch_roadmap_post(self, path: str):
+        """POST /roadmap/<prefix>/milestone | /roadmap/<prefix>/draft | /roadmap/<prefix>/draft/<id>/promote"""
+        rest = path[len("/roadmap/") :].strip("/")
+        segs = rest.split("/")
+        project = segs[0] if segs else ""
+        if len(segs) == 2 and segs[1] == "milestone":
+            self._handle_roadmap_milestone_create(project)
+            return
+        if len(segs) == 2 and segs[1] == "draft":
+            self._handle_roadmap_draft_create(project)
+            return
+        if len(segs) == 3 and segs[1] == "draft" and segs[2] == "promote":
+            # 草案 id 缺失时 400
+            self._send_json({"error": "缺少草案 id"}, 400)
+            return
+        if len(segs) == 4 and segs[1] == "draft" and segs[3] == "promote":
+            self._handle_roadmap_draft_promote(project, segs[2])
+            return
+        self._send_404()
+
+    def do_PUT(self):
+        """PUT /roadmap/<prefix>/milestone/<id> — 更新里程碑。"""
+        if not self._check_auth():
+            return
+        path = self.path.rstrip("/").split("?")[0]
+        rest = path[len("/roadmap/") :].strip("/") if path.startswith("/roadmap/") else ""
+        segs = rest.split("/") if rest else []
+        if len(segs) == 3 and segs[1] == "milestone":
+            self._handle_roadmap_milestone_update(segs[0], segs[2])
+            return
+        self._send_404()
 
     def do_DELETE(self):
         """DELETE /projects/<project>/threads/<thread>：删除会话（仅会话存储）。"""
@@ -3030,7 +3276,7 @@ class _CCCThreadingHTTPServer(ThreadingHTTPServer):
     def process_request(self, request: Any, client_address: Any) -> None:
         """线程池限流：静态只读端点免限，其余受信号量控制。"""
         # 静态端点（/health、/board/*）不占并发配额
-        path = request.requestline.split(" ")[1] if hasattr(request, 'requestline') else ""
+        path = request.requestline.split(" ")[1] if hasattr(request, "requestline") else ""
         path = path.split("?")[0].rstrip("/") or "/"
         if path in ("/health",) or path.startswith("/board/"):
             super().process_request(request, client_address)

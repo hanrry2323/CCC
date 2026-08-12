@@ -3335,3 +3335,103 @@ body.ro-viewer [data-write] {
 .console-settings-group h5 { grid-column: 1 / -1; margin: 0 0 4px; font-size: 12px; color: #888; font-weight: 650; }
 .console-settings-group span { font-size: 12px; color: #888; }
 .console-settings-group b { font-size: 12px; color: #333; font-weight: 600; }
+
+/* ═══════════ 线路图 v3：草案池 + 里程碑卡片 ═══════════ */
+
+.rm2-drafts {
+  background: #fff;
+  border: 1px solid var(--ccc-border, #e0e0e0);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+.rm2-drafts-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #a39e93;
+  display: block;
+  margin-bottom: 10px;
+}
+.rm2-draft-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.rm2-draft-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(163, 158, 147, 0.08);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #555;
+}
+.rm2-draft-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 里程碑卡片列表 */
+.rm2-miles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.rm2-mile-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--ccc-border, #e0e0e0);
+  border-radius: 10px;
+  transition: box-shadow 0.15s;
+}
+.rm2-mile-card:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.rm2-mile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.rm2-mile-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+.rm2-mile-status.done { background: rgba(42, 157, 74, 0.13); color: #2a7d44; }
+.rm2-mile-status.doing { background: rgba(58, 123, 213, 0.13); color: #2d63a8; }
+.rm2-mile-status.planned { background: rgba(120, 120, 120, 0.13); color: #666; }
+.rm2-mile-desc {
+  font-size: 12.5px;
+  color: #666;
+  line-height: 1.5;
+}
+.rm2-mile-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.rm2-mile-progress-label {
+  font-size: 11.5px;
+  color: #999;
+  font-weight: 600;
+}
+.rm2-mile-progress-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.rm2-mile-progress-tags code {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: rgba(12, 74, 110, 0.08);
+  border-radius: 3px;
+  color: #0c4a6e;
+}
+
+/* 草案标签 */
+.rm-tag.draft { background: rgba(163, 158, 147, 0.15); color: #7a7468; }
