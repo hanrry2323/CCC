@@ -438,6 +438,16 @@ def update_plan(
 
     plan_file.write_text(current)
 
+    # 级联回写：方案进度（看板卡状态变更时自动更新）
+    sync_plan_progress(repo_root, rel_path)
+
+    # 级联回写：里程碑进度（方案进度变更时自动更新关联里程碑）
+    from server.board.roadmap import sync_milestone_progress
+
+    m = _PLAN_PATH_RE.match(rel_path)
+    if m:
+        sync_milestone_progress(m.group(1), rel_path)
+
     # Fix #8：commit+push 与 convert_plan 同规则
     ok, err = _git_commit_push(repo_root, [rel_path], f"plans: update {rel_path}")
     if not ok:
@@ -505,7 +515,93 @@ def _extract_created_card(stdout: str, prefix: str, repo_root: Path) -> tuple[Pa
     return path, fname.split("-", 1)[0]
 
 
-def plan_card_states(repo_root: Path, cards: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
+    """读取方案关联的卡，从 cards.index.jsonl 查每张卡的状态，计算 closed/total，
+    回写方案文件头部的进度信息。
+
+    被 convert_plan / update_plan 调用，在看板卡状态变更时自动触发级联回写。
+
+    Returns:
+        {ok, progress: {total, closed, progress_pct}} or {error}
+    """
+    plan_file = repo_root / rel_path
+    if not plan_file.exists():
+        return {"error": "方案文件不存在"}
+
+    if not _PLAN_PATH_RE.match(rel_path):
+        return {"error": "无效的方案路径格式"}
+
+    try:
+        current = plan_file.read_text()
+    except OSError:
+        return {"error": "读取方案文件失败"}
+
+    fields = _extract_header_fields(current)
+    cards_raw = fields.get("关联卡", "").strip()
+    if not cards_raw or cards_raw == "无":
+        return {"ok": True, "progress": {"total": 0, "closed": 0, "progress_pct": 0}}
+
+    # 从卡片引用中提取卡 ID
+    card_ids = re.findall(r"([a-zA-Z]+[0-9]+(?:\-[a-zA-Z])?)", cards_raw)
+
+    if not card_ids:
+        return {"ok": True, "progress": {"total": 0, "closed": 0, "progress_pct": 0}}
+
+    # 从 cards.index.jsonl 读取卡片状态
+    from server.board.loader import load_index_file
+
+    index = load_index_file(repo_root / "docs" / "dispatch")
+    card_id_lower_map = {k.lower(): v for k, v in index.items()}
+
+    total = len(card_ids)
+    closed = 0
+    for cid in card_ids:
+        entry = card_id_lower_map.get(cid.lower())
+        if entry and entry.get("state") == "已关闭":
+            closed += 1
+
+    progress_pct = int(closed / total * 100) if total > 0 else 0
+
+    # 回写进度到方案文件头部
+    # 格式: > 进度：3/5 (60%)
+    progress_text = f"进度：{closed}/{total} ({progress_pct}%)"
+
+    if "进度：" in current:
+        current = re.sub(
+            r"(进度：)([^\n]*)",
+            f"进度：{closed}/{total} ({progress_pct}%)",
+            current,
+            count=1,
+        )
+    else:
+        # 在关联方案行后插入进度行
+        lines = current.split("\n")
+        inserted = False
+        for i, line in enumerate(lines):
+            if "关联方案：" in line:
+                lines.insert(i + 1, f"> {progress_text}")
+                inserted = True
+                break
+        if not inserted:
+            # 在头部 > 块末尾插入
+            for i, line in enumerate(lines):
+                if line.startswith(">"):
+                    continue
+                if i > 0 and lines[i - 1].startswith(">"):
+                    lines.insert(i, f"> {progress_text}")
+                    inserted = True
+                    break
+        if not inserted:
+            # 在标题后插入
+            lines.insert(2, f"> {progress_text}")
+        current = "\n".join(lines)
+
+    plan_file.write_text(current)
+
+    return {
+        "ok": True,
+        "progress": {"total": total, "closed": closed, "progress_pct": progress_pct},
+    }
     """方案 → 关联卡在看板六列的分布（ccc-plan-024 流程条数据源）。
 
     cards: 已富化卡列表（含 id / board_column / state）。
@@ -681,6 +777,12 @@ def _convert_plan_locked(
     plan_file.write_text(current)
 
     if no_push:
+        # 级联回写：方案进度（看板卡状态变更时自动更新）
+        sync_plan_progress(repo_root, rel_path)
+        # 级联回写：里程碑进度（方案进度变更时自动更新关联里程碑）
+        from server.board.roadmap import sync_milestone_progress
+
+        sync_milestone_progress(prefix, rel_path)
         return {"ok": True, "cards": cards}
 
     # commit+push：卡文件与方案状态同批提交，Engine 才能感知新卡

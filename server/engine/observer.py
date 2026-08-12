@@ -1167,6 +1167,44 @@ if __name__ == "__main__":
     main()
 
 
+def write_roadmap_draft(
+    project: str,
+    description: str,
+    *,
+    draft_type: str = "问题",
+    source: str = "Loop巡查",
+) -> dict[str, Any]:
+    """Loop 巡查集成：自动将发现的问题写入对应项目 roadmap.md 草案池。
+
+    当 Loop 发现新问题（治理漂移、缺失项、技术债）时调用此函数，
+    自动在对应项目的 roadmap.md 草案池中追加一条草案条目。
+
+    Args:
+        project: 项目前缀（如 ccc, clw, hp 等）
+        description: 巡查发现的问题描述
+        draft_type: 草案类型，默认 "问题"
+        source: 来源标识，默认 "Loop巡查"
+
+    Returns:
+        dict: {"ok": True, "draft": title} 或 {"error": "..."}
+    """
+    from server.board.roadmap import create_draft as _create_draft, list_drafts
+
+    # 构造标题：包含类型、来源和描述
+    title = f"[{draft_type}][{source}] {description}"
+
+    # 去重检查：已有相同描述的草案则跳过
+    try:
+        existing = list_drafts(project)
+        for d in existing:
+            if description in d.title:
+                return {"ok": True, "draft": d.title, "skipped": True, "reason": "duplicate"}
+    except Exception:
+        pass
+
+    return _create_draft(project, title)
+
+
 def trigger_scheduled_ops(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     """定时运维任务触发（2026-08-11 · 集群运维 Agent 调取）。
 

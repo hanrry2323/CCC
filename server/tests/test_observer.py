@@ -285,6 +285,44 @@ def test_gather_lesson_recirculation_metrics(tmp_path: Path, monkeypatch) -> Non
     assert metrics['recirculated_lessons_cards'] == 1
     assert metrics['lesson_recirculation_rate_pct'] == 50.0
 
+def test_write_roadmap_draft(tmp_path: Path) -> None:
+    """Loop 巡查集成：write_roadmap_draft 写入草案到项目 roadmap.md 并去重。"""
+    from server.engine.observer import write_roadmap_draft
+
+    # 构造临时 roadmap.md
+    projects_dir = tmp_path / "docs" / "projects" / "ccc"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    roadmap_path = projects_dir / "roadmap.md"
+    roadmap_path.write_text(
+        "# CCC 线路图\n\n> 项目：ccc · 更新：2026-08-13\n\n## 草案池\n\n无。\n\n## 里程碑\n\n无。\n",
+        encoding="utf-8",
+    )
+
+    with patch("server.board.roadmap._roadmap_path", return_value=roadmap_path):
+        # 第一次写入
+        result = write_roadmap_draft("ccc", "状态漂移检测异常")
+        assert result.get("ok") is True
+        assert "状态漂移" in result.get("draft", "")
+
+        # 第二次写入同描述 → 去重跳过
+        result2 = write_roadmap_draft("ccc", "状态漂移检测异常")
+        assert result2.get("ok") is True
+        assert result2.get("skipped") is True
+
+        # 不同描述 → 正常写入
+        result3 = write_roadmap_draft("ccc", "缺失维护区四问")
+        assert result3.get("ok") is True
+        assert result3.get("skipped") is not True
+
+        # 验证草案池内容
+        from server.board.roadmap import list_drafts
+        drafts = list_drafts("ccc")
+        titles = [d.title for d in drafts]
+        assert len(titles) == 2
+        assert any("状态漂移" in t for t in titles)
+        assert any("缺失维护区四问" in t for t in titles)
+
+
 def test_run_playwright_smoke_test_failure() -> None:
     res = observer.run_playwright_smoke_test('http://invalid_domain_9999')
     assert res['ok'] is False

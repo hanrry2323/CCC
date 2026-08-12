@@ -2308,6 +2308,32 @@ class _APIHandler(BaseHTTPRequestHandler):
         self._roadmap_git_commit(project, f"roadmap({project}): 草案升级为里程碑 {title}")
         self._send_json(_result)
 
+    def _handle_roadmap_draft_promote_to_plan(self, project: str):
+        """POST /roadmap/<prefix>/draft/<index>/promote-to-plan — 草案→方案一键升级（Phase 4.3）。
+
+        从 roadmap.md 草案池取一条草案（按索引），调用 plans.create_plan 创建方案，
+        并从草案池移除该条目。
+        body: {index?: int, author?: string, tool?: string}
+        """
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        body = self._read_body() or {}
+        index = body.get("index", 0)
+        if not isinstance(index, int) or index < 0:
+            index = 0
+        author = str(body.get("author") or "system").strip()
+        tool = str(body.get("tool") or "ccc").strip()
+
+        from server.board import roadmap as _rm
+
+        _result = _rm.promote_draft_to_plan(project, index=index, author=author, tool=tool)
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 草案→方案 {_result.get('draft_title', '')}")
+        self._send_json(_result, 201)
+
     def _handle_cards_get(self):
         """GET /cards?project=&state=&page=&page_size="""
         from urllib.parse import parse_qs

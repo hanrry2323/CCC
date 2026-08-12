@@ -24,6 +24,7 @@ from server.board.plans import (
     get_plan,
     list_plans,
     update_plan,
+    sync_plan_progress,
     _extract_header_fields,
     _extract_title,
     _extract_acceptance,
@@ -753,3 +754,105 @@ class TestValidatePlansScript:
         result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
         assert result.returncode != 0
         assert "关联卡已全部关闭但状态仍为" in result.stdout
+
+
+# ── 9. sync_plan_progress 测试 ──
+
+
+class TestSyncPlanProgress:
+    """Phase 4.1：方案进度自动回写测试。"""
+
+    def test_no_cards(self, tmp_path: Path) -> None:
+        """无关联卡时，进度为 0/0。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+
+        # 构造空的 cards.index.jsonl
+        dispatch_dir = tmp_path / "docs" / "dispatch"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        idx_path = dispatch_dir / "cards.index.jsonl"
+        idx_path.write_text("", encoding="utf-8")
+
+        with patch("server.board.loader.load_index_file", return_value={}):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+            assert result.get("ok") is True
+            assert result["progress"]["total"] == 0
+            assert result["progress"]["closed"] == 0
+
+    def test_cards_set_to_none(self, tmp_path: Path) -> None:
+        """关联卡字段为「无」时，进度为 0/0。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+
+        result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result.get("ok") is True
+        assert result["progress"]["total"] == 0
+
+    def test_with_cards(self, tmp_path: Path) -> None:
+        """有 3 张关联卡，其中 2 张已关闭 → 进度 2/3 (66%)。"""
+        _make_registry(tmp_path, ["ccc"])
+        # 更新方案关联卡字段
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002, ccc003")
+        p.write_text(content)
+
+        mock_index = {
+            "ccc001": {"id": "ccc001", "state": "已关闭", "path": "docs/dispatch/ccc001-a.md"},
+            "ccc002": {"id": "ccc002", "state": "已关闭", "path": "docs/dispatch/ccc002-b.md"},
+            "ccc003": {"id": "ccc003", "state": "执行中", "path": "docs/dispatch/ccc003-c.md"},
+        }
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+            assert result.get("ok") is True
+            assert result["progress"]["total"] == 3
+            assert result["progress"]["closed"] == 2
+            assert result["progress"]["progress_pct"] == 66
+
+            # 验证文件回写
+            updated = p.read_text()
+            assert "进度：2/3 (66%)" in updated
+
+    def test_all_cards_closed(self, tmp_path: Path) -> None:
+        """全部卡已关闭 → 进度 2/2 (100%)。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002")
+        p.write_text(content)
+
+        mock_index = {
+            "ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"},
+            "ccc002": {"id": "ccc002", "state": "已关闭", "path": "x"},
+        }
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+            assert result["progress"]["progress_pct"] == 100
+            assert "进度：2/2 (100%)" in p.read_text()
+
+    def test_nonexistent_file(self, tmp_path: Path) -> None:
+        result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/999-x.md")
+        assert "error" in result
+
+    def test_invalid_path(self, tmp_path: Path) -> None:
+        result = sync_plan_progress(tmp_path, "../etc/passwd")
+        assert "error" in result
+
+    def test_progress_field_update(self, tmp_path: Path) -> None:
+        """已有进度字段时，应原地更新而非新增行。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001")
+        # 手动插入旧进度
+        content = content.replace("关联方案：无\n", "关联方案：无\n> 进度：0/1 (0%)\n")
+        p.write_text(content)
+
+        mock_index = {"ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"}}
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+            updated = p.read_text()
+            # 应该是更新后的值，不是旧值
+            assert "进度：1/1 (100%)" in updated
+            # 只应出现一次进度行
+            assert updated.count("进度：") == 1

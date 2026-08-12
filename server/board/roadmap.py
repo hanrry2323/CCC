@@ -336,7 +336,21 @@ def create_draft(project: str, title: str) -> dict[str, Any]:
 
 
 def promote_draft(project: str, title: str) -> dict[str, Any]:
-    """将草案提升为里程碑（从草案池移除，进入里程碑）。"""
+    return {"error": f"promote_draft 已弃用，请使用 promote_draft_to_plan 将草案升级为方案"}
+
+
+def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", tool: str = "ccc") -> dict[str, Any]:
+    """从 roadmap.md 草案池取一条草案，创建方案，并从草案池移除该条目。
+
+    Args:
+        project: 项目前缀
+        index: 草案池中的索引（0=第一条），用于指定取哪条草案
+        author: 方案作者
+        tool: 方案工具
+
+    Returns:
+        {ok, plan: {path, id}, draft_title: ...} or {error}
+    """
     path = _roadmap_path(project)
     if not path.is_file():
         return {"error": f"项目 {project} 尚无 roadmap.md"}
@@ -344,26 +358,83 @@ def promote_draft(project: str, title: str) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     data = parse_roadmap(text, project=project)
 
-    # 找到并移除草案
-    draft_idx = None
-    for i, d in enumerate(data["drafts"]):
-        if d.title == title:
-            draft_idx = i
-            break
+    if not data["drafts"]:
+        return {"error": "草案池为空"}
 
-    if draft_idx is None:
-        return {"error": f"草案 {title} 不存在"}
+    if index < 0 or index >= len(data["drafts"]):
+        return {"error": f"草案索引 {index} 越界（共 {len(data['drafts'])} 条）"}
 
-    data["drafts"].pop(draft_idx)
+    draft = data["drafts"][index]
+    draft_title = draft.title
 
-    # 创建里程碑
-    ms = Milestone(title=title, project=project, status="草案")
-    data["milestones"].append(ms)
+    # 从草案池移除
+    data["drafts"].pop(index)
     _write_roadmap(project, data["drafts"], data["milestones"])
-    return {"ok": True, "milestone": title}
+
+    # 调用 plans.py create_plan 创建方案
+    from server.board.plans import create_plan as _create_plan
+
+    repo_root = _repo_root()
+    result = _create_plan(
+        repo_root,
+        project=project,
+        title=draft_title,
+        content=f"## 目标\n\n从草案「{draft_title}」升级而来。\n\n## 验收标准\n\n- [ ] 待定义\n",
+        author=author,
+        tool=tool,
+    )
+
+    if "error" in result:
+        # 回滚：把草案放回池中
+        data["drafts"].insert(index, draft)
+        _write_roadmap(project, data["drafts"], data["milestones"])
+        return {"error": f"方案创建失败: {result['error']}"}
+
+    return {"ok": True, "plan": {"path": result.get("path"), "id": result.get("id")}, "draft_title": draft_title}
 
 
 # ── 进度计算 ──
+
+
+def sync_milestone_progress(project: str, plan_rel_path: str) -> dict[str, Any]:
+    """当方案进度变更时，自动更新关联里程碑的进度。
+
+    读取里程碑关联的方案，汇总方案进度，更新 roadmap.md 中里程碑的进度行。
+    在 plan 状态变更时由 plans.py 的 update_plan / convert_plan 触发。
+
+    Returns:
+        {ok, updated_milestones: [title, ...]}  or  {error}
+    """
+    path = _roadmap_path(project)
+    if not path.is_file():
+        return {"ok": True, "updated_milestones": []}
+
+    text = path.read_text(encoding="utf-8")
+    data = parse_roadmap(text, project=project)
+
+    # 提取 plan ID: docs/projects/<prefix>/plans/<NNN>-<slug>.md → <prefix>-plan-<NNN>
+    m = re.match(r"docs/projects/([a-z]{2,4})/plans/([0-9]{3})-", plan_rel_path)
+    if not m:
+        return {"ok": True, "updated_milestones": []}
+    plan_id = f"{m.group(1)}-plan-{m.group(2)}"
+
+    updated: list[str] = []
+    for ms in data["milestones"]:
+        if plan_id not in ms.linked_plans:
+            continue
+        progress = compute_milestone_progress(project, ms.title)
+        if "error" in progress:
+            continue
+        # 更新里程碑状态
+        old_status = ms.status
+        ms.status = progress["status"]
+        if old_status != ms.status:
+            updated.append(ms.title)
+
+    if updated:
+        _write_roadmap(project, data["drafts"], data["milestones"])
+
+    return {"ok": True, "updated_milestones": updated}
 
 
 def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
@@ -392,7 +463,7 @@ def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
         return {"total": 0, "completed": 0, "progress_pct": 0, "status": ms.status}
 
     completed = 0
-    plans_dir = Path("docs") / "projects" / project / "plans"
+    plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
     for plan_id in ms.linked_plans:
         # 查找匹配的方案文件
         match = re.match(rf"{project}-plan-(\d+)", plan_id)
