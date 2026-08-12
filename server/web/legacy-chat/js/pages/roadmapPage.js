@@ -124,14 +124,41 @@ function _milestoneProgressHTML(mile) {
   </div>`;
 }
 
-function _milestoneListHTML(detail) {
+function _milestoneDotClass(status) {
+  if (status === '已完成') return 'done';
+  if (status === '进行中') return 'doing';
+  return 'none';
+}
+
+function _railHTML(detail) {
   const miles = detail.milestones || [];
-  if (!miles.length) return '<div class="rm2-empty">暂无里程碑</div>';
-  return `<div class="rm2-miles">
+  if (!miles.length) return '<div class="rm2-rail-wrap"><div class="rm2-empty">暂无里程碑</div></div>';
+  return `<div class="rm2-rail-wrap">
+    <div class="rm2-rail-title">里程碑（${miles.length}）</div>
+    <div class="rm2-rail">
+      <div class="rm2-rail-line"></div>
+      ${miles.map((m, i) => {
+        const dotClass = _milestoneDotClass(m.status);
+        return `<button type="button" class="rm2-mile" data-mile-idx="${i}" title="${esc(m.title)}">
+          <span class="rm2-mile-dot ${dotClass}"></span>
+          <div class="rm2-mile-body">
+            <span class="rm2-mile-title">${esc(m.title)}</span>
+            <span class="rm2-mile-meta">${esc(m.status)}</span>
+          </div>
+        </button>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function _milestoneCardsHTML(detail) {
+  const miles = detail.milestones || [];
+  if (!miles.length) return '<div class="rm2-panel-wrap"><div class="rm2-empty">暂无里程碑</div></div>';
+  return `<div class="rm2-panel-wrap">
     ${miles.map((m, i) => {
       const tone = m.status === '已完成' ? 'done' : m.status === '进行中' ? 'doing' : 'planned';
-      return `<div class="rm2-mile-card">
-        <span class="rm2-mile-dot ${tone}"></span>
+      return `<div class="rm2-mile-card" id="rm2-mile-${i}">
+        <span class="rm2-mile-dot ${_milestoneDotClass(m.status)}"></span>
         <div class="rm2-mile-info">
           <span class="rm2-mile-title">${esc(m.title)}</span>
           <span class="rm2-mile-status ${tone}">${esc(m.status)}</span>
@@ -141,6 +168,27 @@ function _milestoneListHTML(detail) {
       </div>`;
     }).join('')}
   </div>`;
+}
+
+function _setupRailNavigation(host) {
+  const rail = host.querySelector('.rm2-rail');
+  if (!rail) return;
+  rail.querySelectorAll('.rm2-mile').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = btn.dataset.mileIdx;
+      const target = host.querySelector(`#rm2-mile-${idx}`);
+      // 高亮当前选中项
+      rail.querySelectorAll('.rm2-mile').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      // 滚动到对应里程碑卡片
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+  // 默认选中第一个
+  const first = rail.querySelector('.rm2-mile');
+  if (first) first.classList.add('active');
 }
 
 async function openProject(project) {
@@ -154,8 +202,12 @@ async function openProject(project) {
       <div class="rm2">
         ${_overviewHTML(detail)}
         ${_draftPoolHTML(detail.drafts)}
-        ${_milestoneListHTML(detail)}
+        <div class="rm2-body">
+          ${_railHTML(detail)}
+          ${_milestoneCardsHTML(detail)}
+        </div>
       </div>`;
+    _setupRailNavigation(body);
   } catch (err) {
     body.innerHTML = '<div class="board-empty">加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
@@ -168,7 +220,7 @@ function _overviewHTML(detail) {
   const doneN = miles.filter((m) => m.status === '已完成').length;
   const doingN = miles.filter((m) => m.status === '进行中').length;
   const plannedN = miles.length - doneN - doingN;
-  const pct = miles.length ? Math.round((doneN / miles.length) * 100) : 0;
+  const pct = _progressPct(miles);
   return `<div class="rm2-overview">
     <div class="rm2-name">${esc(detail.project)}<span>线路图</span></div>
     <div class="rm2-stats">

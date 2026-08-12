@@ -41,6 +41,15 @@ class Draft:
 
 
 @dataclass
+class Step:
+    """里程碑下的执行步骤"""
+
+    title: str  # 步骤标题
+    description: str = ""  # 步骤描述
+    status: str = "待开始"  # 待开始 | 进行中 | 已完成
+
+
+@dataclass
 class Milestone:
     """里程碑（关联一组方案，有进度）"""
 
@@ -49,6 +58,7 @@ class Milestone:
     status: str = "草案"  # 草案 | 进行中 | 已完成
     linked_plans: list[str] = field(default_factory=list)  # 关联方案 ID
     description: str = ""  # 描述
+    steps: list[Step] = field(default_factory=list)  # 执行步骤
 
 
 # ── 解析 ──
@@ -96,7 +106,15 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                 }
             elif current_ms is not None:
                 stripped = line.strip()
-                if stripped.startswith("- 状态："):
+                if stripped.startswith("- [") and "]" in stripped:
+                    # Step 解析：- [状态] 标题（缩进风格，必须在描述续行之前检查）
+                    step_match = re.match(r"^-\s*\[([^\]]+)\]\s*(.*)", stripped)
+                    if step_match:
+                        step_status = step_match.group(1).strip()
+                        step_title = step_match.group(2).strip()
+                        steps = current_ms.setdefault("steps", [])
+                        steps.append(Step(title=step_title, description="", status=step_status))
+                elif stripped.startswith("- 状态："):
                     current_ms["status"] = stripped[4:].strip().lstrip("：").strip()
                 elif stripped.startswith("- 关联方案："):
                     plans = stripped[6:].strip().lstrip("：").strip()
@@ -189,6 +207,9 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
                     lines.append(f"- 关联方案：{', '.join(ms.linked_plans)}")
                 if ms.description:
                     lines.append(f"- 描述：{ms.description}")
+                if ms.steps:
+                    for step in ms.steps:
+                        lines.append(f"  - [{step.status}] {step.title}")
                 lines.append("")
         else:
             lines.append("无。")

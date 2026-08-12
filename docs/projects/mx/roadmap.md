@@ -39,9 +39,9 @@
 ### Milestone 4：公开化搬迁与多端 CI/CD (Public OpenSource Readiness)
 *   **状态**：⏳ 远期挂账
 *   **主要工作**：
-    *   **独立脱敏**：重新换发鸿蒙签名证书（`.p7b.pem`），并执行 `git filter-repo` 全仓重写历史彻底抹除密钥泄漏痕迹。
+    *   **独立脱敏**：重新换发鸿蒙签名证书（`.p7b.pem`），并执行 `git filter-repo` 全仓历史重写彻底抹除密钥泄漏痕迹。
     *   **静态清零**：对全仓私有 IP、敏感内网路径、硬编码 token 进行静态合规扫描。
-    *   **开源准备**：补充开源 LICENSE、更新中英文 README 运行说明；将 Repo 设置为 Public 开放。
+    *   **开源准备**：补充开源 LICENSE、中英文 README 运行说明；将 Repo 设置为 Public 开放。
     *   **CI/CD 兑现**：启用 Actions 免费构建机，自动执行 Tauri 跨平台 DMG 打包与 HarmonyOS 应用远程发布流。
 *   **关联方案**：`mx-plan-004` (开源公开化演进，待起草方案)
 

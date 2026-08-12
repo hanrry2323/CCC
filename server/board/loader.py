@@ -431,58 +431,6 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
     if not include_archived:
         items = [i for i in items if not i.archived]
 
-    return derive_epic_states_and_progress(items)
+    return items
 
 
-def derive_epic_states_and_progress(items: list[BoardItem]) -> list[BoardItem]:
-    """线路图/看板按 epic 聚合子卡进度（已完成/总子卡）；epic 状态由子卡派生（全部关闭+目标达成→待验收）。"""
-    epic_items = [item for item in items if item.type == "epic"]
-    if not epic_items:
-        return items
-
-    epic_to_children: dict[str, list[BoardItem]] = {epic.id: [] for epic in epic_items}
-    for item in items:
-        if item.type == "task" and item.parent in epic_to_children:
-            epic_to_children[item.parent].append(item)
-
-    derived_items = []
-    for item in items:
-        if item.type == "epic":
-            children = epic_to_children.get(item.id, [])
-            if children:
-                total = len(children)
-                closed = sum(1 for child in children if base_state(child.state) == "已关闭")
-                progress_str = f"{closed}/{total}"
-
-                if closed == total:
-                    derived_state = "已回写"
-                else:
-                    has_active = any(base_state(child.state) in ("执行中", "已回写", "打回") for child in children)
-                    if has_active:
-                        derived_state = "执行中"
-                    else:
-                        derived_state = "待分派"
-
-                new_item = BoardItem(
-                    id=item.id,
-                    title=f"{item.title} ({progress_str})",
-                    state=derived_state,
-                    project=item.project,
-                    executor=item.executor,
-                    dispatched_at=item.dispatched_at,
-                    written_at=item.written_at,
-                    reject_count=item.reject_count,
-                    dispatch=item.dispatch,
-                    type=item.type,
-                    parent=item.parent,
-                    progress=progress_str,
-                    thread_id=item.thread_id,
-                    acceptance=item.acceptance,
-                )
-                derived_items.append(new_item)
-            else:
-                derived_items.append(item)
-        else:
-            derived_items.append(item)
-
-    return derived_items

@@ -25,11 +25,10 @@ from typing import Any
 logger = logging.getLogger("ccc.board.plans")
 
 # 有效状态
-VALID_STATES = frozenset({"草案", "已确认", "部分执行", "已完成", "作废"})
+VALID_STATES = frozenset({"已确认", "部分执行", "已完成", "作废"})
 
 # 状态流转白名单（from → allowed to）
 _TRANSITIONS: dict[str, frozenset[str]] = {
-    "草案": frozenset({"已确认", "作废"}),
     "已确认": frozenset({"部分执行", "作废"}),
     "部分执行": frozenset({"已完成", "作废"}),
     # 已完成 / 作废 = 终态，不可再改
