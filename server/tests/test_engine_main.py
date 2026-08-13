@@ -792,12 +792,12 @@ class TestFileBoardStore:
         reg_path = _write_demo_registry(tmp_path)
         reg = load_registry(reg_path)
         dispatch_dir = tmp_path / "docs" / "dispatch"
-        card_dir = dispatch_dir / "ccc"
+        card_dir = dispatch_dir / "xy"
         card_dir.mkdir(parents=True)
-        card = card_dir / "ccc999-runtime.md"
+        card = card_dir / "xy999-runtime.md"
         card.write_text(
-            "# 任务卡 ccc999 · 测试\n"
-            "> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-07\n"
+            "# 任务卡 xy999 · 测试\n"
+            "> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-07\n"
             "\n## 目标\nx\n\n## 验收标准\nx\n",
             encoding="utf-8",
         )
@@ -805,7 +805,7 @@ class TestFileBoardStore:
 
         store = FileBoardStore(dispatch_dir, reg, log_dir=tmp_path / "logs")
         w = store.list_work(state=State.TODO)[0]
-        assert w.id == "ccc999"
+        assert w.id == "xy999"
         w.transition(State.RUNNING)
         store.save_work(w)
 
@@ -813,8 +813,8 @@ class TestFileBoardStore:
         assert "状态：待分派" in card.read_text(encoding="utf-8")
         # 运行时 sidecar 记录执行中 + list_work 合成
         rt = read_card_state(tmp_path / "logs")
-        assert rt["ccc999"]["state"] == "执行中"
-        assert store.list_work(state=State.RUNNING)[0].id == "ccc999"
+        assert rt["xy999"]["state"] == "执行中"
+        assert store.list_work(state=State.RUNNING)[0].id == "xy999"
         assert store.list_work(state=State.TODO) == []
 
     def test_list_work_filters_by_state(self, tmp_path: Path) -> None:
@@ -834,11 +834,11 @@ class TestFileBoardStore:
         reg_path = _write_demo_registry(tmp_path)
         reg = load_registry(reg_path)
         self._write_card(tmp_path / "T9x-test.md", "T9x", "demo", "待分派")
-        (tmp_path / "ccc").mkdir()
-        self._write_card(tmp_path / "ccc" / "ccc100-test.md", "ccc100", "demo", "待分派")
+        (tmp_path / "xy").mkdir()
+        self._write_card(tmp_path / "xy" / "xy100-test.md", "xy100", "demo", "待分派")
         store = FileBoardStore(tmp_path, reg)
         works = store.list_work(state=State.TODO)
-        assert {w.id for w in works} == {"T9x", "ccc100"}
+        assert {w.id for w in works} == {"T9x", "xy100"}
 
     def test_list_work_skips_non_card_docs(self, tmp_path: Path) -> None:
         """T54：T-mapping.md 等说明文档（无卡头标题）不构成 work。"""

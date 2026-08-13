@@ -2125,8 +2125,8 @@ class TestThreadPersistence:
 
         dispatch_dir = tmp_path / "dispatch"
         rows = [
-            ("ccc001", "ccc", "待分派", "Claude", "任务一"),
-            ("ccc002", "ccc", "执行中", "OpenCode", "任务二"),
+            ("xy001", "xy", "待分派", "Claude", "任务一"),
+            ("xy002", "xy", "执行中", "OpenCode", "任务二"),
             ("qb001", "qb", "已回写", "Claude", "任务三"),
         ]
         for cid, proj, state, execu, title in rows:
@@ -2145,13 +2145,13 @@ class TestThreadPersistence:
         assert status == 200
         assert data["total"] == 3
         assert len(data["cards"]) == 3
-        assert data["cards"][0]["id"] == "ccc001"
+        assert {c["id"] for c in data["cards"]} == {"xy001", "xy002", "qb001"}
 
         # 2. Test GET /cards with project filter
-        status, data = _get(api_server, "/cards?project=ccc")
+        status, data = _get(api_server, "/cards?project=xy")
         assert status == 200
         assert data["total"] == 2
-        assert all(c["project"] == "ccc" for c in data["cards"])
+        assert all(c["project"] == "xy" for c in data["cards"])
 
         # 3. Test GET /cards with state filter
         from urllib.parse import quote
@@ -2159,7 +2159,7 @@ class TestThreadPersistence:
         status, data = _get(api_server, f"/cards?state={quote('执行中')}")
         assert status == 200
         assert data["total"] == 1
-        assert data["cards"][0]["id"] == "ccc002"
+        assert data["cards"][0]["id"] == "xy002"
 
         # 4. Test GET /cards pagination
         status, data = _get(api_server, "/cards?page_size=2&page=1")
@@ -2315,6 +2315,7 @@ class TestCardsFallback:
 
 
 # ── P1#10 机审返工：/loop/findings type 推导 ──
+
 
 class TestFindingType:
     """从标题推导 finding type（observer 报告表无 id 列，机审红旗返工）。"""
