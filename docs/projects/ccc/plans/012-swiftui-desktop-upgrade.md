@@ -32,10 +32,10 @@
 
 ## 验收标准
 
-- [ ] 6 卡全部完成：deployment target 15、3 库 SPM 引入、Markdown 换 Textual、OpsView 用 Charts、质感库接入、死代码清零。
-- [ ] 每卡 `swift build` / `swift test` / 冒烟（smoke-ui-chat.sh）全绿；UI 视觉验收（深浅色 + 两档宽度 + 硬编码色值清零）随卡打回机制执行。
-- [ ] Markdown 换库后「单换行行为」与自写渲染器一致（原刻意决策项不回归）。
-- [ ] 全量完成后 `scripts/package-baseline.sh` 出包正常，版本号按 CCC 规则递增。
+- [x] 6 卡全部完成：deployment target 15、3 库 SPM 引入、Markdown 换 Textual、OpsView 用 Charts、质感库接入、死代码清零。
+- [x] 每卡 `swift build` / `swift test` / 冒烟（smoke-ui-chat.sh）全绿；UI 视觉验收（深浅色 + 两档宽度 + 硬编码色值清零）随卡打回机制执行。
+- [x] Markdown 换库后「单换行行为」与自写渲染器一致（原刻意决策项不回归）。
+- [x] 全量完成后 `scripts/package-baseline.sh` 出包正常，版本号按 CCC 规则递增。
 
 ## 转卡计划
 

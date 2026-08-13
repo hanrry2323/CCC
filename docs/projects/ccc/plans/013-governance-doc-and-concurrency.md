@@ -27,9 +27,9 @@
 
 ## 验收标准
 
-- [ ] 卡1：topology.md 与 ccc/README.md 分工表述与现状/executors 一致，全仓无「M1=写源」残留矛盾。
-- [ ] 卡2：并发闸门生效（默认 ≤3），超限排队不重复派发，配置可调，engine 测试全绿，并发数有观测。
-- [ ] 两张卡 `swift/pytest` 相应门禁过；Doc-Gate 四问回写齐全。
+- [x] 卡1：topology.md 与 ccc/README.md 分工表述与现状/executors 一致，全仓无「M1=写源」残留矛盾。
+- [x] 卡2：并发闸门生效（默认 ≤3），超限排队不重复派发，配置可调，engine 测试全绿，并发数有观测。
+- [x] 两张卡 `swift/pytest` 相应门禁过；Doc-Gate 四问回写齐全。
 
 ## 转卡计划
 

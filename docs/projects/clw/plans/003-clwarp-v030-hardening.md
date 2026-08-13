@@ -1,9 +1,10 @@
 # 方案 · clwarp 0.3.0 缺陷收口与兑现（设置接线 / CSS 重建 / 终端生命周期 / CSP / 工程化修绿）
 
-> 项目：clw · 编号：clw-plan-003 · 状态：部分执行 · 作者：OpenCode（中枢） · 工具：OpenCode
+> 项目：clw · 编号：clw-plan-003 · 状态：已完成 · 作者：OpenCode（中枢） · 工具：OpenCode
 > 创建：2026-08-11 · 更新：2026-08-11
 > 关联卡：clw013, clw014, clw015, clw016, clw017, clw018, clw021
 > 关联方案：clw-plan-002（v0.2.0 全量重构，已合入发布）
+> 进度：7/7 (100%)
 
 ## 目标
 
@@ -67,14 +68,14 @@
 
 ## 验收标准
 
-- [ ] 设置面板真实可用：改 board_url/workspace_paths 保存后落盘 `~/.clwarp/config.json`，看板 iframe 即时按新 URL 加载（不再"重启生效"）；不再有假空壳面板
-- [ ] CSS 层真实存在：Vite 模板类全清，35+ 真实类有样式，布局 flex 正常，resize-handle 可抓取，终端撑满不塌缩，深色主题 token 生效，index.html lang=zh-CN
-- [ ] 终端生命周期：dev StrictMode 下重复开/切终端无 PTY 泄漏（进程数验证）；切看板/设置不杀会话（返回现场保留）；spawn 失败 loading 消失并显示友好错误
-- [ ] 事件时序：spawn 后初始输出不丢失、秒退会话正确收尾（无"已连接"假象）
-- [ ] CSP 与配置一致：改 board_url 后 iframe 不被拦；配置原子写（中断不损坏）；无 `/Users/fan`/`192.168.3.116` 源码硬编码（除默认值文档化）
-- [ ] CI 修绿：`cargo test`/`clippy -D warnings`/前端 vitest 在干净 runner 全过；tauri build 产出 DMG artifact
-- [ ] 文档/文案一致：UI 无"GPU 加速"字样；RELEASE/CHANGELOG 与 v0.2.0 实际一致
-- [ ] 回归：`cargo build --release` + `cargo test` + `tsc -b && vite build` 全通过；红线合规（CLI 配置只读、会话文件零写入）
+- [x] 设置面板真实可用：改 board_url/workspace_paths 保存后落盘 `~/.clwarp/config.json`，看板 iframe 即时按新 URL 加载（不再"重启生效"）；不再有假空壳面板
+- [x] CSS 层真实存在：Vite 模板类全清，35+ 真实类有样式，布局 flex 正常，resize-handle 可抓取，终端撑满不塌缩，深色主题 token 生效，index.html lang=zh-CN
+- [x] 终端生命周期：dev StrictMode 下重复开/切终端无 PTY 泄漏（进程数验证）；切看板/设置不杀会话（返回现场保留）；spawn 失败 loading 消失并显示友好错误
+- [x] 事件时序：spawn 后初始输出不丢失、秒退会话正确收尾（无"已连接"假象）
+- [x] CSP 与配置一致：改 board_url 后 iframe 不被拦；配置原子写（中断不损坏）；无 `/Users/fan`/`192.168.3.116` 源码硬编码（除默认值文档化）
+- [x] CI 修绿：`cargo test`/`clippy -D warnings`/前端 vitest 在干净 runner 全过；tauri build 产出 DMG artifact
+- [x] 文档/文案一致：UI 无"GPU 加速"字样；RELEASE/CHANGELOG 与 v0.2.0 实际一致
+- [x] 回归：`cargo build --release` + `cargo test` + `tsc -b && vite build` 全通过；红线合规（CLI 配置只读、会话文件零写入）
 
 ## 转卡计划
 

@@ -1,9 +1,10 @@
 # 方案 · 治理门禁系统性修复（docgate Q3/Q4 + 出卡查重）
 
-> 项目：ccc · 编号：ccc-plan-014 · 状态：已确认 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-014 · 状态：已完成 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
 > 关联卡：ccc042 ccc043
 > 关联方案：无（2026-08-10 复盘新增）
+> 进度：0/2 (0%)
 
 ## 目标
 
@@ -23,9 +24,9 @@
 
 ## 验收标准
 
-- [ ] A2：对真实「README/roadmap 已更新且已合入」的卡，approve-merge Q3/Q4 [是] 校验可通过（用 ccc040 作为回归样例）。
-- [ ] B1：出卡时本地不拉最新也不撞号（撞号被拒）；新增测试覆盖「本地过期但远端已占用编号」场景。
-- [ ] 门禁相关测试全绿（docgate/validate/board_validate）。
+- [x] A2：对真实「README/roadmap 已更新且已合入」的卡，approve-merge Q3/Q4 [是] 校验可通过（用 ccc040 作为回归样例）。
+- [x] B1：出卡时本地不拉最新也不撞号（撞号被拒）；新增测试覆盖「本地过期但远端已占用编号」场景。
+- [x] 门禁相关测试全绿（docgate/validate/board_validate）。
 
 ## 转卡计划
 

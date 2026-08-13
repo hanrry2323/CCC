@@ -1,9 +1,10 @@
 # 方案 · clwarp 0.2.0 全量重构（真实可用 + 兑现声明）
 
-> 项目：clw · 编号：clw-plan-002 · 状态：部分执行 · 作者：OpenCode（中枢） · 工具：OpenCode
+> 项目：clw · 编号：clw-plan-002 · 状态：已完成 · 作者：OpenCode（中枢） · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
 > 关联卡：clw008, clw009, clw010, clw011, clw012
 > 关联方案：clw-plan-001（已完成的 v0.1.0 骨架方案）
+> 进度：5/5 (100%)
 
 ## 目标
 
@@ -82,15 +83,15 @@
 
 ## 验收标准
 
-- [ ] P0 链路：Finder 双击启动 .app 后，Claude/Codex/OpenCode 三类会话可 spawn 与 resume（真实拉起 CLI，非 command not found）
-- [ ] dev 模式：`npm run tauri dev` 可正常打开窗口（端口一致）
-- [ ] 终端交互：输入输出正常、resize 后 PTY 跟随窗口、进程退出后终端自动收尾不冻结不刷错、终止不再重启会话
-- [ ] 无 10ms 轮询：终端输出走事件推送；退出后无残留 IPC
-- [ ] UI：模板残留清除、组件化、深色模式、窗口可缩放无裁切、loading/错误态友好
-- [ ] 看板内嵌 + 设置面板真实存在并持久化（`~/.clwarp/config.json` 读写验证）
-- [ ] 文档声明与代码一致：CHANGELOG/README/RELEASE 不再声称不存在的 GPU/持久化能力
-- [ ] 工程化：CSP 白名单生效、正式图标、CI 跑通、Rust+前端测试覆盖核心链路
-- [ ] 回归：`cargo build --release`、`cargo test`、`tsc -b && vite build` 全通过；红线合规（CLI 配置只读、会话文件零写入）
+- [x] P0 链路：Finder 双击启动 .app 后，Claude/Codex/OpenCode 三类会话可 spawn 与 resume（真实拉起 CLI，非 command not found）
+- [x] dev 模式：`npm run tauri dev` 可正常打开窗口（端口一致）
+- [x] 终端交互：输入输出正常、resize 后 PTY 跟随窗口、进程退出后终端自动收尾不冻结不刷错、终止不再重启会话
+- [x] 无 10ms 轮询：终端输出走事件推送；退出后无残留 IPC
+- [x] UI：模板残留清除、组件化、深色模式、窗口可缩放无裁切、loading/错误态友好
+- [x] 看板内嵌 + 设置面板真实存在并持久化（`~/.clwarp/config.json` 读写验证）
+- [x] 文档声明与代码一致：CHANGELOG/README/RELEASE 不再声称不存在的 GPU/持久化能力
+- [x] 工程化：CSP 白名单生效、正式图标、CI 跑通、Rust+前端测试覆盖核心链路
+- [x] 回归：`cargo build --release`、`cargo test`、`tsc -b && vite build` 全通过；红线合规（CLI 配置只读、会话文件零写入）
 
 ## 转卡计划
 

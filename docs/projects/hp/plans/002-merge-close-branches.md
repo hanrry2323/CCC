@@ -97,11 +97,11 @@ git push origin --delete codex/hpXXX-xxx   # 远程删除
 
 ## 验收标准
 
-- [ ] 外仓 main 上 `git log --oneline --first-parent` 可看到 Merge: hp001 到 hp022 全部 20 条（排除 hp018）合并记录
-- [ ] 所有合入采用 `--no-ff`，保留开发分支历史
-- [ ] 已合入的 codex/hp* 分支在本地和 origin 上均已删除
-- [ ] 无冲突遗留（冲突标记已处理）
-- [ ] 过程中无新代码改动，仅做合入操作
+- [x] 外仓 main 上 `git log --oneline --first-parent` 可看到 Merge: hp001 到 hp022 全部 20 条（排除 hp018）合并记录
+- [x] 所有合入采用 `--no-ff`，保留开发分支历史
+- [x] 已合入的 codex/hp* 分支在本地和 origin 上均已删除
+- [x] 无冲突遗留（冲突标记已处理）
+- [x] 过程中无新代码改动，仅做合入操作
 
 ## 转卡计划
 

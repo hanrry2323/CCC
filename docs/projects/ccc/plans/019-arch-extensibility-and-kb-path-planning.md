@@ -1,9 +1,10 @@
 # 方案 · CCC 架构扩展性基线 + 知识库路径规划（前期定规则防走弯路）
 
-> 项目：ccc · 编号：ccc-plan-019 · 状态：部分执行 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-019 · 状态：已完成 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
 > 关联卡：ccc059
 > 关联方案：ccc-plan-004（系统化升级·已完成，本方案为其扩展性收口）
+> 进度：0/1 (0%)
 
 ## 目标
 
@@ -83,11 +84,11 @@
 
 ## 验收标准
 
-- [ ] A1-A8 全部落地（A7 HP 源码恢复经「重启 mcp-server 验证可起」）
-- [ ] B1-B8 规则写入对应文档/规范并有 git 记录
-- [ ] C 层墙清单记入架构文档（docs/architecture.md 或 roadmap 挂账）
-- [ ] 调用侧：opencode.json 含 ccc-kb + hp-kb（带 header）、技能单一主版、死引用清零
-- [ ] 模型出口每档 ≥2 enabled 上游，scnet 断流场景实测有兜底
+- [x] A1-A8 全部落地（A7 HP 源码恢复经「重启 mcp-server 验证可起」）
+- [x] B1-B8 规则写入对应文档/规范并有 git 记录
+- [x] C 层墙清单记入架构文档（docs/architecture.md 或 roadmap 挂账）
+- [x] 调用侧：opencode.json 含 ccc-kb + hp-kb（带 header）、技能单一主版、死引用清零
+- [x] 模型出口每档 ≥2 enabled 上游，scnet 断流场景实测有兜底
 
 ## 转卡计划
 

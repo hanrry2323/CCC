@@ -1,9 +1,10 @@
 # 方案 · CLW 交付收尾示范（首个 Delivery Gate 实例）
 
-> 项目：ccc · 编号：ccc-plan-018 · 状态：已确认 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-018 · 状态：已完成 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
 > 关联卡：ccc056（转卡后回填）
 > 关联方案：ccc-plan-017（交付流程 §7 定稿后执行）
+> 进度：0/1 (0%)
 
 ## 目标
 
@@ -21,10 +22,10 @@
 
 ## 验收标准
 
-- [ ] 交付报告（delivery-template 格式）产出，交付物清单全勾。
-- [ ] CHANGELOG + RELEASE + git tag v0.1.0（clwarp 业务仓）。
-- [ ] 可复跑安装验证：dmg 打包 → /Applications 安装 → 启动冒烟。
-- [ ] roadmap.md 含 clw 业务线路段；clw-plan-001 交付收尾。
+- [x] 交付报告（delivery-template 格式）产出，交付物清单全勾。
+- [x] CHANGELOG + RELEASE + git tag v0.1.0（clwarp 业务仓）。
+- [x] 可复跑安装验证：dmg 打包 → /Applications 安装 → 启动冒烟。
+- [x] roadmap.md 含 clw 业务线路段；clw-plan-001 交付收尾。
 
 ## 转卡计划
 

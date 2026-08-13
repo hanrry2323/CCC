@@ -1,9 +1,10 @@
 # 方案 · clwarp 0.3.0 加固——会话打开可靠性（不开发新功能）
 
-> 项目：clw · 编号：clw-plan-005 · 状态：部分执行 · 作者：OpenCode（中枢·调度） · 工具：OpenCode
+> 项目：clw · 编号：clw-plan-005 · 状态：已完成 · 作者：OpenCode（中枢·调度） · 工具：OpenCode
 > 创建：2026-08-12 · 更新：2026-08-12
 > 关联卡：clw023, clw024, clw025
 > 关联方案：clw-plan-003（v0.3.0 缺陷收口，已合入）
+> 进度：3/3 (100%)
 > 依据：老板 2026-08-12 实测反馈「会话打不开，连不上」+ 中枢只读侦察结论
 
 ## 目标
@@ -45,12 +46,12 @@
 
 ## 验收标准
 
-- [ ] 2017 上新建 claude 会话可打开、可输入输出
-- [ ] 恢复 claude/opencode 历史会话可打开、可继续对话
-- [ ] codex 会话恢复不白屏：给出明确"codex 未安装/找不到"友好错误
-- [ ] spawn 失败不再永久 loading（前端显示错误态）
-- [ ] `cargo build --release` + `tsc -b && vite build` + vitest 全过
-- [ ] 回归：0.3.0 既有功能（设置/看板/终端）不破坏
+- [x] 2017 上新建 claude 会话可打开、可输入输出
+- [x] 恢复 claude/opencode 历史会话可打开、可继续对话
+- [x] codex 会话恢复不白屏：给出明确"codex 未安装/找不到"友好错误
+- [x] spawn 失败不再永久 loading（前端显示错误态）
+- [x] `cargo build --release` + `tsc -b && vite build` + vitest 全过
+- [x] 回归：0.3.0 既有功能（设置/看板/终端）不破坏
 
 ## 转卡计划
 

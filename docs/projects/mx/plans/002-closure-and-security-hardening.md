@@ -1,9 +1,10 @@
 # 方案 · medio-0 收口与安全加固（v0.9.0 → v0.10.0）
 
-> 项目：mx · 编号：mx-plan-002 · 状态：部分执行 · 作者：OpenCode 中枢 · 工具：opencode
+> 项目：mx · 编号：mx-plan-002 · 状态：已完成 · 作者：OpenCode 中枢 · 工具：opencode
 > 创建：2026-08-12 · 更新：2026-08-12
 > 关联卡：mx030, mx031, mx032, mx033, mx034, mx035
 > 关联方案：mx-plan-001（已完结）
+> 进度：6/6 (100%)
 
 ## 目标
 
@@ -30,11 +31,11 @@
 
 ## 验收标准
 
-- [ ] 10 个 open 安全 issue 的 4 个 P1 项全部关闭，issues.jsonl 更新
-- [ ] 文档脱节点清零：AGENTS.md/CLAUDE.md 双机路径唯一权威，SECURITY_AUDIT 对齐 v0.9.0，ARCHITECTURE 覆盖 Harmony，package.json 与 VERSION 一致
-- [ ] 分支积压清零（9 分支各有合入或关闭结论），tag 补打 v0.9.0
-- [ ] 脚本审查有结论：delete_videos.sh 内容分类与敏感排查记录，scripts/ 仅留项目核心脚本
-- [ ] 全仓回归：cargo test + 前端 vitest + pytest 全绿，ruff/clippy/eslint 干净
+- [x] 10 个 open 安全 issue 的 4 个 P1 项全部关闭，issues.jsonl 更新
+- [x] 文档脱节点清零：AGENTS.md/CLAUDE.md 双机路径唯一权威，SECURITY_AUDIT 对齐 v0.9.0，ARCHITECTURE 覆盖 Harmony，package.json 与 VERSION 一致
+- [x] 分支积压清零（9 分支各有合入或关闭结论），tag 补打 v0.9.0
+- [x] 脚本审查有结论：delete_videos.sh 内容分类与敏感排查记录，scripts/ 仅留项目核心脚本
+- [x] 全仓回归：cargo test + 前端 vitest + pytest 全绿，ruff/clippy/eslint 干净
 
 ## 转卡计划
 

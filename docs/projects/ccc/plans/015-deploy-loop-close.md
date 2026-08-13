@@ -1,9 +1,10 @@
 # 方案 · 收卡部署闭环 + Loop Observer 调度启用
 
-> 项目：ccc · 编号：ccc-plan-015 · 状态：已确认 · 作者：OpenCode · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-015 · 状态：已完成 · 作者：OpenCode · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
 > 关联卡：ccc044 ccc045 ccc046
 > 关联方案：无（2026-08-10 复盘新增）
+> 进度：0/3 (0%)
 
 ## 目标
 
@@ -26,9 +27,9 @@
 
 ## 验收标准
 
-- [ ] C1：approve-merge 收完卡后自动触发部署检查；deploy-ccc.sh 重启包含三个服务。
+- [x] C1：approve-merge 收完卡后自动触发部署检查；deploy-ccc.sh 重启包含三个服务。
 - [x] C2：待合入 ≥5 张有明确提醒（board-live/看板提示）。（关联卡 `ccc045`，机审通过待合入）
-- [ ] Observer：2017 com.ccc.scheduler 运行、DATA_DIR/observer/ 有新快照、git 无 patrol 报告 churn。
+- [x] Observer：2017 com.ccc.scheduler 运行、DATA_DIR/observer/ 有新快照、git 无 patrol 报告 churn。
 
 ## 转卡计划
 
