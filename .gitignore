@@ -182,5 +182,7 @@ docs/dispatch/.card-lock
 # 临时/锁/备份文件
 *.lock
 *.bak
+*.bak-*
 *.tmp
+*.tmp-*
 *.orig
