@@ -2082,6 +2082,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         content = body.get("content", "").strip()
         author = body.get("author", "").strip()
         tool = body.get("tool", "").strip()
+        milestone = body.get("milestone")
 
         if not project or not title:
             self._send_json({"error": "缺少 project 或 title"}, 400)
@@ -2098,6 +2099,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             content=content,
             author=author or "未知",
             tool=tool or "未知",
+            milestone=milestone,
         )
 
         if "error" in result:
@@ -2123,6 +2125,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             status=body.get("status"),
             content=body.get("content"),
             cards=body.get("cards"),
+            milestone=body.get("milestone"),
         )
 
         if "error" in result:
@@ -2328,22 +2331,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         self._roadmap_git_commit(project, f"roadmap({project}): 新增草案 {title}")
         self._send_json(_result, 201)
-
-    def _handle_roadmap_draft_promote(self, project: str, title: str):
-        """POST /roadmap/<prefix>/draft/<id>/promote — 草案升级（roadmap.promote_draft + git 落库）。"""
-        if not self._roadmap_project_ok(project):
-            self._send_json({"error": "无效项目前缀"}, 400)
-            return
-        from server.board import roadmap as _rm
-
-        _result = _rm.promote_draft(project, title)
-        if "error" in _result:
-            self._send_json(_result, 400)
-            return
-        # promote 写 roadmap.md（草案→里程碑）；若需同步建方案由 plans.create_plan 走其自身 commit。
-        # 此处 git 落库 roadmap.md 变更，失败保留脏现场。
-        self._roadmap_git_commit(project, f"roadmap({project}): 草案升级为里程碑 {title}")
-        self._send_json(_result)
 
     def _handle_roadmap_draft_promote_to_plan(self, project: str):
         """POST /roadmap/<prefix>/draft/<index>/promote-to-plan — 草案→方案一键升级（Phase 4.3）。

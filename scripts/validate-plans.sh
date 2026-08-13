@@ -32,8 +32,8 @@ from server.board.registry import card_prefixes
 print('\\n'.join(sorted(card_prefixes(sys.argv[1]))))
 " "$REPO_ROOT/docs/projects/registry.yaml" 2>/dev/null || true)
 
-# 有效状态
-VALID_STATES="草案|已确认|部分执行|已完成|作废"
+# 有效状态（ccc-plan-027 状态机统一：方案层去「草案」，草案概念归线路图草案池；已覆盖为兼容旧值）
+VALID_STATES="已确认|部分执行|已完成|作废|已覆盖"
 
 ERRORS=0
 WARNINGS=0
@@ -117,6 +117,17 @@ validate_file() {
     return
   fi
 
+  # ── 7.5 功能卡段校验（ccc-plan-027）：含 ## 功能卡 段则必须有「### 功能卡标题」小节 ──
+  if grep -qE '^## 功能卡' "$file"; then
+    local fc_section
+    fc_section=$(awk '/^## 功能卡/{f=1;next} f&&/^## /{f=0} f' "$file")
+    if ! echo "$fc_section" | grep -qE '^### '; then
+      red "  FAIL 功能卡段缺少「### 功能卡标题」小节: $rel"
+      ERRORS=$((ERRORS + 1))
+      return
+    fi
+  fi
+
   # ── 8. 方案级收尾校验 ──
   # 8.1 方案「已完成」但验收未勾选 -> 报错
   if [ "$status" = "已完成" ]; then
@@ -149,8 +160,8 @@ validate_file() {
     fi
   fi
 
-  # 8.2 方案关联卡全部关闭但方案状态仍为草案/已确认/部分执行（未推进） -> 报错
-  if [ "$status" = "草案" ] || [ "$status" = "已确认" ] || [ "$status" = "部分执行" ]; then
+  # 8.2 方案关联卡全部关闭但方案状态仍为已确认/部分执行（未推进） -> 报错
+  if [ "$status" = "已确认" ] || [ "$status" = "部分执行" ]; then
     local cards_line
     cards_line=$(echo "$head_content" | grep '关联卡：' | head -1 || true)
     if [ -n "$cards_line" ]; then

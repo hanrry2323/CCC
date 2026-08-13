@@ -9,7 +9,7 @@
  *   /roadmap/<project> → 单项目详情（二级页）
  */
 
-import { apiGet, apiPost } from '../api.js';
+import { apiGet, apiPost, apiPut } from '../api.js';
 import { esc } from '../roadmapTimeline.js';
 
 let _root = null;
@@ -121,7 +121,7 @@ function _milestoneProgressHTML(mile) {
   if (!plans.length) return '';
   return `<div class="rm2-mile-progress">
     <span class="rm2-mile-progress-label">关联方案 ${plans.length}</span>
-    <span class="rm2-mile-progress-tags">${plans.map(p => `<code>${esc(p)}</code>`).join(' ')}</span>
+    <span class="rm2-mile-progress-tags">${plans.map(p => `<a class="rm2-mile-planlink" href="#/plans" title="跳转计划页查看 ${esc(p)}">${esc(p)}</a>`).join(' ')}</span>
   </div>`;
 }
 
@@ -176,6 +176,7 @@ function _milestoneCardsHTML(detail) {
           <span class="rm2-mile-status ${tone}">${esc(m.status)}</span>
           ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
           ${_milestoneProgressHTML(m)}
+          <button type="button" class="hub-btn rm2-mile-edit" data-title="${esc(m.title)}" data-status="${esc(m.status)}" data-desc="${esc(m.description || '')}" data-plans="${esc((m.linked_plans || []).join(', '))}" title="编辑里程碑（状态/描述/关联方案）" style="margin-top:6px">编辑</button>
         </div>
       </div>`;
     }).join('');
@@ -269,6 +270,9 @@ async function openProject(project) {
     body.innerHTML = `
       <div class="rm2">
         ${_overviewHTML(detail)}
+        <div class="rm2-actions" style="display:flex;gap:8px;margin:8px 0 4px">
+          <button type="button" class="hub-btn" id="rm2-milestone-new">＋ 新建里程碑</button>
+        </div>
         ${_draftPoolHTML(detail.drafts, project)}
         <div class="rm2-body">
           ${_railHTML(detail)}
@@ -276,6 +280,18 @@ async function openProject(project) {
         </div>
       </div>`;
     _setupRailNavigation(body);
+    // 027 缝隙5：里程碑写入口（创建 / 编辑：状态·描述·关联方案）
+    body.querySelector('#rm2-milestone-new')?.addEventListener('click', () => _showMilestoneForm(project, null));
+    body.querySelectorAll('.rm2-mile-edit').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        _showMilestoneForm(project, {
+          title: btn.dataset.title || '',
+          status: btn.dataset.status || '草案',
+          description: btn.dataset.desc || '',
+          linked_plans: (btn.dataset.plans || '').split(/[,，\s]+/).filter(Boolean),
+        });
+      });
+    });
     // P0 全链路修复：草案→方案一键升级（人审节点①动作入口，老板确认后由 Agent 打标）
     body.querySelectorAll('.rm2-draft-promote').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -296,6 +312,84 @@ async function openProject(project) {
   } catch (err) {
     body.innerHTML = '<div class="board-empty">加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
+}
+
+/* 027 缝隙5：里程碑写入口弹窗（创建 POST /roadmap/<proj>/milestone；编辑 PUT /roadmap/<proj>/milestone/<title>） */
+function _showMilestoneForm(project, milestone) {
+  let overlay = _root?.querySelector('#rm2-milestone-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'rm2-milestone-overlay';
+    overlay.className = 'plans-form-overlay';
+    _root?.appendChild(overlay);
+  }
+  const isEdit = !!milestone;
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="plans-form" role="dialog" aria-modal="true" aria-label="${isEdit ? '编辑里程碑' : '新建里程碑'}" style="max-width:560px">
+      <div class="plans-form-head">
+        <h3>${isEdit ? '编辑里程碑' : '新建里程碑'}</h3>
+        <button type="button" class="ptool-btn-plain plans-form-x" id="rm2-mile-close" aria-label="关闭">×</button>
+      </div>
+      <div class="plans-form-field">
+        <label for="rm2-mile-title">标题</label>
+        <input type="text" id="rm2-mile-title" class="plans-form-input" value="${esc(milestone ? milestone.title : '')}" ${isEdit ? 'readonly title="里程碑以标题为键，不可改名"' : ''}>
+      </div>
+      <div class="plans-form-field">
+        <label for="rm2-mile-status">状态</label>
+        <select id="rm2-mile-status" class="plans-status-select">
+          ${['草案', '进行中', '已完成'].map(s => `<option value="${s}" ${(milestone ? milestone.status : '') === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="plans-form-field">
+        <label for="rm2-mile-desc">描述</label>
+        <input type="text" id="rm2-mile-desc" class="plans-form-input" value="${esc(milestone ? milestone.description || '' : '')}">
+      </div>
+      <div class="plans-form-field">
+        <label for="rm2-mile-plans">关联方案（逗号分隔 plan ID，如 ccc-plan-001, ccc-plan-002）</label>
+        <input type="text" id="rm2-mile-plans" class="plans-form-input" value="${esc(milestone ? (milestone.linked_plans || []).join(', ') : '')}">
+      </div>
+      <div class="plans-form-actions">
+        <button type="button" class="ptool-btn-plain" id="rm2-mile-cancel">取消</button>
+        <button type="button" class="ptool-new" id="rm2-mile-save">${isEdit ? '保存' : '创建'}</button>
+      </div>
+    </div>`;
+
+  const close = () => { overlay.style.display = 'none'; };
+  overlay.querySelector('#rm2-mile-close')?.addEventListener('click', close);
+  overlay.querySelector('#rm2-mile-cancel')?.addEventListener('click', close);
+
+  overlay.querySelector('#rm2-mile-save')?.addEventListener('click', async () => {
+    const title = overlay.querySelector('#rm2-mile-title')?.value.trim();
+    const status = overlay.querySelector('#rm2-mile-status')?.value;
+    const desc = overlay.querySelector('#rm2-mile-desc')?.value.trim();
+    const plans = (overlay.querySelector('#rm2-mile-plans')?.value || '').split(/[,，\s]+/).filter(Boolean);
+    const btn = overlay.querySelector('#rm2-mile-save');
+    btn.disabled = true;
+    btn.textContent = isEdit ? '保存中…' : '创建中…';
+    try {
+      let result;
+      if (isEdit) {
+        result = await apiPut(`/roadmap/${encodeURIComponent(project)}/milestone/${encodeURIComponent(milestone.title)}`, { status, description: desc, linked_plans: plans });
+      } else {
+        if (!title) { alert('里程碑标题不能为空'); btn.disabled = false; btn.textContent = '创建'; return; }
+        result = await apiPost(`/roadmap/${encodeURIComponent(project)}/milestone`, { title, status, description: desc, linked_plans: plans });
+      }
+      overlay.style.display = 'none';
+      if (result.ok) {
+        window.showToast ? window.showToast(isEdit ? '里程碑已更新' : '里程碑已创建', 'success') : alert(isEdit ? '里程碑已更新' : '里程碑已创建');
+        await openProject(project); // 刷新里程碑
+      } else {
+        alert(result.error || '操作失败');
+        btn.disabled = false;
+        btn.textContent = isEdit ? '保存' : '创建';
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = isEdit ? '保存' : '创建';
+      alert(e.message || '操作失败');
+    }
+  });
 }
 
 /* Bug 7：二级页字段映射对齐 /roadmap/<project>（roadmap.py 模型：milestones 含 title/status/linked_plans/description）

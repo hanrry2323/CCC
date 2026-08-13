@@ -28,6 +28,8 @@ from server.board.plans import (
     _extract_header_fields,
     _extract_title,
     _extract_acceptance,
+    _extract_func_cards,
+    _inject_func_card,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -574,10 +576,11 @@ class TestPlansPageContract:
         assert "plans-search" in text
 
     def test_convert_button(self) -> None:
-        """验证转卡按钮存在且由人触发（confirm 弹窗）。"""
+        """验证转卡按钮存在且由人触发（027：节点②功能卡清单确认弹层）。"""
         text = self._page()
         assert "转为任务卡" in text
-        assert "confirm" in text
+        assert "确认转卡" in text
+        assert "_showConvertOverlay" in text
 
     def test_has_grid_layout(self) -> None:
         """验证卡片网格布局（重写后为 plans-flow 流式布局）。"""
@@ -604,9 +607,10 @@ class TestPlansPageContract:
         assert "_projects" in text
 
     def test_convert_line_limit(self) -> None:
-        """验证转卡计划 8 行限制。"""
+        """验证转卡支持功能卡清单（027：无 8 行限制，功能卡段优先解析）。"""
         text = self._page()
-        assert "8 行" in text or "lines.length > 8" in text
+        assert "_parseFuncCards" in text
+        assert "8 行" not in text
         assert "plans-form-project" in text
         assert "plans-form-title" in text
 
@@ -856,3 +860,166 @@ class TestSyncPlanProgress:
             assert "进度：1/1 (100%)" in updated
             # 只应出现一次进度行
             assert updated.count("进度：") == 1
+
+
+# ── ccc-plan-027 核心流程：里程碑字段 / 功能卡段 / 自动完成 / 双向同步 ──
+
+
+class Test027CoreFlow:
+    def test_extract_func_cards(self):
+        """功能卡段解析：### 小节 → {title, goal, impl, acceptance}。"""
+        content = """## 目标
+
+测试。
+
+## 功能卡
+
+### 登录功能
+目标：实现登录页与接口。
+实现：页面布局、API 对接、token 存储。
+验收：登录成功跳转首页。
+
+### 播放功能
+目标：实现播放页。
+
+## 备注
+
+无
+"""
+        cards = _extract_func_cards(content)
+        assert len(cards) == 2
+        assert cards[0]["title"] == "登录功能"
+        assert cards[0]["goal"] == "实现登录页与接口。"
+        assert "API" in cards[0]["impl"]
+        assert cards[0]["acceptance"] == "登录成功跳转首页。"
+        assert cards[1]["title"] == "播放功能"
+        assert cards[1]["goal"] == "实现播放页。"
+
+    def test_extract_func_cards_absent(self):
+        """无功能卡段 → 返回空列表。"""
+        assert _extract_func_cards("## 目标\n\n无功能卡") == []
+
+    def test_create_plan_milestone_field(self, tmp_path: Path):
+        """create_plan 带 milestone：头部写「里程碑：标题」；roadmap.md linked_plans 同步。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        # 构造含里程碑的 roadmap.md
+        rm_dir = tmp_path / "docs" / "projects" / "ccc"
+        rm_dir.mkdir(parents=True, exist_ok=True)
+        (rm_dir / "roadmap.md").write_text(
+            "# 测试线路图\n\n> 项目：ccc · 更新：2026-08-09\n\n## 草案池\n\n无。\n\n## 里程碑\n\n### 我的里程碑\n- 状态：进行中\n",
+            encoding="utf-8",
+        )
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            with patch("server.board.roadmap._repo_root", return_value=tmp_path):
+                result = create_plan(
+                    tmp_path, project="ccc", title="带里程碑方案", content="## 目标\n\ntest",
+                    author="测试", tool="pytest", milestone="我的里程碑",
+                )
+        assert result.get("ok") is True
+        p = tmp_path / "docs" / "projects" / "ccc" / "plans" / "001-task.md"
+        assert "里程碑：我的里程碑" in p.read_text()
+        # roadmap.md 同步：里程碑 linked_plans 包含该方案
+        rm = (rm_dir / "roadmap.md").read_text()
+        assert "关联方案：ccc-plan-001" in rm
+
+    def test_convert_func_cards_success(self, tmp_path: Path):
+        """convert 优先读功能卡段：按小节出卡 + 状态推进部分执行 + 关联卡写入。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_new_card_script(tmp_path)
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        p = plans_dir / "001-fc.md"
+        p.write_text(
+            """# 方案 · 功能卡测试
+
+> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+
+## 目标
+
+测试。
+
+## 功能卡
+
+### 登录功能
+目标：实现登录页与接口。
+""",
+            encoding="utf-8",
+        )
+        result = convert_plan(tmp_path, rel_path=str(p.relative_to(tmp_path)), no_push=True)
+        assert result.get("ok") is True
+        assert result["cards"] == ["ccc999"]
+        assert "状态：部分执行" in p.read_text()
+        assert "关联卡：ccc999" in p.read_text()
+
+    def test_inject_func_card(self, tmp_path: Path):
+        """功能卡注入：目标替换占位、实现插入 ## 实现 段、验收替换占位。"""
+        card = tmp_path / "c.md"
+        card.write_text(
+            "# 任务卡 ccc001\n\n## 目标\n\n（一句话，可验收。）\n\n## 红线（先看）\n\n## 验收标准\n\n1. （可执行的验收点，附命令/可观察结果）\n",
+            encoding="utf-8",
+        )
+        _inject_func_card(card, {"title": "登录", "goal": "实现登录页。", "impl": "页面+接口+存储。", "acceptance": "登录成功跳转。"})
+        text = card.read_text()
+        assert "实现登录页。" in text
+        assert "## 实现" in text
+        assert "页面+接口+存储。" in text
+        assert "登录成功跳转。" in text
+
+    def test_sync_plan_progress_auto_complete(self, tmp_path: Path):
+        """自动完成：关联卡全关 → 方案状态自动推进「已完成」。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001")
+        p.write_text(content)
+        mock_index = {"ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"}}
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result.get("auto_completed") is True
+        assert "状态：已完成" in p.read_text()
+        assert "进度：1/1 (100%)" in p.read_text()
+
+    def test_sync_plan_progress_not_all_closed(self, tmp_path: Path):
+        """卡未全关 → 不自动完成。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001")
+        p.write_text(content)
+        mock_index = {"ccc001": {"id": "ccc001", "state": "执行中", "path": "x"}}
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result.get("auto_completed") is False
+        assert "状态：部分执行" in p.read_text()
+
+    def test_update_plan_milestone_sync(self, tmp_path: Path):
+        """update_plan 改里程碑：方案头更新 + roadmap 双向同步（新里程碑加入、旧里程碑移除）。"""
+        _make_registry(tmp_path, ["ccc"])
+        rm_dir = tmp_path / "docs" / "projects" / "ccc"
+        rm_dir.mkdir(parents=True, exist_ok=True)
+        (rm_dir / "roadmap.md").write_text(
+            "# 测试线路图\n\n> 项目：ccc · 更新：2026-08-09\n\n## 草案池\n\n无。\n\n## 里程碑\n\n### 旧里程碑\n- 状态：进行中\n- 关联方案：ccc-plan-001\n\n### 新里程碑\n- 状态：草案\n",
+            encoding="utf-8",
+        )
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        # 方案头补旧里程碑字段（业务场景：方案归属旧里程碑，现要改到新里程碑）
+        content = p.read_text()
+        content = content.replace("关联方案：无", "关联方案：无\n> 里程碑：旧里程碑")
+        p.write_text(content)
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            with patch("server.board.roadmap._repo_root", return_value=tmp_path):
+                result = update_plan(
+                    tmp_path, rel_path=str(p.relative_to(tmp_path)), milestone="新里程碑",
+                )
+        assert result.get("ok") is True
+        assert "里程碑：新里程碑" in p.read_text()
+        rm = (rm_dir / "roadmap.md").read_text()
+        # 旧里程碑移除该方案
+        assert "### 旧里程碑\n- 状态：进行中\n- 关联方案：ccc-plan-001" not in rm
+        # 新里程碑加入该方案
+        assert "### 新里程碑\n- 状态：草案\n- 关联方案：ccc-plan-001" in rm

@@ -85,6 +85,20 @@ export async function apiPost(path, body) {
   return data;
 }
 
+export async function apiPut(path, body) {
+  const resp = await _fetchWithAuth(path, {
+    method: 'PUT',
+    body: JSON.stringify(body || {}),
+  }, true);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    if (resp.status === 401) throw new Error('登录状态已失效，请刷新页面重新连接');
+    const msg = friendlyChatError(resp.status, data.message || data.error);
+    throw new Error(msg);
+  }
+  return data;
+}
+
 export async function apiDelete(path) {
   const resp = await _fetchWithAuth(path, { method: 'DELETE' }, false);
   return resp.json();

@@ -200,6 +200,7 @@ function renderPlanItem(plan) {
       </div>
       <h3 class="pcard-title">${esc(title)}</h3>
       <div class="pcard-meta">${esc(plan.author)}<span class="pcard-dotsep">·</span>${esc(plan.tool)}</div>
+      ${plan.milestone && plan.milestone !== '无' ? `<div class="pcard-mile" style="color:${projColor}">${icon('tag')}<span>${esc(plan.milestone)}</span></div>` : ''}
       <div class="pcard-flow" title="关联卡流程分布（待分派/执行中/机审/待合入/打回/已关闭）">
         ${flowBar}
         ${flowMeta ? `<span class="pcard-flow-meta">${esc(flowMeta)}</span>` : ''}
@@ -404,6 +405,40 @@ async function showDetail(path) {
   }
 }
 
+function _parseFuncCards(content) {
+  const cards = [];
+  const m = String(content || '').match(/## 功能卡\n([\s\S]*?)(?=\n## |\n$|$)/);
+  if (!m) return cards;
+  const section = m[1];
+  const re = /###\s+(.+?)\n([\s\S]*?)(?=\n### |\n## |$)/g;
+  let mm;
+  while ((mm = re.exec(section))) {
+    const title = mm[1].trim();
+    const body = mm[2] || '';
+    const goal = (body.match(/目标：(.+)/) || [])[1] || '';
+    const impl = (body.match(/实现：([\s\S]*?)(?=\n验收：|\n$|$)/) || [])[1] || '';
+    if (title) cards.push({ title, goal: goal.trim(), impl: impl.trim() });
+  }
+  return cards;
+}
+
+/** 功能卡清单卡片（ccc-plan-027）：人话目标 + 可展开实现 */
+function _funcCardsHTML(content) {
+  const cards = _parseFuncCards(content);
+  if (!cards.length) return '';
+  return `<div class="pdetail-funcs" style="margin:0 0 16px;border:1px solid #2a354d;border-radius:10px;overflow:hidden">
+    <div style="padding:8px 14px;font-size:13px;color:#8b93a7;border-bottom:1px solid #2a354d">功能卡清单（${cards.length}）· 节点②确认对象</div>
+    ${cards.map((c, i) => `<details style="padding:10px 14px;border-bottom:1px solid #242d42">
+      <summary style="cursor:pointer;font-weight:600;color:#d6dce8;list-style:none;display:flex;align-items:baseline;gap:8px">
+        <span>${i + 1}. ${esc(c.title)}</span>
+        ${c.goal ? `<span style="font-weight:400;color:#77809a;font-size:12px">${esc(c.goal)}</span>` : ''}
+        ${c.impl ? '<span style="color:#5b8ce0;margin-left:auto;font-size:11px">实现 ▾</span>' : ''}
+      </summary>
+      ${c.impl ? `<div style="margin-top:8px;font-size:12px;color:#aab3c5;line-height:1.6">${renderMarkdown(c.impl)}</div>` : ''}
+    </details>`).join('')}
+  </div>`;
+}
+
 function renderDetail(plan) {
   const color = STATUS_COLORS[plan.status] || '#a39e93';
   const tint = color + '1f';
@@ -420,10 +455,12 @@ function renderDetail(plan) {
       <div class="pdetail-meta">
         <span>作者：${esc(plan.author)}</span>
         <span>工具：${esc(plan.tool)}</span>
+        ${plan.milestone && plan.milestone !== '无' ? `<span>里程碑：${esc(plan.milestone)}</span>` : ''}
         <span>更新：${esc(plan.updated || plan.created)}</span>
         ${cardsText ? `<span class="pcard-chip">${icon('tag')}<span>关联卡 ${esc(cardsText)}</span></span>` : ''}
         ${acc.total > 0 ? `<span class="pcard-acc" title="验收 ${acc.done}/${acc.total}"><span class="pcard-acc-bar"><span class="pcard-acc-fill" style="width:${Math.round(acc.done / acc.total * 100)}%;background:${color}"></span></span><span class="pcard-acc-num">验收 ${acc.done}/${acc.total}</span></span>` : ''}
       </div>
+      ${_funcCardsHTML(plan.content)}
       <div class="pdetail-body">${renderMarkdown(plan.content)}</div>
       <div class="pdetail-actions">
         ${plan.status !== '已完成' && plan.status !== '作废' ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
@@ -466,34 +503,89 @@ async function doUpdateStatus(path, status) {
 }
 
 async function doConvert(path) {
-  let cardCount = 0;
+  let detail;
   try {
-    const detail = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
-    const planSection = (detail.content || '').split('## 转卡计划')[1];
-    if (planSection) {
-      const lines = planSection.split('\n').filter(l => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('##'));
-      cardCount = lines.length;
-      if (lines.length > 8) {
-        alert('转卡计划段最多 8 行，当前 ' + lines.length + ' 行。请精简后重试。');
-        return;
-      }
-    }
-  } catch (e) { /* 无法读取详情时跳过行数检查 */ }
-
-  const countText = cardCount > 0 ? `将生成 ${cardCount} 张任务卡，` : '';
-  if (!confirm(`确定将此方案转为任务卡？${countText}转卡后方案状态将自动推进为「部分执行」。`)) return;
-
-  try {
-    const result = await apiPost('/plans/convert', { path });
-    if (result.ok) {
-      alert('转卡成功！生成卡片：' + (result.cards || []).join(', '));
-      loadPlans();
-    } else {
-      alert('转卡失败: ' + (result.error || '未知错误'));
-    }
+    detail = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
   } catch (e) {
-    alert('转卡失败: ' + e.message);
+    alert('加载方案详情失败: ' + e.message);
+    return;
   }
+  const content = detail.content || '';
+  // 功能卡清单优先（027），回退旧「转卡计划」段
+  let items = _parseFuncCards(content);
+  if (!items.length) {
+    const planSection = content.split('## 转卡计划')[1];
+    if (planSection) {
+      items = planSection.split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#') && !l.startsWith('```') && !l.startsWith('|'))
+        .map(l => ({ title: l.replace(/^[-*]\s*|^\d+\.\s*/, '').trim(), goal: '', impl: '' }))
+        .filter(x => x.title);
+    }
+  }
+  if (!items.length) {
+    alert('方案缺少「功能卡」或「转卡计划」段，无法转卡');
+    return;
+  }
+  _showConvertOverlay(path, items);
+}
+
+/** 节点②：确认功能卡清单 + 一次转卡（粒度 A，ccc-plan-027） */
+function _showConvertOverlay(path, items) {
+  let overlay = _root?.querySelector('#plans-convert-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'plans-convert-overlay';
+    overlay.className = 'plans-form-overlay';
+    _root?.appendChild(overlay);
+  }
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="plans-form" role="dialog" aria-modal="true" aria-label="节点②确认转卡" style="max-width:640px">
+      <div class="plans-form-head">
+        <h3>节点② · 确认功能卡清单并转卡</h3>
+        <button type="button" class="ptool-btn-plain plans-form-x" id="plans-convert-cancel">${icon('close')}</button>
+      </div>
+      <div class="plans-convert-list" style="max-height:340px;overflow:auto;margin:12px 0">
+        ${items.map((c, i) => `
+          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid #242d42">
+            <span style="flex:none;width:22px;height:22px;border-radius:50%;background:#2a354d;color:#8b93a7;font-size:11px;display:flex;align-items:center;justify-content:center">${i + 1}</span>
+            <div style="min-width:0">
+              <div style="font-weight:600;color:#d6dce8">${esc(c.title)}</div>
+              ${c.goal ? `<div style="font-size:12px;color:#77809a;margin-top:2px">${esc(c.goal)}</div>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+      <div style="font-size:12px;color:#77809a;margin-bottom:12px">确认后一次生成 ${items.length} 张任务卡进看板「待分派」，方案自动推进「部分执行」。</div>
+      <div class="plans-form-actions">
+        <button type="button" class="ptool-btn-plain" id="plans-convert-cancel2">取消</button>
+        <button type="button" class="ptool-new" id="plans-convert-ok">${icon('convert')}确认转卡（${items.length} 张）</button>
+      </div>
+    </div>`;
+
+  const close = () => { overlay.style.display = 'none'; };
+  overlay.querySelector('#plans-convert-cancel')?.addEventListener('click', close);
+  overlay.querySelector('#plans-convert-cancel2')?.addEventListener('click', close);
+
+  overlay.querySelector('#plans-convert-ok')?.addEventListener('click', async () => {
+    const btn = overlay.querySelector('#plans-convert-ok');
+    btn.disabled = true;
+    btn.textContent = '转卡中…';
+    try {
+      const result = await apiPost('/plans/convert', { path });
+      overlay.style.display = 'none';
+      if (result.ok) {
+        window.showToast ? window.showToast(`转卡成功：${(result.cards || []).join(', ')}`, 'success') : alert('转卡成功！生成卡片：' + (result.cards || []).join(', '));
+        loadPlans();
+      } else {
+        alert('转卡失败: ' + (result.error || '未知错误'));
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = `确认转卡（${items.length} 张）`;
+      alert('转卡失败: ' + e.message);
+    }
+  });
 }
 
 // ── create form ──
@@ -517,6 +609,10 @@ function showCreateForm() {
         </select>
       </div>
       <div class="plans-form-field">
+        <label for="plans-form-milestone">里程碑</label>
+        <select id="plans-form-milestone" class="plans-status-select"><option value="">无（可选）</option></select>
+      </div>
+      <div class="plans-form-field">
         <label for="plans-form-title">标题</label>
         <input type="text" id="plans-form-title" class="plans-form-input" placeholder="方案标题">
       </div>
@@ -532,7 +628,7 @@ function showCreateForm() {
       </div>
       <div class="plans-form-field">
         <label for="plans-form-content">内容（Markdown，从「## 目标」开始）</label>
-        <textarea id="plans-form-content" class="plans-form-input plans-form-textarea" rows="12" placeholder="## 目标&#10;&#10;...&#10;&#10;## 背景&#10;&#10;...&#10;&#10;## 方案内容&#10;&#10;...&#10;&#10;## 验收标准&#10;&#10;- [ ] ...&#10;&#10;## 转卡计划&#10;&#10;- ...&#10;&#10;## 备注&#10;&#10;..."></textarea>
+        <textarea id="plans-form-content" class="plans-form-input plans-form-textarea" rows="14" placeholder="## 目标&#10;&#10;...&#10;&#10;## 背景&#10;&#10;...&#10;&#10;## 方案内容&#10;&#10;...&#10;&#10;## 功能卡&#10;&#10;### 功能卡标题（一个功能一张卡）&#10;目标：2-3句人话，一看就懂这一步做什么&#10;实现：详细实现（可选）&#10;验收：验收点（可选）&#10;&#10;## 验收标准&#10;&#10;- [ ] ...&#10;&#10;## 备注&#10;&#10;..."></textarea>
       </div>
       <div class="plans-form-actions">
         <button type="button" class="ptool-btn-plain" id="plans-form-submit-cancel">取消</button>
@@ -556,11 +652,30 @@ function showCreateForm() {
   });
   document.addEventListener('keydown', _globalKeydown);
 
+  // 里程碑下拉：按项目加载该项目的里程碑列表（/roadmap/<project>）
+  overlay.querySelector('#plans-form-project')?.addEventListener('change', async (e) => {
+    const sel = overlay.querySelector('#plans-form-milestone');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">无（可选）</option>';
+    const proj = e.target.value;
+    if (!proj) return;
+    try {
+      const data = await apiGet('/roadmap/' + encodeURIComponent(proj));
+      (data.milestones || []).forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.title || '';
+        opt.textContent = (m.title || '') + (m.status ? ' · ' + m.status : '');
+        sel.appendChild(opt);
+      });
+    } catch (err) { /* 里程碑加载失败不阻塞 */ }
+  });
+
   overlay.querySelector('#plans-form-submit')?.addEventListener('click', async () => {
     const project = overlay.querySelector('#plans-form-project')?.value;
     const title = overlay.querySelector('#plans-form-title')?.value.trim();
     const author = overlay.querySelector('#plans-form-author')?.value.trim();
     const tool = overlay.querySelector('#plans-form-tool')?.value.trim();
+    const milestone = overlay.querySelector('#plans-form-milestone')?.value || '';
     const content = overlay.querySelector('#plans-form-content')?.value.trim();
 
     if (!title || !content) {
@@ -573,7 +688,7 @@ function showCreateForm() {
     }
 
     try {
-      const result = await apiPost('/plans/create', { project, title, content, author, tool });
+      const result = await apiPost('/plans/create', { project, title, content, author, tool, milestone });
       if (result.ok) {
         _formOpen = false;
         overlay.style.display = 'none';
