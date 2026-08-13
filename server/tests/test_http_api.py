@@ -2312,3 +2312,48 @@ class TestCardsFallback:
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "tst002"
+
+
+# ── P1#10 机审返工：/loop/findings type 推导 ──
+
+class TestFindingType:
+    """从标题推导 finding type（observer 报告表无 id 列，机审红旗返工）。"""
+
+    def test_unit_mapping_all_types(self):
+        from server.web.server import _finding_type_from_title
+
+        cases = {
+            "任务卡 clw004 状态漂移：roadmap 标注进行中": "drift",
+            "项目 qh 缺席 roadmap.md 的业务线路段落": "missing_section",
+            "方案 clw-plan-001 已完成但关联卡未全部关闭: clw001(执行中)": "broken_link",
+            "已关闭任务卡 clw001 缺失或未完成维护区四问": "missing_four_questions",
+            "里程碑 clw/会话加固 进度不一致：声明 进行中": "consistency",
+            "已登记死文件复活: server/web/legacy-chat/arch/qb-arch.html": "tech",
+            "卡 clw002 有真实人工批注但未见「## 批注落实」段": "tech",
+            "其他未知标题": "scan",
+        }
+        for title, expect in cases.items():
+            got = _finding_type_from_title(title)
+            assert got == expect, f"{title!r} → {got}，期望 {expect}"
+
+    def test_findings_api_returns_type(self, api_server, tmp_path, monkeypatch):
+        """集成：造 observer 报告 → GET /loop/findings → findings[].type 非空且正确。"""
+        from server.web import server as srv_mod
+
+        observer_dir = tmp_path / "observer"
+        observer_dir.mkdir(parents=True)
+        (observer_dir / "2026-08-13-test-patrol.md").write_text(
+            "# test\n\n"
+            "| 权重 (Weight) | 交叉确认 | 影响 | 频次 | 描述 (Title) | 项目 | 作用对象 | 证据 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| 10 | 是 | 高 | 3 | clw004 状态漂移：roadmap 标注进行中但实际已关闭 | clw | clw004 | docs/roadmap.md |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/loop/findings", token=token)
+        assert status == 200
+        reports = data.get("loop_reports", [])
+        assert reports and reports[0]["findings"], "应有 1 条 finding"
+        f = reports[0]["findings"][0]
+        assert f["type"] == "drift", f"type 应为 drift，实际 {f.get('type')!r}"

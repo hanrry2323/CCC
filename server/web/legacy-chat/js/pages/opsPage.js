@@ -313,6 +313,7 @@ function renderFindings(loopData) {
   }
   const typeLabel = {
     missing_section: '缺段落', drift: '状态漂移', broken_link: '关联断裂', missing_four_questions: '维护区缺失',
+    consistency: '一致性', tech: '技术债', scan: '巡查',
   };
   const adoptBtn = (f) => {
     const done = adopted.has(f.title || '');

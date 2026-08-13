@@ -1475,6 +1475,28 @@ def _executor_log_dir() -> Path | None:
     return Path(raw).expanduser().resolve()
 
 
+def _finding_type_from_title(title: str) -> str:
+    """从巡查发现标题推导 type（P1#10 机审返工）。
+
+    observer 报告表无 id 列（8 列：权重|交叉确认|影响|频次|标题|项目|acting_on|证据），
+    只能从标题关键字映射。前端 typeLabel 按此值显示分类徽章。
+    """
+    t = str(title or "")
+    if "维护区" in t or "四问" in t:
+        return "missing_four_questions"
+    if "状态漂移" in t or "漂移" in t:
+        return "drift"
+    if "缺席" in t or "缺段落" in t:
+        return "missing_section"
+    if "断链" in t or "不存在" in t or "未全部关闭" in t or "关联了不存在" in t:
+        return "broken_link"
+    if "进度不一致" in t:
+        return "consistency"
+    if "死文件" in t or "人工批注" in t or "打回卡" in t or "审核引用" in t:
+        return "tech"
+    return "scan"
+
+
 def _tail_lines(path: Path, n: int = 5) -> list[str]:
     """读文件末尾 n 行；文件不存在/读取失败 → 空列表。
 
@@ -2776,12 +2798,8 @@ class _APIHandler(BaseHTTPRequestHandler):
                     if in_table and ln.strip().startswith("|"):
                         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
                         if len(cells) >= 6:
-                            # P1 修复：从 id 前缀映射 finding type（此前前端 typeLabel 读 f.type 恒空 → 分类徽章恒「巡查」）
-                            _fid = cells[3] if len(cells) > 3 else ""
-                            _ftype = next(
-                                (k for k in ("missing_section", "drift", "broken_link", "missing_four_questions", "consistency", "tech") if _fid.startswith(k + "_") or k in _fid),
-                                "scan",
-                            )
+                            # P1#10（机审返工）：报告表无 id 列（权重|交叉确认|影响|频次|标题|项目|acting_on|证据），
+                            # 从标题关键字推导 type（此前取 cells[3] 错取频次数值 → 恒 "scan"）
                             findings.append(
                                 {
                                     "weight": cells[0],
@@ -2792,7 +2810,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                     "acting_on": cells[6].strip("`"),
                                     "evidence": cells[7].strip("`") if len(cells) > 7 else "",
                                     "ts": f.stat().st_mtime,
-                                    "type": _ftype,
+                                    "type": _finding_type_from_title(cells[4]),
                                 }
                             )
                     elif in_table and not ln.strip().startswith("|"):
