@@ -355,7 +355,7 @@ def _item_to_board_task(item: BoardItem) -> dict[str, Any]:
         elif base == "打回":
             split_status = "failed"
 
-    note = item.progress if item.type == "epic" else ""
+    note = ""
 
     return {
         "id": item.id,

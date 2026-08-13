@@ -18,7 +18,6 @@ SAMPLE_CARD = """# 任务卡 T99 · 示例任务（OpenCode 执行）
 测试通过
 """
 
-
 def test_parse_metadata() -> None:
     # 正常块解析
     meta = parse_metadata(SAMPLE_CARD)
@@ -34,7 +33,6 @@ def test_parse_metadata() -> None:
     assert parse_metadata("") == {}
     assert parse_metadata("# Header\nNo meta\n") == {}
 
-
 def test_card_id() -> None:
     assert card_id(SAMPLE_CARD) == "T99"
     # 带连字符/其他特殊
@@ -42,14 +40,11 @@ def test_card_id() -> None:
     # 无匹配
     assert card_id("# No card id here") == ""
 
-
 def test_is_task_card_text() -> None:
     assert is_task_card_text(SAMPLE_CARD) is True
     assert is_task_card_text("# T-mapping.md\nThis is not a task card") is False
 
-
 # Removed reject_count_in test
-
 
 def test_card_header_from_text() -> None:
     header = CardHeader.from_text(SAMPLE_CARD)
@@ -69,20 +64,3 @@ def test_card_header_from_text() -> None:
     assert header_fallback.id == "stem-id"
     assert header_fallback.title == UNKNOWN
 
-
-def test_card_header_state_base() -> None:
-    header = CardHeader(state="打回（原因X）")
-    assert header.state_base == "打回"
-
-    header_unknown = CardHeader()
-    assert header_unknown.state_base == UNKNOWN
-
-
-def test_card_header_validation() -> None:
-    header_ok = CardHeader(state="待分派")
-    assert header_ok.validate() == []
-
-    header_bad = CardHeader(state="待分派X")
-    problems = header_bad.validate()
-    assert len(problems) == 1
-    assert "状态值非法" in problems[0]

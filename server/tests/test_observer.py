@@ -193,8 +193,8 @@ def test_patrol_report_sorts_unsorted_input():
 @pytest.fixture
 def mock_patrol_data():
     """构造用于测试巡查逻辑的 Mock 数据"""
-    proj_ccc = ProjectEntry(prefix='ccc', id='CCC', name='CCC', display='ccc', taskable=True, forbidden=False, status='active', dossier='docs/projects/ccc/README.md', role='platform', path_m1=None, path_mac2017=None, location='mac2017-platform')
-    proj_qb = ProjectEntry(prefix='qb', id='qb', name='qb', display='qb', taskable=True, forbidden=False, status='active', dossier='docs/projects/qb/README.md', role='apps', path_m1=None, path_mac2017=None, location='mac2017-apps')
+    proj_ccc = ProjectEntry(prefix='ccc', id='CCC', name='CCC', display='ccc', taskable=True, forbidden=False, status='active', path_m1=None, path_mac2017=None, location='mac2017-platform')
+    proj_qb = ProjectEntry(prefix='qb', id='qb', name='qb', display='qb', taskable=True, forbidden=False, status='active', path_m1=None, path_mac2017=None, location='mac2017-apps')
     card_ccc021 = BoardItem(id='ccc021', title='S8 转卡验收样例', state='已关闭', project='ccc')
     plan_010 = {'id': 'ccc-plan-010', 'project': 'ccc', 'num': '010', 'slug': 's8', 'title': 'S8 转卡验收样例', 'status': '部分执行', 'author': 'Claude Code', 'tool': 'pytest', 'created': '2026-08-09', 'updated': '2026-08-09', 'cards': 'ccc021', 'path': 'docs/projects/ccc/plans/010-s8.md', 'acceptance': {'total': 5, 'done': 5}}
     plan_002 = {'id': 'ccc-plan-002', 'project': 'ccc', 'num': '002', 'slug': 'arch', 'title': 'Arch 方案', 'status': '已完成', 'author': '老板', 'tool': 'OpenCode', 'created': '2026-08-08', 'updated': '2026-08-08', 'cards': '无', 'path': 'docs/projects/ccc/plans/002-arch-roadmap-upgrade.md', 'acceptance': {'total': 1, 'done': 1}}

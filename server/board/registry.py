@@ -23,8 +23,6 @@ class ProjectEntry:
     taskable: bool
     forbidden: bool
     status: str
-    dossier: str | None
-    role: str
     path_m1: str | None
     path_mac2017: str | None
     location: str = ""
@@ -175,8 +173,6 @@ def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
         taskable=_as_bool(raw.get("taskable")),
         forbidden=_as_bool(raw.get("forbidden")),
         status=str(raw.get("status") or "").strip(),
-        dossier=dossier,
-        role=str(raw.get("role") or "").strip(),
         path_m1=(str(paths["m1"]) if paths.get("m1") not in (None, "") else None),
         path_mac2017=path_mac2017,
         location=str(raw.get("location") or "").strip(),

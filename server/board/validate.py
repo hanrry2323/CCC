@@ -58,11 +58,6 @@ def _has_card_title(path: Path) -> bool:
     return is_task_card_text(path.read_text(encoding="utf-8"))
 
 
-def _header_lines(card: Path) -> list[str]:
-    """取卡头全部 ``>`` 元数据行（与 loader 同款：多行合并解析）。"""
-    return [ln.strip() for ln in card.read_text(encoding="utf-8").splitlines() if ln.strip().startswith(">")]
-
-
 def _header_metadata(card: Path) -> dict[str, str]:
     """用 loader 同款解析合并全部 ``>`` 行 → ``key: value`` 字典。
 
@@ -131,16 +126,6 @@ def _classify_card(path: Path) -> tuple[str, str, str]:
     if OLD_CARD_RE.match(stem):
         return "old", "", ""
     return "other", "", ""
-
-
-def _card_number(path: Path) -> str:
-    """取文件名编号（``T<N>-...`` → ``N``；``<prefix><NNN>-...`` → ``NNN``）。"""
-    stem = path.stem
-    if OLD_CARD_RE.match(stem):
-        m = re.match(r"T(\d+)", stem)
-        return m.group(1) if m else ""
-    m = NEW_CARD_RE.match(stem)
-    return m.group("num") if m else ""
 
 
 def _header_card_id(card: Path) -> str:

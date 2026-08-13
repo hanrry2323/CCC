@@ -91,11 +91,6 @@ def view_by_project(items: list[BoardItem]) -> list[dict]:
     return rows
 
 
-def roadmap_aggregate(items: list[BoardItem]) -> list[dict]:
-    """线路图聚合（L1 总览）：§2 状态 → 桶计数（兼容旧名）。"""
-    return roadmap_overview(items)
-
-
 def roadmap_overview(items: list[BoardItem]) -> list[dict]:
     """L1 线路图总览：全项目桶聚合。
 

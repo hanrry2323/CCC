@@ -34,7 +34,7 @@ HEADER_FIELDS: tuple[str, ...] = (
 # 契约 §2 五态（卡头唯一合法状态）
 VALID_STATES: frozenset[str] = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
 # 「派发」合法值（缺省 engine）
-DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine"})
+DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine", "scheduler", "remote"})
 # 「类型」合法值（缺省 task）
 TYPE_VALUES: frozenset[str] = frozenset({"epic", "task"})
 
@@ -100,16 +100,6 @@ class CardHeader:
     reject_count: int = 0
     depends: str = ""
     approval: str = ""
-
-    @property
-    def state_base(self) -> str:
-        return base_state(self.state)
-
-    def validate(self) -> list[str]:
-        problems: list[str] = []
-        if self.state != UNKNOWN and self.state_base not in VALID_STATES:
-            problems.append(f"状态值非法: {self.state!r}（合法={sorted(VALID_STATES)}）")
-        return problems
 
     @classmethod
     def from_text(cls, text: str, fallback_id: str = "") -> Self:

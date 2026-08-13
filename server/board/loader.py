@@ -23,7 +23,7 @@ from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state, board_column, machine_audit_passed_text
 from server.board.roles import normalize_tool
-from server.board.card_header import CardHeader, parse_metadata, is_task_card_text
+from server.board.card_header import CardHeader, is_task_card_text
 
 logger = logging.getLogger("ccc.board.loader")
 
@@ -33,7 +33,6 @@ _WRITTEN_RE = re.compile(r"\*\*日期\*\*\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}
 # 推导出的项目名不得含这些字符（长句/引号/括号 → 非项目前缀，归「未分类」）
 _GARBLED_RE = re.compile(r"[「」『』【】\"'<>（）()]")
 
-_parse_metadata = parse_metadata
 
 
 def _strip_parenthetical(value: str) -> str:
@@ -218,13 +217,6 @@ def _derive_card_type(path: Path) -> str:
 
 
 def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
-    ctype = _derive_card_type(path)
-    parent_dir = path.parent
-    if parent_dir.name == "dispatch" or parent_dir.name == "":
-        parent = ""
-    else:
-        parent = parent_dir.name
-
     closed_at = UNKNOWN
     if base_state(item.state) == "已关闭":
         closed_at = item.written_at
@@ -238,8 +230,6 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
     return {
         "id": item.id,
         "project": item.project,
-        "type": ctype,
-        "parent": parent,
         "state": item.state,
         "executor": item.executor,
         "dispatched_at": item.dispatched_at,
