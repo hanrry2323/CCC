@@ -178,3 +178,9 @@ docs/dispatch/cards.index.jsonl
 docs/notes/*-ccc-patrol.md
 docs/notes/*-ccc-reverse-patrol.md
 docs/dispatch/.card-lock
+
+# 临时/锁/备份文件
+*.lock
+*.bak
+*.tmp
+*.orig
