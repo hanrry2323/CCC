@@ -13,6 +13,7 @@ projects:
     name: CCC
     display: ccc
     location: m1-program, mac2017-platform
+    category: platform
     paths:
       m1: /Users/apple/program/CCC
       mac2017: /Users/fan/program/CCC

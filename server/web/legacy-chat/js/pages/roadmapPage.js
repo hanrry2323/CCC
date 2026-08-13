@@ -210,12 +210,16 @@ function _setupRailNavigation(host) {
     railBtns.forEach((b, i) => b.classList.toggle('active', i === idx));
   }
 
-  // 点击左侧导航项 → 右侧滚动到对应卡片
+  // 点击左侧导航项 → 用 data-mile-idx 查找右侧对应卡片
   railBtns.forEach((btn, i) => {
     btn.addEventListener('click', () => {
       _highlight(i);
-      if (cards[i]) {
-        cards[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const mileIdx = btn.dataset.mileIdx;
+      if (mileIdx != null) {
+        const target = panel.querySelector(`#rm2-mile-${mileIdx}`);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       }
     });
   });
@@ -228,9 +232,13 @@ function _setupRailNavigation(host) {
         let firstVisible = -1;
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            const idx = cards.indexOf(entry.target);
-            if (idx !== -1 && (firstVisible === -1 || idx < firstVisible)) {
-              firstVisible = idx;
+            const el = entry.target;
+            const idMatch = el.id && el.id.match(/^rm2-mile-(\d+)$/);
+            if (idMatch) {
+              const idx = parseInt(idMatch[1], 10);
+              if (firstVisible === -1 || idx < firstVisible) {
+                firstVisible = idx;
+              }
             }
           }
         }

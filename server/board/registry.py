@@ -28,6 +28,7 @@ class ProjectEntry:
     path_m1: str | None
     path_mac2017: str | None
     location: str = ""
+    category: str = ""  # platform | business | legacy — 平台自研项跳过业务展示
     # 业务仓隔离（2026-08-12 · 事故修复）：每卡独立 worktree + 同仓并发上限
     isolation_worktree_root: str = ""
     isolation_max_concurrent: int = 1
@@ -179,6 +180,7 @@ def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
         path_m1=(str(paths["m1"]) if paths.get("m1") not in (None, "") else None),
         path_mac2017=path_mac2017,
         location=str(raw.get("location") or "").strip(),
+        category=str(raw.get("category") or "").strip(),
         isolation_worktree_root=iso_root,
         isolation_max_concurrent=iso_max,
     )
@@ -292,3 +294,10 @@ def taskable_names(registry_path: str | None = None) -> frozenset[str]:
         if p.display:
             names.add(p.display)
     return frozenset(names)
+
+
+def platform_prefixes(registry_path: str | None = None) -> frozenset[str]:
+    """返回 category==platform 的前缀集合（平台自研项目，不参与业务展示）。"""
+    return frozenset(
+        p.prefix for p in load_projects(registry_path) if p.prefix and p.category == "platform"
+    )

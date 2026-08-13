@@ -25,13 +25,14 @@ from typing import Any
 logger = logging.getLogger("ccc.board.plans")
 
 # 有效状态
-VALID_STATES = frozenset({"已确认", "部分执行", "已完成", "作废"})
+VALID_STATES = frozenset({"已确认", "部分执行", "已完成", "作废", "已覆盖"})
 
 # 状态流转白名单（from → allowed to）
 _TRANSITIONS: dict[str, frozenset[str]] = {
-    "已确认": frozenset({"部分执行", "作废"}),
+    "已确认": frozenset({"部分执行", "作废", "已覆盖"}),
     "部分执行": frozenset({"已完成", "作废"}),
-    # 已完成 / 作废 = 终态，不可再改
+    "作废": frozenset({"已覆盖"}),
+    # 已完成 / 已覆盖 = 终态，不可再改
 }
 
 # 方案文件路径模式
@@ -142,6 +143,14 @@ def list_plans(
 
         if project and prefix != project:
             continue
+
+        # 跳过 platform 类项目（ccc 平台自研）
+        if not project:
+            from server.board.registry import platform_prefixes
+
+            reg_path = str(repo_root / "docs" / "projects" / "registry.yaml")
+            if prefix in platform_prefixes(reg_path):
+                continue
 
         try:
             content = plan_file.read_text()
@@ -287,6 +296,13 @@ def create_plan(
     valid_prefixes = _get_valid_prefixes(repo_root)
     if project not in valid_prefixes:
         return {"error": f"无效项目前缀: {project}"}
+
+    # 拒绝 platform 类项目创建方案（ccc 平台自研不走业务方案流程）
+    from server.board.registry import platform_prefixes
+
+    reg_path = str(repo_root / "docs" / "projects" / "registry.yaml")
+    if project in platform_prefixes(reg_path):
+        return {"error": f"项目 {project} 为平台自研（category=platform），不走业务方案流程"}
 
     if not author or not author.strip():
         return {"error": "作者不能为空"}

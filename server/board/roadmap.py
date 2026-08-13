@@ -143,12 +143,16 @@ def _roadmap_path(project: str) -> Path:
 
 
 def list_roadmaps() -> list[str]:
-    """列出所有有 roadmap.md 的项目前缀。"""
+    """列出所有有 roadmap.md 的业务项目前缀（跳过 platform 类项目）。"""
+    from server.board.registry import platform_prefixes
+
+    _platform = platform_prefixes()
     projects_dir = _repo_root() / "docs" / "projects"
     result = []
     for d in sorted(projects_dir.iterdir()):
         if d.is_dir() and (d / "roadmap.md").is_file():
-            result.append(d.name)
+            if d.name not in _platform:
+                result.append(d.name)
     return result
 
 

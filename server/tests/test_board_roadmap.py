@@ -155,7 +155,8 @@ class TestParseRoadmap:
 class TestListRoadmaps:
     def test_list_returns_prefixes(self) -> None:
         rdms = list_roadmaps()
-        assert "ccc" in rdms
+        # ccc 是 platform 类项目，list_roadmaps 跳过平台自研项目
+        assert "ccc" not in rdms
         assert "clw" in rdms
         assert "hp" in rdms
         assert "qb" in rdms
@@ -365,18 +366,18 @@ class TestRoundtrip:
         reg = self.mock_root / "docs" / "projects" / "registry.yaml"
         reg.parent.mkdir(parents=True, exist_ok=True)
         reg.write_text(
-            "schema: ccc-project-registry-v1\nprojects:\n  - prefix: ccc\n    id: ccc\n    name: ccc\n    taskable: true\n    forbidden: false\n    status: active\n"
+            "schema: ccc-project-registry-v1\nprojects:\n  - prefix: clw\n    id: clw\n    name: clw\n    taskable: true\n    forbidden: false\n    status: active\n"
         )
         val = self.mock_root / "scripts" / "validate-plans.sh"
         val.parent.mkdir(parents=True, exist_ok=True)
         val.write_text("#!/usr/bin/env bash\nexit 0\n")
         val.chmod(0o755)
 
-        create_draft("ccc", "真实升级草稿")
-        result = promote_draft_to_plan("ccc", index=0, author="test", tool="pytest")
+        create_draft("clw", "真实升级草稿")
+        result = promote_draft_to_plan("clw", index=0, author="test", tool="pytest")
         assert result.get("ok") is True
         assert "plan" in result
         assert result["plan"]["id"] is not None
         # 草案已移除
-        drafts = list_drafts("ccc")
+        drafts = list_drafts("clw")
         assert "真实升级草稿" not in [d.title for d in drafts]
