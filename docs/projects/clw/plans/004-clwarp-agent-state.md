@@ -1,7 +1,7 @@
 # 方案 · clwarp agent 状态感知机制（屏幕特征→状态）
 
-> 项目：clw · 编号：clw-plan-004 · 状态：提案（待老板测试 herdr 后确认） · 作者：OpenCode · 工具：OpenCode
-> 创建：2026-08-11 · 更新：2026-08-11
+> 项目：clw · 编号：clw-plan-004 · 状态：作废 · 作者：OpenCode · 工具：OpenCode
+> 创建：2026-08-11 · 更新：2026-08-13
 > 关联方案：clw-plan-001/002/003（此前均为可用性收口，本方案引入 agent 语义层）
 > 参考案例：herdr `src/detect/manifests/*.toml`（Apache-2.0，调研报告见 reference/herdr/ANALYSIS-for-clw-2026-08-11.md）
 

@@ -44,8 +44,9 @@ def _project_roots() -> dict[str, str]:
         for p in load_projects():
             if not p.prefix:
                 continue
-            roots = p.paths or {}
-            m1 = roots.get("m1") or roots.get("m1-program")
+            # 8-13 重构：ProjectEntry 无 paths 字段（拆为 path_m1/path_mac2017），
+            # 旧 p.paths 每次抛 AttributeError 被吞 → 业务项目工作目录全部无法解析
+            m1 = getattr(p, "path_m1", "") or getattr(p, "path_mac2017", "")
             if m1:
                 out[p.prefix] = str(m1)
     except Exception:

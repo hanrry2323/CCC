@@ -349,11 +349,9 @@ if m:
     cur_cards = m.group(1).strip()
 
 existing = [c.strip() for c in cur_cards.split(",") if c.strip()] if cur_cards else []
-if card_id in existing:
-    print(f"[skip] {card_id} 已在方案 {plan_prefix}-plan-{plan_num} 关联卡中")
-    raise SystemExit(0)
-
-new_cards = ", ".join(existing + [card_id])
+# P0 全链路修复：卡已在关联卡中也调 update_plan（cards 不变）→ 触发 sync_plan_progress 重算方案进度。
+# 此前直接 skip：卡关闭后方案「进度：」行永不更新（卡是 convert 转卡时写进关联卡的，永远命中此分支）。
+new_cards = ", ".join(existing + [card_id]) if card_id not in existing else ", ".join(existing)
 result = update_plan(Path("."), rel_path=rel_path, cards=new_cards)
 if "error" in result:
     print(f"[warn] 方案关联卡同步失败: {result['error']}")

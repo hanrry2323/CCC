@@ -9,7 +9,7 @@
  *   /roadmap/<project> → 单项目详情（二级页）
  */
 
-import { apiGet } from '../api.js';
+import { apiGet, apiPost } from '../api.js';
 import { esc } from '../roadmapTimeline.js';
 
 let _root = null;
@@ -103,13 +103,14 @@ function renderOverview(data) {
 
 /* ── 二级页：单项目线路图 ── */
 
-function _draftPoolHTML(drafts) {
+function _draftPoolHTML(drafts, project) {
   if (!drafts || !drafts.length) return '';
   return `<div class="rm2-drafts">
     <strong class="rm2-drafts-title">草案池（${drafts.length}）</strong>
     <div class="rm2-draft-list">
-      ${drafts.map(d => `<div class="rm2-draft-item">
+      ${drafts.map((d, i) => `<div class="rm2-draft-item">
         <span class="rm2-draft-title">${esc(typeof d === 'string' ? d : d.title || '')}</span>
+        <button type="button" class="hub-btn rm2-draft-promote" data-project="${esc(project)}" data-index="${i}" title="人审节点①：老板确认后转正式方案">确认转方案</button>
       </div>`).join('')}
     </div>
   </div>`;
@@ -268,13 +269,30 @@ async function openProject(project) {
     body.innerHTML = `
       <div class="rm2">
         ${_overviewHTML(detail)}
-        ${_draftPoolHTML(detail.drafts)}
+        ${_draftPoolHTML(detail.drafts, project)}
         <div class="rm2-body">
           ${_railHTML(detail)}
           ${_milestoneCardsHTML(detail)}
         </div>
       </div>`;
     _setupRailNavigation(body);
+    // P0 全链路修复：草案→方案一键升级（人审节点①动作入口，老板确认后由 Agent 打标）
+    body.querySelectorAll('.rm2-draft-promote').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const proj = btn.dataset.project;
+        const index = Number(btn.dataset.index);
+        btn.disabled = true;
+        btn.textContent = '确认中…';
+        try {
+          await apiPost(`/roadmap/${encodeURIComponent(proj)}/draft/promote-to-plan`, { index });
+          window.showToast?.('草案已转为方案（已自动打「老板确认方案」批准标签）', 'success');
+          await openProject(proj); // 刷新草案池
+        } catch (e) {
+          btn.textContent = '转方案失败';
+          window.showToast?.(e.message || '确认失败', 'error');
+        }
+      });
+    });
   } catch (err) {
     body.innerHTML = '<div class="board-empty">加载失败: ' + esc(err.message || String(err)) + '</div>';
   }

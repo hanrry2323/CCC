@@ -3003,6 +3003,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/summary":
             self._handle_ops_summary()
+            return
         elif path == "/ops/failures":
             self._handle_ops_failures()
             return
@@ -3159,12 +3160,9 @@ class _APIHandler(BaseHTTPRequestHandler):
         if len(segs) == 2 and segs[1] == "draft":
             self._handle_roadmap_draft_create(project)
             return
-        if len(segs) == 3 and segs[1] == "draft" and segs[2] == "promote":
-            # 草案 id 缺失时 400
-            self._send_json({"error": "缺少草案 id"}, 400)
-            return
-        if len(segs) == 4 and segs[1] == "draft" and segs[3] == "promote":
-            self._handle_roadmap_draft_promote(project, segs[2])
+        if len(segs) == 3 and segs[1] == "draft" and segs[2] == "promote-to-plan":
+            # P0 全链路修复：草案→方案一键升级（人审节点①动作入口），body 带 index
+            self._handle_roadmap_draft_promote_to_plan(project)
             return
         self._send_404()
 

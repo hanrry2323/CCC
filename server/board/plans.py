@@ -403,6 +403,12 @@ def update_plan(
     if status:
         current_fields = _extract_header_fields(current)
         current_status = current_fields.get("状态", "").split("·")[0].strip()
+        if current_status not in VALID_STATES:
+            # P0 全链路修复：非法现状值（如「提案（待老板测试…）」）禁止截断式替换，
+            # 否则正则 [^ ·]+ 会吃掉空格前的片段、残留尾巴永久卡死。
+            return {
+                "error": f"当前状态值非法（{current_status}），禁止程序化修改——请先修复数据（合法值: {'/'.join(sorted(VALID_STATES))}）"
+            }
         if current_status in _TRANSITIONS:
             allowed = _TRANSITIONS[current_status]
             if status not in allowed:
@@ -759,8 +765,15 @@ def _convert_plan_locked(
             continue
 
         full_title = f"{title} — {card_title}"
+        # 出卡时带方案关联（P0 全链路修复：否则卡关闭后 sync_plan_cards 无法定位方案 → 进度永不重算）
+        plan_id = f"{prefix}-plan-{m.group(2)}"
         result = subprocess.run(
-            ["bash", str(new_card_script), "--project", prefix, "--title", full_title],
+            [
+                "bash", str(new_card_script),
+                "--project", prefix,
+                "--title", full_title,
+                "--related", plan_id,
+            ],
             capture_output=True,
             text=True,
             cwd=repo_root,
@@ -825,6 +838,13 @@ def _convert_plan_locked(
 
         sync_milestone_progress(prefix, rel_path)
         return {"ok": True, "cards": cards}
+
+    # P0 全链路修复：正常（push）分支也触发级联回写——方案进度与里程碑进度
+    # 在 git add 之前执行，进度行与卡文件同批 commit（此前只在 no_push 分支调用）
+    sync_plan_progress(repo_root, rel_path)
+    from server.board.roadmap import sync_milestone_progress
+
+    sync_milestone_progress(prefix, rel_path)
 
     # commit+push：卡文件与方案状态同批提交，Engine 才能感知新卡
     rel_paths = [str(p.relative_to(repo_root)) for p in created_files] + [rel_path]
