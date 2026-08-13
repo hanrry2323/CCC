@@ -1,6 +1,6 @@
 # 方案 · sidecar 生命周期契约 + Engine 收口（A 轨平台根治 · clw019 挂死根因）
 
-> 项目：ccc · 编号：ccc-plan-021 · 状态：草案 · 作者：OpenCode（M1 平台自研） · 工具：OpenCode
+> 项目：ccc · 编号：ccc-plan-021 · 状态：作废 · 作者：OpenCode（M1 平台自研） · 工具：OpenCode
 > 创建：2026-08-11 · 更新：2026-08-11
 > 关联方案：ccc-plan-020（集群 Worker 池）
 > 依据：ENGINEERING-CANON §三-1（sidecar 状态生命周期契约）· 红线 6（平台不自我开发，M1 直接开发）

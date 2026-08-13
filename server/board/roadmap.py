@@ -40,24 +40,17 @@ class Draft:
 
 
 @dataclass
-class Step:
-    """里程碑下的执行步骤"""
-
-    title: str  # 步骤标题
-    description: str = ""  # 步骤描述
-    status: str = "待开始"  # 待开始 | 进行中 | 已完成
-
-
-@dataclass
 class Milestone:
-    """里程碑（关联一组方案，有进度）"""
+    """里程碑（关联一组方案，有进度）。
+
+    ccc-plan-027：Step 概念并入方案内「功能卡」段，里程碑下不再有 steps。
+    """
 
     title: str  # 里程碑标题
     project: str = ""  # 所属项目前缀
     status: str = "草案"  # 草案 | 进行中 | 已完成
     linked_plans: list[str] = field(default_factory=list)  # 关联方案 ID
     description: str = ""  # 描述
-    steps: list[Step] = field(default_factory=list)  # 执行步骤
 
 
 # ── 解析 ──
@@ -105,15 +98,7 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                 }
             elif current_ms is not None:
                 stripped = line.strip()
-                if stripped.startswith("- [") and "]" in stripped:
-                    # Step 解析：- [状态] 标题（缩进风格，必须在描述续行之前检查）
-                    step_match = re.match(r"^-\s*\[([^\]]+)\]\s*(.*)", stripped)
-                    if step_match:
-                        step_status = step_match.group(1).strip()
-                        step_title = step_match.group(2).strip()
-                        steps = current_ms.setdefault("steps", [])
-                        steps.append(Step(title=step_title, description="", status=step_status))
-                elif stripped.startswith("- 状态："):
+                if stripped.startswith("- 状态："):
                     current_ms["status"] = stripped[4:].strip().lstrip("：").strip()
                 elif stripped.startswith("- 关联方案："):
                     plans = stripped[6:].strip().lstrip("：").strip()
@@ -210,9 +195,6 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
                     lines.append(f"- 关联方案：{', '.join(ms.linked_plans)}")
                 if ms.description:
                     lines.append(f"- 描述：{ms.description}")
-                if ms.steps:
-                    for step in ms.steps:
-                        lines.append(f"  - [{step.status}] {step.title}")
                 lines.append("")
         else:
             lines.append("无。")
@@ -342,6 +324,48 @@ def update_milestone(
 
     _write_roadmap(project, data["drafts"], data["milestones"])
     return {"ok": True, "milestone": title}
+
+
+# ── 方案↔里程碑双向关联（ccc-plan-027 缝隙1）──
+
+
+def link_plan_to_milestone(
+    project: str,
+    plan_id: str,
+    milestone_title: str | None,
+    prev_milestone_title: str | None = None,
+) -> dict[str, Any]:
+    """维护 roadmap.md 的 linked_plans 派生索引（方案头「里程碑」字段是主入口）。
+
+    - milestone_title 非空：把 plan_id 加入目标里程碑 linked_plans；
+    - prev_milestone_title：从旧里程碑移除该方案（改里程碑场景）；
+    - milestone_title 为 None/空串：从所有里程碑移除该方案（清除关联）。
+
+    Returns:
+        {ok, updated: bool}
+    """
+    path = _roadmap_path(project)
+    if not path.is_file():
+        return {"ok": True, "updated": False}
+    text = path.read_text(encoding="utf-8")
+    data = parse_roadmap(text, project=project)
+
+    changed = False
+    for ms in data["milestones"]:
+        linked = list(ms.linked_plans)
+        if prev_milestone_title and ms.title == prev_milestone_title and plan_id in linked:
+            linked.remove(plan_id)
+        if not milestone_title and plan_id in linked:
+            linked.remove(plan_id)
+        if milestone_title and ms.title == milestone_title and plan_id not in linked:
+            linked.append(plan_id)
+        if linked != ms.linked_plans:
+            ms.linked_plans = linked
+            changed = True
+
+    if changed:
+        _write_roadmap(project, data["drafts"], data["milestones"])
+    return {"ok": True, "updated": changed}
 
 
 # ── 草案 CRUD ──

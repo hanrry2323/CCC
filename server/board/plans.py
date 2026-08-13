@@ -97,6 +97,74 @@ def _extract_acceptance(content: str) -> dict[str, int]:
     return {"total": total, "done": done}
 
 
+def _extract_func_cards(content: str) -> list[dict[str, str]]:
+    """解析方案正文「## 功能卡」段（ccc-plan-027 功能卡清单）。
+
+    格式：
+        ## 功能卡
+        ### <功能卡标题>
+        目标：<2-3 句人话，一眼看懂这一步做什么>
+        实现：<详细实现，可选>
+        验收：<验收点，可选>
+
+    Returns:
+        [{title, goal, impl, acceptance}]
+    """
+    cards: list[dict[str, str]] = []
+    in_section = False
+    current: dict[str, str] | None = None
+    for line in content.split("\n"):
+        s = line.strip()
+        if s.startswith("## "):
+            if s.startswith("## 功能卡"):
+                in_section = True
+                continue
+            if in_section:
+                break
+        if not in_section:
+            continue
+        if s.startswith("### "):
+            if current is not None:
+                cards.append(current)
+            current = {"title": s[4:].strip(), "goal": "", "impl": "", "acceptance": ""}
+        elif current is not None:
+            if s.startswith("目标："):
+                current["goal"] = s[3:].strip()
+            elif s.startswith("实现："):
+                current["impl"] = s[3:].strip()
+            elif s.startswith("验收："):
+                current["acceptance"] = s[3:].strip()
+    if current is not None:
+        cards.append(current)
+    return cards
+
+
+def _inject_func_card(path: Path, card: dict[str, str]) -> None:
+    """把功能卡的目标/实现/验收注入已生成卡文件对应段（两级卡：人话 + 实现）。
+
+    目标 → 替换 ## 目标 占位；实现 → 插入 ## 实现 段；验收 → 替换 ## 验收标准 占位。
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if card.get("goal"):
+        text = text.replace("（一句话，可验收。）", card["goal"], 1)
+    if card.get("impl"):
+        if "## 实现" not in text:
+            text = re.sub(
+                r"(## 目标\n\n[^\n]+\n\n)(## )",
+                lambda m: f"{m.group(1)}## 实现\n\n{card['impl']}\n\n{m.group(2)}",
+                text,
+                count=1,
+            )
+        else:
+            text = re.sub(r"(## 实现\n\n)([^\n]+)", f"\\1{card['impl']}", text, count=1)
+    if card.get("acceptance"):
+        text = text.replace("1. （可执行的验收点，附命令/可观察结果）", card["acceptance"], 1)
+    path.write_text(text, encoding="utf-8")
+
+
 def _get_valid_prefixes(repo_root: Path) -> set[str]:
     """从 registry.yaml 提取有效前缀。"""
     registry = repo_root / "docs" / "projects" / "registry.yaml"
@@ -182,6 +250,7 @@ def list_plans(
                 "created": fields.get("创建", ""),
                 "updated": fields.get("更新", ""),
                 "cards": fields.get("关联卡", ""),
+                "milestone": fields.get("里程碑", ""),
                 "path": rel,
                 "acceptance": acceptance,
                 "approval": fields.get("批准", ""),
@@ -221,6 +290,7 @@ def get_plan(repo_root: Path, rel_path: str) -> dict[str, Any] | None:
         "updated": fields.get("更新", ""),
         "cards": fields.get("关联卡", ""),
         "related": fields.get("关联方案", ""),
+        "milestone": fields.get("里程碑", ""),
         "path": rel_path,
         "content": content,
         "acceptance": _extract_acceptance(content),
@@ -289,6 +359,7 @@ def create_plan(
     content: str,
     author: str,
     tool: str,
+    milestone: str | None = None,
 ) -> dict[str, Any]:
     """创建新方案文件。
 
@@ -330,11 +401,18 @@ def create_plan(
 > 创建：{today} · 更新：{today}
 > 关联卡：无
 > 关联方案：无
+> 里程碑：{milestone or "无"}
 
 {content}
 """
         file_path = plans_dir / f"{num}-{slug}.md"
         file_path.write_text(plan_content)
+
+        # 027 缝隙1：方案↔里程碑双向关联（同步 roadmap.md linked_plans）
+        if milestone and milestone.strip():
+            from server.board.roadmap import link_plan_to_milestone
+
+            link_plan_to_milestone(project, plan_id, milestone.strip())
 
         rel = str(file_path.relative_to(repo_root))
 
@@ -378,6 +456,7 @@ def update_plan(
     status: str | None = None,
     content: str | None = None,
     cards: str | None = None,
+    milestone: str | None = None,
 ) -> dict[str, Any]:
     """更新方案状态或内容。
 
@@ -460,7 +539,40 @@ def update_plan(
         header = "\n\n".join(parts[:2]) if len(parts) >= 2 else current
         current = f"{header}\n\n{content}\n"
 
+    # 027 缝隙1：里程碑字段更新（主入口）+ roadmap.md linked_plans 双向同步
+    _ms_new = None
+    _ms_prev = ""
+    if milestone is not None:
+        _ms_prev = _extract_header_fields(current).get("里程碑", "").strip()
+        _ms_new = milestone if milestone.strip() else "无"
+        if "里程碑：" in current:
+            current = re.sub(r"(里程碑：)([^\n]*)", f"\\1{_ms_new}", current, count=1)
+        else:
+            lines = current.split("\n")
+            inserted = False
+            for i, line in enumerate(lines):
+                if "关联方案：" in line:
+                    lines.insert(i + 1, f"> 里程碑：{_ms_new}")
+                    inserted = True
+                    break
+            if not inserted:
+                lines.insert(2, f"> 里程碑：{_ms_new}")
+            current = "\n".join(lines)
+
     plan_file.write_text(current)
+
+    # 双向同步：把方案挂到新里程碑、从旧里程碑移除
+    if milestone is not None:
+        m_sync = _PLAN_PATH_RE.match(rel_path)
+        if m_sync:
+            from server.board.roadmap import link_plan_to_milestone
+
+            link_plan_to_milestone(
+                m_sync.group(1),
+                f"{m_sync.group(1)}-plan-{m_sync.group(2)}",
+                _ms_new if _ms_new != "无" else None,
+                _ms_prev if _ms_prev and _ms_prev != "无" else None,
+            )
 
     # 级联回写：方案进度（看板卡状态变更时自动更新）
     sync_plan_progress(repo_root, rel_path)
@@ -622,11 +734,21 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
             lines.insert(2, f"> {progress_text}")
         current = "\n".join(lines)
 
+    # 027 缝隙3：自动完成——关联卡全关 → 方案状态推进「已完成」
+    auto_completed = False
+    if total > 0 and closed == total:
+        status_m = re.search(r"状态：([^\s·]+)", current)
+        cur_status = status_m.group(1) if status_m else ""
+        if cur_status in ("已确认", "部分执行"):
+            current = re.sub(r"(状态：)([^\s·]+)", r"\1已完成", current, count=1)
+            auto_completed = True
+
     plan_file.write_text(current)
 
     return {
         "ok": True,
         "progress": {"total": total, "closed": closed, "progress_pct": progress_pct},
+        "auto_completed": auto_completed,
     }
 
 
@@ -726,25 +848,49 @@ def _convert_plan_locked(
     if current_status not in ("已确认", "部分执行"):
         return {"error": f"当前状态「{current_status}」不可转卡，只有「已确认」或「部分执行」状态可以转卡"}
 
-    # 提取转卡计划
-    plan_section = ""
-    in_section = False
-    for line in content.split("\n"):
-        if line.strip().startswith("## 转卡计划"):
-            in_section = True
-            continue
-        if in_section and line.strip().startswith("##"):
-            break
-        if in_section:
-            plan_section += line + "\n"
+    # 027：功能卡清单优先（## 功能卡 段），回退旧「## 转卡计划」段（每行一卡）
+    _func_cards = _extract_func_cards(content)
+    if _func_cards:
+        slices = [
+            {
+                "title": c["title"],
+                "goal": c.get("goal", ""),
+                "impl": c.get("impl", ""),
+                "acceptance": c.get("acceptance", ""),
+                "mode": "func_cards",
+            }
+            for c in _func_cards
+        ]
+    else:
+        plan_section = ""
+        in_section = False
+        for line in content.split("\n"):
+            if line.strip().startswith("## 转卡计划"):
+                in_section = True
+                continue
+            if in_section and line.strip().startswith("##"):
+                break
+            if in_section:
+                plan_section += line + "\n"
+        plan_lines = [
+            ln
+            for ln in plan_section.strip().split("\n")
+            if ln.strip() and not ln.strip().startswith("#") and not ln.strip().startswith("```")
+        ]
+        slices = [
+            {
+                "title": re.sub(r"^[-*]\s*|^\d+\.\s*", "", ln).strip(),
+                "goal": "",
+                "impl": "",
+                "acceptance": "",
+                "mode": "plan_section",
+            }
+            for ln in plan_lines
+        ]
 
-    if not plan_section.strip():
-        return {"error": "方案缺少「转卡计划」段"}
-
-    # 转卡计划段限 8 行
-    plan_lines = [ln for ln in plan_section.strip().split("\n") if ln.strip() and not ln.strip().startswith("#")]
-    if len(plan_lines) > 8:
-        return {"error": f"转卡计划段最多 8 行，当前 {len(plan_lines)} 行"}
+    slices = [s for s in slices if s["title"]]
+    if not slices:
+        return {"error": "方案缺少「功能卡」或「转卡计划」段"}
 
     # 提取标题（方案标题去掉「方案 · 」前缀）
     title = _extract_title(content).removeprefix("方案 · ").strip()
@@ -756,13 +902,9 @@ def _convert_plan_locked(
     created_files: list[Path] = []
     cards: list[str] = []
 
-    # 按行拆分转卡计划，每行作为一张卡的标题
-    for line in plan_section.strip().split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        # 清理 markdown 列表标记
-        card_title = re.sub(r"^[-*]\s*|^\d+\.\s*", "", line).strip()
+    # 按功能卡/转卡计划逐张出卡（027：功能卡段优先；转卡计划段兼容旧格式）
+    for s in slices:
+        card_title = s["title"].strip()
         if not card_title:
             continue
 
@@ -797,6 +939,9 @@ def _convert_plan_locked(
             }
         created_files.append(created[0])
         cards.append(created[1])
+        # 027 两级卡：功能卡目标/实现/验收注入卡文件
+        if s["mode"] == "func_cards" and (s["goal"] or s["impl"] or s["acceptance"]):
+            _inject_func_card(created[0], s)
 
     # 自动推进状态为「部分执行」+ 写入关联卡
     today = date.today().isoformat()
