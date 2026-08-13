@@ -48,6 +48,25 @@ function html() {
     <div id="ops-projects" class="ops-projects-grid"><div class="ops-empty">加载中…</div></div>
   </div>
 
+  <!-- 人审闸门（第三步：三大人审节点可见化） -->
+  <div class="ops-section">
+    <h3>人审闸门 <span class="ops-scan-at">确认方案 → 转卡 → 合入批准 · 老板动作待办</span></h3>
+    <div class="ops-todo-grid">
+      <div class="ops-card ops-block">
+        <h4 class="ops-block-title">① 待确认方案 <span class="badge" id="ops-gate1-count">0</span></h4>
+        <div id="ops-gate-drafts"><div class="ops-empty">加载中…</div></div>
+      </div>
+      <div class="ops-card ops-block">
+        <h4 class="ops-block-title">② 待转卡方案 <span class="badge" id="ops-gate2-count">0</span></h4>
+        <div id="ops-gate-plans"><div class="ops-empty">加载中…</div></div>
+      </div>
+      <div class="ops-card ops-block">
+        <h4 class="ops-block-title">③ 待合入批准 <span class="badge" id="ops-gate3-count">0</span></h4>
+        <div id="ops-gate-merge"><div class="ops-empty">加载中…</div></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ② 工程化待办（主区） -->
   <div class="ops-section">
     <h3>工程化待办 <span class="badge" id="ops-todo-count">0</span></h3>
@@ -67,6 +86,12 @@ function html() {
   <div class="ops-section">
     <h3>螺旋循环 <span class="ops-scan-at">发现 → 转卡 → 执行 → 机审 → 合入</span></h3>
     <div id="ops-loop-progress" class="ops-card"><div class="ops-empty">加载中…</div></div>
+  </div>
+
+  <!-- 失败原因聚合（第三步 · 挂账 2026-08-08） -->
+  <div class="ops-section">
+    <h3>失败原因 <span class="ops-scan-at">打回 / 机审不通过 / 执行失败 · 最近 30 条</span></h3>
+    <div id="ops-failures" class="ops-card"><div class="ops-empty">加载中…</div></div>
   </div>
 
   <div class="ops-sys-note">系统健康（节点 / 服务 / 管道 / 中转站）属控制台职责 → <a href="#/console">去控制台</a></div>
@@ -128,6 +153,78 @@ function renderProjects(roadmaps, details, cards, loopData, mergeData) {
   el.innerHTML = cardsHtml.length ? cardsHtml.join('') : '<div class="ops-empty">项目均无业务线路数据</div>';
 }
 
+/* ── 人审闸门（第三步）─────────────────────── */
+
+const APPROVED_PREFIXES = ['老板确认方案', '老板确认转卡', '老板合入批准'];
+
+function approvalStage(a) {
+  if (!a) return '';
+  const s = String(a);
+  for (const p of APPROVED_PREFIXES) {
+    if (s.startsWith(p)) return p;
+  }
+  return '已批准';
+}
+
+function renderHumanGates(roadmaps, plansData, merge) {
+  const draftsEl = _root.querySelector('#ops-gate-drafts');
+  const plansEl = _root.querySelector('#ops-gate-plans');
+  const mergeEl = _root.querySelector('#ops-gate-merge');
+  if (!draftsEl || !plansEl || !mergeEl) return;
+
+  // ① 待确认方案 = 线路图草案池（按项目分组）
+  const draftGroups = {};
+  for (const rm of roadmaps || []) {
+    const drafts = (rm.drafts || []).filter(Boolean);
+    if (drafts.length) draftGroups[rm.project] = drafts;
+  }
+  const draftN = Object.values(draftGroups).flat().length;
+  const g1cnt = _root.querySelector('#ops-gate1-count');
+  if (g1cnt) g1cnt.textContent = String(draftN);
+  draftsEl.innerHTML = draftN
+    ? Object.entries(draftGroups).map(([proj, items]) => `
+      <div class="ops-subgroup">
+        <h5>${esc(proj)}（${items.length}）</h5>
+        ${items.slice(0, 8).map((t) => `
+          <div class="ops-review-item">
+            <span class="ops-todo-type pending">待确认</span>
+            <span class="ops-review-title">${esc(t)}</span>
+            <a class="ops-goto-board" href="#/plans" title="去计划页确认">去处理 →</a>
+          </div>`).join('')}
+      </div>`).join('')
+    : '<div class="ops-empty">草案池空 🎉 无需确认</div>';
+
+  // ② 待转卡方案 = 已确认未转卡（status=已确认）
+  const confirmed = ((plansData && plansData.plans) || []).filter((p) => p.status === '已确认');
+  const g2cnt = _root.querySelector('#ops-gate2-count');
+  if (g2cnt) g2cnt.textContent = String(confirmed.length);
+  plansEl.innerHTML = confirmed.length
+    ? confirmed.slice(0, 10).map((p) => `
+      <div class="ops-review-item">
+        <span class="ops-todo-type pending">待转卡</span>
+        <span class="ops-review-id">${esc(p.id || '')}</span>
+        <span class="ops-review-title">${esc(p.title || '')}</span>
+        <span class="ops-review-proj">${esc(p.project || '')}</span>
+        <a class="ops-goto-board" href="#/plans" title="去计划页转卡">去处理 →</a>
+      </div>`).join('')
+    : '<div class="ops-empty">无待转卡方案 🎉</div>';
+
+  // ③ 待合入批准 = ready_for_merge
+  const mergeCards = ((merge && merge.cards) || []).filter((c) => !String(c.approval || '').includes('合入批准'));
+  const g3cnt = _root.querySelector('#ops-gate3-count');
+  if (g3cnt) g3cnt.textContent = String(mergeCards.length);
+  mergeEl.innerHTML = mergeCards.length
+    ? mergeCards.slice(0, 10).map((c) => `
+      <div class="ops-review-item">
+        <span class="ops-todo-type pending">待合入</span>
+        <span class="ops-review-id">${esc(c.id || '')}</span>
+        <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
+        <span class="ops-review-proj">${esc(c.project || '')}</span>
+        <a class="ops-goto-board" href="#/board" title="去看板合入批准">去处理 →</a>
+      </div>`).join('')
+    : '<div class="ops-empty">无待合入卡 🎉</div>';
+}
+
 /* ── ② diff 审查 + 代码健康发现 ──────────────── */
 
 function renderReview(mergeData, cards) {
@@ -148,7 +245,15 @@ function renderReview(mergeData, cards) {
   </div>`;
   const htmlParts = [];
   htmlParts.push(`<div class="ops-subgroup"><h5>待合入审查（${mergeCards.length}）</h5>${mergeCards.length ? mergeCards.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type">待合入</span>')).join('') : '<div class="ops-empty">无待合入</div>'}</div>`);
-  htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.length ? returned.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type returned">打回</span>')).join('') : '<div class="ops-empty">无打回卡</div>'}</div>`);
+  const returnedItem = (c) => `<div class="ops-review-item">
+    <span class="ops-review-id">${esc(c.id || '')}</span>
+    <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
+    <span class="ops-review-proj">${esc(c.project || '')}</span>
+    <span class="ops-todo-type returned">打回</span>
+    ${c.reason ? `<span class="ops-review-reason" title="${esc(c.reason)}">${esc(String(c.reason).slice(0, 30))}${String(c.reason).length > 30 ? '…' : ''}</span>` : ''}
+    <a class="ops-goto-board" href="#/board" title="去看板处理">去处理 →</a>
+  </div>`;
+  htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.length ? returned.slice(0, 12).map(returnedItem).join('') : '<div class="ops-empty">无打回卡</div>'}</div>`);
   const auditWait = (c) => {
     if (!c.written_at || c.written_at === '未知') return '';
     const d = Math.floor((Date.now() / 1000 - new Date(c.written_at).getTime() / 1000) / 86400);
@@ -269,6 +374,34 @@ function newFindingsCount(loopData) {
   return fresh.size;
 }
 
+function renderFailures(failuresData) {
+  const el = _root.querySelector('#ops-failures');
+  if (!el) return;
+  const data = failuresData || {};
+  const failures = data.failures || [];
+  const top = data.top_reasons || [];
+  const stageLabel = { run: '执行失败', audit: '机审不通过' };
+  const phaseLabel = (p) => stageLabel[p] || '打回';
+  el.innerHTML = `
+    <div class="ops-subgroup">
+      <h5>原因 Top（共 ${data.total_fail_events || 0} 条失败事件）</h5>
+      ${top.length ? top.slice(0, 5).map((r) => `
+        <div class="ops-review-item">
+          <span class="ops-todo-type returned">×${r.count}</span>
+          <span class="ops-review-title" title="${esc(r.reason)}">${esc(r.reason)}</span>
+        </div>`).join('') : '<div class="ops-empty">无失败事件 🎉</div>'}
+    </div>
+    <div class="ops-subgroup">
+      <h5>最近失败（${failures.length}）</h5>
+      ${failures.length ? failures.slice(0, 10).map((f) => `
+        <div class="ops-review-item">
+          <span class="ops-review-id">${esc(f.card_id || '')}</span>
+          <span class="ops-todo-type returned">${esc(phaseLabel(f.phase))}</span>
+          <span class="ops-review-title" title="${esc(f.problem)}">${esc(String(f.problem || '').slice(0, 40))}${String(f.problem || '').length > 40 ? '…' : ''}</span>
+        </div>`).join('') : '<div class="ops-empty">无最近失败 🎉</div>'}
+    </div>`;
+}
+
 function renderLoopProgress(loopData, cards, mergeData) {
   const el = _root.querySelector('#ops-loop-progress');
   if (!el) return;
@@ -293,11 +426,13 @@ function renderLoopProgress(loopData, cards, mergeData) {
 /* ── poll ────────────────────────────────────── */
 
 async function poll() {
-  const [roadmapsData, loop, merge, cardsData] = await Promise.all([
+  const [roadmapsData, loop, merge, cardsData, plansConfirmed, failuresData] = await Promise.all([
     apiGet('/board/roadmap').catch(() => null),
     apiGet('/loop/findings').catch(() => null),
     apiGet('/board/ready_for_merge').catch(() => null),
     apiGet('/cards?page_size=500').catch(() => null),
+    apiGet('/plans/list?status=已确认').catch(() => null),
+    apiGet('/ops/failures').catch(() => null),
   ]);
   const cards = (cardsData && cardsData.cards) || [];
   const roadmaps = (roadmapsData && roadmapsData.roadmaps) || [];
@@ -309,10 +444,12 @@ async function poll() {
       if (dets[i]) details[rm.project] = dets[i];
     });
   }
+  renderHumanGates(roadmaps, plansConfirmed, merge);
   renderProjects(roadmaps, details, cards, loop, merge);
   renderReview(merge, cards);
   renderFindings(loop);
   renderLoopProgress(loop, cards, merge);
+  renderFailures(failuresData);
   const cnt = _root.querySelector('#ops-todo-count');
   if (cnt) {
     const reviewN = ((merge && merge.cards) || []).length + cards.filter((c) => (c.board_column || c.state) === '打回').length;

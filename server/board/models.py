@@ -165,6 +165,7 @@ class BoardItem:
     closed_at: str = ""
     audit_status: str = ""
     approval: str = ""
+    reason: str = ""
 
     def to_dict(self) -> dict[str, str | int | bool]:
         """转纯字典（JSON 可序列化）。"""
@@ -191,4 +192,5 @@ class BoardItem:
             "closed_at": self.closed_at,
             "audit_status": self.audit_status,
             "approval": self.approval,
+            "reason": self.reason,
         }

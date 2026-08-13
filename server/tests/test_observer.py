@@ -514,3 +514,54 @@ def test_run_observer_writes_draft_for_consistency(
         assert ok is True
     # 只对 consistency 接线草案池；drift 不写
     mock_write_draft.assert_called_once_with("xy", "里程碑 xy/a 进度不一致", draft_type="治理债")
+
+
+# ── 第三步：技术债巡检（tech 检查项） ──
+
+@patch("server.engine.observer.load_projects")
+@patch("server.engine.observer.load_dispatch_cards")
+@patch("server.engine.observer.list_plans")
+def test_scan_findings_tech_debt(
+    mock_list_plans, mock_load_dispatch_cards, mock_load_projects, tmp_path
+):
+    """技术债检查：打回卡 + 人工批注未落实 + 死文件复活 → tech findings。"""
+    from types import SimpleNamespace
+
+    from server.engine.observer import scan_findings
+
+    mock_load_projects.return_value = []
+    mock_list_plans.return_value = []
+    dispatch = tmp_path / "docs" / "dispatch" / "xy"
+    dispatch.mkdir(parents=True)
+    (dispatch / "xy001-rejected.md").write_text(
+        "# 任务卡 xy001 - 打回\n\n"
+        "> 关联：x · 执行体：OpenCode · 验收：Claude Code · 状态：打回 · 项目：xy · 日期：2026-08-13\n",
+        encoding="utf-8",
+    )
+    (dispatch / "xy002-annotation.md").write_text(
+        "# 任务卡 xy002 - 批注\n\n"
+        "> 关联：x · 执行体：OpenCode · 验收：Claude Code · 状态：执行中 · 项目：xy · 日期：2026-08-13\n\n"
+        "## 人工批注\n\n老板要求调整验收标准。\n",
+        encoding="utf-8",
+    )
+    mock_load_dispatch_cards.return_value = [
+        SimpleNamespace(to_dict=lambda: {"id": "xy001", "state": "打回", "project": "xy", "path": "docs/dispatch/xy/xy001-rejected.md"}),
+        SimpleNamespace(to_dict=lambda: {"id": "xy002", "state": "执行中", "project": "xy", "path": "docs/dispatch/xy/xy002-annotation.md"}),
+    ]
+    # 死文件复活
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "arch-dead-files.txt").write_text(
+        "# dead files\nserver/web/legacy-chat/arch/resurrected.html\n",
+        encoding="utf-8",
+    )
+    arch_dir = tmp_path / "server" / "web" / "legacy-chat" / "arch"
+    arch_dir.mkdir(parents=True)
+    (arch_dir / "resurrected.html").write_text("x", encoding="utf-8")
+
+    findings = scan_findings({"SCHEDULER_DISPATCH_DIR": ""}, tmp_path)
+    tech = [f for f in findings if f["type"] == "tech"]
+    assert any(f["id"].startswith("tech_rejected_cards_") for f in tech), tech
+    assert any(f["id"].startswith("tech_unaddressed_annotation_") for f in tech), tech
+    assert any(f["id"].startswith("tech_dead_file_resurrected_") for f in tech), tech
+    assert any("resurrected.html" in f["title"] for f in tech), tech

@@ -3035,6 +3035,7 @@ body.ro-viewer [data-write] {
 .ops-review-proj { font-size: 11px; color: #999; flex: none; }
 .ops-review-time { font-size: 11px; color: #aaa; flex: none; }
 .ops-todo-type.returned { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.ops-todo-type.pending { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
 .ops-goto-board {
   flex: none;
   font-size: 11.5px;

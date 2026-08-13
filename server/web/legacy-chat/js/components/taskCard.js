@@ -124,6 +124,9 @@ export function renderTaskCard(t, opts = {}) {
   const rejectHtml = reject > 0
     ? `<span class="board-card-badge badge-reject" title="打回次数">↩ ${reject}</span>`
     : '';
+  const reasonHtml = t.reason
+    ? `<span class="board-card-badge badge-reject" title="打回原因：${escapeHtml(t.reason)}">${escapeHtml(String(t.reason).slice(0, 22))}${String(t.reason).length > 22 ? '…' : ''}</span>`
+    : '';
 
   const statsHtml = renderWorktreeBadges(t);
   const metricsBlock = `<div class="board-card-metrics" style="min-height:16px" aria-label="运行指标">${
@@ -168,6 +171,7 @@ export function renderTaskCard(t, opts = {}) {
         ${executor}
         ${approval}
         ${rejectHtml}
+        ${reasonHtml}
         ${updatedHtml ? `<span class="board-card-meta-time">${updatedHtml}</span>` : ''}
       </div>
       <div class="board-card-detail" hidden></div>

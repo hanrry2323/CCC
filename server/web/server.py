@@ -1382,6 +1382,7 @@ def _compose_board_items(items):
                 machine_audit_passed=audited,
                 closed_at=closed_at,
                 audit_status=audit_status,
+                reason=rt.get("reason", ""),
             )
         )
     return out
@@ -1835,7 +1836,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         try:
             for event, payload in gen:
                 if time.monotonic() - last_event > SSE_IDLE_TIMEOUT:
-                    self.wfile.write('event: error\ndata: {"error":"sse idle timeout"}\n\n'.encode())
+                    self.wfile.write(b'event: error\ndata: {"error":"sse idle timeout"}\n\n')
                     self.wfile.flush()
                     break
                 last_event = time.monotonic()
@@ -2610,6 +2611,74 @@ class _APIHandler(BaseHTTPRequestHandler):
                 200,
             )
 
+    def _handle_ops_failures(self):
+        """GET /ops/failures → 执行/机审失败原因聚合（第三步 · 挂账 2026-08-08）。
+
+        主源 worker-events.jsonl（problem 未截断 + phase + exit_kind），
+        兜底 state/cards.jsonl（reason，截 200 字）。
+        返回：最近 N 条失败明细 + 按原因分类计数（打回 top / 机审不通过 top / 执行失败 top）。
+        """
+        import json as _json
+
+        log_dir = _executor_log_dir()
+        events_path = Path(log_dir) / "worker-events.jsonl" if log_dir else None
+        events = []
+        if events_path is not None and events_path.is_file():
+            try:
+                lines = _tail_lines(events_path, 400)
+            except OSError:
+                lines = []
+            for ln in lines:
+                try:
+                    ev = _json.loads(ln)
+                except Exception:
+                    continue
+                if ev.get("ok") is False and ev.get("work_id"):
+                    events.append(ev)
+        # 兜底：sidecar reason
+        reasons: dict[str, str] = {}
+        if log_dir:
+            state_file = Path(log_dir) / "state" / "cards.jsonl"
+            if state_file.is_file():
+                try:
+                    for ln in _tail_lines(state_file, 200):
+                        try:
+                            sd = _json.loads(ln)
+                        except Exception:
+                            continue
+                        if sd.get("id") and sd.get("reason"):
+                            reasons[str(sd["id"])] = str(sd["reason"])
+                except OSError:
+                    pass
+        failures = []
+        for ev in reversed(events[-30:]):
+            wid = str(ev.get("work_id", ""))
+            failures.append(
+                {
+                    "card_id": wid,
+                    "ts": ev.get("ts", ""),
+                    "phase": ev.get("phase", ""),
+                    "exit_kind": ev.get("exit_kind", ""),
+                    "problem": ev.get("problem") or reasons.get(wid, ""),
+                }
+            )
+        # 分类 top 计数
+        problem_counts: dict[str, int] = {}
+        for ev in events:
+            p = str(ev.get("problem") or "").strip()
+            if not p:
+                continue
+            key = p[:40]
+            problem_counts[key] = problem_counts.get(key, 0) + 1
+        top = sorted(problem_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
+        self._send_json(
+            {
+                "failures": failures,
+                "total_fail_events": len(events),
+                "top_reasons": [{"reason": k, "count": v} for k, v in top],
+            }
+        )
+
     def _handle_ops_concurrency(self):
         """GET /ops/concurrency → 槽位上限 + 并发/进程埋点尾部（只读，供运维）。"""
 
@@ -2934,6 +3003,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/summary":
             self._handle_ops_summary()
+        elif path == "/ops/failures":
+            self._handle_ops_failures()
             return
         if path == "/ops/concurrency":
             self._handle_ops_concurrency()

@@ -392,6 +392,100 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                     "evidence": f"{plan_path}:1",
                 }
             )
+    # 技术债（第三步 · PRIME-DIRECTIVE §6.2）：未关闭审查意见 + 废弃代码残留
+    # a) 打回卡聚合（未关闭审查意见，按项目）
+    rejected_by_proj: dict[str, list[str]] = {}
+    for c in cards_list:
+        if c.get("state") == "打回":
+            rejected_by_proj.setdefault(c.get("project", "其他"), []).append(c.get("id", ""))
+    for proj, ids in rejected_by_proj.items():
+        findings.append(
+            {
+                "id": f"tech_rejected_cards_{proj}",
+                "title": f"项目 {proj} 有 {len(ids)} 张打回卡待处理（未关闭审查意见）: {', '.join(ids[:5])}",
+                "project": proj,
+                "type": "tech",
+                "cross_confirm": 0.5,
+                "acting_on": "docs/dispatch",
+                "evidence": "docs/dispatch:1",
+            }
+        )
+    # b) 人工批注未落实（有真实批注但无「## 批注落实」段）
+    for c in cards_list:
+        rel = c.get("path", "")
+        if not rel:
+            continue
+        card_file = project_root / rel
+        if not card_file.is_file():
+            continue
+        try:
+            ctext = card_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if "## 人工批注" not in ctext:
+            continue
+        seg = ctext.split("## 人工批注", 1)[1].split("## ", 1)[0]
+        if not seg.strip() or "老板对打回卡/审核的批注意见写这里" in seg:
+            continue
+        if "## 批注落实" not in ctext:
+            findings.append(
+                {
+                    "id": f"tech_unaddressed_annotation_{c.get('id', '').lower()}",
+                    "title": f"卡 {c.get('id')} 有真实人工批注但未见「## 批注落实」段",
+                    "project": c.get("project", "ccc"),
+                    "type": "tech",
+                    "cross_confirm": 0.5,
+                    "acting_on": rel,
+                    "evidence": f"{rel}:1",
+                }
+            )
+    # c) 方案审核引用缺失
+    for plan in plans_list:
+        plan_path = plan.get("path", "")
+        if not plan_path:
+            continue
+        try:
+            ptext = (project_root / plan_path).read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        m = re.search(r">\s*审核：([^\n]+)", ptext)
+        if not m:
+            continue
+        ref_match = re.search(r"(docs/[^\s`）)]+\.md)", m.group(1))
+        if ref_match and not (project_root / ref_match.group(1)).exists():
+            findings.append(
+                {
+                    "id": f"tech_missing_review_ref_{plan['id']}",
+                    "title": f"方案 {plan['id']} 审核引用文件缺失: {ref_match.group(1)}",
+                    "project": plan.get("project", "ccc"),
+                    "type": "tech",
+                    "cross_confirm": 0.5,
+                    "acting_on": plan_path,
+                    "evidence": f"{plan_path}:1",
+                }
+            )
+    # d) 死文件复活（scripts/arch-dead-files.txt 登记文件不得存在）
+    dead_list = project_root / "scripts" / "arch-dead-files.txt"
+    if dead_list.is_file():
+        try:
+            for line in dead_list.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if (project_root / line).exists():
+                    findings.append(
+                        {
+                            "id": f"tech_dead_file_resurrected_{line[:24]}",
+                            "title": f"已登记死文件复活: {line}",
+                            "project": "ccc",
+                            "type": "tech",
+                            "cross_confirm": 0.5,
+                            "acting_on": line,
+                            "evidence": f"{line}:1",
+                        }
+                    )
+        except Exception:
+            pass
     return findings
 
 
@@ -455,6 +549,7 @@ DEFAULT_SCORING_RULES = {
     "missing_four_questions": {"impact": 2, "frequency": 1},
     "missing_section": {"impact": 3, "frequency": 2},
     "consistency": {"impact": 3, "frequency": 2},
+    "tech": {"impact": 2, "frequency": 2},
 }
 
 
@@ -500,11 +595,12 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         state = str(p.get("status", "未知"))
         plans_states[state] = plans_states.get(state, 0) + 1
     findings = scan_findings(cfg, PROJECT_ROOT)
-    # PRIME-DIRECTIVE §6.3：数据一致性发现自动回线路图草案池（治理债）
+    # PRIME-DIRECTIVE §6.3：一致性/技术债发现自动回线路图草案池（治理债/技术债）
     for f in findings:
-        if f.get("type") == "consistency" and f.get("project"):
+        if f.get("type") in ("consistency", "tech") and f.get("project"):
+            draft_type = "技术债" if f.get("type") == "tech" else "治理债"
             try:
-                write_roadmap_draft(f["project"], f["title"], draft_type="治理债")
+                write_roadmap_draft(f["project"], f["title"], draft_type=draft_type)
             except Exception as e:
                 logger.error("草案池回写失败（%s）: %s", f.get("id"), e)
     rules = DEFAULT_SCORING_RULES.copy()

@@ -18,6 +18,13 @@ export function renderTaskCardDetail(t) {
        </div>`
     : '<div class="board-detail-section"><div class="board-detail-h">描述</div><div class="board-detail-note" style="color: var(--ccc-text-faint); font-size: 11px;">(无描述)</div></div>';
 
+  const reasonHtml = t.reason
+    ? `<div class="board-detail-section">
+         <div class="board-detail-h">打回原因 / 机审意见</div>
+         <div class="board-detail-note" style="white-space: pre-wrap; font-size: 11px; line-height: 1.5; color: #a33; background: rgba(204,68,68,.06); border: 1px solid rgba(204,68,68,.15); border-radius: 4px; padding: 6px 8px;">${escapeHtml(t.reason)}</div>
+       </div>`
+    : '';
+
   const acceptanceHtml = t.acceptance
     ? `<div class="board-detail-section">
          <div class="board-detail-h">验收标准</div>
@@ -55,6 +62,7 @@ export function renderTaskCardDetail(t) {
     <div class="task-card-detail-unified" style="padding: 4px 0; border-top: 1px solid var(--ccc-border-subtle); margin-top: 8px;">
       ${flowHtml}
       ${noteHtml}
+      ${reasonHtml}
       ${acceptanceHtml}
       ${phasesHtml}
       ${eventsHtml}

@@ -372,6 +372,12 @@ approve_one() {
   echo "== 合入批准 ${id} (${branch}) =="
   print_external_repo_hint "$path" "$branch"
 
+  # 架构漂移门禁（第三步）：合入前机械检查（卡头项目/退役端口/版本一致/死文件）
+  if ! bash scripts/arch-drift-check.sh >/dev/null 2>&1; then
+    echo "[error] 架构漂移门禁未通过——阻断合入。运行 bash scripts/arch-drift-check.sh 查看明细。" >&2
+    return 1
+  fi
+
   # 机审证据 = 分支信封（git show origin/<branch>:<卡路径> 含 机审：通过）
   # 分支存在时信封是唯一权威，不回退本地卡（消除本地回退后门）。
   git fetch origin main >/dev/null 2>&1
