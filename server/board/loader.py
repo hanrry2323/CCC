@@ -134,20 +134,34 @@ def _is_task_card(path: Path) -> bool:
         return False
 
 
+def _platform_prefixes() -> frozenset[str]:
+    """平台自研项目前缀（registry category==platform），扫描时跳过其卡目录。"""
+    try:
+        from server.board.registry import platform_prefixes
+
+        return platform_prefixes()
+    except Exception:
+        return frozenset()
+
+
 def scan_dispatch_files(directory: Path | str) -> list[Path]:
     """扫描任务卡文件：根目录平铺（旧卡）+ 一层子目录（`<prefix>/` 下新卡）。
 
     T54 规则：旧卡（根 `T*.md`）与 `<prefix>/` 子目录新卡共存；只认含 `# 任务卡`
     卡头标题的 .md，T-mapping.md 等说明文档不参与。目录不存在返回空。
+    平台自研项目（registry category==platform）的卡目录跳过，不出现在看板。
     """
     d = Path(directory)
     if not d.is_dir():
         return []
+    skip = _platform_prefixes()
     files: list[Path] = []
     for p in sorted(d.glob("*.md")):
         if _is_task_card(p):
             files.append(p)
     for p in sorted(d.glob("[!.]*/[!.]*.md")):
+        if skip and p.parent.name in skip:
+            continue
         if _is_task_card(p):
             files.append(p)
     return files
@@ -432,5 +446,3 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
         items = [i for i in items if not i.archived]
 
     return items
-
-

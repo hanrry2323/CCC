@@ -181,9 +181,24 @@ class TestSubdirScan:
     def test_scan_mixed_root_and_subdir(self, tmp_path: Path) -> None:
         """根目录旧卡 + 子目录新卡都被扫到。"""
         _write(tmp_path, "T99-old.md", SAMPLE)
+        (tmp_path / "xy").mkdir()
+        new_card = (
+            "# 任务卡 xy100 · 子目录新卡\n"
+            "> 关联：XY · 执行体：X · 验收：Codex · 状态：待分派 · 日期：2026-08-04\n"
+            "\n## 目标\n测试\n"
+        )
+        _write(tmp_path / "xy", "xy100-subdir.md", new_card)
+        items = load_dispatch_cards(tmp_path)
+        ids = {item.id for item in items}
+        assert "T99" in ids
+        assert "xy100" in ids
+
+    def test_scan_skips_platform_prefix_subdir(self, tmp_path: Path) -> None:
+        """平台自研项目（category==platform，如 ccc）的子目录卡不参与看板扫描。"""
+        _write(tmp_path, "T99-old.md", SAMPLE)
         (tmp_path / "ccc").mkdir()
         new_card = (
-            "# 任务卡 ccc100 · 子目录新卡\n"
+            "# 任务卡 ccc100 · 平台子目录卡\n"
             "> 关联：CCC · 执行体：X · 验收：Codex · 状态：待分派 · 日期：2026-08-04\n"
             "\n## 目标\n测试\n"
         )
@@ -191,7 +206,7 @@ class TestSubdirScan:
         items = load_dispatch_cards(tmp_path)
         ids = {item.id for item in items}
         assert "T99" in ids
-        assert "ccc100" in ids
+        assert "ccc100" not in ids
 
     def test_scan_skips_non_card_doc(self, tmp_path: Path) -> None:
         """T-mapping.md 等说明文档（无 `# 任务卡` 卡头）不参与扫描。"""
