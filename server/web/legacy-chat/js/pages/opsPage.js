@@ -12,7 +12,7 @@
  *   /loop/findings → 代码健康发现（按项目聚合）
  */
 
-import { apiGet } from '../api.js';
+import { apiGet, apiPost } from '../api.js';
 
 let _root = null;
 let _timer = null;
@@ -30,10 +30,6 @@ function agoText(ts) {
   if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
   if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
   return `${Math.floor(sec / 86400)} 天前`;
-}
-
-function _closed(s) {
-  return /已关闭|已合入|已完成|已交付|released|closed|delivered/i.test(s || '');
 }
 
 function html() {
@@ -79,15 +75,14 @@ function html() {
 
 /* ── ① 项目健康 ─────────────────────────────── */
 
-function projectStats(section) {
-  const cards = (section.milestones || []).flatMap((m) => m.cards || []);
-  const total = cards.length;
-  const done = cards.filter((c) => _closed(c.real_state || c.progress)).length;
-  const risk = cards.filter((c) => c.drift || c.missing).length;
-  return { total, done, risk, doing: total - done };
+function projectStats(detail) {
+  const counts = (detail && detail.counts) || { planned: 0, doing: 0, done: 0 };
+  const total = (counts.done || 0) + (counts.doing || 0) + (counts.planned || 0);
+  const risk = ((detail && detail.risks) || []).length;
+  return { total, done: counts.done || 0, doing: counts.doing || 0, risk };
 }
 
-function renderProjects(roadmapData, cards, loopData) {
+function renderProjects(roadmaps, details, cards, loopData) {
   const el = _root.querySelector('#ops-projects');
   if (!el) return;
   const returnedBy = {};
@@ -104,26 +99,29 @@ function renderProjects(roadmapData, cards, loopData) {
     const proj = f.project || '其他';
     findingsBy[proj] = (findingsBy[proj] || 0) + 1;
   }
-  const lines = (roadmapData && roadmapData.business_lines) || [];
-  if (!lines.length) {
+  if (!roadmaps.length) {
     el.innerHTML = '<div class="ops-empty">无业务线路数据（roadmap.md 未配置）</div>';
     return;
   }
-  el.innerHTML = lines.map((s) => {
-    const st = projectStats(s);
+  const cardsHtml = [];
+  for (const rm of roadmaps) {
+    const proj = rm.project || '未知';
+    const detail = (details || {})[proj];
+    if (!detail) continue; // 单项目无业务线路段落（404）时跳过，不整页空白
+    const st = projectStats(detail);
     const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
-    const proj = s.project;
     const issues = (reviewBy[proj] || 0) + (returnedBy[proj] || 0) + (findingsBy[proj] || 0);
-    return `<div class="ops-proj-card ${st.risk ? 'risk' : st.total && st.done === st.total ? 'done' : 'active'}">
-      <div class="ops-proj-head"><b>${esc(s.project)}</b><span>${st.total} 卡</span></div>
+    cardsHtml.push(`<div class="ops-proj-card ${st.risk ? 'risk' : st.total && st.done === st.total ? 'done' : 'active'}">
+      <div class="ops-proj-head"><b>${esc(proj)}</b><span>${st.total} 卡</span></div>
       <div class="ops-proj-bar"><div class="ops-proj-fill" style="width:${pct}%"></div></div>
       <div class="ops-proj-stats">
-        <span>完成 ${st.done}</span><span>未完成 ${st.doing}</span>
+        <span>完成 ${st.done}</span><span>进行中 ${st.doing}</span>
         ${st.risk ? `<span class="ops-proj-risk">风险 ${st.risk}</span>` : ''}
         ${issues ? `<span class="ops-proj-risk">待办 ${issues}</span>` : ''}
       </div>
-    </div>`;
-  }).join('');
+    </div>`);
+  }
+  el.innerHTML = cardsHtml.length ? cardsHtml.join('') : '<div class="ops-empty">项目均无业务线路数据</div>';
 }
 
 /* ── ② diff 审查 + 代码健康发现 ──────────────── */
@@ -158,16 +156,27 @@ function renderReview(mergeData, cards) {
     : '<div class="ops-empty">无待审查项 🎉</div>';
 }
 
+/* 本会话已留档的 finding 标题（sessionStorage 持久化，防重复处理） */
+function _loadAdopted() {
+  try {
+    return new Set(JSON.parse(sessionStorage.getItem('ops-adopted') || '[]'));
+  } catch (e) {
+    return new Set();
+  }
+}
+
 function renderFindings(loopData) {
   const el = _root.querySelector('#ops-findings');
   const cnt = _root.querySelector('#ops-find-count');
   if (!el) return;
   const reports = (loopData && loopData.loop_reports) || [];
   const latest = reports[0] || {};
+  const reportName = latest.name || '';
   const findings = (latest.findings || []).map((f, i) => ({
     ...f,
     _ts: f.ts || latest.mtime || 0,
     _cmd: (latest.commands || [])[i] || '',
+    _report: reportName,
   }));
   if (cnt) cnt.textContent = String(findings.length);
   const scanEl = _root.querySelector('#ops-scan-at');
@@ -176,12 +185,17 @@ function renderFindings(loopData) {
     el.innerHTML = '<div class="ops-empty">代码健康无发现 🎉 项目治理干净</div>';
     return;
   }
+  const adopted = _loadAdopted();
   const byProj = {};
   for (const f of findings) {
     (byProj[f.project || '其他'] = byProj[f.project || '其他'] || []).push(f);
   }
   const typeLabel = {
     missing_section: '缺段落', drift: '状态漂移', broken_link: '关联断裂', missing_four_questions: '维护区缺失',
+  };
+  const adoptBtn = (f) => {
+    const done = adopted.has(f.title || '');
+    return `<button type="button" class="hub-btn ops-act ${done ? 'adopted' : 'adopt'}" data-find="${esc(f.title || '')}" data-report="${esc(f._report)}" title="标记已处理（/loop/adopt 留档）" ${done ? 'disabled' : ''}>${done ? '已留档 ✓' : '已处理'}</button>`;
   };
   el.innerHTML = Object.entries(byProj).map(([proj, items]) => `
     <div class="ops-subgroup">
@@ -192,6 +206,7 @@ function renderFindings(loopData) {
           <span class="ops-review-title">${esc(f.human_title || f.title || '')}</span>
           <span class="ops-review-time">${agoText(f._ts)}</span>
           ${f._cmd ? `<button type="button" class="hub-btn ops-act" data-cmd="${esc(f._cmd)}" title="复制转卡命令">转卡</button>` : ''}
+          ${adoptBtn(f)}
         </div>`).join('')}
     </div>`).join('');
   el.querySelectorAll('button[data-cmd]').forEach((btn) => {
@@ -203,6 +218,26 @@ function renderFindings(loopData) {
         setTimeout(() => { btn.textContent = '转卡'; }, 1500);
       } catch (e) {
         btn.textContent = '复制失败';
+      }
+    });
+  });
+  el.querySelectorAll('button.adopt').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const find = btn.getAttribute('data-find') || '';
+      const report = btn.getAttribute('data-report') || '';
+      if (!find || !report) return;
+      btn.disabled = true;
+      btn.textContent = '留档中…';
+      try {
+        await apiPost('/loop/adopt', { report, finding: find, decision: 'adopt', reason: 'ops 页已处理' });
+        btn.textContent = '已留档 ✓';
+        btn.classList.add('adopted');
+        const s = _loadAdopted();
+        s.add(find);
+        sessionStorage.setItem('ops-adopted', JSON.stringify([...s]));
+      } catch (e) {
+        btn.textContent = '留档失败';
+        btn.disabled = false;
       }
     });
   });
@@ -234,14 +269,23 @@ function renderLoopProgress(loopData, cards, mergeData) {
 /* ── poll ────────────────────────────────────── */
 
 async function poll() {
-  const [roadmap, loop, merge, cardsData] = await Promise.all([
+  const [roadmapsData, loop, merge, cardsData] = await Promise.all([
     apiGet('/board/roadmap').catch(() => null),
     apiGet('/loop/findings').catch(() => null),
     apiGet('/board/ready_for_merge').catch(() => null),
     apiGet('/cards?page_size=500').catch(() => null),
   ]);
   const cards = (cardsData && cardsData.cards) || [];
-  renderProjects(roadmap, cards, loop);
+  const roadmaps = (roadmapsData && roadmapsData.roadmaps) || [];
+  const details = {};
+  if (roadmaps.length) {
+    const dets = await Promise.all(roadmaps.map((rm) =>
+      apiGet(`/board/roadmap/${encodeURIComponent(rm.project)}`).catch(() => null)));
+    roadmaps.forEach((rm, i) => {
+      if (dets[i]) details[rm.project] = dets[i];
+    });
+  }
+  renderProjects(roadmaps, details, cards, loop);
   renderReview(merge, cards);
   renderFindings(loop);
   renderLoopProgress(loop, cards, merge);
