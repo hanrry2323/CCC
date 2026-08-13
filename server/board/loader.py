@@ -205,15 +205,6 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
     return base / "cards" / "cards.index.jsonl"
 
 
-def _derive_card_type(path: Path) -> str:
-    from server.board.validate import NEW_CARD_RE, OLD_CARD_RE
-
-    stem = path.stem
-    if NEW_CARD_RE.match(stem):
-        return "new"
-    if OLD_CARD_RE.match(stem):
-        return "old"
-    return "other"
 
 
 def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:

@@ -8,4 +8,10 @@
  * - 下方卡分组列表（已完成/进行中/待开发）+ 风险提示
  */
 
+export function esc(s) {
+  if (s == null) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
 

@@ -226,16 +226,6 @@ export async function cleanupTestSessions(project) {
   return {};
 }
 
-function _workspaceQs(workspace) {
-  return workspace && workspace !== 'all'
-    ? ('?workspace=' + encodeURIComponent(workspace))
-    : '';
-}
-
-export async function loadBoard(workspace) {
-  return apiGet('/board/snapshot' + _workspaceQs(workspace));
-}
-
 export async function getBoardTask(taskId, workspace) {
   return apiGet('/tasks/' + encodeURIComponent(taskId));
 }
