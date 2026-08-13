@@ -182,12 +182,11 @@ validate_file() {
               local card_head=$(head -15 "$card_file" 2>/dev/null)
               local c_status=$(echo "$card_head" | grep '状态：' | head -1 | sed -E 's/.*状态：([^ ·\t\r\n]+).*/\1/' | tr -d ' ' || true)
               if [ "$c_status" != "已关闭" ]; then
+                # 本地明确非已关闭 → 视为未关闭（不判 FAIL）；待分派/已回写可能远端滞后，额外 WARN
+                all_closed=0
                 if [ "$c_status" = "待分派" ] || [ "$c_status" = "已回写" ]; then
-                  # 本地可能滞后（远端可能已关闭），不误判为未关闭；降级为黄色警告
                   yellow "  WARN 方案关联卡本地状态为 '$c_status'（可能滞后，远端可能已关闭）: $word → $rel"
                   WARNINGS=$((WARNINGS + 1))
-                else
-                  all_closed=0
                 fi
               fi
             else
