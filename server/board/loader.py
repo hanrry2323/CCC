@@ -122,6 +122,7 @@ def parse_card(path: Path | str) -> BoardItem:
         acceptance=normalize_tool(_strip_parenthetical(header.acceptance)) or UNKNOWN,
         archived=is_archived,
         machine_audit_passed=machine_audit_passed_text(text),
+        approval=header.approval,
     )
 
 
@@ -257,6 +258,7 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "archived": item.archived,
         "machine_audit_passed": item.machine_audit_passed,
         "board_column": board_column(item.state, item.machine_audit_passed),
+        "approval": item.approval,
     }
 
 
@@ -385,7 +387,12 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
 
         entry = index_by_path.get(repo_path)
         # 缺 machine_audit_passed 的旧索引视为失效（M3：否则机审通过卡一直停在「机审」列）
-        cache_ok = entry is not None and entry.get("mtime") == mtime and "machine_audit_passed" in entry
+        cache_ok = (
+            entry is not None
+            and entry.get("mtime") == mtime
+            and "machine_audit_passed" in entry
+            and "approval" in entry
+        )
         if cache_ok:
             item = BoardItem(
                 id=entry["id"],
@@ -403,6 +410,7 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
                 acceptance=entry.get("acceptance", UNKNOWN),
                 archived=entry.get("archived", False),
                 machine_audit_passed=bool(entry.get("machine_audit_passed", False)),
+                approval=entry.get("approval", ""),
             )
             items.append(item)
             updated_entries[entry["id"]] = entry

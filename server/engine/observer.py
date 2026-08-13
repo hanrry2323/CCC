@@ -318,6 +318,80 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                             "evidence": f"{relative_path}:1",
                         }
                     )
+    # 数据一致性（第二步闭环）：里程碑/方案进度 vs 级联回写声明
+    # a) 里程碑进度一致性：per-project roadmap 声明状态 vs 实际完成率（compute_milestone_progress 纯函数）
+    try:
+        from server.board.roadmap import compute_milestone_progress, list_roadmaps, parse_roadmap
+
+        for proj in list_roadmaps():
+            rm_file = project_root / "docs" / "projects" / proj / "roadmap.md"
+            if not rm_file.is_file():
+                continue
+            try:
+                parsed = parse_roadmap(rm_file.read_text(encoding="utf-8", errors="replace"), project=proj)
+            except Exception:
+                continue
+            for ms in parsed.get("milestones", []):
+                try:
+                    comp = compute_milestone_progress(proj, ms.title)
+                except Exception:
+                    continue
+                if not isinstance(comp, dict) or comp.get("error"):
+                    continue
+                pct = comp.get("progress_pct", 0)
+                declared = ms.status
+                # 声明「已完成」但未满 / 全完成但声明非「已完成」 = 级联回写滞后
+                if (declared == "已完成" and pct < 100) or (pct >= 100 and declared != "已完成"):
+                    findings.append(
+                        {
+                            "id": f"milestone_progress_{proj}_{ms.title[:24]}",
+                            "title": f"里程碑 {proj}/{ms.title} 进度不一致：声明 {declared}，实际完成率 {pct}%（{comp.get('completed', 0)}/{comp.get('total', 0)} 方案）",
+                            "project": proj,
+                            "type": "consistency",
+                            "cross_confirm": 0.5,
+                            "acting_on": f"docs/projects/{proj}/roadmap.md",
+                            "evidence": f"docs/projects/{proj}/roadmap.md:1",
+                        }
+                    )
+    except Exception as e:
+        logger.error("一致性检查（里程碑）失败: %s", e)
+
+    # b) 方案进度一致性：方案头部「进度：closed/total」声明 vs 关联卡实算
+    closed_states = ("已关闭", "已合入", "已完成", "released", "closed")
+    for plan in plans_list:
+        cards_field = plan.get("cards", "")
+        if not cards_field:
+            continue
+        ref_cards = re.findall("([a-zA-Z]+[0-9]+)", cards_field)
+        if not ref_cards:
+            continue
+        plan_path = plan.get("path", "")
+        if not plan_path:
+            continue
+        try:
+            plan_text = (project_root / plan_path).read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        m = re.search(r">\s*进度：(\d+)/(\d+)", plan_text)
+        if not m:
+            continue  # 无进度声明行（未级联回写），跳过
+        declared_closed, declared_total = int(m.group(1)), int(m.group(2))
+        real_total = len(ref_cards)
+        real_closed = sum(
+            1 for rc in ref_cards if cards_by_id.get(rc.lower(), {}).get("state", "") in closed_states
+        )
+        if declared_total != real_total or declared_closed != real_closed:
+            findings.append(
+                {
+                    "id": f"plan_progress_{plan['id']}",
+                    "title": f"方案 {plan['id']} 进度不一致：声明 {declared_closed}/{declared_total}，实际 {real_closed}/{real_total}（级联回写滞后或卡状态变动）",
+                    "project": plan.get("project", "ccc"),
+                    "type": "consistency",
+                    "cross_confirm": 0.5,
+                    "acting_on": plan_path,
+                    "evidence": f"{plan_path}:1",
+                }
+            )
     return findings
 
 
@@ -380,6 +454,7 @@ DEFAULT_SCORING_RULES = {
     "drift": {"impact": 2, "frequency": 3},
     "missing_four_questions": {"impact": 2, "frequency": 1},
     "missing_section": {"impact": 3, "frequency": 2},
+    "consistency": {"impact": 3, "frequency": 2},
 }
 
 
@@ -425,6 +500,13 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         state = str(p.get("status", "未知"))
         plans_states[state] = plans_states.get(state, 0) + 1
     findings = scan_findings(cfg, PROJECT_ROOT)
+    # PRIME-DIRECTIVE §6.3：数据一致性发现自动回线路图草案池（治理债）
+    for f in findings:
+        if f.get("type") == "consistency" and f.get("project"):
+            try:
+                write_roadmap_draft(f["project"], f["title"], draft_type="治理债")
+            except Exception as e:
+                logger.error("草案池回写失败（%s）: %s", f.get("id"), e)
     rules = DEFAULT_SCORING_RULES.copy()
     if cfg.get("OBSERVER_SCORING_RULES"):
         try:

@@ -28,6 +28,7 @@ HEADER_FIELDS: tuple[str, ...] = (
     "父卡",
     "会话",
     "thread_id",
+    "批准",
 )
 
 # 契约 §2 五态（卡头唯一合法状态）
@@ -98,6 +99,7 @@ class CardHeader:
     session: str = ""
     reject_count: int = 0
     depends: str = ""
+    approval: str = ""
 
     @property
     def state_base(self) -> str:
@@ -139,4 +141,5 @@ class CardHeader:
             session=(meta.get("会话", "").strip() or meta.get("thread_id", "").strip()),
             reject_count=reject_count,
             depends=meta.get("依赖", ""),
+            approval=meta.get("批准", ""),
         )

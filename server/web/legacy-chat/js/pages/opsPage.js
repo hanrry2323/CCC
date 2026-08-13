@@ -82,7 +82,7 @@ function projectStats(detail) {
   return { total, done: counts.done || 0, doing: counts.doing || 0, risk };
 }
 
-function renderProjects(roadmaps, details, cards, loopData) {
+function renderProjects(roadmaps, details, cards, loopData, mergeData) {
   const el = _root.querySelector('#ops-projects');
   if (!el) return;
   const returnedBy = {};
@@ -91,7 +91,11 @@ function renderProjects(roadmaps, details, cards, loopData) {
     const col = c.board_column || c.state;
     const proj = c.project || '其他';
     if (col === '打回') returnedBy[proj] = (returnedBy[proj] || 0) + 1;
-    if (col === '已回写' && c.machine_audit_passed) reviewBy[proj] = (reviewBy[proj] || 0) + 1;
+  }
+  // 待合入计数源与 diff 审查区强一致（ready_for_merge）
+  for (const c of ((mergeData && mergeData.cards) || [])) {
+    const proj = c.project || '其他';
+    reviewBy[proj] = (reviewBy[proj] || 0) + 1;
   }
   const findingsBy = {};
   const latestFindings = ((loopData && loopData.loop_reports && loopData.loop_reports[0] && loopData.loop_reports[0].findings) || []);
@@ -145,7 +149,15 @@ function renderReview(mergeData, cards) {
   const htmlParts = [];
   htmlParts.push(`<div class="ops-subgroup"><h5>待合入审查（${mergeCards.length}）</h5>${mergeCards.length ? mergeCards.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type">待合入</span>')).join('') : '<div class="ops-empty">无待合入</div>'}</div>`);
   htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.length ? returned.slice(0, 12).map((c) => item(c, '<span class="ops-todo-type returned">打回</span>')).join('') : '<div class="ops-empty">无打回卡</div>'}</div>`);
-  htmlParts.push(`<div class="ops-subgroup"><h5>机审中（${auditing.length} · 进行中）</h5>${auditing.length ? auditing.slice(0, 8).map((c) => `<div class="ops-review-item">
+  const auditWait = (c) => {
+    if (!c.written_at || c.written_at === '未知') return '';
+    const d = Math.floor((Date.now() / 1000 - new Date(c.written_at).getTime() / 1000) / 86400);
+    return `· 最老等待 ${d < 1 ? '1 天内' : `${d} 天`}`;
+  };
+  const oldestAudit = auditing.length
+    ? auditWait(auditing.reduce((a, b) => ((a.written_at || '') < (b.written_at || '') ? a : b)))
+    : '';
+  htmlParts.push(`<div class="ops-subgroup"><h5>机审中（${auditing.length}${oldestAudit}）</h5>${auditing.length ? auditing.slice(0, 8).map((c) => `<div class="ops-review-item">
       <span class="ops-review-id">${esc(c.id || '')}</span>
       <span class="ops-review-title">${esc(c.title || c.intent || '')}</span>
       <span class="ops-review-proj">${esc(c.project || '')}</span>
@@ -245,10 +257,22 @@ function renderFindings(loopData) {
 
 /* ── ③ 螺旋循环 ─────────────────────────────── */
 
+/** 本周新增发现数：最新报告 findings 中，title 未在更早报告出现过的（区分存量/增量）。 */
+function newFindingsCount(loopData) {
+  const reports = (loopData && loopData.loop_reports) || [];
+  const latest = reports[0];
+  if (!latest || !latest.findings || !latest.findings.length) return 0;
+  const fresh = new Set(latest.findings.map((f) => f.title));
+  for (const r of reports.slice(1)) {
+    for (const f of (r.findings || [])) fresh.delete(f.title);
+  }
+  return fresh.size;
+}
+
 function renderLoopProgress(loopData, cards, mergeData) {
   const el = _root.querySelector('#ops-loop-progress');
   if (!el) return;
-  const findingsN = ((loopData && loopData.loop_reports && loopData.loop_reports[0] && loopData.loop_reports[0].findings) || []).length;
+  const findingsN = newFindingsCount(loopData);
   const col = (name) => (cards || []).filter((c) => (c.board_column || c.state) === name).length;
   const segs = [
     [findingsN, '发现'],
@@ -285,15 +309,16 @@ async function poll() {
       if (dets[i]) details[rm.project] = dets[i];
     });
   }
-  renderProjects(roadmaps, details, cards, loop);
+  renderProjects(roadmaps, details, cards, loop, merge);
   renderReview(merge, cards);
   renderFindings(loop);
   renderLoopProgress(loop, cards, merge);
   const cnt = _root.querySelector('#ops-todo-count');
   if (cnt) {
     const reviewN = ((merge && merge.cards) || []).length + cards.filter((c) => (c.board_column || c.state) === '打回').length;
-    const findN = ((loop && loop.loop_reports && loop.loop_reports[0] && loop.loop_reports[0].findings) || []).length;
-    cnt.textContent = String(reviewN + findN);
+    const auditN = cards.filter((c) => (c.board_column || c.state) === '机审').length;
+    const findN = newFindingsCount(loop);
+    cnt.textContent = String(reviewN + auditN + findN);
   }
 }
 

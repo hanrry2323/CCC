@@ -284,6 +284,13 @@ text = path.read_text(encoding='utf-8')
 text2, n = re.subn(r'(状态：)[^·\n]+', r'\1已关闭', text, count=1)
 if n != 1:
     raise SystemExit('cannot update 状态 in ' + str(path))
+# 人审节点③：批准行更新为「老板合入批准」（无则插入到卡头首行后；单行最新语义）
+if re.search(r'(^|\n)\s*> 批准：', text2):
+    text2 = re.sub(r'(\n\s*> 批准：)([^\n]*)', r'\1老板合入批准 · ' + today, text2, count=1)
+else:
+    m = re.search(r'^# 任务卡[^\n]*\n', text2)
+    if m:
+        text2 = text2[:m.end()] + '> 批准：老板合入批准 · ' + today + '\n' + text2[m.end():]
 if '## 验收区' not in text2:
     text2 = text2.rstrip() + f\"\"\"
 

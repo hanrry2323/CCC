@@ -2603,6 +2603,11 @@
 .board-card-badge.badge-exec {
   color: var(--ccc-text-secondary);
 }
+.board-card-badge.badge-approval {
+  color: #1e7a3a;
+  border-color: color-mix(in srgb, #1e7a3a 35%, transparent);
+  background: color-mix(in srgb, #1e7a3a 8%, transparent);
+}
 .board-card-badge.badge-reject {
   color: #a33a2c;
   border-color: color-mix(in srgb, #a33a2c 35%, transparent);
@@ -4372,6 +4377,7 @@
   font-weight: 650;
 }
 .pcard-tag.plan { background: rgba(58, 123, 213, 0.13); color: #2d63a8; }
+.pcard-tag.approved { background: rgba(30, 122, 58, 0.12); color: #1e7a3a; }
 .pcard-tag.gap { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
 .pcard-tag.warn { background: rgba(204, 68, 68, 0.12); color: #a33; }
 .pcard-flow {

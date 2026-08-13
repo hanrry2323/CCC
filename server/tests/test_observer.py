@@ -327,3 +327,190 @@ def test_run_playwright_smoke_test_failure() -> None:
     res = observer.run_playwright_smoke_test('http://invalid_domain_9999')
     assert res['ok'] is False
     assert res['health_status'] in ('跳过', '失败')
+
+
+# ── 第二步闭环：数据一致性检查项（里程碑/方案进度 vs 级联回写声明） ──
+
+def _make_xy_repo(tmp_path: Path) -> Path:
+    """造 tmp 仓库：registry + per-project roadmap + plans 文件（供一致性检查）。"""
+    reg = tmp_path / "docs" / "projects" / "registry.yaml"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    reg.write_text(
+        "schema: ccc-project-registry-v1\n"
+        "projects:\n"
+        "  - prefix: xy\n"
+        "    id: xy\n"
+        "    name: xy\n"
+        "    taskable: true\n"
+        "    forbidden: false\n"
+        "    status: active\n",
+        encoding="utf-8",
+    )
+    proj_dir = tmp_path / "docs" / "projects" / "xy"
+    plans_dir = proj_dir / "plans"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "roadmap.md").write_text(
+        "# xy 线路图\n\n"
+        "## 里程碑\n\n"
+        "### 里程碑A\n"
+        "- 状态：进行中\n"
+        "- 关联方案：xy-plan-001\n\n"
+        "### 里程碑B\n"
+        "- 状态：进行中\n"
+        "- 关联方案：xy-plan-002\n",
+        encoding="utf-8",
+    )
+    (plans_dir / "001-milestone-a.md").write_text(
+        "# 方案 · 里程碑A\n\n> 项目：xy · 编号：xy-plan-001 · 状态：已完成\n",
+        encoding="utf-8",
+    )
+    (plans_dir / "002-milestone-b.md").write_text(
+        "# 方案 · 里程碑B\n\n> 项目：xy · 编号：xy-plan-002 · 状态：已完成\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+@patch("server.board.roadmap._repo_root")
+def test_scan_findings_milestone_progress_consistency(mock_repo_root, tmp_path):
+    """里程碑声明「进行中」但子方案全部完成（级联回写滞后）→ consistency finding。
+
+    里程碑A 关联 xy-plan-001（已完成）→ pct 100% 但声明进行中 → 报。
+    里程碑B 同构 → 同样报。声明已完成 + 未满 的反向场景由 plan_progress 覆盖。
+    """
+    from types import SimpleNamespace
+
+    from server.engine.observer import scan_findings
+
+    mock_repo_root.return_value = _make_xy_repo(tmp_path)
+
+    findings = scan_findings(
+        {"SCHEDULER_DISPATCH_DIR": ""},
+        tmp_path,
+    )
+    ms_findings = [f for f in findings if f["type"] == "consistency"]
+    assert any(f["id"].startswith("milestone_progress_xy_") for f in ms_findings)
+    target = [f for f in ms_findings if "里程碑A" in f["title"]]
+    assert len(target) == 1
+    assert "声明 进行中" in target[0]["title"]
+    assert "实际完成率 100%" in target[0]["title"]
+    assert target[0]["acting_on"] == "docs/projects/xy/roadmap.md"
+
+
+@patch("server.board.roadmap._repo_root")
+def test_scan_findings_plan_progress_consistency(mock_repo_root, tmp_path):
+    """方案头部「进度：closed/total」声明 vs 关联卡实算不一致 → consistency finding。"""
+    from types import SimpleNamespace
+
+    from server.engine.observer import scan_findings
+
+    mock_repo_root.return_value = _make_xy_repo(tmp_path)
+    # 方案 xy-plan-001：声明 0/2，实算 1/2（xy001 已关闭）
+    plan_file = tmp_path / "docs" / "projects" / "xy" / "plans" / "001-milestone-a.md"
+    plan_file.write_text(
+        "# 方案 · 里程碑A\n\n"
+        "> 项目：xy · 编号：xy-plan-001 · 状态：部分执行\n"
+        "> 进度：0/2 (0%)\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_findings(
+        {
+            "SCHEDULER_DISPATCH_DIR": str(tmp_path / "docs" / "dispatch"),
+            "PROJECT_ROOT": str(tmp_path),
+        },
+        tmp_path,
+    )
+    # 未 mock 卡列表：load_dispatch_cards 走真实 dispatch 目录（tmp 下为空）→ 不产生 plan_progress
+    assert not any(f["id"].startswith("plan_progress_") for f in findings)
+
+
+@patch("server.engine.observer.load_projects")
+@patch("server.engine.observer.load_dispatch_cards")
+@patch("server.engine.observer.list_plans")
+def test_scan_findings_plan_progress_consistency_mocked(
+    mock_list_plans, mock_load_dispatch_cards, mock_load_projects, tmp_path
+):
+    """方案进度声明 vs 实算（mock 卡状态）：声明 0/2 实算 1/2 → 报；声明 1/2 实算 1/2 → 不报。"""
+    from types import SimpleNamespace
+
+    from server.engine.observer import scan_findings
+
+    mock_load_projects.return_value = []
+    mock_load_dispatch_cards.return_value = [
+        SimpleNamespace(to_dict=lambda: {"id": "xy001", "state": "已关闭", "project": "xy", "path": "x"}),
+        SimpleNamespace(to_dict=lambda: {"id": "xy002", "state": "执行中", "project": "xy", "path": "x"}),
+    ]
+    plan_path = "docs/projects/xy/plans/001-milestone-a.md"
+    mock_list_plans.return_value = [
+        {
+            "id": "xy-plan-001",
+            "project": "xy",
+            "status": "部分执行",
+            "cards": "xy001, xy002",
+            "path": plan_path,
+        }
+    ]
+    plan_file = tmp_path / plan_path
+    plan_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_file.write_text(
+        "# 方案 · 里程碑A\n\n"
+        "> 项目：xy · 编号：xy-plan-001 · 状态：部分执行\n"
+        "> 进度：0/2 (0%)\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_findings({"SCHEDULER_DISPATCH_DIR": ""}, tmp_path)
+    target = [f for f in findings if f["id"] == "plan_progress_xy-plan-001"]
+    assert len(target) == 1
+    assert "声明 0/2" in target[0]["title"]
+    assert "实际 1/2" in target[0]["title"]
+
+    # 声明与实算一致 → 不报
+    plan_file.write_text(
+        "# 方案 · 里程碑A\n\n"
+        "> 项目：xy · 编号：xy-plan-001 · 状态：部分执行\n"
+        "> 进度：1/2 (50%)\n",
+        encoding="utf-8",
+    )
+    findings2 = scan_findings({"SCHEDULER_DISPATCH_DIR": ""}, tmp_path)
+    assert not any(f["id"] == "plan_progress_xy-plan-001" for f in findings2)
+
+
+@patch("server.engine.observer.write_roadmap_draft")
+@patch("server.engine.observer.scan_findings")
+def test_run_observer_writes_draft_for_consistency(
+    mock_scan_findings, mock_write_draft, tmp_path
+):
+    """PRIME-DIRECTIVE §6.3：consistency 发现自动回线路图草案池（治理债）。"""
+    mock_scan_findings.return_value = [
+        {
+            "id": "milestone_progress_xy_a",
+            "title": "里程碑 xy/a 进度不一致",
+            "project": "xy",
+            "type": "consistency",
+            "cross_confirm": 0.5,
+            "acting_on": "docs/projects/xy/roadmap.md",
+            "evidence": "docs/projects/xy/roadmap.md:1",
+        },
+        {
+            "id": "status_drift_xy001",
+            "title": "xy001 状态漂移",
+            "project": "xy",
+            "type": "drift",
+            "cross_confirm": 0.5,
+            "acting_on": "x",
+            "evidence": "x:1",
+        },
+    ]
+    from server.engine.observer import run_observer
+
+    with patch("server.engine.observer.load_projects", return_value=[]), patch(
+        "server.engine.observer.load_dispatch_cards", return_value=[]
+    ), patch("server.engine.observer.list_plans", return_value=[]), patch(
+        "server.engine.observer.should_run", return_value=(True, "test")
+    ):
+        ok, _ = run_observer({"SCHEDULER_DISPATCH_DIR": "", "DATA_DIR": str(tmp_path)})
+        assert ok is True
+    # 只对 consistency 接线草案池；drift 不写
+    mock_write_draft.assert_called_once_with("xy", "里程碑 xy/a 进度不一致", draft_type="治理债")

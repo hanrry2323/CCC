@@ -134,6 +134,11 @@ export function renderTaskCard(t, opts = {}) {
     ? `<span class="board-card-badge badge-exec" title="执行体">@${escapeHtml(t.executor)}</span>`
     : '';
 
+  const approvalLabel = t.approval ? String(t.approval).split(' · ')[0] : '';
+  const approval = approvalLabel
+    ? `<span class="board-card-badge badge-approval" title="人审批准：${escapeHtml(t.approval)}">✓ ${escapeHtml(approvalLabel)}</span>`
+    : '';
+
   const updated = t.written_at && t.written_at !== '未知'
     ? t.written_at
     : (t.dispatched_at && t.dispatched_at !== '未知' ? t.dispatched_at : (t.updated_at || ''));
@@ -161,6 +166,7 @@ export function renderTaskCard(t, opts = {}) {
       ${streamHtml}
       <div class="board-card-meta">
         ${executor}
+        ${approval}
         ${rejectHtml}
         ${updatedHtml ? `<span class="board-card-meta-time">${updatedHtml}</span>` : ''}
       </div>

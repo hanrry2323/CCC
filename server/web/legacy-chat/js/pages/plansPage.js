@@ -175,6 +175,7 @@ function renderPlanItem(plan) {
   if (warnRefs.length) tags.push('<span class="pcard-tag warn">警示</span>');
   if (accPct === null || acc.done < acc.total) tags.push('<span class="pcard-tag gap">缺口</span>');
   if (plan.status === '已确认' || plan.status === '部分执行') tags.push('<span class="pcard-tag plan">计划</span>');
+  if (plan.approval) tags.push(`<span class="pcard-tag approved" title="人审批准：${esc(plan.approval)}">✓ 已批准</span>`);
   // 流程条：关联卡在看板六列的分布（ccc-plan-024）
   const cs = _planCardStates[plan.path] || { total: 0, cols: {} };
   const colOrder = [
