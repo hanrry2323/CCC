@@ -184,6 +184,7 @@ def list_plans(
                 "cards": fields.get("关联卡", ""),
                 "path": rel,
                 "acceptance": acceptance,
+                "approval": fields.get("批准", ""),
             }
         )
 
@@ -223,6 +224,7 @@ def get_plan(repo_root: Path, rel_path: str) -> dict[str, Any] | None:
         "path": rel_path,
         "content": content,
         "acceptance": _extract_acceptance(content),
+        "approval": fields.get("批准", ""),
     }
 
 
@@ -324,6 +326,7 @@ def create_plan(
         plan_content = f"""# 方案 · {title}
 
 > 项目：{project} · 编号：{plan_id} · 状态：已确认 · 作者：{author} · 工具：{tool}
+> 批准：老板确认方案 · {today}
 > 创建：{today} · 更新：{today}
 > 关联卡：无
 > 关联方案：无
@@ -617,6 +620,9 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
         "ok": True,
         "progress": {"total": total, "closed": closed, "progress_pct": progress_pct},
     }
+
+
+def plan_card_states(repo_root: Path, cards: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """方案 → 关联卡在看板六列的分布（ccc-plan-024 流程条数据源）。
 
     cards: 已富化卡列表（含 id / board_column / state）。
@@ -788,6 +794,26 @@ def _convert_plan_locked(
     current = re.sub(r"(更新：)([0-9-]+)", f"\\1{today}", current, count=1)
     # 更新关联卡
     current = re.sub(r"(关联卡：)([^\n]*)", f"\\1{card_list}", current, count=1)
+    # 人审节点②：方案批准行更新为「老板确认转卡」（无则插入到头部引用块）
+    if re.search(r"(^|\n)\s*> 批准：", current):
+        current = re.sub(r"(\n\s*> 批准：)([^\n]*)", f"\\1老板确认转卡 · {today}", current, count=1)
+    else:
+        current = re.sub(r"(> 项目：[^\n]*\n)", f"\\1> 批准：老板确认转卡 · {today}\n", current, count=1)
+
+    # 人审节点②：给每张新卡追加「老板确认转卡」批准行（单行最新语义，卡头 validate 只查必填 5 key）
+    for cf in created_files:
+        try:
+            ctext = cf.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        clines = ctext.split("\n")
+        insert_at = 1
+        for i, ln in enumerate(clines):
+            if ln.startswith("# "):
+                insert_at = i + 1
+                break
+        clines.insert(insert_at, f"> 批准：老板确认转卡 · {today}")
+        cf.write_text("\n".join(clines))
 
     plan_file.write_text(current)
 
