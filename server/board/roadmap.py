@@ -19,7 +19,6 @@ plans 是「计划」层（管当前方案），dispatch 是「看板」层（�
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -334,6 +333,13 @@ def update_milestone(
     if description is not None:
         found.description = description
 
+    # P1#13：字段变更后按实际完成率重算状态（此前追加 linked_plans 后状态永久失真，
+    # 直到下一次 update_plan 触发 sync 才有巡检窗口期）
+    computed = compute_milestone_progress(project, title)
+    if isinstance(computed, dict) and not computed.get("error") and computed.get("completed", 0) > 0:
+        if computed["status"] != found.status:
+            found.status = computed["status"]
+
     _write_roadmap(project, data["drafts"], data["milestones"])
     return {"ok": True, "milestone": title}
 
@@ -361,7 +367,7 @@ def create_draft(project: str, title: str) -> dict[str, Any]:
 
 
 def promote_draft(project: str, title: str) -> dict[str, Any]:
-    return {"error": f"promote_draft 已弃用，请使用 promote_draft_to_plan 将草案升级为方案"}
+    return {"error": "promote_draft 已弃用，请使用 promote_draft_to_plan 将草案升级为方案"}
 
 
 def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", tool: str = "ccc") -> dict[str, Any]:
@@ -498,7 +504,15 @@ def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
             if candidates:
                 try:
                     plan_text = candidates[0].read_text(encoding="utf-8")
-                    if "状态：已完成" in plan_text:
+                    # P1#14：读头部状态字段（此前全文子串匹配「状态：已完成」会误计）；
+                    # 方案头是多 key 一行（> 项目：… · 状态：…），取全文首个「状态：」值 = 头部
+                    # 终态非完成方案（作废/已覆盖）剔除出 total
+                    status_m = re.search(r"状态：([^\s·]+)", plan_text)
+                    plan_status = status_m.group(1) if status_m else ""
+                    if plan_status in ("作废", "已覆盖"):
+                        total -= 1
+                        continue
+                    if plan_status == "已完成":
                         completed += 1
                 except OSError:
                     pass

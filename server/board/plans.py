@@ -581,7 +581,9 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
     closed = 0
     for cid in card_ids:
         entry = card_id_lower_map.get(cid.lower())
-        if entry and entry.get("state") == "已关闭":
+        # P1#14：关闭态口径统一——支持「已关闭（…）」括号变体（base_state 语义）
+        state = str(entry.get("state", "")) if entry else ""
+        if state == "已关闭" or state.startswith("已关闭"):
             closed += 1
 
     progress_pct = int(closed / total * 100) if total > 0 else 0

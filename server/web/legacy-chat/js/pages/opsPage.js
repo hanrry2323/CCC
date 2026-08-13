@@ -101,10 +101,14 @@ function html() {
 /* ── ① 项目健康 ─────────────────────────────── */
 
 function projectStats(detail) {
-  const counts = (detail && detail.counts) || { planned: 0, doing: 0, done: 0 };
-  const total = (counts.done || 0) + (counts.doing || 0) + (counts.planned || 0);
-  const risk = ((detail && detail.risks) || []).length;
-  return { total, done: counts.done || 0, doing: counts.doing || 0, risk };
+  // P1#15：项目健康迁移到 per-project 新模型（/roadmap/{proj}，里程碑级）。
+  // 此前用聚合旧模型 /board/roadmap/{proj}（读 docs/roadmap.md 业务线路段）→ 双解析器双真值
+  const miles = (detail && detail.milestones) || [];
+  const total = miles.length;
+  const done = miles.filter((m) => m.status === '已完成').length;
+  const doing = miles.filter((m) => m.status === '进行中').length;
+  const risk = miles.filter((m) => m.status === '草案').length;
+  return { total, done, doing, risk };
 }
 
 function renderProjects(roadmaps, details, cards, loopData, mergeData) {
@@ -136,16 +140,16 @@ function renderProjects(roadmaps, details, cards, loopData, mergeData) {
   for (const rm of roadmaps) {
     const proj = rm.project || '未知';
     const detail = (details || {})[proj];
-    if (!detail) continue; // 单项目无业务线路段落（404）时跳过，不整页空白
+    if (!detail) continue; // 单项目无 roadmap.md（404）时跳过，不整页空白
     const st = projectStats(detail);
     const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
     const issues = (reviewBy[proj] || 0) + (returnedBy[proj] || 0) + (findingsBy[proj] || 0);
     cardsHtml.push(`<div class="ops-proj-card ${st.risk ? 'risk' : st.total && st.done === st.total ? 'done' : 'active'}">
-      <div class="ops-proj-head"><b>${esc(proj)}</b><span>${st.total} 卡</span></div>
+      <div class="ops-proj-head"><b>${esc(proj)}</b><span>${st.total} 里程碑</span></div>
       <div class="ops-proj-bar"><div class="ops-proj-fill" style="width:${pct}%"></div></div>
       <div class="ops-proj-stats">
         <span>完成 ${st.done}</span><span>进行中 ${st.doing}</span>
-        ${st.risk ? `<span class="ops-proj-risk">风险 ${st.risk}</span>` : ''}
+        ${st.risk ? `<span class="ops-proj-risk">未启动 ${st.risk}</span>` : ''}
         ${issues ? `<span class="ops-proj-risk">待办 ${issues}</span>` : ''}
       </div>
     </div>`);
@@ -438,10 +442,11 @@ async function poll() {
   const roadmaps = (roadmapsData && roadmapsData.roadmaps) || [];
   const details = {};
   if (roadmaps.length) {
+    // P1#15：详情改用 /roadmap/{proj}（per-project 新模型），与 roadmapPage 同真值
     const dets = await Promise.all(roadmaps.map((rm) =>
-      apiGet(`/board/roadmap/${encodeURIComponent(rm.project)}`).catch(() => null)));
+      apiGet(`/roadmap/${encodeURIComponent(rm.project)}`).catch(() => null)));
     roadmaps.forEach((rm, i) => {
-      if (dets[i]) details[rm.project] = dets[i];
+      if (dets[i] && !dets[i].error) details[rm.project] = dets[i];
     });
   }
   renderHumanGates(roadmaps, plansConfirmed, merge);

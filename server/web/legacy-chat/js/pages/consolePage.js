@@ -191,11 +191,14 @@ function renderRelay(relay) {
 function renderKPI(states) {
   const el = _root.querySelector('#console-kpi');
   if (!el) return;
-  const counts = (states && states.counts) || {};
+  // P1 修复：/board/states 返回顶层五态 + columns（机审在 columns 里），无 counts 键
+  const base = states || {};
+  const columns = base.columns || {};
+  const counts = (s) => base[s] != null ? base[s] : (columns[s] != null ? columns[s] : 0);
   const order = ['待分派', '执行中', '机审', '已回写', '打回'];
   const tones = { '待分派': '#a39e93', '执行中': '#c47a2c', '机审': '#8b6cc1', '已回写': '#3d9a5f', '打回': '#c44' };
   const items = order.map((s) => `<a class="console-kpi-item" href="#/board" title="去看板 ${s}">
-    <b style="color:${tones[s]}">${counts[s] || 0}</b><span>${s}</span>
+    <b style="color:${tones[s]}">${counts(s)}</b><span>${s}</span>
   </a>`).join('');
   el.innerHTML = items || '<div class="console-empty">无卡数据</div>';
 }
@@ -223,16 +226,23 @@ function renderRunning(tasks, concurrency) {
     el.innerHTML = head + '<div class="console-empty">当前无后台任务</div>';
     return;
   }
-  el.innerHTML = head + list.slice(0, 10).map((t) => `
-    <div class="console-task ${t.indeterminate ? 'running' : ''}">
+  el.innerHTML = head + list.slice(0, 10).map((t) => {
+    // P1 修复：/tasks/running 字段为 work_id/board_column/metrics_live（此前读 id/phase/indeterminate 全空）
+    const id = t.work_id || t.id || '';
+    const kind = t.board_column || '';
+    const running = t.metrics_live === true || t.indeterminate === true;
+    const logTail = Array.isArray(t.log_tail) ? t.log_tail.join('\n') : (t.log_tail || '');
+    return `
+    <div class="console-task ${running ? 'running' : ''}">
       <div class="console-task-row">
-        <b>${esc(t.id || '')}</b>
-        <span class="ops-todo-type">${esc(t.phase || t.kind || '')}</span>
+        <b>${esc(id)}</b>
+        <span class="ops-todo-type">${esc(kind)}</span>
         <span class="console-task-time">已用时 ${esc(t.elapsed_s != null ? t.elapsed_s + 's' : '—')}${t.last_activity_at ? ` · 最后活动 ${esc(t.last_activity_at)}` : ''}</span>
       </div>
-      <div class="console-task-tail" title="日志尾">${esc((t.log_tail || '').slice(-160))}</div>
-      ${t.indeterminate ? '<div class="console-task-progress indeterminate"></div>' : ''}
-    </div>`).join('');
+      <div class="console-task-tail" title="日志尾">${esc(logTail.slice(-160))}</div>
+      ${running ? '<div class="console-task-progress indeterminate"></div>' : ''}
+    </div>`;
+  }).join('');
 }
 
 /* ── 设置（只读） ───────────────────────────── */

@@ -323,7 +323,12 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
     try:
         from server.board.roadmap import compute_milestone_progress, list_roadmaps, parse_roadmap
 
-        for proj in list_roadmaps():
+        # P1#12：observer 补 ccc 只读巡检（list_roadmaps 跳过 platform，ccc 数据成无人审计区）
+        roadmap_projects = set(list_roadmaps())
+        if (project_root / "docs" / "projects" / "ccc" / "roadmap.md").is_file():
+            roadmap_projects.add("ccc")
+
+        for proj in sorted(roadmap_projects):
             rm_file = project_root / "docs" / "projects" / proj / "roadmap.md"
             if not rm_file.is_file():
                 continue
@@ -338,14 +343,16 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                     continue
                 if not isinstance(comp, dict) or comp.get("error"):
                     continue
-                pct = comp.get("progress_pct", 0)
                 declared = ms.status
-                # 声明「已完成」但未满 / 全完成但声明非「已完成」 = 级联回写滞后
-                if (declared == "已完成" and pct < 100) or (pct >= 100 and declared != "已完成"):
+                computed = comp.get("status", declared)
+                completed = comp.get("completed", 0)
+                # P1#13：全态比对（此前只查两个极端，中间带长期分歧不可见）。
+                # 排除 0 完成时 compute 保持原状态的设计性行为（无信息可比）。
+                if completed > 0 and declared != computed:
                     findings.append(
                         {
                             "id": f"milestone_progress_{proj}_{ms.title[:24]}",
-                            "title": f"里程碑 {proj}/{ms.title} 进度不一致：声明 {declared}，实际完成率 {pct}%（{comp.get('completed', 0)}/{comp.get('total', 0)} 方案）",
+                            "title": f"里程碑 {proj}/{ms.title} 进度不一致：声明 {declared}，实际完成率 {comp.get('progress_pct', 0)}%（{completed}/{comp.get('total', 0)} 方案 → {computed}）",
                             "project": proj,
                             "type": "consistency",
                             "cross_confirm": 0.5,

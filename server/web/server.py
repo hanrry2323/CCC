@@ -610,6 +610,17 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
     item = next((i for i in items if i.id == task_id), None)
     if item is None:
         return None
+    # P1：打回原因从运行时 state 读（原始 items 无 reason——富化只发生在 _compose_board_items）
+    reason = ""
+    log_dir = _executor_log_dir()
+    if log_dir:
+        try:
+            from server.engine.runtime_state import read_card_state
+
+            rt = read_card_state(log_dir).get(item.id) or {}
+            reason = str(rt.get("reason", ""))
+        except Exception:
+            pass
     return {
         "id": item.id,
         "title": item.title,
@@ -620,6 +631,9 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
         "executor": item.executor,
         "split_status": "",
         "acceptance": _parse_task_acceptance(item.id),
+        # P1 修复：详情补打回原因/人审批准（此前前端 taskCardDetail 读 t.reason 恒空）
+        "reason": reason or item.reason or "",
+        "approval": item.approval or "",
         "phases": [],
         "events": [],
     }
@@ -2762,6 +2776,12 @@ class _APIHandler(BaseHTTPRequestHandler):
                     if in_table and ln.strip().startswith("|"):
                         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
                         if len(cells) >= 6:
+                            # P1 修复：从 id 前缀映射 finding type（此前前端 typeLabel 读 f.type 恒空 → 分类徽章恒「巡查」）
+                            _fid = cells[3] if len(cells) > 3 else ""
+                            _ftype = next(
+                                (k for k in ("missing_section", "drift", "broken_link", "missing_four_questions", "consistency", "tech") if _fid.startswith(k + "_") or k in _fid),
+                                "scan",
+                            )
                             findings.append(
                                 {
                                     "weight": cells[0],
@@ -2772,6 +2792,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                     "acting_on": cells[6].strip("`"),
                                     "evidence": cells[7].strip("`") if len(cells) > 7 else "",
                                     "ts": f.stat().st_mtime,
+                                    "type": _ftype,
                                 }
                             )
                     elif in_table and not ln.strip().startswith("|"):
