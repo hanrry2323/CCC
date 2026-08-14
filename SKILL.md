@@ -99,7 +99,7 @@ grep -A 15 "## 红线 11" references/red-lines.md
 
 | 路径 | 说明 |
 |------|------|
-| `CURSOR.md` | Cursor 入口与现况 |
+| `CURSOR.md` | Cursor 入口（已随 Cursor 弃用移除 2026-08-14） |
 | `CLAUDE.md` | 开仓作战卡片 / 双模式 |
 | `STARTUP-BRIEF.md` | 启动 SSOT |
 | `docs/INDEX.md` | 文档索引 §0 |

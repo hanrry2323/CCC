@@ -24,7 +24,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 - **Codex** = 出卡/裁决（不响应合入口令代关卡；Cursor 已弃用 2026-08-14）
 - **HTTP 看板** = 实时面；Desktop 暂缓
 
-SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md)。  
+SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CLAUDE.md`](CLAUDE.md)。  
 **cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`。  
 **北星命令**：`scripts/plan-to-cards.sh` · `GET /board/ready_for_merge` · `scripts/approve-merge.sh` / `scripts/card-evidence.sh`。  
 **合入硬路由**：听到「合入批准」（旧称「验收看板」等同义）→ approve-merge / north-star-slice；ready = 分支信封 `git show origin/<分支>:<卡>` 含机审通过；**禁止**代写机审区。
@@ -153,5 +153,5 @@ python -m server.board.validate docs/dispatch
 
 ---
 
-**维护**：范式变更时同步 `CURSOR.md` + `.cursor/rules/` + INDEX §0 + 本 Brief。  
+**维护**：范式变更时同步 `.cursor/rules/` + INDEX §0 + 本 Brief（CURSOR.md 已随 Cursor 弃用移除）。  
 **约束**：禁止在 Engine 外并发依赖模块全局 `ROOT`（F-CON-03）。

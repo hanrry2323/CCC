@@ -1,7 +1,7 @@
 # CCC Infrastructure — 机器 / 端口 / 服务总览
 
 > **现行（2026-08-06）**。旧 Hub `:7777` / Board `:7775` / sidecar / hub-tunnel 已退役。  
-> 权威链：`docs/INDEX.md` §0 · `CURSOR.md` · `.cursor/rules/location-truth.mdc`  
+> 权威链：`docs/INDEX.md` §0 · `.cursor/rules/location-truth.mdc`（CURSOR.md 已随 Cursor 弃用移除）  
 > 老板面：M1 IDE 中枢聊意图 + 浏览器看 2017 看板/运维；中间 pull/派发自动。
 
 ---
