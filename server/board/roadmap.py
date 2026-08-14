@@ -53,6 +53,8 @@ class Milestone:
     linked_plans: list[str] = field(default_factory=list)  # 关联方案 ID
     description: str = ""  # 描述
     target_date: str = ""  # 目标日期（可选，YYYY-MM-DD；2026-08-14 补齐 rebuild-design 字段）
+    timeline: str = ""  # 时间线标注（如日期区间 2026-08-07~08-09；2026-08-14 里程碑模型增强）
+    version: str = ""  # 版本号（如 v0.9.0；2026-08-14 里程碑模型增强）
 
 
 # ── 解析 ──
@@ -98,6 +100,8 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     "linked_plans": [],
                     "description": "",
                     "target_date": "",
+                    "timeline": "",
+                    "version": "",
                 }
             elif current_ms is not None:
                 stripped = line.strip()
@@ -110,6 +114,10 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     current_ms["description"] = stripped[4:].strip().lstrip("：").strip()
                 elif stripped.startswith("- 目标日期："):
                     current_ms["target_date"] = stripped[7:].strip().lstrip("：").strip()
+                elif stripped.startswith("- 时间线："):
+                    current_ms["timeline"] = stripped[6:].strip().lstrip("：").strip()
+                elif stripped.startswith("- 版本："):
+                    current_ms["version"] = stripped[5:].strip().lstrip("：").strip()
                 elif line.startswith("  ") and current_ms["description"] and stripped.strip():
                     # 多行描述续行：以 >=2 空格缩进且非空行 → 追加
                     current_ms["description"] += " " + stripped
@@ -255,6 +263,10 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
                     lines.append(f"- 描述：{ms.description}")
                 if ms.target_date:
                     lines.append(f"- 目标日期：{ms.target_date}")
+                if ms.timeline:
+                    lines.append(f"- 时间线：{ms.timeline}")
+                if ms.version:
+                    lines.append(f"- 版本：{ms.version}")
                 lines.append("")
         else:
             lines.append("无。")

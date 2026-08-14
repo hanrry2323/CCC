@@ -15,6 +15,7 @@ import { esc } from '../roadmapTimeline.js';
 let _root = null;
 let _timer = null;
 let _rmFilter = 'all';
+let _currentProject = null; // 二级页当前项目（闪退修复：loadRoadmap/定时器尊重当前视图，不再跳回一级）
 
 function html() {
   return `
@@ -103,19 +104,96 @@ function renderOverview(data) {
 
 /* ── 二级页：单项目线路图 ── */
 
+function _draftTitle(d) {
+  return typeof d === 'string' ? d : (d.title || '');
+}
+function _draftSource(d) {
+  if (typeof d === 'string') return '';
+  return d.source || '';
+}
+function _draftCreated(d) {
+  if (typeof d === 'string') return '';
+  return d.created || '';
+}
+
+/* 草案池卡片化 + 二级页详情（2026-08-14 前端优化）
+ * 卡片 = 来源徽标 + 标题（2 行截断）+ 操作；点击卡片 → 二级页看草案详情。 */
 function _draftPoolHTML(drafts, project) {
   if (!drafts || !drafts.length) return '';
   return `<div class="rm2-drafts">
-    <strong class="rm2-drafts-title">草案池（${drafts.length}）</strong>
-    <div class="rm2-draft-list">
-      ${drafts.map((d, i) => `<div class="rm2-draft-item">
-        <span class="rm2-draft-title">${esc(typeof d === 'string' ? d : d.title || '')}</span>
-        <button type="button" class="hub-btn rm2-draft-promote" data-project="${esc(project)}" data-index="${i}" title="人审节点①：老板确认后转正式方案">确认转方案</button>
-        <button type="button" class="hub-btn rm2-draft-edit" data-project="${esc(project)}" data-index="${i}" title="修改草案文字（节点① 调整）">编辑</button>
-        <button type="button" class="hub-btn rm2-draft-remove" data-project="${esc(project)}" data-index="${i}" title="取消草案（节点① 不再执行，直接移除）">取消</button>
-      </div>`).join('')}
+    <strong class="rm2-drafts-title">草案池（${drafts.length}）<span class="rm2-drafts-hint">未排期想法 · 列入里程碑才进入正式开发</span></strong>
+    <div class="rm2-draft-grid">
+      ${drafts.map((d, i) => {
+        const title = _draftTitle(d);
+        const src = _draftSource(d);
+        return `<div class="rm2-draft-card" data-index="${i}" title="点击查看草案详情">
+          <div class="rm2-draft-card-top">
+            <span class="rm2-draft-src">${src ? esc(src) : '草案'}</span>
+            <span class="rm2-draft-state">未排期</span>
+          </div>
+          <div class="rm2-draft-card-title">${esc(title)}</div>
+          <div class="rm2-draft-card-actions">
+            <button type="button" class="hub-btn rm2-draft-promote" data-project="${esc(project)}" data-index="${i}" title="人审节点①：老板确认后转正式方案">确认转方案</button>
+            <button type="button" class="hub-btn rm2-draft-edit" data-project="${esc(project)}" data-index="${i}" title="修改草案文字（节点① 调整）">编辑</button>
+            <button type="button" class="hub-btn rm2-draft-remove" data-project="${esc(project)}" data-index="${i}" title="取消草案（节点① 不再执行，直接移除）">取消</button>
+          </div>
+        </div>`;
+      }).join('')}
     </div>
   </div>`;
+}
+
+/* 草案二级页详情（overlay）：全量文本 + 来源/日期 + 动作 */
+function _showDraftDetail(project, index, drafts) {
+  const d = drafts[index];
+  if (!d) return;
+  const title = _draftTitle(d);
+  let overlay = _root?.querySelector('#rm2-draft-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'rm2-draft-overlay';
+    overlay.className = 'plans-form-overlay';
+    _root?.appendChild(overlay);
+  }
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="plans-form" role="dialog" aria-modal="true" aria-label="草案详情" style="max-width:640px">
+      <div class="plans-form-head">
+        <h3>草案详情 · ${esc(project)}</h3>
+        <button type="button" class="ptool-btn-plain plans-form-x" id="rm2-draft-close" aria-label="关闭">×</button>
+      </div>
+      <div class="plans-form-field" style="align-items:flex-start">
+        <label>来源</label>
+        <span style="padding:6px 0">${_draftSource(d) ? esc(_draftSource(d)) : '未标注'}</span>
+      </div>
+      <div class="plans-form-field" style="align-items:flex-start">
+        <label>日期</label>
+        <span style="padding:6px 0">${_draftCreated(d) ? esc(_draftCreated(d)) : '—'}</span>
+      </div>
+      <div class="plans-form-field" style="align-items:flex-start">
+        <label>内容</label>
+        <div class="rm2-draft-detail-body">${esc(title)}</div>
+      </div>
+      <div class="plans-form-actions">
+        <button type="button" class="ptool-new" id="rm2-draft-detail-promote">确认转方案</button>
+        <button type="button" class="ptool-btn-plain" id="rm2-draft-detail-close">关闭</button>
+      </div>
+    </div>`;
+  overlay.querySelector('#rm2-draft-close')?.addEventListener('click', () => { overlay.style.display = 'none'; });
+  overlay.querySelector('#rm2-draft-detail-close')?.addEventListener('click', () => { overlay.style.display = 'none'; });
+  overlay.querySelector('#rm2-draft-detail-promote')?.addEventListener('click', async () => {
+    const btn = overlay.querySelector('#rm2-draft-detail-promote');
+    btn.disabled = true; btn.textContent = '确认中…';
+    try {
+      await apiPost(`/roadmap/${encodeURIComponent(project)}/draft/promote-to-plan`, { index });
+      overlay.style.display = 'none';
+      window.showToast?.('草案已转为方案', 'success');
+      await openProject(project);
+    } catch (e) {
+      window.showToast?.(e.message || '确认失败', 'error');
+      btn.disabled = false; btn.textContent = '确认转方案';
+    }
+  });
 }
 
 function _milestoneProgressHTML(mile) {
@@ -128,9 +206,15 @@ function _milestoneProgressHTML(mile) {
 }
 
 function _milestoneDotClass(status) {
+  // 里程碑模型状态色（PRIME-DIRECTIVE §2.1）：🟢已完成 / 🟡进行中 / 🟠部分 / 🔴阻滞 / ⚪未启动
   if (status === '已完成') return 'done';
   if (status === '进行中') return 'doing';
+  if (status === '部分' || status === '部分完成') return 'partial';
+  if (status === '阻滞' || status === '受阻') return 'blocked';
   return 'none';
+}
+function _milestoneLight(status) {
+  return { done: '🟢', doing: '🟡', partial: '🟠', blocked: '🔴', none: '⚪' }[_milestoneDotClass(status)] || '⚪';
 }
 
 function _railHTML(detail) {
@@ -142,11 +226,12 @@ function _railHTML(detail) {
       <div class="rm2-rail-line"></div>
       ${miles.map((m, i) => {
         const dotClass = _milestoneDotClass(m.status);
+        const version = m.version && m.version !== '—' ? ` · ${esc(m.version)}` : '';
         return `<button type="button" class="rm2-mile" data-mile-idx="${i}" title="${esc(m.title)}">
           <span class="rm2-mile-dot ${dotClass}"></span>
           <div class="rm2-mile-body">
             <span class="rm2-mile-title">${esc(m.title)}</span>
-            <span class="rm2-mile-meta">${esc(m.status)}</span>
+            <span class="rm2-mile-meta">${_milestoneLight(m.status)} ${esc(m.status)}${version}</span>
           </div>
         </button>`;
       }).join('')}
@@ -171,11 +256,19 @@ function _milestoneCardsHTML(detail) {
     const cards = g.miles.map(m => {
       const idx = cardIdx++;
       const tone = g.key === 'done' ? 'done' : g.key === 'doing' ? 'doing' : 'planned';
+      const tl = m.timeline || m.target_date || '';
+      const ver = m.version && m.version !== '—' ? m.version : '';
       return `<div class="rm2-mile-card" id="rm2-mile-${idx}">
         <span class="rm2-mile-dot ${_milestoneDotClass(m.status)}"></span>
         <div class="rm2-mile-info">
-          <span class="rm2-mile-title">${esc(m.title)}</span>
-          <span class="rm2-mile-status ${tone}">${esc(m.status)}</span>
+          <div class="rm2-mile-title-row">
+            <span class="rm2-mile-title">${esc(m.title)}</span>
+            <span class="rm2-mile-status ${tone}">${_milestoneLight(m.status)} ${esc(m.status)}</span>
+          </div>
+          <div class="rm2-mile-sub">
+            ${tl ? `<span class="rm2-mile-tl" title="时间线">📅 ${esc(tl)}</span>` : ''}
+            ${ver ? `<span class="rm2-mile-ver" title="版本">🏷️ ${esc(ver)}</span>` : ''}
+          </div>
           ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
           ${_milestoneProgressHTML(m)}
           <button type="button" class="hub-btn rm2-mile-edit" data-title="${esc(m.title)}" data-status="${esc(m.status)}" data-desc="${esc(m.description || '')}" data-plans="${esc((m.linked_plans || []).join(', '))}" title="编辑里程碑（状态/描述/关联方案）" style="margin-top:6px">编辑</button>
@@ -263,6 +356,7 @@ function _setupRailNavigation(host) {
 }
 
 async function openProject(project) {
+  _currentProject = project;
   const back = _root.querySelector('#roadmap-back');
   const body = _root.querySelector('#roadmap-body');
   if (back) back.style.display = 'inline-block';
@@ -330,7 +424,8 @@ async function openProject(project) {
     });
     // 人审调整动作统一化：节点① 取消草案（DELETE /roadmap/<proj>/draft/<index>，直接移除）
     body.querySelectorAll('.rm2-draft-remove').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
         const proj = btn.dataset.project;
         const index = Number(btn.dataset.index);
         if (!window.confirm('确定取消这条草案？将直接从草案池移除（git 历史仍可追溯）。')) return;
@@ -341,6 +436,14 @@ async function openProject(project) {
         } catch (e) {
           window.showToast?.(e.message || '取消失败', 'error');
         }
+      });
+    });
+    // 草案池卡片化：点击卡片 → 二级页详情（前端优化 2026-08-14）
+    body.querySelectorAll('.rm2-draft-card').forEach((card) => {
+      card.addEventListener('click', (ev) => {
+        if (ev.target.closest('button')) return; // 动作按钮不触发详情
+        const idx = Number(card.dataset.index);
+        _showDraftDetail(project, idx, detail.drafts || []);
       });
     });
   } catch (err) {
@@ -454,12 +557,24 @@ function _overviewHTML(detail) {
 async function loadRoadmap() {
   if (!_root) return;
   try {
+    // 闪退修复：若在二级页，刷新当前项目详情（不跳回一级概览）
+    if (_currentProject) {
+      await openProject(_currentProject);
+      return;
+    }
     const data = await apiGet('/board/roadmap');
     renderOverview(data);
   } catch (err) {
     const host = _root.querySelector('#roadmap-body');
     if (host) host.innerHTML = '<div class="board-empty">线路图加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
+}
+
+function goBackToOverview() {
+  _currentProject = null;
+  const back = _root.querySelector('#roadmap-back');
+  if (back) back.style.display = 'none';
+  loadRoadmap();
 }
 
 function bind() {
@@ -469,9 +584,8 @@ function bind() {
     await loadRoadmap();
     if (btn) btn.disabled = false;
   });
-  _root.querySelector('#roadmap-back')?.addEventListener('click', async () => {
-    _root.querySelector('#roadmap-back').style.display = 'none';
-    await loadRoadmap();
+  _root.querySelector('#roadmap-back')?.addEventListener('click', () => {
+    goBackToOverview();
   });
   _root.querySelectorAll('.rm-filter').forEach((btn) => {
     btn.addEventListener('click', () => {

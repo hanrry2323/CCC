@@ -2364,6 +2364,8 @@ class _APIHandler(BaseHTTPRequestHandler):
                             "linked_plans": _rm.active_linked_plans(_p, list(_m.linked_plans)),
                             "description": _m.description,
                             "target_date": _m.target_date,
+                            "timeline": _m.timeline,
+                            "version": _m.version,
                         }
                         for _m in _parsed.get("milestones", [])
                     ],
@@ -2397,6 +2399,8 @@ class _APIHandler(BaseHTTPRequestHandler):
                         "linked_plans": _rm.active_linked_plans(project, list(_m.linked_plans)),
                         "description": _m.description,
                         "target_date": _m.target_date,
+                            "timeline": _m.timeline,
+                            "version": _m.version,
                     }
                     for _m in _parsed.get("milestones", [])
                 ],
@@ -3489,6 +3493,8 @@ class _APIHandler(BaseHTTPRequestHandler):
                                     "linked_plans": _roadmap_mod.active_linked_plans(_p, list(_m.linked_plans)),
                                     "description": _m.description,
                                     "target_date": _m.target_date,
+                            "timeline": _m.timeline,
+                            "version": _m.version,
                                 }
                                 for _m in _parsed.get("milestones", [])
                             ],
