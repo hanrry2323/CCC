@@ -88,6 +88,27 @@
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：项目近况/路线保持不变，按计划继续推进架构升级方案。
 
+## 机审区
+
+**验收席**：2017 机审席 · 日期：2026-08-15 · 状态：**机审：通过**
+
+### 审查摘要
+
+独立核对业务仓 `medio-0` worktree（`/Users/fan/program/apps/.ccc-wt/mx/mx036`）分支 `codex/mx036-websub` 相对 `origin/main` 全量 diff，以及本卡回写区/维护区声明。
+
+**范围核对**：改动落在 `src/backend/core/src/service/rss/service.rs`、`src/backend/core/src/service/rss/websub.rs`、`docs/lessons.md`（教训沉淀，维护区勾选所需）；机审修复另触及 RSS API 路由层 `src/backend/core/src/api/routes/rss.rs`（RSS/WebSub 直接依赖）。全部在卡片白名单内，无无关模块改动。
+
+**WebSub 联动恢复评估**：
+1. 断链修复：`detect_and_save_websub` 检测到 hub 后主动构造 `WebSubService::subscribe()`，把状态从 `detected` 推进到 `pending`，恢复「订阅 → hub 推送 → 回调更新」闭环，无注释禁用残留。
+2. 回调更新：`handle_notification` 移除仅查 secret 的 `get_secret`，改为整行 `Subscription` 查询，并用 `::rss::Channel`（显式全局路径解决同名模块遮蔽）与 `atom_syndication` 解析推送内容，经 `save_rss_item_with_auto_tags` 幂等落库并联动 NLP 自动打标；空/非 XML 推送优雅降级。
+3. 新增 `test_handle_notification_with_xml_content` 覆盖 RSS 2.0 推送端到端解析入库与自动标签。
+
+**机审修复（就地）**：发现自动订阅回调基础地址硬编码 `http://127.0.0.1:3000`（`service.rs`），违反项目「零硬编码」原则，且与路由层 `server.host:port` 约定不一致——server 配置变更后推送链路会静默失效。已修复：新增 `RssService::with_websub_callback` 构造器注入配置派生回调地址，`create_subscription` 与 `import_opml` 两个生产入口改为注入 `http://{server.host}:{server.port}`（与 verification/notification 处理器同一来源）；未注入回调地址时跳过自动订阅。修复后 `cargo check -p medio-core` 通过、`cargo test -p medio-core --lib rss` 132 个用例全绿（含本卡新增用例），commit `f2aebb3` 已 push 至 `codex/mx036-websub`。
+
+**完成钩子（Doc-Gate）**：维护区四问逐项勾选且说明非占位；[是] 声明「mx-plan-003 部分执行」核实为真（`docs/projects/mx/plans/003-base-decoupling-and-arch-upgrade.md` 状态=部分执行）；[有] 声明 `docs/lessons.md` 新增条目真实存在（2026-08-15 条目）。声明与卡改动一致。
+
+**非阻断建议**（记录不判）：`handle_notification` 前置 guard 用 `trimmed_content` 判断、解析用 `content`（未 trim）——推送体前导空白极罕见，可后续统一为 trim 后字节。
+
 ## 执行提示
 
 - 项目：mx（Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌面壳 + HarmonyOS 移动端，经 CCC 出卡驱动开发。）
