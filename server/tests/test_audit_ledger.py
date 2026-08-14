@@ -84,6 +84,17 @@ def test_infra_not_counted(tmp_path: Path):
         assert hit_rate()["total"] == 0
 
 
+def test_source_kind_recorded(tmp_path: Path):
+    """source/kind 标签记录（手动机审 infra 失败 → source=manual, kind=infra）。"""
+    with _patched_ledger(tmp_path):
+        record_audit("w1", "ccc010", conclusion="不通过", severity="中", kind="infra",
+                     reasons=["机审执行失败"], source="manual")
+        rows = load_ledger()
+        assert rows[0]["source"] == "manual"
+        assert rows[0]["kind"] == "infra"
+        assert rows[0]["hit"] is None
+
+
 def test_hit_rate(tmp_path: Path):
     """命中率统计：hit 已判定的审计记录（不含 infra）中的命中比例。"""
     from server.board.audit_ledger import mark_card_pass_hit

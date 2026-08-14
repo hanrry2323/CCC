@@ -2138,15 +2138,21 @@ def _dispatch_and_collect(
             _dyn_role_hint = _role_skill_hint(_card_full)
         except Exception:
             pass
-        # 注入：追加到最后一个参数（prompt 文本）末尾
+        # 注入：追加到「含 work.id 的 prompt 参数」而非 cmd[-1]
+        # （复审 P2-2：与 v4 指令块同定位逻辑；OpenCode 模板 cmd[-1] 是尾随 worktree 串）
         _hint_block = "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n" + _card_hint
         if _dyn_role_hint:
             _hint_block += "\n" + _dyn_role_hint
-        cmd[-1] = cmd[-1] + _hint_block
+        _hint_idx = next(
+            (i for i in range(len(cmd) - 1, -1, -1) if work.id in cmd[i]),
+            len(cmd) - 1,
+        )
+        cmd[_hint_idx] = cmd[_hint_idx] + _hint_block
         logger.info(
-            "已注入 %s: work=%s (%d 字符, 动态角色=%s)",
+            "已注入 %s: work=%s arg[%d] (%d 字符, 动态角色=%s)",
             _card_hint_section,
             work.id,
+            _hint_idx,
             len(_card_hint),
             bool(_dyn_role_hint),
         )
@@ -2870,7 +2876,7 @@ def _run_machine_audit_after_writeback(
                 work.card_path,
                 work.id,
             ):
-                _ledger_record(work, severity, "不通过", ["机审通过但分支证据未推送"], fix_action="", source="engine", kind="infra")
+                _ledger_record(work, severity, "不通过", ["机审通过但分支证据未推送"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
                 return False, ["机审通过但分支证据未推送（ready 不可见）"], True
             _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
             return True, [], True
@@ -2880,7 +2886,7 @@ def _run_machine_audit_after_writeback(
         source="engine-audit",
         evidence=evidence,
     ):
-        _ledger_record(work, severity, "不通过", ["机审通过但机审区落盘失败"], fix_action="", source="engine", kind="infra")
+        _ledger_record(work, severity, "不通过", ["机审通过但机审区落盘失败"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
         return False, ["机审通过但机审区落盘失败"], True
     _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
     return True, [], True

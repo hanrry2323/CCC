@@ -2876,6 +2876,13 @@ class _APIHandler(BaseHTTPRequestHandler):
             retry_count=0,
             redispatch=ts,
         )
+        # 机审命中率台账（v4 · 复审 P1-C）：打回→待分派 = 返工 → 通过行标未命中
+        try:
+            from server.board.audit_ledger import mark_card_pass_miss
+
+            mark_card_pass_miss(task_id)
+        except Exception:
+            pass
         self._send_json({"ok": True, "id": task_id, "from": cur, "to": "待分派", "runtime": True})
 
     def _handle_task_audit(self, task_id: str):
