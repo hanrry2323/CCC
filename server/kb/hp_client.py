@@ -22,11 +22,6 @@ HP_KB_URL = os.environ.get("HP_KB_URL", "http://192.168.3.131:8083/mcp")
 TIMEOUT = float(os.environ.get("HP_KB_TIMEOUT", "8"))
 
 
-def _parse_body(body: str) -> tuple[Any | None, str | None]:
-    """解析 MCP 响应体（SSE 或 JSON）。返回 (解析值, 可能含的 session)。"""
-    return None, None  # 占位，实际用 http.client 实现
-
-
 def _post_raw(payload: dict, sid: str | None = None) -> tuple[Any | None, str | None]:
     """POST 一条 MCP JSON-RPC（http.client，零依赖、可控连接关闭）。
 
@@ -94,16 +89,22 @@ def hp_mcp_call(tool: str, arguments: dict | None = None) -> Any | None:
         result = data2.get("result") or {}
         if result.get("isError"):
             return None
-        text = "".join(
+        # MCP 对 list 返回值会拆成多个 text content（每结果一个）——逐条解析
+        texts = [
             b.get("text", "") for b in result.get("content", [])
-            if b.get("type") == "text"
-        )
-        if not text:
+            if b.get("type") == "text" and b.get("text")
+        ]
+        if not texts:
             return None
-        try:
-            return json.loads(text)
-        except Exception:
-            return text
+        parsed: list[Any] = []
+        for t in texts:
+            try:
+                parsed.append(json.loads(t))
+            except Exception:
+                parsed.append(t)
+        if len(parsed) == 1:
+            return parsed[0]
+        return parsed
     except Exception:
         return None
 
@@ -122,6 +123,8 @@ def knowledge_search(query: str, top_k: int = 10,
     out = hp_mcp_call("knowledge_search", args)
     if isinstance(out, list):
         return out
+    if isinstance(out, dict):  # 单结果（MCP 单 text）
+        return [out]
     return None
 
 
