@@ -1,6 +1,6 @@
 # 任务卡 mx036 · 恢复 WebSub 实时推送断链（OpenCode 执行）
 
-> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-15
+> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-15
 
 
 
@@ -62,24 +62,31 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-15
+
+1. **实现说明**：
+   - 联动订阅触发：在 `RssService::detect_and_save_websub` 成功检测并保存 WebSub 支持后，主动构造 `WebSubService` 实例并调用 `subscribe()`，向 hub 发起真正的订阅请求，自动把状态机从 `detected` 推进至 `pending`。
+   - 回调更新解析与自动标签：在 `WebSubService::handle_notification` 中，检测推送内容，若为 XML 内容（RSS 2.0 / Atom），则分别使用 `::rss::Channel` 和 `atom_syndication` 进行格式解析，并提取 `RssItem`。最后通过 `save_rss_item_with_auto_tags` 自动持久化并联动 NLP 系统进行文章分类和自动标签。
+   - 同名模块遮蔽修复：使用全局绝对路径 `::rss::Channel::read_from`，解决 Rust 同名子模块 `crate::service::rss` 造成的遮蔽编译问题。
+2. **测试结果**：
+   - 全量 `cargo test --lib rss` 通过（包含 132 个单元测试）。
+   - 新增 `test_handle_notification_with_xml_content` 覆盖 WebSub 推送 XML (RSS 2.0 / Atom) 的端到端解析入库和自动标签验证。
+3. **push 证据**：
+   - 业务仓分支：`codex/mx036-websub`
+   - 业务仓 commit hash：`6b3604a11f287317d7b38d38760fa0ec3534dbe2`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `mx-plan-003` 目前状态仍为「部分执行」（本卡 mx036 为其子卡首期完成）。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：已在业务仓 `docs/lessons.md` 中新增一条关于「同名模块遮蔽」与「WebSub 闭环联动逻辑恢复」的教训归档。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：本卡不涉及项目结构/技术栈或新公开文件路径的变化。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况/路线保持不变，按计划继续推进架构升级方案。
 
 ## 执行提示
 
