@@ -16,6 +16,7 @@
 
 > **一句话**：线路图管未来，计划管当前，看板管正在进行时。老板定意图，机器管执行。
 > **最高准则**：[`CCC-PRIME-DIRECTIVE.md`](CCC-PRIME-DIRECTIVE.md) — 三层全自动开发模式，所有功能开发、流程设计、方案决策以此为准。
+> **定位声明（2026-08-14）**：CCC = **意图开发平台**，不做 IDE / 工具 / 单 agent 引擎。执行层工具（DeepSeek Harness / Claude Code / OpenCode）是可替换执行体槽位，按 `executors.json` 接入、退出码收单；**一切皆插件**——Skill / Worker / 节点 / 门禁 / 回写皆是可替换组件。DeepSeek Harness 为下一步重点接入执行体。决策源：qx-map `__archive__/decisions/意图开发定位与DeepSeekHarness协同-2026-08-14.md`。
 
 | # | 核心 | 成功标准 |
 |---|------|----------|
