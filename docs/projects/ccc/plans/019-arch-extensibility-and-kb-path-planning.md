@@ -79,7 +79,7 @@
 2. **hp-kb 配置同构**：qx-map/.mcp.json 与 opencode.json 的 hp-kb 均带 `Accept` header，行为一致
 3. **技能单一主版**：hpkb-query 系列收敛为一版（qx-map/.claude/skills/qx-hpkb-query 为主，删除 .reasonix 分叉）；修正 SKILL.md 内部矛盾（第 9 行「CLI 唯一路径」与实际「MCP 首选」相反）
 4. **死引用清理**：mcp-manifest 中 `~/.ccc/workspaces.json` 条目删除或改指向真实文件
-5. **CCC 运行时零引用 HP 红线维持**（设计使然，server 不读远端），仅文档层单向登记
+5. **CCC 运行时零引用 HP 红线部分解除（2026-08-14 老板拍板）**：允许 server 经 `server.kb.hp_client` **只读**调 hp-kb（HTTP，禁止写），用于混合检索（ccc-kb 本地 BM25 + hp 语义补充）与知识库健康度；仍禁止写 hp-kb。决策源：qx-map `__archive__/decisions/意图开发定位与DeepSeekHarness协同-2026-08-14.md`
 6. **domain 速查单一来源**：AGENTS.md 定义，各 skill 引用不复制
 
 ## 验收标准

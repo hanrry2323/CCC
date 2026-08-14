@@ -32,8 +32,9 @@ tool_result / done / error) 事件序列，供 HTTP SSE 转发。
     CCC_KB_INDEX_DIR        BM25 索引目录（默认 knowledge/.index/）
     CCC_BRAIN_KB_TOP_K      检索返回条数（默认 3）
 
-    红线：只读 knowledge/（server/kb BM25 索引），禁止读 qx-map / hp-kb；
-    未配置/未命中/检索异常 → 静默降级走裸大脑逻辑，对话不报错中断。
+    红线（2026-08-14 部分解除）：只读 knowledge/（server/kb BM25 索引）为本体；
+    允许经 server.kb.hp_client 只读调 hp-kb（HTTP），禁止写 hp-kb。
+    未配置/未命中/检索异常/远端不可达 → 静默降级走裸大脑逻辑，对话不报错中断。
 """
 
 from __future__ import annotations

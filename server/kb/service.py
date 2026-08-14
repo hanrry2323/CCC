@@ -12,7 +12,9 @@ CLI（``server/kb/cli.py``、``knowledge/ccc-kb-search.sh``）统一经此服务
     list_documents(domain)  # 列条目
     health()                # 健康自检（MCP 准入/自检用）
 
-红线：只读 ``knowledge/``（D2 零外脑），禁止读 qx-map / hp-kb。
+红线（2026-08-14 部分解除）：只读 ``knowledge/`` 为本体；允许经 ``hp_client``
+只读调 hp-kb（HTTP），**禁止写 hp-kb**。原「D2 零外脑」收紧为「不写外脑、只读查询」。
+混合检索由 ``CCC_KB_HP_FALLBACK`` 控制（默认开）。
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from . import search as _search_engine
+from . import hp_client
 from .indexer import incremental_index, load_index, load_mtimes, reindex
 
 
@@ -78,20 +81,70 @@ def reindex_all(index_dir: str | None = None) -> int:
 
 # ── 查询（统一内核） ──
 
+def _hp_fallback_enabled() -> bool:
+    """CCC_KB_HP_FALLBACK：默认开；0/off/false 关闭（纯本地）。"""
+    return os.environ.get("CCC_KB_HP_FALLBACK", "1").strip().lower() not in ("0", "off", "false")
+
+
+def _should_supplement(local: list[dict], top_k: int) -> bool:
+    """是否触发 hp-kb 语义补充。
+
+    仅本地无结果时触发（2026-08-14 收紧）：HP 端 ollama 嵌入查询 20-30s，
+    本地有结果就调 hp 会拖慢正常搜索；本地空才值得等一次补充。
+    """
+    return not local
+
+
+def _hp_to_local(r: dict) -> dict[str, Any]:
+    """hp-kb knowledge_search 结果 → 本地统一结果格式。"""
+    return {
+        "id": r.get("source_path") or r.get("document") or "",
+        "section": r.get("project") or r.get("domain") or "hp",
+        "snippet": (r.get("content") or "")[:150],
+        "score": float(r.get("score", 0) or 0),
+        "source": "hp",
+    }
+
+
+def _merge_sources(local: list[dict], hp: list[dict], top_k: int) -> list[dict]:
+    """合并本地 + hp 结果：本地优先，按 snippet 前缀去重，截断 top_k。"""
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for item in local + hp:
+        key = (item.get("snippet") or "")[:80]
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= top_k:
+            break
+    return merged
+
+
 def search(
     query: str,
     domain: str | None = None,
     top_k: int = 20,
     index_dir: str | None = None,
 ) -> list[dict[str, Any]]:
-    """BM25 检索（统一查询入口）。
+    """检索（统一查询入口，P3 混合检索）。
 
-    自动 ``ensure_index``（增量更新）；结果按 score 降序、已跨源去重。
+    本地 BM25 为主；本地结果空/弱/不足时（且 ``CCC_KB_HP_FALLBACK`` 开启），
+    调 hp-kb knowledge_search 语义补充，结果标记 ``source: local|hp``。
+    hp-kb 不可达 → 静默降级为纯本地，不抛异常、不超时（客户端 8s 上限）。
     """
     ensure_index(index_dir)
-    return _search_engine.search(
+    local = _search_engine.search(
         query, domain=domain, top_k=top_k, index_dir=_resolve_index(index_dir)
     )
+    results = [dict(r, source="local") for r in local]
+
+    if _hp_fallback_enabled() and _should_supplement(local, top_k):
+        hp_rows = hp_client.knowledge_search(query, top_k=top_k)
+        if hp_rows:
+            hp_local = [_hp_to_local(r) for r in hp_rows if isinstance(r, dict)]
+            results = _merge_sources(results, hp_local, top_k)
+    return results
 
 
 def read_document(doc_id: str, index_dir: str | None = None) -> dict[str, str] | None:
