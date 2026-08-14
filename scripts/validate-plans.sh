@@ -220,6 +220,33 @@ validate_file() {
   green "  OK   $rel"
 }
 
+# ── 9. 全局编号唯一性校验（2026-08-14 补 · 并发窗口撞号拦截）──
+# 同前缀 NNN 必须全局唯一；命中即报错。兼容 macOS bash3（无关联数组）。
+check_unique_numbers() {
+  local dir="$1"
+  local keys=()
+  while read -r f; do
+    [ -z "$f" ] && continue
+    local rel="${f#$REPO_ROOT/}"
+    local prefix
+    prefix=$(echo "$rel" | sed -E 's|^docs/projects/([a-z]{2,4})/plans/.*|\1|')
+    local num
+    num=$(basename "$f" | sed -E 's/^([0-9]{3})-.*/\1/')
+    keys+=("$prefix/$num")
+  done < <(find "$dir" -path "*/plans/*.md" -not -path "*/_template/*" 2>/dev/null | sort)
+
+  local dup_keys
+  dup_keys=$(printf '%s\n' "${keys[@]}" | sort | uniq -d)
+  if [ -n "$dup_keys" ]; then
+    # for 循环而非 while read <<<（bash 3.2 + set -u 下 here-string 崩溃，2026-08-14 修）
+    for k in $dup_keys; do
+      [ -z "$k" ] && continue
+      red "  FAIL 方案编号重复: ${k}（同前缀 NNN 必须唯一——多窗口并发出卡/方案会撞号）"
+      ERRORS=$((ERRORS + 1))
+    done
+  fi
+}
+
 # ── 主入口 ──
 if [ $# -eq 0 ]; then
   # 全量校验
@@ -229,6 +256,8 @@ if [ $# -eq 0 ]; then
   while read -r f; do
     validate_file "$f"
   done < <(find "$PLANS_DIR" -path "*/plans/*.md" -not -path "*/_template/*" 2>/dev/null | sort)
+
+  check_unique_numbers "$PLANS_DIR"
 
   echo ""
   if [ "$ERRORS" -eq 0 ]; then
@@ -248,6 +277,7 @@ elif [ "$1" = "--prefix" ]; then
   while read -r f; do
     validate_file "$f"
   done < <(find "$PLANS_DIR/$prefix/plans" -name "*.md" 2>/dev/null | sort)
+  check_unique_numbers "$PLANS_DIR/$prefix"
   echo ""
   if [ "$ERRORS" -eq 0 ]; then
     green "全部通过"
