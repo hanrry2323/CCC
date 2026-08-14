@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""入口文档门禁：AGENTS.md / CLAUDE.md / CURSOR.md 零硬编码 + 必需指针。
+"""入口文档门禁：AGENTS.md / CLAUDE.md 零硬编码 + 必需指针。
 
 规则（2026-08-08 · 通用化制度）：
 1. 入口文档不得出现机器路径 / IP / 端口（真值源 = registry.yaml / topology.md / 工具绑定表）。
 2. 通用入口（AGENTS.md / CLAUDE.md）必须指向：制卡发卡操作手册、DOC-PROTOCOL、registry。
-3. CURSOR.md 为工具专用薄桥接，只要求指向 AGENTS.md 与操作手册。
+（CURSOR.md 随 Cursor 弃用 2026-08-14 移除）
 
 用法：
     python3 scripts/check-entry-docs.py          # 检查仓库根入口文档
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-ENTRY_DOCS = ["AGENTS.md", "CLAUDE.md", "CURSOR.md"]
+ENTRY_DOCS = ["AGENTS.md", "CLAUDE.md"]
 
 # 禁止出现在入口文档的模式（机器细节应进真值源）
 FORBIDDEN_PATTERNS: list[tuple[str, str]] = [
@@ -41,13 +41,6 @@ REQUIRED_REFERENCES = [
     "docs/projects/registry.yaml",
 ]
 
-# CURSOR.md（工具专用桥接）只要求这两条
-CURSOR_REQUIRED_REFERENCES = [
-    "AGENTS.md",
-    "docs/product/card-hub-manual.md",
-]
-
-
 def check_entry_docs(root: Path | None = None) -> list[str]:
     """返回违规清单；空列表 = 通过。"""
     root = root or ROOT
@@ -61,7 +54,7 @@ def check_entry_docs(root: Path | None = None) -> list[str]:
         for pattern, label in FORBIDDEN_PATTERNS:
             if re.search(pattern, text):
                 violations.append(f"[{name}] 含{label}（{pattern}）——机器细节应进 registry/topology/绑定表")
-        required = CURSOR_REQUIRED_REFERENCES if name == "CURSOR.md" else REQUIRED_REFERENCES
+        required = REQUIRED_REFERENCES
         for ref in required:
             if ref not in text:
                 violations.append(f"[{name}] 缺少必需指针：{ref}")

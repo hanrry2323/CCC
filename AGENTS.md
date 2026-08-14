@@ -97,6 +97,6 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 - 产线：不直推 `main`；不写机审区/验收区/已关闭。  
 - 禁 `git add -A`；不手改运行面/密钥。  
 - 机审与终验只认验收席角色（工具绑定见 qx-map `ide/tool-roles.md`）。  
-- **读写文档必须按 DOC-PROTOCOL**；**入口文档零硬编码**（绝对路径/IP/端口不进 `AGENTS.md`/`CLAUDE.md`/`CURSOR.md`，门禁 `scripts/check-entry-docs.py`）。
+- **读写文档必须按 DOC-PROTOCOL**；**入口文档零硬编码**（绝对路径/IP/端口不进 `AGENTS.md`/`CLAUDE.md`，门禁 `scripts/check-entry-docs.py`）。
 
 详情：`docs/DOC-PROTOCOL.md` · `docs/product/card-hub-manual.md` · `docs/product/hub-context-sop.md` · `docs/product/dev-channel.md` · `docs/product/accept-board-sop.md`。

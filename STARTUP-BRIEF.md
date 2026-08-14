@@ -4,7 +4,7 @@
 > **版本**：`VERSION`（**v0.70.0**）  
 > **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）  
 > **文档怎么写 / 项目注册**：[`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) · [`docs/projects/registry.yaml`](docs/projects/registry.yaml)  
-> **Cursor 入口**：[`CURSOR.md`](CURSOR.md) · **仓内规则**：`.cursor/rules/`（2026-08-05 新栈）  
+> **Cursor 已弃用**（2026-08-14，入口 `CURSOR.md` 已移除）  
 > **索引**：[`docs/INDEX.md`](docs/INDEX.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)
 
 ---
@@ -21,7 +21,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 - **自验收（2026-08-07 起）**：谁开发谁验收（OpenCode↔OpenCode / Claude↔Claude）
 - **机审** = 验收席按 **code-review 技能**完整审查（P0/P1 就地修复复审）；开发禁止写机审区
 - **合入批准** = 人审 diff 后唯一常规动作（[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；旧称「验收看板」）
-- **Codex** = 出卡/裁决 · **Cursor** = 突击（均不响应合入口令代关卡）
+- **Codex** = 出卡/裁决（不响应合入口令代关卡；Cursor 已弃用 2026-08-14）
 - **HTTP 看板** = 实时面；Desktop 暂缓
 
 SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md)。  
@@ -135,7 +135,7 @@ OpenCode 与 Claude Code 均为可后台 CLI；按卡头绑定与注册表拉起
 ## 8. 懒加载
 
 ```bash
-cat CURSOR.md                    # Cursor 角色与现况
+# Cursor 已弃用（2026-08-14），难度突击由 Claude Code/OpenCode 顶替
 cat docs/architecture.md
 cat docs/INDEX.md                # §0 权威链
 cat docs/DOC-PROTOCOL.md         # 写哪里 / 项目注册

@@ -7,7 +7,7 @@ description: "CCC — Connect–Claude Code. Loop Engineer: 任意设备壳经 H
 
 > **Loop Engineer。** 人定意图，系统自动编排与自主执行。  
 > **任意设备壳**经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）。  
-> 权威链：`docs/INDEX.md` §0 · **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · Cursor：`CURSOR.md` · 版本：`VERSION`（**v0.70.0**）  
+> 权威链：`docs/INDEX.md` §0 · **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`（**v0.70.0**）  
 > **注意**：`docs/VISION.md` 仍含 Hub 时期段落（标待核），**勿当现行架构**。  
 > **硬**：读写项目文档必须按 DOC-PROTOCOL；禁止落点外新建、禁止双写 registry。
 
@@ -18,7 +18,7 @@ description: "CCC — Connect–Claude Code. Loop Engineer: 任意设备壳经 H
 ## 启动（懒加载）
 
 ```bash
-cat CURSOR.md                 # Cursor 角色（若在 Cursor）
+# Cursor 已弃用（2026-08-14）
 cat STARTUP-BRIEF.md          # 必读
 cat docs/INDEX.md             # §0 权威链
 cat docs/DOC-PROTOCOL.md      # 文档落点 / 项目注册（读写必遵）
@@ -57,14 +57,14 @@ grep -A 15 "## 红线 11" references/red-lines.md
 | 点名开发 | **Claude Code**（6100）→ 则 OpenCode 机审/终验 |
 | 2017 机审 | 卡头「验收」方（默认 Claude）写 `## 机审区`（回写后自动） |
 | M1 终验 | 听「验收看板」；Claude↔OpenCode 交叉；写 `## 验收区`+已关闭 |
-| 难度突击 | **Cursor**（写码；**不验收、不响应验收看板**） |
+| 难度突击 | 按需由 Claude Code/OpenCode 顶替（原 Cursor，2026-08-14 弃用） |
 | 管理 | **Codex**（出卡/裁决；**不验收**） |
 | M1 IDE | 开发中枢 + 「验收看板」终验入口 |
 | Trae | 停用 |
 | HTTP 看板/运维 | 人机实时面 |
 | Desktop | 暂缓 |
 
-用户**不**需要选 Codex/Cursor 做验收。终验 SOP：`docs/product/accept-board-sop.md`。
+用户**不**需要选 Codex 做验收（Cursor 已弃用 2026-08-14）。终验 SOP：`docs/product/accept-board-sop.md`。
 
 **状态机**（五态不变；可终验 = 已回写 + 机审通过）：
 
@@ -84,7 +84,7 @@ grep -A 15 "## 红线 11" references/red-lines.md
 |---|--------|
 | 1 | 不动系统文件 / 密钥 |
 | 3 | 不超出任务卡范围 |
-| 6 | 机械门禁 + 机审 + M1「验收看板」；Codex/Cursor 不验收 |
+| 6 | 机械门禁 + 机审 + M1「验收看板」；Codex 不验收（Cursor 已弃用） |
 | 11 | Verdict 必须有文件 |
 | 12 | 禁止 agent 自主启用 CCC |
 | R-15 | 禁止 CCC 本体经看板自消费 |
