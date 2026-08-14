@@ -35,6 +35,7 @@ NODES = {
     "M1": {"host": "", "windows": False},
     "2017": {"host": "fan@192.168.3.116", "windows": False},
     "252": {"host": "win@192.168.3.252", "windows": True},  # Windows Worker（W9）
+    "195": {"host": "test@192.168.3.195", "windows": True},  # surface-pro（新节点 2026-08-15）
 }
 
 HOME_DIR = Path.home()
