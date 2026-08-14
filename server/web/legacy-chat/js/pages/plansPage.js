@@ -71,6 +71,7 @@ function icon(name) {
     back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
     open: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
     convert: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    edit: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
     tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
     check: '<polyline points="20 6 9 17 4 12"/>',
@@ -464,6 +465,7 @@ function renderDetail(plan) {
       <div class="pdetail-body">${renderMarkdown(plan.content)}</div>
       <div class="pdetail-actions">
         ${plan.status !== '已完成' && plan.status !== '作废' ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        <button type="button" class="ptool-new" id="plans-detail-edit">${icon('edit')}编辑</button>
         <select id="plans-detail-status" class="plans-status-select" aria-label="修改状态">
           <option value="">改状态…</option>
           ${STATUSES.map(s => `<option value="${s}"${plan.status === s ? ' selected' : ''}>${s}</option>`).join('')}
@@ -482,6 +484,29 @@ function bindDetailEvents(path) {
   });
 
   _root?.querySelector('#plans-detail-convert')?.addEventListener('click', () => doConvert(path));
+
+  // 人审调整动作统一化：方案「修改」——节点② 改内容/功能卡清单
+  _root?.querySelector('#plans-detail-edit')?.addEventListener('click', async () => {
+    let rawContent = '';
+    try {
+      const d = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
+      rawContent = d.content || '';
+    } catch (e) { /* 继续用空串 */ }
+    const newContent = window.prompt('编辑方案内容（Markdown，含 ## 功能卡 段即可改拆卡清单）：', rawContent);
+    if (newContent === null) return;
+    try {
+      const r = await apiPost('/plans/update', { path, content: newContent });
+      if (r && r.cascaded && r.cascaded.length) {
+        window.showToast?.(`已保存并级联作废 ${r.cascaded.length} 张卡`, 'success');
+      } else {
+        window.showToast?.('方案已保存', 'success');
+      }
+      showDetail(path);
+      loadPlans();
+    } catch (e) {
+      window.showToast?.(e.message || '保存失败', 'error');
+    }
+  });
 
   _root?.querySelector('#plans-detail-status')?.addEventListener('change', async (e) => {
     const newStatus = e.target.value;

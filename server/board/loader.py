@@ -144,17 +144,19 @@ def _platform_prefixes() -> frozenset[str]:
         return frozenset()
 
 
-def scan_dispatch_files(directory: Path | str) -> list[Path]:
+def scan_dispatch_files(directory: Path | str, include_platform: bool = False) -> list[Path]:
     """扫描任务卡文件：根目录平铺（旧卡）+ 一层子目录（`<prefix>/` 下新卡）。
 
     T54 规则：旧卡（根 `T*.md`）与 `<prefix>/` 子目录新卡共存；只认含 `# 任务卡`
     卡头标题的 .md，T-mapping.md 等说明文档不参与。目录不存在返回空。
-    平台自研项目（registry category==platform）的卡目录跳过，不出现在看板。
+    平台自研项目（registry category==platform）的卡目录默认跳过（不出现在看板）。
+    include_platform=True 时纳入（索引层需要 ccc 卡供 sync_plan_progress 读状态，
+    看板展示由 load_dispatch_cards 在 items 层过滤——人审统一化 2026-08-14）。
     """
     d = Path(directory)
     if not d.is_dir():
         return []
-    skip = _platform_prefixes()
+    skip = _platform_prefixes() if not include_platform else frozenset()
     files: list[Path] = []
     for p in sorted(d.glob("*.md")):
         if _is_task_card(p):
@@ -344,7 +346,8 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
         if "path" in entry:
             index_by_path[entry["path"]] = entry
 
-    disk_files = scan_dispatch_files(dispatch_dir)
+    # 人审统一化：索引层纳入 platform（ccc）卡（供 sync_plan_progress），看板展示在下方 items 过滤
+    disk_files = scan_dispatch_files(dispatch_dir, include_platform=True)
     archive_dir = get_archive_dir(dispatch_dir)
     archive_files = scan_archive_files(archive_dir)
 
@@ -430,6 +433,12 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
     if len(updated_entries) != len(index_entries) or updated:
         # 外层已在 load_dispatch_cards_incremental 持锁，这里直接无锁写，避免嵌套 flock 死锁
         _write_index_entries(updated_entries, get_index_path(dispatch_dir))
+
+    # 人审统一化：platform（ccc）子目录卡进索引（供 sync_plan_progress），看板展示过滤。
+    # 按「路径父目录」过滤而非项目字段——legacy 根目录 T 卡（无 项目 字段→未分类）不受影响。
+    platform = _platform_prefixes()
+    if platform:
+        items = [i for i, p in zip(items, all_files) if p.parent.name not in platform]
 
     if not include_archived:
         items = [i for i in items if not i.archived]

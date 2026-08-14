@@ -561,10 +561,11 @@ def update_plan(
 
     plan_file.write_text(current)
 
-    # 人审调整动作统一化：方案作废 → 级联作废关联卡（防孤儿卡）
+    # 人审调整动作统一化：方案作废/已覆盖 → 级联作废关联卡（防孤儿卡）
+    # 已覆盖（被更晚方案取代）= 旧方案不再执行，其未关闭关联卡一并作废（老板 2026-08-14 定）。
     cascaded: list[str] = []
     cascaded_paths: list[str] = []
-    if status == "作废":
+    if status in ("作废", "已覆盖"):
         m_cards = re.search(r"关联卡：([^\n]*)", current)
         cards_raw = m_cards.group(1).strip() if m_cards else ""
         if cards_raw and cards_raw != "无":
@@ -853,7 +854,8 @@ def plan_card_states(repo_root: Path, cards: list[dict[str, Any]]) -> dict[str, 
     plans = list_plans(repo_root)
     cards_by_id = {str(c.get("id", "")).lower(): c for c in cards if c.get("id")}
     out: dict[str, dict[str, Any]] = {}
-    col_keys = ("待分派", "执行中", "机审", "已回写", "打回", "已关闭")
+    # 人审统一化：作废卡从方案进度剔除，流程条补作废列（契约列集合）
+    col_keys = ("待分派", "执行中", "机审", "已回写", "打回", "已关闭", "作废")
     for p in plans:
         ref = re.findall(r"([a-zA-Z]+[0-9]+)", p.get("cards") or "")
         cols = {k: 0 for k in col_keys}

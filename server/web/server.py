@@ -2254,6 +2254,37 @@ class _APIHandler(BaseHTTPRequestHandler):
                 "card 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
             )
 
+    def _delete_card_remote_branch(self, card_path: Path) -> None:
+        """作废卡自动删远端 codex/<stem> 分支（人审统一化 2026-08-14）。
+
+        仅当远端分支存在时删除；失败仅告警不阻断（卡作废已由卡文件权威化）。
+        """
+        branch = ""
+        try:
+            stem = card_path.stem.lower()
+            branch = f"codex/{stem}"
+            # 检查远端分支是否存在
+            r = subprocess.run(
+                ["git", "ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"],
+                cwd=str(_PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if r.returncode != 0:
+                return  # 分支不存在，无需删除
+            subprocess.run(
+                ["git", "push", "origin", "--delete", branch],
+                cwd=str(_PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=True,
+            )
+            logger.info("作废卡删除远端分支: %s", branch)
+        except Exception as exc:
+            logger.warning("作废卡删远端分支失败（不阻断）: %s (%r)", branch, exc)
+
     def _handle_roadmap_projects(self):
         """GET /roadmap/projects — 全部项目线路图（草案池 + 里程碑）。"""
         from server.board import roadmap as _rm
@@ -2271,7 +2302,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                         {
                             "title": _m.title,
                             "status": _m.status,
-                            "linked_plans": list(_m.linked_plans),
+                            "linked_plans": _rm.active_linked_plans(_p, list(_m.linked_plans)),
                             "description": _m.description,
                         }
                         for _m in _parsed.get("milestones", [])
@@ -2283,6 +2314,8 @@ class _APIHandler(BaseHTTPRequestHandler):
 
     def _handle_roadmap_detail(self, project: str):
         """GET /roadmap/<prefix> — 单项目线路图（草案池 + 里程碑）。"""
+        from server.board import roadmap as _rm
+
         if not self._roadmap_project_ok(project):
             self._send_json({"error": "无效项目前缀"}, 400)
             return
@@ -2298,7 +2331,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                     {
                         "title": _m.title,
                         "status": _m.status,
-                        "linked_plans": list(_m.linked_plans),
+                        "linked_plans": _rm.active_linked_plans(project, list(_m.linked_plans)),
                         "description": _m.description,
                     }
                     for _m in _parsed.get("milestones", [])
@@ -2325,7 +2358,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         _result = _rm.create_milestone(
             project,
             title,
-            status=(body.get("status") or "草案").strip(),
+            status=(body.get("status") or "待启动").strip(),
             linked_plans=body.get("linked_plans"),
             description=(body.get("description") or "").strip(),
         )
@@ -2357,6 +2390,23 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json(_result, 400)
             return
         self._roadmap_git_commit(project, f"roadmap({project}): 更新里程碑 {title}")
+        self._send_json(_result)
+
+    def _handle_roadmap_milestone_delete(self, project: str, title: str):
+        """DELETE /roadmap/<prefix>/milestone/<title> — 删除里程碑（仅当无关联方案）。
+
+        人审调整动作统一化（2026-08-14）：补齐 rebuild-design 的 DELETE 端点。
+        """
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.delete_milestone(project, title)
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 删除里程碑 {title}")
         self._send_json(_result)
 
     def _handle_roadmap_draft_create(self, project: str):
@@ -2719,6 +2769,9 @@ class _APIHandler(BaseHTTPRequestHandler):
 
             # git commit + push（与 roadmap 落 git 同规则）
             self._card_git_commit(card_path, f"cards: {task_id} 作废（人审取消）")
+
+            # 人审统一化：作废卡自动删远端 codex/ 分支（避免僵尸分支；仅当分支存在）
+            self._delete_card_remote_branch(card_path)
 
             # 清运行时 sidecar（终态权威 = 卡文件）
             if log_dir is not None:
@@ -3233,7 +3286,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                 {
                                     "title": _m.title,
                                     "status": _m.status,
-                                    "linked_plans": list(_m.linked_plans),
+                                    "linked_plans": _roadmap_mod.active_linked_plans(_p, list(_m.linked_plans)),
                                     "description": _m.description,
                                 }
                                 for _m in _parsed.get("milestones", [])
@@ -3371,6 +3424,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         segs = rest.split("/") if rest else []
         if len(segs) == 3 and segs[1] == "draft" and segs[2].isdigit():
             self._handle_roadmap_draft_remove(segs[0], int(segs[2]))
+            return
+        # 人审调整动作统一化：DELETE /roadmap/<prefix>/milestone/<title> — 删除里程碑（仅无关联方案）
+        if len(segs) == 3 and segs[1] == "milestone":
+            self._handle_roadmap_milestone_delete(segs[0], segs[2])
             return
         self._send_404()
 

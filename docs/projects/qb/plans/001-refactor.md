@@ -6,7 +6,6 @@
 > 关联方案：无
 > 迁移自：qx-map `__archive__/decisions/qb-refactor-方案-2026-08-03.md`
 > 决策人：老板 · 记录/管理：Codex · 执行：Trae · 验收：Codex
-> 状态：部分执行
 > 关联：`command-post/intents.md`（INT-121）
 > 性质：qb 重构唯一执行依据；与旧 qb 文档冲突处，以本方案为准。
 

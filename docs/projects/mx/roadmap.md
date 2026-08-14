@@ -21,11 +21,11 @@
 - 描述：medio-0 收口与安全加固（关联卡 mx030-mx035）。修复 4 个 P1 安全漏洞（XSS/鉴权 fail-closed/暴力破解限制/SSRF）、Token 环境变量化、双机路径对齐、9 个积压分支清理、v0.9.0 Tag、敏感路径脚本重构。
 
 ### 底座解耦与中长期架构升级
-- 状态：草案
+- 状态：待启动
 - 关联方案：mx-plan-003
 - 描述：底座解耦与架构升级（待起草方案）。统一 DI 管理 Arc 共享服务、拆解 AppState 上帝状态、恢复 RssService 与 WebSub 联动、剥离 ImageCacheService 硬编码参数。
 
 ### 公开化搬迁与多端 CI/CD
-- 状态：草案
+- 状态：待启动
 - 关联方案：mx-plan-004
 - 描述：开源公开化演进（待起草方案）。换发签名证书 + git filter-repo 历史重写、静态合规清零、开源 LICENSE/README、Actions 跨平台打包与鸿蒙发布流。

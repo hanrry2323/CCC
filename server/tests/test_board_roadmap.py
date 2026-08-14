@@ -10,9 +10,11 @@ import pytest
 from server.board.roadmap import (
     Draft,
     Milestone,
+    active_linked_plans,
     compute_milestone_progress,
     create_draft,
     create_milestone,
+    delete_milestone,
     edit_draft,
     list_drafts,
     list_milestones,
@@ -289,6 +291,27 @@ class TestMilestoneCRUD:
         result = update_milestone("clw", "不存在的里程碑", status="已完成")
         assert "error" in result
 
+    def test_delete_milestone_ok(self) -> None:
+        """人审统一化：DELETE 里程碑（仅无关联方案）。"""
+        create_milestone("clw", "可删除里程碑", status="待启动", linked_plans=[])
+        result = delete_milestone("clw", "可删除里程碑")
+        assert "error" not in result
+        assert result.get("removed") == "可删除里程碑"
+        assert [m.title for m in list_milestones("clw")] == []
+
+    def test_delete_milestone_with_plans_rejected(self) -> None:
+        """有关联方案 → 拒绝删除（需先解绑）。"""
+        create_milestone("clw", "有方案里程碑", status="待启动", linked_plans=["clw-plan-001"])
+        result = delete_milestone("clw", "有方案里程碑")
+        assert "error" in result
+        assert "关联方案" in result.get("error", "")
+        # 未被删除
+        assert [m.title for m in list_milestones("clw")] == ["有方案里程碑"]
+
+    def test_delete_milestone_not_found(self) -> None:
+        result = delete_milestone("clw", "不存在")
+        assert "error" in result
+
 
 # ── 进度计算测试（用 tmp_path + mock） ──
 
@@ -421,3 +444,32 @@ class TestRoundtrip:
         # 草案已移除
         drafts = list_drafts("clw")
         assert "真实升级草稿" not in [d.title for d in drafts]
+
+    def test_all_voided_milestone_returns_待启动(self) -> None:
+        """全作废边界：关联方案全部作废 → 里程碑归「待启动」。"""
+        plans_dir = self.mock_root / "docs" / "projects" / "clw" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        for num, st in [("001", "作废"), ("002", "作废")]:
+            (plans_dir / f"{num}-x.md").write_text(
+                f"# 方案 · X\n\n> 项目：clw · 编号：clw-plan-{num} · 状态：{st} · 作者：t · 工具：t\n",
+                encoding="utf-8",
+            )
+        create_milestone("clw", "全作废里程碑", status="进行中", linked_plans=["clw-plan-001", "clw-plan-002"])
+        result = compute_milestone_progress("clw", "全作废里程碑")
+        assert result["total"] == 0
+        assert result["status"] == "待启动"
+
+    def test_active_linked_plans_filters_voided(self) -> None:
+        """active_linked_plans 过滤作废/已覆盖方案（展示用，保留活跃）。"""
+        plans_dir = self.mock_root / "docs" / "projects" / "clw" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        for num, st in [("001", "作废"), ("002", "已覆盖"), ("003", "已完成")]:
+            (plans_dir / f"{num}-x.md").write_text(
+                f"# 方案 · X\n\n> 项目：clw · 编号：clw-plan-{num} · 状态：{st} · 作者：t · 工具：t\n",
+                encoding="utf-8",
+            )
+        active = active_linked_plans("clw", ["clw-plan-001", "clw-plan-002", "clw-plan-003", "clw-plan-999"])
+        assert "clw-plan-003" in active
+        assert "clw-plan-999" in active  # 方案文件不存在 → 保留
+        assert "clw-plan-001" not in active
+        assert "clw-plan-002" not in active

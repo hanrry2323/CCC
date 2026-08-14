@@ -288,7 +288,7 @@ async function openProject(project) {
       btn.addEventListener('click', () => {
         _showMilestoneForm(project, {
           title: btn.dataset.title || '',
-          status: btn.dataset.status || '草案',
+          status: btn.dataset.status || '待启动',
           description: btn.dataset.desc || '',
           linked_plans: (btn.dataset.plans || '').split(/[,，\s]+/).filter(Boolean),
         });
@@ -372,7 +372,7 @@ function _showMilestoneForm(project, milestone) {
       <div class="plans-form-field">
         <label for="rm2-mile-status">状态</label>
         <select id="rm2-mile-status" class="plans-status-select">
-          ${['草案', '进行中', '已完成'].map(s => `<option value="${s}" ${(milestone ? milestone.status : '') === s ? 'selected' : ''}>${s}</option>`).join('')}
+          ${['待启动', '进行中', '已完成'].map(s => `<option value="${s}" ${(milestone ? milestone.status : '') === s ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
       </div>
       <div class="plans-form-field">

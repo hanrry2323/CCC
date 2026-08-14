@@ -529,6 +529,37 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                         "evidence": f"{plan_path}:1",
                     }
                 )
+    # f) 下游前置已作废：卡的依赖/父卡是「作废」终态 → 提示老板定去留（已放行，不阻塞）
+    # 人审调整动作统一化（2026-08-14）：作废卡不阻塞下游，但需人工确认下游是否继续。
+    for c in cards_list:
+        cid = c.get("id") or ""
+        if not cid:
+            continue
+        cbase = base_state(str(c.get("state") or ""))
+        if cbase in ("已关闭", "作废"):
+            continue
+        prereqs: list[tuple[str, str]] = []
+        for dep_id in c.get("depends_on") or []:
+            dep = cards_by_id.get(str(dep_id).lower())
+            if dep and base_state(str(dep.get("state") or "")) == "作废":
+                prereqs.append((str(dep_id), "依赖"))
+        parent_id = str(c.get("parent") or "").strip()
+        if parent_id:
+            pcard = cards_by_id.get(parent_id.lower())
+            if pcard and base_state(str(pcard.get("state") or "")) == "作废":
+                prereqs.append((parent_id, "父卡"))
+        for pid, kind in prereqs:
+            findings.append(
+                {
+                    "id": f"tech_voided_prereq_{cid.lower()}_{kind}_{pid.lower()}",
+                    "title": f"卡 {cid} 的{kind} {pid} 已作废——下游已放行，请确认 {cid} 是否继续",
+                    "project": c.get("project", "ccc"),
+                    "type": "tech",
+                    "cross_confirm": 0.5,
+                    "acting_on": c.get("path") or "",
+                    "evidence": f"{c.get('path') or cid}:1",
+                }
+            )
     return findings
 
 

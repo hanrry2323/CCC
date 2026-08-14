@@ -1030,7 +1030,8 @@ def _cleanup_closed_worktrees(
                 if disk_base in ("待分派", "执行中", "已回写"):
                     # 保护：进行中/已回写/已收单卡的 worktree 是运行现场，一律不予回收
                     should_reap = False
-                elif disk_base in ("已关闭", "打回"):
+                elif disk_base in ("已关闭", "打回", "作废"):
+                    # 人审统一化：作废=终态，worktree 一并回收（此前归「未知状态」分支全失才 reap）
                     should_reap = True
                     if is_dirty:
                         use_force = True
@@ -1202,7 +1203,7 @@ def _cleanup_business_worktrees(store: BoardStore, log_dir: Path) -> int:
                     disk_base = base_state(work.state)
                     if disk_base in ("待分派", "执行中", "已回写"):
                         should_reap = False
-                    elif disk_base in ("已关闭", "打回"):
+                    elif disk_base in ("已关闭", "打回", "作废"):
                         should_reap = True
                         if is_dirty:
                             use_force = True
@@ -2774,23 +2775,28 @@ def _run_machine_audit_after_writeback(
 
 
 def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
-    """父卡未关闭则阻断 AUTO 派发（保持待分派）；无父卡/父卡已关闭 → None。"""
+    """父卡未关闭则阻断 AUTO 派发（保持待分派）；无父卡/父卡已关闭/已作废 → None。
+
+    人审调整动作统一化（2026-08-14）：父卡作废 = 该依赖已取消，子卡放行
+    （不自动级联子卡，由老板在子卡上定去留；observer 提示）。
+    """
     parent_id = (work.parent or "").strip()
     if not parent_id:
         return None
     parent = by_id.get(parent_id)
     if parent is None:
         return None
-    if parent.state is State.CLOSED:
+    if parent.state in (State.CLOSED, State.VOIDED):
         return None
-    return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭后才派发）"
+    return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭/已作废后才派发）"
 
 
 def _depends_on_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
     """显式依赖卡未关闭则阻断 AUTO 派发（保持待分派）。
 
-    依赖卡状态 ∈ {已关闭} 放行；∈ {待分派/执行中/已回写/打回} 阻塞；
+    依赖卡状态 ∈ {已关闭, 已作废} 放行；∈ {待分派/执行中/已回写/打回} 阻塞；
     依赖卡不存在/为空则视为无依赖（向后兼容存量卡）。
+    人审调整动作统一化（2026-08-14）：依赖卡作废 = 该依赖已取消 → 下游放行。
     """
     deps = list(getattr(work, "depends_on", None) or [])
     if not deps:
@@ -2800,7 +2806,7 @@ def _depends_on_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | Non
         dep = by_id.get(dep_id)
         if dep is None:
             continue  # 依赖卡不存在 → 不阻塞（避免假死；由出卡方保证存在）
-        if dep.state is not State.CLOSED:
+        if dep.state not in (State.CLOSED, State.VOIDED):
             blocked.append(f"{dep_id}({dep.state.value})")
     if not blocked:
         return None

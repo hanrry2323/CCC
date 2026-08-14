@@ -48,7 +48,7 @@ class Milestone:
 
     title: str  # 里程碑标题
     project: str = ""  # 所属项目前缀
-    status: str = "草案"  # 草案 | 进行中 | 已完成
+    status: str = "待启动"  # 待启动 | 进行中 | 已完成（草案→待启动，2026-08-14 对齐 rebuild-design）
     linked_plans: list[str] = field(default_factory=list)  # 关联方案 ID
     description: str = ""  # 描述
 
@@ -92,7 +92,7 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                 current_ms = {
                     "title": line.strip()[4:].strip(),
                     "project": project,
-                    "status": "草案",
+                    "status": "待启动",
                     "linked_plans": [],
                     "description": "",
                 }
@@ -120,6 +120,36 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
 
 
 # ── 查询 ──
+
+
+def active_linked_plans(project: str, plan_ids: list[str]) -> list[str]:
+    """过滤里程碑关联方案里的作废/已覆盖方案（展示用；roadmap.md 保留关联历史）。
+
+    人审调整动作统一化（2026-08-14）：作废方案从总数剔除，列表展示同步过滤。
+    """
+    if not plan_ids:
+        return []
+    plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
+    active: list[str] = []
+    for pid in plan_ids:
+        m = re.match(rf"{re.escape(project)}-plan-(\d+)", pid)
+        if not m:
+            active.append(pid)
+            continue
+        candidates = sorted(plans_dir.glob(f"{m.group(1)}-*.md"))
+        if not candidates:
+            active.append(pid)
+            continue
+        try:
+            text = candidates[0].read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            active.append(pid)
+            continue
+        sm = re.search(r"状态：([^\s·]+)", text)
+        st = sm.group(1) if sm else ""
+        if st not in ("作废", "已覆盖"):
+            active.append(pid)
+    return active
 
 
 def _roadmap_path(project: str) -> Path:
@@ -254,7 +284,7 @@ def create_milestone(
     project: str,
     title: str,
     *,
-    status: str = "草案",
+    status: str = "待启动",
     linked_plans: list[str] | None = None,
     description: str = "",
 ) -> dict[str, Any]:
@@ -324,6 +354,34 @@ def update_milestone(
 
     _write_roadmap(project, data["drafts"], data["milestones"])
     return {"ok": True, "milestone": title}
+
+
+def delete_milestone(project: str, title: str) -> dict[str, Any]:
+    """删除里程碑（仅当无关联方案时允许；有方案则拒绝，需先解绑）。
+
+    人审调整动作统一化（2026-08-14）：补齐 rebuild-design 的 DELETE 端点。
+    """
+    path = _roadmap_path(project)
+    if not path.is_file():
+        return {"error": f"项目 {project} 尚无 roadmap.md"}
+
+    text = path.read_text(encoding="utf-8")
+    data = parse_roadmap(text, project=project)
+
+    ms = None
+    for m in data["milestones"]:
+        if m.title == title:
+            ms = m
+            break
+    if ms is None:
+        return {"error": f"里程碑 {title} 不存在"}
+
+    if ms.linked_plans:
+        return {"error": f"里程碑 {title} 仍有 {len(ms.linked_plans)} 个关联方案，先解绑再删除"}
+
+    data["milestones"] = [m for m in data["milestones"] if m.title != title]
+    _write_roadmap(project, data["drafts"], data["milestones"])
+    return {"ok": True, "removed": title}
 
 
 # ── 方案↔里程碑双向关联（ccc-plan-027 缝隙1）──
@@ -594,9 +652,12 @@ def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
     progress_pct = int(completed / total * 100) if total > 0 else 0
 
     # 纯计算，不写文件（不写副作用：调用方需要更新时显式调用 update_milestone）
-    # 自动推导状态：全部完成=已完成，部分完成=进行中，零完成=草案
+    # 自动推导状态：全部完成=已完成，部分完成=进行中，零完成=待启动
+    # 全作废边界（2026-08-14）：原有关联方案但全部作废/已覆盖（total 被剔除到 0）→ 归「待启动」
     derived_status = ms.status
-    if progress_pct == 100:
+    if total == 0:
+        derived_status = "待启动"
+    elif progress_pct == 100:
         derived_status = "已完成"
     elif completed > 0:
         derived_status = "进行中"

@@ -733,6 +733,9 @@ class TestFileBoardStore:
         assert _parent_blocks_dispatch(child, by_id)
         parent.state = State.CLOSED
         assert _parent_blocks_dispatch(child, by_id) is None
+        # 人审调整动作统一化：父卡作废 → 子卡放行（不阻塞）
+        parent.state = State.VOIDED
+        assert _parent_blocks_dispatch(child, by_id) is None
 
     def test_depends_on_blocks_dispatch(self) -> None:
         from server.engine.main import _depends_on_blocks_dispatch
@@ -742,6 +745,9 @@ class TestFileBoardStore:
         by_id = {"ccc042": dep, "ccc043": child}
         assert _depends_on_blocks_dispatch(child, by_id)
         dep.state = State.CLOSED
+        assert _depends_on_blocks_dispatch(child, by_id) is None
+        # 人审调整动作统一化：依赖卡作废 → 下游放行（不阻塞）
+        dep.state = State.VOIDED
         assert _depends_on_blocks_dispatch(child, by_id) is None
 
     def test_depends_on_no_block_no_deps(self) -> None:
