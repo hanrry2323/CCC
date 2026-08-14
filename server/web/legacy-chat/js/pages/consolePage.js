@@ -60,6 +60,10 @@ function html() {
         <h4 class="console-card-title">中转站</h4>
         <div id="console-relay"><div class="console-empty">加载中…</div></div>
       </div>
+      <div class="console-card">
+        <h4 class="console-card-title">知识库健康 <span id="console-kb-n" class="badge">0</span></h4>
+        <div id="console-kb"><div class="console-empty">加载中…</div></div>
+      </div>
     </div>
     <div class="console-right">
       <div class="console-card">
@@ -186,6 +190,46 @@ function renderRelay(relay) {
     </div>`;
 }
 
+/* ── 知识库健康（P4）────────────────────── */
+
+function renderKb(kb) {
+  const el = _root.querySelector('#console-kb');
+  const badge = _root.querySelector('#console-kb-n');
+  if (!el) return;
+  if (!kb || (!kb.ccc_kb && !kb.hp_kb)) {
+    el.innerHTML = '<div class="console-empty">无数据</div>';
+    if (badge) badge.textContent = '0';
+    return;
+  }
+  const c = kb.ccc_kb || {};
+  const h = kb.hp_kb || {};
+  const cOk = !!c.ok;
+  const hOk = h.configured ? !!h.reachable : false;
+  const hLabel = !h.configured ? '未配置' : (hOk ? '在线' : '不可达');
+
+  let hpMeta = h.configured ? `${h.host}:${h.port} · ${h.latency_ms}ms` : '—';
+  if (hOk && h.documents != null) hpMeta += ` · ${h.documents} 文档`;
+  let sync = '';
+  if (hOk && h.ccc_sync) {
+    const parts = Object.entries(h.ccc_sync).map(([name, p]) => {
+      const ing = p.last_ingest ? ` @${String(p.last_ingest).slice(0, 10)}` : '';
+      return `${name}:${p.docs}${ing}`;
+    });
+    if (parts.length) sync = `<div class="console-node-meta" style="padding-left:8px">同步 ${parts.join(' · ')}</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="console-node ${cOk ? 'up' : 'down'}">
+      <div class="console-node-name">ccc-kb <span class="console-pill ${cOk ? 'ok' : 'bad'}">${cOk ? '就绪' : '异常'}</span></div>
+      <div class="console-node-meta">本地 BM25 · ${c.documents ?? '—'} 文档${c.lag_days != null ? ` · 滞后 ${c.lag_days} 天` : ''}</div>
+    </div>
+    <div class="console-node ${hOk ? 'up' : 'down'}">
+      <div class="console-node-name">hp-kb <span class="console-pill ${hOk ? 'ok' : 'bad'}">${hLabel}</span></div>
+      <div class="console-node-meta">${hpMeta}</div>${sync}
+    </div>`;
+  if (badge) badge.textContent = (cOk ? 1 : 0) + (hOk ? 1 : 0);
+}
+
 /* ── 工程入口 ───────────────────────────────── */
 
 function renderKPI(states) {
@@ -273,11 +317,12 @@ function renderSettings(config, concurrency) {
 /* ── 轮询 ───────────────────────────────────── */
 
 async function pollSystem() {
-  const [summary, ports, relay, hp, states, ready, config, concurrency] = await Promise.all([
+  const [summary, ports, relay, hp, kb, states, ready, config, concurrency] = await Promise.all([
     apiGet('/ops/summary').catch(() => null),
     apiGet('/ops/ports').catch(() => null),
     apiGet('/ops/relay-stats').catch(() => null),
     apiGet('/ops/hp-health').catch(() => null),
+    apiGet('/ops/kb-health').catch(() => null),
     apiGet('/board/states').catch(() => null),
     apiGet('/board/ready_for_merge').catch(() => null),
     apiGet('/config').catch(() => null),
@@ -287,6 +332,7 @@ async function pollSystem() {
   renderNodes(summary, hp);
   renderPorts(ports);
   renderRelay(relay);
+  renderKb(kb);
   renderKPI(states);
   renderReady(ready);
   renderSettings(config, concurrency);

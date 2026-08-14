@@ -895,6 +895,62 @@ def _build_hp_health() -> dict[str, Any]:
     }
 
 
+_KB_HEALTH_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_KB_HEALTH_TTL = 10.0
+
+
+def _build_kb_health() -> dict[str, Any]:
+    """知识库健康（P4）：ccc-kb 本地索引 + hp-kb 探活&深度状态。10s 缓存。"""
+    import time as _t
+    now = _t.time()
+    if _KB_HEALTH_CACHE["data"] is not None and now - _KB_HEALTH_CACHE["ts"] < _KB_HEALTH_TTL:
+        return _KB_HEALTH_CACHE["data"]
+
+    out: dict[str, Any] = {"ccc_kb": {}, "hp_kb": {}}
+    # ── ccc-kb（本地索引）──
+    try:
+        from server.kb import service as kb_service
+        from server.kb.indexer import load_mtimes
+        idx = str(kb_service.default_index_dir().resolve())
+        h = kb_service.health()
+        out["ccc_kb"] = {
+            "ok": bool(h.get("ok")), "documents": h.get("documents", 0),
+            "sections": h.get("sections", {}), "index_dir": idx,
+        }
+        mtimes = load_mtimes(idx)
+        if mtimes:
+            newest = max(mtimes.values())
+            out["ccc_kb"]["source_newest_mtime"] = _t.strftime("%Y-%m-%d %H:%M", _t.localtime(newest))
+            out["ccc_kb"]["lag_days"] = round(max(0.0, (now - newest) / 86400), 1)
+    except Exception as e:  # noqa: BLE001
+        out["ccc_kb"] = {"ok": False, "error": str(e)}
+
+    # ── hp-kb（TCP 探活 + 深度状态）──
+    hp = _build_hp_health()
+    out["hp_kb"] = {k: hp.get(k) for k in ("configured", "host", "port", "reachable", "latency_ms", "url")}
+    if hp.get("configured") and hp.get("reachable"):
+        try:
+            from server.kb import hp_client
+            st = hp_client.kb_status()
+            if st:
+                out["hp_kb"]["documents"] = st.get("total_docs")
+                out["hp_kb"]["chunks"] = st.get("total_chunks")
+                ccc_sync: dict[str, Any] = {}
+                for p in st.get("projects", []):
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get("domain") == "ccc" and p.get("project") not in ("core", "docs"):
+                        ccc_sync[p.get("project")] = {
+                            "docs": p.get("docs"), "chunks": p.get("chunks"),
+                            "last_ingest": p.get("last_ingest"),
+                        }
+                out["hp_kb"]["ccc_sync"] = ccc_sync
+        except Exception:  # noqa: BLE001
+            out["hp_kb"]["deep"] = None
+    _KB_HEALTH_CACHE.update(ts=now, data=out)
+    return out
+
+
 def _build_ops_summary() -> dict[str, Any]:
     """构造 OpsSummary 兼容子集（对齐桌面端可消费字段）。
 
@@ -3201,6 +3257,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         """GET /ops/hp-health → HP 知识库节点探活 + 延迟。"""
         self._send_json(_build_hp_health())
 
+    def _handle_ops_kb_health(self):
+        """GET /ops/kb-health → 知识库健康：ccc-kb 本地索引 + hp-kb 探活/深度。"""
+        self._send_json(_build_kb_health())
+
     def _handle_tasks_stream(self):
         """GET /tasks/stream?ids=a,b,c → SSE：snapshot 最近 3 行 + 日志增量 log 事件 + 15s 心跳。
 
@@ -3368,6 +3428,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/ops/hp-health":
             self._handle_ops_hp_health()
+            return
+        if path == "/ops/kb-health":
+            self._handle_ops_kb_health()
             return
         if path == "/loop/findings":
             self._handle_loop_findings()
