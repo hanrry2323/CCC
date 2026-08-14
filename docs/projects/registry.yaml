@@ -139,7 +139,7 @@ projects:
     taskable: true
     forbidden: false
     status: active
-    dossier: docs/projects/_catalog/ccc-demo.md
+    dossier: docs/projects/cd/README.md
     role: CCC 演示项目
     notes: 前缀 cd（ccc004 意图经 registry 单源落地 · M4）
 

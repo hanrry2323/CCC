@@ -677,7 +677,7 @@ def _collect_ops_nodes() -> list[dict[str, Any]]:
     targets = parse_cluster_targets(cfg)
     if not targets:
         return []
-    # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server,4100:relay-anthropic），
+    # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server,6100:relay-anthropic），
     # 无配置则用通用名 port-{port}，避免硬编码端口到名称的映射
     port_names_env = os.environ.get("CLUSTER_PORT_NAMES", "")
     port_names: dict[int, str] = {}
