@@ -1,15 +1,19 @@
-"""机审命中率台账（机审 v4 · 2026-08-14）。
+"""机审命中率台账（机审 v4 · 2026-08-14 · 重度复审后口径修正）。
 
-存储：data/audit/ledger.jsonl（追加写，一行一条审计结论）。
-命中判定（D3：自动推导 + 老板可标误报）：
-- 审计不通过 → 修复（就地修复/修复轮）→ 最终通过 = 命中（对同一卡的既往不通过行回填 hit=True）
-- 审计不通过 → 老板标「误报」 = 未命中（hit=False）
-- 审计通过 → 合入后无返工 = 命中（合入时由调用方回填）
+存储：data/audit/ledger.jsonl（追加写，一行一条审计结论；读改写带 fcntl 锁 + 原子 tmp+rename）。
+
+命中判定（D3 修正口径，2026-08-14 重度复审）：
+- 「不通过（审计）」行：hit=None，待「修复→最终通过」回填命中（backfill 只标不通过行，不碰通过行）。
+- 「通过」行：hit=None，待「合入后无返工」才标命中（mark_card_pass_hit）；合入后返工 → miss。
+- 「机审执行失败（基建）」行：kind="infra"，不参与命中回填（基建故障 ≠ 审计命中）。
+- 老板标误报：把最近一条「不通过」审计行标为未命中（mark_card_hit False）。
 """
 
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -24,14 +28,45 @@ def _ledger_path(dispatch_dir: str | Path | None = None) -> Path:
     return repo_root / "data" / "audit" / "ledger.jsonl"
 
 
-def _append(record: dict[str, Any]) -> None:
-    path = _ledger_path()
+def _acquire_lock(path: Path):
+    """台账写锁（fcntl 文件锁；无 fcntl 退化为无锁）。返回句柄或 None。"""
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+        import fcntl
+
+        lock_path = path.with_name(path.name + ".lock")
+        f = open(lock_path, "w")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f
+    except (ImportError, OSError):
+        return None
+
+
+def _release_lock(lock_f) -> None:
+    if lock_f is None:
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(lock_f, fcntl.LOCK_UN)
+    finally:
+        lock_f.close()
+
+
+def _atomic_write(path: Path, rows: list[dict[str, Any]]) -> None:
+    """原子改写：tmp + rename（防并发读改写竞态）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix="ledger.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            for r in rows:
+                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+        os.replace(tmp, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def record_audit(
@@ -43,8 +78,9 @@ def record_audit(
     reasons: list[str] | None = None,
     fix_action: str = "",  # 就地修复 / 修复轮 / 打回 / ""
     source: str = "engine",  # engine / manual
+    kind: str = "audit",  # audit / infra（基建失败不参与命中）
 ) -> None:
-    """机审结论落定时写入台账（不推导命中，命中由 hit 回填）。"""
+    """机审结论落定追加写入（append，带锁）。命中由回填函数设置。"""
     _append(
         {
             "ts": _now_iso(),
@@ -56,44 +92,41 @@ def record_audit(
             "fix_action": fix_action,
             "hit": None,
             "source": source,
+            "kind": kind,
         }
     )
 
 
-def mark_card_hit(card_id: str, hit: bool) -> None:
-    """回填某卡的机审命中：卡最终通过（修复有效）→ hit=True；老板标误报 → hit=False。
-
-    只回填该卡最近一条 hit 为 None 的「不通过」记录（误报标记目标）。
-    """
-    rows = load_ledger()
-    if not rows:
-        return
-    for rec in reversed(rows):
-        if rec.get("card_id") == card_id and rec.get("hit") is None:
-            rec["hit"] = hit
-            break
-    _write_all(rows)
+def _append(record: dict[str, Any]) -> None:
+    path = _ledger_path()
+    lock = _acquire_lock(path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    finally:
+        _release_lock(lock)
 
 
-def backfill_card_hits(card_id: str) -> None:
-    """卡审计通过 → 回填该卡所有 hit=None 记录为命中（既往不通过 = 修复有效 = 命中）。"""
-    rows = load_ledger()
-    if not rows:
-        return
-    changed = False
-    for rec in rows:
-        if rec.get("card_id") == card_id and rec.get("hit") is None:
-            rec["hit"] = True
-            changed = True
-    if changed:
-        _write_all(rows)
-
-
-def load_ledger(dispatch_dir: str | Path | None = None) -> list[dict[str, Any]]:
-    """读台账全部记录（时间序）。"""
-    path = _ledger_path(dispatch_dir)
+def _read_write_rows(mutate) -> bool:
+    """带锁读全文件 → mutate → 原子改写。返回是否发生写。"""
+    path = _ledger_path()
     if not path.is_file():
-        return []
+        return False
+    lock = _acquire_lock(path)
+    try:
+        rows = _read_rows(path)
+        changed = mutate(rows)
+        if changed:
+            _atomic_write(path, rows)
+        return changed
+    finally:
+        _release_lock(lock)
+
+
+def _read_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     try:
         with path.open(encoding="utf-8") as fh:
@@ -110,9 +143,94 @@ def load_ledger(dispatch_dir: str | Path | None = None) -> list[dict[str, Any]]:
     return rows
 
 
+def load_ledger(dispatch_dir: str | Path | None = None) -> list[dict[str, Any]]:
+    """读台账全部记录（时间序）。"""
+    path = _ledger_path(dispatch_dir)
+    return _read_rows(path)
+
+
+def mark_card_hit(card_id: str, hit: bool) -> bool:
+    """老板标误报：把该卡最近一条「不通过·审计」未判定行标为未命中（hit=False）。
+
+    Returns:
+        True 找到并回填；False 无匹配记录（调用方可报错，P2-E 修复）。
+    """
+
+    def _mut(rows: list[dict[str, Any]]) -> bool:
+        for rec in reversed(rows):
+            if (
+                rec.get("card_id") == card_id
+                and rec.get("conclusion") == "不通过"
+                and rec.get("kind") != "infra"
+                and rec.get("hit") is None
+            ):
+                rec["hit"] = hit
+                return True
+        return False
+
+    return _read_write_rows(_mut)
+
+
+def backfill_card_hits(card_id: str) -> None:
+    """修复后最终通过 → 回填该卡所有「不通过·审计」未判定行为命中（只标不通过行，不碰通过行）。"""
+
+    def _mut(rows: list[dict[str, Any]]) -> bool:
+        changed = False
+        for rec in rows:
+            if (
+                rec.get("card_id") == card_id
+                and rec.get("conclusion") == "不通过"
+                and rec.get("kind") != "infra"
+                and rec.get("hit") is None
+            ):
+                rec["hit"] = True
+                changed = True
+        return changed
+
+    _read_write_rows(_mut)
+
+
+def mark_card_pass_hit(card_id: str) -> None:
+    """合入后无返工 → 该卡最近「通过」行标命中。"""
+
+    def _mut(rows: list[dict[str, Any]]) -> bool:
+        for rec in reversed(rows):
+            if (
+                rec.get("card_id") == card_id
+                and rec.get("conclusion") == "通过"
+                and rec.get("hit") is None
+            ):
+                rec["hit"] = True
+                return True
+        return False
+
+    _read_write_rows(_mut)
+
+
+def mark_card_pass_miss(card_id: str) -> None:
+    """合入后返工 → 该卡最近「通过」行标未命中。"""
+
+    def _mut(rows: list[dict[str, Any]]) -> bool:
+        for rec in reversed(rows):
+            if (
+                rec.get("card_id") == card_id
+                and rec.get("conclusion") == "通过"
+                and rec.get("hit") is None
+            ):
+                rec["hit"] = False
+                return True
+        return False
+
+    _read_write_rows(_mut)
+
+
 def hit_rate(window: int = 50) -> dict[str, Any]:
-    """近期命中率：hit 已判定的记录中，命中比例。"""
-    rows = [r for r in load_ledger() if r.get("hit") is not None][-window:]
+    """近期命中率：hit 已判定的审计记录（不含 infra）中，命中比例。"""
+    rows = [
+        r
+        for r in load_ledger()
+        if r.get("kind") != "infra" and r.get("hit") is not None
+    ][-window:]
     if not rows:
         return {"total": 0, "hits": 0, "misses": 0, "hit_rate": None}
     hits = sum(1 for r in rows if r.get("hit"))
@@ -128,14 +246,3 @@ def _now_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _write_all(rows: list[dict[str, Any]]) -> None:
-    path = _ledger_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as fh:
-            for r in rows:
-                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
-    except OSError:
-        pass

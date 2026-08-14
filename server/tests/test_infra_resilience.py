@@ -159,7 +159,7 @@ def test_audit_threshold_reads_config(tmp_path: Path):
     cfg = {"EXECUTOR_INFRA_MAX_STRIKES": "3"}
 
     with patch("server.engine.main._audit_evidence_passed", return_value=False), \
-         patch("server.engine.main._run_machine_audit_after_writeback", return_value=(False, ["502 Bad Gateway"])), \
+         patch("server.engine.main._run_machine_audit_after_writeback", return_value=(False, ["502 Bad Gateway"], True)), \
          patch("server.engine.main.is_retryable_failure", return_value=(True, "502 Bad Gateway")), \
          patch("server.engine.runtime_state.read_card_state", return_value={"xy103": {"infra_count": 2}}), \
          patch("server.engine.main._fail_retry_or_reject") as mock_fail:

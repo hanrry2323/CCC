@@ -334,8 +334,8 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
 
 
 # 机审 v4 重度 fresh：按命令名映射「新会话/零上下文」标志（不写死工具名，空则忽略）。
-# 仅作 best-effort——多数 CLI 单次调用本身即零上下文（claude -p / opencode run 不 resume），
-# fresh 的真正作用是 prompt 层强调零上下文独立审查（见 _dispatch_and_collect 审计 prompt 注入）。
+# fresh 标志由 _dispatch_and_collect 在 prompt 注入完成后追加（保住 cmd 末位=prompt 不变量，
+# 避免 v4 指令块被拼到 CLI 标志上——2026-08-14 重度复审 P1-A）。
 _FRESH_FLAG_BY_CMD: dict[str, str] = {
     "opencode": "--new-session",
     "claude": "--no-continue",
@@ -350,7 +350,6 @@ def build_command(
     default_workdir: str,
     worktree: str = "",
     biz_worktree: str = "",
-    fresh: bool = False,
 ) -> list[str]:
     """按注册表条目的命令 + 参数模板生成 argv 向量（绝不写死工具名）。
 
@@ -362,7 +361,6 @@ def build_command(
         default_workdir: entry.workdir 留空时用此值（来自 config 的 DATA_DIR）。
         worktree: 每卡独立 worktree 路径（可选）。
         biz_worktree: 业务仓每卡独立 worktree 路径（2026-08-12 隔离升级；空 = 非业务仓型任务）。
-        fresh: 重度机审零上下文模式（2026-08-14 机审 v4）——按命令名追加新会话标志（best-effort）。
 
     Returns:
         argv 列表，如 `["opencode", "--dir", "/data", "-p", "请按..."]`。
@@ -387,8 +385,4 @@ def build_command(
         )
     )
     args = shlex.split(rendered)
-    if fresh:
-        flag = _FRESH_FLAG_BY_CMD.get(entry.command)
-        if flag:
-            args.append(flag)
     return [entry.command, *args]

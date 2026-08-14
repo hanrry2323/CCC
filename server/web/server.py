@@ -2870,6 +2870,26 @@ class _APIHandler(BaseHTTPRequestHandler):
         if work is None:
             self._send_json({"error": f"task card not found: {task_id}"}, 404)
             return
+        # P2-D 修复：手动机审仅对已回写（机审列）卡开放；待分派/执行中不得跳过产物门禁
+        from server.board.models import base_state
+
+        card_state = base_state(str(work.state.value) if hasattr(work.state, "value") else str(work.state))
+        if card_state != "已回写":
+            self._send_json(
+                {"error": f"当前状态「{card_state}」不可手动机审（仅 已回写 卡可审）"}, 400
+            )
+            return
+        # P2-C 修复：在途防重——同卡审计已在跑则拒绝
+        try:
+            from server.engine.main import _audit_marker_alive
+
+            if _audit_marker_alive(log_dir, work.id):
+                self._send_json(
+                    {"ok": True, "id": task_id, "busy": True, "reason": "该卡机审已在途，请稍后"}
+                )
+                return
+        except Exception:
+            pass
         if not force and _card_machine_audit_passed(work.card_path):
             self._send_json(
                 {"ok": True, "id": task_id, "skipped": True, "reason": "已有机审通过证据（force 可强制重审）"}
@@ -2881,15 +2901,24 @@ class _APIHandler(BaseHTTPRequestHandler):
             or 1800
         )
         try:
-            ok, problems = _run_machine_audit_after_writeback(
-                work, registry, cfg, log_dir, timeout, severity=severity or None
+            ok, problems, audited = _run_machine_audit_after_writeback(
+                work, registry, cfg, log_dir, timeout,
+                severity=severity or None, force=force, manual=True,
             )
         except Exception as exc:
             self._send_json({"error": f"机审拉起失败: {exc}"}, 500)
             return
+        if not audited:
+            # P1-E 修复：无验收席/已跳过 ≠ 通过，明确返回「未审」
+            self._send_json(
+                {"ok": True, "id": task_id, "audited": False, "conclusion": "未审",
+                 "reason": "无验收席可审计或已跳过（非通过）"}
+            )
+            return
         conclusion = "通过" if ok else "不通过"
         self._send_json(
-            {"ok": True, "id": task_id, "conclusion": conclusion, "problems": problems, "severity": severity or ""}
+            {"ok": True, "id": task_id, "audited": True, "conclusion": conclusion,
+             "problems": problems, "severity": severity or ""}
         )
 
     def _handle_audit_false_positive(self, task_id: str):
@@ -2900,9 +2929,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         try:
             from server.board.audit_ledger import mark_card_hit
 
-            mark_card_hit(task_id, False)
+            found = mark_card_hit(task_id, False)
         except Exception as exc:
             self._send_json({"error": f"台账回填失败: {exc}"}, 500)
+            return
+        if not found:
+            self._send_json({"error": f"未找到 {task_id} 的未判定「不通过」审计记录，无法标误报"}, 404)
             return
         self._send_json({"ok": True, "id": task_id, "marked": "false_positive"})
 
