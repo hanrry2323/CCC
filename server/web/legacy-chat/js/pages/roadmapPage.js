@@ -111,6 +111,8 @@ function _draftPoolHTML(drafts, project) {
       ${drafts.map((d, i) => `<div class="rm2-draft-item">
         <span class="rm2-draft-title">${esc(typeof d === 'string' ? d : d.title || '')}</span>
         <button type="button" class="hub-btn rm2-draft-promote" data-project="${esc(project)}" data-index="${i}" title="人审节点①：老板确认后转正式方案">确认转方案</button>
+        <button type="button" class="hub-btn rm2-draft-edit" data-project="${esc(project)}" data-index="${i}" title="修改草案文字（节点① 调整）">编辑</button>
+        <button type="button" class="hub-btn rm2-draft-remove" data-project="${esc(project)}" data-index="${i}" title="取消草案（节点① 不再执行，直接移除）">取消</button>
       </div>`).join('')}
     </div>
   </div>`;
@@ -306,6 +308,38 @@ async function openProject(project) {
         } catch (e) {
           btn.textContent = '转方案失败';
           window.showToast?.(e.message || '确认失败', 'error');
+        }
+      });
+    });
+    // 人审调整动作统一化：节点① 修改草案（PUT /roadmap/<proj>/draft/<index>）
+    body.querySelectorAll('.rm2-draft-edit').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const proj = btn.dataset.project;
+        const index = Number(btn.dataset.index);
+        const oldTitle = btn.closest('.rm2-draft-item')?.querySelector('.rm2-draft-title')?.textContent || '';
+        const newTitle = window.prompt('修改草案文字：', oldTitle);
+        if (newTitle === null || !newTitle.trim()) return;
+        try {
+          await apiPut(`/roadmap/${encodeURIComponent(proj)}/draft/${index}`, { title: newTitle.trim() });
+          window.showToast?.('草案已修改', 'success');
+          await openProject(proj);
+        } catch (e) {
+          window.showToast?.(e.message || '修改失败', 'error');
+        }
+      });
+    });
+    // 人审调整动作统一化：节点① 取消草案（DELETE /roadmap/<proj>/draft/<index>，直接移除）
+    body.querySelectorAll('.rm2-draft-remove').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const proj = btn.dataset.project;
+        const index = Number(btn.dataset.index);
+        if (!window.confirm('确定取消这条草案？将直接从草案池移除（git 历史仍可追溯）。')) return;
+        try {
+          await apiDelete(`/roadmap/${encodeURIComponent(proj)}/draft/${index}`);
+          window.showToast?.('草案已取消', 'success');
+          await openProject(proj);
+        } catch (e) {
+          window.showToast?.(e.message || '取消失败', 'error');
         }
       });
     });

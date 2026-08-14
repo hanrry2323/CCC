@@ -561,6 +561,25 @@ def update_plan(
 
     plan_file.write_text(current)
 
+    # 人审调整动作统一化：方案作废 → 级联作废关联卡（防孤儿卡）
+    cascaded: list[str] = []
+    cascaded_paths: list[str] = []
+    if status == "作废":
+        m_cards = re.search(r"关联卡：([^\n]*)", current)
+        cards_raw = m_cards.group(1).strip() if m_cards else ""
+        if cards_raw and cards_raw != "无":
+            card_ids = re.findall(r"([a-zA-Z]+[0-9]+(?:\-[a-zA-Z])?)", cards_raw)
+            cascaded = _void_cascade_cards(repo_root, card_ids, "方案作废级联")
+            if cascaded:
+                from server.board.loader import load_index_file
+
+                _idx = load_index_file(repo_root / "docs" / "dispatch")
+                for _cid in cascaded:
+                    _e = _idx.get(_cid) or _idx.get(_cid.lower())
+                    _rp = (_e or {}).get("path") or ""
+                    if _rp and _rp not in cascaded_paths:
+                        cascaded_paths.append(_rp)
+
     # 双向同步：把方案挂到新里程碑、从旧里程碑移除
     if milestone is not None:
         m_sync = _PLAN_PATH_RE.match(rel_path)
@@ -584,12 +603,67 @@ def update_plan(
     if m:
         sync_milestone_progress(m.group(1), rel_path)
 
-    # Fix #8：commit+push 与 convert_plan 同规则
-    ok, err = _git_commit_push(repo_root, [rel_path], f"plans: update {rel_path}")
+    # Fix #8：commit+push 与 convert_plan 同规则（作废级联卡一并提交）
+    commit_paths = [rel_path] + cascaded_paths
+    ok, err = _git_commit_push(repo_root, commit_paths, f"plans: update {rel_path}")
     if not ok:
-        return {"ok": True, "updated": True, "partial": True, "warning": err}
+        return {
+            "ok": True,
+            "updated": True,
+            "partial": True,
+            "warning": err,
+            "cascaded": cascaded,
+        }
 
-    return {"ok": True, "updated": True}
+    return {"ok": True, "updated": True, "cascaded": cascaded}
+
+
+def _void_cascade_cards(repo_root: Path, card_ids: list[str], reason: str) -> list[str]:
+    """方案作废时级联：把关联卡（待分派/执行中/已回写/打回）标「作废（reason）」。
+
+    人审调整动作统一化（2026-08-14）：作废方案不能留孤儿卡，未关闭的关联卡一并作废。
+    作废 = 终态，写卡文件（与「已关闭」同级权威）；已关闭/已作废 不动。
+
+    Returns:
+        被级联作废的卡 ID 列表。
+    """
+    if not card_ids:
+        return []
+    from server.board.loader import load_index_file
+    from server.board.models import base_state
+    from server.engine.store import _replace_state_in_metadata
+
+    index = load_index_file(repo_root / "docs" / "dispatch")
+    cascaded: list[str] = []
+    cascaded_paths: list[Path] = []
+    for cid in card_ids:
+        entry = index.get(cid) or index.get(cid.lower())
+        if not entry:
+            continue
+        rel_path = entry.get("path") or ""
+        if not rel_path or "docs/archive" in rel_path:
+            continue
+        cur = base_state(str(entry.get("state") or ""))
+        if cur not in ("待分派", "执行中", "已回写", "打回"):
+            continue
+        card_path = repo_root / rel_path
+        try:
+            text = card_path.read_text(encoding="utf-8")
+            new_text = _replace_state_in_metadata(text, f"作废（{reason[:40]}）")
+        except (OSError, ValueError):
+            continue
+        card_path.write_text(new_text, encoding="utf-8")
+        cascaded.append(cid)
+        cascaded_paths.append(rel_path)
+    if cascaded:
+        # 刷新索引，让 sync_plan_progress 读到新状态
+        try:
+            from server.board.loader import load_dispatch_cards
+
+            load_dispatch_cards(repo_root / "docs" / "dispatch")
+        except Exception:
+            logger.exception("方案作废级联：刷新卡片索引失败（不阻断）")
+    return cascaded
 
 
 _CONVERT_LOCK = threading.Lock()
@@ -685,29 +759,39 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
 
     # 从 cards.index.jsonl 读取卡片状态
     from server.board.loader import load_index_file
+    from server.board.models import base_state
 
     index = load_index_file(repo_root / "docs" / "dispatch")
     card_id_lower_map = {k.lower(): v for k, v in index.items()}
 
     total = len(card_ids)
     closed = 0
+    voided = 0
     for cid in card_ids:
         entry = card_id_lower_map.get(cid.lower())
         # P1#14：关闭态口径统一——支持「已关闭（…）」括号变体（base_state 语义）
         state = str(entry.get("state", "")) if entry else ""
-        if state == "已关闭" or state.startswith("已关闭"):
+        base = base_state(state)
+        if base == "已关闭":
             closed += 1
+        elif base == "作废":
+            # 人审调整动作统一化：作废卡从方案总数剔除（剩余活跃卡全关 → 完成）
+            voided += 1
 
-    progress_pct = int(closed / total * 100) if total > 0 else 0
+    # 活跃卡 = 总关联卡 − 作废卡（作废=不再做，不占完成分母）
+    total_active = total - voided
+    progress_pct = int(closed / total_active * 100) if total_active > 0 else 0
 
     # 回写进度到方案文件头部
-    # 格式: > 进度：3/5 (60%)
-    progress_text = f"进度：{closed}/{total} ({progress_pct}%)"
+    # 格式: > 进度：3/5 (60%)（作废 2）——作废卡单列，不占完成分母
+    progress_text = f"进度：{closed}/{total_active} ({progress_pct}%)"
+    if voided:
+        progress_text += f"（作废 {voided}）"
 
     if "进度：" in current:
         current = re.sub(
             r"(进度：)([^\n]*)",
-            f"进度：{closed}/{total} ({progress_pct}%)",
+            progress_text,
             current,
             count=1,
         )
@@ -734,20 +818,27 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
             lines.insert(2, f"> {progress_text}")
         current = "\n".join(lines)
 
-    # 027 缝隙3：自动完成——关联卡全关 → 方案状态推进「已完成」
+    # 027 缝隙3：自动完成——活跃关联卡全关 → 方案状态推进「已完成」；
+    # 人审调整动作统一化：作废卡剔除出 total，剩余活跃卡全关即完成。
+    # 边界：全部关联卡作废（total_active==0）→ 方案自动置「作废」（没有活卡=方案作废）。
     auto_completed = False
-    if total > 0 and closed == total:
-        status_m = re.search(r"状态：([^\s·]+)", current)
-        cur_status = status_m.group(1) if status_m else ""
-        if cur_status in ("已确认", "部分执行"):
+    status_m = re.search(r"状态：([^\s·]+)", current)
+    cur_status = status_m.group(1) if status_m else ""
+    if cur_status in ("已确认", "部分执行"):
+        if total_active > 0 and closed == total_active:
             current = re.sub(r"(状态：)([^\s·]+)", r"\1已完成", current, count=1)
+            auto_completed = True
+        elif total_active == 0 and voided > 0:
+            # 全作废边界：方案自动作废（级联卡已作废，方案不再有活卡）
+            current = re.sub(r"(状态：)([^\s·]+)", r"\1作废", current, count=1)
             auto_completed = True
 
     plan_file.write_text(current)
 
+    # total 字段 = 活跃卡数（剔除作废），与进度行展示口径一致
     return {
         "ok": True,
-        "progress": {"total": total, "closed": closed, "progress_pct": progress_pct},
+        "progress": {"total": total_active, "closed": closed, "progress_pct": progress_pct},
         "auto_completed": auto_completed,
     }
 

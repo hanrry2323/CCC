@@ -46,6 +46,7 @@ _STR_TO_STATE: dict[str, State] = {
     "已回写": State.DONE,
     "已关闭": State.CLOSED,
     "打回": State.REJECTED,
+    "作废": State.VOIDED,
 }
 
 
@@ -84,7 +85,7 @@ def _branch_envelope_state(project_root: Path, entry: dict) -> str:
     except Exception:
         return ""
     state = (meta.get("状态") or "").strip()
-    if base_state(state) in ("已回写", "已关闭", "打回"):
+    if base_state(state) in ("已回写", "已关闭", "打回", "作废"):
         return state
     return ""
 
@@ -299,10 +300,13 @@ class FileBoardStore:
             return
         text = path.read_text(encoding="utf-8")
         new_state_str = work.state.value
-        # 打回 / 待分派重试：附首个问题（截断）；重试带 n/max 便于跨心跳恢复
+        # 打回 / 作废 / 待分派重试：附首个问题（截断）；重试带 n/max 便于跨心跳恢复
         if work.state is State.REJECTED and work.problems:
             reason = work.problems[0][:40]
             new_state_str = f"打回（{reason}）"
+        elif work.state is State.VOIDED and work.problems:
+            reason = work.problems[0][:40]
+            new_state_str = f"作废（{reason}）"
         elif work.state is State.TODO and (work.problems or work.retry_count > 0):
             reason = (work.problems[0] if work.problems else "重试")[:32]
             if work.retry_count > 0:
@@ -315,6 +319,11 @@ class FileBoardStore:
         except ValueError as exc:
             logger.warning("save_work: 未在卡头找到「状态」段 %s (%s)", path, exc)
             return
+        # 打回次数修复（统一化）：进入「打回」时递增卡头 打回次数：N（此前只读不写）
+        if work.state is State.REJECTED:
+            from server.board.card_header import bump_reject_count
+
+            new_text = bump_reject_count(new_text)
         # 原子写：tmp → rename
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(new_text, encoding="utf-8")

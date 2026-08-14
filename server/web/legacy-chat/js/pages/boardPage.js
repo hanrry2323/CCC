@@ -138,6 +138,7 @@ function html() {
     </div>
     <div class="btns" style="margin-top:10px">
       <button type="button" class="hub-btn" id="board-rd" style="display:none">重新分派</button>
+      <button type="button" class="hub-btn" id="board-void" style="display:none">作废</button>
       <button type="button" class="hub-btn" id="board-dclose">关闭</button>
     </div>
   </div>
@@ -299,7 +300,8 @@ function renderBoard() {
 function updateSummary() {
   const el = _root.querySelector('#board-st');
   if (!el) return;
-  const total = getFilteredCards().filter((c) => (c.board_column || c.state) !== '已关闭').length;
+  // 人审调整动作统一化：作废卡（终态）与已关闭一样不计入活跃总数
+  const total = getFilteredCards().filter((c) => !['已关闭', '作废'].includes(c.board_column || c.state)).length;
   const wsDisplay = _ws === 'all' ? '全部' : (_nameMap[_ws] || _ws);
   el.textContent = wsDisplay + ` · 共 ${total} 张`;
 }
@@ -573,6 +575,13 @@ async function showDetail(id) {
       rdBtn.style.display = base === '打回' ? 'inline-block' : 'none';
       rdBtn.disabled = false;
     }
+    // 人审调整动作统一化：卡作废（终态）——待分派/执行中/已回写/打回 可作废
+    const voidBtn = _root.querySelector('#board-void');
+    if (voidBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      voidBtn.style.display = ['待分派', '执行中', '已回写', '打回'].includes(base) ? 'inline-block' : 'none';
+      voidBtn.disabled = false;
+    }
     _root.querySelector('#board-dm').classList.add('open');
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载详情失败', 'error');
@@ -630,6 +639,27 @@ function bind() {
 
   _root.querySelector('#board-dclose').addEventListener('click', () => {
     _root.querySelector('#board-dm').classList.remove('open');
+  });
+
+  // 人审调整动作统一化：卡作废（终态，须附原因）
+  _root.querySelector('#board-void').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-void');
+    if (!id || !btn) return;
+    const reason = window.prompt('作废原因（必填，终态不可逆）：', '');
+    if (reason === null || !reason.trim()) return;
+    if (!window.confirm(`确定作废 ${id}？终态不可逆。`)) return;
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/tasks/' + encodeURIComponent(id) + '/transition', { status: '作废', reason: reason.trim() });
+      window.showToast?.((r && r.id ? `${r.id} 已作废（${reason.trim()}）` : '已作废'), 'success');
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '作废失败', 'error');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   const alertBtn = _root.querySelector('#board-backlog-alert-btn');

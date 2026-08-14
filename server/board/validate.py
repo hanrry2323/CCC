@@ -32,7 +32,7 @@ from server.board.models import PREFIXES, FORBIDDEN_CARD_PREFIXES, base_state, B
 from server.board.roles import acceptance_issue
 from server.board.card_header import is_task_card_text, parse_metadata, card_id
 
-VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
+VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回", "作废"})
 # 新卡强制含「验收」；交叉对由 roles.acceptance_issue 校验
 REQUIRED_HEADER_KEYS = ("关联", "执行体", "状态", "日期")
 REQUIRED_HEADER_KEYS_NEW = ("关联", "执行体", "验收", "状态", "日期")

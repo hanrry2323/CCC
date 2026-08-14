@@ -390,6 +390,56 @@ def create_draft(project: str, title: str) -> dict[str, Any]:
     return {"ok": True, "draft": title}
 
 
+def edit_draft(project: str, index: int, new_title: str) -> dict[str, Any]:
+    """修改草案条目文字（人审调整动作统一化：节点① 改草案后再确认）。"""
+    path = _roadmap_path(project)
+    if not path.is_file():
+        return {"error": f"项目 {project} 尚无 roadmap.md"}
+
+    new_title = new_title.strip()
+    if not new_title:
+        return {"error": "草案标题不能为空"}
+
+    text = path.read_text(encoding="utf-8")
+    data = parse_roadmap(text, project=project)
+
+    if not data["drafts"]:
+        return {"error": "草案池为空"}
+    if index < 0 or index >= len(data["drafts"]):
+        return {"error": f"草案索引 {index} 越界（共 {len(data['drafts'])} 条）"}
+
+    # 查重（改后与其它草案重名）
+    for i, d in enumerate(data["drafts"]):
+        if i != index and d.title == new_title:
+            return {"error": f"草案 {new_title} 已存在"}
+
+    data["drafts"][index].title = new_title
+    _write_roadmap(project, data["drafts"], data["milestones"])
+    return {"ok": True, "draft": new_title, "index": index}
+
+
+def remove_draft(project: str, index: int) -> dict[str, Any]:
+    """取消一条草案：直接移除条目（人审调整动作统一化：节点① 取消=不再执行）。
+
+    与 promote_draft_to_plan（pop 移除）一致；git 历史仍可追溯。
+    """
+    path = _roadmap_path(project)
+    if not path.is_file():
+        return {"error": f"项目 {project} 尚无 roadmap.md"}
+
+    text = path.read_text(encoding="utf-8")
+    data = parse_roadmap(text, project=project)
+
+    if not data["drafts"]:
+        return {"error": "草案池为空"}
+    if index < 0 or index >= len(data["drafts"]):
+        return {"error": f"草案索引 {index} 越界（共 {len(data['drafts'])} 条）"}
+
+    removed = data["drafts"].pop(index)
+    _write_roadmap(project, data["drafts"], data["milestones"])
+    return {"ok": True, "removed": removed.title}
+
+
 def promote_draft(project: str, title: str) -> dict[str, Any]:
     return {"error": "promote_draft 已弃用，请使用 promote_draft_to_plan 将草案升级为方案"}
 

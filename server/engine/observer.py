@@ -493,6 +493,42 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                     )
         except Exception:
             pass
+    # e) 孤儿卡：作废/已覆盖方案的关联卡仍是活跃态（未作废/未关闭）
+    # 人审调整动作统一化（2026-08-14）：作废方案不得留孤儿卡；级联应已处理，这里兜底巡检。
+    for plan in plans_list:
+        plan_path = plan.get("path", "")
+        plan_status = str(plan.get("status") or "").strip()
+        if plan_status not in ("作废", "已覆盖"):
+            continue
+        if not plan_path:
+            continue
+        try:
+            ptext = (project_root / plan_path).read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        m_cards = re.search(r">\s*关联卡：([^\n]*)", ptext)
+        if not m_cards:
+            continue
+        cards_raw = m_cards.group(1).strip()
+        if not cards_raw or cards_raw == "无":
+            continue
+        for cid in re.findall(r"([a-zA-Z]+[0-9]+(?:\-[a-zA-Z])?)", cards_raw):
+            c = cards_by_id.get(cid.lower())
+            if not c:
+                continue
+            cstate = base_state(str(c.get("state") or ""))
+            if cstate not in ("已关闭", "作废"):
+                findings.append(
+                    {
+                        "id": f"tech_orphan_card_{cid.lower()}",
+                        "title": f"孤儿卡 {cid}：方案 {plan['id']} 已作废/已覆盖，但关联卡仍为「{cstate}」",
+                        "project": c.get("project", "ccc"),
+                        "type": "tech",
+                        "cross_confirm": 0.5,
+                        "acting_on": plan_path,
+                        "evidence": f"{plan_path}:1",
+                    }
+                )
     return findings
 
 

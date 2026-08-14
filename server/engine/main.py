@@ -397,6 +397,11 @@ def _mark_branch_card_state(
         )
         if n == 0 or new_text == text:
             return
+        # 打回次数修复（统一化）：机审打回（终态）时递增卡头 打回次数：N
+        if state_text.startswith("打回"):
+            from server.board.card_header import bump_reject_count
+
+            new_text = bump_reject_count(new_text)
         card_file.write_text(new_text, encoding="utf-8")
         branch = f"codex/{Path(work.card_path).stem.lower()}"
 

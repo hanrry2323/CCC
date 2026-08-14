@@ -25,6 +25,7 @@ from server.board.plans import (
     list_plans,
     update_plan,
     sync_plan_progress,
+    _void_cascade_cards,
     _extract_header_fields,
     _extract_title,
     _extract_acceptance,
@@ -757,7 +758,7 @@ class TestValidatePlansScript:
 
         result = subprocess.run(["bash", str(script), str(plan_file)], capture_output=True, text=True)
         assert result.returncode != 0
-        assert "关联卡已全部关闭但状态仍为" in result.stdout
+        assert "关联卡已全部关闭/作废但状态仍为" in result.stdout
 
 
 # ── 9. sync_plan_progress 测试 ──
@@ -996,6 +997,88 @@ class Test027CoreFlow:
             result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
         assert result.get("auto_completed") is False
         assert "状态：部分执行" in p.read_text()
+
+    def test_voided_cards_excluded_from_total(self, tmp_path: Path):
+        """作废卡从总数剔除（人审统一化）：1 关 + 1 作废 + 1 执行中 → 活跃 2，进度 1/2。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002, ccc003")
+        p.write_text(content)
+        mock_index = {
+            "ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"},
+            "ccc002": {"id": "ccc002", "state": "作废", "path": "x"},
+            "ccc003": {"id": "ccc003", "state": "执行中", "path": "x"},
+        }
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        # total 口径 = 活跃卡（剔除作废）
+        assert result["progress"]["total"] == 2
+        assert result["progress"]["closed"] == 1
+        assert result["progress"]["progress_pct"] == 50
+        assert result.get("auto_completed") is False
+        assert "进度：1/2 (50%)（作废 1）" in p.read_text()
+
+    def test_remaining_active_all_closed_with_voided_completes(self, tmp_path: Path):
+        """活跃卡全关（含部分作废）→ 方案自动完成。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002")
+        p.write_text(content)
+        mock_index = {
+            "ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"},
+            "ccc002": {"id": "ccc002", "state": "作废", "path": "x"},
+        }
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result.get("auto_completed") is True
+        assert "状态：已完成" in p.read_text()
+
+    def test_all_voided_auto_void_plan(self, tmp_path: Path):
+        """全作废边界：全部关联卡作废 → 方案自动置「作废」。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002")
+        p.write_text(content)
+        mock_index = {
+            "ccc001": {"id": "ccc001", "state": "作废", "path": "x"},
+            "ccc002": {"id": "ccc002", "state": "作废（方案作废级联）", "path": "x"},
+        }
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result.get("auto_completed") is True
+        assert "状态：作废" in p.read_text()
+
+    def test_void_cascade_cards_marks_active_voided(self, tmp_path: Path):
+        """方案作废级联：关联卡（待分派/执行中/已回写/打回）标作废，已关闭/已作废不动。"""
+        _make_registry(tmp_path, ["ccc"])
+        # 构造卡文件 + 索引
+        dispatch_dir = tmp_path / "docs" / "dispatch" / "ccc"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        index: dict[str, dict] = {}
+        for cid, state in [
+            ("ccc001", "待分派"),
+            ("ccc002", "执行中"),
+            ("ccc003", "已关闭"),
+            ("ccc004", "作废"),
+        ]:
+            card_file = dispatch_dir / f"{cid}-a.md"
+            card_file.write_text(
+                f"# 任务卡 {cid} · 示例\n\n> 关联：ccc-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：{state} · 项目：ccc · 日期：2026-08-09\n",
+                encoding="utf-8",
+            )
+            index[cid] = {"id": cid, "state": state, "path": f"docs/dispatch/ccc/{cid}-a.md"}
+
+        with patch("server.board.loader.load_index_file", return_value=index):
+            cascaded = _void_cascade_cards(tmp_path, list(index.keys()), "方案作废级联")
+        assert sorted(cascaded) == ["ccc001", "ccc002"]
+        assert "状态：作废（方案作废级联）" in (dispatch_dir / "ccc001-a.md").read_text()
+        assert "状态：作废（方案作废级联）" in (dispatch_dir / "ccc002-a.md").read_text()
+        # 已关闭 / 已作废 不动
+        assert "状态：已关闭" in (dispatch_dir / "ccc003-a.md").read_text()
+        assert "状态：作废" in (dispatch_dir / "ccc004-a.md").read_text()
 
     def test_update_plan_milestone_sync(self, tmp_path: Path):
         """update_plan 改里程碑：方案头更新 + roadmap 双向同步（新里程碑加入、旧里程碑移除）。"""

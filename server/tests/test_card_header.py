@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from server.board.card_header import CardHeader, parse_metadata, card_id, is_task_card_text
+from server.board.card_header import CardHeader, parse_metadata, card_id, is_task_card_text, bump_reject_count
 from server.board.models import UNKNOWN
 
 SAMPLE_CARD = """# 任务卡 T99 · 示例任务（OpenCode 执行）
@@ -63,4 +63,20 @@ def test_card_header_from_text() -> None:
     header_fallback = CardHeader.from_text("> 状态：待分派\n", fallback_id="stem-id")
     assert header_fallback.id == "stem-id"
     assert header_fallback.title == UNKNOWN
+
+
+def test_bump_reject_count_existing() -> None:
+    """已有 打回次数：N → 递增。"""
+    text = "# 任务卡 T99 · 示例\n\n> 状态：打回（原因） · 打回次数：3\n"
+    out = bump_reject_count(text)
+    assert "打回次数：4" in out
+    assert "打回次数：3" not in out
+
+
+def test_bump_reject_count_missing() -> None:
+    """无字段 → 在标题行后新增 `> 打回次数：1`。"""
+    text = "# 任务卡 T99 · 示例\n\n> 状态：待分派\n"
+    out = bump_reject_count(text)
+    assert "> 打回次数：1" in out
+    assert CardHeader.from_text(out).reject_count == 1
 

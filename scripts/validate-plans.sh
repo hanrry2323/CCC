@@ -160,16 +160,18 @@ validate_file() {
     fi
   fi
 
-  # 8.2 方案关联卡全部关闭但方案状态仍为已确认/部分执行（未推进） -> 报错
-  if [ "$status" = "已确认" ] || [ "$status" = "部分执行" ]; then
+  # 8.2 方案关联卡已全部关闭/作废但方案状态仍为已确认/部分执行（未推进） -> 报错
+  # 8.3 作废方案的关联卡必须已关闭/已作废（存在活跃卡 = 孤儿卡） -> 报错
+  # 人审调整动作统一化（2026-08-14）：作废=终态，作废卡从方案总数剔除；作废方案不得留孤儿卡。
+  if [ "$status" = "已确认" ] || [ "$status" = "部分执行" ] || [ "$status" = "作废" ]; then
     local cards_line
     cards_line=$(echo "$head_content" | grep '关联卡：' | head -1 || true)
     if [ -n "$cards_line" ]; then
       local cards_part
       cards_part=$(echo "$cards_line" | sed -E 's/^.*关联卡：//' | tr -d '\r\n')
       if [ -n "$cards_part" ] && [ "$cards_part" != "无" ]; then
-        local all_closed=1
         local card_count=0
+        local active_count=0
 
         # Clean characters like · , and Chinese variants to spaces
         local cleaned_cards=$(echo "$cards_part" | tr '·,()（）' ' ' | tr -s ' ')
@@ -181,25 +183,35 @@ validate_file() {
             if [ -n "$card_file" ] && [ -f "$card_file" ]; then
               local card_head=$(head -15 "$card_file" 2>/dev/null)
               local c_status=$(echo "$card_head" | grep '状态：' | head -1 | sed -E 's/.*状态：([^ ·\t\r\n]+).*/\1/' | tr -d ' ' || true)
-              if [ "$c_status" != "已关闭" ]; then
-                # 本地明确非已关闭 → 视为未关闭（不判 FAIL）；待分派/已回写可能远端滞后，额外 WARN
-                all_closed=0
+              if [ "$c_status" != "已关闭" ] && [ "$c_status" != "作废" ]; then
+                # 活跃卡（未关闭且未作废）；待分派/已回写可能远端滞后，额外 WARN
+                active_count=$((active_count + 1))
                 if [ "$c_status" = "待分派" ] || [ "$c_status" = "已回写" ]; then
-                  yellow "  WARN 方案关联卡本地状态为 '$c_status'（可能滞后，远端可能已关闭）: $word → $rel"
+                  yellow "  WARN 方案关联卡本地状态为 '$c_status'（可能滞后，远端可能已关闭/作废）: $word → $rel"
                   WARNINGS=$((WARNINGS + 1))
                 fi
               fi
             else
-              # If card file is not found, treat as not closed to be safe
-              all_closed=0
+              # If card file is not found, treat as active to be safe
+              active_count=$((active_count + 1))
             fi
           fi
         done
 
-        if [ "$card_count" -gt 0 ] && [ "$all_closed" -eq 1 ]; then
-          red "  FAIL 方案关联卡已全部关闭但状态仍为 '$status': $rel"
-          ERRORS=$((ERRORS + 1))
-          return
+        if [ "$status" = "作废" ]; then
+          # 8.3：作废方案不得留孤儿卡
+          if [ "$card_count" -gt 0 ] && [ "$active_count" -gt 0 ]; then
+            red "  FAIL 作废方案存在孤儿卡（关联卡未作废/未关闭）: $rel"
+            ERRORS=$((ERRORS + 1))
+            return
+          fi
+        else
+          # 8.2：已确认/部分执行 但关联卡已全部关闭/作废（未推进）
+          if [ "$card_count" -gt 0 ] && [ "$active_count" -eq 0 ]; then
+            red "  FAIL 方案关联卡已全部关闭/作废但状态仍为 '$status': $rel"
+            ERRORS=$((ERRORS + 1))
+            return
+          fi
         fi
       fi
     fi

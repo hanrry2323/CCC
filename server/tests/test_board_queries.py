@@ -225,6 +225,7 @@ class TestStateCounts:
             "已回写": 0,
             "已关闭": 0,
             "打回": 0,
+            "作废": 0,
         }
 
     def test_column_counts_split_audit(self) -> None:
@@ -304,6 +305,7 @@ class TestStateNormalization:
             "已回写": 1,
             "已关闭": 0,
             "打回": 1,
+            "作废": 0,
         }
 
     def test_variant_by_project_states(self) -> None:

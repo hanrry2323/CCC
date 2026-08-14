@@ -13,11 +13,13 @@ from server.board.roadmap import (
     compute_milestone_progress,
     create_draft,
     create_milestone,
+    edit_draft,
     list_drafts,
     list_milestones,
     list_roadmaps,
     parse_roadmap,
     promote_draft,
+    remove_draft,
     update_milestone,
 )
 
@@ -200,6 +202,44 @@ class TestDraftCRUD:
         # 草案仍在池中（未移除）
         drafts = list_drafts("test")
         assert "测试草案" in [d.title for d in drafts]
+
+    def test_edit_draft(self) -> None:
+        """人审调整动作统一化：节点① 改草案文字（再确认转方案）。"""
+        create_draft("test", "旧草案")
+        result = edit_draft("test", 0, "新草案")
+        assert "error" not in result
+        titles = [d.title for d in list_drafts("test")]
+        assert titles == ["新草案"]
+
+    def test_edit_draft_duplicate(self) -> None:
+        """改后与其它草案重名 → 拒绝。"""
+        create_draft("test", "草案A")
+        create_draft("test", "草案B")
+        result = edit_draft("test", 0, "草案B")
+        assert "error" in result
+        # 原样未变
+        assert [d.title for d in list_drafts("test")] == ["草案A", "草案B"]
+
+    def test_edit_draft_index_oob(self) -> None:
+        create_draft("test", "草案A")
+        result = edit_draft("test", 5, "草案B")
+        assert "error" in result
+        assert "越界" in result.get("error", "")
+
+    def test_remove_draft(self) -> None:
+        """人审调整动作统一化：节点① 取消草案 = 直接移除条目。"""
+        create_draft("test", "草案A")
+        create_draft("test", "草案B")
+        result = remove_draft("test", 0)
+        assert "error" not in result
+        assert result.get("removed") == "草案A"
+        assert [d.title for d in list_drafts("test")] == ["草案B"]
+
+    def test_remove_draft_index_oob(self) -> None:
+        create_draft("test", "草案A")
+        result = remove_draft("test", 3)
+        assert "error" in result
+        assert "越界" in result.get("error", "")
 
 
 # ── 里程碑 CRUD 测试（用 tmp_path + mock） ──

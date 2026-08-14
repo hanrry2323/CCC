@@ -31,8 +31,9 @@ HEADER_FIELDS: tuple[str, ...] = (
     "批准",
 )
 
-# 契约 §2 五态（卡头唯一合法状态）
-VALID_STATES: frozenset[str] = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
+# 契约 §2 六态（卡头唯一合法状态）
+# 人审调整动作统一化（2026-08-14）：新增「作废」终态。
+VALID_STATES: frozenset[str] = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回", "作废"})
 # 「派发」合法值（缺省 engine）
 DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine", "scheduler", "remote"})
 # 「类型」合法值（缺省 task）
@@ -64,6 +65,29 @@ def card_id(text: str) -> str:
     """取卡头 `# 任务卡 <ID>` 的 ID（行首锚定）；未匹配返回空串。"""
     m = _ID_RE.search(text)
     return m.group(1).strip() if m else ""
+
+
+def bump_reject_count(text: str) -> str:
+    """卡进入「打回」时递增卡头 `打回次数：N` 字段（只读展示→真实计数修复）。
+
+    统一化（2026-08-14）前该字段全仓只有读没有写；打回/机审打回路径调用本函数。
+    无字段则新增一行（放在卡头 `# 任务卡` 标题行后）；已有则 N+1。
+    """
+    m = _REJECT_RE.search(text)
+    if m:
+        new_count = int(m.group(1)) + 1
+        return re.sub(
+            r"(打回次数\s*[:：]\s*)\d+",
+            rf"\g<1>{new_count}",
+            text,
+            count=1,
+        )
+    # 无字段：在 `# 任务卡 ...` 标题行后插入 `> 打回次数：1`
+    title_m = _CARD_TITLE_RE.search(text)
+    if not title_m:
+        return text
+    insert_at = title_m.end()
+    return text[:insert_at] + "\n> 打回次数：1" + text[insert_at:]
 
 
 def is_task_card_text(text: str) -> bool:

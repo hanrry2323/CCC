@@ -2128,6 +2128,19 @@ class _APIHandler(BaseHTTPRequestHandler):
             milestone=body.get("milestone"),
         )
 
+        # 人审调整动作统一化：方案作废级联的卡 → 清运行时 sidecar（终态权威=卡文件）
+        cascaded = result.get("cascaded") or []
+        if cascaded:
+            log_dir = _executor_log_dir()
+            if log_dir is not None:
+                try:
+                    from server.engine.runtime_state import clear_card_state
+
+                    for _cid in cascaded:
+                        clear_card_state(log_dir, _cid)
+                except Exception:
+                    logger.exception("方案作废级联清 sidecar 失败（不阻断）")
+
         if "error" in result:
             self._send_json(result, 400)
         else:
@@ -2203,6 +2216,42 @@ class _APIHandler(BaseHTTPRequestHandler):
         except subprocess.CalledProcessError as exc:
             logger.error(
                 "roadmap 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
+            )
+
+    def _card_git_commit(self, card_path: Path, message: str) -> None:
+        """卡文件变更落 git（commit + push，失败留脏现场 + 告警，不吞错误不重试）。
+
+        人审调整动作统一化：卡作废（终态）写卡文件后落 git，与 roadmap 落 git 同规则。
+        """
+        rel = str(card_path.relative_to(_PROJECT_ROOT))
+        try:
+            subprocess.run(
+                ["git", "add", "--", rel],
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", message],
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            subprocess.run(
+                ["git", "push"],
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error(
+                "card 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
             )
 
     def _handle_roadmap_projects(self):
@@ -2357,6 +2406,39 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         self._roadmap_git_commit(project, f"roadmap({project}): 草案→方案 {_result.get('draft_title', '')}")
         self._send_json(_result, 201)
+
+    def _handle_roadmap_draft_edit(self, project: str, index: int):
+        """PUT /roadmap/<prefix>/draft/<index> {title} — 修改草案（人审调整动作：节点① 改草案）。"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        body = self._read_body() or {}
+        new_title = str(body.get("title") or "").strip()
+        if not new_title:
+            self._send_json({"error": "缺少 title"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.edit_draft(project, index, new_title)
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 修改草案 {new_title}")
+        self._send_json(_result)
+
+    def _handle_roadmap_draft_remove(self, project: str, index: int):
+        """DELETE /roadmap/<prefix>/draft/<index> — 取消草案（人审调整动作：节点① 取消=不再执行）。"""
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        from server.board import roadmap as _rm
+
+        _result = _rm.remove_draft(project, index)
+        if "error" in _result:
+            self._send_json(_result, 400)
+            return
+        self._roadmap_git_commit(project, f"roadmap({project}): 取消草案 {_result.get('removed', '')}")
+        self._send_json(_result)
 
     def _handle_cards_get(self):
         """GET /cards?project=&state=&page=&page_size="""
@@ -2567,25 +2649,29 @@ class _APIHandler(BaseHTTPRequestHandler):
         return candidates[0] if candidates else None
 
     def _handle_task_transition(self, task_id: str):
-        """POST /tasks/{id}/transition → 运行时重新分派（主树卡文件只读）。
+        """POST /tasks/{id}/transition → 卡级动作统一入口（人审调整动作统一化 2026-08-14）。
 
-        仅支持「打回/待分派 → 待分派」：写运行时 sidecar
-        （state=待分派、retry_count=0、redispatch=ts），engine 每轮读取视同重派。
+        两种动作：
+        1. 重新分派（打回/待分派 → 待分派）：写运行时 sidecar（state=待分派、
+           retry_count=0、redispatch=ts），engine 每轮读取视同重派。主树卡文件只读。
+        2. 作废（待分派/执行中/已回写/打回 → 作废）：终态，写卡文件
+           `状态：作废（原因）` + git commit/push + 清 sidecar（与「已关闭」同级权威）。
+        body: {status: "待分派"|"作废", reason?: string}
         """
         body = self._read_body()
         if not body:
             self._send_json({"error": "request body required"}, 400)
             return
 
-        target_state_str = body.get("status") or body.get("state")
-        if (target_state_str or "").strip().lower() not in ("todo", "待分派"):
-            self._send_json({"error": "运行时仅支持重新分派（打回 → 待分派）"}, 400)
+        target_state_str = (body.get("status") or body.get("state") or "").strip()
+        normalized = target_state_str.lower()
+        is_redispatch = normalized in ("todo", "待分派")
+        is_void = normalized in ("void", "作废")
+        if not (is_redispatch or is_void):
+            self._send_json({"error": "transition 仅支持「待分派」(重派) /「作废」(终态)"}, 400)
             return
 
         log_dir = _executor_log_dir()
-        if log_dir is None:
-            self._send_json({"error": "EXECUTOR_LOG_DIR 未配置，无法写运行时状态"}, 500)
-            return
 
         item = next((i for i in _load_board_items() if i.id == task_id), None)
         if item is None:
@@ -2593,6 +2679,64 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
 
         cur = base_state(item.state)
+
+        # ── 作废（终态，写卡文件）──
+        if is_void:
+            reason = (body.get("reason") or "").strip()
+            if not reason:
+                self._send_json({"error": "作废必须附原因（reason）"}, 400)
+                return
+            # 来源状态校验：待分派/执行中/已回写/打回 可作废（已关闭/已作废终态不可）
+            if cur not in ("待分派", "执行中", "已回写", "打回"):
+                self._send_json(
+                    {"error": f"当前状态「{item.state}」不可作废（仅 待分派/执行中/已回写/打回）"},
+                    400,
+                )
+                return
+
+            # 定位卡文件：docs/dispatch/<prefix>/<task_id>-<slug>.md（含根目录旧 T 卡）
+            card_path = None
+            for p in _DISPATCH_DIR.rglob(f"{task_id}-*.md"):
+                if "archive" not in p.as_posix():
+                    card_path = p
+                    break
+            if card_path is None:
+                self._send_json({"error": f"未找到卡文件: {task_id}"}, 404)
+                return
+
+            # 写卡文件 `状态：作废（原因）`（复用 engine store 的状态段替换）
+            from server.engine.store import _replace_state_in_metadata
+
+            try:
+                text = card_path.read_text(encoding="utf-8")
+                new_text = _replace_state_in_metadata(
+                    text, f"作废（{reason[:40]}）"
+                )
+            except ValueError as exc:
+                self._send_json({"error": f"卡头无状态段: {exc}"}, 500)
+                return
+            card_path.write_text(new_text, encoding="utf-8")
+
+            # git commit + push（与 roadmap 落 git 同规则）
+            self._card_git_commit(card_path, f"cards: {task_id} 作废（人审取消）")
+
+            # 清运行时 sidecar（终态权威 = 卡文件）
+            if log_dir is not None:
+                try:
+                    from server.engine.runtime_state import clear_card_state
+
+                    clear_card_state(log_dir, task_id)
+                except Exception:
+                    logger.exception("作废清 sidecar 失败（不阻断）")
+
+            self._send_json({"ok": True, "id": task_id, "from": cur, "to": "作废", "reason": reason})
+            return
+
+        # ── 重新分派（打回/待分派 → 待分派，运行时 sidecar）──
+        if log_dir is None:
+            self._send_json({"error": "EXECUTOR_LOG_DIR 未配置，无法写运行时状态"}, 500)
+            return
+
         if cur not in ("打回", "待分派"):
             self._send_json(
                 {"error": f"当前状态「{item.state}」不可重新分派（仅打回/待分派）"},
@@ -3202,10 +3346,15 @@ class _APIHandler(BaseHTTPRequestHandler):
         if len(segs) == 3 and segs[1] == "milestone":
             self._handle_roadmap_milestone_update(segs[0], segs[2])
             return
+        # 人审调整动作统一化：PUT /roadmap/<prefix>/draft/<index> — 修改草案
+        if len(segs) == 3 and segs[1] == "draft" and segs[2].isdigit():
+            self._handle_roadmap_draft_edit(segs[0], int(segs[2]))
+            return
         self._send_404()
 
     def do_DELETE(self):
-        """DELETE /projects/<project>/threads/<thread>：删除会话（仅会话存储）。"""
+        """DELETE /projects/<project>/threads/<thread>：删除会话（仅会话存储）。
+        DELETE /roadmap/<prefix>/draft/<index>：取消草案（人审调整动作统一化）。"""
         if not self._check_auth():
             return
         path = self.path.rstrip("/").split("?")[0]
@@ -3216,6 +3365,14 @@ class _APIHandler(BaseHTTPRequestHandler):
             # 同步清内存中的该会话历史（长轮询/断连引用一并释放）
             _thread_conversations.pop(thread_id, None)
             self._send_json({"ok": True})
+            return
+        # 人审调整动作统一化：DELETE /roadmap/<prefix>/draft/<index> — 取消草案
+        rest = path[len("/roadmap/") :].strip("/") if path.startswith("/roadmap/") else ""
+        segs = rest.split("/") if rest else []
+        if len(segs) == 3 and segs[1] == "draft" and segs[2].isdigit():
+            self._handle_roadmap_draft_remove(segs[0], int(segs[2]))
+            return
+        self._send_404()
 
     def _proxy_chat_stream(self, bridge: str, message: str, thread_id: str, project: str) -> None:
         """转发 POST /chat 到 M1 对话桥，SSE 流式透传。"""

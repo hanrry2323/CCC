@@ -494,8 +494,22 @@ function bindDetailEvents(path) {
 // ── actions ──
 
 async function doUpdateStatus(path, status) {
+  // 人审调整动作统一化：作废方案是终态 + 级联作废关联卡 → 弹确认
+  if (status === '作废') {
+    const plan = _plans.find((p) => p.path === path);
+    const cardCount = (plan && plan.cards)
+      ? String(plan.cards).split(',').map((s) => s.trim()).filter(Boolean).length
+      : 0;
+    const confirmText = cardCount > 0
+      ? `确定作废该方案？其 ${cardCount} 张关联卡将一并作废（不可逆）。`
+      : '确定作废该方案？（不可逆）';
+    if (!window.confirm(confirmText)) return;
+  }
   try {
-    await apiPost('/plans/update', { path, status });
+    const result = await apiPost('/plans/update', { path, status });
+    if (result && result.cascaded && result.cascaded.length) {
+      window.alert(`已作废方案，级联作废 ${result.cascaded.length} 张卡：${result.cascaded.join(', ')}`);
+    }
     loadPlans();
   } catch (e) {
     alert('状态更新失败: ' + e.message);
