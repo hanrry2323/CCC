@@ -1,6 +1,6 @@
 # 任务卡 mx028 · RSS feed validation before add（OpenCode 执行）
 
-> 关联：mx-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：mx · 日期：2026-08-09
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-09
 
 ## 目标
 
