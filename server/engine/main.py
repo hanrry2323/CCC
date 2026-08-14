@@ -1547,6 +1547,27 @@ def _audit_rejection_reason(text: str) -> str | None:
     return None
 
 
+def _audit_severity(text: str) -> str:
+    """解析审计输出里的 severity 标记（机审 v4 三级：轻/中/重）。
+
+    机审 v4（qx-map 0538bef）：审计模型按 skill 三维度打分判定 severity，
+    并在输出写约定标记 `severity：轻|中|重` / `机审等级：轻|中|重`，
+    或在不通过结论带 `（重度/中度/轻度：原因）` 变体。默认「中」。
+    """
+    if not text:
+        return "中"
+    body = _audit_output_body(text)
+    # 显式标记优先：severity：X / 机审等级：X
+    m = re.search(r"(?:severity|机审等级|审计等级)\s*[:：]\s*(轻|中|重)", body)
+    if m:
+        return m.group(1)
+    # 变体：不通过结论 `（重度/中度/轻度：原因）`
+    m = re.search(r"（\s*(轻|中|重)度\s*[:：]", body)
+    if m:
+        return m.group(1)
+    return "中"
+
+
 class MachineAuditPrompt:
     """机审/验收席系统 Prompt 构造器。
 
@@ -1566,6 +1587,7 @@ class MachineAuditPrompt:
             "- 只做原则性 Code Review（包括代码实现质量、边界安全、架构隐患、人工批注落实等）；\n"
             f"- 发现可修问题 → 在 worktree {self.worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
             "- 原则性红线问题（如范围系统性越界、核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出。\n"
+            "- 不通过结论必须标注 severity（机审 v4 三级）：可快速修复=「severity：轻」/ 一般=「severity：中」/ 红线高风险=「severity：重」。\n"
             "⚠️ 打回时必须在最后真正执行非零退出（exit 1）：引擎按 audit 文本「机审：不通过」判定业务打回，"
             "但仅靠文字声明而 exit 0 会造成收单歧义。\n"
             f"通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {self.card_path}，engine 会提交推送）。"
@@ -3028,9 +3050,50 @@ def _run_audit_worker(
                 clear_card_state(log_dir, work.id)
                 outcome["failed"] = 1
             elif business:
-                _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
-                outcome["failed"] = 1
-                logger.warning("机审不通过（业务）: work=%s → %s", work.id, work.state.value)
+                # 机审 v4 三级分流（2026-08-14 接入引擎）：读审计 severity 决策
+                # 轻→独立轻修复轮（不占重试预算，超限升级中度）；中→现状重试预算；重→直接打回
+                severity = _audit_severity(audit_text)
+                if severity == "重":
+                    work.transition(State.REJECTED, problems=reasons)
+                    store.save_work(work)
+                    from server.engine.runtime_state import clear_card_state
+
+                    clear_card_state(log_dir, work.id)
+                    outcome["failed"] = 1
+                    logger.warning(
+                        "机审重度不通过直接打回（不重试）: work=%s reasons=%s", work.id, reasons[:2]
+                    )
+                elif severity == "轻":
+                    # 独立轻修复轮：sidecar 记 light_fix_count，超上限升级中度（避免无限修）
+                    from server.engine.runtime_state import read_card_state, write_card_state
+
+                    rt = read_card_state(log_dir).get(work.id) or {}
+                    light_fix = int(rt.get("light_fix_count") or 0)
+                    try:
+                        light_max = int(cfg.get("AUDIT_LIGHT_FIX_MAX") or 2)
+                    except (TypeError, ValueError):
+                        light_max = 2
+                    if light_fix >= light_max:
+                        _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
+                        outcome["failed"] = 1
+                        logger.warning(
+                            "轻修复轮超限(%d≥%d)升级中度处理: work=%s", light_fix, light_max, work.id
+                        )
+                    else:
+                        work.transition(State.TODO, problems=reasons)
+                        store.save_work(work)
+                        write_card_state(
+                            log_dir, work.id, state="待分派",
+                            light_fix_count=light_fix + 1,
+                        )
+                        outcome["failed"] = 1
+                        logger.warning(
+                            "机审轻度不通过→轻修复轮(%d/%d): work=%s", light_fix + 1, light_max, work.id
+                        )
+                else:
+                    _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
+                    outcome["failed"] = 1
+                    logger.warning("机审不通过（业务/中度）: work=%s → %s", work.id, work.state.value)
             elif retryable or _is_persistence_failure(reasons) or is_mech:
                 if hint and hint not in reasons[0]:
                     reasons = [hint, *reasons]

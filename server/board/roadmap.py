@@ -37,6 +37,7 @@ class Draft:
     title: str  # 草案标题（一行）
     project: str = ""  # 所属项目前缀
     created: str = ""  # 创建日期
+    source: str = ""  # 来源（老板意图/Loop巡查/外部反馈；2026-08-14 补齐 rebuild-design 字段）
 
 
 @dataclass
@@ -51,6 +52,7 @@ class Milestone:
     status: str = "待启动"  # 待启动 | 进行中 | 已完成（草案→待启动，2026-08-14 对齐 rebuild-design）
     linked_plans: list[str] = field(default_factory=list)  # 关联方案 ID
     description: str = ""  # 描述
+    target_date: str = ""  # 目标日期（可选，YYYY-MM-DD；2026-08-14 补齐 rebuild-design 字段）
 
 
 # ── 解析 ──
@@ -95,6 +97,7 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     "status": "待启动",
                     "linked_plans": [],
                     "description": "",
+                    "target_date": "",
                 }
             elif current_ms is not None:
                 stripped = line.strip()
@@ -105,6 +108,8 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     current_ms["linked_plans"] = [p.strip() for p in plans.split(",") if p.strip()]
                 elif stripped.startswith("- 描述："):
                     current_ms["description"] = stripped[4:].strip().lstrip("：").strip()
+                elif stripped.startswith("- 目标日期："):
+                    current_ms["target_date"] = stripped[7:].strip().lstrip("：").strip()
                 elif line.startswith("  ") and current_ms["description"] and stripped.strip():
                     # 多行描述续行：以 >=2 空格缩进且非空行 → 追加
                     current_ms["description"] += " " + stripped
@@ -113,8 +118,26 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
         result["milestones"].append(Milestone(**current_ms))
 
     for draft_line in drafts_section.strip().split("\n"):
-        if draft_line.strip():
-            result["drafts"].append(Draft(title=draft_line.strip(), project=project))
+        raw = draft_line.strip()
+        if not raw:
+            continue
+        # 增强格式软解析：`[来源] 标题 · 日期：YYYY-MM-DD`（2026-08-14 补来源标记）
+        source = ""
+        created = ""
+        _line = raw
+        _m = re.match(r"^\[([^\]]+)\]\s*(.+)$", _line)
+        if _m:
+            source = _m.group(1).strip()
+            _line = _m.group(2).strip()
+        _m_date = re.search(r"·\s*日期[:：]\s*(\d{4}-\d{2}-\d{2})", _line)
+        if _m_date:
+            created = _m_date.group(1)
+            _line = _line[: _m_date.start()].rstrip(" ·").strip()
+        if not _line:
+            _line = raw
+        result["drafts"].append(
+            Draft(title=_line.strip(), project=project, created=created, source=source)
+        )
 
     return result
 
@@ -211,7 +234,12 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
         ]
         if drafts:
             for d in drafts:
-                lines.append(f"- {d.title}")
+                _line = f"- {d.title}"
+                if d.source:
+                    _line = f"- [{d.source}] {d.title}"
+                if d.created:
+                    _line += f" · 日期：{d.created}"
+                lines.append(_line)
         else:
             lines.append("无。")
         lines.append("")
@@ -225,6 +253,8 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
                     lines.append(f"- 关联方案：{', '.join(ms.linked_plans)}")
                 if ms.description:
                     lines.append(f"- 描述：{ms.description}")
+                if ms.target_date:
+                    lines.append(f"- 目标日期：{ms.target_date}")
                 lines.append("")
         else:
             lines.append("无。")
@@ -287,6 +317,7 @@ def create_milestone(
     status: str = "待启动",
     linked_plans: list[str] | None = None,
     description: str = "",
+    target_date: str = "",
 ) -> dict[str, Any]:
     """创建里程碑。"""
     path = _roadmap_path(project)
@@ -307,6 +338,7 @@ def create_milestone(
         status=status,
         linked_plans=linked_plans or [],
         description=description,
+        target_date=target_date,
     )
     data["milestones"].append(ms)
     _write_roadmap(project, data["drafts"], data["milestones"])
@@ -320,6 +352,7 @@ def update_milestone(
     status: str | None = None,
     linked_plans: list[str] | None = None,
     description: str | None = None,
+    target_date: str | None = None,
 ) -> dict[str, Any]:
     """更新里程碑字段。"""
     path = _roadmap_path(project)
@@ -344,6 +377,8 @@ def update_milestone(
         found.linked_plans = linked_plans
     if description is not None:
         found.description = description
+    if target_date is not None:
+        found.target_date = target_date
 
     # P1#13：字段变更后按实际完成率重算状态（此前追加 linked_plans 后状态永久失真，
     # 直到下一次 update_plan 触发 sync 才有巡检窗口期）
@@ -429,8 +464,10 @@ def link_plan_to_milestone(
 # ── 草案 CRUD ──
 
 
-def create_draft(project: str, title: str) -> dict[str, Any]:
-    """添加草案到草案池。"""
+def create_draft(
+    project: str, title: str, *, source: str = "", created: str = ""
+) -> dict[str, Any]:
+    """添加草案到草案池（2026-08-14 补来源标记）。"""
     path = _roadmap_path(project)
     if not path.is_file():
         return {"error": f"项目 {project} 尚无 roadmap.md"}
@@ -443,7 +480,11 @@ def create_draft(project: str, title: str) -> dict[str, Any]:
         if d.title == title:
             return {"error": f"草案 {title} 已存在"}
 
-    data["drafts"].append(Draft(title=title, project=project))
+    if not created:
+        from datetime import date
+
+        created = date.today().isoformat()
+    data["drafts"].append(Draft(title=title, project=project, created=created, source=source))
     _write_roadmap(project, data["drafts"], data["milestones"])
     return {"ok": True, "draft": title}
 
@@ -534,7 +575,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
     data["drafts"].pop(index)
     _write_roadmap(project, data["drafts"], data["milestones"])
 
-    # 调用 plans.py create_plan 创建方案
+    # 调用 plans.py create_plan 创建方案（节点① 老板确认 → approved=True 打批准标签）
     from server.board.plans import create_plan as _create_plan
 
     repo_root = _repo_root()
@@ -545,6 +586,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
         content=f"## 目标\n\n从草案「{draft_title}」升级而来。\n\n## 验收标准\n\n- [ ] 待定义\n",
         author=author,
         tool=tool,
+        approved=True,
     )
 
     if "error" in result:

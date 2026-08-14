@@ -380,6 +380,10 @@ function _showMilestoneForm(project, milestone) {
         <input type="text" id="rm2-mile-desc" class="plans-form-input" value="${esc(milestone ? milestone.description || '' : '')}">
       </div>
       <div class="plans-form-field">
+        <label for="rm2-mile-date">目标日期（可选，YYYY-MM-DD）</label>
+        <input type="date" id="rm2-mile-date" class="plans-form-input" value="${esc(milestone && milestone.target_date ? milestone.target_date : '')}">
+      </div>
+      <div class="plans-form-field">
         <label for="rm2-mile-plans">关联方案（逗号分隔 plan ID，如 ccc-plan-001, ccc-plan-002）</label>
         <input type="text" id="rm2-mile-plans" class="plans-form-input" value="${esc(milestone ? (milestone.linked_plans || []).join(', ') : '')}">
       </div>
@@ -397,6 +401,7 @@ function _showMilestoneForm(project, milestone) {
     const title = overlay.querySelector('#rm2-mile-title')?.value.trim();
     const status = overlay.querySelector('#rm2-mile-status')?.value;
     const desc = overlay.querySelector('#rm2-mile-desc')?.value.trim();
+    const targetDate = overlay.querySelector('#rm2-mile-date')?.value.trim() || '';
     const plans = (overlay.querySelector('#rm2-mile-plans')?.value || '').split(/[,，\s]+/).filter(Boolean);
     const btn = overlay.querySelector('#rm2-mile-save');
     btn.disabled = true;
@@ -404,10 +409,10 @@ function _showMilestoneForm(project, milestone) {
     try {
       let result;
       if (isEdit) {
-        result = await apiPut(`/roadmap/${encodeURIComponent(project)}/milestone/${encodeURIComponent(milestone.title)}`, { status, description: desc, linked_plans: plans });
+        result = await apiPut(`/roadmap/${encodeURIComponent(project)}/milestone/${encodeURIComponent(milestone.title)}`, { status, description: desc, linked_plans: plans, target_date: targetDate });
       } else {
         if (!title) { alert('里程碑标题不能为空'); btn.disabled = false; btn.textContent = '创建'; return; }
-        result = await apiPost(`/roadmap/${encodeURIComponent(project)}/milestone`, { title, status, description: desc, linked_plans: plans });
+        result = await apiPost(`/roadmap/${encodeURIComponent(project)}/milestone`, { title, status, description: desc, linked_plans: plans, target_date: targetDate });
       }
       overlay.style.display = 'none';
       if (result.ok) {

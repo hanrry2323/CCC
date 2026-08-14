@@ -2297,13 +2297,17 @@ class _APIHandler(BaseHTTPRequestHandler):
             _list.append(
                 {
                     "project": _p,
-                    "drafts": [_d.title for _d in _parsed.get("drafts", [])],
+                    "drafts": [
+                        {"title": _d.title, "source": _d.source, "created": _d.created}
+                        for _d in _parsed.get("drafts", [])
+                    ],
                     "milestones": [
                         {
                             "title": _m.title,
                             "status": _m.status,
                             "linked_plans": _rm.active_linked_plans(_p, list(_m.linked_plans)),
                             "description": _m.description,
+                            "target_date": _m.target_date,
                         }
                         for _m in _parsed.get("milestones", [])
                     ],
@@ -2326,13 +2330,17 @@ class _APIHandler(BaseHTTPRequestHandler):
         self._send_json(
             {
                 "project": project,
-                "drafts": [_d.title for _d in _parsed.get("drafts", [])],
+                "drafts": [
+                    {"title": _d.title, "source": _d.source, "created": _d.created}
+                    for _d in _parsed.get("drafts", [])
+                ],
                 "milestones": [
                     {
                         "title": _m.title,
                         "status": _m.status,
                         "linked_plans": _rm.active_linked_plans(project, list(_m.linked_plans)),
                         "description": _m.description,
+                        "target_date": _m.target_date,
                     }
                     for _m in _parsed.get("milestones", [])
                 ],
@@ -2361,6 +2369,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             status=(body.get("status") or "待启动").strip(),
             linked_plans=body.get("linked_plans"),
             description=(body.get("description") or "").strip(),
+            target_date=(body.get("target_date") or "").strip(),
         )
         if "error" in _result:
             self._send_json(_result, 400)
@@ -2385,6 +2394,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             status=body.get("status"),
             linked_plans=body.get("linked_plans"),
             description=body.get("description"),
+            target_date=(body.get("target_date") or "").strip(),
         )
         if "error" in _result:
             self._send_json(_result, 400)
@@ -2424,7 +2434,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         from server.board import roadmap as _rm
 
-        _result = _rm.create_draft(project, title)
+        source = str(body.get("source") or "").strip()
+        _result = _rm.create_draft(project, title, source=source)
         if "error" in _result:
             self._send_json(_result, 400)
             return
@@ -3281,13 +3292,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                     _roadmaps.append(
                         {
                             "project": _p,
-                            "drafts": [_d.title for _d in _parsed.get("drafts", [])],
+                            "drafts": [
+                                {"title": _d.title, "source": _d.source, "created": _d.created}
+                                for _d in _parsed.get("drafts", [])
+                            ],
                             "milestones": [
                                 {
                                     "title": _m.title,
                                     "status": _m.status,
                                     "linked_plans": _roadmap_mod.active_linked_plans(_p, list(_m.linked_plans)),
                                     "description": _m.description,
+                                    "target_date": _m.target_date,
                                 }
                                 for _m in _parsed.get("milestones", [])
                             ],

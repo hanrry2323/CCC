@@ -360,6 +360,7 @@ def create_plan(
     author: str,
     tool: str,
     milestone: str | None = None,
+    approved: bool = False,
 ) -> dict[str, Any]:
     """创建新方案文件。
 
@@ -394,11 +395,13 @@ def create_plan(
         plan_id = f"{project}-plan-{num}"
 
         # 构建完整方案文件
+        # 批准标签仅在 approved=True（草案→方案，节点① 老板确认）时写入；
+        # 手动建方案（/plans/create）不自动打「老板确认」标签（2026-08-14 修复误标）。
+        _approval_line = f"> 批准：老板确认方案 · {today}\n" if approved else ""
         plan_content = f"""# 方案 · {title}
 
 > 项目：{project} · 编号：{plan_id} · 状态：已确认 · 作者：{author} · 工具：{tool}
-> 批准：老板确认方案 · {today}
-> 创建：{today} · 更新：{today}
+{_approval_line}> 创建：{today} · 更新：{today}
 > 关联卡：无
 > 关联方案：无
 > 里程碑：{milestone or "无"}

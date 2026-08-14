@@ -291,6 +291,27 @@ class TestMilestoneCRUD:
         result = update_milestone("clw", "不存在的里程碑", status="已完成")
         assert "error" in result
 
+    def test_milestone_target_date_roundtrip(self) -> None:
+        """2026-08-14 加固：里程碑 target_date 可写可读。"""
+        create_milestone("clw", "带日期里程碑", status="待启动", target_date="2026-10-01")
+        found = next(m for m in list_milestones("clw") if m.title == "带日期里程碑")
+        assert found.target_date == "2026-10-01"
+        # 更新日期
+        update_milestone("clw", "带日期里程碑", target_date="2026-11-01")
+        found = next(m for m in list_milestones("clw") if m.title == "带日期里程碑")
+        assert found.target_date == "2026-11-01"
+        assert "目标日期：2026-11-01" in self.roadmap_path.read_text(encoding="utf-8")
+
+    def test_draft_source_roundtrip(self) -> None:
+        """2026-08-14 加固：草案 source/created 标记可写可读。"""
+        create_draft("clw", "老板意向草案", source="老板意图")
+        found = list_drafts("clw")[0]
+        assert found.title == "老板意向草案"
+        assert found.source == "老板意图"
+        assert found.created  # 非空（默认今天）
+        # 写入格式含来源标记
+        assert "[老板意图]" in self.roadmap_path.read_text(encoding="utf-8")
+
     def test_delete_milestone_ok(self) -> None:
         """人审统一化：DELETE 里程碑（仅无关联方案）。"""
         create_milestone("clw", "可删除里程碑", status="待启动", linked_plans=[])

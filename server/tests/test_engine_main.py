@@ -1658,6 +1658,28 @@ class TestAuditRejectionExitZero:
         assert _audit_rejection_reason("") is None
         assert _audit_rejection_reason("机审通过\n") is None
 
+    def test_audit_severity_explicit_marker(self) -> None:
+        """机审 v4：severity 显式标记解析（轻/中/重）。"""
+        from server.engine.main import _audit_severity
+
+        assert _audit_severity("...\n机审：不通过\nseverity：轻\n") == "轻"
+        assert _audit_severity("...\n机审等级：中\n") == "中"
+        assert _audit_severity("...\n审计等级：重\n") == "重"
+
+    def test_audit_severity_variant(self) -> None:
+        """机审 v4：不通过结论带（重度/中度/轻度：原因）变体。"""
+        from server.engine.main import _audit_severity
+
+        assert _audit_severity("机审：不通过（重度：范围系统性越界）\n") == "重"
+        assert _audit_severity("机审：不通过（轻度：缺一行注释）\n") == "轻"
+
+    def test_audit_severity_default(self) -> None:
+        """无标记 → 默认中度。"""
+        from server.engine.main import _audit_severity
+
+        assert _audit_severity("机审：不通过\n") == "中"
+        assert _audit_severity("") == "中"
+
     def test_audit_pass_not_fooled_by_prompt_wording(self) -> None:
         """clw009 回归：prompt 含「机审：不通过（具体原因）」字样，但 agent 实际通过。
 
