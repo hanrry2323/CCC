@@ -1084,15 +1084,23 @@ class TestParallelAndRelayGuard:
 
         deadline = time.time() + 15
         s = None
+        saw_audit = False
+        saw_exec = False
+        # 机审 e1 与执行 e2 是「独立并行」的两件事，可能落相邻两轮；
+        # 断言改为「窗口期内两者都派发」（此前要求同一轮同时成立 → 时序 flaky）。
         while time.time() < deadline:
             time.sleep(0.15)
             s = run_once(reg, store, cfg, wait=False)
             total_audit_collected += s["audit_collected"]
-            if s["audit_dispatched"] == 1 and s["dispatched"] == 1:
+            if s["audit_dispatched"] == 1:
+                saw_audit = True
+            if s["dispatched"] == 1:
+                saw_exec = True
+            if saw_audit and saw_exec:
                 break
-        assert s is not None, "未等到机审/执行同轮派发"
-        assert s["audit_dispatched"] == 1, f"机审应独立派发: {s}"
-        assert s["dispatched"] == 1, f"执行槽应同时派第二张: {s}"
+        assert s is not None, "未等到机审/执行派发"
+        assert saw_audit, f"机审应独立派发（未看到机审派发）: {s}"
+        assert saw_exec, f"执行槽应同时派第二张（未看到第二张执行派发）: {s}"
 
         deadline2 = time.time() + 15
         d = None
