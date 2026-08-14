@@ -3,7 +3,7 @@
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
 > **⚠ 历史叙事 · 非现行架构（2026-08-05 再确认）** — 下文大量口径（Hub :7777、Desktop 主入口、sidecar、OpenCode 写码槽、`control.json`、能力包）属于 **Hub 时期**，已被 v0.70 重构取代。  
-> **现行权威** = [`INDEX.md`](INDEX.md) §0 + [`../CURSOR.md`](../CURSOR.md) + [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) + [`product/dev-channel.md`](product/dev-channel.md)：薄驱动 Engine + 文档流转 + 看板/HTTP + **2017 单端 :7788** + **Claude Code / OpenCode 执行体**（HTTP 看板为主路径；Desktop 暂缓）。  
+> **现行权威** = [`INDEX.md`](INDEX.md) §0 + [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) + [`product/dev-channel.md`](product/dev-channel.md)：薄驱动 Engine + 文档流转 + 看板/HTTP + **2017 单端 :7788** + **Claude Code / OpenCode 执行体**（HTTP 看板为主路径；Desktop 暂缓）。  
 > 架构概览：[`architecture.md`](architecture.md)。**完整重写待专门任务卡**；在此之前禁止用本文旧段指导开发/运维。
 
 > ~~产品叙事 SSOT~~ → 叙事冲突时以 **INDEX §0 / STARTUP-BRIEF / CURSOR** 为准（本文降级为史）。  

@@ -34,7 +34,7 @@
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（以 VERSION 文件为准） |
 | 2 | [`ENGINEERING-CANON.md`](ENGINEERING-CANON.md) | 工程宪法（原则 + 验收体系 + 架构根因修复） |
 | 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；优先 `plan-to-cards`；单卡 `new-card.sh` |
-| 2b1 | `AGENTS.md` · `CLAUDE.md` · `CURSOR.md` | **通用双入口**（工具无关，零硬编码）；`CURSOR.md` 仅工具桥接 |
+| 2b1 | `AGENTS.md` · `CLAUDE.md` | **通用双入口**（工具无关，零硬编码） |
 | 2b1p | [`projects/_template/plan-template.md`](projects/_template/plan-template.md) · [`DOC-PROTOCOL.md §2.7`](DOC-PROTOCOL.md) | **方案/计划模板 + 编号规则**：路径 `docs/projects/<prefix>/plans/<NNN>-<slug>.md`；校验 `scripts/validate-plans.sh` |
 | 2b2a | [`product/card-hub-manual.md`](product/card-hub-manual.md) | **制卡发卡操作手册**：任何工具加载本仓的自举路径（门禁 `scripts/check-entry-docs.py`） |
 | 2b2 | [`product/north-star-slice.md`](product/north-star-slice.md) | **北星竖切**：ccc-plan → 入队 → ready_for_merge → 合入批准 |
@@ -94,7 +94,7 @@
 | [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | **不是** CCC 产品北星 |
 | [`archive/next-upgrade-roadmap.md`](archive/next-upgrade-roadmap.md) | **过时** | v0.21→v0.23 |
 
-**INDEX / 口头「下一步」若指向 Hub / hub-shell / 双轨旧文，一律改指 §0 + `roadmap.md` 当前方向 + `CURSOR.md`。**
+**INDEX / 口头「下一步」若指向 Hub / hub-shell / 双轨旧文，一律改指 §0 + `roadmap.md` 当前方向（CURSOR.md 已随 Cursor 弃用移除）。**
 
 ---
 

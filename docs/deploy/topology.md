@@ -1,7 +1,7 @@
 # CCC 部署拓扑 — 现行（2026-08-06）
 
 > **旧文已作废。** Hub `:7777` / Board `:7775` / M1 sidecar `:7788` / hub-tunnel `:17777` 全部退役。  
-> 权威：`docs/INDEX.md` §0 · `CURSOR.md` · `.ccc/infrastructure.md` · `location-truth.mdc`
+> 权威：`docs/INDEX.md` §0 · `.ccc/infrastructure.md` · `location-truth.mdc`（CURSOR.md 已随 Cursor 弃用移除）
 
 ## 一句话
 
