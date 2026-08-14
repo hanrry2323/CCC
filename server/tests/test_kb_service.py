@@ -129,6 +129,8 @@ class TestServiceSearch:
     def test_search_empty(self, kb_root: Path, index_dir: Path, monkeypatch) -> None:
         monkeypatch.setattr(service, "default_knowledge_root", lambda: kb_root)
         monkeypatch.setattr(service, "default_index_dir", lambda: index_dir)
+        # 2026-08-14：空查询/无命中检索测的是本地 BM25，禁用 HP 语义补充
+        monkeypatch.setenv("CCC_KB_HP_FALLBACK", "0")
         assert service.search("", index_dir=str(index_dir)) == []
         assert service.search("ZZZZNOTEXIST", index_dir=str(index_dir)) == []
 

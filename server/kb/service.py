@@ -133,12 +133,17 @@ def search(
     调 hp-kb knowledge_search 语义补充，结果标记 ``source: local|hp``。
     hp-kb 不可达 → 静默降级为纯本地，不抛异常、不超时（客户端 8s 上限）。
     """
+    # 空查询直接返回 []（本地 BM25 空查询会返回全量，hp 空查询也返回 top-k → 均无意义）
+    if not (query or "").strip():
+        return []
+
     ensure_index(index_dir)
     local = _search_engine.search(
         query, domain=domain, top_k=top_k, index_dir=_resolve_index(index_dir)
     )
     results = [dict(r, source="local") for r in local]
 
+    # 本地无结果时 HP 语义补充（hp-kb 不可达静默降级）
     if _hp_fallback_enabled() and _should_supplement(local, top_k):
         hp_rows = hp_client.knowledge_search(query, top_k=top_k)
         if hp_rows:

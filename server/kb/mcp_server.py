@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any, Callable
 
@@ -229,9 +230,13 @@ def run_server() -> None:
 def _selftest() -> int:
     """自测：启动→索引就绪→调用三工具→健康检查→退出。
 
+    2026-08-14：自测校验的是**本地 KB**（索引/检索），显式关闭 HP 语义补充
+    （CCC_KB_HP_FALLBACK=0），否则 hp-kb 可达时空查询也返回结果，空结果检查失真。
+
     Returns:
         0 成功，非零失败
     """
+    os.environ["CCC_KB_HP_FALLBACK"] = "0"
     # 1. 索引就绪（首次全量，之后增量）
     status = service.ensure_index()
     h = service.health()

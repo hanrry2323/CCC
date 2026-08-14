@@ -254,26 +254,34 @@ def dedup_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 _engine: Bm25Index | None = None
 
 
+_ENGINE_CACHE: dict[str, Bm25Index] = {}
+
+
 def get_engine(index_dir: str) -> Bm25Index:
-    """获取（或初始化）全局 BM25 引擎。
+    """获取（或初始化）BM25 引擎，按 index_dir 缓存。
+
+    2026-08-14 修复：原全局单例 _engine 不分 index_dir——首次建后，跨索引检索
+    读到旧索引（如测试读到 /tmp/kb-ingest）。改按 index_dir 缓存，跨索引互不污染。
 
     k1/b 从环境变量 ``CCC_KB_BM25_K1`` / ``CCC_KB_BM25_B`` 读取（默认 1.2/0.75），
     经 ``reset_engine`` 后生效，支持调参对比。
     """
-    global _engine
-    if _engine is not None:
-        return _engine
-    _engine = Bm25Index()
+    global _ENGINE_CACHE
+    cached = _ENGINE_CACHE.get(index_dir)
+    if cached is not None:
+        return cached
+    engine = Bm25Index()
     docs = load_index(index_dir)
     if docs:
-        _engine.build(docs)
-    return _engine
+        engine.build(docs)
+    _ENGINE_CACHE[index_dir] = engine
+    return engine
 
 
 def reset_engine() -> None:
-    """重置全局引擎（测试用）。"""
-    global _engine
-    _engine = None
+    """重置全局引擎缓存（测试用）。"""
+    global _ENGINE_CACHE
+    _ENGINE_CACHE = {}
 
 
 def search(
