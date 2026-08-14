@@ -2822,6 +2822,90 @@ class _APIHandler(BaseHTTPRequestHandler):
         )
         self._send_json({"ok": True, "id": task_id, "from": cur, "to": "待分派", "runtime": True})
 
+    def _handle_task_audit(self, task_id: str):
+        """POST /tasks/{id}/audit — 手动机审节点（流程开发阶段·老板手动转发去机审）。
+
+        复用引擎 `_run_machine_audit_after_writeback`（与 `ccc-engine --audit` 同链路）。
+        body: {severity?: "轻"|"中"|"重", force?: bool}
+          - severity：覆盖 v4 判定（重度 → Phase 2 fresh agent 零上下文）
+          - force：已有机审通过证据时强制重审
+        """
+        body = self._read_body() or {}
+        severity = str(body.get("severity") or "").strip()
+        force = bool(body.get("force"))
+        if severity and severity not in ("轻", "中", "重"):
+            self._send_json({"error": "severity 须为 轻/中/重"}, 400)
+            return
+
+        from server.config.loader import load_config_from_env
+        from server.engine.dispatch import load_registry
+        from server.engine.main import _card_machine_audit_passed, _run_machine_audit_after_writeback
+        from server.engine.store import FileBoardStore
+
+        try:
+            cfg = load_config_from_env()
+        except Exception as exc:
+            self._send_json({"error": f"配置加载失败: {exc}"}, 500)
+            return
+        registry_path = cfg.get("EXECUTOR_REGISTRY_PATH", "")
+        if not registry_path:
+            self._send_json({"error": "EXECUTOR_REGISTRY_PATH 未配置"}, 500)
+            return
+        log_dir = _executor_log_dir()
+        if log_dir is None:
+            self._send_json({"error": "EXECUTOR_LOG_DIR 未配置"}, 500)
+            return
+        try:
+            registry = load_registry(registry_path)
+        except Exception as exc:
+            self._send_json({"error": f"注册表加载失败: {exc}"}, 500)
+            return
+        store = FileBoardStore(
+            cfg.get("DISPATCH_DIR") or "docs/dispatch",
+            registry,
+            log_dir=log_dir,
+        )
+        by_id = {w.id: w for w in store.list_work()}
+        work = by_id.get(task_id)
+        if work is None:
+            self._send_json({"error": f"task card not found: {task_id}"}, 404)
+            return
+        if not force and _card_machine_audit_passed(work.card_path):
+            self._send_json(
+                {"ok": True, "id": task_id, "skipped": True, "reason": "已有机审通过证据（force 可强制重审）"}
+            )
+            return
+        timeout = int(
+            cfg.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS")
+            or cfg.get("EXECUTOR_TIMEOUT_SECONDS")
+            or 1800
+        )
+        try:
+            ok, problems = _run_machine_audit_after_writeback(
+                work, registry, cfg, log_dir, timeout, severity=severity or None
+            )
+        except Exception as exc:
+            self._send_json({"error": f"机审拉起失败: {exc}"}, 500)
+            return
+        conclusion = "通过" if ok else "不通过"
+        self._send_json(
+            {"ok": True, "id": task_id, "conclusion": conclusion, "problems": problems, "severity": severity or ""}
+        )
+
+    def _handle_audit_false_positive(self, task_id: str):
+        """POST /tasks/{id}/false-positive — 老板标机审误报（命中率台账回填 hit=False）。
+
+        打回卡被老板判定为误报时调用；回填台账里该卡最近一条未判定记录为未命中。
+        """
+        try:
+            from server.board.audit_ledger import mark_card_hit
+
+            mark_card_hit(task_id, False)
+        except Exception as exc:
+            self._send_json({"error": f"台账回填失败: {exc}"}, 500)
+            return
+        self._send_json({"ok": True, "id": task_id, "marked": "false_positive"})
+
     def _handle_ops_summary(self):
         """GET /ops/summary → OpsSummary 兼容子集（cluster 采集 + board 派生 severity）。
 
@@ -3382,6 +3466,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         elif path.startswith("/tasks/") and path.endswith("/transition"):
             task_id = path[len("/tasks/") : -len("/transition")].strip("/")
             self._handle_task_transition(task_id)
+        elif path.startswith("/tasks/") and path.endswith("/false-positive"):
+            task_id = path[len("/tasks/") : -len("/false-positive")].strip("/")
+            self._handle_audit_false_positive(task_id)
+        elif path.startswith("/tasks/") and path.endswith("/audit"):
+            task_id = path[len("/tasks/") : -len("/audit")].strip("/")
+            self._handle_task_audit(task_id)
         elif path.startswith("/roadmap/"):
             self._dispatch_roadmap_post(path)
         else:

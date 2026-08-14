@@ -138,6 +138,8 @@ function html() {
     </div>
     <div class="btns" style="margin-top:10px">
       <button type="button" class="hub-btn" id="board-rd" style="display:none">重新分派</button>
+      <button type="button" class="hub-btn" id="board-fp" style="display:none">标误报</button>
+      <button type="button" class="hub-btn" id="board-audit" style="display:none">机审</button>
       <button type="button" class="hub-btn" id="board-void" style="display:none">作废</button>
       <button type="button" class="hub-btn" id="board-dclose">关闭</button>
     </div>
@@ -582,6 +584,20 @@ async function showDetail(id) {
       voidBtn.style.display = ['待分派', '执行中', '已回写', '打回'].includes(base) ? 'inline-block' : 'none';
       voidBtn.disabled = false;
     }
+    // 手动机审节点（流程开发阶段）：已回写（机审列）卡可手动转发去机审
+    const auditBtn = _root.querySelector('#board-audit');
+    if (auditBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      auditBtn.style.display = base === '已回写' ? 'inline-block' : 'none';
+      auditBtn.disabled = false;
+    }
+    // 机审命中率台账：打回卡可标「误报」（回填 hit=False）
+    const fpBtn = _root.querySelector('#board-fp');
+    if (fpBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      fpBtn.style.display = base === '打回' ? 'inline-block' : 'none';
+      fpBtn.disabled = false;
+    }
     _root.querySelector('#board-dm').classList.add('open');
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载详情失败', 'error');
@@ -659,6 +675,57 @@ function bind() {
       window.showToast?.(err && err.message ? err.message : '作废失败', 'error');
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  // 机审命中率台账：老板标打回为误报（hit=False）
+  _root.querySelector('#board-fp').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-fp');
+    if (!id || !btn) return;
+    if (!window.confirm(`确定将 ${id} 的机审打回标为「误报」？将回填命中率台账为未命中。`)) return;
+    btn.disabled = true;
+    try {
+      await apiPost('/tasks/' + encodeURIComponent(id) + '/false-positive', {});
+      window.showToast?.(`${id} 已标误报（台账未命中）`, 'success');
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '标记失败', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // 手动机审节点：老板手动把卡转发去机审（流程开发阶段）
+  _root.querySelector('#board-audit').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-audit');
+    if (!id || !btn) return;
+    const severity = window.prompt('机审 severity（留空=v4自动判定；重=fresh独立agent零上下文）：轻/中/重', '');
+    if (severity !== null && severity !== '' && !['轻', '中', '重'].includes(severity)) {
+      window.showToast?.('severity 须为 轻/中/重', 'error');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '机审中…';
+    try {
+      const body = severity ? { severity } : {};
+      const r = await apiPost('/tasks/' + encodeURIComponent(id) + '/audit', body);
+      if (r && r.skipped) {
+        window.showToast?.((r.id || id) + ' 已有机审通过证据（force 可强制重审）', 'info');
+      } else if (r && r.conclusion) {
+        window.showToast?.(`${r.id || id} 机审${r.conclusion}` + (r.problems && r.problems.length ? '：' + r.problems[0] : ''), r.conclusion === '通过' ? 'success' : 'warning');
+      } else {
+        window.showToast?.(r && r.error ? r.error : '机审完成', 'info');
+      }
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '机审失败', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '机审';
     }
   });
 

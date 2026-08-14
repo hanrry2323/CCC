@@ -1251,6 +1251,19 @@ def gather_audit_trends_metrics(dispatch_dir: Path) -> dict[str, Any]:
     }
 
 
+def gather_audit_hit_rate() -> dict[str, Any]:
+    """指标 5：机审命中率台账（机审 v4 · 2026-08-14）。
+
+    读 data/audit/ledger.jsonl，统计 hit 已判定记录的命中比例。
+    """
+    try:
+        from server.board.audit_ledger import hit_rate
+
+        return hit_rate()
+    except Exception:
+        return {"total": 0, "hits": 0, "misses": 0, "hit_rate": None, "error": "ledger 不可读"}
+
+
 def run_playwright_smoke_test(url: str = "http://127.0.0.1:7788") -> dict[str, Any]:
     """Playwright 只读功能巡查：验证 health/config/看板加载状态."""
     try:
@@ -1308,6 +1321,7 @@ def run_observation(dispatch_dir: Path, log_dir: Path, output_file: Path) -> dic
     maint = gather_maintenance_metrics(dispatch_dir)
     lesson = gather_lesson_recirculation_metrics(dispatch_dir)
     audit = gather_audit_trends_metrics(dispatch_dir)
+    audit_hit = gather_audit_hit_rate()
     pw = run_playwright_smoke_test()
     op_enabled = mcp["opencode_mcp_enabled"] or mcp["claude_mcp_enabled"]
     maint_pct = maint["maintenance_coverage_pct"]

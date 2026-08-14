@@ -1938,6 +1938,7 @@ def _dispatch_and_collect(
     entry_override: ExecutorEntry | None = None,
     skip_product_gate: bool = False,
     log_phase: str = "run",
+    fresh: bool = False,
 ) -> tuple[bool, list[str]]:
     """真实派发单个 work + 同步收单。
 
@@ -1945,6 +1946,7 @@ def _dispatch_and_collect(
         entry_override: 指定注册表行（机审复用派发时传入验收席 CLI，避免命中开发模板）。
         skip_product_gate: 机审路径跳过「新 commit+diff」门禁（机审不改业务码）。
         log_phase: ``run`` → ``{id}.log``（覆盖前归档）；``audit`` → ``{id}.audit.log``（不碰开发日志）。
+        fresh: 重度机审零上下文模式（2026-08-14 机审 v4）——build_command 新会话标志 + 审计 prompt 强化。
 
     Returns:
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
@@ -2116,6 +2118,7 @@ def _dispatch_and_collect(
             default_workdir=default_workdir,
             worktree=worktree_path,
             biz_worktree=biz_worktree_path,
+            fresh=fresh,
         )
     except ValueError as exc:
         return False, [f"命令构造失败: {exc}"]
@@ -2148,6 +2151,26 @@ def _dispatch_and_collect(
             len(_card_hint),
             bool(_dyn_role_hint),
         )
+
+    # 机审 v4 强化（2026-08-14）：审计阶段追加三级/就地修复/severity 标记指令。
+    # 修复 MachineAuditPrompt 死代码——真实审计 prompt 由注册表模板+卡提示+skill 拼装，
+    # v4 指令必须在此实际注入审计 agent 才能生效。
+    if (log_phase or "").strip().lower() == "audit" and cmd:
+        _v4_audit_block = (
+            "\n\n---\n## 机审 v4 指令（三级 · 必须遵循）\n"
+            "1. 对抗式找茬：假设有 P0/P1，找具体可复现问题；0 发现须给风险论证。\n"
+            "2. 三级判定 severity：影响面/改动深度/红线邻近各 1-3 分，合计 3-4=轻 5-7=中 8-9=重，"
+            "任一维度高→强制重。\n"
+            "3. 可快速修复的轻问题 → 就地修复并 commit+push（不打回）；原则性红线（业务意图违背/系统性越界）→ 打回。\n"
+            "4. 结论行必须输出 severity 标记（severity：轻/中/重）并明示结论（通过 / 不通过，不通过须附原因）。\n"
+        )
+        if fresh:
+            _v4_audit_block += (
+                "5. 本审计为【重度·异席 fresh 独立 agent】零上下文审查：不沿用任何历史上下文，"
+                "全量多视角独立重算关键口径，完整闭环后方可下结论。\n"
+            )
+        cmd[-1] = cmd[-1] + _v4_audit_block
+        logger.info("机审 v4 指令已注入审计 prompt: work=%s fresh=%s", work.id, fresh)
 
     phase = (log_phase or "run").strip().lower() or "run"
 
@@ -2692,12 +2715,44 @@ def _audit_cli_entry(registry: ExecutorRegistry, acceptor: str) -> ExecutorEntry
     return None
 
 
+def _ledger_record(
+    work: Work,
+    severity: str | None,
+    conclusion: str,
+    reasons: list[str] | None,
+    *,
+    fix_action: str = "",
+    source: str = "engine",
+) -> None:
+    """机审结论落台账（命中率台账 · v4 2026-08-14）；通过 → 回填既往不通过为命中。
+
+    失败不阻断主流程（台账是观测面）。
+    """
+    try:
+        from server.board.audit_ledger import backfill_card_hits, record_audit
+
+        record_audit(
+            getattr(work, "id", "") or "",
+            getattr(work, "id", "") or "",
+            conclusion=conclusion,
+            severity=severity or "中",
+            reasons=reasons or [],
+            fix_action=fix_action,
+            source=source,
+        )
+        if conclusion == "通过":
+            backfill_card_hits(getattr(work, "id", "") or "")
+    except Exception:
+        logger.exception("机审台账写入失败（不阻断）: work=%s", getattr(work, "id", ""))
+
+
 def _run_machine_audit_after_writeback(
     work: Work,
     registry: ExecutorRegistry,
     cfg: dict[str, Any],
     log_dir: Path,
     timeout: int,
+    severity: str | None = None,
 ) -> tuple[bool, list[str]]:
     """机审信封化：结果写进 worktree 分支卡并 commit+push；生产卡只读。
 
@@ -2738,6 +2793,8 @@ def _run_machine_audit_after_writeback(
     if worktree_hint:
         branch = f"codex/{Path(work.card_path).stem.lower()}"
         audited_tip = _worktree_branch_tip(worktree_hint, branch)
+    # 机审 v4 重度：severity=重 → fresh 独立 agent 零上下文（build_command 新会话 + prompt 强化）
+    fresh = severity == "重"
     _claim_running_marker(log_dir, f"{work.id}-audit")
     try:
         ok, problems = _dispatch_and_collect(
@@ -2749,6 +2806,7 @@ def _run_machine_audit_after_writeback(
             entry_override=entry,
             skip_product_gate=True,
             log_phase="audit",
+            fresh=fresh,
         )
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
@@ -2761,10 +2819,12 @@ def _run_machine_audit_after_writeback(
     # 仅凭 exit code 会把「不通过」误判为通过/落盘失败 → 进 infra 冷却死循环（clw009 事故）。
     if _audit_output_indicates_rejection(audit_text):
         rejection = _audit_rejection_reason(audit_text) or "机审：不通过"
+        _ledger_record(work, severity, "不通过", [rejection], fix_action="", source=("manual" if severity else "engine"))
         logger.warning("机审明确不通过（业务，按 audit 文本判定）: work=%s reason=%s", work.id, rejection)
         return False, [rejection]
 
     if not ok and not _audit_output_indicates_pass(audit_text):
+        _ledger_record(work, severity, "不通过", problems or ["机审执行失败"], fix_action="", source=("manual" if severity else "engine"))
         return False, problems or ["机审执行失败"]
 
     evidence = audit_text[-800:]
@@ -2784,7 +2844,9 @@ def _run_machine_audit_after_writeback(
                 work.card_path,
                 work.id,
             ):
+                _ledger_record(work, severity, "不通过", ["机审通过但分支证据未推送"], fix_action="", source="engine")
                 return False, ["机审通过但分支证据未推送（ready 不可见）"]
+            _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if severity else "engine"))
             return True, []
         logger.warning("worktree 卡缺失，回退生产卡落证据: work=%s", work.id)
     if not _append_machine_audit_pass(
@@ -2792,7 +2854,9 @@ def _run_machine_audit_after_writeback(
         source="engine-audit",
         evidence=evidence,
     ):
+        _ledger_record(work, severity, "不通过", ["机审通过但机审区落盘失败"], fix_action="", source="engine")
         return False, ["机审通过但机审区落盘失败"]
+    _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if severity else "engine"))
     return True, []
 
 
