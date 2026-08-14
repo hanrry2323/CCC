@@ -410,7 +410,7 @@ async function openProject(project) {
       btn.addEventListener('click', async () => {
         const proj = btn.dataset.project;
         const index = Number(btn.dataset.index);
-        const oldTitle = btn.closest('.rm2-draft-item')?.querySelector('.rm2-draft-title')?.textContent || '';
+        const oldTitle = btn.closest('.rm2-draft-card')?.querySelector('.rm2-draft-card-title')?.textContent || '';
         const newTitle = window.prompt('修改草案文字：', oldTitle);
         if (newTitle === null || !newTitle.trim()) return;
         try {
