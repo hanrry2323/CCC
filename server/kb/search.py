@@ -249,10 +249,7 @@ def dedup_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return accepted
 
 
-# ── 全局引擎 ──
-
-_engine: Bm25Index | None = None
-
+# ── 全局引擎缓存（按 index_dir） ──
 
 _ENGINE_CACHE: dict[str, Bm25Index] = {}
 
