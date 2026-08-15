@@ -7,7 +7,7 @@
 #
 # 机制：
 #   1. 检查 com.ccc.engine (server.engine.main) 进程是否存在
-#   2. 检查日志 ~/.ccc/logs/engine.stdout.log 的最近心跳修改时间 (mtime < 120s)
+#   2. 检查日志 ~/.ccc/logs/engine.stderr.log 的最近心跳修改时间 (mtime < 120s)（engine 实际心跳写 stderr）
 #   3. 如果以上任何一项异常，触发 kickstart-ccc.sh 并记录动作到 ~/.ccc/logs/watchdog.log
 #
 # 部署说明（如何挂载到 cron 或 launchd，实现 60 秒高频轮询）：
@@ -38,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${HOME}/.ccc/logs"
 mkdir -p "${LOG_DIR}"
 
-HEARTBEAT_LOG="${LOG_DIR}/engine.stdout.log"
+HEARTBEAT_LOG="${LOG_DIR}/engine.stderr.log"
 WATCHDOG_LOG="${LOG_DIR}/watchdog.log"
 
 ENGINE_PNAME="server.engine.main"

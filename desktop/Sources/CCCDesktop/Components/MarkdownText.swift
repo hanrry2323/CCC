@@ -1,360 +1,66 @@
 import SwiftUI
+import Textual
 
-/// 聊天 Markdown：按块/按行渲染，**绝不**走 AttributedString(markdown:)（会吞单换行）。
+/// 聊天 Markdown：换用 Textual 渲染核心，保留公共 API
 struct MarkdownText: View {
     let source: String
     var font: Font = CCCTheme.body
     var foreground: Color = CCCTheme.ink
 
-    /// 缓存 parse 结果，避免每个 SwiftUI body 求值全量重扫
-    @State private var blocks: [Block] = []
-    @State private var parsedSource: String = "\u{0}" // 哨兵：强制首次 parse
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .paragraph(let lines):
-                    VStack(alignment: .leading, spacing: 5) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                            inlineLine(line)
-                        }
+        StructuredText(markdown: Self.preprocessMarkdown(source))
+            .font(font)
+            .foregroundStyle(foreground)
+            .textual.textSelection(.enabled)
+            .textual.structuredTextStyle(.gitHub)
+    }
+
+    private static func preprocessMarkdown(_ text: String) -> String {
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        
+        var result = ""
+        var inCodeBlock = false
+        
+        let lines = normalized.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            var processedLine = line
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if line.hasPrefix("```") {
+                inCodeBlock.toggle()
+            } else if !inCodeBlock {
+                if !trimmed.isEmpty && !line.hasSuffix("  ") && !line.hasSuffix("\\") {
+                    let isBlockElement = trimmed.hasPrefix("#") ||
+                                         trimmed.hasPrefix("- ") ||
+                                         trimmed.hasPrefix("* ") ||
+                                         trimmed.hasPrefix("+ ") ||
+                                         trimmed.hasPrefix(">") ||
+                                         trimmed.hasPrefix("---") ||
+                                         trimmed.hasPrefix("***") ||
+                                         trimmed.contains("|") ||
+                                         isOpenListMatch(trimmed)
+                    
+                    if !isBlockElement {
+                        processedLine = line + "  "
                     }
-                case .heading(let level, let text):
-                    Text(text)
-                        .font(headingFont(level))
-                        .foregroundStyle(foreground)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, level <= 2 ? 6 : 2)
-                case .bullet(let text):
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("•")
-                            .foregroundStyle(CCCTheme.secondary)
-                        inlineLine(text)
-                    }
-                case .ordered(let n, let text):
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("\(n).")
-                            .foregroundStyle(CCCTheme.secondary)
-                            .font(font)
-                        inlineLine(text)
-                    }
-                case .code(let lang, let code):
-                    VStack(alignment: .leading, spacing: 4) {
-                        if !lang.isEmpty {
-                            Text(lang)
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(CCCTheme.faint)
-                        }
-                        Text(code)
-                            .font(.system(size: 13.5, design: .monospaced))
-                            .foregroundStyle(CCCTheme.ink)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.black.opacity(0.06))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(CCCTheme.border, lineWidth: 1)
-                    )
-                case .table(let headers, let rows):
-                    MarkdownTableView(headers: headers, rows: rows)
-                case .blank:
-                    Spacer().frame(height: 4)
                 }
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { reparseIfNeeded() }
-        .onChange(of: source) { _ in reparseIfNeeded() }
-    }
-
-    private func reparseIfNeeded() {
-        guard source != parsedSource else { return }
-        parsedSource = source
-        blocks = Self.parse(source)
-    }
-
-    @ViewBuilder
-    private func inlineLine(_ raw: String) -> some View {
-        Text(Self.attributedInline(raw, base: font))
-            .foregroundStyle(foreground)
-            .lineSpacing(CCCTheme.bodyLineSpacing)
-            .textSelection(.enabled)
-            .tint(CCCTheme.accent)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: return .system(size: 19, weight: .bold)
-        case 2: return .system(size: 16.5, weight: .semibold)
-        case 3: return .system(size: 15, weight: .medium)
-        default: return .system(size: 14.5, weight: .regular)
-        }
-    }
-
-    private enum Block {
-        case paragraph([String])
-        case heading(level: Int, text: String)
-        case bullet(String)
-        case ordered(Int, String)
-        case code(lang: String, code: String)
-        case table(headers: [String], rows: [[String]])
-        case blank
-    }
-
-    // MARK: - Parse
-
-    private static let extensionRE: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: #"(\.[A-Za-z0-9]{1,8})([A-Z])"#)
-    }()
-
-    private static func parse(_ source: String) -> [Block] {
-        var result: [Block] = []
-        var remaining = source
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")[...]
-
-        while let open = remaining.range(of: "```") {
-            appendProse(&result, String(remaining[..<open.lowerBound]))
-            let afterOpen = remaining[open.upperBound...]
-            let langEnd = afterOpen.firstIndex(of: "\n") ?? afterOpen.endIndex
-            let lang = String(afterOpen[..<langEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
-            let bodyStart = langEnd < afterOpen.endIndex
-                ? afterOpen.index(after: langEnd)
-                : afterOpen.endIndex
-            let bodySlice = afterOpen[bodyStart...]
-            if let close = bodySlice.range(of: "```") {
-                let code = String(bodySlice[..<close.lowerBound]).trimmingCharacters(in: .newlines)
-                result.append(.code(lang: lang, code: code))
-                remaining = bodySlice[close.upperBound...]
-            } else {
-                result.append(.code(lang: lang, code: String(bodySlice)))
-                remaining = ""[...]
+            result += processedLine
+            if index < lines.count - 1 {
+                result += "\n"
             }
-        }
-        appendProse(&result, String(remaining))
-        if result.isEmpty, !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            result.append(.paragraph([source]))
         }
         return result
     }
 
-    private static func appendProse(_ result: inout [Block], _ text: String) {
-        let lines = text.components(separatedBy: "\n")
-        var i = 0
-        var para: [String] = []
-
-        func flushPara() {
-            guard !para.isEmpty else { return }
-            result.append(.paragraph(para))
-            para = []
-        }
-
-        while i < lines.count {
-            let line = lines[i]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-            if trimmed.isEmpty {
-                flushPara()
-                result.append(.blank)
-                i += 1
-                continue
-            }
-
-            if trimmed.contains("|"), i + 1 < lines.count, isSeparatorRow(lines[i + 1]) {
-                flushPara()
-                var tableLines = [line, lines[i + 1]]
-                i += 2
-                while i < lines.count, lines[i].contains("|") {
-                    tableLines.append(lines[i])
-                    i += 1
-                }
-                let parsed = parseTable(tableLines)
-                result.append(.table(headers: parsed.0, rows: parsed.1))
-                continue
-            }
-
-            if let h = headingMatch(trimmed) {
-                flushPara()
-                result.append(.heading(level: h.0, text: h.1))
-                i += 1
-                continue
-            }
-
-            if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
-                flushPara()
-                let body = String(trimmed.dropFirst(2))
-                result.append(.bullet(body))
-                i += 1
-                continue
-            }
-
-            if let ord = orderedMatch(trimmed) {
-                flushPara()
-                result.append(.ordered(ord.0, ord.1))
-                i += 1
-                continue
-            }
-
-            para.append(unglueExtensions(line))
-            i += 1
-        }
-        flushPara()
-    }
-
-    private static func headingMatch(_ line: String) -> (Int, String)? {
-        var n = 0
-        for ch in line {
-            if ch == "#" { n += 1 } else { break }
-        }
-        guard n >= 1, n <= 6, line.count > n, line[line.index(line.startIndex, offsetBy: n)] == " " else {
-            return nil
-        }
-        let text = String(line.dropFirst(n + 1)).trimmingCharacters(in: .whitespaces)
-        return (n, text)
-    }
-
-    private static func orderedMatch(_ line: String) -> (Int, String)? {
-        guard let dot = line.firstIndex(of: ".") else { return nil }
-        let numPart = line[..<dot]
-        guard let n = Int(numPart), n > 0 else { return nil }
-        let after = line.index(after: dot)
-        guard after < line.endIndex, line[after] == " " else { return nil }
-        return (n, String(line[line.index(after: after)...]))
-    }
-
-    private static func unglueExtensions(_ line: String) -> String {
-        let range = NSRange(line.startIndex..<line.endIndex, in: line)
-        return extensionRE.stringByReplacingMatches(
-            in: line, options: [], range: range, withTemplate: "$1 $2"
-        )
-    }
-
-    private static func isSeparatorRow(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
-        guard t.contains("|"), t.contains("-") else { return false }
-        return t.unicodeScalars.allSatisfy { ch in
-            ch == "|" || ch == "-" || ch == ":" || ch == " " || ch == "\t"
-        }
-    }
-
-    private static func parseTable(_ lines: [String]) -> ([String], [[String]]) {
-        func cells(_ line: String) -> [String] {
-            var s = line.trimmingCharacters(in: .whitespaces)
-            if s.hasPrefix("|") { s.removeFirst() }
-            if s.hasSuffix("|") { s.removeLast() }
-            return s.split(separator: "|", omittingEmptySubsequences: false)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-        }
-        guard lines.count >= 2 else { return ([], []) }
-        let headers = cells(lines[0])
-        let rows = lines.dropFirst(2).map(cells)
-        return (headers, rows)
-    }
-
-    /// 行内 **bold** / `code` / *italic* — Index 滑窗，避免 removeFirst O(n²)
-    private static func attributedInline(_ raw: String, base: Font) -> AttributedString {
-        if raw.isEmpty { return AttributedString() }
-        var out = AttributedString()
-        var i = raw.startIndex
-        var plainStart = i
-
-        func flushPlain(upTo end: String.Index) {
-            guard plainStart < end else { return }
-            var chunk = AttributedString(String(raw[plainStart..<end]))
-            chunk.font = base
-            out += chunk
-            plainStart = end
-        }
-
-        while i < raw.endIndex {
-            let rest = raw[i...]
-            if rest.hasPrefix("**"),
-               let end = rest.dropFirst(2).range(of: "**") {
-                flushPlain(upTo: i)
-                let innerStart = raw.index(i, offsetBy: 2)
-                var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 14.5, weight: .semibold)
-                out += chunk
-                i = end.upperBound
-                plainStart = i
-                continue
-            }
-            if rest.hasPrefix("`"),
-               let end = rest.dropFirst().range(of: "`") {
-                flushPlain(upTo: i)
-                let innerStart = raw.index(after: i)
-                var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 13.5, design: .monospaced)
-                chunk.backgroundColor = Color.black.opacity(0.06)
-                out += chunk
-                i = end.upperBound
-                plainStart = i
-                continue
-            }
-            if rest.hasPrefix("*"), !rest.hasPrefix("**"),
-               let end = rest.dropFirst().range(of: "*") {
-                flushPlain(upTo: i)
-                let innerStart = raw.index(after: i)
-                var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 14.5).italic()
-                out += chunk
-                i = end.upperBound
-                plainStart = i
-                continue
-            }
-            i = raw.index(after: i)
-        }
-        flushPlain(upTo: raw.endIndex)
-        if out.characters.isEmpty {
-            var fallback = AttributedString(raw)
-            fallback.font = base
-            return fallback
-        }
-        return out
-    }
-}
-
-private struct MarkdownTableView: View {
-    let headers: [String]
-    let rows: [[String]]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
-                    Text(h)
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
-                }
-            }
-            .background(CCCTheme.hover)
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                Divider()
-                HStack(spacing: 0) {
-                    ForEach(Array(headers.indices), id: \.self) { idx in
-                        Text(idx < row.count ? row[idx] : "")
-                            .font(.system(size: 12))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(6)
-                    }
-                }
-            }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(CCCTheme.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    private static func isOpenListMatch(_ trimmed: String) -> Bool {
+        guard let dotIndex = trimmed.firstIndex(of: ".") else { return false }
+        let numberPart = trimmed[..<dotIndex]
+        guard Int(numberPart) != nil else { return false }
+        let afterDot = trimmed.index(after: dotIndex)
+        guard afterDot < trimmed.endIndex, trimmed[afterDot] == " " else { return false }
+        return true
     }
 }

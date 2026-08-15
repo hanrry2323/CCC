@@ -88,6 +88,8 @@ PLAN_TITLE="$(
 PROJECT="$(
   "$PYTHON_BIN" -c "import json,sys; print(json.load(sys.stdin)['project'])" <<<"$MAP_JSON"
 )"
+# 方案编号（A1 修复 2026-08-10）：关联字段用 <prefix>-plan-<NNN> 而非标题，对齐 Doc-Gate Q1
+PLAN_NUM="$(basename "$PLAN_FILE" .md | cut -d- -f1 | grep -E '^[0-9]{3}$' || echo "")"
 SLICE_COUNT="$(
   "$PYTHON_BIN" -c "import json,sys; print(len(json.load(sys.stdin)['slices']))" <<<"$MAP_JSON"
 )"
@@ -109,18 +111,25 @@ while IFS= read -r row; do
   acc_json="$("$PYTHON_BIN" -c "import json,sys; print(json.dumps(json.load(sys.stdin)['acceptance'], ensure_ascii=False))" <<<"$row")"
   wl_json="$("$PYTHON_BIN" -c "import json,sys; print(json.dumps(json.load(sys.stdin)['whitelist'], ensure_ascii=False))" <<<"$row")"
 
-  "$SCRIPT_DIR/new-card.sh" \
-    --title "$stitle" \
-    --project "$PROJECT" \
-    --slug "$slug" \
-    --executor "$executor" \
-    --dispatch-dir "$DISPATCH_DIR" \
-    --related "ccc-plan: ${PLAN_TITLE}" \
-    --quiet
-
-  CARD_PATH="$(find "$DISPATCH_DIR/$PROJECT" -maxdepth 1 -name "${PROJECT}[0-9][0-9][0-9]-${slug}.md" | head -1)"
+  CARD_PATH="$(
+    "$SCRIPT_DIR/new-card.sh" \
+      --title "$stitle" \
+      --project "$PROJECT" \
+      --slug "$slug" \
+      --executor "$executor" \
+      --dispatch-dir "$DISPATCH_DIR" \
+      --related "${PROJECT}-plan-${PLAN_NUM}" \
+      --quiet \
+    | sed -n 's/^CARD_PATH=//p'
+  )"
+  if [[ -z "$CARD_PATH" || ! -f "$CARD_PATH" ]]; then
+    # 兜底：new-card 未吐 CARD_PATH 时回退旧扫描（不依赖仅 head -1，先精确 glob）
+    CARD_PATH="$(find "$DISPATCH_DIR/$PROJECT" -maxdepth 1 -type f -name "${PROJECT}[0-9][0-9][0-9]-${slug}.md" | head -1)"
+  fi
   if [[ -z "$CARD_PATH" || ! -f "$CARD_PATH" ]]; then
     echo "[ERROR] 出卡后找不到 ${PROJECT}*-${slug}.md" >&2
+    # 回滚：删除已生成的临时卡
+    for c in "${CREATED[@]}"; do rm -f "$c"; done
     exit 1
   fi
 
@@ -157,10 +166,6 @@ text = text.replace('听「验收看板」后写', '听「合入批准」后写'
 path.write_text(text, encoding='utf-8')
 " "$CARD_PATH" "$acc_json" "$wl_json" "$stitle"
 
-  if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.validate "$DISPATCH_DIR" ); then
-    echo "[ERROR] validate 失败：$CARD_PATH" >&2
-    exit 1
-  fi
   CREATED+=("$CARD_PATH")
   echo "[OK] card: $CARD_PATH"
 done < <(
@@ -176,6 +181,27 @@ if [[ ${#CREATED[@]} -eq 0 ]]; then
   echo "[ERROR] 未生成任何卡" >&2
   exit 1
 fi
+
+# ── Phase 2: 全量校验（一次 validate_cards 全树扫描，O(N) 而非逐卡 O(N²)）──
+if ! ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.validate import validate_cards
+issues = validate_cards('$DISPATCH_DIR')
+errs = [i for i in issues if i.severity == 'error' and i.card_id.startswith('$PROJECT')]
+if errs:
+    print(f'卡头校验发现 {len(errs)} 个本项目 error：', file=sys.stderr)
+    for e in errs:
+        print(f'  [{e.card_id}] {e.path}: {e.reason}', file=sys.stderr)
+    sys.exit(1)
+print('[OK] 本项目卡头校验通过')
+" ); then
+  echo "[ERROR] 全量校验未通过，回滚所有临时卡" >&2
+  for c in "${CREATED[@]}"; do rm -f "$c"; done
+  exit 1
+fi
+
+echo "[OK] 全量校验通过（${#CREATED[@]} 张卡）"
 
 # 相对仓库根的路径；dispatch-dir 在仓外时只出卡不 git
 REL_CREATED=()

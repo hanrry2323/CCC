@@ -23,9 +23,10 @@
 | 下一程意向（未出卡） | [`roadmap.md`](roadmap.md)「下一程挂账」 | **一行**意图 + 备注；未出卡不写长文 |
 | 注册 / 改项目 | [`projects/registry.yaml`](projects/registry.yaml) + 对应 [`projects/<prefix>/README.md`](projects/) | 改完跑校验；禁止只改 `PREFIXES` 或只改 KB seed |
 | 开发任务 | **优先** `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡仍可用 `new-card.sh` | 命名见 §2；方案确认后禁止一张张聊着出卡 |
+| 方案 / 计划 | [`projects/<prefix>/plans/`](projects/) `<NNN>-<slug>.md` | 模板 [`projects/_template/plan-template.md`](projects/_template/plan-template.md)；命名见 §2.7；状态五态见 §2.8 |
 | 平台现行 SOP | [`product/`](product/) **白名单**（须进 INDEX §0/§1） | 新 SOP 必须同时改 INDEX；**禁止**心智补丁类新建（原则 #5） |
 | 部署 / 拓扑 | [`deploy/`](deploy/) | 短、可执行 |
-| 临时笔记 | [`notes/`](notes/) | **7 天内**并入权威、删或迁 `archive/` |
+| 临时笔记 | [`notes/`](notes/) | **7 天内**并入权威、删或迁 `archive/`；**禁止新建方案文件** |
 | 史实 / 烟测 / 旧协议 | [`archive/`](archive/) | 文首标「史」 |
 
 ### 现行产品 SOP 白名单（入口级）
@@ -35,7 +36,7 @@
 - [`product/hub-context-sop.md`](product/hub-context-sop.md)（中枢出卡前了解项目 · 允许/禁止表）
 - [`product/accept-board-sop.md`](product/accept-board-sop.md)（别名指向合入批准，见 north-star-slice）
 - [`product/machine-audit-flow.md`](product/machine-audit-flow.md)
-- [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)（Desktop 恢复时）
+- [`product/ccc-desktop-architecture.md`](archive/ccc-desktop-architecture.md)（Desktop 恢复时）
 
 ---
 
@@ -74,8 +75,9 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 ```
 
 - 卡头「项目」**必须** = 文件名前缀 = 子目录名。  
-- 状态五态定死：`待分派` / `执行中` / `已回写` / `已关闭` / `打回`（可带括号原因，归桶看基础态）。  
-- 看板「机审」是派生列，**不是**卡头第六态。
+- 状态六态定死：`待分派` / `执行中` / `已回写` / `已关闭` / `打回` / `作废`（可带括号原因，归桶看基础态）。  
+- 看板「机审」是派生列，**不是**卡头第七态。
+- **作废**（2026-08-14 人审调整动作统一化新增）：终态。人审取消单卡（待分派/执行中/已回写/打回 均可作废，须附原因），作废后不可再流转。
 - 「验收」= 执行体自身（**自验收**，2026-08-07 改）：谁开发谁验收。两条硬规则：① 机审是独立步骤——开发阶段禁止写 `## 机审区`，验收席（即使与开发同工具）按 Code Review 技能独立审查、写机审区、过 ready 门禁；② 老板「合入批准」= 人审最终 diff，任何人/工具不可绕过。
 - `## 人工批注`（可选固定节）：老板对打回卡/审核的批注意见写这里。若存在，执行体**必须先读批注**并按批注修订目标/步骤后再执行，批注优先于正文。重新分派 = `打回 → 待分派`（写纯「待分派」，引擎重试计数归零；`打回次数` 保留为历史）。
 
@@ -112,6 +114,50 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 - `docs/dispatch/qh/qh001-x.md`（禁前缀）
 - 卡头「项目：medio-0」但文件在 `mx/`（项目字段必须写前缀 `mx`）
 
+### 2.7 方案 / 计划命名（硬 · 与任务卡编号分区独立）
+
+```text
+路径   = docs/projects/<prefix>/plans/<NNN>-<slug>.md
+方案 ID = <prefix>-plan-<NNN>     （例：ccc-plan-001）
+```
+
+| 段 | 规则 | 例 | 非法例 |
+|----|------|----|--------|
+| **prefix** | 与 `registry.yaml` 前缀一致，2–4 位小写字母 | `ccc` `xy` `hp` `mx` `qb` | `CCC` `qh` |
+| **NNN** | **恰好三位数字**，同前缀内自增，**独立于任务卡编号** | `001` `002` | `1` `0001` |
+| **slug** | 小写字母/数字/连字符，从标题派生 | `arch-upgrade-v2` | `架构升级` |
+| **扩展名** | 固定 `.md` | — | `.MD` |
+
+**与任务卡编号的关系**：方案编号和任务卡编号**分区独立**。方案用 `plans/` 下的 `NNN`，转卡时由 `new-card.sh` 生成任务卡编号。防止方案编号与任务卡编号冲突。
+
+**模板**：[`projects/_template/plan-template.md`](projects/_template/plan-template.md)（六段必填：目标/背景/方案内容/验收标准/转卡计划/备注）。
+
+### 2.8 方案状态机（ccc-plan-027 定稿 · 四态+作废）
+
+```text
+已确认（待排期）→ 部分执行 → 已完成（终态）
+   └── 作废（归档，不渲染）
+```
+
+| 状态 | 含义 |
+|------|------|
+| **已确认** | 方案已定，等待老板确认功能卡清单（人审节点②）后转卡 |
+| **部分执行** | 已转卡，关联卡在看板 |
+| **已完成** | 全部**活跃**关联任务卡已关闭（**自动推进**，无需手动；作废卡从总数剔除） |
+| **作废** | 方案不再执行（保留历史，不删除）；**级联作废其未关闭关联卡，防孤儿卡** |
+| **已覆盖** | 被更晚方案取代（兼容旧值，终态） |
+
+> **草案概念归属线路图草案池**（`docs/projects/<prefix>/roadmap.md`），方案层不再有「草案」态。
+> 方案正文拆卡用 **`## 功能卡` 段**（一个功能一张卡，节点② 确认后一次转卡）；旧「## 转卡计划」段仅兼容存量。
+> **作废级联（2026-08-14 人审调整动作统一化）**：
+> - 方案作废 **或 已覆盖** → 其关联卡（待分派/执行中/已回写/打回）一并标「作废（方案作废级联）」，已关闭/已作废不动。
+> - 卡作废 → 从方案进度**总数剔除**（进度行 `进度：N/M（作废 K）`，N/M 为活跃卡），剩余活跃卡全关 → 方案自动「已完成」。
+> - 边界：方案全部关联卡作废 → 方案自动置「作废」。
+> - 作废卡不阻塞下游：依赖卡/父卡作废 → 依赖它的卡放行（由老板定去留，observer 提示「下游前置已作废」）。
+> - 巡检（Loop Observer）对「作废方案仍留活跃关联卡」（孤儿卡）出告警。
+> - **草案池取消/修改**：`DELETE /roadmap/<prefix>/draft/<index>` 取消草案（直接移除）；`PUT /roadmap/<prefix>/draft/<index>` 修改草案文字。
+> - **里程碑**：状态枚举 `待启动 / 进行中 / 已完成`（草案→待启动）；`DELETE /roadmap/<prefix>/milestone/<title>` 删除里程碑（仅无关联方案）；关联方案全作废 → 里程碑归「待启动」。
+
 ---
 
 ## 3. 项目注册（唯一事实源）
@@ -119,11 +165,11 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 | 层 | 路径 | 角色 |
 |----|------|------|
 | **SSOT** | [`projects/registry.yaml`](projects/registry.yaml) | 前缀 / UI id / 路径 / taskable / forbidden / status |
-| **档案** | `projects/<prefix>/README.md` | 每项目一页（五节模板，禁止再长） |
+| **档案** | `projects/<prefix>/README.md` | 每项目一页（七节模板，禁止再长） |
 | **派生** | `PREFIXES`、`GET /projects`、`is_taskable`、`knowledge/seed` | 禁止手维第二份真值 |
 | **历史对照** | [`dispatch/T-mapping.md`](dispatch/T-mapping.md) | 旧 T 卡 ↔ 新名；**前缀表以 registry 为准** |
 
-废弃手维：`docs/kb-seed/`。
+废弃手维：`docs/kb-seed/`。从零到一全流程规范见 [`projects/onboarding.md`](projects/onboarding.md)（注册 SOP / 基准四件套 / 方案卡联动 / 线路图挂账 / Agent 入口统一）。
 
 ### 3.1 仓库位置规范（硬 · 2026-08-07）
 
@@ -139,13 +185,16 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 - 新注册项目必须标 `location`；路径越界 → 校验红。
 - 文件夹归位搬迁为独立运维项（停机窗口一仓一验），搬迁后 registry 路径随迁移更新。
 
-### 档案五节模板（强制）
+### 档案七节模板（强制 · 2026-08-09 升级）
 
 1. **是什么**（一句话）  
 2. **路径**（M1 / 2017）  
 3. **在 CCC 怎么动**（出卡前缀、是否 taskable）  
-4. **线路 / 近况**（≤3 条）  
-5. **禁区**
+4. **基准文件**（核心导航：项目档案 / 方案池 / 架构 / 入口规范——Agent 必读）  
+5. **线路 / 近况**（≤3 条）  
+6. **禁区**
+
+> 七节模板即「看板即入口」的落点：任何 Agent 从看板/方案池进入项目页，即可找到全部核心基准。逐节写法见 [`projects/onboarding.md`](projects/onboarding.md) §2.2。
 
 ---
 

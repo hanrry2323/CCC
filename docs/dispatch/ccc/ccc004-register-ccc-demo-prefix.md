@@ -1,6 +1,6 @@
 # 任务卡 ccc004 · register ccc-demo prefix cd（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-06
 
 ## 目标
 
@@ -63,3 +63,16 @@
 - `bash scripts/new-card.sh --project cd --title probe --slug probe --dry-run` 复跑 exit 0，生成 `docs/dispatch/cd/cd001-probe.md`，命名门禁认可 `cd` ✔（验收 4）
 
 备注（不阻塞本卡）：`/Users/fan/program/CCC` 主仓工作树遗留未跟踪 `server/config/executors.json.bak-two-tier`（2547B，21:39），为部署配置备份、与本卡无关，请中枢另行清理。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

@@ -45,21 +45,21 @@ def test_archive_old_cards_rules(temp_dispatch_env: Path) -> None:
 
     # 1. 应该被归档的卡 (关闭且超过 6 个月，即 2026-02-05 之前)
     c1 = (
-        "# 任务卡 ccc101 · 应该归档\n"
-        "> 关联：CCC · 执行体：Claude · 验收：Codex · 状态：已关闭 · 项目：ccc · 日期：2026-01-10\n"
+        "# 任务卡 xy101 · 应该归档\n"
+        "> 关联：xy · 执行体：Claude · 验收：Codex · 状态：已关闭 · 项目：xy · 日期：2026-01-10\n"
         "## 回写区\n"
         "**日期**：2026-01-15\n"
     )
-    _write_card(dispatch_dir / "ccc", "ccc101-old-closed.md", c1)
+    _write_card(dispatch_dir / "xy", "xy101-old-closed.md", c1)
 
     # 2. 不应该被归档的卡 A (关闭但未满 6 个月，如 2026-03-01 关闭)
     c2 = (
-        "# 任务卡 ccc102 · 不该归档未满期\n"
-        "> 关联：CCC · 执行体：Claude · 验收：Codex · 状态：已关闭 · 项目：ccc · 日期：2026-02-10\n"
+        "# 任务卡 xy102 · 不该归档未满期\n"
+        "> 关联：xy · 执行体：Claude · 验收：Codex · 状态：已关闭 · 项目：xy · 日期：2026-02-10\n"
         "## 回写区\n"
         "**日期**：2026-03-01\n"
     )
-    _write_card(dispatch_dir / "ccc", "ccc102-recent-closed.md", c2)
+    _write_card(dispatch_dir / "xy", "xy102-recent-closed.md", c2)
 
     # 3. 不应该被归档的卡 B (未关闭但超过 6 个月，如 2026-01-10 派发的执行中卡)
     c3 = (
@@ -71,15 +71,15 @@ def test_archive_old_cards_rules(temp_dispatch_env: Path) -> None:
     # 执行归档逻辑
     archived_ids = archive_old_cards(dispatch_dir, today=today)
 
-    assert archived_ids == ["ccc101"]
+    assert archived_ids == ["xy101"]
 
     # 验证文件是否物理移动
     archive_dir = get_archive_dir(dispatch_dir)
-    assert not (dispatch_dir / "ccc" / "ccc101-old-closed.md").exists()
-    assert (archive_dir / "ccc" / "ccc101-old-closed.md").exists()
+    assert not (dispatch_dir / "xy" / "xy101-old-closed.md").exists()
+    assert (archive_dir / "xy" / "xy101-old-closed.md").exists()
 
     # 验证未归档文件依然存在
-    assert (dispatch_dir / "ccc" / "ccc102-recent-closed.md").exists()
+    assert (dispatch_dir / "xy" / "xy102-recent-closed.md").exists()
     assert (dispatch_dir / "qb" / "qb101-old-active.md").exists()
 
 
@@ -90,19 +90,16 @@ def test_index_archived_and_query_filtering(temp_dispatch_env: Path) -> None:
 
     # 创建归档卡
     c1 = (
-        "# 任务卡 ccc201 · 归档卡\n"
-        "> 关联：CCC · 执行体：Claude · 状态：已关闭 · 项目：ccc · 日期：2026-01-01\n"
+        "# 任务卡 xy201 · 归档卡\n"
+        "> 关联：xy · 执行体：Claude · 状态：已关闭 · 项目：xy · 日期：2026-01-01\n"
         "## 回写区\n"
         "**日期**：2026-01-05\n"
     )
-    _write_card(dispatch_dir / "ccc", "ccc201-old.md", c1)
+    _write_card(dispatch_dir / "xy", "xy201-old.md", c1)
 
     # 创建常规卡
-    c2 = (
-        "# 任务卡 ccc202 · 常规卡\n"
-        "> 关联：CCC · 执行体：Claude · 状态：执行中 · 项目：ccc · 日期：2026-08-01\n"
-    )
-    _write_card(dispatch_dir / "ccc", "ccc202-new.md", c2)
+    c2 = "# 任务卡 xy202 · 常规卡\n> 关联：xy · 执行体：Claude · 状态：执行中 · 项目：xy · 日期：2026-08-01\n"
+    _write_card(dispatch_dir / "xy", "xy202-new.md", c2)
 
     # 首次加载建立完整索引
     load_dispatch_cards(dispatch_dir, include_archived=True)
@@ -112,17 +109,17 @@ def test_index_archived_and_query_filtering(temp_dispatch_env: Path) -> None:
 
     # 1. 验证 load_index_file 中可以读到 archived 状态
     index_entries = load_index_file(dispatch_dir)
-    assert index_entries["ccc201"]["archived"] is True
-    assert not index_entries["ccc202"].get("archived", False)
-    assert "archive/ccc-tasks/ccc" in index_entries["ccc201"]["path"]
+    assert index_entries["xy201"]["archived"] is True
+    assert not index_entries["xy202"].get("archived", False)
+    assert "archive/ccc-tasks/xy" in index_entries["xy201"]["path"]
 
     # 2. 验证看板默认加载不含归档卡 (include_archived=False)
     items_default = load_dispatch_cards(dispatch_dir, include_archived=False)
     assert len(items_default) == 1
-    assert items_default[0].id == "ccc202"
+    assert items_default[0].id == "xy202"
 
     # 3. 验证看板显式加载含归档卡 (include_archived=True)
     items_all = load_dispatch_cards(dispatch_dir, include_archived=True)
     assert len(items_all) == 2
     ids = {item.id for item in items_all}
-    assert ids == {"ccc201", "ccc202"}
+    assert ids == {"xy201", "xy202"}

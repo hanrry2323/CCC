@@ -1,6 +1,6 @@
 # 任务卡 mx028 · RSS feed validation before add（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-09
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-09
 
 ## 目标
 
@@ -47,7 +47,28 @@
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 实现说明
+1. 深入定位到了 `RssService::create_subscription` 添加入口，并加入了 URL 校验逻辑。
+2. 限制在添加订阅前对目标 URL 触发 HTTP HEAD 请求。
+3. 校验机制：
+   - 验证 HTTP 响应状态码必须是 `200 OK`。
+   - 验证 HTTP 响应头中的 `Content-Type` 必须包含 `xml`、`rss` 或 `atom` 关键字之一。
+   - 校验不通过或请求失败时，直接拦截插入数据库并返回清晰具体的错误信息。
+4. 在测试环境下提供了优雅的 Mock 方案，确保本地单测能够完美、稳定地在离线环境下完成逻辑验证。
+5. **SSRF Mock 域名支持**：修复了测试环境下模拟域名因未通过 `validate_safe_url` 的 SSRF 检查而被拦截的问题（引入 `is_mock` 在测试中拦截并放行 `mock-` 域名的安全检查，解决离线测试环境下 DNS 解析失败的痛点）。
+
+### 测试结果
+1. 包含了三个针对校验的单元测试：
+   - `create_subscription_rejects_invalid_status`：验证非 200 返回码的 URL 会被拦截并报错。
+   - `create_subscription_rejects_invalid_content_type`：验证不含 xml/rss/atom 的 content-type 的 URL 会被拦截并报错。
+   - `create_subscription_rejects_request_failed`：验证 HEAD 请求失败的 URL 会被拦截并报错。
+2. 所有新增的测试用例与原有用例编译完全正常。在业务仓 `/Users/fan/program/apps/medio-0` 中，执行 `cargo test --package medio-core --lib service::rss::service::tests`，所有 37 个 RSS 单元测试完全通过。
+
+### push 证据
+- 业务仓 (medio-0) 提交哈希: `d5be9868fb1a638759daacfb2fde32c19a56f296`
+- 业务仓分支: `codex/mx028-rss-feed-validation-before-add`
 
 ## 批注落实
 
@@ -97,3 +118,29 @@
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 验收区
+
+**验收人**：Claude Code · 日期：2026-08-09
+
+**审查结论**：✅ 判定：通过。
+
+- 范围：仅 `src/backend/core/src/service/rss/service.rs`，零越界
+- 测试：RSS 37 全绿（含 3 新增），core 全量 426 全绿
+- 安全：`#[cfg(test)]` 隔离 mock 逻辑，生产 SSRF 不受影响
+- 功能：HTTP HEAD → 200 + Content-Type 校验，失败返回明确错误
+
+**合入说明**：机审因执行体首次写回状态错误（completed→已回写）被跳过，人工补审通过，手动合入。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

@@ -30,8 +30,9 @@ from pathlib import Path
 
 from server.board.models import PREFIXES, FORBIDDEN_CARD_PREFIXES, base_state, BoardItem
 from server.board.roles import acceptance_issue
+from server.board.card_header import is_task_card_text, parse_metadata, card_id
 
-VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回"})
+VALID_STATES = frozenset({"待分派", "执行中", "已回写", "已关闭", "打回", "作废"})
 # 新卡强制含「验收」；交叉对由 roles.acceptance_issue 校验
 REQUIRED_HEADER_KEYS = ("关联", "执行体", "状态", "日期")
 REQUIRED_HEADER_KEYS_NEW = ("关联", "执行体", "验收", "状态", "日期")
@@ -52,18 +53,9 @@ class CardIssue:
     severity: str = "error"  # error=阻断（退出码 1）；warn=提示（退出码 0）
 
 
-# 卡头标题行（``# 任务卡 <ID>``），须行首锚定——正文/说明里出现 ``# 任务卡`` 字面量不算
-_CARD_TITLE_LINE_RE = re.compile(r"^#\s*任务卡\s", re.MULTILINE)
-
-
 def _has_card_title(path: Path) -> bool:
     """是否任务卡（行首含 ``# 任务卡`` 卡头标题）；排除 T-mapping.md 等说明文档。"""
-    return bool(_CARD_TITLE_LINE_RE.search(path.read_text(encoding="utf-8")))
-
-
-def _header_lines(card: Path) -> list[str]:
-    """取卡头全部 ``>`` 元数据行（与 loader 同款：多行合并解析）。"""
-    return [ln.strip() for ln in card.read_text(encoding="utf-8").splitlines() if ln.strip().startswith(">")]
+    return is_task_card_text(path.read_text(encoding="utf-8"))
 
 
 def _header_metadata(card: Path) -> dict[str, str]:
@@ -72,12 +64,7 @@ def _header_metadata(card: Path) -> dict[str, str]:
     历史卡把 关联/执行体/状态/日期 分布在多个 ``>`` 行，只查首行会误报；
     与 `server/board/loader._parse_metadata` 一致语义合并解析。
     """
-    from server.board.loader import _parse_metadata  # noqa: PLC0415
-
-    meta: dict[str, str] = {}
-    for line in _header_lines(card):
-        meta.update(_parse_metadata(line))
-    return meta
+    return parse_metadata(card.read_text(encoding="utf-8"))
 
 
 def _body_has(card: Path, marker: str) -> bool:
@@ -141,16 +128,6 @@ def _classify_card(path: Path) -> tuple[str, str, str]:
     return "other", "", ""
 
 
-def _card_number(path: Path) -> str:
-    """取文件名编号（``T<N>-...`` → ``N``；``<prefix><NNN>-...`` → ``NNN``）。"""
-    stem = path.stem
-    if OLD_CARD_RE.match(stem):
-        m = re.match(r"T(\d+)", stem)
-        return m.group(1) if m else ""
-    m = NEW_CARD_RE.match(stem)
-    return m.group("num") if m else ""
-
-
 def _header_card_id(card: Path) -> str:
     """取卡头 ``# 任务卡 <ID>`` 的 ID（停在 ``·`` 或空白处）；未匹配返回空。
 
@@ -158,8 +135,7 @@ def _header_card_id(card: Path) -> str:
     ``# 任务卡 T52 · 自动化基建``（仅编号），统一取 ``T<N>`` 前缀即可；
     新卡取 ``<prefix><NNN>``（可带 ``-<slug>``，数字部分一致）。
     """
-    m = re.search(r"#\s*任务卡\s+([^\s·]+)", card.read_text(encoding="utf-8"))
-    return m.group(1).strip() if m else ""
+    return card_id(card.read_text(encoding="utf-8"))
 
 
 def _header_number(card: Path) -> str:
@@ -245,6 +221,27 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         return [CardIssue("?", str(d), "目录不存在")]
     cards = _scan_cards(d)
 
+    # 方案链编号保护：统一走共享保留表（出卡/校验单一事实源，2026-08-12）
+    from server.board.plan_reservations import plan_reserved_card_titles, plan_reserved_ids
+
+    plan_reservations = plan_reserved_card_titles()
+    reserved_ids = plan_reserved_ids()
+
+    def _free_number_hint(prefix: str) -> str:
+        try:
+            taken = set()
+            for _path, _loc in cards:
+                _cid = _path.name.split(".")[0]
+                _m = re.fullmatch(r"([a-z]{2,4})(\d{3})", _cid.lower())
+                if _m and _m.group(1) == prefix:
+                    taken.add(int(_m.group(2)))
+            for _n in range(1, 1000):
+                if _n not in taken and _n not in reserved_ids.get(prefix, set()):
+                    return f"{prefix}{_n:03d}"
+        except Exception:
+            pass
+        return ""
+
     from server.board.loader import parse_card
 
     all_items: dict[Path, BoardItem] = {}
@@ -268,8 +265,10 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             hdr_id = _header_card_id(path)
             if hdr_id:
                 old_by_hdr.setdefault(hdr_id, []).append(path)
+    dup_paths = set()
     for cid, dupes in new_by_id.items():
         if len(dupes) > 1:
+            dup_paths.update(p.resolve() for p in dupes)
             for card in dupes[1:]:
                 issues.append(
                     CardIssue(card.stem, str(card), f"新卡编号 {cid} 重复（与 {dupes[0].name} 冲突，编号跨项目唯一）")
@@ -285,7 +284,30 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
         card_id = path.name.split(".")[0]
         ctype, prefix, num = _classify_card(path)
         if ctype == "new":
-            issues.extend(_validate_new_naming(path, loc, prefix, num))
+            naming_issues = _validate_new_naming(path, loc, prefix, num)
+            issues.extend(naming_issues)
+            # 方案链编号保护 (Step 5)：仅对命名合规、非重复、未关闭的新卡生效；
+            # 关联含任何合法 <prefix>-plan-<NNN> 即视为已关联（旧卡标题格式不要求）
+            if not naming_issues and path.resolve() not in dup_paths:
+                card_state = _header_metadata(path).get("状态", "")
+                if "已关闭" in card_state or "作废" in card_state:
+                    pass
+                else:
+                    card_id_full = (prefix + num).lower()
+                    if card_id_full in plan_reservations:
+                        plan_title = plan_reservations[card_id_full]
+                        meta = _header_metadata(path)
+                        related = meta.get("关联", "")
+                        if not re.search(r"[a-z]{2,4}-plan-\d{3}", related):
+                            free_hint = _free_number_hint(prefix)
+                            hint = f"可用编号示例：{free_hint}；" if free_hint else ""
+                            issues.append(
+                                CardIssue(
+                                    card_id,
+                                    str(path),
+                                    f"方案编号保护冲突：卡片 {card_id} 未在卡头「关联」中声明任何合法方案编号（<prefix>-plan-<NNN>），但该编号已被方案 {plan_title!r} 占用。{hint}请显式指定其他编号（附加卡用 `--id`），禁止吃掉方案链编号空间。",
+                                )
+                            )
         elif ctype == "old":
             # 旧卡零拦截：仅提示迁移建议（T54 红线 2：旧卡不批量重命名，保持 git 历史）
             issues.append(

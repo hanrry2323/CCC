@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260804t44">
-<link rel="stylesheet" href="/css/base.css?v=20260804t44">
-<link rel="stylesheet" href="/css/themes.css?v=20260804t44">
-<link rel="stylesheet" href="/css/components.css?v=20260804t44">
-<link rel="stylesheet" href="/css/shell.css?v=20260805t68">
-<link rel="stylesheet" href="/css/dual-pane.css?v=20260804t44">
+<link rel="stylesheet" href="/css/variables.css?v=20260809t12">
+<link rel="stylesheet" href="/css/base.css?v=20260809t12">
+<link rel="stylesheet" href="/css/themes.css?v=20260809t12">
+<link rel="stylesheet" href="/css/components.css?v=20260809t12">
+<link rel="stylesheet" href="/css/shell.css?v=20260809t12">
+<link rel="stylesheet" href="/css/dual-pane.css?v=20260809t12">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
-<script src="/js/theme-init.js?v=20260804t44"></script>
+<script src="/js/theme-init.js?v=20260809t12"></script>
 <script>
 (function () {
   var port = String(location.port || '');
@@ -29,8 +29,9 @@
 </head>
 <body class="hub-mode">
 <nav id="hub-nav" aria-label="CCC 控制台">
-  <div class="hub-brand" title="2017 单端 :7788 · 对话/看板/线路图/运维/控制台五视图">CCC</div>
+  <div class="hub-brand" title="2017 单端 :7788 · 对话/看板/计划/线路图/运维/控制台六视图">CCC <span class="build-stamp" title="前端构建版本">v20260809t12</span></div>
   <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
+  <a class="hub-nav-link" data-route="plans" href="#/plans">计划</a>
   <a class="hub-nav-link" data-route="roadmap" href="#/roadmap">线路图</a>
   <a class="hub-nav-link" data-route="ops" href="#/ops">运维</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
@@ -46,7 +47,7 @@
   <div class="hub-view" id="view-chat">
 <div id="app">
   <div class="hub-remote-banner hub-shell-only" role="status">
-    2017 单端 :7788 · 对话/看板/运维/控制台四视图统一入口。
+    2017 单端 :7788 · 对话/看板/计划/线路图/运维/控制台六视图统一入口。
   </div>
 
   <div id="titlebar">
@@ -93,6 +94,10 @@
           <span class="soft-row-icon soft-icon-board" aria-hidden="true"></span>
           <span class="soft-row-label">看板</span>
         </button>
+        <button type="button" class="soft-row" data-dest="plans" title="计划">
+          <span class="soft-row-icon soft-icon-plans" aria-hidden="true"></span>
+          <span class="soft-row-label">计划</span>
+        </button>
         <button type="button" class="soft-row" data-dest="roadmap" title="线路图">
           <span class="soft-row-icon soft-icon-roadmap" aria-hidden="true"></span>
           <span class="soft-row-label">线路图</span>
@@ -136,7 +141,6 @@
         底部
       </button>
       <div id="composer">
-        <div class="composer-actions-bar" id="qa-dock-host" aria-label="快速动作"></div>
         <div id="composer-inner">
           <div id="attachment-chips" class="attachment-chips" hidden></div>
           <div class="composer-input-wrap">
@@ -150,24 +154,6 @@
             </button>
           </div>
           <div class="composer-toolbar">
-            <div class="composer-controls">
-              <div class="composer-model-wrap" title="讨论=只读 · 工程师=可写本机仓 + 板务">
-                <span class="composer-model-label">模式</span>
-                <select class="model-select" id="tool-mode-select">
-                  <option value="discuss">讨论</option>
-                  <option value="engineer" selected>工程师</option>
-                </select>
-              </div>
-              <div class="composer-model-wrap" title="选择模型">
-                <span class="composer-model-label">模型</span>
-                <select class="model-select" id="model-select">
-                  <option value="flash">flash</option>
-                  <option value="code">code</option>
-                  <option value="sonnet">sonnet</option>
-                  <option value="haiku">haiku</option>
-                </select>
-              </div>
-            </div>
             <div class="composer-meta">
               <span class="context-indicator" title="当前项目">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -183,6 +169,7 @@
 </div>
   </div>
   <div class="hub-view" id="view-board"></div>
+  <div class="hub-view" id="view-plans"></div>
   <div class="hub-view" id="view-roadmap"></div>
   <div class="hub-view" id="view-console"></div>
   <div class="hub-view" id="view-ops"></div>
@@ -190,7 +177,7 @@
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
 <select id="project-select" style="display:none;"></select>
 
-<script src="/js/shell-ui.js?v=20260804t44"></script>
+<script src="/js/shell-ui.js?v=20260809t12"></script>
 <div id="login-view" class="login-view">
   <div class="login-card">
     <div class="login-title" id="login-title">CCC 登录</div>
@@ -203,8 +190,8 @@
     </form>
   </div>
 </div>
-<script src="/js/login-gate.js?v=20260804t44"></script>
+<script src="/js/login-gate.js?v=20260809t12"></script>
 <!-- T68: classic bootloader — retries critical ES module graph; banner on exhaust -->
-<script src="/js/bootloader.js?v=20260805t68" onerror="(function(){try{sessionStorage.removeItem('ccc-resource-boot-fails')}catch(e){}var b=document.createElement('button');b.id='ccc-resource-fail-banner';b.type='button';b.className='ccc-resource-fail-banner';b.setAttribute('role','alert');b.textContent='资源加载失败，点击重试';b.onclick=function(){location.reload()};var n=document.getElementById('hub-nav');if(n&&n.parentNode)n.parentNode.insertBefore(b,n.nextSibling);else document.body.insertBefore(b,document.body.firstChild)})()"></script>
+<script src="/js/bootloader.js?v=20260809t12" onerror="(function(){try{sessionStorage.removeItem('ccc-resource-boot-fails')}catch(e){}var b=document.createElement('button');b.id='ccc-resource-fail-banner';b.type='button';b.className='ccc-resource-fail-banner';b.setAttribute('role','alert');b.textContent='资源加载失败，点击重试';b.onclick=function(){location.reload()};var n=document.getElementById('hub-nav');if(n&&n.parentNode)n.parentNode.insertBefore(b,n.nextSibling);else document.body.insertBefore(b,document.body.firstChild)})()"></script>
 </body>
 </html>

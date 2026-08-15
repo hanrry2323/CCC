@@ -8,7 +8,6 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from server.engine.store import BoardStore
 from server.engine.task import State

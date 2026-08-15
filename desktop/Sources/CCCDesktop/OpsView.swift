@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Charts
 
 /// 域 chip 四态：绿 / 橙(降级) / 红 / 灰(未知/未拉取)
 enum DomainChipTone { case green, amber, red, gray }
@@ -848,22 +849,49 @@ struct OpsView: View {
 
     // MARK: - Resources gauges
 
+    private struct ResourceItem: Identifiable {
+        let id = UUID()
+        let name: String
+        let value: Double
+        let color: Color
+    }
+
+    private struct TrendPoint: Identifiable {
+        let id = UUID()
+        let index: Int
+        let value: Double
+        let type: String
+    }
+
+    private func parseSparkline(_ sparkline: String) -> [Double] {
+        let blocks = " ▂▃▄▅▆▇█"
+        var values: [Double] = []
+        for char in sparkline {
+            if char == " " || char == "_" {
+                values.append(0.0)
+            } else if let index = blocks.firstIndex(of: char) {
+                let distance = blocks.distance(from: blocks.startIndex, to: index)
+                values.append(Double(distance) / Double(blocks.count - 1))
+            } else {
+                values.append(0.5)
+            }
+        }
+        return values
+    }
+
     private var resourcesSection: some View {
         Group {
             if let res = model.opsSummary?.resources {
-                VStack(alignment: .leading, spacing: 12) {
-                    sectionTitle("资源", systemImage: "chart.bar.fill")
+                VStack(alignment: .leading, spacing: 14) {
+                    sectionTitle("资源与趋势", systemImage: "chart.bar.fill")
+                    
                     if let hist = model.opsSummary?.resources_history?.summary {
                         let verdict = hist.verdict ?? "—"
                         HStack {
                             Text("并行容量：\(verdict)")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(verdict == "saturated" ? CCCTheme.nodeFail : CCCTheme.nodeDone)
-                            if let spark = model.opsSummary?.resources_history?.sparklines?.load_ratio {
-                                Text(spark)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(CCCTheme.faint)
-                            }
+                            Spacer()
                         }
                         if let note = hist.note ?? hist.reason, !note.isEmpty {
                             Text(note)
@@ -871,58 +899,138 @@ struct OpsView: View {
                                 .foregroundStyle(CCCTheme.secondary)
                         }
                     }
-                    HStack(spacing: 16) {
-                        if let cpu = res.cpu {
-                            resourceGauge(
-                                title: "CPU",
-                                value: cpu,
-                                symbol: "cpu",
-                                unit: String(format: "%.0f%%", cpu * 100)
-                            )
+
+                    // 1. Current Util Bar Chart
+                    let currentItems: [ResourceItem] = [
+                        ResourceItem(
+                            name: "CPU",
+                            value: (res.cpu ?? 0) * 100,
+                            color: (res.cpu ?? 0) > 0.85 ? CCCTheme.nodeFail : ((res.cpu ?? 0) > 0.65 ? CCCTheme.accent : CCCTheme.nodeDone)
+                        ),
+                        ResourceItem(
+                            name: "内存",
+                            value: res.mem_pct ?? 0,
+                            color: (res.mem_pct ?? 0) > 85 ? CCCTheme.nodeFail : ((res.mem_pct ?? 0) > 65 ? CCCTheme.accent : CCCTheme.nodeDone)
+                        ),
+                        ResourceItem(
+                            name: "磁盘",
+                            value: res.disk_pct ?? 0,
+                            color: (res.disk_pct ?? 0) > 85 ? CCCTheme.nodeFail : ((res.disk_pct ?? 0) > 65 ? CCCTheme.accent : CCCTheme.nodeDone)
+                        )
+                    ]
+
+                    Chart(currentItems) { item in
+                        BarMark(
+                            x: .value("使用率", item.value),
+                            y: .value("资源", item.name),
+                            width: 14
+                        )
+                        .foregroundStyle(item.color)
+                        .annotation(position: .trailing) {
+                            Text(String(format: "%.0f%%", item.value))
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(CCCTheme.ink)
                         }
-                        if let mem = res.mem_pct {
-                            resourceGauge(
-                                title: "内存",
-                                value: mem / 100.0,
-                                symbol: "memorychip",
-                                unit: String(format: "%.0f%%", mem)
-                            )
+                    }
+                    .chartXScale(domain: 0...100)
+                    .chartXAxis {
+                        AxisMarks(values: [0, 25, 50, 75, 100]) { value in
+                            AxisGridLine()
+                            AxisTick()
+                            AxisValueLabel {
+                                if let pct = value.as(Int.self) {
+                                    Text("\(pct)%")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(CCCTheme.faint)
+                                }
+                            }
                         }
-                        if let disk = res.disk_pct {
-                            resourceGauge(
-                                title: "磁盘",
-                                value: disk / 100.0,
-                                symbol: "externaldrive.fill",
-                                unit: String(format: "%.0f%%", disk)
-                            )
+                    }
+                    .chartYAxis {
+                        AxisMarks { value in
+                            AxisValueLabel {
+                                if let name = value.as(String.self) {
+                                    Text(name)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(CCCTheme.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: 80)
+                    .padding(.vertical, 8)
+
+                    // 2. Trend Line Chart (Parsed from sparklines if available)
+                    if let loadSpark = model.opsSummary?.resources_history?.sparklines?.load_ratio,
+                       let memSpark = model.opsSummary?.resources_history?.sparklines?.mem_pct {
+                        let loadData = parseSparkline(loadSpark)
+                        let memData = parseSparkline(memSpark)
+                        
+                        let trendPoints: [TrendPoint] = {
+                            var pts: [TrendPoint] = []
+                            for (i, val) in loadData.enumerated() {
+                                pts.append(TrendPoint(index: i, value: val * 100, type: "CPU负载"))
+                            }
+                            for (i, val) in memData.enumerated() {
+                                pts.append(TrendPoint(index: i, value: val * 100, type: "内存占用"))
+                            }
+                            return pts
+                        }()
+
+                        if !trendPoints.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("最近趋势（心跳/资源负载）")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(CCCTheme.secondary)
+
+                                Chart(trendPoints) { point in
+                                    AreaMark(
+                                        x: .value("时间", point.index),
+                                        y: .value("使用率", point.value)
+                                    )
+                                    .foregroundStyle(by: .value("类型", point.type))
+                                    .opacity(0.12)
+
+                                    LineMark(
+                                        x: .value("时间", point.index),
+                                        y: .value("使用率", point.value)
+                                    )
+                                    .foregroundStyle(by: .value("类型", point.type))
+                                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                                }
+                                .chartForegroundStyleScale([
+                                    "CPU负载": CCCTheme.nodeDone,
+                                    "内存占用": CCCTheme.accent
+                                ])
+                                .chartXScale(domain: 0...max(1, max(loadData.count, memData.count) - 1))
+                                .chartXAxis(.hidden)
+                                .chartYScale(domain: 0...100)
+                                .chartYAxis {
+                                    AxisMarks(values: [0, 50, 100]) { value in
+                                        AxisGridLine()
+                                        AxisTick()
+                                        AxisValueLabel {
+                                            if let pct = value.as(Int.self) {
+                                                Text("\(pct)%")
+                                                    .font(.system(size: 9))
+                                                    .foregroundStyle(CCCTheme.faint)
+                                            }
+                                        }
+                                    }
+                                }
+                                .frame(height: 70)
+                            }
+                            .padding(.top, 4)
                         }
                     }
                 }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.regularMaterial)
+                )
             }
         }
-    }
-
-    private func resourceGauge(title: String, value: Double, symbol: String, unit: String) -> some View {
-        let clamped = min(max(value, 0), 1)
-        return VStack(spacing: 8) {
-            Gauge(value: clamped) {
-                Image(systemName: symbol)
-            } currentValueLabel: {
-                Text(unit)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-            }
-            .gaugeStyle(.accessoryCircularCapacity)
-            .tint(clamped > 0.85 ? CCCTheme.nodeFail : (clamped > 0.65 ? CCCTheme.accent : CCCTheme.nodeDone))
-            Text(title)
-                .font(CCCTheme.caption)
-                .foregroundStyle(CCCTheme.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.regularMaterial)
-        )
     }
 
     // MARK: - Risks

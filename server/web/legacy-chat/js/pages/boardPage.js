@@ -13,19 +13,19 @@
 import { apiGet, apiPost, getCards } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
-import { fmtTaskCopy } from '../components/taskCard.js';
+import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
 
-/** 看板列：五态派生，增加「机审」（已回写且无机审通过）。 */
-const FLOW_COLS = ['待分派', '执行中', '机审', '已回写', '打回', '已关闭'];
+/** 看板列（2026-08-12 重排）：第一竖列待分派/打回 + 执行中/机审（上下分栏）+ 已回写；已关闭删除。 */
+const FLOW_COLS = ['待分派', '打回', '执行中', '机审', '已回写'];
+const PAIR_COLS = ['待分派', '打回'];
+const RUN_COLS = ['执行中', '机审'];
 const COLORS = {
   待分派: '#a39e93',
   执行中: '#c47a2c',
   机审: '#8b6cc1',
   已回写: '#3d9a5f',
   打回: '#c44',
-  已关闭: '#5a7a9a',
 };
-const CLOSED_COL_LIMIT = 10;
 
 let _root = null;
 let _timer = null;
@@ -34,6 +34,16 @@ let _ws = 'all';
 let _wsNames = [];
 let _indicatorBusy = false;
 let _nameMap = {};
+let _readyForMergeInfo = null;
+let _collapsedCols = {};                  // 全部列默认展开（老板 2026-08-12：已关闭不折叠）
+let _colOpen = {};                       // 列体折叠（头部按钮）
+let _dense = false;                      // 卡片密度
+let _searchQ = '';
+let _colCardIds = { '执行中': [], '机审': [] }; // 上栏可见卡 id（运行流对应）
+let _es = null;                          // /tasks/stream SSE 连接
+let _esSig = '';                         // 当前 SSE 订阅签名（ids 未变复用连接）
+let _runColSig = {};                     // 执行中/机审列渲染签名（消闪烁）
+let _streamCache = {};                   // work_id → 最近中文行（卡片重建时恢复，刷新不冲掉）
 
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
@@ -99,7 +109,14 @@ function html() {
       <button type="button" class="hub-btn" id="board-refresh" title="刷新">刷新</button>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
+    <input type="search" id="board-search" placeholder="搜索卡…" style="padding:5px 10px;border:1px solid var(--ccc-border-subtle);border-radius:999px;background:#fff;font-size:12px;width:150px;outline:none;">
+    <button type="button" class="hub-btn" id="board-density" title="切换卡片密度">${_dense ? '舒适' : '紧凑'}</button>
     <span class="st" id="board-st">·</span>
+  </div>
+
+  <div id="board-backlog-alert-banner" style="display:none; flex-shrink: 0; margin: 0 10px 10px 10px; padding: 10px; background: var(--ccc-bg-layer); border: 1px solid #ffccc7; border-radius: var(--ccc-radius-sm); color: #ff4d4f; font-size: 12px; font-weight: 500; align-items: center; justify-content: space-between; animation: board-live-pulse 1.6s ease-in-out infinite;">
+    <span id="board-backlog-alert-msg" style="flex: 1; margin-right: 10px;"></span>
+    <button type="button" class="hub-btn" id="board-backlog-alert-btn" style="background:#ff4d4f; color:#fff; border:none; padding:4px 8px; font-size:11px; cursor:pointer; border-radius: 3px;">去收卡</button>
   </div>
 
   <div class="board-main" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
@@ -121,6 +138,9 @@ function html() {
     </div>
     <div class="btns" style="margin-top:10px">
       <button type="button" class="hub-btn" id="board-rd" style="display:none">重新分派</button>
+      <button type="button" class="hub-btn" id="board-fp" style="display:none">标误报</button>
+      <button type="button" class="hub-btn" id="board-audit" style="display:none">机审</button>
+      <button type="button" class="hub-btn" id="board-void" style="display:none">作废</button>
       <button type="button" class="hub-btn" id="board-dclose">关闭</button>
     </div>
   </div>
@@ -133,6 +153,11 @@ function getFilteredCards() {
     if (_ws !== 'all' && c.project !== _ws) {
       return false;
     }
+    if (_searchQ) {
+      const q = _searchQ.trim().toLowerCase();
+      const hit = (c.title || '').toLowerCase().includes(q) || (c.id || '').toLowerCase().includes(q) || (c.project || '').toLowerCase().includes(q);
+      if (!hit) return false;
+    }
     return true;
   });
 }
@@ -141,29 +166,63 @@ function renderBoard() {
   const host = _root.querySelector('#board-layout');
   if (!host) return;
 
+  const alertBanner = _root.querySelector('#board-backlog-alert-banner');
+  if (alertBanner) {
+    if (_readyForMergeInfo && _readyForMergeInfo.backlog_alert && _readyForMergeInfo.warning) {
+      const msgEl = _root.querySelector('#board-backlog-alert-msg');
+      if (msgEl) msgEl.textContent = _readyForMergeInfo.warning;
+      alertBanner.style.display = 'flex';
+    } else {
+      alertBanner.style.display = 'none';
+    }
+  }
+
   const filteredCards = getFilteredCards();
 
   if (!host.querySelector('#board-flow')) {
     host.innerHTML = `
-      <div class="board-flow-cols" id="board-flow" style="display: grid; grid-auto-columns: minmax(278px, 1fr); grid-auto-flow: column; gap: 12px; height: 100%; overflow-x: auto; padding: 10px 0;">
-        ${FLOW_COLS.map(col => `
-          <div class="board-col" style="display: flex; flex-direction: column; background: var(--ccc-bg-layer); border: 1px solid var(--ccc-border-subtle); border-radius: var(--ccc-radius-sm); overflow: hidden; height: 100%; min-width: 278px;">
+      <div class="board-flow-cols" id="board-flow">
+        <!-- 第一竖列：待分派 / 打回 上下各 50% -->
+        <div class="board-col-pair">
+          ${PAIR_COLS.map(col => `
+            <div class="board-half-col" data-col="${esc(col)}">
+              <div class="board-col-h">
+                <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span>
+                <span class="ct" id="ct-${col}">0</span>
+                <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
+              </div>
+              <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'};"></div>
+            </div>`).join('')}
+        </div>
+        <!-- 执行中 / 机审：完整独立栏，卡片下方跟该卡运行信息流 -->
+        ${RUN_COLS.map(col => `
+          <div class="board-col run-col" data-col="${esc(col)}">
             <div class="board-col-h">
-              <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}${col === '已关闭' ? '<span class="board-col-cap" title="只显示最近关闭的卡">·近10</span>' : ''}</span>
+              <span><span class="board-dot" style="background:${COLORS[col]}"></span>${esc(col)}</span>
               <span class="ct" id="ct-${col}">0</span>
+              <button type="button" class="board-col-fold" data-fold-col="${esc(col)}" title="折叠/展开该列">${_colOpen[col] ? '−' : '+'}</button>
             </div>
-            <div class="board-col-body" id="col-list-${col}" style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 200px; padding: 8px; gap: 6px;"></div>
+            <div class="board-col-body" id="col-list-${col}" style="display: ${_colOpen[col] ? 'none' : 'flex'};"></div>
+          </div>`).join('')}
+        <!-- 已回写（待合入） -->
+        <div class="board-col" data-col="已回写">
+          <div class="board-col-h">
+            <span><span class="board-dot" style="background:${COLORS['已回写']}"></span>已回写</span>
+            <span class="ct" id="ct-已回写">0</span>
+            <button type="button" class="board-col-fold" data-fold-col="已回写" title="折叠/展开该列">${_colOpen['已回写'] ? '−' : '+'}</button>
           </div>
-        `).join('')}
+          <div class="board-col-body" id="col-list-已回写" style="display: ${_colOpen['已回写'] ? 'none' : 'flex'};"></div>
+        </div>
       </div>
     `;
 
     _colLists = {};
     for (const col of FLOW_COLS) {
+      if (RUN_COLS.includes(col)) continue; // 这两列手动渲染（卡片+运行块）
       const colEl = host.querySelector(`#col-list-${col}`);
       if (colEl) {
         _colLists[col] = new TaskCardList(colEl, {
-          itemHeight: 118,
+          itemHeight: _dense ? 92 : 118,
           onCardClick: (card, id) => showDetail(id),
           onCopyClick: async (btn, id) => {
             const t = _allCards.find(x => x.id === id) || { id, title: '' };
@@ -178,6 +237,13 @@ function renderBoard() {
         _colLists[col].enableVirtualScroll(true);
       }
     }
+    host.querySelectorAll('[data-fold-col]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const col = btn.dataset.foldCol;
+        _colOpen[col] = !_colOpen[col];
+        renderBoard();
+      });
+    });
   }
 
   for (const col of FLOW_COLS) {
@@ -185,28 +251,25 @@ function renderBoard() {
       const colKey = c.board_column || c.state || c.status || '待分派';
       return colKey === col;
     });
-    if (col === '已关闭') {
-      stateCards = stateCards
-        .slice()
-        .sort((a, b) => {
-          const ta = a.closed_at || '';
-          const tb = b.closed_at || '';
-          if (ta === tb) return 0;
-          if (!ta) return 1;
-          if (!tb) return -1;
-          return tb.localeCompare(ta);
-        })
-        .slice(0, CLOSED_COL_LIMIT);
-    }
-
     const countEl = _root.querySelector(`#ct-${col}`);
     if (countEl) countEl.textContent = stateCards.length;
 
-    if (!_kanbanPageSizes[col]) {
+    if (_collapsedCols[col]) {
+      continue;
+    }
+
+    if (RUN_COLS.includes(col)) {
+      _kanbanPageSizes[col] = 3; // 老板 2026-08-12：这两列最多显示 3 张卡，下栏留给信息流
+    } else if (!_kanbanPageSizes[col]) {
       _kanbanPageSizes[col] = 30;
     }
 
     const visibleCards = stateCards.slice(0, _kanbanPageSizes[col]);
+    if (RUN_COLS.includes(col)) {
+      _colCardIds[col] = visibleCards.map((c) => c.id).filter(Boolean);
+      renderRunCol(col, visibleCards);
+      continue;
+    }
 
     if (_colLists[col]) {
       _colLists[col].setItems(visibleCards);
@@ -214,7 +277,7 @@ function renderBoard() {
 
     const paginationEl = _root.querySelector(`#col-list-${col} .task-card-list-pagination`);
     if (paginationEl) {
-      if (stateCards.length > visibleCards.length) {
+      if (stateCards.length > visibleCards.length && col !== '执行中' && col !== '机审') {
         paginationEl.innerHTML = `
           <div style="display: flex; justify-content: center; padding: 6px;">
             <button type="button" class="hub-btn load-more-btn" style="width: 100%; font-size: 11px; padding: 4px 8px; cursor: pointer; border: 1px solid var(--ccc-border-subtle); background: var(--ccc-bg-layer); color: var(--ccc-text-base); border-radius: 3px;">
@@ -239,9 +302,103 @@ function renderBoard() {
 function updateSummary() {
   const el = _root.querySelector('#board-st');
   if (!el) return;
-  const total = getFilteredCards().length;
+  // 人审调整动作统一化：作废卡（终态）与已关闭一样不计入活跃总数
+  const total = getFilteredCards().filter((c) => !['已关闭', '作废'].includes(c.board_column || c.state)).length;
   const wsDisplay = _ws === 'all' ? '全部' : (_nameMap[_ws] || _ws);
   el.textContent = wsDisplay + ` · 共 ${total} 张`;
+}
+
+/* ── 卡内实时日志流（SSE · 3 行瀑布 · 统一 5 秒刷新）── */
+
+function _streamIds() {
+  return [...new Set([...(_colCardIds['执行中'] || []), ...(_colCardIds['机审'] || [])])];
+}
+
+function _connectStream() {
+  if (!_root) return;
+  const ids = _streamIds();
+  const sig = ids.join(',');
+  if (_es && _esSig === sig) return; // ids 未变：复用连接，不重建（消闪烁/重置）
+  if (_es) {
+    _es.close();
+    _es = null;
+  }
+  if (!ids.length) return;
+  _esSig = sig;
+  _es = new EventSource('/tasks/stream?ids=' + encodeURIComponent(ids.join(',')));
+  const fillStream = (box, lines) => {
+    if (!box) return;
+    box.innerHTML = lines.length
+      ? lines.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('')
+      : '<div class="board-card-stream-empty">（暂无日志）</div>';
+  };
+  _es.addEventListener('snapshot', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const box = _root.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(d.work_id)}"] .board-card-stream-lines`);
+      const lines = Array.isArray(d.lines) ? d.lines : [];
+      _streamCache[d.work_id] = lines.slice(-5);
+      fillStream(box, _streamCache[d.work_id]);
+    } catch (err) { /* 忽略坏事件 */ }
+  });
+  _es.addEventListener('log', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const box = _root.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(d.work_id)}"] .board-card-stream-lines`);
+      if (!box || !d.line) return;
+      _streamCache[d.work_id] = [...(_streamCache[d.work_id] || []), d.line].slice(-5);
+      const empty = box.querySelector('.board-card-stream-empty');
+      if (empty) empty.remove();
+      const div = document.createElement('div');
+      div.className = 'board-stream-line';
+      div.textContent = d.line;
+      box.appendChild(div);
+      while (box.children.length > 5) box.removeChild(box.firstChild); // 硬性 5 行
+    } catch (err) { /* 忽略坏事件 */ }
+  });
+  _es.onerror = () => {
+    if (!_root || !_es) return;
+    _root.querySelectorAll('.board-card-stream-lines').forEach((box) => {
+      if (!box.querySelector('.board-stream-line')) {
+        box.innerHTML = '<div class="board-card-stream-empty">连接中断，重连中…</div>';
+      }
+    });
+  };
+}
+
+function renderRunCol(col, cards) {
+  const el = _root.querySelector(`#col-list-${col}`);
+  if (!el) return;
+  const sig = cards.map((c) => [c.id, c.board_column || c.state, c.tool_calls, c.audit_runs, c.audit_status || ''].join(':')).join('|');
+  if (sig === _runColSig[col]) return; // 数据未变不重建（消闪烁）
+  _runColSig[col] = sig;
+  el.innerHTML = cards.length
+    ? cards.map((c) => renderTaskCard(c, { stream: true })).join('')
+    : '<div class="board-empty">暂无任务</div>';
+  // 恢复缓存的中文行：刷新重建后没有新中文输出时，保持显示旧信息（老板 2026-08-12）
+  for (const c of cards) {
+    const box = el.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(c.id)}"] .board-card-stream-lines`);
+    const cached = _streamCache[c.id];
+    if (box && cached && cached.length) {
+      box.innerHTML = cached.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('');
+    }
+  }
+  el.querySelectorAll('.board-task-card').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.card-copy-btn')) return;
+      showDetail(card.dataset.id);
+    });
+  });
+  el.querySelectorAll('.card-copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const t = _allCards.find((x) => x.id === id) || { id, title: '' };
+      const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
+      if (ok) window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+      else window.showToast?.('复制失败', 'error');
+    });
+  });
 }
 
 function classifyWsStatus(payload) {
@@ -380,14 +537,17 @@ function mergeDirtyFromRunning(cards, runningTasks) {
 async function loadBoard() {
   try {
     const project = _ws === 'all' ? '' : _ws;
-    const [r, running] = await Promise.all([
+    const [r, running, ready] = await Promise.all([
       getCards({ project, page_size: 1000 }),
       apiGet('/tasks/running').catch(() => ({ tasks: [] })),
+      apiGet('/board/ready_for_merge').catch(() => ({ count: 0 })),
     ]);
     _allCards = mergeDirtyFromRunning(r.cards || [], running.tasks || []);
+    _readyForMergeInfo = ready;
 
     renderBoard();
     refreshAllWsIndicators().catch(() => {});
+    _connectStream(); // 5s 刷新统一在这里重建 SSE（上栏卡变化自动跟随）
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载看板失败', 'error');
   }
@@ -417,6 +577,27 @@ async function showDetail(id) {
       rdBtn.style.display = base === '打回' ? 'inline-block' : 'none';
       rdBtn.disabled = false;
     }
+    // 人审调整动作统一化：卡作废（终态）——待分派/执行中/已回写/打回 可作废
+    const voidBtn = _root.querySelector('#board-void');
+    if (voidBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      voidBtn.style.display = ['待分派', '执行中', '已回写', '打回'].includes(base) ? 'inline-block' : 'none';
+      voidBtn.disabled = false;
+    }
+    // 手动机审节点（流程开发阶段）：已回写（机审列）卡可手动转发去机审
+    const auditBtn = _root.querySelector('#board-audit');
+    if (auditBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      auditBtn.style.display = base === '已回写' ? 'inline-block' : 'none';
+      auditBtn.disabled = false;
+    }
+    // 机审命中率台账：打回卡可标「误报」（回填 hit=False）
+    const fpBtn = _root.querySelector('#board-fp');
+    if (fpBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      fpBtn.style.display = base === '打回' ? 'inline-block' : 'none';
+      fpBtn.disabled = false;
+    }
     _root.querySelector('#board-dm').classList.add('open');
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '加载详情失败', 'error');
@@ -424,6 +605,24 @@ async function showDetail(id) {
 }
 
 function bind() {
+  const searchEl = _root.querySelector('#board-search');
+  if (searchEl) {
+    let deb = null;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(deb);
+      deb = setTimeout(() => {
+        _searchQ = searchEl.value;
+        renderBoard();
+      }, 250);
+    });
+  }
+  _root.querySelector('#board-density')?.addEventListener('click', () => {
+    _dense = !_dense;
+    const btn = _root.querySelector('#board-density');
+    if (btn) btn.textContent = _dense ? '舒适' : '紧凑';
+    _colLists = {};
+    renderBoard();
+  });
   _root.querySelector('#board-ws-btns').addEventListener('click', (e) => {
     const btn = e.target.closest('.board-ws-btn');
     if (!btn) return;
@@ -458,6 +657,85 @@ function bind() {
     _root.querySelector('#board-dm').classList.remove('open');
   });
 
+  // 人审调整动作统一化：卡作废（终态，须附原因）
+  _root.querySelector('#board-void').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-void');
+    if (!id || !btn) return;
+    const reason = window.prompt('作废原因（必填，终态不可逆）：', '');
+    if (reason === null || !reason.trim()) return;
+    if (!window.confirm(`确定作废 ${id}？终态不可逆。`)) return;
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/tasks/' + encodeURIComponent(id) + '/transition', { status: '作废', reason: reason.trim() });
+      window.showToast?.((r && r.id ? `${r.id} 已作废（${reason.trim()}）` : '已作废'), 'success');
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '作废失败', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // 机审命中率台账：老板标打回为误报（hit=False）
+  _root.querySelector('#board-fp').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-fp');
+    if (!id || !btn) return;
+    if (!window.confirm(`确定将 ${id} 的机审打回标为「误报」？将回填命中率台账为未命中。`)) return;
+    btn.disabled = true;
+    try {
+      await apiPost('/tasks/' + encodeURIComponent(id) + '/false-positive', {});
+      window.showToast?.(`${id} 已标误报（台账未命中）`, 'success');
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '标记失败', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // 手动机审节点：老板手动把卡转发去机审（流程开发阶段）
+  _root.querySelector('#board-audit').addEventListener('click', async () => {
+    const id = _root.querySelector('#board-did').textContent.trim();
+    const btn = _root.querySelector('#board-audit');
+    if (!id || !btn) return;
+    const severity = window.prompt('机审 severity（留空=v4自动判定；重=fresh独立agent零上下文）：轻/中/重', '');
+    if (severity !== null && severity !== '' && !['轻', '中', '重'].includes(severity)) {
+      window.showToast?.('severity 须为 轻/中/重', 'error');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '机审中…';
+    try {
+      const body = severity ? { severity } : {};
+      const r = await apiPost('/tasks/' + encodeURIComponent(id) + '/audit', body);
+      if (r && r.skipped) {
+        window.showToast?.((r.id || id) + ' 已有机审通过证据（force 可强制重审）', 'info');
+      } else if (r && r.conclusion) {
+        window.showToast?.(`${r.id || id} 机审${r.conclusion}` + (r.problems && r.problems.length ? '：' + r.problems[0] : ''), r.conclusion === '通过' ? 'success' : 'warning');
+      } else {
+        window.showToast?.(r && r.error ? r.error : '机审完成', 'info');
+      }
+      _root.querySelector('#board-dm').classList.remove('open');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.(err && err.message ? err.message : '机审失败', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '机审';
+    }
+  });
+
+  const alertBtn = _root.querySelector('#board-backlog-alert-btn');
+  if (alertBtn) {
+    alertBtn.addEventListener('click', () => {
+      location.hash = '#/console';
+    });
+  }
+
 }
 
 export async function mountBoard(el) {
@@ -470,6 +748,7 @@ export async function mountBoard(el) {
     }
     await loadBoard();
     if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+    _connectStream();
     return;
   }
   _root = el;
@@ -479,12 +758,17 @@ export async function mountBoard(el) {
   await loadConfig();
   await loadBoard();
   _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+  _connectStream();
 }
 
 export function unmountBoard() {
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
+  }
+  if (_es) {
+    _es.close();
+    _es = null;
   }
   _colLists = {};
   _root = null;

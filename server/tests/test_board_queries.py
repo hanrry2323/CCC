@@ -7,7 +7,6 @@ from datetime import date
 from server.board.models import BoardItem
 from server.board.queries import (
     board_column_counts,
-    roadmap_aggregate,
     roadmap_by_project,
     roadmap_overview,
     roadmap_project_detail,
@@ -110,7 +109,7 @@ class TestRoadmap:
             _item("d", state="已关闭"),
             _item("e", state="打回"),
         ]
-        counts = {row["bucket"]: row["count"] for row in roadmap_aggregate(items)}
+        counts = {row["bucket"]: row["count"] for row in roadmap_overview(items)}
         assert counts == {
             "未开发": 1,
             "开发中": 1,
@@ -226,6 +225,7 @@ class TestStateCounts:
             "已回写": 0,
             "已关闭": 0,
             "打回": 0,
+            "作废": 0,
         }
 
     def test_column_counts_split_audit(self) -> None:
@@ -295,7 +295,7 @@ class TestStateNormalization:
             _item("b", state="打回（原因）"),
             _item("c", state="已回写（有条件）"),
         ]
-        counts = {row["bucket"]: row["count"] for row in roadmap_aggregate(items)}
+        counts = {row["bucket"]: row["count"] for row in roadmap_overview(items)}
         assert counts["未开发"] == 1
         assert counts["已开发待验收"] == 1
         assert counts["有问题"] == 1
@@ -305,6 +305,7 @@ class TestStateNormalization:
             "已回写": 1,
             "已关闭": 0,
             "打回": 1,
+            "作废": 0,
         }
 
     def test_variant_by_project_states(self) -> None:

@@ -3,7 +3,7 @@
   "section": "01-nodes-paths",
   "updated_at": "2026-08-03",
   "source": "qx-map cluster/path-authority.md (2026-08-01) + docs/architecture.md (v0.70.0, 2026-08-02 重构定稿) + ccc-relay-双轨决议-2026-08-02.md + ccc-refactor-M2-生产验证-2026-08-03.md",
-  "note": "路径权威表 SSOT。所有机器/项目路径以此为准。状态类信息（磁盘/负载/服务在线）仅作参考，以当日 manifest 为准。2026-08-03 按 2017 单端终态更新：移除已退役端口 7777/7775/17777/7778，2017 :7788 三服务常驻，6100/6102 CCC 专用中转站，M1 4100/4102 保留。",
+  "note": "路径权威表 SSOT。所有机器/项目路径以此为准。状态类信息（磁盘/负载/服务在线）仅作参考，以当日 manifest 为准。2026-08-03 按 2017 单端终态更新：移除已退役端口 7777/7775/17777/7778，2017 :7788 三服务常驻，6100/6102 CCC 专用中转站，M1 4100/4102 已冷冻（2026-08-06）。",
   "machines": [
     {
       "hostname": "m1",
@@ -16,7 +16,7 @@
       "role": "开发机 + Codex 驻场·开发期工作站（Trae 开发 CCC）+ 后期壳之一（HTTP 直连 2017）",
       "services": [
         "Codex Desktop",
-        "ai-loop-router :4100/:4102（loop-router，Codex 智能路由；双轨决议保留，不停用）",
+        "ai-loop-router :4100/:4102（loop-router，已冷冻 2026-08-06，不再运行）",
         "ccc-relay-runtime :4000（CCC relay，与 loop-router 独立）",
         "postgres :5432"
       ],
@@ -92,15 +92,15 @@
     "auth": "对话口账号密码 + 会话 token（沿用 7788 鉴权地基，多壳必须锁门）"
   },
   "relay_dual_track": {
-    "decision": "ccc-relay-双轨决议-2026-08-02.md（D11 补充，永久生效）",
-    "summary": "M1 中转站（4100/4102）不停用继续使用；CCC 系统中转站部署在 Mac2017（6100/6102），CCC 体系专用。6100/6102 仅限 Mac2017 侧 Claude Code 与 OpenCode 使用，统一 flash 档位。",
+    "decision": "ccc-relay-双轨决议-2026-08-02.md（历史；2026-08-06 冷冻后作废，见 qx-map cluster.json:13 / AGENTS.md:123）",
+    "summary": "2026-08-02 曾决议 M1 中转站（4100/4102）双轨并行；2026-08-06 已冷冻（qx-map cluster.json:13 / AGENTS.md:123）：M1 loop-router 不再运行，出口统一走 Mac2017 6100/6102，M1 Codex 改官方 DeepSeek 直连。",
     "m1_loop_router": {
       "code_repo": "/Users/apple/program/ai-loop-router",
       "ports": "4100/4102",
-      "upstream": "opencode/minimax/zhipu 直连",
-      "codex_usage": "是（model_provider=loop-router）",
+      "upstream": "opencode/minimax/zhipu 直连（已冷冻 2026-08-06，仅历史参考）",
+      "codex_usage": "否（2026-08-06 起官方 DeepSeek 直连）",
       "responsibility": "M1 侧 Codex/Claude Code/OpenCode 智能路由",
-      "status": "保留（双轨并行）"
+      "status": "冷冻（2026-08-06 起不运行，历史参考）"
     },
     "mac2017_ccc_relay": {
       "code_repo": "ai-loop-router-ccc（Mac2017 本地实例）",

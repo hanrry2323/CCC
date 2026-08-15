@@ -76,13 +76,13 @@ def test_at_least_min_hits() -> None:
 
 
 # ════════════════════════════════════════════════════════════
-# 四域覆盖
+# 五域覆盖
 # ════════════════════════════════════════════════════════════
 
-def test_covers_four_domains() -> None:
-    """用例集覆盖四域。"""
+def test_covers_five_domains() -> None:
+    """用例集覆盖五域。"""
     domains = {d for _, d in _load_cases()}
-    for expected in ("nodes-paths", "projects", "decisions", "lessons"):
+    for expected in ("nodes-paths", "projects", "decisions", "lessons", "plans"):
         assert expected in domains, f"用例集缺域 {expected}"
 
 

@@ -11,6 +11,7 @@
 | Mac2017 | 192.168.3.116 | macOS 13.7.8 x86_64 | 16GB | fan | `ssh fan@192.168.3.116`（密钥 `~/.ssh/id_ed25519_xianyu`） |
 | HP | 192.168.3.131 | Ubuntu 25.10 | 11GB | hp | `ssh hp@192.168.3.131`（密钥 `~/.ssh/id_ed25519_hp`） |
 | Windows | 192.168.3.252 | Windows | — | win | `ssh win@192.168.3.252`（密钥 `~/.ssh/id_ed25519`） |
+| surface-pro | 192.168.3.195 | Windows Server | — | test | SSH 免密（2026-08-15 接入，qx-map/CCC 已 clone） |
 
 ## CCC 拓扑（2017 单端终态）
 
@@ -50,10 +51,7 @@
 - `com.ccc.engine`（薄驱动 Engine，launchd 常驻）
 - `com.ccc.board-scheduler`（只读巡检 + 导出，launchd 常驻）
 - `com.ccc.ai-loop-router :6100/:6102`（CCC 专用中转站，launchd 常驻；6100=Anthropic 出口，6102=Relay flash 出口）
-- qx-observer :7777
-- xianyu :8080
-- redis :6379
-- 退役服务：ollama :11434（2026-08-02 已移除）
+- 退役服务：ollama :11434（2026-08-02 已移除）、qx-observer :7777、xianyu :8080、redis :6379（2026-08-13 清理后停用）
 
 ### HP（存储 + 知识库服务 + medio-server）
 - mcp-server :8083（知识库 MCP 唯一入口）
@@ -62,22 +60,22 @@
 - ollama（4 models，not for prod embedding）
 - medio-server
 
-## 中转站双轨（D11 补充，永久生效）
+## 中转站（历史双轨 → 2026-08-06 冷冻收敛）
 
-**决议文件**：`ccc-relay-双轨决议-2026-08-02.md`
+**历史决议**：`ccc-relay-双轨决议-2026-08-02.md`（2026-08-02 曾拍板 M1 中转站 4100/4102 不停用、双轨并行）。
 
-老板拍板：M1 中转站（ai-loop-router，4100/4102）不停用，继续使用维持现状；CCC 系统中转站已部署在 Mac2017，端口 6100/6102，为 CCC 体系专用。6100/6102 的使用方仅两个：Mac2017 侧的 Claude Code 与 OpenCode；两者均使用 flash 档位。
+**2026-08-06 已冷冻**（qx-map `cluster.json:13` / `AGENTS.md:123`）：M1 loop-router（4100/4102）不再运行，模型出口统一走 Mac2017 `6100`（Anthropic）/ `6102`（OpenAI）；M1 Codex 改官方 DeepSeek 直连。下表 M1 列为历史参考，状态已标冷冻。
 
 | | M1 loop-router | Mac2017 CCC relay |
 |--|---------------|-------------------|
 | 代码仓 | `/Users/apple/program/ai-loop-router` | `ai-loop-router-ccc`（Mac2017 本地实例） |
 | 端口 | 4100/4102 | 6100/6102 |
 | 上游 | opencode/minimax/zhipu 直连 | Anthropic 出口（6100）/ Relay flash 出口（6102） |
-| Codex 是否用 | 是（model_provider=loop-router） | 否（仅 CCC 体系） |
+| Codex 是否用 | 否（2026-08-06 起官方 DeepSeek 直连） | 否（仅 CCC 体系） |
 | 使用方 | M1 侧 Codex/Claude Code/OpenCode 智能路由 | 仅 Mac2017 侧 Claude Code + OpenCode + Engine env |
 | 模型档位 | （依上游） | 统一 flash |
 | 职责 | M1 侧智能路由 | CCC 体系专用中转站 |
-| 状态 | 保留（双轨并行） | 常驻（launchd `com.ccc.ai-loop-router`） |
+| 状态 | 冷冻（2026-08-06 起不运行，历史参考） | 常驻（launchd `com.ccc.ai-loop-router`） |
 
 **退役 relay**：M1 :4000（ccc-relay-runtime）早已离线，与双轨决议无关。
 

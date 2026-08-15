@@ -4,7 +4,7 @@
 > **版本**：`VERSION`（**v0.70.0**）  
 > **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）  
 > **文档怎么写 / 项目注册**：[`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) · [`docs/projects/registry.yaml`](docs/projects/registry.yaml)  
-> **Cursor 入口**：[`CURSOR.md`](CURSOR.md) · **仓内规则**：`.cursor/rules/`（2026-08-05 新栈）  
+> **Cursor 已弃用**（2026-08-14，入口 `CURSOR.md` 已移除）  
 > **索引**：[`docs/INDEX.md`](docs/INDEX.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)
 
 ---
@@ -21,10 +21,10 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 - **自验收（2026-08-07 起）**：谁开发谁验收（OpenCode↔OpenCode / Claude↔Claude）
 - **机审** = 验收席按 **code-review 技能**完整审查（P0/P1 就地修复复审）；开发禁止写机审区
 - **合入批准** = 人审 diff 后唯一常规动作（[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；旧称「验收看板」）
-- **Codex** = 出卡/裁决 · **Cursor** = 突击（均不响应合入口令代关卡）
+- **Codex** = 出卡/裁决（不响应合入口令代关卡；Cursor 已弃用 2026-08-14）
 - **HTTP 看板** = 实时面；Desktop 暂缓
 
-SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CURSOR.md`](CURSOR.md) · [`CLAUDE.md`](CLAUDE.md)。  
+SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) · [`docs/product/dev-channel.md`](docs/product/dev-channel.md) · [`docs/product/hub-context-sop.md`](docs/product/hub-context-sop.md) · [`CLAUDE.md`](CLAUDE.md)。  
 **cwd 铁律**：在 M1 做 CCC 必须打开 `/Users/apple/program/CCC`。  
 **北星命令**：`scripts/plan-to-cards.sh` · `GET /board/ready_for_merge` · `scripts/approve-merge.sh` / `scripts/card-evidence.sh`。  
 **合入硬路由**：听到「合入批准」（旧称「验收看板」等同义）→ approve-merge / north-star-slice；ready = 分支信封 `git show origin/<分支>:<卡>` 含机审通过；**禁止**代写机审区。
@@ -38,7 +38,7 @@ SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) ·
 | | |
 |--|--|
 | **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（默认免登录，`CCC_WEB_AUTH_REQUIRED=0`） |
-| **大脑 / Claude Code `:6100`** | Anthropic 出口 flash：对话 + Claude Code 执行体 |
+| **大脑 / Claude Code `:6100`** | Anthropic 出口 flash：对话 + Claude Code 机审/合入执行体（开发归 OpenCode） |
 | **Relay / OpenCode `:6102`** | code 档上游路由（OpenCode 等） |
 | **3 个 launchd 服务** | `com.ccc.web-server` + `com.ccc.engine` + `com.ccc.board-scheduler`（仅 2017） |
 
@@ -135,7 +135,7 @@ OpenCode 与 Claude Code 均为可后台 CLI；按卡头绑定与注册表拉起
 ## 8. 懒加载
 
 ```bash
-cat CURSOR.md                    # Cursor 角色与现况
+# Cursor 已弃用（2026-08-14），难度突击由 Claude Code/OpenCode 顶替
 cat docs/architecture.md
 cat docs/INDEX.md                # §0 权威链
 cat docs/DOC-PROTOCOL.md         # 写哪里 / 项目注册
@@ -153,5 +153,5 @@ python -m server.board.validate docs/dispatch
 
 ---
 
-**维护**：范式变更时同步 `CURSOR.md` + `.cursor/rules/` + INDEX §0 + 本 Brief。  
+**维护**：范式变更时同步 `.cursor/rules/` + INDEX §0 + 本 Brief（CURSOR.md 已随 Cursor 弃用移除）。  
 **约束**：禁止在 Engine 外并发依赖模块全局 `ROOT`（F-CON-03）。

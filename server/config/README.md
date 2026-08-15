@@ -5,10 +5,10 @@
 | 角色 | 分类 | 绑定 | 说明 |
 |------|------|------|------|
 | 开发执行体 | 可后台 CLI | OpenCode | 2017 默认开发 |
-| 开发执行体 | 可后台 CLI | Claude Code | 点名开发 |
 | 维护执行体 | 可后台 CLI | OpenCode | 维护 |
 | 管理席 | — | Codex | 出卡；不验收 |
 | 验收席 | 可后台 CLI | Claude Code | 机审（写 ## 机审区） |
 | 验收席 | 可后台 CLI | OpenCode | 机审（Claude 开发时） |
+| 只读取证/审计执行体 | — | DSH headless | 只读取证/合规扫描（暂不参与自动派发，人工在麦克2017 触发） |
 
 终验不在注册表自动派发：见 `docs/product/accept-board-sop.md`。

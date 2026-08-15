@@ -64,6 +64,12 @@ export function renderWorktreeBadges(t) {
       `<span class="board-card-badge badge-calls" title="累计工具调用（开发+机审各阶段日志汇总；高水位跟卡走，不因换列归零）">调用 ${escapeHtml(String(Number(calls)))}</span>`
     );
   }
+  const auditRuns = t.audit_runs;
+  if (auditRuns != null && Number(auditRuns) > 0) {
+    parts.push(
+      `<span class="board-card-badge badge-audit" title="机审进程次数（累计，每次机审 1 次）">机审 ${escapeHtml(String(Number(auditRuns)))}</span>`
+    );
+  }
 
   const elapsed = t.elapsed_s;
   if (elapsed != null && elapsed !== '' && Number(elapsed) >= 0) {
@@ -102,16 +108,24 @@ export function renderWorktreeBadges(t) {
   return parts.join('');
 }
 
-export function renderTaskCard(t) {
+export function renderTaskCard(t, opts = {}) {
   const state = t.board_column || t.state || t.status || '待分派';
   const tone = STATE_TONE[state] || 'pending';
   const color = STATE_COLORS[state] || '#a39e93';
+  const streamHtml = opts.stream
+    ? `<div class="board-card-stream" data-stream-id="${escapeHtml(t.id)}" title="仅显示主要输出（中文主输出 · 5 秒刷新）">
+        <div class="board-card-stream-lines"><div class="board-card-stream-empty">连接实时日志…</div></div>
+      </div>`
+    : '';
 
   const auditStatus = t.audit_status ? `<span class="board-card-badge badge-audit badge-audit-${t.audit_status}" title="机审状态：${t.audit_status}">${t.audit_status}</span>` : '';
 
   const reject = Number(t.reject_count || 0);
   const rejectHtml = reject > 0
     ? `<span class="board-card-badge badge-reject" title="打回次数">↩ ${reject}</span>`
+    : '';
+  const reasonHtml = t.reason
+    ? `<span class="board-card-badge badge-reject" title="打回原因：${escapeHtml(t.reason)}">${escapeHtml(String(t.reason).slice(0, 22))}${String(t.reason).length > 22 ? '…' : ''}</span>`
     : '';
 
   const statsHtml = renderWorktreeBadges(t);
@@ -121,6 +135,11 @@ export function renderTaskCard(t) {
 
   const executor = t.executor && t.executor !== '未知'
     ? `<span class="board-card-badge badge-exec" title="执行体">@${escapeHtml(t.executor)}</span>`
+    : '';
+
+  const approvalLabel = t.approval ? String(t.approval).split(' · ')[0] : '';
+  const approval = approvalLabel
+    ? `<span class="board-card-badge badge-approval" title="人审批准：${escapeHtml(t.approval)}">✓ ${escapeHtml(approvalLabel)}</span>`
     : '';
 
   const updated = t.written_at && t.written_at !== '未知'
@@ -145,13 +164,16 @@ export function renderTaskCard(t) {
           </button>
         </div>
       </div>
-      <div class="board-card-title ti" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(t.title || t.id)}">${escapeHtml(t.title || t.id)}</div>
+      <div class="board-card-title ti" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35;min-height:2.7em;" title="${escapeHtml(t.title || t.id)}">${escapeHtml(t.title || t.id)}</div>
       ${metricsBlock}
+      ${streamHtml}
       <div class="board-card-meta">
         ${executor}
+        ${approval}
         ${rejectHtml}
+        ${reasonHtml}
+        ${updatedHtml ? `<span class="board-card-meta-time">${updatedHtml}</span>` : ''}
       </div>
-      ${updatedHtml ? `<div class="board-card-foot">${updatedHtml}</div>` : ''}
       <div class="board-card-detail" hidden></div>
     </div>
   `;

@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构（:7777/control.json），已被现行架构（INDEX §0 薄驱动 Engine，2017 :7788）取代。禁止引用；历史追溯见 git 历史。
+
 # CCC 介绍 Walkthrough — 截图分镜与旁白
 
 > 按序截图，文件放入 [`assets/intro/`](assets/intro/)。  

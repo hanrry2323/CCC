@@ -1,6 +1,6 @@
 # 任务卡 mx022 · OPML 导入属性顺序修复（OpenCode 执行）
 
-> 关联：ccc-plan: medio-0 打磨第三批：RSS 事务化 / 定时巡检 / OPML 导入修复 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-08
+> 关联：mx-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-08
 
 ## 目标
 
@@ -49,3 +49,16 @@ OPML 导入属性顺序修复（ccc-plan 切片）。
 - **实现说明**：重构了 `parse_opml` 中 `Event::Start(e)` 与 `Event::Empty(e)` 的逻辑，不再在属性循环内进行 push。改为先解析 `xmlUrl`, `text`, `title`, `category` 至局部变量，再在属性循环外按 `text > title > url` 的优先级确定订阅名称，彻底解决属性顺序导致的名丢失 bug，并完美兼容既有嵌套及容错行为。
 - **测试结果**：新增了 `parse_opml_attribute_ordering_and_priorities` 测试，全量覆盖属性顺序变体（xmlUrl先、text先、缺 text、属性乱序等），经 `cargo test -p medio-core` 所有 421 项单元测试已 100% 通过（零警告）。
 - **Push 证据**：分支 `codex/mx022-opml-import-attribute-order` 已成功 push 至 medio-0 业务仓，对应 commit hash 为 `286f0d691ce09c2a8fe46967758bc29fac19ee7c`。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

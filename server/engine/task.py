@@ -22,28 +22,33 @@ from enum import Enum
 try:
     from enum import StrEnum
 except ImportError:
+
     class StrEnum(str, Enum):  # noqa: UP042
         pass
 
 
 class State(StrEnum):
-    """契约 §2 五态。"""
+    """契约 §2 六态。"""
 
     TODO = "待分派"
     RUNNING = "执行中"
     DONE = "已回写"
     CLOSED = "已关闭"
     REJECTED = "打回"
+    VOIDED = "作废"
 
 
-# 合法转移表（契约 §2 + 打回→待分派 人工重派回环；已关闭为终态）
+# 合法转移表（契约 §2 + 打回→待分派 人工重派回环 + 作废终态；已关闭/作废为终态）
+# 人审调整动作统一化（2026-08-14）：待分派/执行中/已回写/打回 均可作废（人审取消单卡），
+# 作废 = 终态，不可再流转。
 _LEGAL_TRANSITIONS: dict[State, frozenset[State]] = {
-    State.TODO: frozenset({State.RUNNING}),
-    State.RUNNING: frozenset({State.DONE, State.REJECTED, State.TODO}),
+    State.TODO: frozenset({State.RUNNING, State.VOIDED}),
+    State.RUNNING: frozenset({State.DONE, State.REJECTED, State.TODO, State.VOIDED}),
     # 机审失败：已回写 → 待分派（带原因自动重试），用尽后才打回
-    State.DONE: frozenset({State.CLOSED, State.REJECTED, State.TODO}),
-    State.REJECTED: frozenset({State.TODO}),
+    State.DONE: frozenset({State.CLOSED, State.REJECTED, State.TODO, State.VOIDED}),
+    State.REJECTED: frozenset({State.TODO, State.VOIDED}),
     State.CLOSED: frozenset(),
+    State.VOIDED: frozenset(),
 }
 
 
@@ -79,6 +84,7 @@ class Work:
     type: str = "task"
     project: str = ""
     parent: str = ""
+    depends_on: list[str] = field(default_factory=list)
     acceptance: str = ""
     thread_id: str = ""
     retry_count: int = 0
@@ -100,9 +106,11 @@ class Work:
                 f"非法状态转移: {self.state.value} → {new_state.value} "
                 f"(合法目标: {[s.value for s in sorted(allowed, key=str)]})"
             )
-        if new_state is State.REJECTED:
+        if new_state in (State.REJECTED, State.VOIDED):
             if not problems:
-                raise IllegalTransitionError("进入「打回」必须附问题清单")
+                raise IllegalTransitionError(
+                    f"进入「{new_state.value}」必须附问题清单（原因）"
+                )
             self.problems = list(problems)
         elif problems is not None:
             self.problems = list(problems)

@@ -289,22 +289,25 @@ def _clear_brain_env():
         os.environ.pop(k, None)
 
 
+@pytest.fixture(autouse=True)
+def _clear_conversation_state(monkeypatch):
+    """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
+    from server.web import server as srv_mod
+
+    srv_mod._conversations.clear()
+    srv_mod._thread_conversations.clear()
+    _clear_brain_env()
+    # 强制将 M1 对话桥设为空，确保对话代理测试完全隔离，不受本地 config.env 生产配置污染
+    monkeypatch.setattr("server.web.server._chat_bridge_url", lambda: "")
+    yield
+    srv_mod._conversations.clear()
+    srv_mod._thread_conversations.clear()
+    _clear_brain_env()
+
+
 class TestConversation:
     """/conversation 大脑代理测试：缺配置 503、忙 503、成功 200 reply、
     超时 504、失败 502、历史落盘、prompt 含上下文、鉴权不回归。"""
-
-    @pytest.fixture(autouse=True)
-    def _clear_conversation_state(self):
-        """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
-        from server.web import server as srv_mod
-
-        srv_mod._conversations.clear()
-        srv_mod._thread_conversations.clear()
-        _clear_brain_env()
-        yield
-        srv_mod._conversations.clear()
-        srv_mod._thread_conversations.clear()
-        _clear_brain_env()
 
     def test_conversation_no_auth(self, api_server):
         """未鉴权对话请求返回 401（不触达大脑）。"""
@@ -532,13 +535,15 @@ class TestConversationLongPoll:
     """T43：seq 光标 / 超时空增量 / 新消息增量 / after 正确 / 并发不阻塞 / 断连不崩溃。"""
 
     @pytest.fixture(autouse=True)
-    def _clear_conversation_state(self):
+    def _clear_conversation_state(self, monkeypatch):
         """每个测试前清空对话历史与大脑 env，避免跨用例污染。"""
         from server.web import server as srv_mod
 
         srv_mod._conversations.clear()
         srv_mod._thread_conversations.clear()
         _clear_brain_env()
+        # 强制将 M1 对话桥设为空，确保对话代理测试完全隔离，不受本地 config.env 生产配置污染
+        monkeypatch.setattr("server.web.server._chat_bridge_url", lambda: "")
         yield
         srv_mod._conversations.clear()
         srv_mod._thread_conversations.clear()
@@ -729,7 +734,7 @@ class TestConversationThreads:
     """T44：thread_id 分桶历史互不污染、model 档位覆盖、跨会话并发不全局拒绝。"""
 
     @pytest.fixture(autouse=True)
-    def _clear_conversation_state(self):
+    def _clear_conversation_state(self, monkeypatch):
         """每个测试前清空对话历史（含会话桶）与大脑 env，避免跨用例污染。"""
         from server.web import server as srv_mod
         from server.web import brain as brain_mod
@@ -738,6 +743,8 @@ class TestConversationThreads:
         srv_mod._thread_conversations.clear()
         brain_mod._session_locks.clear()
         _clear_brain_env()
+        # 强制将 M1 对话桥设为空，确保对话代理测试完全隔离，不受本地 config.env 生产配置污染
+        monkeypatch.setattr("server.web.server._chat_bridge_url", lambda: "")
         yield
         srv_mod._conversations.clear()
         srv_mod._thread_conversations.clear()
@@ -1153,14 +1160,24 @@ class TestBoardRoadmap:
         token = _get_token(api_server)
         status, data = _get(api_server, "/board/roadmap", token=token)
         assert status == 200
-        # 线路图返回 overview + by_project
-        assert "overview" in data
-        assert "by_project" in data
-        assert isinstance(data["overview"], list)
-        assert isinstance(data["by_project"], list)
-        for bucket in data["overview"]:
-            assert "bucket" in bucket
-            assert "count" in bucket
+        # Phase2：/board/roadmap 改读 roadmap.py 的项目线路图（roadmaps），不再从 epic 卡派生 overview/by_project
+        assert "roadmaps" in data
+        assert "total" in data
+        assert isinstance(data["roadmaps"], list)
+
+    def test_roadmap_projects_200(self, api_server):
+        """GET /roadmap/projects（Phase2 新增）返回项目线路图列表。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/roadmap/projects", token=token)
+        assert status == 200
+        assert "roadmaps" in data
+        assert "total" in data
+        assert isinstance(data["roadmaps"], list)
+        # 真实仓库应有 docs/projects/<p>/roadmap.md；至少应返回结构合法
+        for rm in data["roadmaps"]:
+            assert "project" in rm
+            assert "drafts" in rm
+            assert "milestones" in rm
 
 
 class TestNotFound:
@@ -1389,6 +1406,15 @@ class TestTaskDetail:
 class TestTasksRunning:
     """GET /tasks/running：执行中任务进程视图（免登录白名单 + 日志尾部）。"""
 
+    @pytest.fixture(autouse=True)
+    def _clear_running_cache(self):
+        """tasks/running 整表缓存按测试隔离（marker/mock 变化需即时重算）。"""
+        from server.web.server import _RUNNING_TASKS_CACHE
+
+        _RUNNING_TASKS_CACHE.update(ts=0.0, key="__reset__", data=None)
+        yield
+        _RUNNING_TASKS_CACHE.update(ts=0.0, key="__reset__", data=None)
+
     def test_whitelisted_requires_no_token(self, api_server):
         """鉴权开启时 /tasks/running 仍免登录 200（与 /projects 同白名单组）。"""
         status, data = _get(api_server, "/tasks/running")
@@ -1406,7 +1432,8 @@ class TestTasksRunning:
         (log_dir / "T999.running").write_text("pid=1\n", encoding="utf-8")
         monkeypatch.setenv("EXECUTOR_LOG_DIR", str(log_dir))
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [
                 BoardItem(id="T999", title="测试运行中", state="执行中", executor="Claude Code"),
                 BoardItem(id="T1", title="待分派卡", state="待分派"),
@@ -1452,7 +1479,8 @@ class TestTasksRunning:
         subprocess.run(["git", "config", "user.name", "t"], cwd=wt, check=True, capture_output=True)
         (wt / "a.txt").write_text("a\n", encoding="utf-8")
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [BoardItem(id="T777", title="脏", state="执行中", executor="Claude Code")],
         )
         status, data = _get(api_server, "/tasks/running")
@@ -1467,7 +1495,8 @@ class TestTasksRunning:
         from server.board.models import BoardItem
 
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [
                 BoardItem(id="T1", title="待分派", state="待分派"),
                 BoardItem(
@@ -1502,7 +1531,8 @@ class TestTasksRunning:
         monkeypatch.delenv("EXECUTOR_LOG_DIR", raising=False)
         monkeypatch.delenv("CCC_CONFIG_ENV", raising=False)
         monkeypatch.setattr(
-            srv, "_load_board_items",
+            srv,
+            "_load_board_items",
             lambda: [BoardItem(id="T5", title="跑着", state="执行中", executor="X")],
         )
         status, data = _get(api_server, "/tasks/running")
@@ -1553,7 +1583,7 @@ class TestTasksRunning:
         log_dir.mkdir()
         # 死 PID 标记（已关闭卡残留）
         (log_dir / "Tdead.running").write_text(
-            f"engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
+            "engine_pid=99999999\npid=99999998\nchild_pid=99999997\n",
             encoding="utf-8",
         )
         # 活 PID 标记
@@ -1631,6 +1661,78 @@ class TestOpsSummary:
         assert "error" in data
 
 
+class TestOpsPgHealth:
+    """GET /ops/pg-health（HP PostgreSQL 健康：探针状态文件 + TCP 兜底，ccc-plan-031）"""
+
+    @staticmethod
+    def _stub_tcp():
+        from types import SimpleNamespace
+
+        return lambda h, p, timeout=3.0: SimpleNamespace(host=h, port=p, reachable=True, latency_ms=1.0)
+
+    def test_not_configured(self, api_server):
+        """无 CLUSTER_PG_TARGET → configured=false + status=missing，不 500。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["configured"] is False
+        assert data["status"] == "missing"
+
+    def test_configured_probe_ok(self, api_server, monkeypatch):
+        """配置目标 + 探针 ok → 透传 ok + tcp_reachable true。"""
+        monkeypatch.setenv("CLUSTER_PG_TARGET", "192.168.3.131:5432")
+        monkeypatch.setattr("server.web.server.check_tcp_reachable", self._stub_tcp())
+        monkeypatch.setattr(
+            "server.web.server._read_pg_probe_status",
+            lambda host: {
+                "status": "ok", "ts": "2026-08-15 19:00:52",
+                "detail": "SELECT 1 ok", "elapsed_ms": "107",
+                "consecutive_fail": "0",
+            },
+        )
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["configured"] is True
+        assert data["host"] == "192.168.3.131"
+        assert data["port"] == 5432
+        assert data["status"] == "ok"
+        assert data["tcp_reachable"] is True
+        assert data["probe_ts"] == "2026-08-15 19:00:52"
+
+    def test_configured_probe_zombie(self, api_server, monkeypatch):
+        """探针 zombie（本次事故形态：端口通但连接挂）→ status 透传 zombie。"""
+        monkeypatch.setenv("CLUSTER_PG_TARGET", "192.168.3.131:5432")
+        monkeypatch.setattr("server.web.server.check_tcp_reachable", self._stub_tcp())
+        monkeypatch.setattr(
+            "server.web.server._read_pg_probe_status",
+            lambda host: {
+                "status": "zombie", "ts": "2026-08-14 23:05:00",
+                "detail": "could not open shared memory segment", "consecutive_fail": "7",
+            },
+        )
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["status"] == "zombie"
+        assert data["consecutive_fail"] == "7"
+
+    def test_probe_missing_fallback(self, api_server, monkeypatch):
+        """探针文件缺失/SSH 失败 → status=missing，不 500。"""
+        monkeypatch.setenv("CLUSTER_PG_TARGET", "192.168.3.131:5432")
+        monkeypatch.setattr("server.web.server.check_tcp_reachable", self._stub_tcp())
+        monkeypatch.setattr("server.web.server._read_pg_probe_status", lambda host: {})
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["status"] == "missing"
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/ops/pg-health")
+        assert status == 401
+        assert "error" in data
+
+
 class TestOpsConcurrency:
     """GET /ops/concurrency（槽位上限 + 并发/进程埋点尾部，只读）。"""
 
@@ -1658,9 +1760,7 @@ class TestOpsRelayStats:
         from datetime import datetime
 
         now_ms = int(time.time() * 1000)
-        today_start_ms = int(
-            datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000
-        )
+        today_start_ms = int(datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000)
         usage = [
             {"timestamp": now_ms - 5000, "model": "flash"},
             {"timestamp": now_ms - 5000, "model": "code"},
@@ -1803,11 +1903,7 @@ class TestTaskTransition:
         token = _get_token(api_server)
         status, snap = _get(api_server, "/board/snapshot", token=token)
         assert status == 200
-        candidates = [
-            t["id"]
-            for col in ("打回", "待分派")
-            for t in snap["columns"].get(col, [])
-        ]
+        candidates = [t["id"] for col in ("打回", "待分派") for t in snap["columns"].get(col, [])]
         if not candidates:
             pytest.skip("无打回/待分派卡")
         task_id = candidates[0]
@@ -1965,12 +2061,13 @@ class TestProjectsEndpoint:
             assert p["is_taskable"] in (True, False)
 
     def test_taskable_flags(self, api_server):
-        """可下达任务：CCC/qb/medio-0；QuantHive 禁止经 CCC 派发。"""
+        """可下达任务：qb/medio-0；CCC 平台自研禁出卡（2026-08-10 红线）；QuantHive 禁止经 CCC 派发。"""
         status, data = _get(api_server, "/projects")
         assert status == 200
         by_name = {p["name"]: p for p in data["projects"]}
-        for required in ("CCC", "qb", "medio-0"):
+        for required in ("qb", "medio-0"):
             assert by_name[required]["is_taskable"] is True, f"{required} 应可下达任务"
+        assert by_name["CCC"]["is_taskable"] is False, "CCC 平台自研禁出卡（2026-08-10 红线）"
         assert by_name["QuantHive"]["is_taskable"] is False, "QuantHive 禁止 CCC taskable"
 
 
@@ -1996,8 +2093,10 @@ class TestThreadPersistence:
         )
         token = _get_token(api_server)
         status, data = _post(
-            api_server, "/conversation",
-            {"message": "你好世界", "thread_id": "qb::abc", "project": "qb"}, token=token,
+            api_server,
+            "/conversation",
+            {"message": "你好世界", "thread_id": "qb::abc", "project": "qb"},
+            token=token,
         )
         assert status == 200
         # 线程列表（鉴权开启时须带 token）
@@ -2033,7 +2132,9 @@ class TestThreadPersistence:
             lambda prompt, timeout: (True, "ok", None),
         )
         token = _get_token(api_server)
-        _post(api_server, "/conversation", {"message": "persist", "thread_id": "qb::keep", "project": "qb"}, token=token)
+        _post(
+            api_server, "/conversation", {"message": "persist", "thread_id": "qb::keep", "project": "qb"}, token=token
+        )
         # 模拟重启：清空内存会话历史后，重新加载磁盘
         from server.web import server as srv_mod
 
@@ -2064,8 +2165,10 @@ class TestThreadPersistence:
         _post(api_server, "/conversation", {"message": "title-me", "thread_id": "qb::r1", "project": "qb"}, token=token)
         # 重命名
         status, data = _post(
-            api_server, "/projects/qb/threads/qb%3A%3Ar1/rename",
-            {"title": "新标题"}, token=token,
+            api_server,
+            "/projects/qb/threads/qb%3A%3Ar1/rename",
+            {"title": "新标题"},
+            token=token,
         )
         assert status == 200
         _, threads = _get(api_server, "/projects/qb/threads", token=token)
@@ -2094,8 +2197,8 @@ class TestThreadPersistence:
 
         dispatch_dir = tmp_path / "dispatch"
         rows = [
-            ("ccc001", "ccc", "待分派", "Claude", "任务一"),
-            ("ccc002", "ccc", "执行中", "OpenCode", "任务二"),
+            ("xy001", "xy", "待分派", "Claude", "任务一"),
+            ("xy002", "xy", "执行中", "OpenCode", "任务二"),
             ("qb001", "qb", "已回写", "Claude", "任务三"),
         ]
         for cid, proj, state, execu, title in rows:
@@ -2114,20 +2217,21 @@ class TestThreadPersistence:
         assert status == 200
         assert data["total"] == 3
         assert len(data["cards"]) == 3
-        assert data["cards"][0]["id"] == "ccc001"
+        assert {c["id"] for c in data["cards"]} == {"xy001", "xy002", "qb001"}
 
         # 2. Test GET /cards with project filter
-        status, data = _get(api_server, "/cards?project=ccc")
+        status, data = _get(api_server, "/cards?project=xy")
         assert status == 200
         assert data["total"] == 2
-        assert all(c["project"] == "ccc" for c in data["cards"])
+        assert all(c["project"] == "xy" for c in data["cards"])
 
         # 3. Test GET /cards with state filter
         from urllib.parse import quote
+
         status, data = _get(api_server, f"/cards?state={quote('执行中')}")
         assert status == 200
         assert data["total"] == 1
-        assert data["cards"][0]["id"] == "ccc002"
+        assert data["cards"][0]["id"] == "xy002"
 
         # 4. Test GET /cards pagination
         status, data = _get(api_server, "/cards?page_size=2&page=1")
@@ -2254,6 +2358,7 @@ class TestCardsFallback:
 
         # 重建包含归档文件的索引
         from server.board.loader import load_dispatch_cards
+
         load_dispatch_cards(dispatch_dir, include_archived=True)
 
         # 1. 默认查询不含已归档任务卡
@@ -2279,3 +2384,49 @@ class TestCardsFallback:
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "tst002"
+
+
+# ── P1#10 机审返工：/loop/findings type 推导 ──
+
+
+class TestFindingType:
+    """从标题推导 finding type（observer 报告表无 id 列，机审红旗返工）。"""
+
+    def test_unit_mapping_all_types(self):
+        from server.web.server import _finding_type_from_title
+
+        cases = {
+            "任务卡 clw004 状态漂移：roadmap 标注进行中": "drift",
+            "项目 qh 缺席 roadmap.md 的业务线路段落": "missing_section",
+            "方案 clw-plan-001 已完成但关联卡未全部关闭: clw001(执行中)": "broken_link",
+            "已关闭任务卡 clw001 缺失或未完成维护区四问": "missing_four_questions",
+            "里程碑 clw/会话加固 进度不一致：声明 进行中": "consistency",
+            "已登记死文件复活: server/web/legacy-chat/arch/qb-arch.html": "tech",
+            "卡 clw002 有真实人工批注但未见「## 批注落实」段": "tech",
+            "其他未知标题": "scan",
+        }
+        for title, expect in cases.items():
+            got = _finding_type_from_title(title)
+            assert got == expect, f"{title!r} → {got}，期望 {expect}"
+
+    def test_findings_api_returns_type(self, api_server, tmp_path, monkeypatch):
+        """集成：造 observer 报告 → GET /loop/findings → findings[].type 非空且正确。"""
+        from server.web import server as srv_mod
+
+        observer_dir = tmp_path / "observer"
+        observer_dir.mkdir(parents=True)
+        (observer_dir / "2026-08-13-test-patrol.md").write_text(
+            "# test\n\n"
+            "| 权重 (Weight) | 交叉确认 | 影响 | 频次 | 描述 (Title) | 项目 | 作用对象 | 证据 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| 10 | 是 | 高 | 3 | clw004 状态漂移：roadmap 标注进行中但实际已关闭 | clw | clw004 | docs/roadmap.md |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/loop/findings", token=token)
+        assert status == 200
+        reports = data.get("loop_reports", [])
+        assert reports and reports[0]["findings"], "应有 1 条 finding"
+        f = reports[0]["findings"][0]
+        assert f["type"] == "drift", f"type 应为 drift，实际 {f.get('type')!r}"

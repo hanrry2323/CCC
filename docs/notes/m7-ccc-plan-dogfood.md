@@ -1,3 +1,5 @@
+> ⚠️ 史 · 2026-08-07：ccc-plan 狗粮记录
+
 # M7 ccc-plan 狗粮
 
 ```ccc-plan

@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from server.board.card_header import parse_metadata
+
 logger = logging.getLogger("ccc.prompt_inject")
 
 # ── 项目根目录（相对于本文件） ──
@@ -205,7 +207,9 @@ def _search_kb(project_prefix: str, title: str, focus: str = "skill") -> str:
             # 按焦点过滤：只保留与当前焦点相关的内容
             if focus == "skill":
                 # 提取命令、守则、模块
-                if any(kw in snippet for kw in ("常用命令", "开发守则", "关键模块", "cargo", "pytest", "npm run", "构建")):
+                if any(
+                    kw in snippet for kw in ("常用命令", "开发守则", "关键模块", "cargo", "pytest", "npm run", "构建")
+                ):
                     snippets.append(_clean_snippet(snippet, doc_id))
             elif focus == "review":
                 # 提取审查维度、可修/不可修边界
@@ -239,7 +243,145 @@ def _clean_snippet(snippet: str, doc_id: str) -> str:
     return f"  - [{doc_id}] {text}"
 
 
-def build_executor_hint(project_prefix: str, title: str = "", card_context: str = "") -> str:
+def _parse_related_field(card_content: str) -> str:
+    """提取卡内容中的关联字段。"""
+    meta = parse_metadata(card_content)
+    return meta.get("关联", "").strip()
+
+
+def _parse_plan_ref(related_text: str) -> tuple[str, str] | None:
+    """解析关联字段中的方案前缀和编号。
+
+    例如: "ccc-plan-011 卡1" -> ("ccc", "011")
+    """
+    match = re.search(r"\b([a-zA-Z0-9]+)-plan-(\d+)\b", related_text, re.IGNORECASE)
+    if match:
+        return match.group(1).lower(), match.group(2)
+    return None
+
+
+def _get_plan_summary(prefix: str, num: str) -> str:
+    """读取并解析方案摘要。"""
+    plans_dir = _PROJECT_ROOT / "docs" / "projects" / prefix / "plans"
+    if not plans_dir.is_dir():
+        return ""
+
+    plan_files = list(plans_dir.glob(f"{num}-*.md"))
+    if not plan_files:
+        return ""
+
+    try:
+        plan_content = plan_files[0].read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.warning("读取方案文件失败 %s: %s", plan_files[0], exc)
+        return ""
+
+    # 提取目标：支持 ## 目标 或 ## 0. 一句话目标
+    m_target = re.search(r"##\s+(?:\d+\.\s+)?(?:一句话)?目标\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", plan_content, re.DOTALL)
+    target = m_target.group(1).strip() if m_target else ""
+
+    # 提取验收标准
+    m_criteria = re.search(r"##\s+验收标准\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", plan_content, re.DOTALL)
+    criteria = m_criteria.group(1).strip() if m_criteria else ""
+
+    if not target and not criteria:
+        return ""
+
+    def clean_block(text: str) -> str:
+        # 去除 markdown 复选框 - [ ] 或 - [x]
+        text = re.sub(r"- \[[ xX]\]\s*", "", text)
+        # 去除列表行首 - 或 *
+        text = re.sub(r"^[-*]\s*", "", text, flags=re.MULTILINE)
+        # 替换多个空白字符为一个空格
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    target_clean = clean_block(target).rstrip("。")
+    criteria_clean = clean_block(criteria).rstrip("。")
+
+    parts = []
+    if target_clean:
+        parts.append(f"目标：{target_clean}")
+    if criteria_clean:
+        parts.append(f"验收标准：{criteria_clean}")
+
+    summary = "。".join(parts)
+    if summary:
+        summary += "。"
+    if len(summary) > 400:
+        summary = summary[:397] + "..."
+    return summary
+
+
+def _get_project_recent_lines(prefix: str) -> list[str]:
+    """读取并解析项目 README 的「线路/近况」节，返回最多 3 条。"""
+    readme_path = _PROJECT_ROOT / "docs" / "projects" / prefix.lower() / "README.md"
+    if not readme_path.is_file():
+        return []
+
+    try:
+        raw = readme_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    m = re.search(r"##\s*线路\s*/\s*近况\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", raw, re.DOTALL)
+    if not m:
+        m = re.search(r"##\s*线路近况\s*\n+(.+?)(?=\n##|\n---|(?:\Z))", raw, re.DOTALL)
+
+    if not m:
+        return []
+
+    section_content = m.group(1).strip()
+
+    lines = []
+    for line in section_content.splitlines():
+        line = line.strip()
+        if line.startswith("-") or line.startswith("*"):
+            item = re.sub(r"^[-*]\s*", "", line).strip()
+            if item:
+                lines.append(item)
+                if len(lines) >= 3:
+                    break
+    return lines
+
+
+def _role_skill_hint(card_content: str) -> str:
+    """按任务卡「角色」字段查 role-skills.yaml，返回 Skill 注入提示。
+
+    机制（2026-08-10 老板洞察）：通用智能体按任务卡成为专家。
+    卡头「角色：<role>」→ 查映射表 → 注入「请加载 Skill：xxx」。
+    """
+    if not card_content:
+        return ""
+    import re
+
+    m = re.search(r"角色[:：]\s*([^\s·|]+)", card_content)
+    if not m:
+        return ""
+    role = m.group(1).strip()
+    cfg = _load_role_skills()
+    entry = cfg.get("roles", {}).get(role)
+    if not entry or not entry.get("skill"):
+        return ""
+    skill = entry["skill"]
+    source = entry.get("skill_source", "claude")
+    return f"- 角色：{role}（本卡专用）——请加载 Skill「{skill}」（来源 {source}），按该 Skill 的方法完成本卡任务"
+
+
+def _load_role_skills() -> dict:
+    """加载角色→Skill 映射表（server/config/role-skills.yaml，SSOT）。"""
+    import os
+    import yaml as _yaml
+
+    p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "role-skills.yaml")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return _yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def build_executor_hint(project_prefix: str, title: str = "", card_context: str = "", card_content: str = "") -> str:
     """生成「执行提示」——给开发大模型（OpenCode）的专用指令。
 
     从 KB 提取项目专属的开发技能、常用命令、关键模块和守则，
@@ -263,7 +405,32 @@ def build_executor_hint(project_prefix: str, title: str = "", card_context: str 
 
     lines = [f"- 项目：{name}（{role}）"]
     if mac2017_path:
-        lines.append(f"- 仓库路径：{mac2017_path}（Mac2017）")
+        # 2026-08-12 隔离升级：业务仓型项目禁止引导主目录开发，代码工作区由 Engine 派发注入
+        if proj.get("taskable"):
+            lines.append(
+                f"- 项目仓（只读参考）：{mac2017_path}（Mac2017）——禁止在主仓目录切换卡分支或直接开发"
+            )
+            lines.append(
+                "- 代码工作区：由 CCC Engine 派发时注入独立 worktree（见派发提示中的具体路径），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录"
+            )
+        else:
+            lines.append(f"- 仓库路径：{mac2017_path}（Mac2017）")
+
+    # 提取关联方案摘要
+    related_field = _parse_related_field(card_content)
+    if related_field:
+        plan_ref = _parse_plan_ref(related_field)
+        if plan_ref:
+            plan_prefix, plan_num = plan_ref
+            plan_summary = _get_plan_summary(plan_prefix, plan_num)
+            if plan_summary:
+                lines.append(f"- 关联方案摘要：{plan_summary}")
+
+    # 提取项目线路/近况
+    recent_lines = _get_project_recent_lines(project_prefix)
+    if recent_lines:
+        recent_str = "\n".join(f"  - {line}" for line in recent_lines)
+        lines.append(f"- 项目线路/近况：\n{recent_str}")
 
     # KB 技能指南（优先：含具体命令和守则）
     if kb_skill:
@@ -283,6 +450,9 @@ def build_executor_hint(project_prefix: str, title: str = "", card_context: str 
 
     if forbidden:
         lines.append(f"- 禁区：{forbidden}")
+    role_hint = _role_skill_hint(card_content)
+    if role_hint:
+        lines.append(role_hint)
     if card_context:
         lines.append(f"- 补充说明：{card_context}")
 
@@ -329,9 +499,19 @@ def build_auditor_hint(project_prefix: str, title: str = "", card_context: str =
 
     lines.append("- 处理原则：")
     lines.append("  - 可修问题（命名/注释/小重构/补充测试）→ 在 worktree 就地修复并 commit+push，修完直接通过")
-    lines.append("  - 原则性红线问题（范围系统性越界/核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出")
+    lines.append("  - 原则性红线问题（范围系统性越界/核心业务意图违背/安全漏洞）→ 输出「机审：不通过（具体原因）」并以非零退出")
     lines.append("  - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决")
+    lines.append("  - 主观标准（美观/体验/设计品味）不判——记录建议即可，不得作为打回原因")
+    lines.append("  - **打回原因必须可执行**：格式「问题 → 文件:行号 + 唯一最佳动作」；禁止「体验不好/不规范」等不可执行表述（防死循环）")
     lines.append("- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭")
+    lines.append("- **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。")
+    lines.append(
+        "  - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，"
+    )
+    lines.append("    打回原因注明缺失项；执行体补维护区后重试。")
+    lines.append(
+        "  - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。"
+    )
 
     return "\n\n".join(lines)
 
@@ -368,13 +548,11 @@ def inject_hints(
             return ""
         content = card_path_obj.read_text(encoding="utf-8")
 
-    executor_hint = build_executor_hint(project_prefix, title, card_context)
+    executor_hint = build_executor_hint(project_prefix, title, card_context, card_content=content)
     auditor_hint = build_auditor_hint(project_prefix, title, card_context)
 
     # 替换「## 执行提示」段：只替换空段或纯占位段
-    executor_placeholder = re.compile(
-        r"(##\s*执行提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL
-    )
+    executor_placeholder = re.compile(r"(^##\s*执行提示.*?\n)(.*?)(?=\n^##\s|\Z)", re.DOTALL | re.MULTILINE)
     exec_match = executor_placeholder.search(content)
     if exec_match:
         existing = exec_match.group(2).strip()
@@ -387,9 +565,7 @@ def inject_hints(
             )
 
     # 替换「## 机审提示」段
-    auditor_placeholder = re.compile(
-        r"(##\s*机审提示.*?\n)(.*?)(?=\n##\s|\Z)", re.DOTALL
-    )
+    auditor_placeholder = re.compile(r"(^##\s*机审提示.*?\n)(.*?)(?=\n^##\s|\Z)", re.DOTALL | re.MULTILINE)
     audit_match = auditor_placeholder.search(content)
     if audit_match:
         existing = audit_match.group(2).strip()
@@ -423,22 +599,26 @@ def main() -> None:
         help="任务卡文件路径（或 '-' 从 stdin 读取；--executor-only/--auditor-only 模式可省略）",
     )
     parser.add_argument(
-        "--project", "-p",
+        "--project",
+        "-p",
         required=True,
         help="项目前缀（如 mx、ccc、hp）",
     )
     parser.add_argument(
-        "--title", "-t",
+        "--title",
+        "-t",
         default="",
         help="任务卡标题（用于 KB 检索）",
     )
     parser.add_argument(
-        "--context", "-c",
+        "--context",
+        "-c",
         default="",
         help="额外上下文",
     )
     parser.add_argument(
-        "--dry-run", "-n",
+        "--dry-run",
+        "-n",
         action="store_true",
         help="只打印注入后的卡内容，不写文件",
     )
@@ -455,8 +635,17 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    card_content = ""
+    if args.card_path and args.card_path != "-":
+        card_path_obj = Path(args.card_path)
+        if card_path_obj.is_file():
+            try:
+                card_content = card_path_obj.read_text(encoding="utf-8")
+            except Exception:
+                pass
+
     if args.executor_only:
-        print(build_executor_hint(args.project, args.title, args.context))
+        print(build_executor_hint(args.project, args.title, args.context, card_content=card_content))
         return
 
     if args.auditor_only:

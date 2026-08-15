@@ -16,6 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
+PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
 STEM=""
 CARD_ID=""
 
@@ -64,8 +65,9 @@ fi
 
 BRANCH="codex/${STEM}"
 echo "== board (2017) =="
+# 临时取证文件：$$=进程 PID 保证同机并发调用唯一，用完即删
 if curl -sf --max-time 5 "${BOARD_URL}/board/ready_for_merge" >/tmp/ccc-ready-$$.json 2>/dev/null; then
-  python3 -c "
+  "$PYTHON_BIN" -c "
 import json,sys
 d=json.load(open(sys.argv[1]))
 stem=sys.argv[2]

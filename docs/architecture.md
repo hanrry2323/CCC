@@ -187,14 +187,15 @@
 
 ## 执行体注册表（契约 §7）
 
-`server/config/executors.json` 五角色，分类只允许「可后台 CLI」/「手动 GUI」：
+`server/config/executors.json` 六角色，分类只允许「可后台 CLI」/「手动 GUI」：
 
 | 角色语义 | 分类 | 当前绑定 |
 |----------|------|----------|
-| 开发 / 写码 | 可后台 CLI | Claude Code |
-| 维护 | 可后台 CLI | Claude Code |
-| 管理 / 验收 | — | Codex |
-| ops | 手动 GUI | — |
+| 开发 / 写码 | 可后台 CLI | OpenCode（2026-08-15 F5 定：开发仅 OpenCode） |
+| 维护 | 可后台 CLI | OpenCode |
+| 管理席 | — | Codex |
+| 验收 / 机审 | 可后台 CLI | Claude Code / OpenCode |
+| 只读取证 / 审计 | — | DSH headless（人工触发，不参与 AUTO 派发） |
 
 派发规则：`可后台 CLI` → Engine 自动拉起；`手动 GUI` → 挂起等人；未知角色 → 不派发。
 

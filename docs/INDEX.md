@@ -1,7 +1,7 @@
 # CCC 文档索引
 
 > **先读本页再进别的文件。** `docs/` 约 100+ 篇，多数是历史/烟测/专项；**不要按文件名新旧猜权威。**  
-> 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **VISION** → 专题 SSOT → 其余（旧 `loop-engineer-authority.md` 等已被重构方案取代，仅作史实）。  
+> 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **ENGINEERING-CANON** → 专题 SSOT → 其余（VISION/STRATEGY-MAP 等已标 RETRACTED，仅作史实）。  
 > **怎么写文档 / 怎么注册项目 / 卡怎么命名**：[`DOC-PROTOCOL.md`](DOC-PROTOCOL.md)（§2 命名定死）· [`projects/registry.yaml`](projects/registry.yaml)。
 
 ---
@@ -9,17 +9,20 @@
 ## 0. 现在只认这几份（产品/架构）
 
 > **2026-08-02 架构重构定稿后，事实权威 = 重构决策定稿 + 契约 v1（最高优先级）。**  
-> 旧 [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) 等已被重构方案取代（史），仅作历史追溯；若与重构决策冲突，以重构决策为准。  
+> 旧 [`product/loop-engineer-authority.md`](archive/loop-engineer-authority.md) 等已被重构方案取代（史），仅作历史追溯；若与重构决策冲突，以重构决策为准。  
 > **共识落盘**：你我达成共识 → 先改本 §0 权威链 → 再改代码；禁止只留在聊天。
 
-### 北星双核心（2026-08-07 · 冲突以此为准）
+### 北星三核心（2026-08-12 · 最高准则定稿）
 
-> **一句话**：一个主 IDE 谈意图 → `ccc-plan` 确认后自动拆卡入队 → Engine+硬门禁静默跑 → 只在 RED 或待合入时找人 → 人审 diff 后「合入批准」。
+> **一句话**：线路图管未来，计划管当前，看板管正在进行时。老板定意图，机器管执行。
+> **最高准则**：[`CCC-PRIME-DIRECTIVE.md`](CCC-PRIME-DIRECTIVE.md) — 三层全自动开发模式，所有功能开发、流程设计、方案决策以此为准。
+> **定位声明（2026-08-14）**：CCC = **意图开发平台**，不做 IDE / 工具 / 单 agent 引擎。执行层工具（DeepSeek Harness / Claude Code / OpenCode）是可替换执行体槽位，按 `executors.json` 接入、退出码收单；**一切皆插件**——Skill / Worker / 节点 / 门禁 / 回写皆是可替换组件。DeepSeek Harness 为下一步重点接入执行体。决策源：qx-map `__archive__/decisions/意图开发定位与DeepSeekHarness协同-2026-08-14.md`。
 
 | # | 核心 | 成功标准 |
 |---|------|----------|
 | **A** | 只跟一个主 IDE 谈方案 | 确认 `ccc-plan` → `plan-to-cards` 自动多卡；禁止一张张聊着出卡 |
 | **B** | CCC = 代码质量门 | 绿静默；质量靠机械门禁/CI/机审 exit code；人只审 diff /「合入批准」 |
+| **C** | 三层架构：线路图→计划→看板 | 老板定意图（3 个人审节点），其余全自动流转；Loop 巡查螺旋上升 |
 
 **反目标（禁止当产品演进）**：新增验收同义句、席位表、AGENTS 长禁令、看板列解释文、为教 Agent 堆 SOP。缺口进 [`roadmap.md`](roadmap.md) 挂账，不写心智补丁。  
 **进度真值**：只认 2017 `:7788` board API；取证认 `origin/codex/<stem>`（见 `scripts/card-evidence.sh`）。  
@@ -29,20 +32,21 @@
 |--------|------|--------|
 | **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（以 VERSION 文件为准） |
-| 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
+| 2 | [`ENGINEERING-CANON.md`](ENGINEERING-CANON.md) | 工程宪法（原则 + 验收体系 + 架构根因修复） |
 | 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；优先 `plan-to-cards`；单卡 `new-card.sh` |
-| 2b1 | `AGENTS.md` · `CLAUDE.md` · `CURSOR.md` | **通用双入口**（工具无关，零硬编码）；`CURSOR.md` 仅工具桥接 |
+| 2b1 | `AGENTS.md` · `CLAUDE.md` | **通用双入口**（工具无关，零硬编码） |
+| 2b1p | [`projects/_template/plan-template.md`](projects/_template/plan-template.md) · [`DOC-PROTOCOL.md §2.7`](DOC-PROTOCOL.md) | **方案/计划模板 + 编号规则**：路径 `docs/projects/<prefix>/plans/<NNN>-<slug>.md`；校验 `scripts/validate-plans.sh` |
 | 2b2a | [`product/card-hub-manual.md`](product/card-hub-manual.md) | **制卡发卡操作手册**：任何工具加载本仓的自举路径（门禁 `scripts/check-entry-docs.py`） |
 | 2b2 | [`product/north-star-slice.md`](product/north-star-slice.md) | **北星竖切**：ccc-plan → 入队 → ready_for_merge → 合入批准 |
 | 2c | [`projects/registry.yaml`](projects/registry.yaml) | **项目注册唯一事实源**（前缀 / 路径 / taskable）；每项目一页见 `projects/<prefix>/README.md` |
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
-| 4 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
-| 5 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
+| 4 | [`product/loop-engineer-authority.md`](archive/loop-engineer-authority.md) | **已被重构方案取代（史）**——旧事实权威 + Hub 只读透镜，仅作历史追溯 |
+| 5 | [`product/dialogue-orchestration-boundary.md`](archive/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC；两层验收 |
 | 5b2 | [`product/hub-context-sop.md`](product/hub-context-sop.md) | 中枢出卡前了解项目（本仓本地 / 禁业务 ssh 深挖） |
 | 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | 「验收看板」= **合入批准** 别名（人审 diff） |
 | 5d | [`product/machine-audit-flow.md`](product/machine-audit-flow.md) | 2017 机审流程 + 看板「机审」栏 |
-| 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
+| 6 | [`product/ccc-desktop-architecture.md`](archive/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |
 | 8 | [`../CLAUDE.md`](../CLAUDE.md) | 平台开发硬规则 + **开仓双模式（中枢/执行体）** + 开发命令 |
 
@@ -50,7 +54,7 @@
 
 **重构收口任务卡**：[`dispatch/T31`](dispatch/T31-refactor-closeout-docs-baseline.md)～[`T35`](dispatch/T35-refactor-closeout-hangover-regression.md)（文档基线 / Engine 真派发 / 硬编码 / 死码 / 回归）。  
 **自动化基建（T52）**：[`automation-base.md`](automation-base.md)（出卡模板 / 一键放行 / 壳复验 / 卡头门禁 CI+pre-commit）。  
-**现行开发方向（2026-08-04 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）与前端四板块架构见 qx-map `__archive__/decisions/`。  
+**现行开发方向（2026-08-09 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）见 qx-map `__archive__/decisions/`；前端六板块（对话/看板/计划/线路图/运维/控制台）以计划页面为方案池，见 `docs/projects/<prefix>/plans/`。
 **日常短读**：本 §0 → [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) → `architecture.md` → `STARTUP-BRIEF.md`。
 
 ---
@@ -69,11 +73,11 @@
 | [`deploy/topology.md`](deploy/topology.md) | **现行** 短拓扑 |
 | [`automation-base.md`](automation-base.md) | 出卡/门禁基建 |
 | [`references/intent-card-sop.md`](../references/intent-card-sop.md) | 转意图卡 SOP |
-| [`product/hub-api-v1.md`](product/hub-api-v1.md) | **史** Hub API |
-| [`product/hub-ssh-tunnel.md`](product/hub-ssh-tunnel.md) | **史** Hub 隧道 |
-| [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | **史** Hub-Shell |
-| [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | **史** sidecar（Desktop 暂缓） |
-| [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | **史**（已被 §0 取代） |
+| [`product/hub-api-v1.md`](archive/hub-api-v1.md) | **史** Hub API |
+| [`product/hub-ssh-tunnel.md`](archive/hub-ssh-tunnel.md) | **史** Hub 隧道 |
+| [`product/hub-shell-phase-status.md`](archive/hub-shell-phase-status.md) | **史** Hub-Shell |
+| [`product/desktop-agent-sidecar.md`](archive/desktop-agent-sidecar.md) | **史** sidecar（Desktop 暂缓） |
+| [`product/loop-engineer-authority.md`](archive/loop-engineer-authority.md) | **史**（已被 §0 取代） |
 | [`briefs/_TEMPLATE.md`](briefs/_TEMPLATE.md) | 执行 brief 模板 |
 | [`briefs/`](briefs/) | brief 目录 |
 
@@ -85,12 +89,12 @@
 |------|------|--------|
 | **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.70 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
 | [`CURSOR.md`](../CURSOR.md) · `.cursor/rules/` | **Cursor / 席位现况** | 2026-08-06：开仓双模式见 CLAUDE.md · HTTP 看板主路径 · Desktop 暂缓 |
-| [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
+| [`product/hub-shell-roadmap.md`](archive/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
 | [`archive/roadmap-history-v0.19-v0.26.md`](archive/roadmap-history-v0.19-v0.26.md) | **史** | 从 roadmap.md 迁出的 v0.19 等长史；勿覆盖「当前方向」 |
 | [`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md) | **业务双轨归档** | **不是** CCC 产品北星 |
 | [`archive/next-upgrade-roadmap.md`](archive/next-upgrade-roadmap.md) | **过时** | v0.21→v0.23 |
 
-**INDEX / 口头「下一步」若指向 Hub / hub-shell / 双轨旧文，一律改指 §0 + `roadmap.md` 当前方向 + `CURSOR.md`。**
+**INDEX / 口头「下一步」若指向 Hub / hub-shell / 双轨旧文，一律改指 §0 + `roadmap.md` 当前方向（CURSOR.md 已随 Cursor 弃用移除）。**
 
 ---
 
@@ -98,10 +102,10 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`product/desktop-opencode-parity.md`](product/desktop-opencode-parity.md) | OpenCode 完善度计分（已交付勾选） |
-| [`product/desktop-usability-9.5-plan.md`](product/desktop-usability-9.5-plan.md) | 可用性冲刺计划（多为已做） |
-| [`product/desktop-flow-rail-ux.md`](product/desktop-flow-rail-ux.md) | 右栏 UX SSOT |
-| [`product/deprecate-web-hub.md`](product/deprecate-web-hub.md) | 网页 Hub 降级说明 |
+| [`product/desktop-opencode-parity.md`](archive/desktop-opencode-parity.md) | OpenCode 完善度计分（已交付勾选） |
+| [`product/desktop-usability-9.5-plan.md`](archive/desktop-usability-9.5-plan.md) | 可用性冲刺计划（多为已做） |
+| [`product/desktop-flow-rail-ux.md`](archive/desktop-flow-rail-ux.md) | 右栏 UX SSOT |
+| [`product/deprecate-web-hub.md`](archive/ccc-legacy-2026-08-02/product/deprecate-web-hub.md) | 网页 Hub 降级说明 |
 
 ---
 
@@ -109,10 +113,10 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
-| [`INTRO.md`](INTRO.md) · [`USAGE.md`](USAGE.md) | 对外介绍 / 用户分型 |
+| [`GETTING-STARTED.md`](GETTING-STARTED.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
+| [`INTRO.md`](INTRO.md) · [`USAGE.md`](USAGE.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
 | [`ops/GO-LIVE.md`](ops/GO-LIVE.md) · [`ops/GO-LIVE-DESKTOP.md`](ops/GO-LIVE-DESKTOP.md) | 上线卡 |
-| [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) · [`lessons.md`](lessons.md) | 排障 |
+| [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) · [`lessons.md`](lessons.md) | 排障（TROUBLESHOOTING 标 RETRACTED 2026-08-11，排障以 lessons + runbooks 为准） |
 | [`deploy/server-layout.md`](deploy/server-layout.md) | 2017 目录规范 |
 | [`deploy/fleet-apps-migration-2026-07.md`](deploy/fleet-apps-migration-2026-07.md) | 五仓迁移（运维史实，非日常） |
 
@@ -123,7 +127,7 @@
 一次性烟测、旧升级路线、chat-server v2 计划、2026-07 舰队卫生盘点、milestones、以及 `NEXT-DUAL-TRACK` / `next-upgrade-roadmap` 等已迁入 [`archive/`](archive/README.md)。  
 旧路径若仍存在，多为 **跳转 stub** → archive。
 
-**不要**用 archive 内口径覆盖 VISION / 边界 / `hub-shell-roadmap`。
+**不要**用 archive 内口径覆盖现行权威（ENGINEERING-CANON / INDEX §0）；VISION / `hub-shell-roadmap` 等已标 RETRACTED，仅作史实。
 
 ---
 
@@ -131,8 +135,8 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 全景 + 演进史（长） |
-| [`GLOSSARY.md`](GLOSSARY.md) | 术语 |
+| [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
+| [`GLOSSARY.md`](GLOSSARY.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`；若与重构决策冲突 → 以重构决策为准） |
 | [`model-tier-strategy.md`](model-tier-strategy.md) | **已收口 stub** → 平台走开发工具（Claude/OpenCode）；旧文在 archive/retired-tooling |
 | [`../references/red-lines.md`](../references/red-lines.md) | 红线 |

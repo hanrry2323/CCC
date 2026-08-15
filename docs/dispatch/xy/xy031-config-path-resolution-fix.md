@@ -1,6 +1,6 @@
 # 任务卡 xy031 · config path resolution fix（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-09
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-09
 
 ## 目标
 
@@ -44,13 +44,26 @@
 
 （老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
 
+## 验收区
+
+**合入批准** · 日期：2026-08-12
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
+
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-09
 
-## 批注落实
+### 实现说明
+1. 识别出 `src/xianyu/core/config.py` 中 `publish_cookie_dir` 和各平台 `_cookie_path` 默认值为硬编码的相对路径字符串 `"data/cookies/...`"。这在不同的工作目录下运行时会导致相对路径解析失败。
+2. 将其统一重构为基于项目根目录的动态路径，即使用 `str(PROJECT_ROOT / "data" / "cookies" / ...)`。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 测试结果
+在 `/Users/fan/program/apps/xianyu` 运行 `pytest tests/core --no-cov`，所有核心测试均通过（55 passed, 0 failed）。
+
+### Push 证据
+- **Commit Hash**: `43aaec2657bff15946af1f16741897bbda951d2e`
+- **Target Branch**: `codex/xy031-config-path-resolution-fix`
 
 ## 执行提示
 
@@ -88,3 +101,26 @@
   - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
 
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 机审区
+
+**机审**：2017 · 日期：2026-08-09
+
+**机审：通过**
+
+**审查摘要**：改动严格限定在卡范围 `src/xianyu/core/config.py`，仅将 4 个 cookie 路径字段（`publish_cookie_dir` / `bilibili_cookie_path` / `toutiao_cookie_path` / `weibo_cookie_path`）由相对路径 `data/cookies/...` 改为基于 `PROJECT_ROOT` 的绝对路径。与同文件既有 `database_url`、`video_save_dir` 模式一致，且与 `core/crypto.py` 的 `COOKIE_DIR = PROJECT_ROOT / "data" / "cookies"` 对齐，消除了相对路径对进程 cwd 的依赖。零新依赖、零业务逻辑改动、无硬编码机器绝对路径。命名/结构合理、边界安全，无原则性红线问题，无可修问题。
+
+Verification: grep 消费点确认字段无其他引用、无回归；diff 仅 4 行且全部符合声明范围。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

@@ -51,3 +51,31 @@ def test_append_skips_existing_section(tmp_path: Path) -> None:
     assert not _append_machine_audit_pass(str(card), source="test", evidence="pass")
     assert "机审：不通过" in card.read_text(encoding="utf-8")
     assert "engine 自动落盘" not in card.read_text(encoding="utf-8")
+
+
+def test_audit_pass_with_result_format(tmp_path: Path) -> None:
+    """clw011 事故回归：机审区用 `**机审**：<评审人>· 结果：**通过**` 格式也须识别为通过。"""
+    card = tmp_path / "clw011-demo.md"
+    card.write_text(
+        "# 卡\n\n## 机审区\n\n"
+        "**机审**：2017 机审席（claude）· 日期：2026-08-10 · 结果：**通过**\n\n"
+        "### 审查摘要\n业务意图全部兑现，无原则性红线。\n",
+        encoding="utf-8",
+    )
+    from server.engine.main import _card_machine_audit_passed
+
+    assert _card_machine_audit_passed(str(card))
+
+
+def test_audit_reject_with_result_format(tmp_path: Path) -> None:
+    """「结果：不通过」格式同样被识别为不通过（不误判为通过）。"""
+    card = tmp_path / "clw011-reject-demo.md"
+    card.write_text(
+        "# 卡\n\n## 机审区\n\n"
+        "**机审**：2017 机审席（claude）· 日期：2026-08-10 · 结果：**不通过**\n\n"
+        "### 审查摘要\n核心业务意图未实现。\n",
+        encoding="utf-8",
+    )
+    from server.engine.main import _card_machine_audit_passed
+
+    assert not _card_machine_audit_passed(str(card))

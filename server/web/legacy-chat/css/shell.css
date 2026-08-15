@@ -1104,6 +1104,434 @@ body.hub-mode #app {
   font-weight: 500;
 }
 
+/* ── 运维用户化（2026-08-11 重构） ── */
+
+/* 健康仪表盘 */
+.ops-dash {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 2px;
+  flex-wrap: wrap;
+}
+.ops-dash-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.ops-dash-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #888;
+}
+.ops-dash-status.ops-ok .ops-dash-dot { background: #2a9d4a; }
+.ops-dash-status.ops-warn .ops-dash-dot { background: #d9822b; }
+.ops-dash-status.ops-attn .ops-dash-dot { background: #c44; }
+.ops-dash-line {
+  color: var(--ccc-text-muted);
+  font-size: 13px;
+  flex: 1;
+  min-width: 200px;
+}
+.ops-dash-stats {
+  display: flex;
+  gap: 12px;
+}
+.ops-dash-stat {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.ops-dash-stat.alert {
+  color: #c44;
+  border-color: rgba(204, 68, 68, 0.4);
+}
+
+/* 待办清单 */
+.ops-todo-list,
+.ops-todo-item {
+  margin: 0;
+}
+.ops-todo-scan {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin-bottom: 10px;
+}
+.ops-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border-left: 4px solid transparent;
+}
+.ops-todo-item.p1 { border-left-color: #c44; }
+.ops-todo-item.p2 { border-left-color: #d9822b; }
+.ops-todo-item.p3 { border-left-color: #3a7bd5; }
+.ops-todo-item.r1 { border-left-color: #c44; }
+.ops-todo-item.r2 { border-left-color: #d9822b; }
+.ops-todo-item.r3 { border-left-color: #3a7bd5; }
+.ops-priority {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+}
+.ops-priority.p1 { background: #c44; }
+.ops-priority.p2 { background: #d9822b; }
+.ops-priority.p3 { background: #3a7bd5; }
+.ops-priority.r1 { background: #c44; }
+.ops-priority.r2 { background: #d9822b; }
+.ops-priority.r3 { background: #3a7bd5; }
+.ops-todo-type {
+  font-size: 10px;
+  background: transparent;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--ccc-text-muted);
+}
+.ops-todo-body {
+  flex: 1;
+  min-width: 0;
+}
+.ops-todo-title {
+  font-size: 13px;
+  font-weight: 550;
+  margin-bottom: 4px;
+}
+.ops-todo-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+.ops-todo-proj {
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.ops-todo-time {
+  font-size: 10px;
+  color: var(--ccc-text-muted);
+  opacity: 0.8;
+}
+.ops-todo-meta code {
+  font-size: 10px;
+  color: var(--ccc-text-muted);
+}
+.ops-todo-item button.hub-btn {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 12px;
+}
+
+/* 折叠详情 */
+.ops-fold {
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px;
+}
+.ops-fold summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ccc-text-muted);
+  user-select: none;
+}
+.ops-fold summary:hover {
+  color: var(--ccc-text-base);
+}
+.ops-detail-body {
+  padding: 8px 12px 12px;
+}
+
+/* ── 线路图（图形化 · 2026-08-12 v2） ── */
+
+.rm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.rm-project-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.rm-project-card:hover {
+  border-color: var(--ccc-text-accent);
+}
+
+.rm-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.rm-card-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rm-card-meta {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+
+.rm-progress-track {
+  height: 6px;
+  background: var(--ccc-border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.rm-progress-fill {
+  height: 100%;
+  background: #3d9a5f;
+  border-radius: 999px;
+}
+
+.rm-progress-label {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+
+.rm-card-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.rm-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.rm-tag.doing { background: rgba(58, 123, 213, 0.15); color: #3a7bd5; }
+.rm-tag.drift { background: rgba(217, 130, 43, 0.15); color: #d9822b; }
+.rm-tag.mile { background: var(--ccc-border-subtle); color: var(--ccc-text-muted); }
+
+.rm-hint {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* SVG 时间线 */
+.rm-svg {
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  margin: 12px 0;
+}
+
+.rm-node-title {
+  font-size: 11px;
+  fill: var(--ccc-text-base);
+}
+
+.rm-node-date {
+  font-size: 10px;
+  fill: var(--ccc-text-muted);
+}
+
+.rm-axis-label {
+  font-size: 10px;
+  fill: var(--ccc-text-muted);
+}
+
+.rm-empty {
+  font-size: 12px;
+  fill: var(--ccc-text-muted);
+}
+
+/* 二级页详情 */
+.rm-project-detail .rm-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.rm-detail-head h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.rm-detail-meta {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+}
+
+.rm-group {
+  margin: 12px 0;
+}
+
+.rm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rm-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.rm-group-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rm-card-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  max-width: 380px;
+}
+
+.rm-card-id {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.rm-card-intent {
+  color: var(--ccc-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rm-flag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.rm-flag.drift { background: #d9822b; }
+.rm-flag.missing { background: #c44; }
+
+.rm-risk {
+  border: 1px solid rgba(204, 68, 68, 0.4);
+  background: rgba(204, 68, 68, 0.06);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0;
+}
+
+.rm-risk-title {
+  color: #c44;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.rm-risk-item {
+  font-size: 12px;
+  color: var(--ccc-text-base);
+  padding: 2px 0;
+}
+
+/* ── 线路图（业务线路 · 2026-08-12） ── */
+
+.roadmap-project {
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.roadmap-project-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--ccc-bg-surface);
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+.roadmap-project-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.roadmap-project-meta {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+}
+
+.roadmap-drift-count {
+  color: #c44;
+  font-weight: 600;
+}
+
+.roadmap-milestone {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+.roadmap-milestone:last-child {
+  border-bottom: none;
+}
+
+.roadmap-milestone-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.roadmap-card.done .roadmap-progress { color: var(--ccc-text-muted); }
+.roadmap-card.warn .roadmap-progress { color: #d9822b; }
+.roadmap-card.doing .roadmap-progress { color: #3a7bd5; font-weight: 550; }
+
+.roadmap-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.roadmap-badge.drift { background: #d9822b; }
+.roadmap-badge.missing { background: #c44; }
+
 .ops-port-group h4 {
   margin: 0 0 6px;
   font-size: 12px;
@@ -1753,3 +2181,1329 @@ body.ro-viewer [data-write] {
   border-radius: 10px;
   background: #fff;
 }
+
+/* ── 线路图卡片化（ccc-plan-022 第三批）── */
+.rm-node { cursor: pointer; }
+.rm-node:hover circle { filter: brightness(1.15); }
+.rm-node:focus { outline: none; }
+.rm-node:focus circle { stroke: #fff; stroke-width: 2; }
+.rm-milestone-detail {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 10px;
+  background: var(--ccc-surface, #fff);
+}
+.rm-milestone-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rm-milestone-head span { color: var(--ccc-text-muted, #888); font-size: 12px; }
+.rm-milestone-cards { display: flex; flex-wrap: wrap; gap: 6px; }
+.rm-milestone-empty { color: var(--ccc-text-muted, #888); font-size: 12px; }
+.rm-unplanned {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ccc-border-subtle, #ccc);
+  border-radius: 10px;
+  background: rgba(138, 138, 138, 0.06);
+  font-size: 13px;
+}
+.rm-unplanned-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.rm-unplanned-item {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(138, 138, 138, 0.12);
+  color: var(--ccc-text-muted, #666);
+  font-size: 12px;
+}
+.rm-risk-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.rm-risk-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.rm-risk-card.drift { background: rgba(217, 130, 43, 0.12); color: #a35f18; }
+.rm-risk-card.missing { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.rm-risk-type {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: currentColor;
+  color: #fff;
+  font-size: 11px;
+}
+.rm-goto {
+  margin-left: auto;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 700;
+  padding: 0 4px;
+}
+.rm-goto:hover { color: #0c4a6e; }
+
+/* ── 运维页卡片化（ccc-plan-022 第三批）── */
+.ops-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.ops-dash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-left-width: 3px;
+}
+.ops-dash-card.ok { border-left-color: #2a9d4a; background: rgba(42, 157, 74, 0.06); }
+.ops-dash-card.warn { border-left-color: #d9822b; background: rgba(217, 130, 43, 0.07); }
+.ops-dash-card.attn { border-left-color: #c44; background: rgba(204, 68, 68, 0.07); }
+.ops-dash-card-label { font-size: 11px; color: var(--ccc-text-muted); }
+.ops-dash-card strong { font-size: 15px; font-weight: 650; }
+.ops-dash-card-note { font-size: 11px; color: var(--ccc-text-faint); }
+.ops-scan-at {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  font-weight: 400;
+  margin-left: 8px;
+}
+.ops-todo-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+.ops-act {
+  font-size: 12px;
+  padding: 2px 10px;
+}
+.ops-act:disabled { opacity: 0.6; }
+
+/* ══ 线路图重构 v2（2026-08-12 老板验收重做）══ */
+.roadmap-page { padding: 20px 22px 32px; max-width: 1600px; margin: 0 auto; }
+.roadmap-page, .ops-page, .board-page {
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.roadmap-page .board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.roadmap-page .board-toolbar h2 { font-size: 20px; font-weight: 700; margin: 0; }
+.hub-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ccc-border-subtle, #e3e3e3);
+  background: #fff;
+  color: #444;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.hub-btn:hover { border-color: #0c4a6e; color: #0c4a6e; }
+.rm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+.rm-project-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: box-shadow 0.16s, transform 0.16s, border-color 0.16s;
+  overflow: hidden;
+}
+.rm-project-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #3a7bd5, #8b6cc1);
+}
+.rm-project-card:hover {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.09);
+  transform: translateY(-2px);
+}
+.rm-card-top { display: flex; align-items: center; justify-content: space-between; }
+.rm-card-name { font-size: 17px; font-weight: 700; color: #1c1c1e; }
+.rm-card-meta { font-size: 12px; color: var(--ccc-text-muted, #888); }
+.rm-progress { display: flex; flex-direction: column; gap: 6px; }
+.rm-progress-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.13);
+  overflow: hidden;
+}
+.rm-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3a7bd5, #2a9d4a);
+}
+.rm-progress-label { font-size: 12px; color: var(--ccc-text-muted, #777); }
+.rm-card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.rm-tag {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.rm-hint { font-size: 12.5px; color: var(--ccc-text-muted, #888); margin-top: 14px; }
+.rm-project-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.rm-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rm-detail-head h3 { font-size: 19px; font-weight: 700; margin: 0; }
+.rm-detail-meta { font-size: 13px; color: var(--ccc-text-muted, #777); }
+.rm-svg {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 6px;
+}
+.rm-node-title { font-size: 12px; fill: #444; font-weight: 600; }
+.rm-node-date { font-size: 11px; fill: #999; }
+.rm-axis-label { font-size: 11px; fill: #aaa; }
+.rm-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+.rm-group {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.rm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.rm-dot { width: 9px; height: 9px; border-radius: 999px; flex: none; }
+.rm-group-cards { display: flex; flex-direction: column; gap: 7px; max-height: 320px; overflow-y: auto; }
+.rm-card-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(120, 120, 120, 0.06);
+  font-size: 12.5px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+.rm-card-id { font-weight: 700; color: #0c4a6e; flex: none; }
+.rm-card-intent { color: #444; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-flag {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+.rm-flag.drift { background: #d9822b; }
+.rm-flag.missing { background: #c44; }
+.rm-risk {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.rm-risk-title { font-size: 14px; color: #a35f18; }
+.rm-risk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 10px; }
+.rm-risk-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+.rm-risk-card.drift { background: rgba(217, 130, 43, 0.12); color: #a35f18; }
+.rm-risk-card.missing { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.rm-risk-type {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: currentColor;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.rm-unplanned {
+  background: #fff;
+  border: 1px dashed rgba(0, 0, 0, 0.12);
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+.rm-unplanned-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rm-unplanned-item {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.1);
+  color: var(--ccc-text-muted, #666);
+  font-size: 12px;
+}
+.rm-milestone-detail {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+/* ══ 运维页重构 v2（2026-08-12 老板验收重做）══ */
+.ops-page { padding: 20px 22px 32px; max-width: 1600px; margin: 0 auto; }
+.ops-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.ops-bar h2 { font-size: 20px; font-weight: 700; margin: 0; }
+.ops-sub { font-size: 13px; color: var(--ccc-text-muted, #888); }
+.ops-section { margin-bottom: 16px; }
+.ops-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.ops-section > h3 {
+  font-size: 15px;
+  font-weight: 650;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ops-dash {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ops-dash-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ops-dash-status.ops-ok { background: rgba(42, 157, 74, 0.12); color: #2a7d44; }
+.ops-dash-status.ops-warn { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.ops-dash-status.ops-attn { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.ops-dash-dot { width: 9px; height: 9px; border-radius: 999px; background: currentColor; }
+.ops-dash-line { font-size: 14px; color: #333; line-height: 1.6; }
+.ops-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.ops-dash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-left-width: 4px;
+}
+.ops-dash-card.ok { border-left-color: #2a9d4a; background: rgba(42, 157, 74, 0.05); }
+.ops-dash-card.warn { border-left-color: #d9822b; background: rgba(217, 130, 43, 0.06); }
+.ops-dash-card.attn { border-left-color: #c44; background: rgba(204, 68, 68, 0.06); }
+.ops-dash-card-label { font-size: 11px; color: var(--ccc-text-muted, #888); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.ops-dash-card strong { font-size: 16px; font-weight: 700; color: #1c1c1e; }
+.ops-dash-card-note { font-size: 11.5px; color: var(--ccc-text-faint, #aaa); }
+.ops-scan-at { font-size: 12px; color: var(--ccc-text-muted, #888); font-weight: 400; margin-left: 8px; }
+.ops-todo-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-left-width: 4px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+.ops-todo-item.r1 { border-left-color: #c44; }
+.ops-todo-item.r2 { border-left-color: #d9822b; }
+.ops-todo-item.r3 { border-left-color: #3a7bd5; }
+.ops-priority {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ops-priority.r1 { background: #c44; }
+.ops-priority.r2 { background: #d9822b; }
+.ops-priority.r3 { background: #3a7bd5; }
+.ops-todo-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ops-todo-title { font-size: 13.5px; color: #222; font-weight: 600; }
+.ops-todo-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--ccc-text-muted, #888); }
+.ops-todo-type {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.12);
+  color: #555;
+}
+.ops-todo-time { color: var(--ccc-text-faint, #aaa); }
+.ops-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.ops-detail-block { padding: 14px 16px; }
+.ops-block-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+.ops-machine {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-left-width: 4px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+.ops-machine.up { border-left-color: #2a9d4a; }
+.ops-machine.down { border-left-color: #c44; }
+.ops-machine .name { font-weight: 650; font-size: 13.5px; }
+.ops-machine .meta { font-size: 11.5px; color: var(--ccc-text-muted, #888); }
+.ops-machine .status { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.ops-pipe-status {
+  display: inline-flex;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.ops-pipe-status.ok { background: rgba(42, 157, 74, 0.12); color: #2a7d44; }
+.ops-pipe-status.bad { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.ops-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 12.5px;
+}
+.ops-kv span { color: var(--ccc-text-muted, #888); }
+.ops-kv strong { color: #333; font-weight: 650; }
+.ops-fold summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 650;
+  color: #333;
+  padding: 4px 0;
+  user-select: none;
+}
+.ops-fold[open] summary { margin-bottom: 12px; }
+.ops-empty { font-size: 13px; color: var(--ccc-text-muted, #999); }
+
+/* ══ 线路图二级页 v2（完全重构 · 垂直时间线 + 卡面板）══ */
+.rm2 { display: flex; flex-direction: column; gap: 16px; }
+.rm2-overview {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 15px 20px;
+}
+.rm2-name { font-size: 20px; font-weight: 700; color: #1c1c1e; }
+.rm2-name span { font-size: 12px; color: #999; margin-left: 8px; font-weight: 400; }
+.rm2-stats { display: flex; gap: 20px; }
+.rm2-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-size: 11px;
+  color: #999;
+}
+.rm2-stat b { font-size: 18px; color: #1c1c1e; line-height: 1.1; }
+.rm2-stat.done b { color: #2a9d4a; }
+.rm2-stat.doing b { color: #3a7bd5; }
+.rm2-stat.planned b { color: #999; }
+.rm2-stat.risk b { color: #c44; }
+.rm2-progress {
+  flex: 1;
+  min-width: 170px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.13);
+  overflow: hidden;
+}
+.rm2-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3a7bd5, #2a9d4a);
+}
+.rm2-body {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.rm2-rail-wrap {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 14px 12px;
+}
+.rm2-rail-title { font-size: 12px; color: #888; font-weight: 650; margin: 0 6px 10px; }
+.rm2-rail { position: relative; display: flex; flex-direction: column; gap: 4px; padding-left: 8px; }
+.rm2-rail-line {
+  position: absolute;
+  left: 21px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(120, 120, 120, 0.15);
+}
+.rm2-mile {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 9px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rm2-mile:hover { background: rgba(120, 120, 120, 0.08); }
+.rm2-mile.active { background: rgba(12, 74, 110, 0.08); }
+.rm2-mile-dot {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  border-radius: 999px;
+  background: #bbb;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.rm2-mile-dot.done { background: #2a9d4a; }
+.rm2-mile-dot.doing { background: #e8b93d; }
+.rm2-mile-dot.partial { background: #e8893d; }
+.rm2-mile-dot.blocked { background: #c44; }
+.rm2-mile-dot.none { background: #d9d9d9; }
+.rm2-mile-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rm2-mile-sub { display: flex; gap: 12px; font-size: 11.5px; color: #999; margin-top: 2px; }
+.rm2-mile-tl, .rm2-mile-ver { white-space: nowrap; }
+.rm2-mile-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rm2-mile-title { font-size: 13px; font-weight: 600; color: #222; line-height: 1.4; }
+.rm2-mile-meta { font-size: 11.5px; color: #999; }
+.rm2-undated { margin: 10px 6px 4px; font-size: 11px; color: #aaa; font-weight: 650; }
+.rm2-panel-wrap {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 16px 18px;
+  min-height: 320px;
+}
+.rm2-panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.rm2-panel-head h4 { margin: 0; font-size: 16px; font-weight: 700; color: #1c1c1e; }
+.rm2-panel-date { font-size: 12px; color: #999; }
+.rm2-panel-count {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.12);
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+}
+.rm2-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+}
+.rm2-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #fafafa;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.rm2-card:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07); transform: translateY(-1px); }
+.rm2-card-id { font-weight: 700; color: #0c4a6e; font-size: 12.5px; }
+.rm2-card-intent { font-size: 12.5px; color: #333; line-height: 1.45; }
+.rm2-card-state {
+  align-self: flex-start;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.rm2-card-state.done { background: rgba(42, 157, 74, 0.13); color: #2a7d44; }
+.rm2-card-state.doing { background: rgba(58, 123, 213, 0.13); color: #2d63a8; }
+.rm2-card-state.planned { background: rgba(120, 120, 120, 0.13); color: #666; }
+.rm2-empty { padding: 60px 20px; text-align: center; color: #999; font-size: 13px; }
+
+/* ══ 运维页 v2（待办为主 · 健康一行）══ */
+.ops-main-card { min-height: 300px; }
+.ops-health {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.ops-health-sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ops-health-sev.ops-ok { background: rgba(42, 157, 74, 0.12); color: #2a7d44; }
+.ops-health-sev.ops-warn { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.ops-health-sev.ops-attn { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.ops-health-line { font-size: 13px; color: #333; min-width: 0; }
+.ops-health-chips { margin-left: auto; display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.ops-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.1);
+  font-size: 12px;
+  color: #555;
+  font-weight: 600;
+}
+.ops-chip.alert { background: rgba(204, 68, 68, 0.12); color: #a33; }
+
+/* ══ 看板页升级 v2（列折叠/密度/搜索）══ */
+.board-flow-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  height: 100%;
+  overflow-x: auto;
+  padding: 10px 0;
+}
+.board-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--ccc-bg-layer);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-sm);
+  overflow: hidden;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+}
+.board-col-pair {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+}
+.board-half-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--ccc-bg-layer);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-sm);
+  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+.board-col-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+  min-height: 120px;
+  padding: 8px;
+  gap: 6px;
+}
+.board-col-fold {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--ccc-text-muted, #888);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.board-col-fold:hover { background: rgba(120, 120, 120, 0.14); color: #333; }
+.board-fold-chip:hover { border-color: #0c4a6e; color: #0c4a6e; }
+
+/* 看板列内实时运行面板（执行中/机审 下栏） */
+.board-col-run {
+  height: auto;
+  min-height: 90px;
+  overflow-y: auto;
+  border-top: 1px solid var(--ccc-border-subtle, rgba(0, 0, 0, 0.08));
+  background: rgba(250, 250, 250, 0.85);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+}
+.board-run-empty {
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--ccc-text-faint, #aaa);
+  font-size: 11.5px;
+}
+.board-run-item {
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #fff;
+  border-left-width: 3px;
+  border-left-color: #c47a2c;
+}
+.board-run-item.live { border-left-color: #2a9d4a; }
+.board-run-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.board-run-top b { color: #0c4a6e; font-weight: 700; }
+.board-run-time { margin-left: auto; font-size: 10.5px; color: #999; white-space: nowrap; }
+.board-run-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.board-run-line {
+  font-family: var(--ccc-font-mono, monospace);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-run-line.dim { color: #aaa; font-family: inherit; }
+.board-panel-ready {
+  font-size: 11px;
+  color: #a35f18;
+  font-weight: 650;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: rgba(217, 130, 43, 0.12);
+}
+.project-card-path {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ccc-text-faint, #9aa0a6);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.board-card-stream {
+  margin: 5px 0 3px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(250, 250, 250, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+.board-card-stream-lines {
+  display: flex;
+  flex-direction: column-reverse;
+  height: 71px;
+  overflow: hidden;
+  gap: 1px;
+}
+.board-stream-line {
+  flex: none;
+  font-family: var(--ccc-font-mono, monospace);
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-card-stream-empty { font-size: 10.5px; color: #aaa; line-height: 1.4; }
+
+/* ══ 运维页 v3（项目工程化运维）══ */
+.ops-projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.ops-proj-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-left-width: 4px;
+  border-radius: 12px;
+}
+.ops-proj-card.active { border-left-color: #3a7bd5; }
+.ops-proj-card.done { border-left-color: #2a9d4a; }
+.ops-proj-card.risk { border-left-color: #c44; }
+.ops-proj-head { display: flex; align-items: baseline; justify-content: space-between; }
+.ops-proj-head b { font-size: 15px; color: #1c1c1e; }
+.ops-proj-head span { font-size: 11.5px; color: #999; }
+.ops-proj-bar { height: 6px; border-radius: 999px; background: rgba(120, 120, 120, 0.13); overflow: hidden; }
+.ops-proj-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #3a7bd5, #2a9d4a); }
+.ops-proj-stats { display: flex; gap: 10px; font-size: 12px; color: #777; flex-wrap: wrap; }
+.ops-proj-risk { color: #a33; font-weight: 650; }
+.ops-todo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+}
+.ops-subgroup { margin-bottom: 10px; }
+.ops-subgroup h5 {
+  margin: 8px 0 6px;
+  font-size: 12px;
+  color: #888;
+  font-weight: 650;
+}
+.ops-review-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: #fafafa;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+.ops-review-id { font-weight: 700; color: #0c4a6e; flex: none; }
+.ops-review-title { flex: 1; min-width: 0; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-review-proj { font-size: 11px; color: #999; flex: none; }
+.ops-review-time { font-size: 11px; color: #aaa; flex: none; }
+.ops-todo-type.returned { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.ops-todo-type.pending { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.ops-goto-board {
+  flex: none;
+  font-size: 11.5px;
+  color: #0c4a6e;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ops-goto-board:hover { text-decoration: underline; }
+.ops-loop-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ops-loop-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.08);
+  color: #888;
+  font-size: 12.5px;
+}
+.ops-loop-seg b { font-size: 16px; }
+.ops-loop-seg.on { background: rgba(12, 74, 110, 0.1); color: #0c4a6e; font-weight: 650; }
+.ops-loop-seg i { font-style: normal; color: #ccc; margin: 0 2px; }
+.ops-sys-note {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(120, 120, 120, 0.07);
+  font-size: 12.5px;
+  color: #777;
+}
+.ops-sys-note a { color: #0c4a6e; font-weight: 650; text-decoration: none; }
+
+/* ══ 线路图二级右侧面板分组 ══ */
+.rm2-group {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 11px;
+  margin-bottom: 10px;
+  background: #fcfcfc;
+  overflow: hidden;
+}
+.rm2-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  color: #333;
+  user-select: none;
+  list-style: none;
+}
+.rm2-group summary::-webkit-details-marker { display: none; }
+.rm2-group summary::after { content: "▾"; margin-left: auto; color: #999; font-size: 11px; }
+.rm2-group[open] summary::after { content: "▴"; }
+.rm2-group-count {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.13);
+  font-size: 11px;
+  color: #666;
+}
+.rm2-group .rm2-cards { padding: 4px 10px 10px; }
+
+/* ══ 线路图一级筛选 ══ */
+.rm-filters { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.rm-filter {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ccc-border-subtle, #e3e3e3);
+  background: #fff;
+  color: #666;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.rm-filter:hover { border-color: #0c4a6e; color: #0c4a6e; }
+.rm-filter.on { background: #0c4a6e; border-color: #0c4a6e; color: #fff; }
+
+/* ══ 控制台重构 v2（系统健康 + 配置中心 · ccc-plan-026）══ */
+.console-page {
+  padding: 20px 22px 32px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.console-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.console-bar h2 { font-size: 20px; font-weight: 700; margin: 0; }
+.console-sub { font-size: 13px; color: var(--ccc-text-muted, #888); }
+.console-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.console-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 650;
+  color: #333;
+}
+.console-empty { font-size: 12.5px; color: var(--ccc-text-muted, #999); padding: 6px 0; }
+.console-overview-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.console-sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.console-sev.ok { background: rgba(42, 157, 74, 0.12); color: #2a7d44; }
+.console-sev.warn { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.console-sev.attn { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.console-dot { width: 9px; height: 9px; border-radius: 999px; background: currentColor; flex: none; }
+.console-dot.ok { background: #2a9d4a; }
+.console-dot.warn { background: #d9822b; }
+.console-dot.gone { background: #999; }
+.console-overview-line { font-size: 13.5px; color: #333; min-width: 0; }
+.console-overview-chips { margin-left: auto; display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.console-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 14px;
+  align-items: start;
+}
+.console-left, .console-right { display: flex; flex-direction: column; gap: 14px; }
+.console-left .console-card, .console-right .console-card { margin-bottom: 0; }
+.console-node {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-left-width: 4px;
+  background: #fafafa;
+  margin-bottom: 8px;
+}
+.console-node.up { border-left-color: #2a9d4a; }
+.console-node.down { border-left-color: #c44; }
+.console-node-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.console-node-head b { font-size: 13.5px; color: #1c1c1e; }
+.console-node-meta { font-size: 11.5px; color: #888; margin-top: 3px; }
+.console-pill {
+  display: inline-flex;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.console-pill.ok { background: rgba(42, 157, 74, 0.13); color: #2a7d44; }
+.console-pill.bad { background: rgba(204, 68, 68, 0.12); color: #a33; }
+.console-port-group { margin-bottom: 10px; }
+.console-port-group-h {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #666;
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+.console-port-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: #fafafa;
+  margin-bottom: 5px;
+  text-decoration: none;
+  font-size: 12.5px;
+}
+.console-port-item:hover { border-color: rgba(12, 74, 110, 0.4); }
+.console-port-item b { color: #0c4a6e; font-weight: 700; }
+.console-port-item span { color: #555; font-weight: 600; }
+.console-port-item i { margin-left: auto; font-style: normal; font-size: 11px; color: #999; }
+.console-gone-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.console-gone-list span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.1);
+  color: #888;
+  font-size: 11.5px;
+}
+.console-relay-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.console-relay-alert { color: #a33; font-size: 12px; }
+.console-relay-delta { font-size: 12px; color: #666; margin-left: auto; }
+.console-relay-delta b { color: #2a9d4a; }
+.console-relay-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
+.console-relay-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
+  border-radius: 10px;
+  background: rgba(120, 120, 120, 0.06);
+  font-size: 11px;
+  color: #888;
+}
+.console-relay-stat b { font-size: 16px; color: #1c1c1e; }
+.console-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.console-kpi-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 4px;
+  border-radius: 10px;
+  background: rgba(120, 120, 120, 0.06);
+  text-decoration: none;
+  font-size: 11px;
+  color: #888;
+  transition: background 0.15s;
+}
+.console-kpi-item:hover { background: rgba(12, 74, 110, 0.08); }
+.console-kpi-item b { font-size: 17px; }
+.console-ready {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 130, 43, 0.35);
+  background: rgba(217, 130, 43, 0.07);
+  color: #a35f18;
+  font-size: 12.5px;
+  text-decoration: none;
+  font-weight: 600;
+}
+.console-ready b { font-size: 15px; }
+.console-running-head { font-size: 12px; color: #888; margin-bottom: 8px; }
+.console-task {
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: #fafafa;
+  margin-bottom: 8px;
+}
+.console-task-row { display: flex; align-items: center; gap: 8px; }
+.console-task-row b { color: #0c4a6e; font-size: 12.5px; }
+.console-task-time { margin-left: auto; font-size: 11px; color: #999; }
+.console-task-tail {
+  margin-top: 6px;
+  font-family: var(--ccc-font-mono, monospace);
+  font-size: 10.5px;
+  color: #777;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 44px;
+  overflow: hidden;
+}
+.console-task-progress {
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3a7bd5, #8b6cc1, #3a7bd5);
+  background-size: 200% 100%;
+  animation: console-progress 1.4s linear infinite;
+}
+.console-task-progress.indeterminate { width: 100%; }
+@keyframes console-progress {
+  0% { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+.console-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.console-settings-group {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(120, 120, 120, 0.05);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  align-content: start;
+}
+.console-settings-group h5 { grid-column: 1 / -1; margin: 0 0 4px; font-size: 12px; color: #888; font-weight: 650; }
+.console-settings-group span { font-size: 12px; color: #888; }
+.console-settings-group b { font-size: 12px; color: #333; font-weight: 600; }
+
+/* ═══════════ 线路图 v3：草案池 + 里程碑卡片 ═══════════ */
+
+.rm2-drafts {
+  background: #fff;
+  border: 1px solid var(--ccc-border, #e0e0e0);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+.rm2-drafts-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #a39e93;
+  display: block;
+  margin-bottom: 10px;
+}
+.rm2-draft-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.rm2-drafts-hint { font-size: 11px; color: #bbb; margin-left: 8px; font-weight: 400; }
+.rm2-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.rm2-draft-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--ccc-border, #e0e0e0);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.rm2-draft-card:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); border-color: #b8b0a3; }
+.rm2-draft-card-top { display: flex; align-items: center; justify-content: space-between; }
+.rm2-draft-src {
+  font-size: 11px; font-weight: 600; color: #8b6cc1;
+  background: rgba(139, 108, 193, 0.1); padding: 1px 8px; border-radius: 999px;
+}
+.rm2-draft-state { font-size: 11px; color: #aaa; }
+.rm2-draft-card-title {
+  font-size: 13px; color: #333; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 39px;
+}
+.rm2-draft-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.rm2-draft-detail-body {
+  white-space: pre-wrap; font-size: 13px; color: #333; line-height: 1.6;
+  background: rgba(0, 0, 0, 0.03); border-radius: 6px; padding: 10px 12px; max-height: 40vh; overflow: auto;
+}
+
+/* 里程碑卡片列表 */
+.rm2-miles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.rm2-mile-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--ccc-border, #e0e0e0);
+  border-radius: 10px;
+  transition: box-shadow 0.15s;
+}
+.rm2-mile-card:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.rm2-mile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.rm2-mile-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+.rm2-mile-status.done { background: rgba(42, 157, 74, 0.13); color: #2a7d44; }
+.rm2-mile-status.doing { background: rgba(58, 123, 213, 0.13); color: #2d63a8; }
+.rm2-mile-status.planned { background: rgba(120, 120, 120, 0.13); color: #666; }
+.rm2-mile-desc {
+  font-size: 12.5px;
+  color: #666;
+  line-height: 1.5;
+}
+.rm2-mile-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.rm2-mile-progress-label {
+  font-size: 11.5px;
+  color: #999;
+  font-weight: 600;
+}
+.rm2-mile-progress-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+/* 里程碑分组（§4.1 检查项 1：分类 + 排序 + 空态） */
+.rm2-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.rm2-group:last-child { margin-bottom: 0; }
+.rm2-group-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ccc-border, #e0e0e0);
+}
+.rm2-group-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.rm2-group-hd.doing .rm2-group-dot { background: #3a7bd5; }
+.rm2-group-hd.done .rm2-group-dot { background: #2a9d4a; }
+.rm2-group-hd.planned .rm2-group-dot { background: #d9d9d9; }
+.rm2-group-label {
+  font-size: 13px;
+  font-weight: 650;
+  color: #1c1c1e;
+}
+.rm2-group-cnt {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  background: rgba(120,120,120,0.08);
+  padding: 1px 7px;
+  border-radius: 9px;
+  min-width: 18px;
+  text-align: center;
+}
+/* 左侧导航栏高亮（§4.1 检查项 2-3：点击反馈 + 关联联动） */
+.rm2-mile.active {
+  background: rgba(58, 123, 213, 0.10);
+  border-radius: 8px;
+}
+.rm2-mile.active .rm2-mile-title { color: #2d63a8; font-weight: 650; }
+.rm2-mile-progress-tags code {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: rgba(12, 74, 110, 0.08);
+  border-radius: 3px;
+  color: #0c4a6e;
+}
+
+/* 草案标签 */
+.rm-tag.draft { background: rgba(163, 158, 147, 0.15); color: #7a7468; }

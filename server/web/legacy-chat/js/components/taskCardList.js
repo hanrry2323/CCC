@@ -44,8 +44,15 @@ export class TaskCardList {
 
   setItems(items) {
     this.loading = false;
+    // 增量：关键字段未变则不重建 DOM（消 5s 刷新闪烁）
+    const sig = items.map((i) => [
+      i.id, i.board_column || i.state || i.status,
+      i.tool_calls, i.audit_runs, i.audit_status || '', i.state,
+    ].join(':')).join('|');
     this.items = items;
     this.visibleItems = items;
+    if (sig === this._lastSig) return;
+    this._lastSig = sig;
     this.render();
   }
 

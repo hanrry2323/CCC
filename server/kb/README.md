@@ -80,5 +80,5 @@ pytest server/tests/test_kb_search.py server/tests/test_kb_indexer.py \
 
 ## 红线
 
-- 只读 `knowledge/`（D2 零外脑），禁止读 qx-map / hp-kb。
+- 只读 `knowledge/` 为本体（2026-08-14 部分解除 D2 零外脑）：允许经 `server.kb.hp_client` 只读调 hp-kb（HTTP），**禁止写 hp-kb**。
 - 端口 / 路径 / 参数走环境变量（`CCC_KB_INDEX_DIR` / `CCC_KB_BM25_K1` / `CCC_KB_BM25_B`），不硬编码。

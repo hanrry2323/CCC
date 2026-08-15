@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    CCC Scheduler — 进程编排模板
+    部署前请替换以下占位变量：
+      /Users/fan/program/CCC  → CCC 仓库绝对路径
+      /Users/fan/program/CCC/server/config/config.env    → config.env 绝对路径
+      /Users/fan/.ccc/logs       → 日志目录绝对路径
+      /Users/fan/.ccc/data      → 数据目录绝对路径（observer 快照）
+      /Users/fan/program/CCC/.venv-hub/bin/python    → python 解释器绝对路径（推荐 uv run python）
+      fan      → 运行用户
+  -->
+  <key>Label</key>
+  <string>com.ccc.scheduler</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/fan/program/CCC/.venv-hub/bin/python</string>
+    <string>-m</string>
+    <string>server.engine.scheduler</string>
+    <string>--config</string>
+    <string>/Users/fan/program/CCC/server/config/config.env</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CCC_CONFIG_ENV</key>
+    <string>/Users/fan/program/CCC/server/config/config.env</string>
+    <key>CCC_DATA_DIR</key>
+    <string>/Users/fan/.ccc/data</string>
+    <key>CCC_LOG_DIR</key>
+    <string>/Users/fan/.ccc/logs</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/fan/program/CCC</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/fan/.ccc/logs/scheduler.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/fan/.ccc/logs/scheduler.stderr.log</string>
+
+  <key>UserName</key>
+  <string>fan</string>
+
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
+</dict>
+</plist>

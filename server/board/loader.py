@@ -23,29 +23,43 @@ from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state, board_column, machine_audit_passed_text
 from server.board.roles import normalize_tool
+from server.board.card_header import CardHeader, is_task_card_text
 
 logger = logging.getLogger("ccc.board.loader")
 
-# `# 任务卡 T3 · 标题`（MULTILINE：^/$ 按行锚定）
-_TITLE_RE = re.compile(r"^#\s*任务卡\s+(\S+)\s*[·\-]\s*(.+?)\s*$", re.MULTILINE)
-# 元数据行内的 `key：value`（`>` 行，`·` 分隔）
-_META_PAIR_RE = re.compile(r"^\s*([^：\s][^：]*?)\s*[:：]\s*(.+?)\s*$")
 # 回写区日期：`**日期**：YYYY-MM-DD`
 _WRITTEN_RE = re.compile(r"\*\*日期\*\*\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
-# 显式打回次数：`打回次数：N`
-_REJECT_RE = re.compile(r"打回次数\s*[:：]\s*(\d+)")
 
-# 「派发」字段合法值（缺省 engine）
-_DISPATCH_VALUES: frozenset[str] = frozenset({"manual", "engine"})
 # 推导出的项目名不得含这些字符（长句/引号/括号 → 非项目前缀，归「未分类」）
 _GARBLED_RE = re.compile(r"[「」『』【】\"'<>（）()]")
-# 卡头标题行：`# 任务卡 <ID>`（行首锚定；正文/说明里出现 `# 任务卡` 字面量不算）
-_CARD_TITLE_RE = re.compile(r"^#\s*任务卡\s", re.MULTILINE)
+
 
 
 def _strip_parenthetical(value: str) -> str:
     """取括号前部分（如 `INT-120（CCC 重构）` → `INT-120`）。"""
     return re.split(r"[（(]", value, maxsplit=1)[0].strip()
+
+
+_CARD_ID_TOKEN_RE = re.compile(r"[a-z]{2,4}\d{3}")
+
+
+def _parse_depends(raw: str) -> list[str]:
+    """解析卡头「依赖：」字段 → 卡 ID 列表。
+
+    支持逗号/顿号/空格分隔，去重保序；无有效卡 ID 返回空列表。
+    例：`依赖：ccc042, ccc043` → ["ccc042", "ccc043"]；`依赖：` → []。
+    """
+    if not raw:
+        return []
+    seen: list[str] = []
+    for token in re.split(r"[,，、\s]+", raw):
+        token = token.strip()
+        if not token:
+            continue
+        m = _CARD_ID_TOKEN_RE.search(token)
+        if m and m.group(0) not in seen:
+            seen.append(m.group(0))
+    return seen
 
 
 def _derive_project_from_related(related: str) -> str:
@@ -68,33 +82,12 @@ def _derive_project_from_related(related: str) -> str:
     return seg
 
 
-def _resolve_project(meta: dict[str, str]) -> str:
+def _resolve_project(header: CardHeader) -> str:
     """项目名：卡头「项目」字段优先；缺省从「关联」首段推导。"""
-    explicit = meta.get("项目", "").strip()
+    explicit = (header.project or "").strip()
     if explicit:
         return _strip_parenthetical(explicit)
-    return _derive_project_from_related(meta.get("关联", UNKNOWN))
-
-
-def _resolve_dispatch(meta: dict[str, str]) -> str:
-    """派发方式：manual|engine（缺省 engine；非法值回落 engine）。"""
-    raw = (meta.get("派发", "") or "").strip().lower()
-    return raw if raw in _DISPATCH_VALUES else "engine"
-
-
-def _parse_metadata(text: str) -> dict[str, str]:
-    """解析 `>` 元数据行的 `key：value` 对。"""
-    meta: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line.startswith(">"):
-            continue
-        body = line.lstrip(">").strip()
-        for part in re.split(r"·", body):
-            match = _META_PAIR_RE.match(part)
-            if match:
-                meta[match.group(1).strip()] = match.group(2).strip()
-    return meta
+    return _derive_project_from_related(header.related or UNKNOWN)
 
 
 def _parse_written_at(text: str) -> str:
@@ -106,72 +99,71 @@ def _parse_written_at(text: str) -> str:
 def parse_card(path: Path | str) -> BoardItem:
     """解析单张任务卡；字段缺失容错标「未知」。"""
     text = Path(path).read_text(encoding="utf-8")
-
-    title_match = _TITLE_RE.search(text)
-    if title_match:
-        card_id, title = title_match.group(1), title_match.group(2).strip()
-    else:
-        card_id, title = Path(path).stem, UNKNOWN
-
-    meta = _parse_metadata(text)
-
-    reject_match = _REJECT_RE.search(text)
-    reject_count = int(reject_match.group(1)) if reject_match else 0
-    # 状态为「打回」（含括号变体如 `打回（原因）`）时隐含至少 1 次打回
-    if reject_count == 0 and base_state(meta.get("状态", UNKNOWN)) == "打回":
-        reject_count = 1
-
-    card_type = meta.get("类型", "task").strip().lower()
-    if card_type not in ("epic", "task"):
-        card_type = "task"
-    parent_card = meta.get("父卡", "").strip()
+    header = CardHeader.from_text(text, fallback_id=Path(path).stem)
 
     p = Path(path)
     is_archived = "docs/archive" in p.as_posix() or "docs/archive" in p.resolve().as_posix()
 
     return BoardItem(
-        id=card_id,
-        title=title,
-        state=meta.get("状态", UNKNOWN),
-        project=_resolve_project(meta),
-        executor=_strip_parenthetical(meta.get("执行体", UNKNOWN)),
-        dispatched_at=meta.get("日期", UNKNOWN),
+        id=header.id,
+        title=header.title,
+        state=header.state,
+        project=_resolve_project(header),
+        executor=_strip_parenthetical(header.executor),
+        dispatched_at=header.dispatched_at,
         written_at=_parse_written_at(text),
-        reject_count=reject_count,
-        dispatch=_resolve_dispatch(meta),
-        type=card_type,
-        parent=parent_card,
-        thread_id=meta.get("会话", "").strip() or meta.get("thread_id", "").strip(),
-        acceptance=normalize_tool(_strip_parenthetical(meta.get("验收", UNKNOWN)))
-        or UNKNOWN,
+        reject_count=header.reject_count,
+        dispatch=header.dispatch,
+        type=header.card_type,
+        parent=header.parent,
+        thread_id=header.session,
+        depends_on=_parse_depends(header.depends),
+        acceptance=normalize_tool(_strip_parenthetical(header.acceptance)) or UNKNOWN,
         archived=is_archived,
         machine_audit_passed=machine_audit_passed_text(text),
+        approval=header.approval,
     )
 
 
 def _is_task_card(path: Path) -> bool:
     """是否任务卡：行首含 `# 任务卡` 卡头标题；T-mapping.md 等说明文档跳过。"""
     try:
-        return bool(_CARD_TITLE_RE.search(path.read_text(encoding="utf-8")))
+        return is_task_card_text(path.read_text(encoding="utf-8"))
     except (UnicodeDecodeError, OSError) as exc:
         logger.warning("跳过无法读取的文件 %s: %s", path, exc)
         return False
 
 
-def scan_dispatch_files(directory: Path | str) -> list[Path]:
+def _platform_prefixes() -> frozenset[str]:
+    """平台自研项目前缀（registry category==platform），扫描时跳过其卡目录。"""
+    try:
+        from server.board.registry import platform_prefixes
+
+        return platform_prefixes()
+    except Exception:
+        return frozenset()
+
+
+def scan_dispatch_files(directory: Path | str, include_platform: bool = False) -> list[Path]:
     """扫描任务卡文件：根目录平铺（旧卡）+ 一层子目录（`<prefix>/` 下新卡）。
 
     T54 规则：旧卡（根 `T*.md`）与 `<prefix>/` 子目录新卡共存；只认含 `# 任务卡`
     卡头标题的 .md，T-mapping.md 等说明文档不参与。目录不存在返回空。
+    平台自研项目（registry category==platform）的卡目录默认跳过（不出现在看板）。
+    include_platform=True 时纳入（索引层需要 ccc 卡供 sync_plan_progress 读状态，
+    看板展示由 load_dispatch_cards 在 items 层过滤——人审统一化 2026-08-14）。
     """
     d = Path(directory)
     if not d.is_dir():
         return []
+    skip = _platform_prefixes() if not include_platform else frozenset()
     files: list[Path] = []
     for p in sorted(d.glob("*.md")):
         if _is_task_card(p):
             files.append(p)
     for p in sorted(d.glob("[!.]*/[!.]*.md")):
+        if skip and p.parent.name in skip:
+            continue
         if _is_task_card(p):
             files.append(p)
     return files
@@ -215,24 +207,9 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
     return base / "cards" / "cards.index.jsonl"
 
 
-def _derive_card_type(path: Path) -> str:
-    from server.board.validate import NEW_CARD_RE, OLD_CARD_RE
-    stem = path.stem
-    if NEW_CARD_RE.match(stem):
-        return "new"
-    if OLD_CARD_RE.match(stem):
-        return "old"
-    return "other"
 
 
 def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
-    ctype = _derive_card_type(path)
-    parent_dir = path.parent
-    if parent_dir.name == "dispatch" or parent_dir.name == "":
-        parent = ""
-    else:
-        parent = parent_dir.name
-
     closed_at = UNKNOWN
     if base_state(item.state) == "已关闭":
         closed_at = item.written_at
@@ -246,8 +223,6 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
     return {
         "id": item.id,
         "project": item.project,
-        "type": ctype,
-        "parent": parent,
         "state": item.state,
         "executor": item.executor,
         "dispatched_at": item.dispatched_at,
@@ -261,10 +236,12 @@ def build_index_entry(path: Path, item: BoardItem, mtime: float) -> dict:
         "card_type": item.type,
         "parent_card": item.parent,
         "thread_id": item.thread_id,
+        "depends_on": list(item.depends_on),
         "acceptance": item.acceptance,
         "archived": item.archived,
         "machine_audit_passed": item.machine_audit_passed,
         "board_column": board_column(item.state, item.machine_audit_passed),
+        "approval": item.approval,
     }
 
 
@@ -291,9 +268,51 @@ def load_index_file(dispatch_dir: Path | str | None = None) -> dict[str, dict]:
     return entries
 
 
+def _index_lock_path(index_path: Path) -> Path:
+    """索引锁文件：与索引同目录的 <name>.lock，跨进程互斥（Fix #11）。留在磁盘上，
+    flock 锁依赖文件 inode，删锁文件会导致新进程对旧 inode 加锁而另一进程对新文件加锁失效。"""
+    return index_path.with_name(index_path.name + ".lock")
+
+
+def _index_lock_acquire(index_path: Path):
+    """获取索引跨进程写锁。返回文件句柄（须配 _index_lock_release）或 None（无 fcntl/失败退化为无锁）。"""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    lock_path = _index_lock_path(index_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        f = open(lock_path, "a")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f
+    except OSError:
+        return None
+
+
+def _index_lock_release(f) -> None:
+    if f is None:
+        return
+    try:
+        import fcntl as _f
+
+        _f.flock(f, _f.LOCK_UN)
+    finally:
+        f.close()
+
+
 def save_index_file(entries: dict[str, dict], dispatch_dir: Path | str | None = None) -> None:
     index_path = get_index_path(dispatch_dir)
     index_path.parent.mkdir(parents=True, exist_ok=True)
+    h = _index_lock_acquire(index_path)
+    try:
+        _write_index_entries(entries, index_path)
+    finally:
+        _index_lock_release(h)
+
+
+def _write_index_entries(entries: dict[str, dict], index_path: Path) -> None:
+    """无锁写索引（调用方须已持锁，如 _load_dispatch_cards_incremental 的主流程）。"""
     sorted_entries = sorted(entries.values(), key=lambda x: x["id"])
     tmp_path = index_path.with_suffix(".tmp")
     try:
@@ -309,6 +328,17 @@ def save_index_file(entries: dict[str, dict], dispatch_dir: Path | str | None = 
 def load_dispatch_cards_incremental(directory: Path | str, include_archived: bool = False) -> list[BoardItem]:
     """增量扫描任务卡：按 mtime 检测变化卡只重扫，写回索引并返回全部卡。"""
     dispatch_dir = Path(directory)
+    # Fix #11：全量「读-改-写」持锁，防多进程并发扫描互相覆盖索引（后写者吃掉前写者）。
+    index_path = get_index_path(dispatch_dir)
+    holder = _index_lock_acquire(index_path)
+    try:
+        return _load_dispatch_cards_incremental(directory, include_archived=include_archived)
+    finally:
+        _index_lock_release(holder)
+
+
+def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bool = False) -> list[BoardItem]:
+    dispatch_dir = Path(directory)
     index_entries = load_index_file(dispatch_dir)
 
     index_by_path: dict[str, dict] = {}
@@ -316,7 +346,8 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
         if "path" in entry:
             index_by_path[entry["path"]] = entry
 
-    disk_files = scan_dispatch_files(dispatch_dir)
+    # 人审统一化：索引层纳入 platform（ccc）卡（供 sync_plan_progress），看板展示在下方 items 过滤
+    disk_files = scan_dispatch_files(dispatch_dir, include_platform=True)
     archive_dir = get_archive_dir(dispatch_dir)
     archive_files = scan_archive_files(archive_dir)
 
@@ -344,6 +375,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
             entry is not None
             and entry.get("mtime") == mtime
             and "machine_audit_passed" in entry
+            and "approval" in entry
         )
         if cache_ok:
             item = BoardItem(
@@ -362,6 +394,7 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                 acceptance=entry.get("acceptance", UNKNOWN),
                 archived=entry.get("archived", False),
                 machine_audit_passed=bool(entry.get("machine_audit_passed", False)),
+                approval=entry.get("approval", ""),
             )
             items.append(item)
             updated_entries[entry["id"]] = entry
@@ -398,63 +431,16 @@ def load_dispatch_cards_incremental(directory: Path | str, include_archived: boo
                 continue
 
     if len(updated_entries) != len(index_entries) or updated:
-        save_index_file(updated_entries, dispatch_dir)
+        # 外层已在 load_dispatch_cards_incremental 持锁，这里直接无锁写，避免嵌套 flock 死锁
+        _write_index_entries(updated_entries, get_index_path(dispatch_dir))
+
+    # 人审统一化：platform（ccc）子目录卡进索引（供 sync_plan_progress），看板展示过滤。
+    # 按「路径父目录」过滤而非项目字段——legacy 根目录 T 卡（无 项目 字段→未分类）不受影响。
+    platform = _platform_prefixes()
+    if platform:
+        items = [i for i, p in zip(items, all_files) if p.parent.name not in platform]
 
     if not include_archived:
         items = [i for i in items if not i.archived]
 
-    return derive_epic_states_and_progress(items)
-
-
-def derive_epic_states_and_progress(items: list[BoardItem]) -> list[BoardItem]:
-    """线路图/看板按 epic 聚合子卡进度（已完成/总子卡）；epic 状态由子卡派生（全部关闭+目标达成→待验收）。"""
-    epic_items = [item for item in items if item.type == "epic"]
-    if not epic_items:
-        return items
-
-    epic_to_children: dict[str, list[BoardItem]] = {epic.id: [] for epic in epic_items}
-    for item in items:
-        if item.type == "task" and item.parent in epic_to_children:
-            epic_to_children[item.parent].append(item)
-
-    derived_items = []
-    for item in items:
-        if item.type == "epic":
-            children = epic_to_children.get(item.id, [])
-            if children:
-                total = len(children)
-                closed = sum(1 for child in children if base_state(child.state) == "已关闭")
-                progress_str = f"{closed}/{total}"
-
-                if closed == total:
-                    derived_state = "已回写"
-                else:
-                    has_active = any(base_state(child.state) in ("执行中", "已回写", "打回") for child in children)
-                    if has_active:
-                        derived_state = "执行中"
-                    else:
-                        derived_state = "待分派"
-
-                new_item = BoardItem(
-                    id=item.id,
-                    title=f"{item.title} ({progress_str})",
-                    state=derived_state,
-                    project=item.project,
-                    executor=item.executor,
-                    dispatched_at=item.dispatched_at,
-                    written_at=item.written_at,
-                    reject_count=item.reject_count,
-                    dispatch=item.dispatch,
-                    type=item.type,
-                    parent=item.parent,
-                    progress=progress_str,
-                    thread_id=item.thread_id,
-                    acceptance=item.acceptance,
-                )
-                derived_items.append(new_item)
-            else:
-                derived_items.append(item)
-        else:
-            derived_items.append(item)
-
-    return derived_items
+    return items

@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub 旧架构或标注「待核（T31 基线收口）」，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止据此判断现行架构；对外叙事以 INDEX §0 为准。
+
 # CCC TROUBLESHOOTING — 5 类常见问题 + Fix
 
 > 5 类最常见 CCC 问题 + 症状 / 根因 / 修复 / 复测命令。
@@ -201,7 +203,7 @@ bash scripts/v1.0-validation.sh   # cluster-bus / dispatch 全 PASS
 ### 症状
 - `python3 scripts/ccc-dispatch.py` 输出 `candidates: NONE` + VERDICT: ABORT exit=2
 - "recommendation: NO_NODE_HAS_REQUIRED_CAPABILITY"
-- 计划提到 `claude-p` 但 cluster-bus 只注册了 `feiniu` (只有 `ollama-bge-m3`)
+- 计划提到 `claude-p` 但 cluster-bus 只注册了 `hp` (只有 `ollama-bge-m3`)
 
 ### 根因
 1. 节点没注册到 cluster-bus

@@ -28,10 +28,10 @@
     },
     {
       "id": "D11-Relay-Dual-Track",
-      "title": "CCC 中转站双轨终态决议（D11 补充）",
+      "title": "CCC 中转站双轨终态决议（D11 补充；2026-08-06 已作废）",
       "date": "2026-08-02",
       "file": "ccc-relay-双轨决议-2026-08-02.md",
-      "status": "生效（永久）",
+      "status": "已作废（2026-08-06 M1 中转站冷冻决议取代，见 qx-map cluster.json:13）",
       "summary": "老板拍板：M1 中转站（ai-loop-router，4100/4102）不停用，继续使用维持现状；CCC 系统中转站已部署在 Mac2017，端口 6100/6102，为 CCC 体系专用。6100/6102 的使用方仅两个：Mac2017 侧的 Claude Code 与 OpenCode；两者均使用 flash 档位。",
       "key_points": [
         "M1 4100/4102 保留（ai-loop-router，Codex/Claude Code/OpenCode 智能路由）",
