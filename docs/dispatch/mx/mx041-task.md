@@ -85,6 +85,27 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：项目近况符合 `mx-plan-003` 既定方案，线路图无需变动。
 
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-15）
+
+### 审查摘要
+
+- **范围合规**：业务仓 `codex/mx041-task` 提交 `b5ce0e3` 改动限 `Cargo.toml`/`Cargo.lock`（新增 `async-trait`）、`api/state.rs`、`service/playback_service.rs`、`server/main.rs`、`tests/playback_progress.rs`、`tests/media_library_scan.rs`，与卡「PlaybackService 的 RateLimitMap 构造注入」范围一致，无越界。
+- **实现正确**：新增 `PlaybackRateLimiter` trait（对象安全、`Send + Sync`）定义注入点；`Mutex<RateLimitMap>` 实现将「加锁 + 过期清理 + 判放行」收敛到 trait 内，调用方不感知并发细节（验收 1「经注入可替换」达成）。`PlaybackService::new` 第三参改为 `Arc<dyn PlaybackRateLimiter>`，`save_progress` 限流检查逐行等价于原实现（lock → cleanup_old → should_save），行为等价（验收红线 2 达成）。
+- **引用点全量覆盖**：`api/routes/stream.rs`、`api/routes/history.rs` 三处路由均经 `state.progress_rate_limit.clone()` 注入，`server/main.rs` AppState 构造已对齐，全仓 `PlaybackService::new` 调用点无遗漏（grep 复核）。
+- **机械门禁（复核声明真实性，非重判）**：回写区三项测试声明逐一实测一致——lib `service::playback_service::tests` 11 passed、`--test playback_progress` 6 passed、`--test media_library_scan` 19 passed。
+- **人工批注**：卡无实际人工批注（`## 人工批注` 仅保留模板占位）；执行体按模板「无批注可删本节」移除 `## 批注落实` 节，合规。
+- **维护区四问**：已逐项勾选并填实，无占位——Q1 [是] `mx-plan-003` 状态「部分执行」且关联卡含 mx041（已核实方案文件）；Q2 [无] / Q3 [否] / Q4 [否] 与纯内部行为等价重构一致，声明真实。
+
+### 机审修复（业务仓就地 commit `e7eb755` 并已 push）
+
+业务仓工作区遗留未提交的 `playback_service.rs` 文档注释（trait/impl 说明，6 行）——属本卡范围内注释完善，已就地 commit `e7eb755` 并 push 至 `origin/codex/mx041-task`，工作区已干净，注释不随合入丢失。
+
+### 观察项（不阻塞，记录备后续处理）
+
+- `PlaybackRateLimiter::should_save` 与 `RateLimitMap::should_save` 同名：Rust 固有方法优先于 trait 方法，无实际歧义；仅阅读检索时略有噪音，可不改。
+
 ## 执行提示
 
 - 项目：mx（Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌面壳 + HarmonyOS 移动端，经 CCC 出卡驱动开发。）
