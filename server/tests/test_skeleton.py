@@ -166,14 +166,14 @@ class TestExecutorsExample:
     NOT_APPLICABLE_CATEGORY = "—"
     REQUIRED_FIELDS = frozenset({"角色", "分类", "当前绑定", "备注"})
 
-    # 契约：OpenCode/Claude 开发 + 维护 + 管理 + 双机审 CLI（验收席）
+    # 契约：开发仅 OpenCode（2026-08-15 F5 定）+ 维护 + 管理 + 双机审 CLI（验收席）+ DSH 只读取证/审计
     CONTRACT_ROLES: list[dict[str, str]] = [
-        {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "维护执行体", "分类": "可后台 CLI"},
         {"角色": "管理席", "分类": NOT_APPLICABLE_CATEGORY},
         {"角色": "验收席", "分类": "可后台 CLI"},
         {"角色": "验收席", "分类": "可后台 CLI"},
+        {"角色": "只读取证/审计执行体", "分类": NOT_APPLICABLE_CATEGORY},
     ]
     EXECUTOR_ROLES = frozenset({"开发执行体", "维护执行体"})
     STAFF_ROLES = frozenset({"管理席", "验收席"})
@@ -198,11 +198,11 @@ class TestExecutorsExample:
             assert not missing, f"executor[{idx}] missing fields: {missing}"
 
     def test_roles_match_contract_section_7(self, executors_data) -> None:
-        """角色集合 = 契约 §7 五角色（多集精确匹配，含开发执行体 ×2）。"""
+        """角色集合 = 契约 §7 角色（多集精确匹配，含 DSH 只读取证/审计）。"""
         actual = [(e["角色"], e["分类"]) for e in executors_data["executors"]]
         expected = [(c["角色"], c["分类"]) for c in self.CONTRACT_ROLES]
         assert sorted(actual) == sorted(expected), (
-            f"executors 未对齐契约 §7 五角色:\n  expected={expected}\n  actual={actual}"
+            f"executors 未对齐契约 §7 角色:\n  expected={expected}\n  actual={actual}"
         )
 
     def test_executor_category_valid(self, executors_data) -> None:

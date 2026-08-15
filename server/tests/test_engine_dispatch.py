@@ -100,7 +100,7 @@ class TestLoadRegistry:
 
     def test_example_registry_loads(self) -> None:
         reg = load_registry(REGISTRY_PATH)
-        # OpenCode/Claude 开发 CLI + 维护 + 管理 + Claude/OpenCode 双验收席 = 6 行
+        # 开发(OpenCode) + 维护 + 管理 + Claude/OpenCode 双验收席 + DSH 只读 = 6 行
         assert len(reg.entries) == 6
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
@@ -110,7 +110,7 @@ class TestLoadRegistry:
         assert "--dir {worktree}" in cli.args_template
         cc = reg.cli_entry_for_binding("Claude Code")
         assert cc is not None
-        assert cc.role == "开发执行体"
+        assert cc.role == "验收席"  # F5 定稿：开发仅 OpenCode，Claude Code 为机审验收席
         # 验收席绑定为可后台 CLI（机审）
         acc_rows = [e for e in reg.entries if e.role == "验收席"]
         assert {e.binding for e in acc_rows} == {"Claude Code", "OpenCode"}
