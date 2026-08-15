@@ -136,12 +136,12 @@ projects:
     isolation:
       worktree_root: /Users/fan/program/apps/.ccc-wt/cd
       max_concurrent: 1
-    taskable: true
+    taskable: false
     forbidden: false
-    status: active
+    status: archived
     dossier: docs/projects/cd/README.md
-    role: CCC 演示项目
-    notes: 前缀 cd（ccc004 意图经 registry 单源落地 · M4）
+    role: CCC 演示项目（已废除）
+    notes: 2026-08-15 老板决策废除——演示使命完成，封版不再出卡（前缀 cd 历史来源：ccc004 意图经 registry 单源落地 · M4）
 
   - prefix: clw
     id: clwarp
