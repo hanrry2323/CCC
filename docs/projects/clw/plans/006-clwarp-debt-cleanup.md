@@ -1,7 +1,7 @@
 # 方案 · clwarp 审计梳理与历史债务清理（M4）
 
-> 项目：clw · 编号：clw-plan-006 · 状态：部分执行 · 作者：Claude（中枢） · 工具：Claude Code
-> 创建：2026-08-15 · 更新：2026-08-15
+> 项目：clw · 编号：clw-plan-006 · 状态：已完成 · 作者：Claude（中枢） · 工具：Claude Code
+> 创建：2026-08-15 · 更新：2026-08-16
 > 关联卡：clw027
 > 关联方案：clw-plan-001/002/003/005（已完成历史方案）；clw-plan-004（已作废，归档不再执行）
 > 里程碑：M4 · 审计梳理与债务清理
@@ -37,20 +37,20 @@ clw 是新框架梳理的首个项目。三路并行调查（本地文档 / 远�
 - A6：clw019/020 归属标注（在 README/卡头注明「关联 ccc-plan-020，非 clw 业务卡」）
 - A7：补齐交付报告 `clw-delivery-002`（v0.2.0）、`clw-delivery-003`（v0.3.0）
 
-**B · 业务仓文档纠偏（功能卡 clw026，产线执行）**
+**B · 业务仓文档纠偏（功能卡 clw027，产线执行）**
 - B1：clwarp 仓 `AGENTS.md`「GPU 原生终端渲染」过时表述纠偏为 xterm.js（详见下方功能卡）
 
 ## 验收标准
 
-- [ ] `roadmap.md` 已移除「agent 状态感知」里程碑，M4/M5 就位，状态正确
-- [ ] `clw022` 编号空缺已登记说明，无歧义
-- [ ] `clw-skill.md` 技术栈与 README 定稿一致（无 GPU 渲染表述）
-- [ ] 全局 `docs/roadmap.md` clw 业务线路表格补全到 clw025
-- [ ] `README.md` 近况同步到 clw021 / clw023-025
-- [ ] clw019/020 归属 ccc-plan-020 已标注
-- [ ] `clw-delivery-002` / `clw-delivery-003` 已补齐（CHANGELOG / RELEASE / Git Tag / 可复跑验证）
-- [ ] clwarp `AGENTS.md` 无「GPU 原生渲染」过时表述（功能卡 clw026 验收）
-- [ ] `scripts/validate-plans.sh` 全绿
+- [x] `roadmap.md` 已移除「agent 状态感知」里程碑，M4/M5 就位，状态正确（2026-08-15 A 块落库）
+- [x] `clw022` 编号空缺已登记说明，无歧义（2026-08-15 A 块落库）
+- [x] `clw-skill.md` 技术栈与 README 定稿一致（无 GPU 渲染表述）（2026-08-15 A 块落库）
+- [x] 全局 `docs/roadmap.md` clw 业务线路表格补全到 clw025（2026-08-15 A 块落库）
+- [x] `README.md` 近况同步到 clw021 / clw023-025（2026-08-15 A 块落库）
+- [x] clw019/020 归属 ccc-plan-020 已标注（2026-08-15 A 块落库）
+- [x] `clw-delivery-002` / `clw-delivery-003` 已补齐（CHANGELOG / RELEASE / Git Tag / 可复跑验证）（2026-08-15 A 块落库）
+- [x] clwarp `AGENTS.md` 无「GPU 原生渲染」过时表述（功能卡 clw027 验收；2026-08-15 老板封板决策视同完成，clw027 已关闭）
+- [x] `scripts/validate-plans.sh` 全绿（2026-08-16 补收口复核）
 
 ## 功能卡
 

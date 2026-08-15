@@ -154,11 +154,12 @@ projects:
     isolation:
       worktree_root: /Users/fan/program/apps/.ccc-wt/clw
       max_concurrent: 1
-    taskable: true
+    taskable: false
     forbidden: false
-    status: active
+    status: archived
     dossier: docs/projects/clw/README.md
-    role: 统一 AI 开发桌面驾驶舱（Claude+OpenCode+Codex）
+    role: 统一 AI 开发桌面驾驶舱（Claude+OpenCode+Codex）（已封板）
+    notes: 2026-08-15 老板决策封板——M4 收尾后生命周期完成，封板不再出卡；定位转「历史尝试型项目·示范样板」，主线资源转向 DSH + CCC 插件化（ccc-plan-029）
 
   - prefix: null
     id: ai-loop-router
