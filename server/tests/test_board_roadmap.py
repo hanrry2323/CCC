@@ -14,6 +14,7 @@ from server.board.roadmap import (
     activate_subproject,
     active_linked_plans,
     compute_milestone_progress,
+    sync_milestone_progress,
     create_draft,
     create_milestone,
     delete_milestone,
@@ -478,6 +479,44 @@ class TestRoundtrip:
         # 不存在的子项目/里程碑报错
         assert "error" in activate_subproject("clw", "M1 · 测试", "9.9", "x")
         assert "error" in activate_subproject("clw", "不存在的里程碑", "2.1", "x")
+
+    def test_subproject_progress_reads_plan(self) -> None:
+        """2026-08-16 机审修复：子项目进度读关联方案完成率；方案完成 → 进度推进 + 子项目状态同步。"""
+        self.clw_roadmap.write_text(
+            """# clwarp 线路图
+> 项目：clw · 更新：2026-08-16
+
+## 草案池
+
+无。
+
+## 里程碑
+
+### M1 · 测试
+- 状态：进行中
+- 子项目：
+  - 2.1 子项目A · 状态：计划中 · 方案：clw-plan-008
+""",
+            encoding="utf-8",
+        )
+        # 方案不存在 → total=1 completed=0（进度不因「手写已完成」而虚高，读真实方案）
+        prog = compute_milestone_progress("clw", "M1 · 测试")
+        assert prog["total"] == 1 and prog["completed"] == 0
+        # 建已完成方案 clw-plan-008 → completed=1，状态推导已完成
+        plans_dir = self.mock_root / "docs" / "projects" / "clw" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        (plans_dir / "008-a.md").write_text(
+            "# 方案 · A\n\n> 项目：clw · 编号：clw-plan-008 · 状态：已完成 · 作者：x · 工具：pytest\n> 创建：2026-08-16 · 更新：2026-08-16\n\n## 目标\n\nx\n",
+            encoding="utf-8",
+        )
+        prog2 = compute_milestone_progress("clw", "M1 · 测试")
+        assert prog2["total"] == 1 and prog2["completed"] == 1
+        assert prog2["status"] == "已完成"
+        # sync_milestone_progress 同步子项目状态为已完成（写入 roadmap）
+        r = sync_milestone_progress("clw", "docs/projects/clw/plans/008-a.md")
+        assert r.get("ok") is True
+        mss = list_milestones("clw")
+        assert mss[0].subprojects[0].status == "已完成"
 
     def test_promote_draft_to_plan_success(self) -> None:
         """草案→方案一键升级：从草案池取一条草案创建方案，并从草案池移除。"""

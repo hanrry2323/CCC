@@ -31,6 +31,7 @@ from server.board.plans import (
     _extract_acceptance,
     _extract_func_cards,
     _inject_func_card,
+    _split_deps,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -932,6 +933,15 @@ class Test027CoreFlow:
     def test_extract_func_cards_absent(self):
         """无功能卡段 → 返回空列表。"""
         assert _extract_func_cards("## 目标\n\n无功能卡") == []
+
+    def test_split_deps_strips_none_annotation(self):
+        """2026-08-16 机审修复：依赖以「无」开头（含注解形态）→ 无依赖，不拆成伪依赖。"""
+        assert _split_deps("") == []
+        assert _split_deps("无") == []
+        assert _split_deps("无（2026-08-16 三要素：待老板单独确认敏感清洗后再转卡执行）") == []
+        assert _split_deps("无依赖。") == []
+        assert _split_deps("hp023, hp024") == ["hp023", "hp024"]
+        assert _split_deps("播放功能, hp009") == ["播放功能", "hp009"]
 
     def test_create_plan_milestone_field(self, tmp_path: Path):
         """create_plan 带 milestone：头部写「里程碑：标题」；roadmap.md linked_plans 同步。"""

@@ -157,9 +157,19 @@ def _extract_func_cards(content: str) -> list[dict[str, str]]:
 
 
 def _split_deps(raw: str) -> list[str]:
-    """拆分功能卡依赖字符串（逗号/顿号/空格分隔）；过滤「无」类无依赖标记。"""
-    deps = [d.strip() for d in re.split(r"[,，、\s]+", raw) if d.strip()]
-    return [d for d in deps if d not in ("无", "无。", "无依赖", "无依赖。", "none", "N/A")]
+    """拆分功能卡依赖字符串（逗号/顿号/空格分隔）。
+
+    2026-08-16 机审修复：依赖以「无」开头（含「无（注解…）」形态）= 无依赖，直接返回空。
+    否则「依赖：无（2026-08-16 三要素：…）」会被按空格切碎成伪依赖 → 转卡预检误拒绝。
+    """
+    if not raw:
+        return []
+    stripped = raw.strip()
+    if stripped.startswith("无"):
+        return []
+    deps = [d.strip() for d in re.split(r"[,，、\s]+", stripped) if d.strip()]
+    # 防御：仍以「无」开头的孤立条目（注解混入）过滤
+    return [d for d in deps if not d.startswith("无") and d not in ("none", "N/A")]
 
 
 def _patch_card_depends(card_path: Path, dep_ids: list[str]) -> None:

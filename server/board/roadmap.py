@@ -740,8 +740,12 @@ def sync_milestone_progress(project: str, plan_rel_path: str) -> dict[str, Any]:
 
     updated: list[str] = []
     for ms in data["milestones"]:
-        if plan_id not in ms.linked_plans:
+        # 子项目模式的里程碑也纳入同步（方案挂子项目，可能不在 linked_plans）
+        if plan_id not in ms.linked_plans and not ms.subprojects:
             continue
+        # 2026-08-16 机审修复：方案状态变更 → 同步子项目状态（已完成/计划中/未启动）
+        if ms.subprojects:
+            _sync_subproject_statuses(project, ms)
         progress = compute_milestone_progress(project, ms.title)
         if "error" in progress:
             continue
@@ -755,6 +759,37 @@ def sync_milestone_progress(project: str, plan_rel_path: str) -> dict[str, Any]:
         _write_roadmap(project, data["drafts"], data["milestones"])
 
     return {"ok": True, "updated_milestones": updated}
+
+
+def _sync_subproject_statuses(project: str, ms: Any) -> None:
+    """根据关联方案状态同步子项目状态（2026-08-16 机审修复：子项目进度有完成通路）。
+
+    已完成 → 已完成；作废/已覆盖 → 未启动（剔除）；其余 → 计划中（有方案）。
+    未激活子项目（无 plan_id）→ 未启动。
+    """
+    plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
+    for sp in ms.subprojects:
+        if not sp.plan_id:
+            sp.status = "未启动"
+            continue
+        match = re.match(rf"{project}-plan-(\d+)", sp.plan_id)
+        if not match:
+            continue
+        candidates = sorted(plans_dir.glob(f"{match.group(1)}-*.md"))
+        if not candidates:
+            continue
+        try:
+            plan_text = candidates[0].read_text(encoding="utf-8")
+            status_m = re.search(r"状态：([^\s·]+)", plan_text)
+            plan_status = status_m.group(1) if status_m else ""
+        except OSError:
+            continue
+        if plan_status == "已完成":
+            sp.status = "已完成"
+        elif plan_status in ("作废", "已覆盖"):
+            sp.status = "未启动"
+        else:
+            sp.status = "计划中"
 
 
 def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
@@ -779,9 +814,32 @@ def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
         return {"error": f"里程碑 {title} 不存在"}
 
     # 有子项目时按子项目聚合（2026-08-16 决策），否则退回关联方案聚合（兼容旧格式里程碑）
+    # 2026-08-16 机审修复：子项目分支读「关联方案完成率」（文档承诺语义），
+    # 而非只数 sp.status——否则没有任何代码把子项目置「已完成」，进度永久卡住。
     if ms.subprojects:
+        plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
         total = len(ms.subprojects)
-        completed = sum(1 for sp in ms.subprojects if sp.status == "已完成")
+        completed = 0
+        for sp in ms.subprojects:
+            if not sp.plan_id:
+                continue
+            match = re.match(rf"{project}-plan-(\d+)", sp.plan_id)
+            if not match:
+                continue
+            candidates = sorted(plans_dir.glob(f"{match.group(1)}-*.md"))
+            if not candidates:
+                continue
+            try:
+                plan_text = candidates[0].read_text(encoding="utf-8")
+                status_m = re.search(r"状态：([^\s·]+)", plan_text)
+                plan_status = status_m.group(1) if status_m else ""
+                if plan_status in ("作废", "已覆盖"):
+                    total -= 1
+                    continue
+                if plan_status == "已完成":
+                    completed += 1
+            except OSError:
+                pass
     else:
         total = len(ms.linked_plans)
         if total == 0:
