@@ -2430,3 +2430,131 @@ class TestFindingType:
         assert reports and reports[0]["findings"], "应有 1 条 finding"
         f = reports[0]["findings"][0]
         assert f["type"] == "drift", f"type 应为 drift，实际 {f.get('type')!r}"
+
+
+class TestDshFindings:
+    """DSH 审计报告（6 列契约）解析 + API + 人审留档 + 提交落盘。"""
+
+    _DSH_MD = (
+        "# DSH 审计报告 — 测试\n\n"
+        "> 采集时间: 2026-08-15T00:00:00 · 运行节点: 麦克2017\n\n"
+        "| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |\n"
+        "| --- | --- | --- | --- | --- | --- |\n"
+        "| 开发机审分离 | server/config/executors.json:5 | 开发槽越权 | grep 实测 | 改 | 高 |\n"
+        "| 中转站 | server/config/config.env:7 | 退役端口残留 | lsof 实测 | 删 | 中 |\n"
+        "| 文档落点 | docs/T-mapping.md:16 | 前缀表滞后 | sed 实测 | 留 | 低 |\n"
+    )
+
+    def test_parse_dsh_md(self):
+        """6 列解析单测：字段映射 + 置信度→severity + action 透传。"""
+        from server.web.server import _parse_dsh_md
+
+        findings = _parse_dsh_md(self._DSH_MD, "2026-08-15-dsh-audit-01", 1.0)
+        assert len(findings) == 3, f"应有 3 条 finding，实际 {len(findings)}"
+        f = findings[0]
+        assert f["face"] == "开发机审分离"
+        assert f["location"] == "server/config/executors.json:5"
+        assert f["phenomenon"] == "开发槽越权"
+        assert f["action"] == "改"
+        assert f["confidence"] == "高"
+        assert f["severity"] == "红旗"
+        assert findings[1]["severity"] == "黄旗"
+        assert findings[2]["severity"] == "蓝旗"
+
+    def test_parse_dsh_md_confidence_normalize(self):
+        """置信度值域容错：HIGH/High/低 归一化。"""
+        from server.web.server import _dsh_severity_from_confidence
+
+        assert _dsh_severity_from_confidence("HIGH") == "红旗"
+        assert _dsh_severity_from_confidence("High") == "红旗"
+        assert _dsh_severity_from_confidence("medium") == "黄旗"
+        assert _dsh_severity_from_confidence("low") == "蓝旗"
+        assert _dsh_severity_from_confidence("未知") == "蓝旗"
+
+    def test_observer_md_not_in_dsh(self, api_server, tmp_path, monkeypatch):
+        """隔离：8 列 observer md 喂 DSH 解析器 → 空（表头不触发 | 面）。"""
+        from server.web import server as srv_mod
+
+        dsh_dir = tmp_path / "dsh"
+        dsh_dir.mkdir(parents=True)
+        (dsh_dir / "2026-08-13-test-patrol.md").write_text(
+            "| 权重 (Weight) | 交叉确认 | 影响 | 频次 | 描述 (Title) | 项目 | 作用对象 | 证据 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| 10 | 是 | 高 | 3 | 状态漂移 | clw | clw004 | docs/roadmap.md |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/dsh-findings", token=token)
+        assert status == 200
+        reports = data.get("dsh_reports", [])
+        assert reports and reports[0]["findings"] == [], "observer 8 列报告不应被 DSH 解析器识别"
+
+    def test_dsh_findings_api(self, api_server, tmp_path, monkeypatch):
+        """集成：造 DSH 6 列报告 → GET /ops/dsh-findings → findings 字段正确 + commands 合成。"""
+        from server.web import server as srv_mod
+
+        dsh_dir = tmp_path / "dsh"
+        dsh_dir.mkdir(parents=True)
+        (dsh_dir / "2026-08-15-dsh-audit-01.md").write_text(self._DSH_MD, encoding="utf-8")
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/dsh-findings", token=token)
+        assert status == 200
+        reports = data.get("dsh_reports", [])
+        assert reports and reports[0]["findings"], "应有 DSH findings"
+        f = reports[0]["findings"][0]
+        assert f["face"] == "开发机审分离"
+        assert f["severity"] == "红旗"
+        # 改/删 → 合成转卡命令；留 → 不合成
+        cmds = reports[0]["commands"]
+        assert len(cmds) == 2, f"改+删 应合成 2 条命令，实际 {cmds}"
+
+    def test_dsh_report_post(self, api_server, tmp_path, monkeypatch):
+        """POST /loop/dsh-report：markdown 落盘 + findings 数组渲染成表格落盘。"""
+        from server.web import server as srv_mod
+
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        status, data = _post(
+            api_server, "/loop/dsh-report",
+            {"markdown": "# 测试报告\n\n| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |\n| --- | --- | --- | --- | --- | --- |\n| 面A | f.py:1 | 现象 | 证据 | 改 | 高 |\n"},
+            token=token,
+        )
+        assert status == 200, f"提交失败: {data}"
+        dsh_dir = tmp_path / "dsh"
+        files = sorted(dsh_dir.glob("*.md"))
+        assert len(files) == 1, f"应有 1 份落盘，实际 {files}"
+        # findings 数组渲染成表格
+        status, data = _post(
+            api_server, "/loop/dsh-report",
+            {"findings": [{"face": "面B", "location": "g.py:2", "phenomenon": "现象B",
+                           "evidence": "证据B", "action": "删", "confidence": "中"}]},
+            token=token,
+        )
+        assert status == 200, f"findings 提交失败: {data}"
+        assert len(sorted(dsh_dir.glob("*.md"))) == 2, "两次提交应落 2 份（同名自动递增序号）"
+
+    def test_adopt_source_field(self, api_server, tmp_path, monkeypatch):
+        """POST /loop/adopt 带 source=dsh → 记录含 source；缺省仍为 observer。"""
+        from server.web import server as srv_mod
+
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        status, data = _post(
+            api_server, "/loop/adopt",
+            {"report": "2026-08-15-dsh-audit-01", "finding": "开发机审分离|executors.json:5",
+             "decision": "adopt", "reason": "dsh 页已处理", "source": "dsh"},
+            token=token,
+        )
+        assert status == 200, f"adopt 失败: {data}"
+        assert data["record"]["source"] == "dsh"
+        adopted = (tmp_path / "observer" / ".adopted.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        assert '"source": "dsh"' in adopted[-1]
+        # 缺省 source → observer
+        status, data = _post(
+            api_server, "/loop/adopt",
+            {"report": "r", "finding": "f", "decision": "pending", "reason": ""},
+            token=token,
+        )
+        assert data["record"]["source"] == "observer"

@@ -3336,6 +3336,101 @@ class _APIHandler(BaseHTTPRequestHandler):
                 )
         self._send_json({"loop_reports": reports, "count": len(reports)})
 
+    def _handle_ops_dsh_findings(self):
+        """GET /ops/dsh-findings → DSH 巡回审查报告（只读取证·深度巡检）。
+
+        数据源：DATA_DIR/dsh/*.md（DSH headless 审计报告，6 列契约：
+        | 面 | 位置 file:行号 | 现象 | 证据 | 建议处置(改/删/留) | 置信度(高/中/低) |）。
+        返回：报告清单（最新 10 份）+ 每份结构化 findings（6 列）+ 建议转卡命令。
+        无报告/无目录 → 200 + 空。人审留档复用 /loop/adopt（source=dsh）。
+        """
+        from pathlib import Path as _Path
+
+        data_dir = _config_value("DATA_DIR", "data")
+        dsh_dir = _Path(data_dir).resolve() / "dsh"
+        reports: list[dict[str, Any]] = []
+        if dsh_dir.exists():
+            files = sorted(dsh_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for f in files[:10]:
+                text = f.read_text(encoding="utf-8", errors="ignore")
+                head = [ln for ln in text.splitlines() if ln.strip()][:5]
+                findings = _parse_dsh_md(text, f.stem, f.stat().st_mtime)
+                # 建议转卡命令：仅对 action∈{改,删} 的发现合成 new-card.sh（对照 observer）
+                commands = [
+                    f"scripts/new-card.sh --title \"修复：{fd['location']}\" --related \"dsh: {f.stem}\""
+                    for fd in findings
+                    if fd["action"] in ("改", "删")
+                ]
+                reports.append(
+                    {
+                        "name": f.stem,
+                        "mtime": f.stat().st_mtime,
+                        "path": str(f),
+                        "head": head,
+                        "findings": findings,
+                        "commands": commands,
+                    }
+                )
+        self._send_json({"dsh_reports": reports, "count": len(reports)})
+
+    def _handle_loop_dsh_report(self):
+        """POST /loop/dsh-report → 外部提交 DSH 审计报告落盘（人落盘/脚本/未来 DSH 回调）。
+
+        body: {"markdown": "<报告全文>", "name": "<可选文件名 stem>"} 或
+              {"findings": [{"face","location","phenomenon","evidence","action","confidence"}, ...]}
+        落盘：DATA_DIR/dsh/{YYYY-MM-DD}-dsh-audit-{NN}.md
+              （markdown 直接写；findings 数组渲染成 6 列表格再写）。
+        """
+        import json as _json
+        import datetime as _dt
+        from pathlib import Path as _Path
+
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = _json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        except Exception:
+            self._send_json({"ok": False, "error": "bad body"}, 400)
+            return
+
+        markdown = str(body.get("markdown", "")).strip()
+        findings = body.get("findings")
+        if not markdown and not isinstance(findings, list):
+            self._send_json({"ok": False, "error": "need markdown or findings array"}, 400)
+            return
+
+        if not markdown and isinstance(findings, list):
+            rows = ["| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |", "|---|---|---|---|---|---|"]
+            for fd in findings:
+                rows.append(
+                    f"| {fd.get('face','')} | {fd.get('location','')} | {fd.get('phenomenon','')} "
+                    f"| {fd.get('evidence','')} | {fd.get('action','')} | {fd.get('confidence','')} |"
+                )
+            markdown = "\n".join(rows)
+
+        data_dir = _config_value("DATA_DIR", "data")
+        dsh_dir = _Path(data_dir).resolve() / "dsh"
+        try:
+            dsh_dir.mkdir(parents=True, exist_ok=True)
+            today = _dt.date.today().isoformat()
+            name_base = str(body.get("name", "")).strip() or f"{today}-dsh-audit"
+            # 同名去重：存在则追加序号
+            idx = 1
+            while True:
+                name = f"{name_base}-{idx:02d}" if name_base != f"{today}-dsh-audit" or idx > 1 else name_base
+                target = dsh_dir / f"{name}.md"
+                if not target.exists():
+                    break
+                idx += 1
+                if idx > 999:
+                    self._send_json({"ok": False, "error": "报告序号用尽"}, 500)
+                    return
+            target.write_text(markdown + "\n", encoding="utf-8")
+        except Exception as exc:
+            self._send_json({"ok": False, "error": f"write failed: {exc}"}, 500)
+            return
+
+        self._send_json({"ok": True, "path": str(target), "name": target.stem})
+
     def _handle_loop_adopt(self):
         """POST /loop/adopt → 人审闸门：采纳/不采纳/待定 Loop 发现，留档。
 
@@ -3359,6 +3454,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         finding = str(body.get("finding", "")).strip()
         decision = str(body.get("decision", "")).strip()
         reason = str(body.get("reason", "")).strip()
+        source = str(body.get("source", "observer")).strip() or "observer"
         if decision not in ("adopt", "reject", "pending"):
             self._send_json({"ok": False, "error": "decision must be adopt|reject|pending"}, 400)
             return
@@ -3373,6 +3469,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                 "finding": finding,
                 "decision": decision,
                 "reason": reason,
+                "source": source,
             }
             with adopt_file.open("a", encoding="utf-8") as f:
                 f.write(_json.dumps(record, ensure_ascii=False) + "\n")
@@ -3579,6 +3676,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/ops/kb-health":
             self._handle_ops_kb_health()
             return
+        if path == "/ops/dsh-findings":
+            self._handle_ops_dsh_findings()
             return
         if path == "/loop/findings":
             self._handle_loop_findings()
@@ -3708,6 +3807,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_thread_rename(m[0], m[1])
         elif path == "/loop/adopt":
             self._handle_loop_adopt()
+        elif path == "/loop/dsh-report":
+            self._handle_loop_dsh_report()
         elif path.startswith("/tasks/") and path.endswith("/transition"):
             task_id = path[len("/tasks/") : -len("/transition")].strip("/")
             self._handle_task_transition(task_id)
