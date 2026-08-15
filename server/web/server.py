@@ -1678,6 +1678,63 @@ def _severity_from_weight(weight_str: str) -> str:
     return "蓝旗"
 
 
+def _dsh_severity_from_confidence(confidence: str) -> str:
+    """DSH 审计置信度（高/中/低）→ 风险等级，供排序/聚合。
+
+    归一化容错：HIGH/High/高 → 高；MEDIUM/中 → 中；LOW/低 → 低；
+    未知值 → 蓝旗（不夸大）。
+    """
+    c = str(confidence or "").strip().lower()
+    if c in ("高", "high"):
+        return "红旗"
+    if c in ("中", "medium", "med"):
+        return "黄旗"
+    if c in ("低", "low"):
+        return "蓝旗"
+    return "蓝旗"
+
+
+def _parse_dsh_md(text: str, name: str, mtime: float) -> list[dict[str, Any]]:
+    """解析 DSH 审计报告 6 列表格（| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |）。
+
+    与 observer 8 列解析（_handle_loop_findings）完全隔离：表头触发词 ``| 面``
+    （observer 是 ``| 权重``），即使两套报告误放目录也不串。
+
+    容错：仅 ``| 面`` 开头行进入表格；``| ---`` 分隔行跳过；非 ``|`` 行退出表格；
+    缺列兜底空串；单元格内竖线不分裂（按简单 split 处理，真实首单后再迭代）。
+
+    返回 findings 列表，每项含：
+        face/location/phenomenon/evidence/action/confidence/severity
+    """
+    findings: list[dict[str, Any]] = []
+    in_table = False
+    for ln in text.splitlines():
+        if ln.strip().startswith("| 面"):
+            in_table = True
+            continue
+        if in_table and ln.strip().startswith("| ---"):
+            continue
+        if in_table and ln.strip().startswith("|"):
+            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+            if len(cells) >= 6:
+                confidence = cells[5]
+                findings.append(
+                    {
+                        "face": cells[0],
+                        "location": cells[1],
+                        "phenomenon": cells[2],
+                        "evidence": cells[3],
+                        "action": cells[4],
+                        "confidence": confidence,
+                        "severity": _dsh_severity_from_confidence(confidence),
+                        "ts": mtime,
+                    }
+                )
+        elif in_table and not ln.strip().startswith("|"):
+            in_table = False
+    return findings
+
+
 def _try_json_line(line: str) -> dict | None:
     try:
         parsed = json.loads(line)
