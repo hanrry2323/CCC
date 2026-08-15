@@ -895,6 +895,78 @@ def _build_hp_health() -> dict[str, Any]:
     }
 
 
+def _read_pg_probe_status(host: str) -> dict[str, Any]:
+    """SSH 读 HP 探针状态文件（KV），失败/超时返回空 dict（调用方兜底 status=missing）。
+
+    探针：HP `/data/knowledge/health/pg-health.sh`（qx-map cluster/scripts/hp-pg-health.sh），
+    cron 每 5 分钟真连接检测，输出 `/data/knowledge/health/pg-health.status`（`key=value` 行式）。
+    本函数只做读取，不做二次探测——单一数据源，探针三态语义（ok/zombie/down）在此透传。
+    """
+    ssh_user = (_env_or_config("CLUSTER_PG_SSH_USER", "hp") or "hp").strip()
+    probe_path = "/data/knowledge/health/pg-health.status"
+    try:
+        r = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+             "-o", "StrictHostKeyChecking=accept-new",
+             f"{ssh_user}@{host}", f"cat {probe_path} 2>/dev/null || true"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, Any] = {}
+    for line in (r.stdout or "").splitlines():
+        if "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        out[k.strip()] = v.strip()
+    return out
+
+
+def _build_pg_health() -> dict[str, Any]:
+    """HP PostgreSQL 健康（CLUSTER_PG_TARGET=host:port，未配置返回 configured=false）。
+
+    数据源 = HP 探针状态文件（单一数据源，5 分钟粒度），TCP 仅作网络层兜底。
+    返回 status 语义与探针一致：ok / zombie（端口通但连接失败）/ down / missing（探针未上报）。
+    """
+    import time as _t
+
+    target = _env_or_config("CLUSTER_PG_TARGET", "").strip()
+    empty = {
+        "configured": False, "host": "", "port": None,
+        "tcp_reachable": None, "latency_ms": None,
+        "status": "missing", "probe_ts": None, "probe_detail": None,
+        "probe_elapsed_ms": None, "consecutive_fail": 0,
+    }
+    if not target:
+        return empty
+    host, _, port_s = target.rpartition(":")
+    try:
+        port = int(port_s)
+    except ValueError:
+        return {**empty, "configured": True, "host": host, "port": None}
+
+    t0 = _t.time()
+    ns = check_tcp_reachable(host, port)
+    latency = round((_t.time() - t0) * 1000)
+
+    probe = _read_pg_probe_status(host)
+    return {
+        "configured": True,
+        "host": host,
+        "port": port,
+        "tcp_reachable": ns.reachable,
+        "latency_ms": latency,
+        "status": probe.get("status", "missing"),
+        "probe_ts": probe.get("ts"),
+        "probe_detail": probe.get("detail"),
+        "probe_elapsed_ms": probe.get("elapsed_ms"),
+        "consecutive_fail": probe.get("consecutive_fail", 0),
+        "url": f"tcp://{host}:{port}",
+    }
+
+
 _KB_HEALTH_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
 _KB_HEALTH_TTL = 10.0
 
@@ -3268,6 +3340,10 @@ class _APIHandler(BaseHTTPRequestHandler):
         """GET /ops/hp-health → HP 知识库节点探活 + 延迟。"""
         self._send_json(_build_hp_health())
 
+    def _handle_ops_pg_health(self):
+        """GET /ops/pg-health → HP PostgreSQL 健康（探针状态文件 + TCP 兜底）。"""
+        self._send_json(_build_pg_health())
+
     def _handle_ops_kb_health(self):
         """GET /ops/kb-health → 知识库健康：ccc-kb 本地索引 + hp-kb 探活/深度。"""
         self._send_json(_build_kb_health())
@@ -3440,8 +3516,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/ops/hp-health":
             self._handle_ops_hp_health()
             return
+        if path == "/ops/pg-health":
+            self._handle_ops_pg_health()
+            return
         if path == "/ops/kb-health":
             self._handle_ops_kb_health()
+            return
             return
         if path == "/loop/findings":
             self._handle_loop_findings()

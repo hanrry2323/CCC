@@ -1661,6 +1661,78 @@ class TestOpsSummary:
         assert "error" in data
 
 
+class TestOpsPgHealth:
+    """GET /ops/pg-health（HP PostgreSQL 健康：探针状态文件 + TCP 兜底，ccc-plan-031）"""
+
+    @staticmethod
+    def _stub_tcp():
+        from types import SimpleNamespace
+
+        return lambda h, p, timeout=3.0: SimpleNamespace(host=h, port=p, reachable=True, latency_ms=1.0)
+
+    def test_not_configured(self, api_server):
+        """无 CLUSTER_PG_TARGET → configured=false + status=missing，不 500。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["configured"] is False
+        assert data["status"] == "missing"
+
+    def test_configured_probe_ok(self, api_server, monkeypatch):
+        """配置目标 + 探针 ok → 透传 ok + tcp_reachable true。"""
+        monkeypatch.setenv("CLUSTER_PG_TARGET", "192.168.3.131:5432")
+        monkeypatch.setattr("server.web.server.check_tcp_reachable", self._stub_tcp())
+        monkeypatch.setattr(
+            "server.web.server._read_pg_probe_status",
+            lambda host: {
+                "status": "ok", "ts": "2026-08-15 19:00:52",
+                "detail": "SELECT 1 ok", "elapsed_ms": "107",
+                "consecutive_fail": "0",
+            },
+        )
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["configured"] is True
+        assert data["host"] == "192.168.3.131"
+        assert data["port"] == 5432
+        assert data["status"] == "ok"
+        assert data["tcp_reachable"] is True
+        assert data["probe_ts"] == "2026-08-15 19:00:52"
+
+    def test_configured_probe_zombie(self, api_server, monkeypatch):
+        """探针 zombie（本次事故形态：端口通但连接挂）→ status 透传 zombie。"""
+        monkeypatch.setenv("CLUSTER_PG_TARGET", "192.168.3.131:5432")
+        monkeypatch.setattr("server.web.server.check_tcp_reachable", self._stub_tcp())
+        monkeypatch.setattr(
+            "server.web.server._read_pg_probe_status",
+            lambda host: {
+                "status": "zombie", "ts": "2026-08-14 23:05:00",
+                "detail": "could not open shared memory segment", "consecutive_fail": "7",
+            },
+        )
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["status"] == "zombie"
+        assert data["consecutive_fail"] == "7"
+
+    def test_probe_missing_fallback(self, api_server, monkeypatch):
+        """探针文件缺失/SSH 失败 → status=missing，不 500。"""
+        monkeypatch.setenv("CLUSTER_PG_TARGET", "192.168.3.131:5432")
+        monkeypatch.setattr("server.web.server.check_tcp_reachable", self._stub_tcp())
+        monkeypatch.setattr("server.web.server._read_pg_probe_status", lambda host: {})
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/pg-health", token=token)
+        assert status == 200
+        assert data["status"] == "missing"
+
+    def test_no_auth_401(self, api_server):
+        status, data = _get(api_server, "/ops/pg-health")
+        assert status == 401
+        assert "error" in data
+
+
 class TestOpsConcurrency:
     """GET /ops/concurrency（槽位上限 + 并发/进程埋点尾部，只读）。"""
 

@@ -41,6 +41,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CLUSTER_PORT_NAMES": "",
     "CLUSTER_BUSINESS_PORTS": "",
     "CLUSTER_HP_TARGET": "",
+    "CLUSTER_PG_TARGET": "",
+    "CLUSTER_PG_SSH_USER": "hp",
     "CCC_CHAT_BRIDGE_URL": "",
     "CCC_CHAT_BRIDGE_TOKEN": "",
     # 中转站部署模板占位（T4，部署前手动替换，可选）
