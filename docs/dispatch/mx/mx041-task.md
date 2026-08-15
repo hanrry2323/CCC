@@ -1,6 +1,6 @@
 # 任务卡 mx041 · 播放服务解耦（OpenCode 执行）
 
-> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-15
+> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-15
 
 
 
@@ -55,24 +55,35 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-15
+
+### 实现说明
+1. 定义了 `PlaybackRateLimiter` 动态特征（Trait），使其具备 `dyn` 兼容性（对象安全），提取了播放进度限流行为。
+2. 为 `Mutex<RateLimitMap>` 实现了 `PlaybackRateLimiter`，封装了其内存缓存和清理的并发同步逻辑。
+3. 重构了 `PlaybackService` 构造函数，将 `rate_limit` 参数变更为 `Arc<dyn PlaybackRateLimiter>`，降低了锁竞争并极大提高了可替换性。
+4. 更新了 `AppState` 中的 `progress_rate_limit` 为 `Arc<dyn PlaybackRateLimiter>`，并在 `main.rs` 和单元/集成测试中完成类型对齐。
+
+### 测试结果
+- `cargo test -p medio-core --lib service::playback_service::tests` 11 passed (单元测试全绿)
+- `cargo test -p medio-core --test playback_progress` 6 passed (限流集成测试全绿)
+- `cargo test -p medio-core --test media_library_scan` 19 passed (媒体库集成测试全绿)
+
+### push 证据
+- 业务仓分支：`codex/mx041-task`
+- 提交哈希：`b5ce0e3`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案为 `mx-plan-003`（部分执行）。本功能卡 `mx041` 已完成开发并回写，状态已同步更新。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：属于常规的特征提取与依赖注入解耦，未产生重大的新教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：本次重构为纯内部重构（行为等价），未改变项目物理结构、技术栈或外部 API 路径。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目近况符合 `mx-plan-003` 既定方案，线路图无需变动。
 
 ## 执行提示
 
