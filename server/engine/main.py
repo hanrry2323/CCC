@@ -2422,14 +2422,21 @@ def _dispatch_and_collect(
                                         snippet = (
                                             combined_output[-800:] if len(combined_output) > 800 else combined_output
                                         )
+                                        # 2026-08-16 质量门禁：测试/编译失败 = 硬打回（不再放行就地修复）
                                         logger.warning(
-                                            "卡 %s 门禁【%s】未通过（代码级，放行进机审就地修复）: 退出码 %d",
+                                            "卡 %s 门禁【%s】未通过（硬门禁，打回）: 退出码 %d",
                                             work.id,
                                             gate_name,
                                             res_gate.returncode,
                                         )
-                                        # 不直接打回：标记为机审可修复，放行进机审
-                                        # 机审会根据严重程度决定就地修复还是打回
+                                        metrics_logger.info(
+                                            "gate_block card=%s gate=%s rc=%d",
+                                            work.id,
+                                            gate_name,
+                                            res_gate.returncode,
+                                        )
+                                        _emit(False, 1, "ok", [f"门禁【{gate_name}】未通过（2026-08-16 起硬门禁）: {snippet[:300]}"])
+                                        return False, [f"门禁【{gate_name}】未通过: {snippet[:300]}"]
                                 elif gate_name == "范围":
                                     if str(cmd).strip().lower() in ("true", "yes", "1", "on"):
                                         range_ok, range_err = check_range_gate(worktree_path, work.card_path)

@@ -239,7 +239,37 @@ function _railHTML(detail) {
   </div>`;
 }
 
-function _milestoneCardsHTML(detail) {
+/* 2026-08-16 子项目层：里程碑面板渲染「子项目列表」（替代里程碑详情卡）。
+ * 右侧 rail 里程碑导航 + 左侧 子项目列表，可下钻方案、激活转计划。 */
+function _subprojectListHTML(mile, project) {
+  const sps = mile.subprojects || [];
+  const plans = mile.linked_plans || [];
+  if (!sps.length) return _milestoneProgressHTML(mile); // 旧格式里程碑：退回关联方案展示
+  const light = { '未启动': '⚪', '计划中': '🟡', '已完成': '🟢' };
+  return `<div class="rm2-sp-list">
+    <div class="rm2-sp-hd">子项目（${sps.length}）<span class="rm2-sp-hint">未激活只停留 · 激活转计划 → 生成方案 → 逐步投入</span></div>
+    ${sps.map(sp => {
+      const st = sp.status || '未启动';
+      const planLink = sp.plan_id
+        ? `<a class="rm2-mile-planlink" href="#/plans" title="跳转计划页查看 ${esc(sp.plan_id)}">${esc(sp.plan_id)}</a>`
+        : '';
+      const activateBtn = st === '未启动'
+        ? `<button type="button" class="hub-btn rm2-sp-activate" data-project="${esc(project)}" data-milestone="${esc(mile.title)}" data-sp="${esc(sp.id)}" title="人审节点①：激活子项目转计划">激活</button>`
+        : '';
+      const dotCls = st === '已完成' ? 'done' : st === '计划中' ? 'doing' : 'none';
+      return `<div class="rm2-sp-item">
+        <span class="rm2-mile-dot ${dotCls}"></span>
+        <div class="rm2-sp-body">
+          <span class="rm2-sp-title">${esc(sp.id)} ${esc(sp.title)}</span>
+          <span class="rm2-sp-meta">${light[st] || '⚪'} ${esc(st)}${planLink ? ' · ' + planLink : ''}</span>
+        </div>
+        ${activateBtn}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function _subprojectPanelHTML(detail) {
   const miles = detail.milestones || [];
   if (!miles.length) return '<div class="rm2-panel-wrap"><div class="rm2-empty">暂无里程碑</div></div>';
 
@@ -268,9 +298,10 @@ function _milestoneCardsHTML(detail) {
           <div class="rm2-mile-sub">
             ${tl ? `<span class="rm2-mile-tl" title="时间线">📅 ${esc(tl)}</span>` : ''}
             ${ver ? `<span class="rm2-mile-ver" title="版本">🏷️ ${esc(ver)}</span>` : ''}
+            <span class="rm2-mile-sp-count" title="子项目">🧩 ${(m.subprojects || []).length} 子项目</span>
           </div>
           ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
-          ${_milestoneProgressHTML(m)}
+          ${_subprojectListHTML(m, detail.project)}
           <button type="button" class="hub-btn rm2-mile-edit" data-title="${esc(m.title)}" data-status="${esc(m.status)}" data-desc="${esc(m.description || '')}" data-plans="${esc((m.linked_plans || []).join(', '))}" title="编辑里程碑（状态/描述/关联方案）" style="margin-top:6px">编辑</button>
         </div>
       </div>`;
@@ -371,8 +402,8 @@ async function openProject(project) {
         </div>
         ${_draftPoolHTML(detail.drafts, project)}
         <div class="rm2-body">
+          ${_subprojectPanelHTML(detail)}
           ${_railHTML(detail)}
-          ${_milestoneCardsHTML(detail)}
         </div>
       </div>`;
     _setupRailNavigation(body);
@@ -386,6 +417,32 @@ async function openProject(project) {
           description: btn.dataset.desc || '',
           linked_plans: (btn.dataset.plans || '').split(/[,，\s]+/).filter(Boolean),
         });
+      });
+    });
+    // 2026-08-16 子项目激活（人审节点①细化）：POST /roadmap/<proj>/subproject/activate
+    body.querySelectorAll('.rm2-sp-activate').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const proj = btn.dataset.project;
+        const milestone = btn.dataset.milestone;
+        const sp = btn.dataset.sp;
+        if (!window.confirm(`确认激活子项目「${sp}」转计划？将 1:1 生成一个方案。`)) return;
+        btn.disabled = true;
+        btn.textContent = '激活中…';
+        try {
+          const res = await apiPost(`/roadmap/${encodeURIComponent(proj)}/subproject/activate`, { milestone, subproject_id: sp });
+          if (res && res.ok) {
+            window.showToast?.(`子项目已激活 → ${res.plan}`, 'success');
+            await openProject(proj);
+          } else {
+            window.showToast?.((res && res.error) || '激活失败', 'error');
+            btn.disabled = false;
+            btn.textContent = '激活';
+          }
+        } catch (e) {
+          window.showToast?.(e.message || '激活失败', 'error');
+          btn.disabled = false;
+          btn.textContent = '激活';
+        }
       });
     });
     // P0 全链路修复：草案→方案一键升级（人审节点①动作入口，老板确认后由 Agent 打标）

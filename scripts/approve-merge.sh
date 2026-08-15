@@ -153,6 +153,25 @@ sys.exit(0)
   return "$ret"
 }
 
+# 密钥/凭据扫描门禁（2026-08-16 质量门禁）：对 origin/main..分支 diff 扫疑似密钥，命中即阻断。
+# 落地 qx-map 红线「不碰密钥明文」为机械合入门禁。仅匹配高置信度格式（AKIA/私钥头/GitHub token/OpenAI key/Slack token）。
+check_secret_scan() {
+  local branch="$1" id="$2"
+  if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    return 0
+  fi
+  local hits
+  hits="$(git diff origin/main..."origin/${branch}" 2>/dev/null \
+    | grep -nE 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]+PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}' \
+    || true)"
+  if [ -n "$hits" ]; then
+    echo "[error] ${id}: 分支 diff 检测到疑似密钥/凭据 → 阻断合入（2026-08-16 密钥扫描门禁）。请移除敏感信息后重新机审。" >&2
+    echo "$hits" | head -5 >&2
+    return 1
+  fi
+  return 0
+}
+
 # 外仓提示：registry.mac2017 非 CCC 本仓时打印分支/HEAD/是否已在业务 main（不自动 push）
 print_external_repo_hint() {
   local path="$1" branch="$2"
@@ -432,6 +451,11 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
   if ! check_maintenance "$path" "$branch"; then
     echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
+    return 1
+  fi
+
+  # 密钥/凭据扫描门禁（2026-08-16 质量门禁）：分支 diff 夹带密钥 → 阻断合入
+  if ! check_secret_scan "$branch" "$id"; then
     return 1
   fi
 

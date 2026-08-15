@@ -10,6 +10,8 @@ import pytest
 from server.board.roadmap import (
     Draft,
     Milestone,
+    Subproject,
+    activate_subproject,
     active_linked_plans,
     compute_milestone_progress,
     create_draft,
@@ -151,6 +153,49 @@ class TestParseRoadmap:
         assert result["milestones"][0].title == "M1"
         assert result["milestones"][0].linked_plans == []
         assert result["milestones"][0].description == ""
+
+    def test_parse_with_subprojects(self) -> None:
+        """2026-08-16 子项目层：里程碑下结构化解耦为子项目。"""
+        result = parse_roadmap(
+            """# Test 线路图
+> 项目：test · 更新：2026-08-16
+
+## 草案池
+
+无。
+
+## 里程碑
+
+### M1
+- 状态：进行中
+- 子项目：
+  - 2.1 pipeline 源码回灌 SSOT · 状态：计划中 · 方案：test-plan-008
+  - 2.2 双仓归一 · 状态：未启动
+  - 2.7 可重建验证 · 状态：已完成
+
+### M2
+- 状态：待启动
+- 子项目：
+  - 3.1 健康三态探针
+""",
+            project="test",
+        )
+        assert len(result["milestones"]) == 2
+        m1 = result["milestones"][0]
+        assert len(m1.subprojects) == 3
+        sp = m1.subprojects[0]
+        assert sp.id == "2.1"
+        assert sp.title == "pipeline 源码回灌 SSOT"
+        assert sp.status == "计划中"
+        assert sp.plan_id == "test-plan-008"
+        assert m1.subprojects[1].status == "未启动"
+        assert m1.subprojects[1].plan_id == ""
+        assert m1.subprojects[2].status == "已完成"
+        m2 = result["milestones"][1]
+        assert len(m2.subprojects) == 1
+        assert m2.subprojects[0].id == "3.1"
+        assert m2.subprojects[0].status == "未启动"
+        assert m2.subprojects[0].plan_id == ""
 
 
 # ── list_roadmaps 测试（读真实文件系统，只读） ──
@@ -393,6 +438,46 @@ class TestRoundtrip:
         # 验证 list_roadmaps 在 mock 环境中也能工作
         rdms = list_roadmaps()
         assert "clw" in rdms
+
+    def test_subproject_roundtrip_and_activate(self) -> None:
+        """子项目解析/写盘往返不丢；activate_subproject 设状态+方案并同步 linked_plans。"""
+        self.clw_roadmap.write_text(
+            """# clwarp 线路图
+> 项目：clw · 更新：2026-08-16
+
+## 草案池
+
+无。
+
+## 里程碑
+
+### M1 · 测试
+- 状态：待启动
+- 子项目：
+  - 2.1 pipeline 源码回灌 SSOT · 状态：计划中 · 方案：clw-plan-008
+  - 2.2 双仓归一 · 状态：未启动
+""",
+            encoding="utf-8",
+        )
+        mss = list_milestones("clw")
+        assert len(mss) == 1
+        m1 = mss[0]
+        assert len(m1.subprojects) == 2
+        assert m1.subprojects[0].plan_id == "clw-plan-008"
+        assert m1.subprojects[1].status == "未启动"
+
+        # 激活 2.2：设状态+方案，并同步 linked_plans
+        r = activate_subproject("clw", "M1 · 测试", "2.2", "clw-plan-009")
+        assert r.get("ok") is True, r
+        mss2 = list_milestones("clw")
+        sp = mss2[0].subprojects[1]
+        assert sp.status == "计划中"
+        assert sp.plan_id == "clw-plan-009"
+        assert "clw-plan-009" in mss2[0].linked_plans
+
+        # 不存在的子项目/里程碑报错
+        assert "error" in activate_subproject("clw", "M1 · 测试", "9.9", "x")
+        assert "error" in activate_subproject("clw", "不存在的里程碑", "2.1", "x")
 
     def test_promote_draft_to_plan_success(self) -> None:
         """草案→方案一键升级：从草案池取一条草案创建方案，并从草案池移除。"""

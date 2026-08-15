@@ -137,6 +137,39 @@ echo "[OK] 出卡成功 + validate 通过: $f"
     return s
 
 
+def _make_unique_new_card_script(tmp: Path) -> Path:
+    """new-card.sh mock：每次调用生成唯一卡 ID（ccc001, ccc002, ...），供 slices/依赖测试。"""
+    s = tmp / "scripts" / "new-card.sh"
+    s.parent.mkdir(parents=True, exist_ok=True)
+    body = """#!/usr/bin/env bash
+project="ccc"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project) project="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+n=0
+for f in docs/dispatch/$project/$project[0-9][0-9][0-9]-*.md; do
+  [ -e "$f" ] || continue
+  b=$(basename "$f" .md)
+  if [[ "$b" =~ ^$project([0-9]{3}) ]]; then
+    x=$((10#${BASH_REMATCH[1]}))
+    (( x > n )) && n=$x
+  fi
+done
+n=$((n+1))
+nn=$(printf '%03d' "$n")
+f="docs/dispatch/$project/$project$nn-mock.md"
+mkdir -p "$(dirname "$f")"
+printf '# 任务卡 %s%s\\n' "$project" "$nn" > "$f"
+echo "[OK] 出卡成功 + validate 通过: $f"
+"""
+    s.write_text(body)
+    s.chmod(0o755)
+    return s
+
+
 # ── 1. list_plans ──
 
 
@@ -956,6 +989,208 @@ class Test027CoreFlow:
         assert result["cards"] == ["ccc999"]
         assert "状态：部分执行" in p.read_text()
         assert "关联卡：ccc999" in p.read_text()
+
+    def test_convert_slices_subset(self, tmp_path: Path):
+        """2026-08-16 逐步投入：slices 指定时只转该子集功能卡；不在方案的 slices 报错。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_unique_new_card_script(tmp_path)
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        p = plans_dir / "001-fc.md"
+        p.write_text(
+            """# 方案 · 功能卡测试
+
+> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+
+## 目标
+
+测试。
+
+## 功能卡
+
+### 登录功能
+目标：登录。
+颗粒度：登录页+接口。
+依赖：无
+架构位置：web
+
+### 播放功能
+目标：播放。
+颗粒度：播放器。
+依赖：无
+架构位置：player
+""",
+            encoding="utf-8",
+        )
+        rel = str(p.relative_to(tmp_path))
+        # 只转「登录功能」
+        result = convert_plan(tmp_path, rel_path=rel, slices=["登录功能"], no_push=True)
+        assert result.get("ok") is True
+        assert result["cards"] == ["ccc001"]
+        assert "关联卡：ccc001" in p.read_text()
+        # 指定的不存在功能卡 → 报错
+        result2 = convert_plan(tmp_path, rel_path=rel, slices=["不存在的卡"], no_push=True)
+        assert "error" in result2
+        assert "不在方案中" in result2["error"]
+
+    def test_convert_dep_hard_constraint(self, tmp_path: Path):
+        """2026-08-16 依赖硬约束：被依赖不在本批且非已有关卡 → 拒绝出卡。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_unique_new_card_script(tmp_path)
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        p = plans_dir / "001-fc.md"
+        p.write_text(
+            """# 方案 · 功能卡测试
+
+> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+
+## 目标
+
+测试。
+
+## 功能卡
+
+### 登录功能
+目标：登录。
+依赖：播放功能
+
+### 播放功能
+目标：播放。
+依赖：无
+""",
+            encoding="utf-8",
+        )
+        rel = str(p.relative_to(tmp_path))
+        # 只转「登录功能」：依赖「播放功能」不在本批 → 拒绝
+        result = convert_plan(tmp_path, rel_path=rel, slices=["登录功能"], no_push=True)
+        assert "error" in result
+        assert "依赖" in result["error"]
+        # 全部转：播放功能在本批 → 通过
+        result2 = convert_plan(tmp_path, rel_path=rel, no_push=True)
+        assert result2.get("ok") is True
+
+        # 依赖不存在的卡 ID → 拒绝（即使全量转）
+        p2 = plans_dir / "002-fc.md"
+        p2.write_text(
+            """# 方案 · 依赖悬空
+
+> 项目：ccc · 编号：ccc-plan-002 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+
+## 目标
+
+测试。
+
+## 功能卡
+
+### 登录功能
+目标：登录。
+依赖：ccc999
+""",
+            encoding="utf-8",
+        )
+        result3 = convert_plan(tmp_path, rel_path=str(p2.relative_to(tmp_path)), no_push=True)
+        assert "error" in result3
+        assert "ccc999" in result3["error"]
+
+    def test_convert_dep_passthrough(self, tmp_path: Path):
+        """2026-08-16 依赖透传：同批依赖 → 解析为卡 ID 写回卡头「> 依赖：」。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_unique_new_card_script(tmp_path)
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        p = plans_dir / "001-fc.md"
+        p.write_text(
+            """# 方案 · 功能卡测试
+
+> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+
+## 目标
+
+测试。
+
+## 功能卡
+
+### 登录功能
+目标：登录。
+依赖：播放功能
+
+### 播放功能
+目标：播放。
+依赖：无
+""",
+            encoding="utf-8",
+        )
+        result = convert_plan(tmp_path, rel_path=str(p.relative_to(tmp_path)), no_push=True)
+        assert result.get("ok") is True
+        # 登录→ccc001，播放→ccc002；登录卡头写「> 依赖：ccc002」
+        assert result["cards"] == ["ccc001", "ccc002"]
+        card1 = tmp_path / "docs" / "dispatch" / "ccc" / "ccc001-mock.md"
+        assert "> 依赖：ccc002" in card1.read_text()
+        card2 = tmp_path / "docs" / "dispatch" / "ccc" / "ccc002-mock.md"
+        assert "> 依赖：" not in card2.read_text()
+
+    def test_convert_env_prep_gate(self, tmp_path: Path):
+        """2026-08-16 环境准备门禁：子项目方案缺「环境准备」声明 → 拒绝转卡。"""
+        _make_registry(tmp_path, ["ccc"])
+        _make_validate_script(tmp_path)
+        _make_unique_new_card_script(tmp_path)
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        p = plans_dir / "001-fc.md"
+        p.write_text(
+            """# 方案 · 环境准备测试
+
+> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+> 里程碑：M1
+> 子项目：1.1 测试子项目
+
+## 目标
+
+测试。
+
+## 功能卡
+
+### 功能A
+目标：A。
+颗粒度：小。
+依赖：无
+架构位置：web
+""",
+            encoding="utf-8",
+        )
+        rel = str(p.relative_to(tmp_path))
+        # 缺环境准备声明 → 拒绝
+        result = convert_plan(tmp_path, rel_path=rel, no_push=True)
+        assert "error" in result
+        assert "环境准备" in result["error"]
+        # 补上环境准备 → 通过
+        p.write_text(
+            p.read_text().replace(
+                "> 子项目：1.1 测试子项目\n",
+                "> 子项目：1.1 测试子项目\n> 环境准备：已具备\n",
+            )
+        )
+        result2 = convert_plan(tmp_path, rel_path=rel, no_push=True)
+        assert result2.get("ok") is True
 
     def test_inject_func_card(self, tmp_path: Path):
         """功能卡注入：目标替换占位、实现插入 ## 实现 段、验收替换占位。"""

@@ -50,12 +50,12 @@ mx025 对 medio-core 做了技术债与高耦合度审计（`docs/architecture-c
 
 ## 验收标准
 
-- [ ] WebSub 实时推送恢复（`rss/service.rs` 路径引用修复，联动逻辑可运行）
-- [ ] ScanScheduler / RssService 不再内部 new 服务，统一注入 Arc 单例
-- [ ] AppState 拆分完成（子状态域各自独立，AppState 仅聚合）
-- [ ] API 路由层 handler 复用注入服务（无每次 new）
-- [ ] ImageCacheService 读 config（UA/超时），PlaybackService 注入 RateLimitMap
-- [ ] `cargo test` + 前端 vitest + 冒烟测试全绿（行为等价）
+- [x] WebSub 实时推送恢复（`rss/service.rs` 路径引用修复，联动逻辑可运行）
+- [x] ScanScheduler / RssService 不再内部 new 服务，统一注入 Arc 单例
+- [x] AppState 拆分完成（子状态域各自独立，AppState 仅聚合）
+- [x] API 路由层 handler 复用注入服务（无每次 new）
+- [x] ImageCacheService 读 config（UA/超时），PlaybackService 注入 RateLimitMap
+- [x] `cargo test` + 前端 vitest + 冒烟测试全绿（行为等价）
 
 ## 功能卡
 

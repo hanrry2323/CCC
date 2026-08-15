@@ -2311,7 +2311,7 @@ class TestRunOnceFakeSuccessGuard:
         assert "就地修复" in prompt_text
 
     def test_gate_probe_failure_blocks_audit(self, tmp_path: Path, monkeypatch) -> None:
-        """门禁探针失败（代码级）→ 放行进机审，不直接打回（机审负责修复或判定）。"""
+        """2026-08-16 质量门禁：测试/编译门禁失败 = 硬打回，不再放行到机审。"""
         monkeypatch.chdir(tmp_path)
         _init_src_repo(tmp_path)
         worktree_base = tmp_path / "wt"
@@ -2345,11 +2345,10 @@ class TestRunOnceFakeSuccessGuard:
             "EXECUTOR_RETRY_ONCE": "false",
         }
         summary = run_once(reg, store, cfg)
-        assert summary["collected"] == 1  # 门禁代码级失败 → 放行进机审，卡进入已回写
-        assert summary["audit_dispatched"] == 1  # 卡进入机审队列（但无验收席 CLI，跳过）
+        assert summary["collected"] == 0  # 测试门禁硬打回：不进机审
+        assert summary["audit_dispatched"] == 0
         done = store.list_work(state=State.DONE)
-        assert len(done) == 1
-        assert done[0].id == "T-fake5"
+        assert len(done) == 0  # 卡未关闭/未回写
 
     def test_audit_mechanical_rejection_leads_to_infra_retry(self, tmp_path: Path) -> None:
         """机审输出「测试未跑/编译失败」类机械问题 → 不被判业务打回，走 infra 冷却续审路径，不进 retry 预算。"""

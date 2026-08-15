@@ -2332,7 +2332,10 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json(result)
 
     def _handle_plans_convert(self):
-        """POST /plans/convert {path}"""
+        """POST /plans/convert {path, slices?}
+
+        slices（可选）：只转该子集功能卡标题——逐步投入，一次一个子项目（2026-08-16）。
+        """
         body = self._read_body()
         if body is None:
             self._send_json({"error": "无效的请求体"}, 400)
@@ -2343,7 +2346,13 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "缺少 path 参数"}, 400)
             return
 
-        result = convert_plan(_PROJECT_ROOT, rel_path=rel_path)
+        slices = body.get("slices")
+        if isinstance(slices, list) and slices:
+            slices = [str(t).strip() for t in slices if str(t).strip()]
+        else:
+            slices = None
+
+        result = convert_plan(_PROJECT_ROOT, rel_path=rel_path, slices=slices)
 
         if "error" in result:
             self._send_json(result, 400)
@@ -2495,6 +2504,15 @@ class _APIHandler(BaseHTTPRequestHandler):
                             "target_date": _m.target_date,
                             "timeline": _m.timeline,
                             "version": _m.version,
+                            "subprojects": [
+                                {
+                                    "id": _sp.id,
+                                    "title": _sp.title,
+                                    "status": _sp.status,
+                                    "plan_id": _sp.plan_id,
+                                }
+                                for _sp in _m.subprojects
+                            ],
                         }
                         for _m in _parsed.get("milestones", [])
                     ],
@@ -2528,8 +2546,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                         "linked_plans": _rm.active_linked_plans(project, list(_m.linked_plans)),
                         "description": _m.description,
                         "target_date": _m.target_date,
-                            "timeline": _m.timeline,
-                            "version": _m.version,
+                        "timeline": _m.timeline,
+                        "version": _m.version,
+                        "subprojects": [
+                            {
+                                "id": _sp.id,
+                                "title": _sp.title,
+                                "status": _sp.status,
+                                "plan_id": _sp.plan_id,
+                            }
+                            for _sp in _m.subprojects
+                        ],
                     }
                     for _m in _parsed.get("milestones", [])
                 ],
@@ -3729,8 +3756,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                                     "linked_plans": _roadmap_mod.active_linked_plans(_p, list(_m.linked_plans)),
                                     "description": _m.description,
                                     "target_date": _m.target_date,
-                            "timeline": _m.timeline,
-                            "version": _m.version,
+                                    "timeline": _m.timeline,
+                                    "version": _m.version,
+                                    "subprojects": [
+                                        {
+                                            "id": _sp.id,
+                                            "title": _sp.title,
+                                            "status": _sp.status,
+                                            "plan_id": _sp.plan_id,
+                                        }
+                                        for _sp in _m.subprojects
+                                    ],
                                 }
                                 for _m in _parsed.get("milestones", [])
                             ],
@@ -3838,7 +3874,113 @@ class _APIHandler(BaseHTTPRequestHandler):
             # P0 全链路修复：草案→方案一键升级（人审节点①动作入口），body 带 index
             self._handle_roadmap_draft_promote_to_plan(project)
             return
+        if len(segs) == 3 and segs[1] == "subproject" and segs[2] == "activate":
+            # 2026-08-16 子项目激活（人审节点①细化）：body 带 milestone + subproject_id
+            self._handle_roadmap_subproject_activate(project)
+            return
         self._send_404()
+
+    def _handle_roadmap_subproject_activate(self, project: str):
+        """POST /roadmap/<prefix>/subproject/activate {milestone, subproject_id} — 激活子项目转计划。
+
+        2026-08-16 子项目层（人审节点① 细化）：老板逐个指定子项目转入计划——
+        1:1 生成方案（复用 create_plan + 里程碑关联）→ 方案头写「子项目」+「环境准备」→
+        activate_subproject 设状态=计划中 + 关联方案 + 同步里程碑 linked_plans。
+        """
+        from server.board import roadmap as _rm
+        from server.board.plans import create_plan
+        from server.board.roadmap import _repo_root
+
+        if not self._roadmap_project_ok(project):
+            self._send_json({"error": "无效项目前缀"}, 400)
+            return
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+        milestone_title = str(body.get("milestone", "")).strip()
+        sp_id = str(body.get("subproject_id", "")).strip()
+        if not milestone_title or not sp_id:
+            self._send_json({"error": "缺少 milestone 或 subproject_id"}, 400)
+            return
+
+        _parsed, _ = self._roadmap_read(project)
+        if _parsed is None:
+            self._send_json({"error": f"项目 {project} 尚无 roadmap.md"}, 404)
+            return
+        sp = None
+        for _m in _parsed.get("milestones", []):
+            if _m.title == milestone_title:
+                for _s in _m.subprojects:
+                    if _s.id == sp_id:
+                        sp = _s
+        if sp is None:
+            self._send_json({"error": f"子项目 {sp_id} 不在里程碑 {milestone_title} 中"}, 400)
+            return
+        if sp.plan_id:
+            self._send_json({"error": f"子项目 {sp_id} 已激活（{sp.plan_id}）"}, 400)
+            return
+
+        # 1:1 生成方案（三要素齐全，validate 通过）
+        content = (
+            f"## 目标\n\n子项目「{sp.id} {sp.title}」的开发方案。\n\n"
+            "## 功能卡\n\n"
+            f"### 实施「{sp.title}」\n"
+            f"目标：完成子项目 {sp.id} {sp.title}。\n"
+            "颗粒度：子项目级（1-2 卡）。\n"
+            "依赖：无\n"
+            "架构位置：待确认\n"
+        )
+        result = create_plan(
+            _repo_root(), project=project, title=f"{sp.id} {sp.title}", content=content,
+            author="老板", tool="ccc", milestone=milestone_title, approved=True,
+        )
+        if "error" in result:
+            self._send_json(result, 400)
+            return
+        plan_id = result["id"]
+
+        # 方案头补「子项目」+「环境准备」字段（create_plan 生成头部后补）
+        plan_path = _repo_root() / result["path"]
+        try:
+            ptext = plan_path.read_text(encoding="utf-8")
+            ptext = re.sub(
+                r"(> 里程碑：[^\n]*\n)",
+                f"\\1> 子项目：{sp.id} {sp.title}\n> 环境准备：待确认\n",
+                ptext,
+                count=1,
+            )
+            plan_path.write_text(ptext, encoding="utf-8")
+        except OSError:
+            pass
+
+        # 激活子项目（状态=计划中 + 关联方案 + 同步 linked_plans）
+        r = _rm.activate_subproject(project, milestone_title, sp_id, plan_id)
+        if "error" in r:
+            self._send_json(r, 400)
+            return
+
+        # 落 git：方案头补丁 + roadmap.md 同批提交（create_plan 已提交过方案创建，此为增量）
+        try:
+            subprocess.run(
+                ["git", "add", "--", result["path"], f"docs/projects/{project}/roadmap.md"],
+                cwd=str(_PROJECT_ROOT), check=True, capture_output=True, text=True, timeout=30,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", f"roadmap: activate subproject {sp_id} → {plan_id}"],
+                cwd=str(_PROJECT_ROOT), check=True, capture_output=True, text=True, timeout=30,
+            )
+            subprocess.run(
+                ["git", "push"],
+                cwd=str(_PROJECT_ROOT), check=True, capture_output=True, text=True, timeout=60,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.warning(
+                "子项目激活落 git 失败（保留脏现场，需手动处理）: %s",
+                (exc.stderr or exc.stdout or "").strip()[:300],
+            )
+
+        self._send_json({"ok": True, "subproject": sp_id, "plan": plan_id, "path": result["path"]})
 
     def do_PUT(self):
         """PUT /roadmap/<prefix>/milestone/<id> — 更新里程碑。"""

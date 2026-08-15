@@ -98,7 +98,7 @@ def _extract_acceptance(content: str) -> dict[str, int]:
 
 
 def _extract_func_cards(content: str) -> list[dict[str, str]]:
-    """解析方案正文「## 功能卡」段（ccc-plan-027 功能卡清单）。
+    """解析方案正文「## 功能卡」段（ccc-plan-027 功能卡清单 + 2026-08-16 开发卡三要素）。
 
     格式：
         ## 功能卡
@@ -106,9 +106,12 @@ def _extract_func_cards(content: str) -> list[dict[str, str]]:
         目标：<2-3 句人话，一眼看懂这一步做什么>
         实现：<详细实现，可选>
         验收：<验收点，可选>
+        颗粒度：<范围说明>（2026-08-16 三要素之一）
+        依赖：<依赖的功能卡标题/卡 ID，逗号分隔，无则「无」>（2026-08-16 三要素之一）
+        架构位置：<在系统架构图中的位置>（2026-08-16 三要素之一）
 
     Returns:
-        [{title, goal, impl, acceptance}]
+        [{title, goal, impl, acceptance, granularity, deps, arch_position}]
     """
     cards: list[dict[str, str]] = []
     in_section = False
@@ -126,7 +129,15 @@ def _extract_func_cards(content: str) -> list[dict[str, str]]:
         if s.startswith("### "):
             if current is not None:
                 cards.append(current)
-            current = {"title": s[4:].strip(), "goal": "", "impl": "", "acceptance": ""}
+            current = {
+                "title": s[4:].strip(),
+                "goal": "",
+                "impl": "",
+                "acceptance": "",
+                "granularity": "",
+                "deps": "",
+                "arch_position": "",
+            }
         elif current is not None:
             if s.startswith("目标："):
                 current["goal"] = s[3:].strip()
@@ -134,9 +145,42 @@ def _extract_func_cards(content: str) -> list[dict[str, str]]:
                 current["impl"] = s[3:].strip()
             elif s.startswith("验收："):
                 current["acceptance"] = s[3:].strip()
+            elif s.startswith("颗粒度："):
+                current["granularity"] = s[4:].strip()
+            elif s.startswith("依赖："):
+                current["deps"] = s[3:].strip()
+            elif s.startswith("架构位置："):
+                current["arch_position"] = s[5:].strip()
     if current is not None:
         cards.append(current)
     return cards
+
+
+def _split_deps(raw: str) -> list[str]:
+    """拆分功能卡依赖字符串（逗号/顿号/空格分隔）；过滤「无」类无依赖标记。"""
+    deps = [d.strip() for d in re.split(r"[,，、\s]+", raw) if d.strip()]
+    return [d for d in deps if d not in ("无", "无。", "无依赖", "无依赖。", "none", "N/A")]
+
+
+def _patch_card_depends(card_path: Path, dep_ids: list[str]) -> None:
+    """把解析后的依赖卡 ID 写入卡头「> 依赖：」行（new-card.sh 已支持 --depends 字段）。
+
+    优先替换已有「> 依赖：」；无则插到「> 关联：」行后；再无则插到标题行后（兜底）。
+    """
+    if not dep_ids:
+        return
+    try:
+        text = card_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    dep_line = "> 依赖：" + ", ".join(dep_ids)
+    if "> 依赖：" in text:
+        text = re.sub(r"(> 依赖：)[^\n]*", dep_line, text, count=1)
+    elif re.search(r"^> 关联：[^\n]*$", text, re.M):
+        text = re.sub(r"(^> 关联：[^\n]*$)", f"\\1\n{dep_line}", text, count=1, flags=re.M)
+    else:
+        text = re.sub(r"(^# [^\n]*$)", f"\\1\n{dep_line}", text, count=1, flags=re.M)
+    card_path.write_text(text, encoding="utf-8")
 
 
 def _inject_func_card(path: Path, card: dict[str, str]) -> None:
@@ -251,6 +295,8 @@ def list_plans(
                 "updated": fields.get("更新", ""),
                 "cards": fields.get("关联卡", ""),
                 "milestone": fields.get("里程碑", ""),
+                "subproject": fields.get("子项目", ""),
+                "env_prep": fields.get("环境准备", ""),
                 "path": rel,
                 "acceptance": acceptance,
                 "approval": fields.get("批准", ""),
@@ -883,14 +929,17 @@ def convert_plan(
     repo_root: Path,
     *,
     rel_path: str,
+    slices: list[str] | None = None,
     no_push: bool = False,
 ) -> dict[str, Any]:
     """将方案转为任务卡。
 
-    1. 读取方案的「转卡计划」段
+    1. 读取方案的「功能卡」/「转卡计划」段
     2. 调 new-card.sh 生成任务卡（全部成功才推进状态；失败回滚已生成卡）
-    3. 自动推进方案状态为「部分执行」+ 写入关联卡
-    4. 默认 commit+push 到远端（no_push=True 供测试/无 git 环境跳过）
+    3. slices 指定时只转该子集（逐步投入——一次一个子项目的功能卡，2026-08-16）
+    4. 依赖硬约束：被依赖必须在本批功能卡或已有关卡中；否则拒绝出卡
+    5. 自动推进方案状态为「部分执行」+ 写入关联卡
+    6. 默认 commit+push 到远端（no_push=True 供测试/无 git 环境跳过）
 
     Returns:
         {ok, cards: [card_id]} or {error}
@@ -919,7 +968,9 @@ def convert_plan(
     if lock_f is None:
         return {"error": f"{prefix} 有转卡进行中，请稍后重试"}
     try:
-        return _convert_plan_locked(repo_root, rel_path=rel_path, prefix=prefix, no_push=no_push)
+        return _convert_plan_locked(
+            repo_root, rel_path=rel_path, prefix=prefix, slices=slices, no_push=no_push
+        )
     finally:
         _release_convert_lock(lock_f, repo_root, prefix)
 
@@ -929,6 +980,7 @@ def _convert_plan_locked(
     *,
     rel_path: str,
     prefix: str,
+    slices: list[str] | None = None,
     no_push: bool,
 ) -> dict[str, Any]:
     m = _PLAN_PATH_RE.match(rel_path)
@@ -944,15 +996,23 @@ def _convert_plan_locked(
     if current_status not in ("已确认", "部分执行"):
         return {"error": f"当前状态「{current_status}」不可转卡，只有「已确认」或「部分执行」状态可以转卡"}
 
+    # 2026-08-16 环境准备门禁联动：子项目方案必须声明「环境准备」才能转卡
+    # （承接作废 hp-plan-004 的「开发/部署隔离 + 可重建验证」为强制前置门禁）
+    if "子项目：" in content and not re.search(r"环境准备：", content):
+        return {
+            "error": "方案缺「环境准备」声明——子项目方案转卡前必须先声明环境准备（2026-08-16 门禁）"
+        }
+
     # 027：功能卡清单优先（## 功能卡 段），回退旧「## 转卡计划」段（每行一卡）
     _func_cards = _extract_func_cards(content)
     if _func_cards:
-        slices = [
+        card_slices = [
             {
                 "title": c["title"],
                 "goal": c.get("goal", ""),
                 "impl": c.get("impl", ""),
                 "acceptance": c.get("acceptance", ""),
+                "deps": c.get("deps", ""),
                 "mode": "func_cards",
             }
             for c in _func_cards
@@ -973,20 +1033,46 @@ def _convert_plan_locked(
             for ln in plan_section.strip().split("\n")
             if ln.strip() and not ln.strip().startswith("#") and not ln.strip().startswith("```")
         ]
-        slices = [
+        card_slices = [
             {
                 "title": re.sub(r"^[-*]\s*|^\d+\.\s*", "", ln).strip(),
                 "goal": "",
                 "impl": "",
                 "acceptance": "",
+                "deps": "",
                 "mode": "plan_section",
             }
             for ln in plan_lines
         ]
 
-    slices = [s for s in slices if s["title"]]
-    if not slices:
+    card_slices = [s for s in card_slices if s["title"]]
+    if not card_slices:
         return {"error": "方案缺少「功能卡」或「转卡计划」段"}
+
+    # 2026-08-16 逐步投入：slices 指定时只转该子集（一次一个子项目的功能卡）
+    if slices is not None:
+        _allowed = set(slices)
+        _missing = [t for t in _allowed if not any(c["title"] == t for c in card_slices)]
+        if _missing:
+            return {"error": f"指定的功能卡不在方案中: {', '.join(_missing)}"}
+        card_slices = [c for c in card_slices if c["title"] in _allowed]
+        if not card_slices:
+            return {"error": "指定的功能卡子集为空，无法转卡"}
+
+    # 2026-08-16 依赖硬约束：被依赖必须在本批功能卡（标题）或已有关卡（卡 ID）中
+    from server.board.loader import load_index_file
+
+    _index = load_index_file(repo_root / "docs" / "dispatch")
+    _available_titles = {c["title"] for c in card_slices}
+    for c in card_slices:
+        for dep in _split_deps(c.get("deps", "")):
+            if dep in _available_titles:
+                continue
+            if dep.lower() in _index:
+                continue
+            return {
+                "error": f"功能卡「{c['title']}」依赖「{dep}」既不在本批转卡、也不是已有关卡——拒绝出卡（依赖硬约束 2026-08-16）"
+            }
 
     # 提取标题（方案标题去掉「方案 · 」前缀）
     title = _extract_title(content).removeprefix("方案 · ").strip()
@@ -999,7 +1085,7 @@ def _convert_plan_locked(
     cards: list[str] = []
 
     # 按功能卡/转卡计划逐张出卡（027：功能卡段优先；转卡计划段兼容旧格式）
-    for s in slices:
+    for s in card_slices:
         card_title = s["title"].strip()
         if not card_title:
             continue
@@ -1038,6 +1124,20 @@ def _convert_plan_locked(
         # 027 两级卡：功能卡目标/实现/验收注入卡文件
         if s["mode"] == "func_cards" and (s["goal"] or s["impl"] or s["acceptance"]):
             _inject_func_card(created[0], s)
+
+    # 2026-08-16 依赖透传：两段式——先出卡，再把依赖解析成卡 ID 写回卡头「> 依赖：」
+    # 依赖引用 = 本批功能卡标题（同批，映射到本批卡 ID）或已有关卡 ID（跨方案，透传）
+    _batch_id_by_title = {s["title"]: cards[i] for i, s in enumerate(card_slices) if s["title"]}
+    for i, s in enumerate(card_slices):
+        dep_ids: list[str] = []
+        for dep in _split_deps(s.get("deps", "")):
+            if dep in _batch_id_by_title:
+                dep_ids.append(_batch_id_by_title[dep])
+            elif re.match(r"^[a-z]{2,4}\d{3}$", dep):
+                dep_ids.append(dep)
+            # 其它已在依赖硬约束预检拦截，不会到达这里
+        if dep_ids:
+            _patch_card_depends(created_files[i], dep_ids)
 
     # 自动推进状态为「部分执行」+ 写入关联卡
     today = date.today().isoformat()

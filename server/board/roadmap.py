@@ -41,10 +41,26 @@ class Draft:
 
 
 @dataclass
+class Subproject:
+    """子项目（里程碑的分解单元，1:1 对应一个方案）。
+
+    CCC 流程架构改造（2026-08-16 决策）：覆盖 ccc-plan-027「无独立中间层」定义——
+    里程碑下结构化解耦为子项目，激活时 1:1 生成方案，实现「里程碑→子项目→计划逐步投入→开发卡」。
+    未激活子项目只停留在 roadmap.md，不占开发资源。
+    """
+
+    id: str = ""  # 子项目编号（如 2.1）
+    title: str = ""  # 子项目标题
+    status: str = "未启动"  # 未启动 | 计划中 | 已完成
+    plan_id: str = ""  # 关联方案 ID（激活后写入），无则空
+
+
+@dataclass
 class Milestone:
     """里程碑（关联一组方案，有进度）。
 
     ccc-plan-027：Step 概念并入方案内「功能卡」段，里程碑下不再有 steps。
+    2026-08-16 流程架构改造：新增 subprojects 子项目层（结构化分解单元），兼容旧格式（无子项目时退回 linked_plans 聚合）。
     """
 
     title: str  # 里程碑标题
@@ -55,6 +71,7 @@ class Milestone:
     target_date: str = ""  # 目标日期（可选，YYYY-MM-DD；2026-08-14 补齐 rebuild-design 字段）
     timeline: str = ""  # 时间线标注（如日期区间 2026-08-07~08-09；2026-08-14 里程碑模型增强）
     version: str = ""  # 版本号（如 v0.9.0；2026-08-14 里程碑模型增强）
+    subprojects: list[Subproject] = field(default_factory=list)  # 子项目列表（2026-08-16 新增）
 
 
 # ── 解析 ──
@@ -74,16 +91,19 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
     milestones_section = ""
     in_drafts = False
     in_milestones = False
+    in_subprojects = False  # 子项目段收集状态（2026-08-16）
     current_ms: dict[str, Any] | None = None
 
     for line in text.split("\n"):
         if line.strip().startswith("## 草案池"):
             in_drafts = True
             in_milestones = False
+            in_subprojects = False
             continue
         if line.strip().startswith("## 里程碑"):
             in_drafts = False
             in_milestones = True
+            in_subprojects = False
             continue
         if in_drafts and line.strip():
             stripped = line.strip()
@@ -92,6 +112,10 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
         if in_milestones:
             if line.strip().startswith("### "):
                 if current_ms is not None:
+                    current_ms["subprojects"] = [
+                        sp if isinstance(sp, Subproject) else Subproject(**sp)
+                        for sp in current_ms.get("subprojects", [])
+                    ]
                     result["milestones"].append(Milestone(**current_ms))
                 current_ms = {
                     "title": line.strip()[4:].strip(),
@@ -102,9 +126,20 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     "target_date": "",
                     "timeline": "",
                     "version": "",
+                    "subprojects": [],
                 }
+                in_subprojects = False
             elif current_ms is not None:
                 stripped = line.strip()
+                # 子项目段收集：缩进的 "- " 子项目行（- <id> <title> · 状态：<s> · 方案：<p>）
+                if in_subprojects:
+                    if line.startswith("  ") and stripped.startswith("- "):
+                        current_ms["subprojects"].append(_parse_subproject_line(stripped[2:].strip()))
+                        continue
+                    in_subprojects = False  # 非缩进子项目行 → 子项目段结束，落到字段解析
+                if stripped.startswith("- 子项目："):
+                    in_subprojects = True
+                    continue
                 if stripped.startswith("- 状态："):
                     current_ms["status"] = stripped[4:].strip().lstrip("：").strip()
                 elif stripped.startswith("- 关联方案："):
@@ -123,6 +158,10 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     current_ms["description"] += " " + stripped
 
     if current_ms is not None:
+        current_ms["subprojects"] = [
+            sp if isinstance(sp, Subproject) else Subproject(**sp)
+            for sp in current_ms.get("subprojects", [])
+        ]
         result["milestones"].append(Milestone(**current_ms))
 
     for draft_line in drafts_section.strip().split("\n"):
@@ -148,6 +187,32 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
         )
 
     return result
+
+
+def _parse_subproject_line(raw: str) -> dict[str, Any]:
+    """解析子项目行：`<id> <title> · 状态：<s> · 方案：<p>`（2026-08-16）。
+
+    例：`2.1 pipeline 源码回灌 SSOT · 状态：计划中 · 方案：hp-plan-008`
+    状态/方案段可选；缺省状态=未启动，缺省方案=空。用「替换删除已匹配段」避免截断后续段。
+    """
+    status = "未启动"
+    plan_id = ""
+    body = raw
+    _m_status = re.search(r"·\s*状态[：:]\s*([^·]+)", body)
+    if _m_status:
+        status = _m_status.group(1).strip()
+        body = body.replace(_m_status.group(0), "", 1)
+    _m_plan = re.search(r"·\s*方案[：:]\s*([^·]+)", body)
+    if _m_plan:
+        plan_id = _m_plan.group(1).strip()
+        body = body.replace(_m_plan.group(0), "", 1)
+    parts = body.strip(" ·").split(" ", 1)
+    return {
+        "id": parts[0].strip(),
+        "title": parts[1].strip() if len(parts) > 1 else "",
+        "status": status,
+        "plan_id": plan_id,
+    }
 
 
 # ── 查询 ──
@@ -267,6 +332,15 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
                     lines.append(f"- 时间线：{ms.timeline}")
                 if ms.version:
                     lines.append(f"- 版本：{ms.version}")
+                if ms.subprojects:
+                    lines.append("- 子项目：")
+                    for sp in ms.subprojects:
+                        _line = f"  - {sp.id} {sp.title}"
+                        if sp.status and sp.status != "未启动":
+                            _line += f" · 状态：{sp.status}"
+                        if sp.plan_id:
+                            _line += f" · 方案：{sp.plan_id}"
+                        lines.append(_line)
                 lines.append("")
         else:
             lines.append("无。")
@@ -401,6 +475,35 @@ def update_milestone(
 
     _write_roadmap(project, data["drafts"], data["milestones"])
     return {"ok": True, "milestone": title}
+
+
+def activate_subproject(
+    project: str,
+    milestone_title: str,
+    subproject_id: str,
+    plan_id: str,
+) -> dict[str, Any]:
+    """激活子项目（2026-08-16）：设置 status=计划中 + 关联方案 ID，并同步里程碑 linked_plans。
+
+    子项目激活 = 人审节点① 细化——老板逐个指定哪个子项目转入计划，1:1 生成方案后调用。
+    """
+    path = _roadmap_path(project)
+    if not path.is_file():
+        return {"error": f"项目 {project} 尚无 roadmap.md"}
+    text = path.read_text(encoding="utf-8")
+    data = parse_roadmap(text, project=project)
+    for ms in data["milestones"]:
+        if ms.title == milestone_title:
+            for sp in ms.subprojects:
+                if sp.id == subproject_id:
+                    sp.status = "计划中"
+                    sp.plan_id = plan_id
+                    if plan_id not in ms.linked_plans:
+                        ms.linked_plans.append(plan_id)
+                    _write_roadmap(project, data["drafts"], data["milestones"])
+                    return {"ok": True, "subproject": subproject_id, "plan": plan_id}
+            return {"error": f"子项目 {subproject_id} 不在里程碑 {milestone_title} 中"}
+    return {"error": f"里程碑 {milestone_title} 不存在"}
 
 
 def delete_milestone(project: str, title: str) -> dict[str, Any]:
@@ -675,33 +778,38 @@ def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:
     if ms is None:
         return {"error": f"里程碑 {title} 不存在"}
 
-    total = len(ms.linked_plans)
-    if total == 0:
-        return {"total": 0, "completed": 0, "progress_pct": 0, "status": ms.status}
+    # 有子项目时按子项目聚合（2026-08-16 决策），否则退回关联方案聚合（兼容旧格式里程碑）
+    if ms.subprojects:
+        total = len(ms.subprojects)
+        completed = sum(1 for sp in ms.subprojects if sp.status == "已完成")
+    else:
+        total = len(ms.linked_plans)
+        if total == 0:
+            return {"total": 0, "completed": 0, "progress_pct": 0, "status": ms.status}
 
-    completed = 0
-    plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
-    for plan_id in ms.linked_plans:
-        # 查找匹配的方案文件
-        match = re.match(rf"{project}-plan-(\d+)", plan_id)
-        if match:
-            num = match.group(1)
-            candidates = sorted(plans_dir.glob(f"{num}-*.md"))
-            if candidates:
-                try:
-                    plan_text = candidates[0].read_text(encoding="utf-8")
-                    # P1#14：读头部状态字段（此前全文子串匹配「状态：已完成」会误计）；
-                    # 方案头是多 key 一行（> 项目：… · 状态：…），取全文首个「状态：」值 = 头部
-                    # 终态非完成方案（作废/已覆盖）剔除出 total
-                    status_m = re.search(r"状态：([^\s·]+)", plan_text)
-                    plan_status = status_m.group(1) if status_m else ""
-                    if plan_status in ("作废", "已覆盖"):
-                        total -= 1
-                        continue
-                    if plan_status == "已完成":
-                        completed += 1
-                except OSError:
-                    pass
+        completed = 0
+        plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
+        for plan_id in ms.linked_plans:
+            # 查找匹配的方案文件
+            match = re.match(rf"{project}-plan-(\d+)", plan_id)
+            if match:
+                num = match.group(1)
+                candidates = sorted(plans_dir.glob(f"{num}-*.md"))
+                if candidates:
+                    try:
+                        plan_text = candidates[0].read_text(encoding="utf-8")
+                        # P1#14：读头部状态字段（此前全文子串匹配「状态：已完成」会误计）；
+                        # 方案头是多 key 一行（> 项目：… · 状态：…），取全文首个「状态：」值 = 头部
+                        # 终态非完成方案（作废/已覆盖）剔除出 total
+                        status_m = re.search(r"状态：([^\s·]+)", plan_text)
+                        plan_status = status_m.group(1) if status_m else ""
+                        if plan_status in ("作废", "已覆盖"):
+                            total -= 1
+                            continue
+                        if plan_status == "已完成":
+                            completed += 1
+                    except OSError:
+                        pass
 
     progress_pct = int(completed / total * 100) if total > 0 else 0
 

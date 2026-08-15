@@ -54,6 +54,8 @@
 分支   = codex/<文件名去 .md>   （例：codex/ccc005-registry-single-source）
 worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 ```
+> **`codex/` 前缀消歧（2026-08-16 注）**：`codex/` 是历史遗留的「卡分支信封」命名前缀，**与执行体无关**——
+> Codex 退役后新卡分支仍叫 `codex/xxx`（~87 处代码硬编码）。不要因前缀误以为 Codex 在参与执行。
 
 **三者必须一致**：`prefix` = `docs/dispatch` 子目录名 = 卡头字段「项目」= registry 前缀。
 

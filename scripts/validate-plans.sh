@@ -43,6 +43,55 @@ red()  { echo -e "\033[31m$*\033[0m"; }
 green(){ echo -e "\033[32m$*\033[0m"; }
 yellow(){ echo -e "\033[33m$*\033[0m"; }
 
+# ── 开发卡三要素校验辅助（2026-08-16 子项目层）──
+# 功能卡块必须含 颗粒度/依赖/架构位置 声明（颗粒度只查存在性促思考，不硬判大小）。
+# 新模型子项目方案（头含「子项目：」）缺三要素=FAIL；旧方案缺=WARN 兼容存量。
+_check_func_card_three() {
+  local block="$1" rel="$2" is_sp="$3"
+  local title=""
+  title=$(echo "$block" | grep -m1 '^### ' | sed 's/^### //' | tr -d '\r' || true)
+  local missing=""
+  echo "$block" | grep -qE '^颗粒度：' || missing="$missing 颗粒度"
+  echo "$block" | grep -qE '^依赖：' || missing="$missing 依赖"
+  echo "$block" | grep -qE '^架构位置：' || missing="$missing 架构位置"
+  if [ -n "$missing" ]; then
+    if [ -n "$is_sp" ]; then
+      # 注：bash set -u 下全角「」紧跟 $var 会解析错乱，必须 ${var} 定界
+      red "  FAIL 功能卡「${title}」缺三要素:${missing}（子项目方案必填）: $rel"
+      ERRORS=$((ERRORS + 1))
+    else
+      yellow "  WARN 功能卡「${title}」缺三要素:${missing}（旧方案兼容，新方案必填）: $rel"
+      WARNINGS=$((WARNINGS + 1))
+    fi
+  fi
+}
+
+# ── 功能卡依赖悬空校验（2026-08-16）──
+# 依赖项若是卡 ID（[a-z]{2,4}\d{3}）必须存在对应卡文件，否则 FAIL；若是本方案功能卡标题则跳过（同批解析）。
+_check_func_card_dep_dangling() {
+  local deps="$1" rel="$2"
+  local d
+  for d in $(echo "$deps" | tr ',，、 ' '\n' | sed '/^$/d'); do
+    if echo "$d" | grep -qE '^[a-z]{2,4}[0-9]{3}$'; then
+      if ! find "$REPO_ROOT/docs/dispatch" -iname "${d}-*.md" -print -quit 2>/dev/null | grep -q .; then
+        red "  FAIL 功能卡依赖悬空（卡 $d 不存在）: $rel"
+        ERRORS=$((ERRORS + 1))
+      fi
+    fi
+  done
+}
+
+# ── 单功能卡块校验聚合（三要素 + 依赖悬空）──
+_check_func_card_block() {
+  local block="$1" rel="$2" is_sp="$3"
+  _check_func_card_three "$block" "$rel" "$is_sp"
+  local deps_line
+  deps_line=$(echo "$block" | grep -E '^依赖：' | head -1 | sed 's/^依赖：//' | tr -d '\r' || true)
+  if [ -n "$deps_line" ]; then
+    _check_func_card_dep_dangling "$deps_line" "$rel"
+  fi
+}
+
 validate_file() {
   local file="$1"
   CHECKED=$((CHECKED + 1))
@@ -117,12 +166,42 @@ validate_file() {
     return
   fi
 
-  # ── 7.5 功能卡段校验（ccc-plan-027）：含 ## 功能卡 段则必须有「### 功能卡标题」小节 ──
+  # ── 7.5 功能卡段校验（ccc-plan-027 + 2026-08-16 三要素/依赖悬空）──
   if grep -qE '^## 功能卡' "$file"; then
     local fc_section
     fc_section=$(awk '/^## 功能卡/{f=1;next} f&&/^## /{f=0} f' "$file")
     if ! echo "$fc_section" | grep -qE '^### '; then
       red "  FAIL 功能卡段缺少「### 功能卡标题」小节: $rel"
+      ERRORS=$((ERRORS + 1))
+      return
+    fi
+    # 新模型子项目方案判定：方案头含「子项目：」字段（未加字段的旧方案只 WARN 不阻断）
+    local is_sp=""
+    if echo "$head_content" | grep -q '子项目：'; then
+      is_sp="1"
+    fi
+    # 逐功能卡块：三要素存在性 + 依赖悬空（bash3 兼容：进程替换保主 shell 作用域）
+    local cblock="" block_no=0
+    while IFS= read -r fline; do
+      if echo "$fline" | grep -qE '^### '; then
+        if [ "$block_no" -gt 0 ]; then
+          _check_func_card_block "$cblock" "$rel" "$is_sp"
+        fi
+        cblock="$fline"
+        block_no=$((block_no + 1))
+      else
+        cblock="${cblock}"$'\n'"${fline}"
+      fi
+    done < <(printf '%s\n' "$fc_section")
+    if [ "$block_no" -gt 0 ]; then
+      _check_func_card_block "$cblock" "$rel" "$is_sp"
+    fi
+  fi
+
+  # ── 7.6 环境准备声明（2026-08-16 子项目层）：新模型子项目方案必须声明「环境准备：」──
+  if echo "$head_content" | grep -q '子项目：'; then
+    if ! echo "$head_content" | grep -q '环境准备：'; then
+      red "  FAIL 子项目方案缺「环境准备」声明: $rel"
       ERRORS=$((ERRORS + 1))
       return
     fi

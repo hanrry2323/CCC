@@ -61,6 +61,12 @@
 
 验收：`git log --all` 无 `medio.p7b.pem`，仓库可正常构建。
 
+颗粒度：单仓历史重写（破坏性，须备份 + 单独人工确认）
+
+依赖：无（2026-08-16 三要素：待老板单独确认敏感清洗后再转卡执行）
+
+架构位置：mx 仓 git 历史层（filter-repo 重写）
+
 ### 敏感信息扫描清零
 
 目标：全仓清零密钥/token/.env/内部 IP/本地路径。
@@ -69,6 +75,12 @@
 
 验收：扫描报告 0 命中（除授权占位）。
 
+颗粒度：全仓跨模块扫描 + 修复
+
+依赖：敏感历史清洗（filter-repo）
+
+架构位置：全仓敏感面（.env / 内部 IP / 本地路径 / 签名材料）
+
 ### 公开化与多端 CI/CD
 
 目标：补 LICENSE/README、清理 release.yml、接入三端 CI、切 Public 验证。
@@ -76,6 +88,12 @@
 实现：LICENSE/README；release.yml 路径清理；ci.yml 补 HarmonyOS；切 Public。
 
 验收：Actions 三端全绿，Public 仓可访问。
+
+颗粒度：CI/CD 与发布配置层
+
+依赖：敏感信息扫描清零
+
+架构位置：.github/workflows + release 配置 + 公开仓边界
 
 ## 转卡计划
 

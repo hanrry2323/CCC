@@ -2685,7 +2685,8 @@ body.ro-viewer [data-write] {
 }
 .rm2-body {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  /* 2026-08-16 子项目层：左=子项目列表面板（panel），右=里程碑导航（rail） */
+  grid-template-columns: 1fr 300px;
   gap: 16px;
   align-items: start;
 }
@@ -3452,6 +3453,59 @@ body.ro-viewer [data-write] {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+}
+/* 2026-08-16 子项目列表（线路图页左栏） */
+.rm2-sp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(120, 120, 120, 0.05);
+  border-radius: 10px;
+}
+.rm2-sp-hd {
+  font-size: 11.5px;
+  color: #888;
+  font-weight: 650;
+  margin-bottom: 2px;
+}
+.rm2-sp-hint {
+  font-weight: 400;
+  color: #aaa;
+  margin-left: 6px;
+}
+.rm2-sp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+.rm2-sp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.rm2-sp-title {
+  font-size: 12.5px;
+  color: #333;
+  font-weight: 600;
+}
+.rm2-sp-meta {
+  font-size: 11px;
+  color: #999;
+}
+.rm2-sp-item .hub-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+.rm2-mile-sp-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(120, 120, 120, 0.1);
 }
 /* 里程碑分组（§4.1 检查项 1：分类 + 排序 + 空态） */
 .rm2-group {
