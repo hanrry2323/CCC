@@ -59,22 +59,22 @@
 
 > 阶段 3 动作：`git format-patch origin/main..origin/codex/<stem>` 导出到 `docs/archive/codex-branches/`，再进观察期。
 
-| 分支 | 独特文件数 | 备份 | 观察期开始 | 观察到期 | 删除日期 | 备注 |
-|------|-----------|------|-----------|---------|---------|------|
-| ccc016-t73-t70-p1-11 | 9 | ☐ | | | | engine/kb/web 代码 |
-| ccc017-prompt | 2 | ☐ | | | | engine main + 测试 |
-| ccc018-task | 1 | ☐ | | | | scripts/sync-kb-index.sh |
-| ccc019-engine-gate-skip-metrics | 2 | ☐ | | | | engine main + 测试 |
-| ccc020-prompt-injection-dashboard | 4 | ☐ | | | | engine/web 代码 |
-| clw009-terminal-overhaul | 2 | ☐ | | | | clw README + 方案 |
-| clw010-ui-rebuild | 8 | ☐ | | | | approve-merge/validate-plans/docgate 等 |
-| clw011-webview-settings | 2 | ☐ | | | | clw README + 方案 |
-| clw014-css-theme-rebuild | 1 | ☐ | | | | clw 方案 |
-| clw016-csp-config-hardening | 2 | ☐ | | | | ccc/clw 方案 |
-| clw017-eng-green-dispatch | 2 | ☐ | | | | clw 方案 + 教训 |
-| clw019-ui-role-inject-verify | 3 | ☐ | | | | ccc/clw 方案 + 教训 |
+| 分支 | 独特文件数 | 处置结果 | 观察期开始 | 观察到期 | 删除日期 | 备注 |
+|------|-----------|---------|-----------|---------|---------|------|
+| ccc016-t73-t70-p1-11 | 9 | 已覆盖（main 更先进）→ 可删 | | | | cluster.py 路径 main 已修正 |
+| ccc017-prompt | 2 | 已覆盖（main 已有 prompt_inject 日志）→ 可删 | | | | |
+| ccc018-task | 1 | **已合入 main**（2026-08-15）→ 可删 | | | | sync-kb-index.sh 落地 |
+| ccc019-engine-gate-skip-metrics | 2 | **已合入 main**（2026-08-15）→ 可删 | | | | gate_skip metrics 落地 |
+| ccc020-prompt-injection-dashboard | 4 | **待合入**（分支就绪，被主仓并发前端改动阻断 ff）→ 待办 | | | | /board/prompt_inject + read_prompt_inject_records |
+| clw009-terminal-overhaul | 2 | 文档同步（无代码成果）→ 可删 | | | | clw README + 方案 |
+| clw010-ui-rebuild | 8 | 已覆盖（main 已有跨机支持）→ 可删 | | | | approve-merge/validate-plans/docgate 等 |
+| clw011-webview-settings | 2 | 文档同步 → 可删 | | | | clw README + 方案 |
+| clw014-css-theme-rebuild | 1 | 文档同步 → 可删 | | | | clw 方案 |
+| clw016-csp-config-hardening | 2 | 文档同步 → 可删 | | | | ccc/clw 方案 |
+| clw017-eng-green-dispatch | 2 | 文档同步 → 可删 | | | | clw 方案 + 教训 |
+| clw019-ui-role-inject-verify | 3 | 文档同步 → 可删 | | | | ccc/clw 方案 + 教训 |
 
-> 说明：此组「独特文件」是分支版本与 main 版本有差异，差异方向需阶段 3 备份时人工核对（分支可能含未合入成果，也可能只是落后 main）。一律先备份，不丢东西。
+> 2026-08-15 深审更新：此组 12 个分支中，5 个 ccc0xx 是真实代码成果（其中 ccc018/019 已合入、ccc020 待合入），其余 7 个 clw 分支是卡流程文档同步（方案/README），无独立代码成果，均可删。ccc016/017/clw010 的「独特文件」经核对是分支落后 main 的旧快照（main 已覆盖）。
 
 ---
 
