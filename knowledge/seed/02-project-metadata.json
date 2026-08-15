@@ -50,7 +50,7 @@
       "name": "ai-loop-router",
       "path": "M1 /Users/apple/program/ai-loop-router/",
       "nature": "loop-router 源码，git 仓",
-      "role": "CCC 基建配属（模型出口路由，M1 4100/4102 + Mac2017 6100/6102）",
+      "role": "CCC 基建配属（模型出口路由，Mac2017 6100/6102；M1 4100/4102 已冷冻 2026-08-06）",
       "access": "本地直接开发",
       "last_activity": "ongoing"
     },
