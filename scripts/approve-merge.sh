@@ -9,6 +9,7 @@
 # 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
 # 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡）；
 #       CCC 仓能 ff 则 ff-merge；否则 --close-only / 分支已在 main → 只关卡。
+#       【合入后须部署检查】：成功合入后自动检查 2017 生产 vs 主干，落后则触发热重启部署。
 # 合入前 main 卡头允许滞后；本脚本写关闭态。
 
 set -euo pipefail
@@ -17,6 +18,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
+# 跨机执行支持（默认保留 2017 生产）：SSH 目标主机（user@ip）与 2017 生产仓路径均可覆盖
+CCC_SSH_HOST="${CCC_SSH_HOST:-fan@192.168.3.116}"
+CCC_PROD_REPO="${CCC_PROD_REPO:-/Users/fan/program/CCC}"
+# shellcheck source=lib/card-resolve.sh
+source "$SCRIPT_DIR/lib/card-resolve.sh"
 USE_READY=false
 CLOSE_ONLY=false
 IDS=()
@@ -101,17 +107,6 @@ if [[ ${#IDS[@]} -eq 0 ]]; then
   exit 2
 fi
 
-resolve_card() {
-  local id="$1"
-  local hit
-  hit="$(find docs/dispatch -type f -name "${id}-*.md" 2>/dev/null | head -1 || true)"
-  if [[ -z "$hit" ]]; then
-    echo "[ERROR] 找不到卡：${id}" >&2
-    return 1
-  fi
-  echo "$hit"
-}
-
 check_audit() {
   local path="$1"
   "$PYTHON_BIN" -c "
@@ -126,10 +121,42 @@ sys.exit(0 if ok else 1)
 " "$path"
 }
 
+# 完成钩子（Doc-Gate）机械门禁：维护区四问必须勾选且说明非空
+# 校验上下文 = 分支临时工作树（origin/<branch>），卡文件/方案文件/git diff 全部基于
+# 分支信封，与机审证据同源；分支不可读（close-only/已合入）时回退 main 工作区。
+check_maintenance() {
+  local path="$1"
+  local branch="${2:-}"
+  local tmpwt=""
+  local repo_root="."
+  if [[ -n "$branch" ]] && git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    tmpwt="$(mktemp -d)"
+    if ! git worktree add -q --detach "$tmpwt" "origin/${branch}" 2>/dev/null; then
+      rm -rf "$tmpwt"
+      return 1
+    fi
+    repo_root="$tmpwt"
+  fi
+  local ret=0
+  "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.docgate import verify_maintenance
+ok, problems = verify_maintenance(sys.argv[1], sys.argv[2])
+if not ok:
+    print('[ERROR] 完成钩子（维护区声明不实）：' + '；'.join(problems), file=sys.stderr)
+    sys.exit(1)
+print('[OK] 完成钩子：维护区四问已勾选且说明完整')
+sys.exit(0)
+" "$path" "$repo_root" || ret=1
+  if [[ -n "$tmpwt" ]]; then git worktree remove -f "$tmpwt" 2>/dev/null; rm -rf "$tmpwt"; fi
+  return "$ret"
+}
+
 # 外仓提示：registry.mac2017 非 CCC 本仓时打印分支/HEAD/是否已在业务 main（不自动 push）
 print_external_repo_hint() {
   local path="$1" branch="$2"
-  "$PYTHON_BIN" - "$path" "$branch" <<'PY' || true
+  "$PYTHON_BIN" - "$path" "$branch" "$CCC_SSH_HOST" <<'PY' || true
 import re, subprocess, sys
 from pathlib import Path
 
@@ -138,6 +165,7 @@ from server.board.registry import load_projects
 
 card = Path(sys.argv[1])
 branch = sys.argv[2]
+ssh_host = sys.argv[3]
 text = card.read_text(encoding="utf-8")
 m = re.search(r"项目：([^·\n]+)", text)
 prefix = m.group(1).strip() if m else ""
@@ -164,7 +192,7 @@ cmd = (
 )
 try:
     out = subprocess.check_output(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "fan@192.168.3.116", cmd],
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ssh_host, cmd],
         text=True,
         stderr=subprocess.DEVNULL,
         timeout=25,
@@ -182,7 +210,7 @@ PY
 # 跨仓收口：业务仓分支 ff 合入业务 main + 删分支（分叉则阻断整卡合入）
 close_business_repo() {
   local path="$1" branch="$2"
-  "$PYTHON_BIN" - "$path" "$branch" <<'PY'
+  "$PYTHON_BIN" - "$path" "$branch" "$CCC_SSH_HOST" <<'PY'
 import re, subprocess, sys
 from pathlib import Path
 
@@ -191,6 +219,7 @@ from server.board.registry import load_projects
 
 card = Path(sys.argv[1])
 branch = sys.argv[2]
+ssh_host = sys.argv[3]
 text = card.read_text(encoding="utf-8")
 m = re.search(r"项目：([^·\n]+)", text)
 prefix = m.group(1).strip() if m else ""
@@ -227,7 +256,7 @@ try:
             "ssh",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=5",
-            "fan@192.168.3.116",
+            ssh_host,
             cmd,
         ],
         text=True,
@@ -255,6 +284,13 @@ text = path.read_text(encoding='utf-8')
 text2, n = re.subn(r'(状态：)[^·\n]+', r'\1已关闭', text, count=1)
 if n != 1:
     raise SystemExit('cannot update 状态 in ' + str(path))
+# 人审节点③：批准行更新为「老板合入批准」（无则插入到卡头首行后；单行最新语义）
+if re.search(r'(^|\n)\s*> 批准：', text2):
+    text2 = re.sub(r'(\n\s*> 批准：)([^\n]*)', r'\1老板合入批准 · ' + today, text2, count=1)
+else:
+    m = re.search(r'^# 任务卡[^\n]*\n', text2)
+    if m:
+        text2 = text2[:m.end()] + '> 批准：老板合入批准 · ' + today + '\n' + text2[m.end():]
 if '## 验收区' not in text2:
     text2 = text2.rstrip() + f\"\"\"
 
@@ -271,6 +307,59 @@ path.write_text(text2, encoding='utf-8')
 " "$path" "$today"
 }
 
+# ── sync_plan_cards：卡关闭后自动同步方案「关联卡」（ccc062）──
+# 卡头「关联」含 prefix-plan-NNN 时，把本卡 ID 追加到方案「关联卡」字段。
+# 无方案编号则跳过（如 phase-3 关联、无方案卡）。
+sync_plan_cards() {
+  local path="$1"
+  "$PYTHON_BIN" - "$path" <<'PY'
+import re, sys
+from pathlib import Path
+sys.path.insert(0, ".")
+from server.board.plans import update_plan
+from server.board.docgate import get_card_id
+
+card_path = Path(sys.argv[1])
+try:
+    text = card_path.read_text(encoding="utf-8")
+except OSError:
+    print(f"[skip] 无法读取卡文件: {card_path}")
+    raise SystemExit(0)
+
+card_id = get_card_id(card_path)
+related = re.search(r"关联：([^\n·]*)", text)
+related = related.group(1) if related else ""
+plan_m = re.search(r"([a-z]{2,4})-plan-([0-9]{3})", related)
+if not plan_m:
+    print(f"[skip] {card_id} 卡头无 prefix-plan-NNN 关联方案，跳过方案关联卡同步")
+    raise SystemExit(0)
+
+plan_prefix, plan_num = plan_m.group(1), plan_m.group(2)
+plans_dir = Path("docs") / "projects" / plan_prefix / "plans"
+matches = sorted(plans_dir.glob(f"{plan_num}-*.md"))
+if not matches:
+    print(f"[warn] {card_id} 关联方案文件不存在: docs/projects/{plan_prefix}/plans/{plan_num}-*.md")
+    raise SystemExit(0)
+
+rel_path = str(Path("docs") / "projects" / plan_prefix / "plans" / matches[0].name)
+plan_text = matches[0].read_text(encoding="utf-8")
+cur_cards = ""
+m = re.search(r"关联卡：([^\n]*)", plan_text)
+if m:
+    cur_cards = m.group(1).strip()
+
+existing = [c.strip() for c in cur_cards.split(",") if c.strip()] if cur_cards else []
+# P0 全链路修复：卡已在关联卡中也调 update_plan（cards 不变）→ 触发 sync_plan_progress 重算方案进度。
+# 此前直接 skip：卡关闭后方案「进度：」行永不更新（卡是 convert 转卡时写进关联卡的，永远命中此分支）。
+new_cards = ", ".join(existing + [card_id]) if card_id not in existing else ", ".join(existing)
+result = update_plan(Path("."), rel_path=rel_path, cards=new_cards)
+if "error" in result:
+    print(f"[warn] 方案关联卡同步失败: {result['error']}")
+else:
+    print(f"[ok] {card_id} 已加入方案 {plan_prefix}-plan-{plan_num} 关联卡: {new_cards}")
+PY
+}
+
 approve_one() {
   local id="$1"
   local path stem branch
@@ -281,25 +370,68 @@ approve_one() {
   echo "== 合入批准 ${id} (${branch}) =="
   print_external_repo_hint "$path" "$branch"
 
+  # 架构漂移门禁（第三步）：合入前机械检查（卡头项目/退役端口/版本一致/死文件）
+  if ! bash scripts/arch-drift-check.sh >/dev/null 2>&1; then
+    echo "[error] 架构漂移门禁未通过——阻断合入。运行 bash scripts/arch-drift-check.sh 查看明细。" >&2
+    return 1
+  fi
+
   # 机审证据 = 分支信封（git show origin/<branch>:<卡路径> 含 机审：通过）
+  # 分支存在时信封是唯一权威，不回退本地卡（消除本地回退后门）。
   git fetch origin main >/dev/null 2>&1
   git fetch origin "$branch" >/dev/null 2>&1 || true
   local audit_ok=false
-  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
-    && git show "origin/${branch}:${path}" 2>/dev/null \
+  local has_branch=false
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    has_branch=true
+  fi
+
+  if $has_branch; then
+    # 分支存在 → 分支信封是唯一证据，不回退本地 docs/dispatch
+    if git show "origin/${branch}:${path}" 2>/dev/null \
       | "$PYTHON_BIN" -c "
 import sys
 sys.path.insert(0, '.')
 from server.board.models import machine_audit_passed_text
 sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
 "; then
-    audit_ok=true
-  elif check_audit "$path"; then
-    # 已合入/无分支（close-only）场景：本地卡机审区
-    audit_ok=true
+      audit_ok=true
+    fi
+  elif [[ "$CLOSE_ONLY" == true ]]; then
+    # close-only 且无分支：回退本地卡机审区（分支已删/已合入），加告警标记
+    if check_audit "$path"; then
+      echo "[WARN] ${id}: 分支已删除，回退本地卡机审区（close-only 模式，请人工确认机审证据）" >&2
+      audit_ok=true
+    fi
   fi
   if [[ "$audit_ok" != true ]]; then
     echo "[ERROR] ${id}: 分支信封无机审通过证据（origin/${branch} 卡无机审区，本地卡也无）" >&2
+    return 1
+  fi
+
+  # V6：机审钉 commit——信封「机审：通过（被审 <sha>）」存在时，校验分支无漂移：
+  # 被审 sha..tip 之间只允许卡文件改动（机审区 pin 提交）；出现非卡改动 = 机审后漂移 → 拒绝。
+  local pinned
+  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | head -1 || true)"
+  if [[ -n "$pinned" ]]; then
+    local pin_sha
+    pin_sha="${pinned#被审 }"
+    if ! git rev-parse --verify "${pin_sha}^{commit}" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
+      return 1
+    fi
+    local drift_rc=0
+    git diff --quiet "${pin_sha}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
+    drift_rc=$?
+    if [[ "$drift_rc" -ne 0 ]]; then
+      echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审" >&2
+      return 1
+    fi
+  fi
+
+  # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
+  if ! check_maintenance "$path" "$branch"; then
+    echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
     return 1
   fi
 
@@ -341,6 +473,17 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
 
   close_card "$path"
+  sync_plan_cards "$path"
+  # 机审命中率台账（v4 · 2026-08-14 复审 P1-C）：合入后关卡（无返工）→ 通过行标命中
+  "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+try:
+    from server.board.audit_ledger import mark_card_pass_hit
+    mark_card_pass_hit(sys.argv[1])
+except Exception:
+    pass
+" "$id" || true
   git add -- "$path"
   if ! git diff --cached --quiet; then
     git commit -m "$(cat <<EOF
@@ -384,8 +527,89 @@ PY
   echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
 
   git push origin main
-  echo "[OK] 合入批准完成：${id} → 请 2017 pull（部署流程）"
+  echo "[OK] 合入批准完成：${id} → 批次全部收口后将自动触发 2017 部署检查"
 }
+
+deploy_check_2017() {
+  local prod_repo="${CCC_PROD_REPO:-/Users/fan/program/CCC}"
+  echo "== 正在触发 2017 生产部署检查 =="
+
+  # 1. 如果当前运行路径就是 2017 生产目录，直接本地执行 deploy-ccc.sh
+  if [[ "${PROJECT_ROOT}" == "${prod_repo}" ]]; then
+    echo "[INFO] 当前已在 2017 生产目录中，直接运行部署流程..."
+    if "${prod_repo}/scripts/deploy-ccc.sh"; then
+      echo "[OK] 2017 生产部署成功！"
+    else
+      echo "[ERROR] 2017 生产部署失败！" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  # 2. 如果在本地能找到 2017 生产目录（说明在同一个系统的其它 worktree 里）
+  if [[ -d "${prod_repo}/.git" ]]; then
+    echo "[INFO] 检测到本地 2017 生产目录，检查是否需要同步部署..."
+    git -C "${prod_repo}" fetch -q origin >/dev/null 2>&1 || true
+    local prod_h remote_h
+    prod_h="$(git -C "${prod_repo}" rev-parse HEAD 2>/dev/null || echo '')"
+    remote_h="$(git -C "${prod_repo}" rev-parse origin/main 2>/dev/null || echo '')"
+    if [[ -n "$prod_h" && "$prod_h" != "$remote_h" ]]; then
+      echo "[INFO] 2017 生产 HEAD (${prod_h:0:7}) 落后于 origin/main (${remote_h:0:7})，开始部署..."
+      if "${prod_repo}/scripts/deploy-ccc.sh"; then
+        echo "[OK] 2017 生产部署成功！"
+      else
+        echo "[ERROR] 2017 生产部署失败！" >&2
+        return 1
+      fi
+    else
+      echo "[OK] 2017 生产已经是最新 (${prod_h:0:7})，无需部署。"
+    fi
+    return 0
+  fi
+
+  # 3. 如果本地没有该目录，尝试通过 SSH 到 2017 生产机进行检查
+  echo "[INFO] 本地未找到 2017 生产目录，尝试通过 SSH 检查 ${CCC_SSH_HOST}..."
+  local ssh_cmd="ssh -o BatchMode=yes -o ConnectTimeout=5 ${CCC_SSH_HOST}"
+  if ! $ssh_cmd "echo ping" >/dev/null 2>&1; then
+    echo "[WARN] 无法 SSH 连接 ${CCC_SSH_HOST}，跳过 2017 部署检查。"
+    return 0
+  fi
+
+  local check_cmd="cd ${prod_repo} && git fetch -q origin && prod_h=\$(git rev-parse HEAD) && remote_h=\$(git rev-parse origin/main) && if [[ \"\$prod_h\" != \"\$remote_h\" ]]; then echo 'BEHIND'; else echo 'UP_TO_DATE'; fi"
+  local res
+  res=$($ssh_cmd "${check_cmd}" 2>/dev/null || echo "ERROR")
+  if [[ "$res" == "BEHIND" ]]; then
+    echo "[INFO] 2017 生产落后于 origin/main，通过 SSH 执行部署..."
+    if $ssh_cmd "cd ${prod_repo} && ./scripts/deploy-ccc.sh"; then
+      echo "[OK] 2017 生产通过 SSH 部署成功！"
+    else
+      echo "[ERROR] 2017 生产通过 SSH 部署失败！" >&2
+      return 1
+    fi
+  elif [[ "$res" == "UP_TO_DATE" ]]; then
+    echo "[OK] 2017 生产通过 SSH 检查：已经是最新，无需部署。"
+  else
+    echo "[WARN] 通过 SSH 检查 2017 生产状态失败，返回值为: ${res}"
+  fi
+}
+
+# ── C2: 待合入积压提醒 ──
+"$PYTHON_BIN" -c "
+import os, sys
+sys.path.insert(0, '.')
+try:
+    from server.board.loader import load_dispatch_cards
+    from server.board.queries import ready_for_merge
+    items = load_dispatch_cards('docs/dispatch')
+    payload = ready_for_merge(items)
+    warning = payload.get('warning')
+    if warning:
+        print('\n' + '='*60, file=sys.stderr)
+        print('[ALERT] ' + warning, file=sys.stderr)
+        print('='*60 + '\n', file=sys.stderr)
+except Exception as e:
+    pass
+" || true
 
 FAILED=0
 for id in "${IDS[@]}"; do
@@ -399,3 +623,7 @@ if [[ "$FAILED" -gt 0 ]]; then
   exit 1
 fi
 echo "[OK] 全部合入批准完成（${#IDS[@]}）"
+
+if [[ ${#IDS[@]} -gt 0 ]]; then
+  deploy_check_2017
+fi

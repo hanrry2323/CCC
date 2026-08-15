@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { generateId, desktopThreadId } from './utils.js';
-import { loadProjects, loadSession, loadHubConfig } from './api.js';
+import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects } from './api.js';
 import { initChatStatus } from './chatStatus.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -17,6 +17,7 @@ import { initRouter, navigate } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
+import { mountPlans, unmountPlans } from './pages/plansPage.js';
 import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js';
 import {
   initDualPaneControls,
@@ -193,35 +194,47 @@ async function onHubRoute(route) {
   document.title =
     route === 'chat' ? 'CCC · 对话' :
       route === 'board' ? 'CCC · 看板' :
-        route === 'roadmap' ? 'CCC · 线路图' :
-          route === 'console' ? 'CCC · 控制台' :
+        route === 'plans' ? 'CCC · 计划' :
+          route === 'roadmap' ? 'CCC · 线路图' :
+            route === 'console' ? 'CCC · 控制台' :
             route === 'ops' ? 'CCC · 运维' :
               'CCC';
   if (route === 'chat') {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    unmountPlans();
     unmountRoadmap();
     // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
     import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
   } else if (route === 'board') {
     unmountConsole();
     unmountOps();
+    unmountPlans();
     unmountRoadmap();
     await mountBoard(document.getElementById('view-board'));
+  } else if (route === 'plans') {
+    unmountBoard();
+    unmountConsole();
+    unmountOps();
+    unmountRoadmap();
+    await mountPlans(document.getElementById('view-plans'));
   } else if (route === 'roadmap') {
     unmountBoard();
     unmountConsole();
     unmountOps();
+    unmountPlans();
     await mountRoadmap(document.getElementById('view-roadmap'));
   } else if (route === 'console') {
     unmountBoard();
     unmountOps();
+    unmountPlans();
     unmountRoadmap();
     await mountConsole(document.getElementById('view-console'));
   } else if (route === 'ops') {
     unmountBoard();
     unmountConsole();
+    unmountPlans();
     unmountRoadmap();
     await mountOps(document.getElementById('view-ops'));
   } else {
@@ -302,12 +315,19 @@ async function init() {
   }
 
   try {
-    const projects = await loadProjects();
-    setupProjectSelect(projects);
-    initAppSidebar(projects);
-    const map = {};
-    for (const p of projects) map[p.id] = p.workspace || p.id;
-    state.set('projectWorkspaceMap', map);
+    let folders = [];
+    try {
+      folders = await loadClaudeProjects(); // Claude 工作区文件夹（IDE 风格左栏）
+    } catch (_) {
+      folders = [];
+    }
+    if (folders.length) {
+      initAppSidebar(folders);
+    } else {
+      const projects = await loadProjects();
+      setupProjectSelect(projects);
+      initAppSidebar(projects);
+    }
   } catch (e) {
     window.showToast('项目加载失败: ' + e.message, 'error');
     initAppSidebar([]);
@@ -427,6 +447,7 @@ async function init() {
 
   document.addEventListener('load-session', async (e) => {
     const { id } = e.detail;
+    window.__claudeSession__ = null; // 普通会话：清 Claude 续接标记
     try {
       snapshotActiveTab();
       const data = await loadSession(id, state.get('currentProject'));
@@ -452,6 +473,30 @@ async function init() {
       refreshSidebar();
     } catch (err) {
       window.showToast('加载对话失败', 'error');
+    }
+  });
+
+  document.addEventListener('open-claude-session', async (e) => {
+    const { project, path, file } = e.detail || {};
+    if (!file) return;
+    const cwd = path || project || 'ccc';
+    try {
+      window.__claudeSession__ = file; // 发送时 bridge 用该原生会话续接
+      if (path) window.__claudeProjectPath__ = path;
+      state.set('currentProject', cwd.split('/').pop() || cwd);
+      const msgs = await loadClaudeMessages(cwd, file);
+      loadMessages({ messages: msgs, title: 'Claude 历史' });
+      state.set('currentSessionId', 'claude:' + file);
+      const tabs = state.get('tabs') || [];
+      const tab = tabs.find((t) => t.id === state.get('activeTabId'));
+      if (tab) {
+        tab.title = 'Claude 历史';
+        tab.projectId = cwd;
+      }
+      renderProjectTabs(state.get('activeTabId'));
+      refreshSidebar();
+    } catch (err) {
+      window.showToast('加载 Claude 历史失败', 'error');
     }
   });
 

@@ -1,6 +1,6 @@
 # 任务卡 T47 · 项目+会话模型重构 + 左栏（借鉴 Codex/Cursor）（Claude Code 执行）
 
-> 关联：老板指出「左侧栏展示逻辑错误——应该项目+对话，用项目区分，不是任务分组；展示逻辑借鉴 Codex/Cursor 成熟工具」· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
+> 关联：ccc-plan-001· 依据：Codex 取证——HTTP 左栏数据源 = `/board/summaries` 任务卡项目分组（INT-120/新阶段…），非真实业务项目；桌面端已有 DesktopProject/DesktopThread 模型（LocalSessionStore 持久化），HTTP 端未对齐
 > 执行体：Claude Code（M1 开发副本）· 验收：Codex（严格，无头实测 + 双壳对照）· 状态：已关闭 · 日期：2026-08-04 · 派发：manual · 项目：ccc
 > 并行执行：**工作目录 `/Users/apple/program/ccc-ws-t47`（分支 `codex/t47-project-sidebar`）**，与 T46 并行；文件所有权见下，禁止越界改 T46 文件。
 
@@ -88,3 +88,21 @@
 - 会话持久化（session_store.py 落盘）+ 左栏会话树交互（新建/切换/重命名/清空）✅
 - 回归：pytest 373（合入后全量）、swift all passed、ruff/py_compile 全绿 ✅
 - 范围守界：未动 message.js/chatStatus/流式消费（T46 所有权）✅
+
+## 机审区
+
+**机审：通过**
+- 说明：历史卡，无存档证据，按看板已关闭态标注
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

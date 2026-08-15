@@ -23,8 +23,10 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -47,10 +49,177 @@ from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
 
+# 业务仓 worktree 失败计数（2026-08-12 · 隔离升级）：进程内累计，run_once 汇总后清零
+_WORKTREE_FAILURES = 0
+_WORKTREE_FAILURES_LOCK = threading.Lock()
+
+
+def _bump_worktree_failures() -> None:
+    global _WORKTREE_FAILURES
+    with _WORKTREE_FAILURES_LOCK:
+        _WORKTREE_FAILURES += 1
+
+
+def _business_project(work: Work):
+    """按 work.project 找 registry 业务仓条目（须有 2017 路径 + 隔离根）。"""
+    if not work or not work.project:
+        return None
+    from server.board.registry import load_projects
+
+    for e in load_projects():
+        if ((e.prefix and e.prefix == work.project) or e.id == work.project) and e.path_mac2017 and e.isolation_worktree_root:
+            return e
+    return None
+
+
+def _business_worktree_path(project, work_id: str) -> Path:
+    """业务仓每卡 worktree 路径：`<隔离根>/<work_id>`。"""
+    return Path(project.isolation_worktree_root).expanduser() / work_id.lower()
+
+
+def _worktree_branch_seed(repo: Path, branch: str) -> str:
+    """worktree 新分支的种子 ref。
+
+    远端同名分支存在 → 从其恢复（保留执行体已 push 的产物与卡回写）；
+    否则从 origin/main 新建。2026-08-12：强重建若一律从 main 新建，
+    会丢掉执行体回写视图 → 机审读占位卡 → 空回写误打回（mx030 根因）。
+    """
+    res = subprocess.run(
+        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/remotes/origin/{branch}"],
+        capture_output=True,
+        check=False,
+    )
+    if res.returncode == 0:
+        return f"origin/{branch}"
+    return "origin/main"
+
+
+def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str | None, str | None]:
+    """确保业务仓每卡 worktree 存在；返回 (worktree_path | None, error | None)。
+
+    生命周期对齐 CCC worktree：成功收单复用 / 未收单重置 / 脏或分叉强重建。
+    失败返回错误（调用方记 infra 冷却，禁止回退业务仓主目录）。
+    """
+    repo = Path(project.path_mac2017).expanduser()
+    if not repo.is_dir():
+        return None, f"业务仓不存在: {repo}"
+    target = _business_worktree_path(project, work.id)
+    card_id_slug = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
+    branch = f"codex/{card_id_slug}"
+
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo), "fetch", "origin", "main"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except Exception as exc:
+        logger.warning("业务仓 fetch 失败（继续尝试）: %s (%s)", repo, exc)
+
+    def _try_add(new_branch: bool) -> tuple[int, str]:
+        if new_branch:
+            cmd = [
+                "git",
+                "-C",
+                str(repo),
+                "worktree",
+                "add",
+                str(target),
+                "-b",
+                branch,
+                _worktree_branch_seed(repo, branch),
+            ]
+        else:
+            cmd = ["git", "-C", str(repo), "worktree", "add", str(target), branch]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        return res.returncode, res.stderr.strip()
+
+    if target.exists():
+        # 上次执行是否成功收单（sidecar 契约：只信日志 ok:true）
+        success = False
+        log_file = log_dir / f"{work.id}.log"
+        if log_file.is_file():
+            try:
+                for line in reversed(log_file.read_text(encoding="utf-8", errors="replace").splitlines()):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(data, dict) and data.get("ok") is True:
+                        success = True
+                        break
+            except Exception:
+                pass
+        if success:
+            return str(target), None
+        # 未成功收单：重置
+        subprocess.run(["git", "checkout", "--", "."], cwd=target, capture_output=True, check=False, timeout=30)
+        subprocess.run(["git", "clean", "-fd"], cwd=target, capture_output=True, check=False, timeout=60)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=target, capture_output=True, text=True, check=False
+        )
+        is_clean = status.returncode == 0 and not status.stdout.strip()
+        if is_clean:
+            merge_base = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
+                cwd=target,
+                capture_output=True,
+                check=False,
+            )
+            if merge_base.returncode != 0:
+                is_clean = False
+        if is_clean:
+            return str(target), None
+        # 脏或分叉：强重建
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(target)], capture_output=True, check=False, timeout=60)
+        subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, check=False, timeout=30)
+        subprocess.run(["git", "-C", str(repo), "branch", "-D", branch], capture_output=True, check=False, timeout=30)
+        rc, err = _try_add(new_branch=True)
+        if rc != 0:
+            rc2, err2 = _try_add(new_branch=False)
+            if rc2 != 0:
+                return None, f"业务仓 worktree 重建失败: {err or err2}"
+        return str(target), None
+    else:
+        rc, err = _try_add(new_branch=True)
+        if rc != 0:
+            rc2, err2 = _try_add(new_branch=False)
+            if rc2 != 0:
+                return None, f"业务仓 worktree 创建失败: {err or err2}"
+        return str(target), None
+
 logger = logging.getLogger("ccc.engine")
 
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
+MAX_MARKER_AGE_SECONDS = 7200  # 2h：running 标记超过此时间强制回收，防僵尸进程永久占用槽位
+
+# ── git 超时统一包装 ──
+_GIT_DEFAULT_TIMEOUT = 30  # 默认值（git 命令通常 <30s）
+
+
+def _git_run(
+    args: list[str],
+    timeout: int = _GIT_DEFAULT_TIMEOUT,
+    *,
+    cwd: Path | str | None = None,
+    check: bool = True,
+    capture: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """统一 git 调用：封装 timeout，避免磁盘锁/网络延迟永久阻塞。"""
+    return subprocess.run(
+        args,
+        cwd=str(cwd) if cwd else None,
+        capture_output=capture,
+        text=True,
+        timeout=timeout,
+        check=check,
+    )
 
 _probe_failures_count = 0
 
@@ -125,8 +294,19 @@ def probe_relay(url: str, timeout: int = 5) -> bool:
         return False
 
 
-def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tuple[bool, str]:
-    """识别基础设施故障（超时/网络/上游不可用）——这类失败不进业务重试预算、不打回。"""
+def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path, phase: str = "run") -> tuple[bool, str]:
+    """识别基础设施故障（超时/网络/上游不可用）——这类失败不进业务重试预算、不打回。
+
+    V4：只扫**当前阶段**的日志——执行阶段扫 ``{id}.log``，机审阶段扫 ``{id}.audit.log``。
+    原实现两日志都扫，旧 audit 日志中的上游特征会污染执行阶段的 infra 判定。
+    """
+    # 2026-08-12 隔离升级：派发阶段返回的 worktree/基础设施错误直接判 infra（日志可能尚未落盘）
+    for problem in problems:
+        pl = problem.lower()
+        if "基础设施" in problem:
+            return True, f"基础设施特征: {problem[:80]}"
+        if "worktree" in pl and ("失败" in problem or "创建" in problem or "异常" in problem):
+            return True, f"基础设施特征: {problem[:80]}"
     keywords = [
         "connection error",
         "network error",
@@ -147,7 +327,7 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tu
     ]
     # 50x 仅在有 HTTP/状态码语义时判定基础设施失败；裸 "503"（行号/数值/端口）不误判
     status_5xx = re.compile(r"(?i)(?:http|status|错误|error|code)[^\n]{0,20}50[234]")
-    for log_name in (f"{work_id}.log", f"{work_id}.audit.log"):
+    for log_name in (f"{work_id}.log",) if phase != "audit" else (f"{work_id}.audit.log",):
         log_path = log_dir / log_name
         if not log_path.is_file():
             continue
@@ -167,6 +347,92 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path) -> tu
 def _is_persistence_failure(reasons: list[str]) -> bool:
     """机审已通过但证据落盘/推送失败 → 引擎侧故障（audit 日志无业务否定）。"""
     return any(("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r) for r in reasons)
+
+
+def _write_pipeline_warning(event: str, work_id: str, detail: str) -> None:
+    """写 pipeline 告警状态（不抛异常，Engine 运行时自动采集）。"""
+    try:
+        from server.engine.pipeline_status import write_pipeline_status
+
+        write_pipeline_status(
+            event=event,
+            work_id=work_id,
+            detail=detail,
+            level="warning",
+        )
+    except Exception:
+        pass
+
+
+def _mark_branch_card_state(
+    work: Work,
+    registry: ExecutorRegistry,
+    cfg: dict[str, Any],
+    log_dir: Path,
+    state_text: str,
+) -> None:
+    """机审打回：把远端分支卡状态落指定状态并推送。
+
+    2026-08-12 终态权威补齐：分支信封与磁盘卡同属终态权威；机审打回若不改分支卡，
+    下轮 FileBoardStore 又会把「已回写」残留读成 DONE → 无限机审（mx031/032 假机审根因）。
+    - 重试路径（回待分派）：落「待分派（机审打回·重试中）」，信封读不到 → 按磁盘 TODO 重试执行
+    - 重试耗尽：落「打回（机审：不通过）」，信封读打回 → 不再机审
+    失败不阻断打回（打回本身已由磁盘/日志权威化）。
+    """
+    try:
+        wt_hint = _worktree_hint_for(work, registry)
+        if not wt_hint or not os.path.isdir(wt_hint) or not work.card_path:
+            return
+        if "docs/dispatch" not in work.card_path:
+            return
+        card_file = Path(wt_hint) / work.card_path
+        if not card_file.is_file():
+            return
+        text = card_file.read_text(encoding="utf-8")
+        new_text, n = re.subn(
+            r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)",
+            rf"\g<1>{state_text}",
+            text,
+            count=1,
+        )
+        if n == 0 or new_text == text:
+            return
+        # 打回次数修复（统一化）：机审打回（终态）时递增卡头 打回次数：N
+        if state_text.startswith("打回"):
+            from server.board.card_header import bump_reject_count
+
+            new_text = bump_reject_count(new_text)
+        card_file.write_text(new_text, encoding="utf-8")
+        branch = f"codex/{Path(work.card_path).stem.lower()}"
+
+        # 检查 rc：git add/commit/push 失败时保留脏现场 + 写告警
+        add = subprocess.run(["git", "add", "--", work.card_path], cwd=wt_hint, capture_output=True, check=False, timeout=30)
+        if add.returncode != 0:
+            logger.error("机审打回落分支 git add 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, add.stderr.strip()[:200])
+            _write_pipeline_warning("git_add_failed", work.id, f"git add 失败: {add.stderr.strip()[:200]}")
+            return
+
+        commit = subprocess.run(
+            ["git", "commit", "-m", f"chore(engine): {work.id} 机审打回，状态落分支信封（防死循环）"],
+            cwd=wt_hint,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        if commit.returncode != 0:
+            logger.error("机审打回落分支 git commit 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, commit.stderr.strip()[:200])
+            _write_pipeline_warning("git_commit_failed", work.id, f"git commit 失败: {commit.stderr.strip()[:200]}")
+            return
+
+        push = subprocess.run(["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False, timeout=60)
+        if push.returncode != 0:
+            logger.error("机审打回落分支 git push 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, push.stderr.strip()[:200])
+            _write_pipeline_warning("git_push_failed", work.id, f"git push 失败: {push.stderr.strip()[:200]}")
+            return
+
+        logger.warning("机审打回已落分支卡状态: work=%s branch=%s", work.id, branch)
+    except Exception as exc:
+        logger.warning("机审打回落分支卡失败（不阻断打回）: work=%s (%s)", work.id, exc)
 
 
 def _infra_cooldown_seconds(cfg: dict[str, Any]) -> int:
@@ -265,6 +531,111 @@ def _infra_cooldown_active(
         return False
 
 
+def _business_repo_has_new_commit(work: Work, worktree_path: str) -> bool:
+    """业务仓型任务（registry 指向外部仓）产物检查。
+
+    当 CCC worktree 无 commit 时（业务仓任务在外部仓开发），回退检查 registry 指向的
+    业务仓对应 codex 分支相对 origin/main 是否有新 commit。流程修正（2026-08-10）：
+    clw011 业务开发在 clwarp 仓，CCC worktree 只应含卡回写，机械门禁只看 worktree
+    会把业务仓产物误判为空回写 → 打回死循环。
+    """
+    if not work.project or not work.card_path:
+        return False
+    try:
+        from server.board.registry import load_projects
+
+        projects = load_projects()
+        entry = next(
+            (e for e in projects if (e.prefix and e.prefix == work.project) or e.id == work.project),
+            None,
+        )
+        if entry is None or not entry.path_mac2017:
+            return False
+        repo = Path(entry.path_mac2017).expanduser()
+        if not repo.is_dir():
+            return False
+    except Exception:
+        return False
+    branch = f"codex/{Path(work.card_path).stem.lower()}"
+    try:
+        # 2026-08-12 隔离升级：业务仓产物在 worktree 分支上，先 fetch 确保远端 ref 在场
+        subprocess.run(
+            ["git", "-C", str(repo), "fetch", "origin", branch],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        res = subprocess.run(
+            ["git", "-C", str(repo), "log", "origin/main..origin/" + branch, "--oneline"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+    except Exception:
+        return False
+    if res.returncode != 0:
+        return False
+    return bool(res.stdout.strip())
+
+
+def is_empty_writeback_or_placeholder(work: Work, worktree_path: str) -> tuple[bool, str]:
+    """判定是否为空回写（回写 diff 为空 或 卡 ## 维护区 为模板占位/空白）。"""
+    if worktree_path:
+        has_commit = _worktree_has_new_commit(worktree_path)
+        has_diff = _worktree_has_nonempty_diff(worktree_path)
+        if not (has_commit and has_diff):
+            # 流程修正（2026-08-10）：业务仓型任务 worktree 无 commit 时，
+            # 回退检查业务仓对应 codex 分支产物（clw011 误打回根因）
+            if _business_repo_has_new_commit(work, worktree_path):
+                logger.info("worktree 无 commit 但业务仓分支有产物，放行: work=%s", work.id)
+            else:
+                return True, "回写 diff 为空（未在 worktree 内产生新 commit 或有效 diff）"
+
+    card_file_path = Path(work.card_path)
+    if worktree_path:
+        wt_card = _worktree_card_candidate(worktree_path, work.card_path)
+        if wt_card and wt_card.is_file():
+            card_file_path = wt_card
+
+    text = None
+    if card_file_path.is_file():
+        try:
+            text = card_file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning("检查空回写/维护区异常: %s", e)
+    if text is None:
+        # 2026-08-12 v2：worktree 卡缺失/损坏 → 回退远端分支卡（执行体 push 的真值）
+        text = _read_branch_card_text(work)
+    if text:
+        if "## 维护区" not in text:
+            return True, "缺失 ## 维护区 节（回写时必填）"
+        seg = text.split("## 维护区", 1)[1]
+        seg = seg.split("## ", 1)[0]
+
+        import re
+
+        items = re.findall(r"^(\d+)\. \*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]", seg, re.M)
+        if len(items) < 4:
+            return True, "## 维护区 四问格式不完整，仍为占位模板"
+
+        for num, name, choice in items:
+            choice_strip = choice.strip()
+            if "是/否" in choice_strip or "有/无" in choice_strip or choice_strip not in ("是", "否", "有", "无"):
+                return True, f"## 维护区 第 {num} 问「{name.strip()}」未勾选或仍为占位"
+
+        notes = re.findall(r"^   - 说明：(.+)$", seg, re.M)
+        if len(notes) < 4:
+            return True, "## 维护区 说明少于 4 条，仍为占位模板"
+        for note in notes:
+            n_strip = note.strip()
+            if not n_strip or "占位" in n_strip or "逐项勾选" in n_strip or "说明：" in n_strip:
+                return True, "## 维护区 说明为空或包含占位文本"
+
+    return False, ""
+
+
 def max_retries_from_cfg(cfg: dict[str, Any]) -> int:
     """失败回待分派上限。``EXECUTOR_RETRY_ONCE=false`` → 0（首次即打回）。"""
     retry_enabled = str(cfg.get("EXECUTOR_RETRY_ONCE", "true")).lower() in ("true", "1", "yes")
@@ -276,23 +647,61 @@ def max_retries_from_cfg(cfg: dict[str, Any]) -> int:
         return 3
 
 
+def _is_manual_or_remote_executor(work: Work) -> bool:
+    """判定执行体是否为「不可自愈」类型：manual / W 号（跨节点 Worker 认领）。
+
+    sidecar 契约（ccc-plan-021）：manual/W 号卡由人工或远端 Worker 认领，
+    Engine 无本地 PID 可收单，打回后若残留 sidecar 流程态会挂死（clw019 根因）。
+    此类卡打回/重试出口必须立即 clear sidecar，磁盘卡为终态唯一权威。
+    """
+    ex = (work.executor or "").strip().lower()
+    if not ex:
+        return False
+    if "manual" in ex:
+        return True
+    # W 号（W1-W9）或跨节点 Worker 标识
+    import re as _re
+
+    return bool(_re.match(r"^w\d+$", ex))
+
+
 def _fail_retry_or_reject(
     work: Work,
     store: BoardStore,
     problems: list[str],
     cfg: dict[str, Any],
+    log_dir: str | Path | None = None,
 ) -> bool:
     """失败：写原因；未达上限 → 待分派并 ``retry_count+=1``；否则打回。
+
+    sidecar 契约（ccc-plan-021）：重试（可自愈）只写 retry_count、清流程态；
+    打回（不可自愈，含 manual/W 号卡）立即 clear sidecar，磁盘卡终态权威。
 
     Returns:
         True 若已回待分派（将再派）；False 若已打回。
     """
     max_r = max_retries_from_cfg(cfg)
     reasons = list(problems) if problems else ["失败（未附原因）"]
+    # 不可自愈类型（manual/W 号）：不打业务重试预算，直接打回 + 立即 clear sidecar
+    if _is_manual_or_remote_executor(work):
+        work.transition(State.REJECTED, problems=reasons)
+        store.save_work(work)
+        if log_dir:
+            from server.engine.runtime_state import clear_card_state
+
+            clear_card_state(log_dir, work.id)
+        logger.warning("不可自愈执行体（manual/远端）打回并清 sidecar: work=%s problems=%s", work.id, reasons[:2])
+        return False
     if work.retry_count < max_r:
         work.retry_count += 1
         work.transition(State.TODO, problems=reasons)
         store.save_work(work)
+        if log_dir:
+            from server.engine.runtime_state import write_card_state, clear_card_state
+
+            # 可自愈：写重试预算，清流程态残留（sidecar 不存流程终态）
+            write_card_state(log_dir, work.id, retry_count=work.retry_count)
+            clear_card_state(log_dir, work.id)
         logger.info(
             "失败回待分派重试: work=%s retry=%d/%d problems=%s",
             work.id,
@@ -303,6 +712,10 @@ def _fail_retry_or_reject(
         return True
     work.transition(State.REJECTED, problems=reasons)
     store.save_work(work)
+    if log_dir:
+        from server.engine.runtime_state import clear_card_state
+
+        clear_card_state(log_dir, work.id)
     logger.warning(
         "重试用尽打回: work=%s retry=%d/%d problems=%s",
         work.id,
@@ -359,11 +772,69 @@ def _worktree_hint_for(work: Work, registry: ExecutorRegistry) -> str:
     return get_worktree_path(wt_base, work.id)
 
 
-def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
+def _worktree_branch_tip(worktree_hint: str, branch: str) -> str | None:
+    """读 worktree 分支远端 tip（机审启动前记录 = 被审 commit）。"""
+    if not worktree_hint:
+        return None
+    try:
+        res = subprocess.run(
+            ["git", "-C", worktree_hint, "rev-parse", f"origin/{branch}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if res.returncode == 0:
+            return res.stdout.strip() or None
+    except Exception:
+        return None
+    return None
+
+
+def _pin_audit_commit(card_path: str, sha: str) -> bool:
+    """机审信封钉被审 commit：把「机审：通过」改写为「机审：通过（被审 <sha12>）」（幂等）。
+
+    V6：合入前凭此行校验分支无漂移（机审通过后执行体再 push 非卡改动 → 拒绝合入）。
+    """
+    if not sha:
+        return True
+    try:
+        text = Path(card_path).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if "被审 " in text:
+        return True
+    m = re.search(r"^(机审：通过\s*)$", text, flags=re.MULTILINE)
+    if not m:
+        return True
+    text = text[: m.start()] + f"机审：通过（被审 {sha[:12]}）\n" + text[m.end() :]
+    try:
+        Path(card_path).write_text(text, encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+def _is_remote_work(work: Work) -> bool:
+    """判定卡是否为远端 Worker 卡（认领协议）：执行体 W 号 或 派发 scheduler|remote。
+
+    remote 卡无本地 worktree → 机审/证据检查走分支信封（ccc-plan-020 v2）。
+    """
+    import re as _re
+
+    if work.dispatch in ("scheduler", "remote"):
+        return True
+    return bool(_re.fullmatch(r"W\d+", (work.executor or "").strip()))
+
+
+def _audit_evidence_passed(work: Work, worktree_hint: str, main_repo: Path | None = None) -> bool:
     """机审证据是否已在信封（**分支 git 证据**为准，生产卡兜底）。
 
     只认进 git 的证据：worktree 卡文件有标记但分支没有（commit 被吞的洞）
     不算通过，避免死结（xy016 事故）。
+
+    remote 卡（无本地 worktree）：走分支信封 —— `git show origin/<codex分支>:<卡>` 读机审区，
+    生产卡兜底作为最终 fallback（ccc-plan-020 v2 · 机审 remote 适配）。
     """
     if worktree_hint:
         wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
@@ -385,6 +856,27 @@ def _audit_evidence_passed(work: Work, worktree_hint: str) -> bool:
 
                 if machine_audit_passed_text(res.stdout):
                     return True
+        return _card_machine_audit_passed(work.card_path)
+    # remote 卡（无本地 worktree）：分支信封读机审区
+    if _is_remote_work(work) and work.card_path:
+        try:
+            repo = main_repo if main_repo is not None else Path(__file__).resolve().parents[2]
+            branch = f"codex/{Path(work.card_path).stem.lower()}"
+            rel = Path(work.card_path).as_posix()
+            res = subprocess.run(
+                ["git", "-C", str(repo), "show", f"origin/{branch}:{rel}"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if res.returncode == 0:
+                from server.board.models import machine_audit_passed_text
+
+                if machine_audit_passed_text(res.stdout):
+                    return True
+        except Exception:
+            pass
     return _card_machine_audit_passed(work.card_path)
 
 
@@ -538,7 +1030,8 @@ def _cleanup_closed_worktrees(
                 if disk_base in ("待分派", "执行中", "已回写"):
                     # 保护：进行中/已回写/已收单卡的 worktree 是运行现场，一律不予回收
                     should_reap = False
-                elif disk_base in ("已关闭", "打回"):
+                elif disk_base in ("已关闭", "打回", "作废"):
+                    # 人审统一化：作废=终态，worktree 一并回收（此前归「未知状态」分支全失才 reap）
                     should_reap = True
                     if is_dirty:
                         use_force = True
@@ -638,6 +1131,177 @@ def _cleanup_closed_worktrees(
     except Exception as exc:
         logger.warning("分支清理过程异常: %s", exc)
 
+    # 业务仓 worktree 生命周期（2026-08-12 隔离升级）
+    cleaned += _cleanup_business_worktrees(store, log_dir)
+    return cleaned
+
+
+def _cleanup_business_worktrees(store: BoardStore, log_dir: Path) -> int:
+    """业务仓每卡 worktree 回收 + 本地残留分支清理。
+
+    与 CCC worktree 同一套保护语义：执行中/已回写卡保护现场不回收；
+    已关闭/打回/孤儿（分支引用全失）才回收；脏现场回收带 --force。
+    """
+    cleaned = 0
+    try:
+        from server.board.models import base_state
+        from server.board.registry import load_projects
+
+        projects = [p for p in load_projects() if p.isolation_worktree_root and p.path_mac2017]
+    except Exception:
+        return 0
+    if not projects:
+        return 0
+
+    all_works = store.list_work()
+    work_map = {w.id.lower(): w for w in all_works}
+
+    for proj in projects:
+        root = Path(proj.isolation_worktree_root).expanduser()
+        repo = Path(proj.path_mac2017).expanduser()
+        # 用 os.path.isdir（不经 Path.is_dir，避免测试 mock 与 FS 状态不一致）
+        if not os.path.isdir(root) or not os.path.isdir(repo):
+            continue
+
+        # 1. worktree 回收
+        for wt_dir in sorted(root.iterdir()):
+            if not wt_dir.is_dir():
+                continue
+            cid = wt_dir.name
+            work = work_map.get(cid)
+            is_running = (log_dir / f"{cid}.running").is_file() or (log_dir / f"{cid}-audit.running").is_file()
+            try:
+                status = subprocess.run(
+                    ["git", "-C", str(wt_dir), "status", "--porcelain", "-uall"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+                is_dirty = status.returncode != 0 or bool(status.stdout.strip())
+                should_reap = False
+                use_force = False
+
+                def _branch_refs_exist(branch: str) -> bool:
+                    if not branch:
+                        return False
+                    r_remote = subprocess.run(
+                        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/remotes/origin/{branch}"],
+                        capture_output=True,
+                        check=False,
+                    )
+                    r_local = subprocess.run(
+                        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/heads/{branch}"],
+                        capture_output=True,
+                        check=False,
+                    )
+                    return r_remote.returncode == 0 or r_local.returncode == 0
+
+                if is_running:
+                    should_reap = False
+                elif work:
+                    disk_base = base_state(work.state)
+                    if disk_base in ("待分派", "执行中", "已回写"):
+                        should_reap = False
+                    elif disk_base in ("已关闭", "打回", "作废"):
+                        should_reap = True
+                        if is_dirty:
+                            use_force = True
+                    else:
+                        # 未知状态（如作废）：分支引用全失才视为孤儿
+                        branch = f"codex/{Path(work.card_path).stem.lower()}" if work.card_path else f"codex/{cid}"
+                        if not _branch_refs_exist(branch):
+                            should_reap = True
+                            if is_dirty:
+                                use_force = True
+                else:
+                    # 无对应卡：detached/孤儿 worktree 回收；有分支引用的保守保留
+                    head_ref = subprocess.run(
+                        ["git", "-C", str(wt_dir), "symbolic-ref", "--short", "-q", "HEAD"],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    branch = head_ref.stdout.strip()
+                    if branch and _branch_refs_exist(branch):
+                        should_reap = False
+                    else:
+                        should_reap = True
+                        if is_dirty:
+                            use_force = True
+
+                if should_reap:
+                    cmd = ["git", "-C", str(repo), "worktree", "remove", str(wt_dir)]
+                    if use_force:
+                        cmd.append("--force")
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+                    if res.returncode == 0:
+                        subprocess.run(
+                            ["git", "-C", str(repo), "worktree", "prune"],
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                            check=False,
+                        )
+                        cleaned += 1
+                        logger.info("业务仓 worktree 已回收 (force=%s): %s", use_force, wt_dir)
+                    else:
+                        logger.warning("业务仓 worktree remove 失败: %s (%s)", wt_dir, res.stderr.strip())
+            except Exception as exc:
+                logger.warning("业务仓 worktree 清理异常（跳过）: %s (%s)", wt_dir, exc)
+
+        # 2. 本地残留分支清理（远端已删 / 卡已关闭且已合入 main）
+        try:
+            res_branches = subprocess.run(
+                ["git", "-C", str(repo), "branch", "--list", "codex/*"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res_branches.returncode == 0:
+                for line in res_branches.stdout.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("*"):
+                        continue
+                    branch = line.split()[-1]
+                    m = re.search(r"codex/([a-z]{2,4}\d{3})", branch)
+                    if not m:
+                        continue
+                    cid = m.group(1).lower()
+                    work = work_map.get(cid)
+                    remote_branch = f"origin/{branch}"
+                    res_verify = subprocess.run(
+                        ["git", "-C", str(repo), "show-ref", "--verify", f"refs/remotes/{remote_branch}"],
+                        capture_output=True,
+                        check=False,
+                    )
+                    remote_exists = res_verify.returncode == 0
+                    should_delete = False
+                    if not remote_exists:
+                        should_delete = True
+                    elif work and base_state(work.state) == "已关闭":
+                        is_merged = (
+                            subprocess.run(
+                                ["git", "-C", str(repo), "merge-base", "--is-ancestor", remote_branch, "origin/main"],
+                                capture_output=True,
+                                check=False,
+                            ).returncode
+                            == 0
+                        )
+                        if is_merged:
+                            should_delete = True
+                    if should_delete:
+                        del_res = subprocess.run(
+                            ["git", "-C", str(repo), "branch", "-D", branch],
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        if del_res.returncode == 0:
+                            logger.info("业务仓本地残留分支已删除: %s", branch)
+        except Exception as exc:
+            logger.warning("业务仓分支清理异常: %s", exc)
+
     return cleaned
 
 
@@ -678,16 +1342,18 @@ def get_worktree_path(worktree_base: str, work_id: str) -> str:
     return f"{worktree_base}-{work_id_lower}"
 
 
-def _worktree_has_new_commit(worktree_path: str) -> bool:
-    """worktree 内相对 origin/main 是否有 ≥1 个未合入新 commit（产物证据之一）。
+def _worktree_has_new_commit(worktree_path: str, since_ref: str | None = None) -> bool:
+    """worktree 内相对 ``since_ref``（默认 origin/main）是否有 ≥1 个未合入新 commit（产物证据之一）。
 
-    命令失败（目录/分支不存在、非 git 等）一律视为无新 commit；不抛异常。
+    传 ``since_ref`` 为派发时记录的 origin/main tip（V2）：避免派发后他人合入导致
+    执行体躺着不动也被误判「有新 commit」。命令失败一律视为无新 commit；不抛异常。
     """
     if not worktree_path or not os.path.isdir(worktree_path):
         return False
+    base_ref = since_ref or "origin/main"
     try:
         res = subprocess.run(
-            ["git", "-C", worktree_path, "log", "origin/main..HEAD", "--oneline"],
+            ["git", "-C", worktree_path, "log", f"{base_ref}..HEAD", "--oneline"],
             capture_output=True,
             text=True,
             check=False,
@@ -749,6 +1415,36 @@ def _card_machine_audit_passed(card_path: str) -> bool:
     return machine_audit_passed_text(text)
 
 
+def _read_branch_card_text(work: Work) -> str | None:
+    """读远端 ``codex/<slug>`` 分支卡全文（git show）。
+
+    2026-08-12 v2：worktree 卡缺失/损坏时，分支卡是执行体 push 后的真值，
+    空回写/维护区检查回退到它，避免机审读占位卡误打回。
+    """
+    if not work or not work.card_path or "docs/dispatch" not in work.card_path:
+        return None
+    try:
+        from server.git_sync import resolve_repo_root
+
+        repo = resolve_repo_root("docs/dispatch")
+    except Exception:
+        return None
+    branch = f"codex/{Path(work.card_path).stem.lower()}"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo), "show", f"origin/{branch}:{work.card_path}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception:
+        return None
+    if res.returncode != 0:
+        return None
+    return res.stdout
+
+
 def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
     """worktree 内与生产卡相对路径对应的副本（机审常写在这里）。"""
     if not worktree_path or not card_path:
@@ -765,7 +1461,41 @@ def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
                 return cand
     # 回退：同名文件
     cand = Path(worktree_path) / "docs" / "dispatch" / prod.parent.name / prod.name
-    return cand if cand.is_file() else None
+    if cand.is_file():
+        return cand
+    # 极简回退：直接在 worktree 目录下找同名文件 (for testing and simple layouts)
+    flat_cand = Path(worktree_path) / prod.name
+    return flat_cand if flat_cand.is_file() else None
+
+
+def _audit_output_body(text: str) -> str:
+    """截取机审 agent 真实输出区（判定区），排除引擎启动行与注入的 prompt。
+
+    引擎 audit.log 格式：
+      [ccc.engine] start work=... phase=audit pid_pending cmd=...<prompt 单行>
+
+      [ccc.engine] child_pid=<pid>
+
+      <agent 真实输出>
+
+    陷阱（clw009 事故）：启动行 cmd= 后的 prompt 里含字面「\n」与多行文本，
+    prompt 里就有「输出「机审：不通过（具体原因）」并以非零退出」字样——
+    若只截到 start work 后的第一个真实换行，prompt 中段会被误当作 agent 判定区。
+    正确判定区 = ``[ccc.engine] child_pid=`` 之后（agent 输出起点）。
+    """
+    if not text:
+        return ""
+    for marker in ("[ccc.engine] child_pid=", "child_pid="):
+        idx = text.find(marker)
+        if idx >= 0:
+            return text[idx:]
+    # 无 child_pid（echo 类快输出/测试夹具）→ 回退到启动行后的首个真实换行
+    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
+        idx = text.find(marker)
+        if idx >= 0:
+            nl = text.find("\n", idx)
+            return text[nl + 1 :] if nl >= 0 else ""
+    return text
 
 
 def _audit_output_indicates_pass(text: str) -> bool:
@@ -781,13 +1511,7 @@ def _audit_output_indicates_pass(text: str) -> bool:
         return False
     from server.board.models import machine_audit_passed_text
 
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
+    body = _audit_output_body(text)
 
     if machine_audit_passed_text(body):
         return True
@@ -802,21 +1526,54 @@ def _audit_output_indicates_rejection(text: str) -> bool:
     """
     if not text or not text.strip():
         return False
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
+    body = _audit_output_body(text)
     return ("机审：不通过" in body) or ("机审不通过" in body)
+
+
+def _audit_rejection_reason(text: str) -> str | None:
+    """从 audit 文本提取「不通过」的结论文本（结论行 + 后续说明摘要）。
+
+    返回供机审打回原因使用的可读字符串；无明确结论 → None（调用方兜底）。
+    """
+    if not text:
+        return None
+    body = _audit_output_body(text)
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    for ln in lines:
+        if "机审：不通过" in ln or "机审不通过" in ln:
+            return re.sub(r"\s+", " ", ln)[:400]
+    return None
+
+
+def _audit_severity(text: str) -> str:
+    """解析审计输出里的 severity 标记（机审 v4 三级：轻/中/重）。
+
+    机审 v4（qx-map 0538bef）：审计模型按 skill 三维度打分判定 severity，
+    并在输出写约定标记 `severity：轻|中|重` / `机审等级：轻|中|重`，
+    或在不通过结论带 `（重度/中度/轻度：原因）` 变体。默认「中」。
+    """
+    if not text:
+        return "中"
+    body = _audit_output_body(text)
+    # 显式标记优先：severity：X / 机审等级：X
+    m = re.search(r"(?:severity|机审等级|审计等级)\s*[:：]\s*(轻|中|重)", body)
+    if m:
+        return m.group(1)
+    # 变体：不通过结论 `（重度/中度/轻度：原因）`
+    m = re.search(r"（\s*(轻|中|重)度\s*[:：]", body)
+    if m:
+        return m.group(1)
+    return "中"
 
 
 class MachineAuditPrompt:
     """机审/验收席系统 Prompt 构造器。
-    
+
     遵循职责分离原则：仅进行原则性审查与就地修复，删除「独立复跑测试/编译裁决」职责。
     """
+
     def __init__(self, card_path: str, work_id: str, worktree: str) -> None:
         self.card_path = card_path
         self.work_id = work_id
@@ -824,29 +1581,26 @@ class MachineAuditPrompt:
 
     def build(self) -> str:
         return (
-            "你是 2017 机审席。任务卡 {card_path}（work {work_id}）已回写。你以验收席身份独立审查——"
+            f"你是 2017 机审席。任务卡 {self.card_path}（work {self.work_id}）已回写。你以验收席身份独立审查——"
             "即使开发者与你同工具，也按独立审查执行，不因同工具放水。\n"
             "职责规范：\n"
             "- 只做原则性 Code Review（包括代码实现质量、边界安全、架构隐患、人工批注落实等）；\n"
-            "- 发现可修问题 → 在 worktree {worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
+            f"- 发现可修问题 → 在 worktree {self.worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
             "- 原则性红线问题（如范围系统性越界、核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出。\n"
-            "通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {card_path}，engine 会提交推送）。"
+            "- 不通过结论必须标注 severity（机审 v4 三级）：可快速修复=「severity：轻」/ 一般=「severity：中」/ 红线高风险=「severity：重」。\n"
+            "⚠️ 打回时必须在最后真正执行非零退出（exit 1）：引擎按 audit 文本「机审：不通过」判定业务打回，"
+            "但仅靠文字声明而 exit 0 会造成收单歧义。\n"
+            f"通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {self.card_path}，engine 会提交推送）。"
             "禁止改动与任务无关的文件、禁止编写 ## 验收区、禁止置卡状态为已关闭。"
-        ).format(card_path=self.card_path, work_id=self.work_id, worktree=self.worktree)
+        )
 
 
 def _is_mechanical_rejection_text(text: str) -> bool:
     """是否包含机械问题特征（测试/编译/lint 失败、范围越界等）。"""
     if not text or not text.strip():
         return False
-    body = text
-    for marker in ("pid_pending cmd=", "[ccc.engine] start work="):
-        idx = text.find(marker)
-        if idx >= 0:
-            nl = text.find("\n", idx)
-            body = text[nl + 1 :] if nl >= 0 else ""
-            break
-            
+    body = _audit_output_body(text)
+
     keywords = [
         "测试失败",
         "测试未跑",
@@ -864,6 +1618,7 @@ def _is_mechanical_rejection_text(text: str) -> bool:
 
 def match_path(file_path: str, pattern: str) -> bool:
     import fnmatch
+
     f = file_path.replace("\\", "/")
     p = pattern.replace("\\", "/").strip()
     if not p:
@@ -909,6 +1664,52 @@ def parse_gate_section(card_file_path: Path) -> dict[str, str]:
     return gates
 
 
+def _read_card_section(card_path: Path | str, section_name: str) -> str:
+    """从任务卡 Markdown 文件中提取指定节的内容。
+
+    匹配 ``## <section_name>`` 开头的节，提取内容直到下一个 ``## `` 节或文件末尾。
+    节名匹配规则：前缀匹配，如 ``## 执行提示`` 可匹配 ``## 执行提示（给开发大模型）``。
+
+    Args:
+        card_path: 卡文件路径。
+        section_name: 节名（不含 ``## `` 前缀），如 ``"执行提示"``。
+
+    Returns:
+        节内容文本（不含节标题行）；文件不存在/不可读/无此节 → 返回空字符串。
+    """
+    path = Path(card_path)
+    if not path.is_file():
+        return ""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    lines = content.splitlines()
+    in_section = False
+    section_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## ") and stripped[3:].strip().startswith(section_name):
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("## ") or stripped.startswith("---"):
+                break
+            section_lines.append(line)
+    # 去掉首尾空行
+    while section_lines and not section_lines[0].strip():
+        section_lines.pop(0)
+    while section_lines and not section_lines[-1].strip():
+        section_lines.pop()
+    result = "\n".join(section_lines).strip()
+
+    # 占位文本 → 视为空（中枢尚未注入实际内容）
+    if result.startswith("（中枢在出卡时注入"):
+        return ""
+
+    return result
+
+
 def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
     card_file = Path(worktree_path) / card_path
     if not card_file.is_file():
@@ -917,7 +1718,7 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
         content = card_file.read_text(encoding="utf-8")
     except OSError:
         return True, ""
-    
+
     # Extract ## 范围 section
     lines = content.splitlines()
     range_lines = []
@@ -931,10 +1732,10 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
             if stripped.startswith("## ") or stripped.startswith("---"):
                 break
             range_lines.append(line)
-            
+
     if not in_range:
         return True, ""
-        
+
     # Extract whitelist patterns from range_lines
     whitelist_patterns = []
     for line in range_lines:
@@ -945,12 +1746,13 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
             m_clean = m.strip()
             if m_clean:
                 whitelist_patterns.append(m_clean)
-                
+
     if not whitelist_patterns:
         return True, ""
-        
+
     # Get modified files in worktree relative to origin/main
     import subprocess
+
     res = subprocess.run(
         ["git", "-C", worktree_path, "diff", "--name-only", "origin/main"],
         capture_output=True,
@@ -959,10 +1761,10 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
         check=False,
     )
     if res.returncode != 0:
-        return True, "" # Git error, skip to avoid blocking
-        
+        return True, ""  # Git error, skip to avoid blocking
+
     modified_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
-    
+
     out_of_scope = []
     for f in modified_files:
         # Exempt card file, logs, runnings
@@ -977,10 +1779,13 @@ def check_range_gate(worktree_path: str, card_path: str) -> tuple[bool, str]:
                 break
         if not matched:
             out_of_scope.append(f)
-            
+
     if out_of_scope:
-        return False, f"范围越界门禁拦截：修改了不属于卡「范围」声明中的路径: {out_of_scope} (允许范围: {whitelist_patterns})"
-        
+        return (
+            False,
+            f"范围越界门禁拦截：修改了不属于卡「范围」声明中的路径: {out_of_scope} (允许范围: {whitelist_patterns})",
+        )
+
     return True, ""
 
 
@@ -1086,6 +1891,43 @@ def check_writeback_credentials(card_path: Path, stem: str) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_card_state_after_writeback(card_path: Path) -> tuple[bool, str]:
+    """执行体回写后校验卡头「状态」字段是否合法。
+
+    执行体可能写出非标准状态值（如 "completed" 代替 "已回写"），
+    导致机审链路静默断裂。此校验在引擎收单时拦截非法状态，强制执行体修正。
+
+    返回 (ok, error_msg)。
+    """
+    if not card_path.is_file():
+        return True, ""  # 卡文件不存在则跳过
+
+    from server.board.models import STATES as _VALID_STATES
+
+    text = card_path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(">"):
+            continue
+        for seg in stripped[1:].split("·"):
+            seg = seg.strip()
+            if seg.startswith("状态："):
+                raw_state = seg[len("状态：") :].strip()
+                from server.board.models import base_state as _base_state
+
+                base = _base_state(raw_state)
+                if base not in _VALID_STATES:
+                    return False, (
+                        f"卡头状态值非法: {raw_state!r}。"
+                        f"合法状态: {sorted(_VALID_STATES)}。"
+                        f"回写时必须将状态设为「已回写」，不可写 'completed'/'done' 等英文。"
+                    )
+                return True, ""
+    return True, ""  # 无状态行则放行（历史兼容）
+
+    return True, ""
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
@@ -1096,6 +1938,7 @@ def _dispatch_and_collect(
     entry_override: ExecutorEntry | None = None,
     skip_product_gate: bool = False,
     log_phase: str = "run",
+    fresh: bool = False,
 ) -> tuple[bool, list[str]]:
     """真实派发单个 work + 同步收单。
 
@@ -1103,6 +1946,7 @@ def _dispatch_and_collect(
         entry_override: 指定注册表行（机审复用派发时传入验收席 CLI，避免命中开发模板）。
         skip_product_gate: 机审路径跳过「新 commit+diff」门禁（机审不改业务码）。
         log_phase: ``run`` → ``{id}.log``（覆盖前归档）；``audit`` → ``{id}.audit.log``（不碰开发日志）。
+        fresh: 重度机审零上下文模式（2026-08-14 机审 v4）——build_command 新会话标志 + 审计 prompt 强化。
 
     Returns:
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
@@ -1129,140 +1973,74 @@ def _dispatch_and_collect(
         branch_name = f"codex/{card_id_slug}"
 
         try:
+            from server.git_sync import resolve_repo_root
+
+            main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        except Exception:
+            main_repo = Path(__file__).resolve().parents[2]
+
+        try:
             target_path = Path(target_worktree).expanduser().resolve()
             if target_path.exists():
-                # 检查上次执行是否成功收单
-                from server.engine.runtime_state import read_card_state
-
-                rt = read_card_state(log_dir).get(work.id) or {}
-                success = False
-                if rt.get("state") == "已回写":
-                    success = True
-
-                log_file = log_dir / f"{work.id}.log"
-                if not success and log_file.is_file():
-                    try:
-                        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-                        for line in reversed(lines):
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                data = json.loads(line)
-                                if isinstance(data, dict) and data.get("ok") is True:
-                                    success = True
-                                    break
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
-                if not success:
-                    logger.info("上次执行未成功收单，不直接复用 worktree: %s. 正在重置...", target_worktree)
-                    # 尝试重置: git checkout -- . && git clean -fd
-                    res_reset1 = subprocess.run(
-                        ["git", "checkout", "--", "."], cwd=target_worktree, capture_output=True, check=False
-                    )
-                    res_reset2 = subprocess.run(
-                        ["git", "clean", "-fd"], cwd=target_worktree, capture_output=True, check=False
-                    )
-
-                    # 检查是否真的干净了 (git status --porcelain)
-                    res_status = subprocess.run(
-                        ["git", "status", "--porcelain"],
-                        cwd=target_worktree,
+                # 2026-08-12 v2：worktree 是 git 管理的分支工作树，存在即可复用。
+                # 不再按「日志 ok:true」判定收单（收单后日志归档会误判未收单 → 强重建
+                # 毁执行现场 → 机审读占位卡 → 空回写打回循环）。仅当目录损坏（非 git）才重建。
+                res_git = subprocess.run(
+                    ["git", "-C", str(target_path), "rev-parse", "--git-dir"],
+                    capture_output=True,
+                    check=False,
+                    timeout=15,
+                )
+                if res_git.returncode == 0:
+                    worktree_path = str(target_path)
+                    logger.info("复用 existing worktree: %s", target_worktree)
+                else:
+                    logger.warning("worktree 目录损坏（非 git），移除重建: %s", target_worktree)
+                    subprocess.run(
+                        ["git", "-C", str(main_repo), "worktree", "remove", "--force", str(target_path)],
                         capture_output=True,
-                        text=True,
                         check=False,
                     )
-
-                    is_clean = (
-                        res_reset1.returncode == 0 and res_reset2.returncode == 0 and not res_status.stdout.strip()
+                    subprocess.run(
+                        ["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False
                     )
-
-                    if is_clean:
-                        # 检查分支是否与 origin/main 分叉
-                        res_merge_base = subprocess.run(
-                            ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
-                            cwd=target_worktree,
-                            capture_output=True,
-                            check=False,
-                        )
-                        if res_merge_base.returncode != 0:
-                            is_clean = False
-                            logger.warning("Worktree 分支已与 origin/main 分叉，将被强制重建: %s", target_worktree)
-
-                    if is_clean:
-                        logger.info("Worktree 重置干净成功: %s", target_worktree)
+                    cmd_add = [
+                        "git",
+                        "-C",
+                        str(main_repo),
+                        "worktree",
+                        "add",
+                        str(target_path),
+                        "-b",
+                        branch_name,
+                        _worktree_branch_seed(main_repo, branch_name),
+                    ]
+                    res_add = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
+                    if res_add.returncode == 0:
                         worktree_path = str(target_path)
+                        logger.info("Worktree 重建成功: %s", worktree_path)
                     else:
-                        logger.info("Worktree 重置失败或分支分叉，正在进行强制干净重建: %s", target_worktree)
-                        try:
-                            from server.git_sync import resolve_repo_root
-
-                            main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-                        except Exception:
-                            main_repo = Path(__file__).resolve().parents[2]
-
-                        subprocess.run(
-                            ["git", "-C", str(main_repo), "worktree", "remove", "--force", str(target_path)],
-                            capture_output=True,
-                            check=False,
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(main_repo), "branch", "-D", branch_name], capture_output=True, check=False
-                        )
-
-                        cmd_add = [
+                        cmd_add_existing = [
                             "git",
                             "-C",
                             str(main_repo),
                             "worktree",
                             "add",
                             str(target_path),
-                            "-b",
                             branch_name,
-                            "origin/main",
                         ]
-                        logger.info("正在干净重建 worktree: %s", " ".join(cmd_add))
-                        res_add = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
-                        if res_add.returncode == 0:
+                        res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
+                        if res_existing.returncode == 0:
                             worktree_path = str(target_path)
-                            logger.info("Worktree 干净重建成功: %s", worktree_path)
+                            logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                         else:
-                            logger.warning(
-                                "git worktree add -b 失败: %s. 尝试关联已存在分支...", res_add.stderr.strip()
-                            )
-                            cmd_add_existing = [
-                                "git",
-                                "-C",
-                                str(main_repo),
-                                "worktree",
-                                "add",
-                                str(target_path),
-                                branch_name,
+                            _bump_worktree_failures()
+                            return False, [
+                                "基础设施：worktree 重建与关联均失败（隔离强制，不回退默认目录）: "
+                                + (res_existing.stderr or res_add.stderr or "").strip()
                             ]
-                            res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
-                            if res_existing.returncode == 0:
-                                worktree_path = str(target_path)
-                                logger.info("Worktree 关联已有分支成功: %s", worktree_path)
-                            else:
-                                logger.warning("git worktree add 干净重建与关联均失败。")
-                else:
-                    logger.info("上次执行已成功收单，重用 existing worktree: %s", target_worktree)
-                    worktree_path = str(target_path)
             else:
-                # 尝试用新分支创建
-                try:
-                    from server.git_sync import resolve_repo_root
-
-                    main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-                except Exception:
-                    main_repo = Path(__file__).resolve().parents[2]
-
+                # 创建（seed 优先远端分支：执行体已 push 的产物/回写不丢）
                 cmd_add = [
                     "git",
                     "-C",
@@ -1272,7 +2050,7 @@ def _dispatch_and_collect(
                     str(target_path),
                     "-b",
                     branch_name,
-                    "origin/main",
+                    _worktree_branch_seed(main_repo, branch_name),
                 ]
                 logger.info("正在创建 worktree: %s", " ".join(cmd_add))
                 res = subprocess.run(cmd_add, capture_output=True, text=True, check=False)
@@ -1281,19 +2059,55 @@ def _dispatch_and_collect(
                     logger.info("Worktree 创建成功: %s (分支 %s)", worktree_path, branch_name)
                 else:
                     logger.warning("git worktree add -b 失败: %s. 尝试关联已存在分支...", res.stderr.strip())
-                    # 尝试关联已存在的分支
-                    cmd_add_existing = ["git", "-C", str(main_repo), "worktree", "add", str(target_path), branch_name]
+                    cmd_add_existing = [
+                        "git",
+                        "-C",
+                        str(main_repo),
+                        "worktree",
+                        "add",
+                        str(target_path),
+                        branch_name,
+                    ]
                     res_existing = subprocess.run(cmd_add_existing, capture_output=True, text=True, check=False)
                     if res_existing.returncode == 0:
                         worktree_path = str(target_path)
                         logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                     else:
-                        logger.warning(
-                            "git worktree add 关联已有分支也失败: %s. 自动回退到默认工作目录行为。",
-                            res_existing.stderr.strip(),
-                        )
+                        _bump_worktree_failures()
+                        return False, [
+                            "基础设施：worktree 创建与关联均失败（隔离强制，不回退默认目录）: "
+                            + (res_existing.stderr or res.stderr or "").strip()
+                        ]
         except Exception as exc:
-            logger.warning("创建/获取 worktree 过程发生异常: %s. 自动回退到默认工作目录行为。", exc)
+            # 2026-08-12 隔离升级：异常也不再静默回退
+            _bump_worktree_failures()
+            return False, [f"基础设施：worktree 创建过程异常（隔离强制，不回退默认目录）: {exc}"]
+
+    # ── 业务仓隔离（2026-08-12 事故修复）：业务仓型任务必须建每卡 worktree ──
+    # 执行阶段强制；机审阶段复用开发产物（远程卡走分支信封，不重复建仓）
+    biz_worktree_path = ""
+    if (log_phase or "run").strip().lower() == "run":
+        biz_project = _business_project(work)
+        if biz_project:
+            biz_worktree_path, biz_err = _ensure_business_worktree(work, biz_project, log_dir)
+            if biz_err:
+                _bump_worktree_failures()
+                logger.warning(
+                    "业务仓 worktree 失败（卡保持待分派+冷却，禁止回退主目录）: work=%s err=%s",
+                    work.id,
+                    biz_err,
+                )
+                return False, [f"基础设施：业务仓 worktree 创建失败：{biz_err}"]
+            logger.info("业务仓 worktree 就绪: work=%s path=%s", work.id, biz_worktree_path)
+
+    # 在单测下，豁免对 mock/fake 临时卡的缺失校��
+    import sys
+
+    is_pytest = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
+    if not is_pytest and worktree_path and work.card_path and "docs/dispatch" in work.card_path:
+        if _worktree_card_candidate(worktree_path, work.card_path) is None:
+            logger.warning("派发防护：worktree 存在但缺少卡文件副本: work=%s, card=%s", work.id, work.card_path)
+            return False, [f"派发防护：worktree {worktree_path} 存在但缺少卡文件副本 {work.card_path}"]
 
     try:
         cmd = build_command(
@@ -1303,9 +2117,81 @@ def _dispatch_and_collect(
             card_path=work.card_path,
             default_workdir=default_workdir,
             worktree=worktree_path,
+            biz_worktree=biz_worktree_path,
         )
     except ValueError as exc:
         return False, [f"命令构造失败: {exc}"]
+
+    # ── 中枢 Prompt 注入：读取卡内提示段，追加到执行体/验收体 prompt ──
+    # 执行阶段 → 读「## 执行提示」；机审阶段 → 读「## 机审提示」
+    _card_hint_section = "机审提示" if (log_phase or "").strip().lower() == "audit" else "执行提示"
+    _card_file = Path(worktree_path) / work.card_path if worktree_path else Path(work.card_path)
+    _card_hint = _read_card_section(_card_file, _card_hint_section)
+    if _card_hint:
+        # 派发时动态注入（ccc-plan-020 A 轨第 4 项）：按卡「角色」实时查 role-skills.yaml，
+        # 出卡后改 yaml 存量卡也能拿到最新映射（出卡时注入保留为默认，派发时刷新覆盖）。
+        _dyn_role_hint = ""
+        try:
+            _card_full = _card_file.read_text(encoding="utf-8", errors="replace")
+            from server.board.prompt_inject import _role_skill_hint
+
+            _dyn_role_hint = _role_skill_hint(_card_full)
+        except Exception:
+            pass
+        # 注入：追加到「含 work.id 的 prompt 参数」而非 cmd[-1]
+        # （复审 P2-2：与 v4 指令块同定位逻辑；OpenCode 模板 cmd[-1] 是尾随 worktree 串）
+        _hint_block = "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n" + _card_hint
+        if _dyn_role_hint:
+            _hint_block += "\n" + _dyn_role_hint
+        _hint_idx = next(
+            (i for i in range(len(cmd) - 1, -1, -1) if work.id in cmd[i]),
+            len(cmd) - 1,
+        )
+        cmd[_hint_idx] = cmd[_hint_idx] + _hint_block
+        logger.info(
+            "已注入 %s: work=%s arg[%d] (%d 字符, 动态角色=%s)",
+            _card_hint_section,
+            work.id,
+            _hint_idx,
+            len(_card_hint),
+            bool(_dyn_role_hint),
+        )
+
+    # 机审 v4 强化（2026-08-14）：审计阶段追加三级/就地修复/severity 标记指令。
+    # 修复 MachineAuditPrompt 死代码——真实审计 prompt 由注册表模板+卡提示+skill 拼装，
+    # v4 指令必须在此实际注入审计 agent 才能生效。
+    # 重度复审 P1-A：v4 块注入到「含 work.id 的 prompt 参数」而非 cmd[-1]
+    # （OpenCode 模板 cmd[-1] 是尾随 worktree 串；fresh 标志在注入后追加，保住 prompt 不变量）。
+    if (log_phase or "").strip().lower() == "audit" and cmd:
+        _v4_audit_block = (
+            "\n\n---\n## 机审 v4 指令（三级 · 必须遵循）\n"
+            "1. 对抗式找茬：假设有 P0/P1，找具体可复现问题；0 发现须给风险论证。\n"
+            "2. 三级判定 severity：影响面/改动深度/红线邻近各 1-3 分，合计 3-4=轻 5-7=中 8-9=重，"
+            "任一维度高→强制重。\n"
+            "3. 可快速修复的轻问题 → 就地修复并 commit+push（不打回）；原则性红线（业务意图违背/系统性越界）→ 打回。\n"
+            "4. 结论行必须输出 severity 标记（severity：轻/中/重）并明示结论（通过 / 不通过，不通过须附原因）。\n"
+        )
+        if fresh:
+            _v4_audit_block += (
+                "5. 本审计为【重度·异席 fresh 独立 agent】零上下文审查：不沿用任何历史上下文，"
+                "全量多视角独立重算关键口径，完整闭环后方可下结论。\n"
+            )
+        # 定位 prompt 参数：含 work.id 的 arg（prompt 模板必带 work_id 占位符）
+        _prompt_idx = next(
+            (i for i in range(len(cmd) - 1, -1, -1) if work.id in cmd[i]),
+            len(cmd) - 1,
+        )
+        cmd[_prompt_idx] = cmd[_prompt_idx] + _v4_audit_block
+        logger.info(
+            "机审 v4 指令已注入审计 prompt(arg[%d]): work=%s fresh=%s", _prompt_idx, work.id, fresh
+        )
+        # 重度 fresh：注入完成后追加新会话标志（不污染 prompt）
+        if fresh:
+            from server.engine.dispatch import _FRESH_FLAG_BY_CMD
+
+            _flag = _FRESH_FLAG_BY_CMD.get(entry.command)
+            if _flag:
+                cmd.append(_flag)
 
     phase = (log_phase or "run").strip().lower() or "run"
 
@@ -1363,6 +2249,7 @@ def _dispatch_and_collect(
             stderr=subprocess.STDOUT,
             cwd=worktree_path or entry.workdir or default_workdir or None,
             env=child_env,
+            start_new_session=True,  # 隔离进程组：kill 时杀全组，避免孙进程变僵尸
         )
         # 标记写入子进程 PID：Engine 重启时若 CLI 仍活，不得假打回
         _refresh_running_marker_child(log_dir, work.id, proc.pid)
@@ -1385,8 +2272,20 @@ def _dispatch_and_collect(
         try:
             returncode = proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            # killpg 杀全进程组（含孙进程），避免 proc.kill() 只杀直接子进程导致僵尸
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                logger.error("子进程 killpg 后仍超时（僵尸）: work=%s pid=%s", work.id, proc.pid)
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    pass
+                proc.wait()
             _emit(False, None, "timeout", [f"执行超时（{timeout}s 已 kill）"])
             return False, [f"执行超时（{timeout}s 已 kill）"]
         finally:
@@ -1433,15 +2332,25 @@ def _dispatch_and_collect(
                         _emit(False, 0, "ok", [wb_err])
                         return False, [wb_err]
 
+                    # 卡头状态合法性校验：防止执行体写非法状态值（如 "completed"）
+                    # 导致机审链路静默断裂（mx028 事故）
+                    state_ok, state_err = validate_card_state_after_writeback(card_file_path)
+                    if not state_ok:
+                        logger.warning("卡头状态非法: %s -> 打回", state_err)
+                        _emit(False, 0, "ok", [state_err])
+                        return False, [state_err]
+
                     # 机械门禁：仅在 worktree_path 存在时生效
                     if worktree_path:
-                        has_commit = _worktree_has_new_commit(worktree_path)
+                        tip = _marker_dispatch_tip(log_dir, work.id)
+                        has_commit = _worktree_has_new_commit(worktree_path, since_ref=tip)
                         has_diff = _worktree_has_nonempty_diff(worktree_path)
                         if not (has_commit and has_diff):
                             logger.warning(
-                                "exit 0 但无有效产物: work=%s worktree=%s commit=%s diff=%s → 打回",
+                                "exit 0 但无有效产物: work=%s worktree=%s tip=%s commit=%s diff=%s → 打回",
                                 work.id,
                                 worktree_path,
+                                tip or "(无 tip 记录)",
                                 has_commit,
                                 has_diff,
                             )
@@ -1462,11 +2371,35 @@ def _dispatch_and_collect(
                             ]
 
                         # 机械门禁扩展：解析卡内门禁探针
+                        # 门禁分层：
+                        #   1. 环境缺失（命令不存在）→ 跳过门禁，放行进机审
+                        #   2. 代码级失败（测试/编译报错）→ 标记可修复，放行进机审
+                        #   3. 硬底线（空提交/无 diff/范围越界）→ 直接打回，不重试
                         if work.card_path:
                             gates = parse_gate_section(card_file_path)
                             for gate_name, cmd in gates.items():
                                 if gate_name in ("编译", "测试", "lint"):
                                     if not cmd:
+                                        continue
+                                    # 检查命令是否存在（worktree 可能无 venv/toolchain）
+                                    cmd_binary = cmd.split()[0] if cmd else ""
+                                    cmd_exists = False
+                                    if cmd_binary:
+                                        try:
+                                            which_rc = subprocess.run(
+                                                ["which", cmd_binary],
+                                                capture_output=True,
+                                                timeout=5,
+                                            )
+                                            cmd_exists = which_rc.returncode == 0
+                                        except Exception:
+                                            cmd_exists = False
+                                    if not cmd_exists:
+                                        logger.warning(
+                                            "门禁【%s】跳过: 命令 '%s' 在 worktree 环境不可用，非代码问题，放行进机审",
+                                            gate_name,
+                                            cmd_binary,
+                                        )
                                         continue
                                     logger.info("运行门禁【%s】: cmd=%s", gate_name, cmd)
                                     res_gate = subprocess.run(
@@ -1479,36 +2412,53 @@ def _dispatch_and_collect(
                                     )
                                     if res_gate.returncode != 0:
                                         combined_output = (res_gate.stdout or "") + (res_gate.stderr or "")
-                                        snippet = combined_output[-1000:] if len(combined_output) > 1000 else combined_output
-                                        err_msg = f"门禁【{gate_name}】失败: 退出码 {res_gate.returncode}。命令: {cmd}\n输出:\n{snippet}"
-                                        logger.warning("卡 %s 门禁【%s】未通过: %s", work.id, gate_name, err_msg)
-                                        _emit(False, res_gate.returncode, "ok", [err_msg])
-                                        return False, [err_msg]
+                                        snippet = (
+                                            combined_output[-800:] if len(combined_output) > 800 else combined_output
+                                        )
+                                        logger.warning(
+                                            "卡 %s 门禁【%s】未通过（代码级，放行进机审就地修复）: 退出码 %d",
+                                            work.id,
+                                            gate_name,
+                                            res_gate.returncode,
+                                        )
+                                        # 不直接打回：标记为机审可修复，放行进机审
+                                        # 机审会根据严重程度决定就地修复还是打回
                                 elif gate_name == "范围":
                                     if str(cmd).strip().lower() in ("true", "yes", "1", "on"):
                                         range_ok, range_err = check_range_gate(worktree_path, work.card_path)
                                         if not range_ok:
+                                            # 范围越界是硬底线 → 直接打回
                                             logger.warning("卡 %s 门禁【范围】未通过: %s", work.id, range_err)
                                             _emit(False, 1, "ok", [range_err])
                                             return False, [range_err]
+            # F3（2026-08-10）：机审路径 exit 0 但 audit 明确「机审：不通过」→ 按失败返回。
+            # 双重保险：机审 agent 打回时 exit code 可能为 0（claude -p 声称非零退出不可靠），
+            # 仅凭 exit 0 会把「不通过」误判为通过（F1 在 _run_machine_audit_after_writeback 也兜底）。
+            if log_phase == "audit":
+                _audit_log = log_dir / f"{work.id}.audit.log"
+                _audit_text = _read_text_best_effort(_audit_log)
+                if _audit_output_indicates_rejection(_audit_text):
+                    _reason = _audit_rejection_reason(_audit_text) or "机审：不通过"
+                    logger.warning(
+                        "机审 exit 0 但 audit 含「不通过」→ 按失败返回: work=%s reason=%s",
+                        work.id,
+                        _reason,
+                    )
+                    _emit(False, 1, "ok", [_reason])
+                    return False, [_reason]
             _emit(True, 0, "ok")
             return True, []
 
-        # 检查是否为 P3 空提交信号 (Task 1)
+        # 检查是否为空提交信号 (V3 根修)：执行体空手交单（nothing to commit）→ 失败打回，
+        # 禁止拦截成假成功（原逻辑绕过产物门禁，是 clw006 空回写死循环的燃料）。
         try:
-            if log_path.is_file():
-                content = log_path.read_text(encoding="utf-8", errors="replace")
-                tail = content[-2000:]
-                keywords = [
-                    "nothing to commit",
-                    "no changes added to commit",
-                    "nothing added to commit",
-                    "no commit created",
-                ]
-                if any(kw in tail.lower() for kw in keywords) and "error:" not in tail.lower():
-                    logger.info("检测到空提交信号，拦截 nonzero exit 并判定成功: work=%s", work.id)
-                    _emit(True, 0, "ok", ["空提交完结（无改动可交）"])
-                    return True, []
+            if _detect_empty_commit_signal(log_path):
+                reason = "空提交信号（nothing to commit）：执行体无产物交单，禁止假成功"
+                logger.warning("检测到空提交信号 → 按失败打回: work=%s", work.id)
+                _emit(False, 1, "ok", [reason])
+                return False, [reason]
+        except Exception as e:
+            logger.warning("检查空提交日志异常: %s", e)
         except Exception as e:
             logger.warning("检查空提交日志异常: %s", e)
 
@@ -1624,8 +2574,12 @@ def cleanup_dead_markers(log_dir: Path) -> int:
     ``reclaim_orphaned_running`` 回收，会污染看板「进行中」视图并让 web 每轮
     对死卡做全套富化。此处按 PID 存活判定：标记内所有 PID 已死（或无 PID）→
     删除；任一 PID 存活（可能刚写完、子进程刚拉起）→ 保留，绝不误删在途任务。
+
+    此外，标记超过 ``MAX_MARKER_AGE_SECONDS``（2h）同样强制删除——即使 PID 存
+    活也不能让僵尸进程永久占用槽位（兜底回收）。
     """
     n = 0
+    now_ts = time.time()
     try:
         markers = list(log_dir.glob("*.running"))
     except OSError:
@@ -1635,11 +2589,16 @@ def cleanup_dead_markers(log_dir: Path) -> int:
             continue
         try:
             raw = marker.read_text(encoding="utf-8")
+            mtime = marker.stat().st_mtime
         except OSError:
             raw = ""
+            mtime = 0.0
         pids = _parse_running_marker_pids(raw)
         if any(_pid_alive(p) for p in pids):
-            continue
+            # 存活的 PID + 未超时 → 保留；超时 → 兜底强制回收
+            if mtime > 0 and (now_ts - mtime) < MAX_MARKER_AGE_SECONDS:
+                continue
+            logger.warning("标记超时强制回收（age=%ds，max=%ds）: %s", int(now_ts - mtime), MAX_MARKER_AGE_SECONDS, marker.name)
         try:
             marker.unlink(missing_ok=True)
             n += 1
@@ -1655,6 +2614,7 @@ def _write_running_marker(
     *,
     engine_pid: int,
     child_pid: int | None = None,
+    dispatch_tip: str | None = None,
 ) -> Path:
     """写运行标记：主 ``pid=`` 优先子进程，否则 Engine；并保留 engine/child 字段。
 
@@ -1665,22 +2625,97 @@ def _write_running_marker(
     marker = log_dir / f"{work_id}.running"
     primary = child_pid if child_pid is not None else engine_pid
     lines = [f"engine_pid={engine_pid}\n", f"pid={primary}\n"]
+    if dispatch_tip:
+        lines.append(f"dispatch_tip={dispatch_tip}\n")
     if child_pid is not None:
         lines.append(f"child_pid={child_pid}\n")
-    tmp = marker.with_suffix(marker.suffix + ".tmp")
+    tmp = marker.with_suffix(marker.suffix + f".tmp.{time.time_ns()}")
     tmp.write_text("".join(lines), encoding="utf-8")
     os.replace(tmp, marker)
     return marker
 
 
-def _claim_running_marker(log_dir: Path, work_id: str) -> Path:
-    """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。"""
-    return _write_running_marker(log_dir, work_id, engine_pid=os.getpid())
+def _clear_claim_marker(card_path: Path, card_id: str) -> None:
+    """清卡头认领标记（认领协议超时回收）：去掉「 · 认领：<W号> · 认领时间：<ts>」，commit+push。
+
+    认领协议（ccc-plan-020 v2）：Worker 认领后超时未完成 → Engine 回收认领，卡回待分派可被重认领。
+    """
+    import re as _re
+
+    try:
+        text = card_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        logger.warning("清理认领标记失败（读）: %s", card_id)
+        return
+    # 找卡头第一个 `>` 元数据行（认领字段在卡头元数据）
+    m = _re.search(r"^(>[^\n]*?)(?:\n|$)", text, _re.MULTILINE)
+    if not m:
+        return
+    first = m.group(1)
+    if "认领：" not in first:
+        return
+    new_first = _re.sub(r" · 认领：\S+ · 认领时间：\S+", "", first)
+    if new_first == first:
+        new_first = _re.sub(r" · 认领：\S+", "", first)
+    text = text[: m.start(1)] + new_first + text[m.end(1) :]
+    try:
+        card_path.write_text(text, encoding="utf-8")
+        import subprocess
+
+        subprocess.run(["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True, timeout=30)
+        subprocess.run(
+            ["git", "commit", "-m", f"claim-reclaim: 认领超时回收 {card_id}"],
+            cwd=card_path.parents[2],
+            check=False,
+            capture_output=True,
+        )
+        subprocess.run(["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True, timeout=60)
+        logger.info("认领标记已清理（超时回收）: %s", card_id)
+    except OSError:
+        logger.warning("清理认领标记失败（写）: %s", card_id)
+
+
+def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = None) -> Path:
+    """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。
+
+    同时记录 ``dispatch_tip``：派发时刻 origin/main 的 commit（V2 产物门禁基准），
+    防「派发后他人合入 → 执行体未写码也被误判有产物」。
+    """
+    tip = ""
+    if main_repo is not None:
+        try:
+            res = subprocess.run(
+                ["git", "-C", str(main_repo), "rev-parse", "origin/main"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            if res.returncode == 0:
+                tip = res.stdout.strip()
+        except Exception:
+            tip = ""
+    return _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), dispatch_tip=tip or None)
 
 
 def _refresh_running_marker_child(log_dir: Path, work_id: str, child_pid: int) -> None:
-    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）。"""
-    _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), child_pid=child_pid)
+    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）；保留 dispatch_tip。"""
+    tip = _marker_dispatch_tip(log_dir, work_id)
+    _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), child_pid=child_pid, dispatch_tip=tip)
+
+
+def _marker_dispatch_tip(log_dir: Path, work_id: str) -> str | None:
+    """读运行标记里的 ``dispatch_tip=``（无则 None）。"""
+    try:
+        marker = log_dir / f"{work_id}.running"
+        if not marker.is_file():
+            return None
+        for ln in marker.read_text(encoding="utf-8").splitlines():
+            if ln.startswith("dispatch_tip="):
+                return ln[len("dispatch_tip=") :].strip() or None
+    except OSError:
+        return None
+    return None
 
 
 def _clear_running_marker(log_dir: Path, work_id: str) -> None:
@@ -1701,22 +2736,63 @@ def _audit_cli_entry(registry: ExecutorRegistry, acceptor: str) -> ExecutorEntry
     return None
 
 
+def _ledger_record(
+    work: Work,
+    severity: str | None,
+    conclusion: str,
+    reasons: list[str] | None,
+    *,
+    fix_action: str = "",
+    source: str = "engine",
+    kind: str = "audit",
+) -> None:
+    """机审结论落台账（命中率台账 · v4 2026-08-14 · 重度复审口径修正）。
+
+    - 通过 → 回填既往「不通过·审计」行为命中（不碰通过行自身，通过行 hit 留待合入时标）。
+    - kind="infra"（机审执行失败）不参与命中判定。
+    失败不阻断主流程（台账是观测面）。
+    """
+    try:
+        from server.board.audit_ledger import backfill_card_hits, record_audit
+
+        record_audit(
+            getattr(work, "id", "") or "",
+            getattr(work, "id", "") or "",
+            conclusion=conclusion,
+            severity=severity or "中",
+            reasons=reasons or [],
+            fix_action=fix_action,
+            source=source,
+            kind=kind,
+        )
+        if conclusion == "通过" and kind != "infra":
+            backfill_card_hits(getattr(work, "id", "") or "")
+    except Exception:
+        logger.exception("机审台账写入失败（不阻断）: work=%s", getattr(work, "id", ""))
+
+
 def _run_machine_audit_after_writeback(
     work: Work,
     registry: ExecutorRegistry,
     cfg: dict[str, Any],
     log_dir: Path,
     timeout: int,
-) -> tuple[bool, list[str]]:
+    severity: str | None = None,
+    force: bool = False,
+    manual: bool = False,
+) -> tuple[bool, list[str], bool]:
     """机审信封化：结果写进 worktree 分支卡并 commit+push；生产卡只读。
 
-    已通过（分支卡优先，生产卡兜底）→ 跳过；注册表无验收席 CLI → 跳过。
-    无 worktree（测试/简易执行体）回退写生产卡。
+    已通过（分支卡优先，生产卡兜底）→ 跳过（force=True 时强制重审，P1-B 修复）；
+    注册表无验收席 CLI → 返回 (True, [], audited=False)（未审，P1-E 修复，调用方不得当「通过」）。
+
+    Returns:
+        (ok, problems, audited)：audited=False 表示本次没有真正审计（无验收席/已跳过）。
     """
     worktree_hint = _worktree_hint_for(work, registry)
-    if _audit_evidence_passed(work, worktree_hint):
+    if not force and _audit_evidence_passed(work, worktree_hint):
         logger.info("机审已通过（分支/生产卡证据），跳过: work=%s", work.id)
-        return True, []
+        return True, [], False
     # 补提交：机审区已在 worktree 文件但未进分支（commit 被吞的历史洞）→ 直接补提交，不重审
     if worktree_hint:
         wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
@@ -1727,10 +2803,10 @@ def _run_machine_audit_after_writeback(
         ):
             if _commit_and_push_worktree_card(worktree_hint, work.card_path, work.id):
                 logger.info("机审区补提交进分支（历史遗留）: work=%s", work.id)
-                return True, []
+                return True, [], True
             logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
     # 2017 机审固定交叉配对（老板 2026-08-08 定稿，恢复 08-06 原规则）：
-    # OpenCode 开发 → Claude Code 机审；Claude Code 开发 → OpenCode 机审。
+    # OpenCode 开发 → Claude Code 机审（2026-08-15 起开发仅 OpenCode，Claude Code 不接触开发职能）。
     # 卡头「验收」字段只决定 M1 端合入验收席（自验收），不决定 2017 机审工具。
     executor_norm = normalize_tool(work.executor)
     acceptor = "OpenCode" if executor_norm == "Claude Code" else "Claude Code"
@@ -1741,8 +2817,15 @@ def _run_machine_audit_after_writeback(
             acceptor,
             work.id,
         )
-        return True, []
+        # P1-E 修复：无验收席 = 未审（audited=False），调用方不得当作「通过」
+        return True, [], False
     logger.info("拉起机审: work=%s acceptor=%s", work.id, acceptor)
+    audited_tip: str | None = None
+    if worktree_hint:
+        branch = f"codex/{Path(work.card_path).stem.lower()}"
+        audited_tip = _worktree_branch_tip(worktree_hint, branch)
+    # 机审 v4 重度：severity=重 → fresh 独立 agent 零上下文（build_command 新会话 + prompt 强化）
+    fresh = severity == "重"
     _claim_running_marker(log_dir, f"{work.id}-audit")
     try:
         ok, problems = _dispatch_and_collect(
@@ -1754,6 +2837,7 @@ def _run_machine_audit_after_writeback(
             entry_override=entry,
             skip_product_gate=True,
             log_phase="audit",
+            fresh=fresh,
         )
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
@@ -1761,8 +2845,19 @@ def _run_machine_audit_after_writeback(
     audit_log = log_dir / f"{work.id}.audit.log"
     audit_text = _read_text_best_effort(audit_log)
 
+    # 业务结论优先（F1 根修，2026-08-10）：audit 文本明确「机审：不通过」→ 业务打回，
+    # 与 exit code 无关。机审 agent 打回时可能 exit 0（claude -p 声称非零退出不可靠），
+    # 仅凭 exit code 会把「不通过」误判为通过/落盘失败 → 进 infra 冷却死循环（clw009 事故）。
+    if _audit_output_indicates_rejection(audit_text):
+        rejection = _audit_rejection_reason(audit_text) or "机审：不通过"
+        _ledger_record(work, severity, "不通过", [rejection], fix_action="", source=("manual" if manual else "engine"), kind="audit")
+        logger.warning("机审明确不通过（业务，按 audit 文本判定）: work=%s reason=%s", work.id, rejection)
+        return False, [rejection], True
+
     if not ok and not _audit_output_indicates_pass(audit_text):
-        return False, problems or ["机审执行失败"]
+        # P1-C 修复：机审执行失败 = 基建故障（kind=infra），不参与命中判定
+        _ledger_record(work, severity, "不通过", problems or ["机审执行失败"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
+        return False, problems or ["机审执行失败"], True
 
     evidence = audit_text[-800:]
     if worktree_hint:
@@ -1774,34 +2869,111 @@ def _run_machine_audit_after_writeback(
                 evidence=evidence,
             ):
                 return False, ["机审通过但机审区落盘到分支卡失败"]
+            if audited_tip:
+                _pin_audit_commit(str(wt_card), audited_tip)
             if not _commit_and_push_worktree_card(
                 worktree_hint,
                 work.card_path,
                 work.id,
             ):
-                return False, ["机审通过但分支证据未推送（ready 不可见）"]
-            return True, []
+                _ledger_record(work, severity, "不通过", ["机审通过但分支证据未推送"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
+                return False, ["机审通过但分支证据未推送（ready 不可见）"], True
+            _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
+            return True, [], True
         logger.warning("worktree 卡缺失，回退生产卡落证据: work=%s", work.id)
     if not _append_machine_audit_pass(
         work.card_path,
         source="engine-audit",
         evidence=evidence,
     ):
-        return False, ["机审通过但机审区落盘失败"]
-    return True, []
+        _ledger_record(work, severity, "不通过", ["机审通过但机审区落盘失败"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
+        return False, ["机审通过但机审区落盘失败"], True
+    _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
+    return True, [], True
 
 
 def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
-    """父卡未关闭则阻断 AUTO 派发（保持待分派）；无父卡/父卡已关闭 → None。"""
+    """父卡未关闭则阻断 AUTO 派发（保持待分派）；无父卡/父卡已关闭/已作废 → None。
+
+    人审调整动作统一化（2026-08-14）：父卡作废 = 该依赖已取消，子卡放行
+    （不自动级联子卡，由老板在子卡上定去留；observer 提示）。
+    """
     parent_id = (work.parent or "").strip()
     if not parent_id:
         return None
     parent = by_id.get(parent_id)
     if parent is None:
         return None
-    if parent.state is State.CLOSED:
+    if parent.state in (State.CLOSED, State.VOIDED):
         return None
-    return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭后才派发）"
+    return f"父卡 {parent_id} 状态={parent.state.value}（须已关闭/已作废后才派发）"
+
+
+def _depends_on_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:
+    """显式依赖卡未关闭则阻断 AUTO 派发（保持待分派）。
+
+    依赖卡状态 ∈ {已关闭, 已作废} 放行；∈ {待分派/执行中/已回写/打回} 阻塞；
+    依赖卡不存在/为空则视为无依赖（向后兼容存量卡）。
+    人审调整动作统一化（2026-08-14）：依赖卡作废 = 该依赖已取消 → 下游放行。
+    """
+    deps = list(getattr(work, "depends_on", None) or [])
+    if not deps:
+        return None
+    blocked: list[str] = []
+    for dep_id in deps:
+        dep = by_id.get(dep_id)
+        if dep is None:
+            continue  # 依赖卡不存在 → 不阻塞（避免假死；由出卡方保证存在）
+        if dep.state not in (State.CLOSED, State.VOIDED):
+            blocked.append(f"{dep_id}({dep.state.value})")
+    if not blocked:
+        return None
+    return "依赖未完成: " + ", ".join(blocked)
+
+
+def _detect_dependency_cycle(work: Work, by_id: dict[str, Work]) -> str | None:
+    """检测依赖环：从 work 出发 DFS，若沿依赖链回到 work 自身则报环。
+
+    环判定：DFS 当前路径 stack 中出现重复节点即成环；返回环路径字符串。
+    """
+    visited: set[str] = set()
+
+    def visit(wid: str, stack: list[str]) -> str | None:
+        if wid in stack:
+            return " → ".join(stack + [wid])
+        visited.add(wid)
+        w = by_id.get(wid)
+        deps = list(getattr(w, "depends_on", None) or []) if w else []
+        for d in deps:
+            if d in visited and d not in stack:
+                continue
+            found = visit(d, stack + [wid])
+            if found:
+                return found
+        return None
+
+    return visit(work.id, [])
+
+
+def _detect_empty_commit_signal(log_path: Path) -> bool:
+    """检测执行体日志尾部的空提交信号（nothing to commit 等）→ V3 禁止假成功。
+
+    仅当尾部含空提交关键字且无 ``error:`` 字样时判定为真。
+    """
+    if not log_path or not log_path.is_file():
+        return False
+    try:
+        content = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    tail = content[-2000:]
+    keywords = [
+        "nothing to commit",
+        "no changes added to commit",
+        "nothing added to commit",
+        "no commit created",
+    ]
+    return any(kw in tail.lower() for kw in keywords) and "error:" not in tail.lower()
 
 
 def _run_auto_worker(
@@ -1820,17 +2992,42 @@ def _run_auto_worker(
             work.transition(State.DONE)
             store.save_work(work)
             logger.info("收单成功: work=%s → 已回写", work.id)
-            from server.engine.runtime_state import write_card_state
+            # sidecar 契约（ccc-plan-021）：成功出口 clear sidecar，无在途残留
+            from server.engine.runtime_state import clear_card_state
 
-            write_card_state(log_dir, work.id, infra_count=0)  # 成功清零连续 infra
+            clear_card_state(log_dir, work.id)
             outcome["collected"] = 1
         else:
             # 补一句可读原因（超时/网络特征优先）
-            retryable, hint = is_retryable_failure(work.id, problems, log_dir)
+            retryable, hint = is_retryable_failure(work.id, problems, log_dir, phase="run")
             reasons = list(problems) if problems else ["执行失败"]
             if hint and hint not in reasons[0]:
                 reasons = [hint, *reasons]
-            if retryable:
+
+            # 空回写判定：直接打回，不再无限 retry
+            is_empty = False
+            empty_reason = ""
+            if any("无有效产物" in p or "空回写卡" in p or "模板占位" in p for p in reasons):
+                is_empty = True
+                empty_reason = reasons[0]
+            else:
+                wt_hint = _worktree_hint_for(work, registry)
+                if wt_hint and work.card_path and "docs/dispatch" in work.card_path:
+                    is_empty, empty_reason = is_empty_writeback_or_placeholder(work, wt_hint)
+
+            if is_empty:
+                logger.warning(
+                    "检测到空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s", work.id, empty_reason
+                )
+                reasons = [empty_reason, *reasons]
+                work.transition(State.REJECTED, problems=reasons)
+                store.save_work(work)
+                # sidecar 契约：打回出口 clear sidecar，磁盘终态权威
+                from server.engine.runtime_state import clear_card_state
+
+                clear_card_state(log_dir, work.id)
+                outcome["failed"] = 1
+            elif retryable:
                 # 读 sidecar 的 infra_count
                 from server.engine.runtime_state import read_card_state
 
@@ -1848,12 +3045,10 @@ def _run_auto_worker(
                     reasons = [f"基础设施连续失败 {next_strikes} 次强制打回（可人工恢复后再派）", *reasons]
                     work.transition(State.REJECTED, problems=reasons)
                     store.save_work(work)
+                    # sidecar 契约：熔断打回出口 clear sidecar，磁盘终态权威（reason 在 problems）
+                    from server.engine.runtime_state import clear_card_state
 
-                    from server.engine.runtime_state import write_card_state
-
-                    write_card_state(
-                        log_dir, work.id, state=State.REJECTED.value, infra_count=next_strikes, reason=reasons[0]
-                    )
+                    clear_card_state(log_dir, work.id)
                     logger.error(
                         "基础设施故障连续失败超限（已触发熔断打回）: work=%s strikes=%d", work.id, next_strikes
                     )
@@ -1863,7 +3058,7 @@ def _run_auto_worker(
                     _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="run", infra_count=next_strikes)
                     outcome["infra"] = 1
             else:
-                retried = _fail_retry_or_reject(work, store, reasons, cfg)
+                retried = _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                 # 催单计数：仅最终打回时记 timed_out（回待分派不算）
                 if (not retried) and any("超时" in p for p in reasons):
                     outcome["timed_out"] = 1
@@ -1871,7 +3066,7 @@ def _run_auto_worker(
         logger.exception("Worker 异常: work=%s: %s", work.id, exc)
         try:
             if work.state in (State.RUNNING, State.DONE):
-                _fail_retry_or_reject(work, store, [f"worker 异常: {exc}"], cfg)
+                _fail_retry_or_reject(work, store, [f"worker 异常: {exc}"], cfg, log_dir)
         except Exception:
             logger.exception("Worker 异常后失败流转失败: work=%s", work.id)
     finally:
@@ -1900,22 +3095,101 @@ def _run_audit_worker(
             outcome["collected"] = 1
             return outcome
         audit_timeout = _audit_timeout_seconds(cfg)
-        ok, problems = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, audit_timeout)
+        ok, problems, _audited = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, audit_timeout)
         if ok:
-            from server.engine.runtime_state import write_card_state
+            # sidecar 契约（ccc-plan-021）：机审通过出口 clear sidecar，无在途残留
+            from server.engine.runtime_state import clear_card_state
 
-            write_card_state(log_dir, work.id, infra_count=0)  # 成功清零连续 infra
+            clear_card_state(log_dir, work.id)
             outcome["collected"] = 1
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
             audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
+            # F2（2026-08-10）：audit 明确「机审：不通过」→ 业务打回，不受 is_mech 压过。
+            # is_mech 的「范围越界/超出范围」等关键词本意是识别无业务结论时的机械失败特征，
+            # 但机审席打回理由常含「范围系统性越界」——若被 is_mech 抢判，业务打回会落入
+            # infra 冷却死循环（clw009 事故）。业务结论（「机审：不通过」）永远优先。
+            has_rejection = _audit_output_indicates_rejection(audit_text)
             is_mech = _is_mechanical_rejection_text(audit_text)
-            business = _audit_output_indicates_rejection(audit_text) and not is_mech
-            retryable, hint = is_retryable_failure(work.id, reasons, log_dir)
-            if business:
-                _fail_retry_or_reject(work, store, reasons, cfg)
+            business = has_rejection and not is_mech
+            if has_rejection and is_mech:
+                logger.warning(
+                    "机审 audit 含「不通过」结论且命中机械关键词（is_mech 抢占）: work=%s → 按业务打回处理",
+                    work.id,
+                )
+                business = True
+            retryable, hint = is_retryable_failure(work.id, reasons, log_dir, phase="audit")
+
+            # 空回写判定：直接打回，不再无限 retry
+            is_empty = False
+            empty_reason = ""
+            if any("无有效产物" in p or "空回写卡" in p or "模板占位" in p for p in reasons):
+                is_empty = True
+                empty_reason = reasons[0]
+            else:
+                wt_hint = _worktree_hint_for(work, registry)
+                if wt_hint and work.card_path and "docs/dispatch" in work.card_path:
+                    is_empty, empty_reason = is_empty_writeback_or_placeholder(work, wt_hint)
+
+            if is_empty:
+                logger.warning(
+                    "检测到机审时卡为空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s",
+                    work.id,
+                    empty_reason,
+                )
+                reasons = [empty_reason, *reasons]
+                work.transition(State.REJECTED, problems=reasons)
+                store.save_work(work)
+                # sidecar 契约：机审空回写打回出口 clear sidecar
+                from server.engine.runtime_state import clear_card_state
+
+                clear_card_state(log_dir, work.id)
                 outcome["failed"] = 1
-                logger.warning("机审不通过（业务）: work=%s → %s", work.id, work.state.value)
+            elif business:
+                # 机审 v4 三级分流（2026-08-14 接入引擎）：读审计 severity 决策
+                # 轻→独立轻修复轮（不占重试预算，超限升级中度）；中→现状重试预算；重→直接打回
+                severity = _audit_severity(audit_text)
+                if severity == "重":
+                    work.transition(State.REJECTED, problems=reasons)
+                    store.save_work(work)
+                    from server.engine.runtime_state import clear_card_state
+
+                    clear_card_state(log_dir, work.id)
+                    outcome["failed"] = 1
+                    logger.warning(
+                        "机审重度不通过直接打回（不重试）: work=%s reasons=%s", work.id, reasons[:2]
+                    )
+                elif severity == "轻":
+                    # 独立轻修复轮：sidecar 记 light_fix_count，超上限升级中度（避免无限修）
+                    from server.engine.runtime_state import read_card_state, write_card_state
+
+                    rt = read_card_state(log_dir).get(work.id) or {}
+                    light_fix = int(rt.get("light_fix_count") or 0)
+                    try:
+                        light_max = int(cfg.get("AUDIT_LIGHT_FIX_MAX") or 2)
+                    except (TypeError, ValueError):
+                        light_max = 2
+                    if light_fix >= light_max:
+                        _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
+                        outcome["failed"] = 1
+                        logger.warning(
+                            "轻修复轮超限(%d≥%d)升级中度处理: work=%s", light_fix, light_max, work.id
+                        )
+                    else:
+                        work.transition(State.TODO, problems=reasons)
+                        store.save_work(work)
+                        write_card_state(
+                            log_dir, work.id, state="待分派",
+                            light_fix_count=light_fix + 1,
+                        )
+                        outcome["failed"] = 1
+                        logger.warning(
+                            "机审轻度不通过→轻修复轮(%d/%d): work=%s", light_fix + 1, light_max, work.id
+                        )
+                else:
+                    _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
+                    outcome["failed"] = 1
+                    logger.warning("机审不通过（业务/中度）: work=%s → %s", work.id, work.state.value)
             elif retryable or _is_persistence_failure(reasons) or is_mech:
                 if hint and hint not in reasons[0]:
                     reasons = [hint, *reasons]
@@ -1937,6 +3211,7 @@ def _run_audit_worker(
                         store,
                         [*reasons, f"机审多次基础设施失败（已自动重试 {max_strikes} 次），回待分派人工跟进"],
                         cfg,
+                        log_dir,
                     )
                     outcome["failed"] = 1
                 else:
@@ -1951,19 +3226,29 @@ def _run_audit_worker(
                     )
                     outcome["infra"] = 1
             else:
-                _fail_retry_or_reject(work, store, reasons, cfg)
+                _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                 outcome["failed"] = 1
                 logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
     except Exception as exc:
         logger.exception("机审 worker 异常: work=%s: %s", work.id, exc)
         try:
             if work.state in (State.RUNNING, State.DONE):
-                _fail_retry_or_reject(work, store, [f"机审 worker 异常: {exc}"], cfg)
+                _fail_retry_or_reject(work, store, [f"机审 worker 异常: {exc}"], cfg, log_dir)
             outcome["failed"] = 1
         except Exception:
             logger.exception("机审异常后失败流转失败: work=%s", work.id)
     finally:
         _clear_running_marker(log_dir, f"{work.id}-audit")
+        # 2026-08-12 终态权威：机审打回 → 分支卡状态落对应终态/重试态，
+        # 防分支信封把已回写残留读成 DONE 无限机审
+        if work.state is State.REJECTED or (
+            work.state is State.TODO and any("机审" in p or "不通过" in p for p in work.problems)
+        ):
+            try:
+                state_text = "打回（机审：不通过）" if work.state is State.REJECTED else "待分派（机审打回·重试中）"
+                _mark_branch_card_state(work, registry, cfg, log_dir, state_text)
+            except Exception:
+                logger.exception("机审打回落分支卡失败: work=%s", work.id)
     return outcome
 
 
@@ -1998,6 +3283,33 @@ def run_once(
     reclaimed = reclaim_orphaned_running(store, log_dir)
     dead_markers_cleaned = cleanup_dead_markers(log_dir)
 
+    # sidecar 契约（ccc-plan-021）：收敛器入 run_once——孤儿/终态残留 sidecar 自动清除，
+    # 去掉人工 sync-runtime-state 依赖。终态（已回写/打回/已关闭）由磁盘卡唯一权威。
+    from server.engine.runtime_state import read_card_state, clear_card_state
+
+    runtime_now = read_card_state(log_dir) if log_dir else {}
+    if runtime_now:
+        all_works = {w.id: w for w in store.list_work()}
+        for cid in list(runtime_now.keys()):
+            rec = runtime_now[cid]
+            w = all_works.get(cid)
+            if w is None:
+                # 孤儿记录：不对应任何卡 → 清除
+                clear_card_state(log_dir, cid)
+                logger.info("收敛器清除孤儿 sidecar: %s", cid)
+                continue
+            if rec.get("state") in (State.DONE.value, State.REJECTED.value, State.CLOSED.value):
+                # 终态残留（磁盘已是终态）→ 清除，磁盘卡权威。
+                # 例外：带 infra_cooldown_until 的记录是「冷却临时态」，保留（冷却到期自然失效）。
+                if rec.get("infra_cooldown_until"):
+                    continue
+                clear_card_state(log_dir, cid)
+                logger.info("收敛器清除终态残留 sidecar: %s state=%s", cid, rec.get("state"))
+            elif rec.get("state") == State.TODO.value and w.state is State.REJECTED:
+                # sidecar 待分派但磁盘已打回 → 清除（双源漂移收口）
+                clear_card_state(log_dir, cid)
+                logger.info("收敛器清除双源漂移 sidecar: %s", cid)
+
     git_sync_ok = True
     git_sync_detail = ""
     try:
@@ -2028,13 +3340,27 @@ def run_once(
     dispatched = 0
     probe_skips = 0
     parent_skips = 0
+    dep_skips = 0
+    cycle_skips = 0
     none_skips = 0
+    remote_pending = 0
+    queued = 0
     slots = pool.free_slots(max_concurrent, store, log_dir)
 
     for work in pending:
         if _infra_cooldown_active(runtime_for_dispatch, work.id, now_ts):
             logger.info("基础设施冷却中，跳过派发: work=%s", work.id)
             continue
+        # 派发前校验 worktree 内是否存在对应卡，若不存在，跳过派发避免空转
+        wt_hint = _worktree_hint_for(work, registry)
+        import sys
+
+        is_pytest = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
+        if not is_pytest and wt_hint and os.path.isdir(wt_hint) and "docs/dispatch" in work.card_path:
+            if _worktree_card_candidate(wt_hint, work.card_path) is None:
+                logger.warning("派发防护：worktree %s 存在但无对应卡副本 %s，跳过派发避免空转", wt_hint, work.card_path)
+                none_skips += 1
+                continue
         if is_card_accepted(work.card_path):
             logger.warning("已验收卡不派发: work=%s", work.id)
             continue
@@ -2042,6 +3368,16 @@ def run_once(
         if block:
             parent_skips += 1
             logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
+            continue
+        dep_block = _depends_on_blocks_dispatch(work, by_id)
+        if dep_block:
+            dep_skips += 1
+            logger.info("依赖卡未关闭，跳过派发: work=%s (%s)", work.id, dep_block)
+            continue
+        cycle = _detect_dependency_cycle(work, by_id)
+        if cycle:
+            cycle_skips += 1
+            logger.warning("检测到依赖环，跳过派发: work=%s 环=%s", work.id, cycle)
             continue
         decision = decide_work(work, registry)
         if decision is DispatchDecision.MANUAL:
@@ -2055,6 +3391,18 @@ def run_once(
             store.save_work(work)
             dispatched += 1
             continue
+        if decision is DispatchDecision.REMOTE:
+            # 远端 Worker 认领（ccc-plan-020 v2 · clw020 事故修复）：
+            # REMOTE 卡保持待分派（不标执行中），由远端 Worker 认领后写「执行中」。
+            # Engine 不本地拉起、不占槽、不写 marker——未认领 = 待分派，不是假执行中。
+            remote_pending += 1
+            logger.info(
+                "远端卡待 Worker 认领（保持待分派，不标执行中）: work=%s role=%s executor=%s",
+                work.id,
+                work.role,
+                work.executor or "(未指定)",
+            )
+            continue
         if decision is not DispatchDecision.AUTO:
             none_skips += 1
             logger.warning(
@@ -2065,16 +3413,46 @@ def run_once(
             )
             continue
         if slots <= 0:
+            queued += 1
+            logger.info(
+                "无空闲执行槽位，进入排队等待: work=%s, 当前并发数=%d, 上限=%d",
+                work.id,
+                pool.occupancy(store, log_dir),
+                max_concurrent,
+            )
             continue
+        # 业务仓并发闸门（2026-08-12 隔离升级）：同仓 RUNNING 卡达到 max_concurrent 才排队。
+        # 默认 max_concurrent=1（保守）；跨仓可并行。manual 挂起（假 RUNNING）同样计入。
+        biz_project = _business_project(work)
+        if biz_project:
+            running_same_project = [
+                w for w in store.list_work(state=State.RUNNING) if w.project == work.project
+            ]
+            if len(running_same_project) >= biz_project.isolation_max_concurrent:
+                queued += 1
+                logger.info(
+                    "同业务仓已达并发上限 %d，排队等待: work=%s project=%s running=%s",
+                    biz_project.isolation_max_concurrent,
+                    work.id,
+                    work.project,
+                    [w.id for w in running_same_project],
+                )
+                continue
         if probe_url and not probe_relay(probe_url):
             probe_skips += 1
             logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
             continue
 
-        # 占槽：先标执行中 + marker，再 submit（空位已按 occupancy 核算）
+        # 占槽：先标执行中 + marker（含派发 tip），再 submit（空位已按 occupancy 核算）
         work.transition(State.RUNNING)
         store.save_work(work)
-        _claim_running_marker(log_dir, work.id)
+        try:
+            from server.git_sync import resolve_repo_root
+
+            dispatch_main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        except Exception:
+            dispatch_main_repo = Path(__file__).resolve().parents[2]
+        _claim_running_marker(log_dir, work.id, main_repo=dispatch_main_repo)
 
         def _make_fn(w: Work = work) -> Any:
             def _fn() -> dict[str, int]:
@@ -2097,6 +3475,93 @@ def run_once(
 
         dispatched += 1
         slots -= 1
+
+    # ── 认领协议收单（ccc-plan-020 v2）：REMOTE 卡按「认领态」收单，不靠本地 PID ──
+    def _claim_round() -> tuple[int, int, int]:
+        """一次认领收单扫描：返回 (collected, reclaimed, in_flight)。
+
+        Worker 认领协议：Worker 写卡头「认领：<W号> · 认领时间：<ts>」→ push origin。
+        Engine（已 git_sync 到最新）扫 dispatch 卡头：
+        - 有认领 + 状态=已回写 → 收单（collected，转 DONE，清认领态）
+        - 有认领 + 状态=待分派 + 认领超时 → 回收认领（reclaimed，清认领，卡回待分派可重认领）
+        - 有认领 + 其他（执行中）→ in_flight（Worker 执行中）
+        - 无认领 + 状态=待分派 → 保持待分派（等 Worker 认领，不标执行中）
+        """
+        from server.board.card_header import parse_metadata
+        from datetime import datetime, timezone
+
+        dispatch_rel = cfg.get("DISPATCH_DIR") or "docs/dispatch"
+        if os.path.isabs(dispatch_rel):
+            dispatch_root = Path(dispatch_rel)
+        else:
+            try:
+                from server.git_sync import resolve_repo_root
+
+                dispatch_root = resolve_repo_root(dispatch_rel) / dispatch_rel
+            except Exception:
+                dispatch_root = Path(__file__).resolve().parents[2] / dispatch_rel
+        if not dispatch_root.is_dir():
+            return (0, 0, 0)
+        collected = reclaimed = in_flight = 0
+        for card_path in sorted(dispatch_root.rglob("*.md")):
+            if card_path.name.startswith("."):
+                continue
+            try:
+                text = card_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            meta = parse_metadata(text)
+            dispatch = meta.get("派发", "engine")
+            executor = meta.get("执行体", "")
+            import re as _re
+
+            is_remote = dispatch in ("scheduler", "remote") or bool(_re.fullmatch(r"W\d+", executor or ""))
+            if not is_remote:
+                continue
+            state = meta.get("状态", "").strip()
+            claim = meta.get("认领", "").strip()
+            claim_ts = meta.get("认领时间", "").strip()
+            card_id = card_path.stem
+            if claim:
+                # 已认领
+                if state == "已回写":
+                    # Worker 完成回写 → 收单（清认领标记，消除残留观测噪声）
+                    collected += 1
+                    logger.info("认领收单（Worker %s 完成回写）: %s", claim, card_id)
+                    try:
+                        _clear_claim_marker(card_path, card_id)
+                    except Exception:
+                        logger.exception("收单清认领标记失败: %s", card_id)
+                elif state in ("待分派", ""):
+                    # 认领超时检查：claim_ts 超过 timeout → 回收认领，卡回待分派
+                    if claim_ts:
+                        try:
+                            claim_dt = datetime.fromisoformat(claim_ts.replace("Z", "+00:00"))
+                            elapsed = (datetime.now(timezone.utc) - claim_dt).total_seconds()
+                        except ValueError:
+                            elapsed = 0
+                        if elapsed > timeout:
+                            reclaimed += 1
+                            logger.warning(
+                                "认领超时回收: %s (claim=%s elapsed=%.0fs > %ds)",
+                                card_id,
+                                claim,
+                                elapsed,
+                                timeout,
+                            )
+                            _clear_claim_marker(card_path, card_id)
+                        else:
+                            in_flight += 1
+                    else:
+                        in_flight += 1
+                else:
+                    in_flight += 1
+            else:
+                # 未认领：保持待分派（不标执行中，防假执行中）
+                pass
+        return (collected, reclaimed, in_flight)
+
+    claim_collected, claim_reclaimed, claim_in_flight = _claim_round()
 
     # ── 机审池（独立槽位）：扫「已回写 + 待机审标记 + 未通过」填槽 ──
     def _audit_round() -> tuple[int, int, int, int, int, int]:
@@ -2177,6 +3642,9 @@ def run_once(
     # 看板 in_flight = 全部执行中（含 manual 挂起）；CLI 空位另用 pool.occupancy
     in_flight = len(store.list_work(state=State.RUNNING))
     worktrees_cleaned = _cleanup_closed_worktrees(store, registry, cfg, log_dir)
+    global _WORKTREE_FAILURES
+    worktrees_failed = _WORKTREE_FAILURES
+    _WORKTREE_FAILURES = 0
     summary: dict[str, int] = {
         "mode": "once",
         "scanned": len(pending),
@@ -2188,7 +3656,10 @@ def run_once(
         "dead_markers_cleaned": dead_markers_cleaned,
         "probe_skips": probe_skips,
         "parent_skips": parent_skips,
+        "dep_skips": dep_skips,
+        "cycle_skips": cycle_skips,
         "none_skips": none_skips,
+        "queued": queued,
         "audit_dispatched": audit_dispatched,
         "audit_in_flight": audit_in_flight,
         "audit_pending": audit_pending,
@@ -2196,6 +3667,10 @@ def run_once(
         "audit_failed": audit_failed,
         "audit_failed_infra": audit_failed_infra,
         "worktrees_cleaned": worktrees_cleaned,
+        "worktrees_failed": worktrees_failed,
+        "claim_collected": claim_collected,
+        "claim_reclaimed": claim_reclaimed,
+        "claim_in_flight": claim_in_flight,
     }
     try:
         from server.engine.pipeline_status import write_pipeline_status
@@ -2208,11 +3683,14 @@ def run_once(
                 "git_sync_detail": git_sync_detail,
                 "probe_skips": probe_skips,
                 "parent_skips": parent_skips,
+                "dep_skips": dep_skips,
+                "cycle_skips": cycle_skips,
                 "none_skips": none_skips,
                 "reclaimed": reclaimed,
                 "dispatched": dispatched,
                 "in_flight": in_flight,
                 "scanned": len(pending),
+                "queued": queued,
                 "dead_markers_cleaned": dead_markers_cleaned,
                 "audit_dispatched": audit_dispatched,
                 "audit_in_flight": audit_in_flight,
@@ -2221,6 +3699,7 @@ def run_once(
                 "audit_failed": audit_failed,
                 "audit_failed_infra": audit_failed_infra,
                 "worktrees_cleaned": worktrees_cleaned,
+                "worktrees_failed": worktrees_failed,
             },
         )
     except Exception:
@@ -2250,6 +3729,22 @@ def run_once(
     return summary
 
 
+def _dispatch_dir_mtime(dispatch_dir: str) -> float:
+    """dispatch 目录（含卡子目录）最新 mtime，用于检测卡片变化（事件感知，2026-08-10）。"""
+    root = Path(dispatch_dir)
+    if not root.exists():
+        return 0.0
+    latest = 0.0
+    for p in root.rglob("*"):
+        try:
+            m = p.stat().st_mtime
+        except OSError:
+            continue
+        if m > latest:
+            latest = m
+    return latest
+
+
 def run_loop(
     registry: ExecutorRegistry,
     store: BoardStore,
@@ -2257,15 +3752,29 @@ def run_loop(
     heartbeat_interval: int,
     config_path: str | Path | None = None,
 ) -> None:
-    """持续模式：收割 + 补位心跳（不等待在途收单）。"""
+    """持续模式：收割 + 补位心跳（不等待在途收单）。
+
+    2026-08-10 事件感知：dispatch 目录 mtime 变化立即 run_once（写卡即响应），
+    无变化则轻量睡眠探测（2s），替代固定 heartbeat_interval 轮询延迟。
+    """
     logger.info("Engine 持续模式启动（收割+补位，真实派发/收单）")
+    dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
+    last_mtime = _dispatch_dir_mtime(dispatch_dir)
     while True:
         summary = run_once(registry, store, cfg, wait=False, config_path=config_path)
         summary = {**summary, "mode": "loop"}
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
         if summary["timed_out"] > 0:
             logger.warning("催单: 本轮 %d 个任务超时未回写", summary["timed_out"])
-        time.sleep(heartbeat_interval)
+        # 事件感知：等 dispatch 目录变化（写卡/回写/状态变更）即触发，或最长 heartbeat_interval 兜底
+        waited = 0.0
+        while waited < heartbeat_interval:
+            time.sleep(2)
+            waited += 2
+            if _dispatch_dir_mtime(dispatch_dir) != last_mtime:
+                last_mtime = _dispatch_dir_mtime(dispatch_dir)
+                logger.info("dispatch 目录变化，立即触发派发")
+                break
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2305,8 +3814,10 @@ def main(argv: list[str] | None = None) -> int:
             if _card_machine_audit_passed(work.card_path):
                 results["skipped"].append(cid)
                 continue
-            ok, problems = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, timeout)
-            if ok:
+            ok, problems, audited = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, timeout)
+            if not audited:
+                results["skipped"].append(cid)  # 无验收席/已跳过：不算已审
+            elif ok:
                 results["audited"].append(cid)
             else:
                 results["failed"].append({"id": cid, "error": problems})

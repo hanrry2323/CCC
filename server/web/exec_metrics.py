@@ -82,7 +82,7 @@ def parse_log_call_counts(path: Path, *, force: bool = False) -> dict[str, int]:
     - shell_calls: ``$ …``
     - model_headers: ``> …``（弱信号）
     """
-    empty = {"tool_calls": 0, "shell_calls": 0, "model_headers": 0}
+    empty = {"tool_calls": 0, "shell_calls": 0, "model_headers": 0, "audit_runs": 0}
     try:
         st = path.stat()
     except OSError:
@@ -94,6 +94,7 @@ def parse_log_call_counts(path: Path, *, force: bool = False) -> dict[str, int]:
             return hit[2]
 
     tool = shell = headers = 0
+    audit_runs = 0
     try:
         with path.open("r", encoding="utf-8", errors="replace") as f:
             for raw in f:
@@ -101,6 +102,8 @@ def parse_log_call_counts(path: Path, *, force: bool = False) -> dict[str, int]:
                 if not line:
                     continue
                 if line.startswith("[ccc.engine]"):
+                    if "child_pid=" in line:
+                        audit_runs += 1  # 机审进程启动次数（每次机审 1 个 child_pid）
                     continue
                 if _TOOL_RE.match(line):
                     tool += 1
@@ -113,7 +116,7 @@ def parse_log_call_counts(path: Path, *, force: bool = False) -> dict[str, int]:
     except OSError:
         return empty
 
-    stats = {"tool_calls": tool, "shell_calls": shell, "model_headers": headers}
+    stats = {"tool_calls": tool, "shell_calls": shell, "model_headers": headers, "audit_runs": audit_runs}
     _log_stats_cache[key] = (st.st_mtime, st.st_size, stats)
     return stats
 
@@ -177,7 +180,7 @@ def save_metrics_snapshot(log_dir: Path, work_id: str, stats: dict[str, int]) ->
 
 def parse_work_call_counts(log_dir: Path, work_id: str, *, force: bool = False) -> dict[str, int]:
     """汇总该卡全部阶段日志调用数，并与 sidecar 取高水位（只增不减）。"""
-    totals = {"tool_calls": 0, "shell_calls": 0, "model_headers": 0}
+    totals = {"tool_calls": 0, "shell_calls": 0, "model_headers": 0, "audit_runs": 0}
     paths = list_work_log_paths(log_dir, work_id)
     for p in paths:
         part = parse_log_call_counts(p, force=force)
@@ -189,6 +192,7 @@ def parse_work_call_counts(log_dir: Path, work_id: str, *, force: bool = False) 
         "tool_calls": max(totals["tool_calls"], snap["tool_calls"]),
         "shell_calls": max(totals["shell_calls"], snap["shell_calls"]),
         "model_headers": max(totals["model_headers"], snap["model_headers"]),
+        "audit_runs": totals["audit_runs"],
     }
     # 有日志进展或高于旧快照时落盘，保证进机审/回写后数字仍在且可继续涨
     if paths or merged["tool_calls"] > 0 or merged["shell_calls"] > 0:
@@ -334,6 +338,7 @@ def enrich_card_runtime(
         # 看板「调用」= 工具 → + shell $（都是执行体动作，跟卡累计）
         row["tool_calls"] = int(counts["tool_calls"] or 0) + int(counts["shell_calls"] or 0)
         row["shell_calls"] = counts["shell_calls"]
+        row["audit_runs"] = int(counts.get("audit_runs") or 0)
 
 
 def clear_exec_metrics_cache() -> None:

@@ -13,14 +13,16 @@ projects:
     name: CCC
     display: ccc
     location: m1-program, mac2017-platform
+    category: platform
     paths:
       m1: /Users/apple/program/CCC
       mac2017: /Users/fan/program/CCC
-    taskable: true
-    forbidden: false
+    taskable: false
+    forbidden: true
     status: active
     dossier: docs/projects/ccc/README.md
     role: 自动化平台底座（薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端）
+    notes: 平台自研禁出卡（2026-08-10 红线）：改 server/engine|board|scripts 流程逻辑一律 M1 主窗口直接开发，禁止委派 engine 自动流程；ccc 前缀列入 FORBIDDEN_CARD_PREFIXES 断根
 
   - prefix: qb
     id: qb
@@ -30,6 +32,9 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/qb
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/qb
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
@@ -45,6 +50,9 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/medio-0
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/mx
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
@@ -59,6 +67,9 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/xianyu
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/xy
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
@@ -73,6 +84,9 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/hp
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/hp
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
@@ -119,12 +133,32 @@ projects:
     paths:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-demo
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/cd
+      max_concurrent: 1
     taskable: true
     forbidden: false
     status: active
-    dossier: docs/projects/_catalog/ccc-demo.md
+    dossier: docs/projects/cd/README.md
     role: CCC 演示项目
     notes: 前缀 cd（ccc004 意图经 registry 单源落地 · M4）
+
+  - prefix: clw
+    id: clwarp
+    name: clwarp
+    display: clwarp
+    location: mac2017-apps
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/clwarp
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/clw
+      max_concurrent: 1
+    taskable: true
+    forbidden: false
+    status: active
+    dossier: docs/projects/clw/README.md
+    role: 统一 AI 开发桌面驾驶舱（Claude+OpenCode+Codex）
 
   - prefix: null
     id: ai-loop-router

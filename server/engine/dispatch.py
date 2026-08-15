@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shlex
 from dataclasses import dataclass
 from enum import Enum
@@ -25,8 +26,10 @@ from enum import Enum
 try:
     from enum import StrEnum
 except ImportError:
+
     class StrEnum(str, Enum):  # noqa: UP042
         pass
+
 
 from pathlib import Path
 from string import Formatter
@@ -44,15 +47,24 @@ REQUIRED_FIELDS: frozenset[str] = frozenset({"角色", "分类", "当前绑定",
 # 「可后台 CLI」行必填的派发字段（T32 真实派发闭环）
 CLI_REQUIRED_FIELDS: frozenset[str] = frozenset({"命令", "参数模板"})
 # build_command 支持的占位符（参数模板里允许引用）
-ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset({"work_id", "card_path", "role", "workdir", "worktree"})
+ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset(
+    {"work_id", "card_path", "role", "workdir", "worktree", "biz_worktree"}
+)
 
 
 class DispatchDecision(StrEnum):
-    """派发决策。"""
+    """派发决策。
 
-    AUTO = "auto"      # 可后台 CLI → Engine 自动拉起
-    MANUAL = "manual"  # 手动 GUI → 挂起等人
-    NONE = "none"      # 管理席/验收席（分类「—」）/未知角色 → 不派发
+    - AUTO：可后台 CLI + 本机 transport → Engine 本机拉起
+    - REMOTE：远端 Worker 认领（执行体 W 号 / 派发 scheduler|REMOTE）→ 走认领协议，Engine 不本地拉起
+    - MANUAL：手动 GUI → 挂起等人
+    - NONE：管理席/验收席（分类「—」）/未知角色 → 不派发
+    """
+
+    AUTO = "auto"
+    REMOTE = "remote"  # 远端 Worker 认领（ccc-plan-020 执行计划 v2）
+    MANUAL = "manual"
+    NONE = "none"
 
 
 @dataclass(frozen=True)
@@ -79,6 +91,12 @@ class ExecutorEntry:
     workdir: str = ""
     worktree_base: str = ""
     project: str = ""
+    worker_id: str = ""
+    # Worker 模型（ccc-plan-020 执行计划 v2 · A 轨第 2 项）
+    host: str = ""  # Worker 地址：空=本机；"ssh://user@252" 等
+    transport: str = "local"  # 传输通道：local(本机 spawn) | git(认领协议) | ssh
+    worker_status: str = ""  # Worker 状态："" | ready | busy | offline（观测更新）
+    remote_workdir: str = ""  # 远端 Worker 执行工作目录
 
 
 @dataclass(frozen=True)
@@ -105,6 +123,23 @@ class ExecutorRegistry:
                 return proj_entries
         return [e for e in binding_entries if not e.project]
 
+    def rows_for_worker_id(self, worker_id: str, project: str = "") -> list[ExecutorEntry]:
+        """返回与 Worker ID（W4 等）匹配的全部注册行（2026-08-10 标签寻址）。"""
+        wid_entries = [e for e in self.entries if e.worker_id == worker_id]
+        if project:
+            proj_entries = [e for e in wid_entries if e.project == project]
+            if proj_entries:
+                return proj_entries
+        return [e for e in wid_entries if not e.project]
+
+    def cli_entry_for_worker_id(self, worker_id: str, project: str = "") -> ExecutorEntry | None:
+        """返回与 Worker ID 匹配的首个「可后台 CLI」行；无则 None（2026-08-10 标签寻址）。"""
+        rows = self.rows_for_worker_id(worker_id, project=project)
+        for e in rows:
+            if e.category == "可后台 CLI":
+                return e
+        return None
+
     def cli_entry_for_role(self, role: str, project: str = "") -> ExecutorEntry | None:
         """返回该角色的首个「可后台 CLI」行；无则 None。优先匹配项目。"""
         rows = self.rows_for_role(role, project=project)
@@ -114,7 +149,14 @@ class ExecutorRegistry:
         return None
 
     def cli_entry_for_binding(self, tool_name: str, project: str = "") -> ExecutorEntry | None:
-        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。优先匹配项目。"""
+        """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。优先匹配项目。
+
+        2026-08-10 标签寻址：tool_name 为 Worker ID（如 W4）时优先按 worker_id 匹配。
+        """
+        if re.fullmatch(r"W\d+", tool_name.strip() or ""):
+            wid = self.cli_entry_for_worker_id(tool_name.strip(), project=project)
+            if wid is not None:
+                return wid
         rows = self.rows_for_binding(tool_name, project=project)
         for e in rows:
             if e.category == "可后台 CLI":
@@ -122,7 +164,17 @@ class ExecutorRegistry:
         return None
 
     def role_for_binding(self, tool_name: str, project: str = "") -> str | None:
-        """反向查找：工具名 → 角色（优先可后台 CLI 行）。优先匹配项目。"""
+        """反向查找：工具名 → 角色（优先可后台 CLI 行）。优先匹配项目。
+
+        2026-08-10 标签寻址：tool_name 为 Worker ID（如 W4）时按 worker_id 反查角色。
+        """
+        if re.fullmatch(r"W\d+", tool_name.strip() or ""):
+            wid_rows = self.rows_for_worker_id(tool_name.strip(), project=project)
+            for e in wid_rows:
+                if e.category == "可后台 CLI":
+                    return e.role
+            for e in wid_rows:
+                return e.role
         rows = self.rows_for_binding(tool_name, project=project)
         for e in rows:
             if e.category == "可后台 CLI":
@@ -163,20 +215,18 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
             raise ValueError(f"executors[{idx}] 缺字段: {sorted(missing)}")
         category = raw["分类"]
         if category not in VALID_CATEGORIES:
-            raise ValueError(
-                f"executors[{idx}] 分类 '{category}' 非法 "
-                f"(allowed: {sorted(VALID_CATEGORIES)})"
-            )
+            raise ValueError(f"executors[{idx}] 分类 '{category}' 非法 (allowed: {sorted(VALID_CATEGORIES)})")
         command = raw.get("命令", "")
         args_template = raw.get("参数模板", "")
         workdir = raw.get("工作目录", "")
         worktree_base = raw.get("worktree_base", "")
-        # 可后台 CLI 行必须有命令（参数模板允许空，表示无参数）
-        if category == "可后台 CLI":
+        transport = raw.get("transport", "local")
+        # 可后台 CLI 行必须有命令（参数模板允许空，表示无参数）。
+        # 例外：远端 Worker（transport=git/ssh + worker_id）走认领协议，无本地命令（ccc-plan-020 v2）。
+        is_remote = transport in ("git", "ssh") and bool(raw.get("worker_id", ""))
+        if category == "可后台 CLI" and not is_remote:
             if not command:
-                raise ValueError(
-                    f"executors[{idx}] 可后台 CLI 行缺派发字段: ['命令']"
-                )
+                raise ValueError(f"executors[{idx}] 可后台 CLI 行缺派发字段: ['命令']")
             # 校验参数模板占位符合法（模板非空时）
             if args_template:
                 _validate_placeholders(args_template, idx)
@@ -191,6 +241,11 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
                 workdir=workdir,
                 worktree_base=worktree_base,
                 project=raw.get("项目", ""),
+                worker_id=raw.get("worker_id", ""),
+                host=raw.get("host", ""),
+                transport=transport,
+                worker_status=raw.get("worker_status", ""),
+                remote_workdir=raw.get("remote_workdir", ""),
             )
         )
     return ExecutorRegistry(tuple(entries))
@@ -201,8 +256,7 @@ def _validate_placeholders(template: str, idx: int) -> None:
     for _literal, field_name, _spec, _conv in Formatter().parse(template):
         if field_name and field_name not in ALLOWED_PLACEHOLDERS:
             raise ValueError(
-                f"executors[{idx}] 参数模板含未知占位符 '{field_name}' "
-                f"(allowed: {sorted(ALLOWED_PLACEHOLDERS)})"
+                f"executors[{idx}] 参数模板含未知占位符 '{field_name}' (allowed: {sorted(ALLOWED_PLACEHOLDERS)})"
             )
 
 
@@ -234,12 +288,17 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
        - 未命中任何行（未知执行体）→ 回退 `decide(work.role, registry)`。
     2. 无 `work.executor`（卡未指定执行体）→ 回退 `decide(work.role, registry)`（现行为不变）。
 
+    REMOTE 决策态（ccc-plan-020 执行计划 v2 · clw020 事故修复）：
+    - `派发：scheduler` / `派发：remote` → REMOTE（远端 Worker 认领，Engine 不本地拉起）
+    - 执行体为 W 号（W1-W9）→ REMOTE（远端 Worker 认领；禁止回退角色决策本地拉起，修 RC4）
+    - REMOTE 卡未认领 = 保持待分派，不是执行中（防假执行中）
+
     Args:
         work: 待派发的 work 卡（含 executor / dispatch 字段）。
         registry: 执行体注册表。
 
     Returns:
-        DispatchDecision.AUTO / MANUAL / NONE。
+        DispatchDecision.AUTO / REMOTE / MANUAL / NONE。
     """
     if work.type == "epic":
         logger.info("Epic 卡不派发: work=%s", work.id)
@@ -248,7 +307,21 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     if work.dispatch == "manual":
         logger.info("manual 卡由管理席派发，Engine 不自动拉: work=%s", work.id)
         return DispatchDecision.NONE
+    # REMOTE：scheduler/remote 派发 → 远端 Worker 认领（clw020 事故：此前回退角色被本地拉起）
+    if work.dispatch in ("scheduler", "remote"):
+        logger.info("远端卡（派发=%s）→ REMOTE，Engine 不本地拉起: work=%s", work.dispatch, work.id)
+        return DispatchDecision.REMOTE
     if work.executor:
+        # 执行体为 W 号 → 按 Worker transport 决策（修 RC4：决策路径认 worker_id，不回退角色本地拉起）
+        if re.fullmatch(r"W\d+", work.executor.strip() or ""):
+            wid_rows = registry.rows_for_worker_id(work.executor.strip(), project=work.project)
+            if wid_rows:
+                # 本机 Worker（transport=local/空）→ AUTO 本地拉起；远端 → REMOTE 认领
+                if any(e.transport in ("local", "") for e in wid_rows):
+                    logger.info("本地 Worker 卡（执行体=%s transport=local）→ AUTO: work=%s", work.executor, work.id)
+                    return DispatchDecision.AUTO
+            logger.info("远端 Worker 卡（执行体=%s）→ REMOTE: work=%s", work.executor, work.id)
+            return DispatchDecision.REMOTE
         rows = registry.rows_for_binding(work.executor, project=work.project)
         if rows:
             if any(r.category == "可后台 CLI" for r in rows):
@@ -260,6 +333,15 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     return decide(work.role, registry, project=work.project)
 
 
+# 机审 v4 重度 fresh：按命令名映射「新会话/零上下文」标志（不写死工具名，空则忽略）。
+# fresh 标志由 _dispatch_and_collect 在 prompt 注入完成后追加（保住 cmd 末位=prompt 不变量，
+# 避免 v4 指令块被拼到 CLI 标志上——2026-08-14 重度复审 P1-A）。
+_FRESH_FLAG_BY_CMD: dict[str, str] = {
+    "opencode": "--new-session",
+    "claude": "--no-continue",
+}
+
+
 def build_command(
     entry: ExecutorEntry,
     work_id: str,
@@ -267,6 +349,7 @@ def build_command(
     card_path: str,
     default_workdir: str,
     worktree: str = "",
+    biz_worktree: str = "",
 ) -> list[str]:
     """按注册表条目的命令 + 参数模板生成 argv 向量（绝不写死工具名）。
 
@@ -277,6 +360,7 @@ def build_command(
         card_path: 任务卡路径。
         default_workdir: entry.workdir 留空时用此值（来自 config 的 DATA_DIR）。
         worktree: 每卡独立 worktree 路径（可选）。
+        biz_worktree: 业务仓每卡独立 worktree 路径（2026-08-12 隔离升级；空 = 非业务仓型任务）。
 
     Returns:
         argv 列表，如 `["opencode", "--dir", "/data", "-p", "请按..."]`。
@@ -285,9 +369,7 @@ def build_command(
         ValueError: entry 不是可后台 CLI 行、或命令为空。
     """
     if entry.category != "可后台 CLI":
-        raise ValueError(
-            f"build_command 仅适用于可后台 CLI 行，收到分类 '{entry.category}'"
-        )
+        raise ValueError(f"build_command 仅适用于可后台 CLI 行，收到分类 '{entry.category}'")
     if not entry.command:
         raise ValueError("可后台 CLI 行命令为空，无法构造启动命令")
 
@@ -299,6 +381,7 @@ def build_command(
             role=role,
             workdir=workdir,
             worktree=worktree,
+            biz_worktree=biz_worktree,
         )
     )
     args = shlex.split(rendered)

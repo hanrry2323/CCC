@@ -1,7 +1,7 @@
 # 知识库查询用例集（T51）
 
 > 验证 BM25 检索质量。每题标注预期命中域；命中判定：top-5 内出现预期域文档。
-> 覆盖四域：nodes-paths（4）/ projects（4）/ decisions（3）/ lessons（3）。
+> 覆盖五域：nodes-paths（4）/ projects（4）/ decisions（3）/ lessons（3）/ plans（3）。
 > 配套测试：`server/tests/test_kb_query_cases.py`。
 
 | # | 查询 | 预期域 | 预期关键词 |
@@ -20,6 +20,9 @@
 | 12 | Plan 自然语言 不能写命令 | lessons | L1 |
 | 13 | 红线 不动系统文件 | lessons | 工程红线 |
 | 14 | 验收 文档同步 证据 | lessons | LC1 |
+| 15 | 桌面驾驶舱 | plans | clwarp |
+| 16 | 心智分层 | plans | ccc-plan-008 |
+| 17 | 视频里程碑 | plans | xy-plan-001 |
 
 ## 验证方法
 

@@ -17,13 +17,24 @@ Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌�
 - **taskable**：是
 - **出卡**：`scripts/new-card.sh --project mx --title "..."`
 
+## 基准文件（核心导航）
+
+| 项 | 位置 |
+|----|------|
+| 看板（卡/派发/验收） | http://192.168.3.116:7788/#/board（项目筛选 mx） |
+| 方案池（方案/验收标准） | http://192.168.3.116:7788/#/plans（筛选 mx） |
+| 项目档案（本页） | docs/projects/mx/README.md |
+| 方案文件 | docs/projects/mx/plans/ |
+| 业务仓入口 | 业务仓根 AGENTS.md · CLAUDE.md · README.md |
+
+
 ## 线路 / 近况
 
-- 版本 v0.9.0；本地 main 领先 origin 1 个 commit（安全修复 `2e093b5`），工作区干净。
-- 三条功能分支（`library-management`/`ui-upgrade`/`rss-bugs`）已 100% 合入 main（领先其 184~232 个 commit），集成风险为 0。
-- 近期重点：打磨盘点（mx005）与 HTTP 页面/RSS 双端巡检（mx008）已完成，巡检清单已归档并回写 roadmap，后续推进 mx 业务线路高可用加固。
-- 公开化准备已挂账（roadmap「业务线路（mx）」）：目标转 GitHub Public，前提=清签名私钥历史 + 敏感信息清零；不急执行，开发中逐步准备。
-- 架构问题收集已挂账（mx025 产出 6 项，含 P0 WebSub 断链）：2026-08-08 下午起做架构性梳理。
+- 版本 **v0.9.0**（VERSION 文件）；35 张卡（mx001-035）全关闭，2 个方案（mx-plan-001 RSS 打磨、mx-plan-002 收口安全）已完成。
+- **2026-08-12 mx-plan-002 收口与安全加固完成**：修复 4 个 P1 安全漏洞（XSS/鉴权 fail-closed/暴力破解限制/SSRF）、Token 环境变量化、双机路径对齐、9 个积压分支清理、补打 v0.9.0 Tag、脚本审查清理（mx030-035）。
+- 三条功能分支（`library-management`/`ui-upgrade`/`rss-bugs`）已 100% 合入 main，集成风险为 0。
+- 架构问题收集已挂账（mx025 产出 6 项，含 P0 WebSub 断链）→ 下一阶段 **mx-plan-003 底座解耦与中长期架构升级**（待起草）。
+- 公开化准备已挂账（mx-plan-004）：目标转 GitHub Public，前提=清签名私钥历史 + 敏感信息清零；涉及密钥清洗，待单独人工确认后推进，不急执行。
 
 ## 禁区
 

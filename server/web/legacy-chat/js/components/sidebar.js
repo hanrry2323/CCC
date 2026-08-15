@@ -8,11 +8,30 @@ import { showToast } from './toast.js';
 import { setProjectActive } from './composer.js';
 import { navigate, currentRoute } from '../router.js';
 // api.js 新增：loadThreads 拉项目下会话（服务端会话存储）
-import { loadThreads, deleteThread } from '../api.js';
+import { loadThreads, deleteThread, loadClaudeSessions } from '../api.js';
 
 let _projects = [];
 // T47：项目下服务端会话缓存（{projectId: [thread...]}），选中项目时懒加载
 let _serverThreads = {};
+let _claudeSessions = {};
+
+function fmtAgo(ts) {
+  if (!ts) return '';
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (sec < 3600) return `${Math.floor(sec / 60) || 1} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  return `${Math.floor(sec / 86400)} 天前`;
+}
+
+async function loadClaudeFor(pid) {
+  if (_claudeSessions[pid]) return;
+  try {
+    _claudeSessions[pid] = await loadClaudeSessions(pid);
+  } catch (_) {
+    _claudeSessions[pid] = [];
+  }
+  refreshSidebar();
+}
 
 function projectDisplayName(p) {
   if (!p) return '';
@@ -83,7 +102,83 @@ async function loadServerThreads(pid) {
   refreshSidebar();
 }
 
+function _renderClaudeSidebar(projects) {
+  _projects = projects.map((f) => ({
+    id: f.path, name: f.name, path: f.path, count: f.count, updated_at: f.updated_at,
+  }));
+  state.set('projects', _projects);
+  const host = document.getElementById('sidebar-projects');
+  if (!host) return;
+  const activePath = window.__claudeProjectPath__ || state.get('currentProject') || '';
+  const activeFile = state.get('currentSessionId');
+  if (activePath && activePath.startsWith('/')) loadClaudeFor(activePath);
+  let html = '';
+  for (const p of _projects) {
+    const selected = p.path === activePath;
+    const threads = _claudeSessions[p.path] || [];
+    html += '<div class="project-card-wrap" data-project-id="' + escapeHtml(p.path) + '">' +
+      '<div class="project-card' + (selected ? ' selected' : '') + '" role="listitem">' +
+      '<button type="button" class="project-card-main" data-act="open" title="' + escapeHtml(p.path) + '">' +
+      '<span class="project-card-folder' + (selected ? ' is-open' : '') + '" aria-hidden="true"></span>' +
+      '<span class="project-card-text"><span class="project-card-name">' + escapeHtml(p.name || '') + '</span>' +
+      '<span class="project-card-path">' + escapeHtml(p.path || '') + '</span></span></button>' +
+      '<button type="button" class="project-card-plus" data-act="new" title="新建会话">+</button>' +
+      '</div>';
+    if (selected) {
+      html += '<div class="sidebar-thread-list">';
+      if (!threads.length) {
+        html += '<div class="sidebar-thread-empty">暂无 Claude 历史会话</div>';
+      } else {
+        for (const t of threads.slice(0, 20)) {
+          const on = t.file === activeFile;
+          html += '<div class="sidebar-thread-row sidebar-claude-row' + (on ? ' selected' : '') +
+            '" data-claude-file="' + escapeHtml(t.file) + '" data-path="' + escapeHtml(p.path) + '" title="打开 Claude 原生会话">' +
+            '<span class="sidebar-thread-icon" aria-hidden="true">◈</span>' +
+            '<span class="sidebar-thread-title">' + escapeHtml(t.title) + '</span>' +
+            '<span class="sidebar-thread-actions"><span class="sidebar-thread-time">' +
+            (t.count ? `${t.count} 条 · ` : '') + fmtAgo(t.updated_at) + '</span></span></div>';
+        }
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  host.innerHTML = html;
+  host.querySelectorAll('[data-act]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wrap = el.closest('.project-card-wrap');
+      const path = wrap?.dataset?.projectId;
+      if (!path) return;
+      if (el.dataset.act === 'open') {
+        window.__claudeProjectPath__ = path;
+        state.set('currentProject', path.split('/').pop() || '项目');
+        refreshSidebar();
+      } else if (el.dataset.act === 'new') {
+        window.__claudeProjectPath__ = path;
+        window.__claudeSession__ = null;
+        state.set('currentProject', path.split('/').pop() || '项目');
+        state.set('currentSessionId', 'new:' + path);
+        document.dispatchEvent(new CustomEvent('load-session', { detail: { id: 'new:' + path } }));
+        refreshSidebar();
+      }
+    });
+  });
+  host.querySelectorAll('.sidebar-claude-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('open-claude-session', {
+        detail: { path: row.dataset.path, file: row.dataset.claudeFile },
+      }));
+    });
+  });
+}
+
 export function renderAppSidebar(projects) {
+  const isClaudeMode = Array.isArray(projects) && projects.length > 0 && !!projects[0].path;
+  if (isClaudeMode) {
+    _renderClaudeSidebar(projects);
+    return;
+  }
   if (Array.isArray(projects)) {
     _projects = projects.slice();
     state.set('projects', _projects);
@@ -105,6 +200,7 @@ export function renderAppSidebar(projects) {
 
   // T47：选中项目懒加载其服务端会话（仅一次；后续由刷新驱动）
   if (activePid) loadServerThreads(activePid);
+  if (activePid) loadClaudeFor(activePid);
 
   let html = '';
   for (const p of _projects) {
@@ -179,6 +275,27 @@ export function renderAppSidebar(projects) {
             '</div>';
         }
       }
+      // Claude Code 原生历史（按项目 cwd 分组）
+      const claude = _claudeSessions[selected ? p.id : ''] || [];
+      if (claude.length) {
+        html += '<div class="sidebar-claude-group">Claude 历史</div>';
+        for (const s of claude.slice(0, 8)) {
+          html +=
+            '<div class="sidebar-thread-row sidebar-claude-row" data-claude-file="' +
+            escapeHtml(s.file) +
+            '" data-project="' +
+            escapeHtml(p.id) +
+            '" title="打开 Claude 原生会话">' +
+            '<span class="sidebar-thread-icon" aria-hidden="true">◈</span>' +
+            '<span class="sidebar-thread-title">' +
+            escapeHtml(s.title) +
+            '</span>' +
+            '<span class="sidebar-thread-actions"><span class="sidebar-thread-time">' +
+            (s.count ? `${s.count} 条 · ` : '') +
+            fmtAgo(s.updated_at) +
+            '</span></span></div>';
+        }
+      }
       html += '</div>';
     }
     html += '</div>';
@@ -204,6 +321,16 @@ export function renderAppSidebar(projects) {
   // 服务端会话行（data-server="1"）在本地无 tab：打开时物化 tab，删除走服务端。
   host.querySelectorAll('.sidebar-thread-row').forEach((row) => {
     const pid = row.closest('.project-card-wrap')?.dataset?.projectId;
+    if (row.dataset.claudeFile) {
+      row.addEventListener('click', () => {
+        document.dispatchEvent(
+          new CustomEvent('open-claude-session', {
+            detail: { project: row.dataset.project || pid, file: row.dataset.claudeFile },
+          })
+        );
+      });
+      return;
+    }
     const tabId = row.dataset.tabId;
     const sid = row.dataset.sid;
     if (row.dataset.server === '1') {

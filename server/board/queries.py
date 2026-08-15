@@ -91,11 +91,6 @@ def view_by_project(items: list[BoardItem]) -> list[dict]:
     return rows
 
 
-def roadmap_aggregate(items: list[BoardItem]) -> list[dict]:
-    """线路图聚合（L1 总览）：§2 状态 → 桶计数（兼容旧名）。"""
-    return roadmap_overview(items)
-
-
 def roadmap_overview(items: list[BoardItem]) -> list[dict]:
     """L1 线路图总览：全项目桶聚合。
 
@@ -186,7 +181,7 @@ def states_response(items: list[BoardItem]) -> dict:
     return payload
 
 
-def ready_for_merge(items: list[BoardItem]) -> dict:
+def ready_for_merge(items: list[BoardItem], threshold: int | None = None) -> dict:
     """GET /board/ready_for_merge：看板列「已回写」且机审通过（可合入批准）。"""
     cards = [
         item.to_dict()
@@ -194,8 +189,25 @@ def ready_for_merge(items: list[BoardItem]) -> dict:
         if board_column(item.state, item.machine_audit_passed) == "已回写"
         and item.machine_audit_passed
     ]
-    return {
+    count = len(cards)
+
+    if threshold is None:
+        import os
+        try:
+            threshold = int(os.environ.get("CCC_BACKLOG_THRESHOLD") or os.environ.get("BACKLOG_THRESHOLD") or "5")
+        except ValueError:
+            threshold = 5
+
+    res = {
         "cards": cards,
-        "count": len(cards),
+        "count": count,
         "note": "质量门=机审通过+机械门禁；人侧口令=合入批准（非验收考古）",
+        "threshold": threshold,
     }
+    if count >= threshold:
+        res["warning"] = f"待合入卡片积压严重（当前待合入: {count} 张，阈值: {threshold} 张），请及时收卡并执行部署！"
+        res["backlog_alert"] = True
+    else:
+        res["backlog_alert"] = False
+
+    return res

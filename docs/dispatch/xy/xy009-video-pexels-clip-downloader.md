@@ -1,6 +1,6 @@
 # 任务卡 xy009 · 内容生产：接入Pexels/Pixabay API检索下载短视频素材（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -41,6 +41,12 @@
 2. 当 API Key 不可用或网络超时，能优雅降级回原图，无任何报错（附降级测试日志）。
 3. 实测视频中 70% 以上的场景背景是与台词高度相关的动态视频素材（附生成路径及 Pexels 缓存日志）。
 
+## 验收区
+
+**合入批准** · 日期：2026-08-12
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
+
 ## 回写区
 
 - **提交分支**：`codex/xy009-video-pexels-clip-downloader`
@@ -58,3 +64,16 @@
 机审：通过
 来源：engine 自动落盘（audit-log-restore）· 2026-08-07 13:05
 证据：开发回写。请：1) Read 该绝对路径卡全文与验收标准；2) 在 worktree /Users/fan/program/ccc-dev-ws-xy009 核对 git log/diff；3) 独立取证。通过则必须把「## 机审区」+「机审：通过」写进绝对路径卡文件 /Users/fan/program/CCC/docs/dispatch/xy/xy009-video-pexels-clip-downloader.md（不要只改 worktree 相对副本）；不通过写「机审：不通过」并以非0退出。禁止改业务代码、禁止 ## 验收区、禁止已关闭。 [ccc.engine] child_pid=74266 机审区「**机审：通过**」已写入绝对路径卡 `/Users/fan/program/CCC/docs/dispatch/xy/xy009-video-pexels-clip-downlo
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

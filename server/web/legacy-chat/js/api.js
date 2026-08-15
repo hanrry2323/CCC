@@ -57,6 +57,11 @@ async function _fetchWithAuth(path, options = {}, json = true) {
   return resp;
 }
 
+function _chatBase() {
+  // M1 对话桥直连（/config 下发）；空则走本机 /conversation 代理
+  return (typeof window !== 'undefined' && window.__CCC_CHAT_BRIDGE_URL__) || '';
+}
+
 export async function apiGet(path, options = {}) {
   const resp = await _fetchWithAuth(path, { method: 'GET', ...options }, false);
   if (!resp.ok) {
@@ -69,6 +74,20 @@ export async function apiGet(path, options = {}) {
 export async function apiPost(path, body) {
   const resp = await _fetchWithAuth(path, {
     method: 'POST',
+    body: JSON.stringify(body || {}),
+  }, true);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    if (resp.status === 401) throw new Error('登录状态已失效，请刷新页面重新连接');
+    const msg = friendlyChatError(resp.status, data.message || data.error);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export async function apiPut(path, body) {
+  const resp = await _fetchWithAuth(path, {
+    method: 'PUT',
     body: JSON.stringify(body || {}),
   }, true);
   const data = await resp.json().catch(() => ({}));
@@ -106,8 +125,30 @@ export async function loadProjects() {
 
 // T47：项目下会话列表（来自服务端会话存储，非本地 tabs）
 export async function loadThreads(project) {
-  const data = await apiGet('/projects/' + encodeURIComponent(project) + '/threads');
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/projects/' + encodeURIComponent(project) + '/threads');
   return data.threads || [];
+}
+
+// Claude Code 原生历史（M1 ~/.claude/projects，按项目 cwd 分组）
+export async function loadClaudeProjects() {
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/claude/projects');
+  return data.projects || [];
+}
+
+export async function loadClaudeSessions(projectOrPath) {
+  const base = _chatBase();
+  const key = String(projectOrPath || '').startsWith('/') ? 'path' : 'project';
+  const data = await apiGet((base || '') + '/claude/sessions?' + key + '=' + encodeURIComponent(projectOrPath));
+  return data.sessions || [];
+}
+
+export async function loadClaudeMessages(projectOrPath, file) {
+  const base = _chatBase();
+  const key = String(projectOrPath || '').startsWith('/') ? 'path' : 'project';
+  const data = await apiGet((base || '') + '/claude/messages?' + key + '=' + encodeURIComponent(projectOrPath) + '&file=' + encodeURIComponent(file));
+  return data.messages || [];
 }
 
 // T47：删除项目下会话（仅删会话存储，不动任务卡）
@@ -145,7 +186,11 @@ async function _fetchHistory(threadId) {
 
   let data;
   try {
-    data = await apiGet('/conversation' + qs, { signal });
+    const base = _chatBase();
+    const path = base
+      ? base + '/chat/history' + qs + '&project=' + encodeURIComponent(state.get('currentProject') || 'ccc')
+      : '/conversation' + qs;
+    data = await apiGet(path, { signal });
   } catch (err) {
     if (err && err.name === 'AbortError') {
       return { messages: [], seq: cur.seq };
@@ -157,7 +202,11 @@ async function _fetchHistory(threadId) {
     }
   }
 
-  const msgs = data.messages || [];
+  // 历史消息字段兼容：{role,message}（会话存储）→ content（前端渲染）
+  const msgs = (data.messages || []).map((m) => ({
+    ...m,
+    content: m.content != null ? m.content : m.message,
+  }));
   const seq = data.seq || 0;
   if (!incremental || seq < cur.seq) {
     // 首拉全量 / 服务端 seq 重置 → 以本次返回为准（含 seq 回退清空）
@@ -191,16 +240,6 @@ export async function cleanupTestSessions(project) {
   return {};
 }
 
-function _workspaceQs(workspace) {
-  return workspace && workspace !== 'all'
-    ? ('?workspace=' + encodeURIComponent(workspace))
-    : '';
-}
-
-export async function loadBoard(workspace) {
-  return apiGet('/board/snapshot' + _workspaceQs(workspace));
-}
-
 export async function getBoardTask(taskId, workspace) {
   return apiGet('/tasks/' + encodeURIComponent(taskId));
 }
@@ -230,8 +269,15 @@ export async function loadSkills(projectId, opts = {}) {
 }
 
 export async function loadHubConfig() {
-  const data = await apiGet('/health');
-  return { chat_session_max_live: 4, dialogue_url: '/' };
+  try {
+    const data = await apiGet('/config');
+    if (data && data.chat_bridge_url) {
+      window.__CCC_CHAT_BRIDGE_URL__ = data.chat_bridge_url;
+    }
+    return { chat_session_max_live: 4, dialogue_url: '/' };
+  } catch (e) {
+    return { chat_session_max_live: 4, dialogue_url: '/' };
+  }
 }
 
 export async function renameSession(id, project, title) {
@@ -297,8 +343,13 @@ export async function streamChat(
 
   // 构造单次流请求
   async function openStream() {
+    const base = _chatBase();
+    const claudeSession =
+      (typeof window !== 'undefined' && window.__claudeSession__) || null;
+    const claudePath =
+      (typeof window !== 'undefined' && window.__claudeProjectPath__) || null;
     const resp = await _fetchWithAuth(
-      '/conversation',
+      base ? base + '/chat' : '/conversation',
       {
         method: 'POST',
         body: JSON.stringify({
@@ -306,6 +357,9 @@ export async function streamChat(
           stream: true,
           // T44：按会话分桶历史/分锁；模型档位覆盖
           thread_id: sessionId || null,
+          project: state.get('currentProject') || projectId || 'ccc',
+          path: claudePath,
+          claude_session: claudeSession,
           model: state.get('model') || null,
         }),
         signal,

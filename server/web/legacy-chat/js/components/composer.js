@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { sendMessage, removeTyping, updateComposerState, runBaselineAlign, removeStreamingCursors } from './message.js';
+import { sendMessage, removeTyping, updateComposerState, removeStreamingCursors } from './message.js';
 import { cancelStream } from '../api.js';
 import { fileToAttachment, renderAttachmentChips, clearAttachments, getPendingAttachments } from './attachments.js';
 import { handleSlashInput, hideSlashMenu } from './slash.js';
@@ -14,7 +14,7 @@ export function initComposer() {
   const fileInput = document.getElementById('file-input');
 
   initComposerActionDock({
-    onBaseline: () => runBaselineAlign(),
+    onBaseline: () => {}, // 原版壳：去掉 CCC 基线快照注入
     onPrompt: (prompt, opts) => sendMessage(prompt, [], opts || {}),
     onSlash: (slash) => import('./slash.js').then((m) => m.tryExecuteSlash(slash)),
     onTransfer: null,

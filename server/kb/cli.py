@@ -85,12 +85,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_search = sub.add_parser("search", help="BM25 检索")
     p_search.add_argument("query", help="检索关键词")
-    p_search.add_argument("--domain", default=None, help="域过滤（nodes-paths/projects/decisions/lessons）")
+    p_search.add_argument("--domain", default=None, help="域���滤（nodes-paths/projects/decisions/lessons/plans）")
     p_search.add_argument("--top-k", type=int, default=5, help="返回条数上限（默认 5）")
     p_search.set_defaults(func=_cmd_search)
 
     p_list = sub.add_parser("list", help="列条目")
-    p_list.add_argument("--domain", default=None, help="域过滤")
+    p_list.add_argument("--domain", default=None, help="域过滤（nodes-paths/projects/decisions/lessons/plans）")
     p_list.set_defaults(func=_cmd_list)
 
     p_read = sub.add_parser("read", help="读条目全文")

@@ -1,7 +1,7 @@
 {
   "schema": "ccc-kb-seed-v1",
   "section": "04-lessons",
-  "updated_at": "2026-08-02",
+  "updated_at": "2026-08-10",
   "source": "qx-map __archive__/lessons/ (2 files) + CCC docs/lessons.md (Lesson 1-32+) + hp-kb /codex/topics/",
   "note": "教训按来源分类。CCC 框架级教训（L1-L32+）来自 CCC 自身教训库，外脑级教训来自 qx-map。",
   "ccc_core_lessons": [

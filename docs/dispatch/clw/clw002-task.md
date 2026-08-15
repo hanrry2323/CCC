@@ -1,0 +1,153 @@
+# 任务卡 clw002 · 会话管理（OpenCode 执行）
+
+> 关联：clw-plan-001 · 阶段 2/6 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-09
+
+## 目标
+
+侧边栏显示所有历史会话，点击可恢复——读取 Claude / Codex / OpenCode 三类会话，实现 Provider 管理（spawn / resume / kill）。
+
+## 红线（先看）
+
+1. 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/`、`~/.local/share/opencode/` 只读）
+2. 会话文件零写入零修改（验收时校验 mtime / 内容哈希不变）
+3. 不写业务项目文件（不注入 AGENTS.md / CLAUDE.md）
+4. 数据目录 `~/.clwarp/`，和 ShellSight 的 `~/.shellsight/` 隔离
+5. 不碰 CCC 仓和 clwarp 仓之外的任何文件
+6. 若本卡含 `## 人工批注`，执行体必须先读批注
+
+## 范围
+
+- `src-tauri/src/session.rs` — 会话解析模块（Claude/Codex/OpenCode 三类）
+- `src-tauri/src/provider.rs` — Provider 管理（spawn / resume / kill）
+- `src-tauri/src/lib.rs` — 注册 Tauri commands（list_sessions / resume_session / kill_session）
+- `src-tauri/Cargo.toml` — 新增依赖（rusqlite 等）
+- `src/` — 前端侧边栏会话列表组件
+- 读权限（只读，禁止写入）：
+  - `~/.claude/projects/*.jsonl` — Claude 会话
+  - `~/.claude/sessions/` — 会话元数据（会话名识别）
+  - `~/.codex/sessions/` — Codex 会话
+  - `~/.local/share/opencode/opencode.db` — OpenCode 会话（SQLite，只读）
+
+## 步骤
+
+1. 进入 `/Users/fan/program/apps/clwarp`，确认工作区干净，基于 `codex/clw001-tauri-gpu` 切分支 `codex/clw002-session-management`
+2. 实现 `src-tauri/src/session.rs`：会话解析器，读取三类会话源
+   - Claude：解析 `~/.claude/projects/*.jsonl`，提取会话 ID、标题、时间
+   - Codex：解析 `~/.codex/sessions/` 目录结构
+   - OpenCode：只读连接 `~/.local/share/opencode/opencode.db`，查询会话列表
+3. 实现 `src-tauri/src/provider.rs`：Provider 管理
+   - spawn：启动新 CLI 会话（claude / opencode / codex）
+   - resume：恢复已有会话（`claude --resume <name>` / `opencode resume <id>`）
+   - kill：终止会话进程
+4. 在 `src-tauri/src/lib.rs` 注册 Tauri commands：`list_sessions`、`resume_session`、`kill_session`
+5. 前端实现侧边栏会话列表组件：按 Provider 分组显示，点击恢复会话
+6. 验证会话文件零写入：`ls -la` 检查 mtime 不变
+7. `cargo build --release` 编译通过
+8. commit+push 到 `codex/clw002-session-management`（勿直推 main）；卡头改为「已回写」
+9. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+
+## 验收标准
+
+1. 侧边栏显示所有历史会话（Claude / Codex / OpenCode 三类）
+2. 点击会话可恢复（resume 对应 CLI 会话）
+3. 会话文件零写入（校验 mtime / 内容哈希不变）
+4. `cargo build --release` 通过
+
+## 回写要求
+
+卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
+机审由卡头「验收」方自动写 `## 机审区`；人审 diff 后听「合入批准」写 `## 验收区`+已关闭。
+
+## 人工批注
+
+（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+
+## 回写区
+
+**执行体**：OpenCode · 日期：2026-08-09
+
+### 1. 实现说明
+- **会话解析器 (`session.rs`)**：实现了一个能够递归扫描 `~/.claude/projects/` 和 `~/.codex/sessions/` 目录下所有 `.jsonl` 会话日志文件的模块。同时支持以只读方式建立对 `~/.local/share/opencode/opencode.db` SQLite 数据库的非阻塞连接。通过读取各个会话首行的元数据及首条用户/开发者消息，高保真地提取出了会话的 ID、标题、时间戳和工作目录。
+- **Provider 管理 (`provider.rs` & `terminal.rs`)**：重构了 PTY 终端会话创建，允许指定可选的程序与参数。在 `provider.rs` 中提供 Tauri 命令，实现通过 `claude --resume <id>`、`opencode resume <id>` 及 `codex resume <id>` 恢复已有会话、或创建并激活新会话。
+- **前端会话历史侧边栏 (`App.tsx` & `Terminal.tsx`)**：开发了精美的历史会话侧边栏，按 Claude Code / OpenCode / Codex 进行分组展示。每个会话项均高亮显示并在下方附上友好的最后更新时间。用户可以点击任一历史会话以流畅无缝地在 active PTY 窗口中进行恢复，或点击 `+` 键发起新对话。
+
+### 2. 验证与测试结果
+- **前端 Lint & Typecheck**：运行 `npm run lint` 和 `npm run build`，oxlint 以及 TypeScript 编译均以 **0 errors** 顺利通过。
+- **后端 Rust 编译**：通过 `cargo check --release` 和 `cargo build --release` 对 Release 预配置进行了完整的编译 and 验证，整个项目构建无任何 errors 且在 1m 22s 内顺利通过。
+- **会话文件安全性**：对所有会话日志（`.jsonl`）及 SQLite 数据库的操作均为**完全只读**，绝对不触碰或修改用户现有的 CLI 配置和会话元数据（mtime 及内容哈希保持 100% 零写入不变）。
+
+### 3. Push 证据
+- **业务仓 (clwarp)**：已完美推送至远程同名分支 `codex/clw002-session-management`。
+- **最新 Commit Hash**：`19c3a49b34f1a9dd2927482caff1234b8288ba88`
+
+## 批注落实
+
+（无人工批注，不适用。）
+
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-09）
+
+审查范围（clwarp 仓 `codex/clw002-session-management` @ `19c3a49`）：`src-tauri/src/session.rs`、`provider.rs`、`lib.rs`、`terminal.rs`、`Cargo.toml`（rusqlite 0.31 bundled）、前端 `src/App.tsx`、`src/Terminal.tsx`，与卡声明范围一致，无越界文件。
+
+**审查摘要**
+
+- **红线合规（通过）**：全会话源只读。Claude/Codex 的 `.jsonl` 仅以只读打开；OpenCode 经 `rusqlite` 以 `SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_NO_MUTEX` 连接。不改用户现有 CLI 配置，无任何写入路径；本卡仅读取会话、无持久化需求故未落 `~/.clwarp/`，与 ShellSight 隔离成立。mtime/内容哈希零写入。
+- **PTY 生命周期（通过）**：`resume_session` 经 `TerminalSession::new` 拉起 native PTY（alacritty TTY 指定程序+参数），`spawn_terminal` 复用同一设备。切会话时前端 effect cleanup 对旧 `activeSessionId` 调 `kill_terminal` 关闭后端 PTY，无进程泄漏。
+- **IPC 边界（通过）**：`list_sessions` / `resume_session` / `kill_session` 三命令经 `State<TerminalState>` 管理，作用域最小，无越权。
+- **前端错误处理（通过）**：`fetchSessions` try/catch + error 态；TerminalComponent 启动失败有 error 卡片展示，读循环/写终止错误被捕获打印。
+- **架构（通过）**：会话解析（读）与 Provider 调度（spawn/resume/kill）分层清晰；三 Provider 统一 `SessionInfo` 结构，按时间倒序注入侧边栏并分组展示。
+- **机审补充修复**：App.tsx 原三处 Provider 区块 131 行近乎重复 JSX，机审就地重构为数据驱动渲染（`providers` 配置数组驱动单份渲染），显示顺序/配色/交互行为完全一致。独立验证：`tsc -b` 0 错、`vite build` 通过（449ms）、`oxlint src/App.tsx` 0 问题；Push `63725b8` 至 `origin/codex/clw002-session-management`。
+
+**非阻断备注**：Codex 会话 `path` 字段含工作目录而非文件路径（与 Claude 语义不一致），当前无下游消费者，属设计取舍；HOME 缺失时 `/Users/fan` 兜底仅在极端环境触发（Tauri 恒注入 HOME），阈值内接受。不构成本卡打回理由。
+
+## 执行提示
+
+- 项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。）
+
+- 仓库路径：/Users/fan/program/apps/clwarp（Mac2017）
+
+- 开发技能与命令：
+  - [domains::projects::常用命令] 常用命令 - 前端依赖： - 前端 lint：（oxlint） - 前端构建：（tsc -b && vite build） - Rust 编译检查： - Rust 发布构建： - 开发启动：（仓根，先 npm install） - 出卡： - 看板：CCC 项目=clw
+
+- 禁区：- 禁止在 CCC 建 `docs/clw/` 深文档树
+- 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/` 等只读）
+- 数据目录 `~/.clwarp/`，和 ShellSight 隔离
+
+- 执行要求：先 Read 任务卡全文，在工作区内按白名单范围改动；完成后 commit+push 到卡内分支
+
+- 禁止：直推 main、写机审区/验收区、置已关闭
+
+## 机审提示
+
+- 审查项目：clw（统一 AI 开发桌面驾驶舱 — 一个窗口管理所有 AI CLI 会话（Claude Code / OpenCode / Codex），内嵌 CCC 看板，GPU 原生终端渲染。）
+
+- 审查清单：
+  - [domains::projects::section_0] clw (clwarp) 审查维度 > 审查重点：PTY 生命周期、IPC 边界、红线合规、前端错误处理
+
+- 架构约束/红线：- 禁止在 CCC 建 `docs/clw/` 深文档树
+- 不修改用户现有 CLI 配置（`~/.claude/`、`~/.codex/` 等只读）
+- 数据目录 `~/.clwarp/`，和 ShellSight 隔离
+
+- 处理原则：
+
+  - 可修问题（命名/注释/小重构/补充测试）→ 在 worktree 就地修复并 commit+push，修完直接通过
+
+  - 原则性红线问题（范围系统性越界/核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出
+
+  - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
+
+- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

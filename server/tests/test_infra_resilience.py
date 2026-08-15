@@ -117,10 +117,9 @@ def test_run_stage_infra_continuous_failure_and_melt_down(tmp_path: Path):
 
          # 验证 problems 标记
          assert any("连续失败" in p and "强制打回" in p for p in work.problems)
-         # 验证 sidecar 写入了正确的状态和计数
-         args, kwargs = mock_write.call_args
-         assert kwargs["state"] == State.REJECTED.value
-         assert kwargs["infra_count"] == 5
+         # sidecar 契约（ccc-plan-021）：熔断打回出口 clear sidecar，磁盘终态权威
+         args = mock_write.call_args
+         assert args is None  # 熔断出口不再写 write_card_state（改为 clear）
 
 
 def test_run_success_clears_infra_count(tmp_path: Path):
@@ -133,15 +132,16 @@ def test_run_success_clears_infra_count(tmp_path: Path):
     reg = ExecutorRegistry((entry,))
 
     with patch("server.engine.main._dispatch_and_collect", return_value=(True, [])), \
-         patch("server.engine.runtime_state.write_card_state") as mock_write:
+         patch("server.engine.runtime_state.clear_card_state") as mock_clear:
 
          outcome = _run_auto_worker(work, reg, store, {}, tmp_path, timeout=30)
          assert outcome["collected"] == 1
          assert work.state == State.DONE
 
-         # 验证 write_card_state 成功写入了 infra_count=0
-         args, kwargs = mock_write.call_args
-         assert kwargs["infra_count"] == 0
+         # sidecar 契约（ccc-plan-021）：成功出口 clear sidecar，不写 infra_count=0
+         mock_clear.assert_called_once()
+         args = mock_clear.call_args
+         assert "xy102" in str(args)
 
 
 def test_audit_threshold_reads_config(tmp_path: Path):
@@ -159,7 +159,7 @@ def test_audit_threshold_reads_config(tmp_path: Path):
     cfg = {"EXECUTOR_INFRA_MAX_STRIKES": "3"}
 
     with patch("server.engine.main._audit_evidence_passed", return_value=False), \
-         patch("server.engine.main._run_machine_audit_after_writeback", return_value=(False, ["502 Bad Gateway"])), \
+         patch("server.engine.main._run_machine_audit_after_writeback", return_value=(False, ["502 Bad Gateway"], True)), \
          patch("server.engine.main.is_retryable_failure", return_value=(True, "502 Bad Gateway")), \
          patch("server.engine.runtime_state.read_card_state", return_value={"xy103": {"infra_count": 2}}), \
          patch("server.engine.main._fail_retry_or_reject") as mock_fail:

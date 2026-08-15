@@ -51,6 +51,33 @@ class TestWorkStateMachine:
         with pytest.raises(IllegalTransitionError):
             work.transition(State.REJECTED)
 
+    def test_void_legal_from_active_states(self) -> None:
+        """人审取消单卡：待分派/执行中/已回写/打回 均可作废（终态）。"""
+        for start in (State.TODO, State.RUNNING, State.DONE, State.REJECTED):
+            work = Work(id=f"wv-{start.value}", role="开发执行体", state=start)
+            work.transition(State.VOIDED, problems=["人审取消：方向调整"])
+            assert work.state is State.VOIDED
+            assert work.problems == ["人审取消：方向调整"]
+
+    def test_void_requires_problems(self) -> None:
+        """进入「作废」必须附原因。"""
+        work = Work(id="wv-req", role="开发执行体", state=State.TODO)
+        with pytest.raises(IllegalTransitionError):
+            work.transition(State.VOIDED)
+
+    def test_void_is_terminal(self) -> None:
+        """作废为终态：任何转移都非法。"""
+        work = Work(id="wv-term", role="开发执行体", state=State.VOIDED)
+        for state in (State.TODO, State.RUNNING, State.DONE, State.REJECTED, State.CLOSED):
+            with pytest.raises(IllegalTransitionError):
+                work.transition(state)
+
+    def test_void_illegal_from_closed(self) -> None:
+        """已关闭（终态）不可作废。"""
+        work = Work(id="wv-closed", role="开发执行体", state=State.CLOSED)
+        with pytest.raises(IllegalTransitionError):
+            work.transition(State.VOIDED)
+
     def test_illegal_todo_to_done(self) -> None:
         """待分派 → 已回写（跳过执行中）：非法。"""
         work = Work(id="w6", role="开发执行体")

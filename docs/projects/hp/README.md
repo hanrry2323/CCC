@@ -17,6 +17,17 @@ HP 个人 AI agent 中央知识库基础设施 + 教训沉淀平台。
 - **taskable**：是
 - **出卡**：`scripts/new-card.sh --project hp --title "..."`
 
+## 基准文件（核心导航）
+
+| 项 | 位置 |
+|----|------|
+| 看板（卡/派发/验收） | http://192.168.3.116:7788/#/board（项目筛选 hp） |
+| 方案池（方案/验收标准） | http://192.168.3.116:7788/#/plans（筛选 hp） |
+| 项目档案（本页） | docs/projects/hp/README.md |
+| 方案文件 | docs/projects/hp/plans/ |
+| 业务仓入口 | 业务仓根 AGENTS.md · CLAUDE.md · README.md |
+
+
 ## 线路 / 近况
 
 - 已完成 Phase 0-3（基线/复验/collector重建/K23补档），当前重点转向监控与备份。

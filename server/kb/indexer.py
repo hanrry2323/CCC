@@ -29,6 +29,8 @@ _SECTION_ALIASES = {
     "02-project-metadata": "projects",
     "03-key-decisions": "decisions",
     "04-lessons": "lessons",
+    "plans": "plans",
+    "roadmap": "plans",
 }
 
 
@@ -170,8 +172,17 @@ def _parse_domain_markdown(filepath: Path) -> list[KbDocument]:
     with open(filepath, encoding="utf-8") as f:
         text = f.read()
 
-    section = normalize_section(filepath.parent.name)  # e.g. "nodes-paths"
-    base_id = f"domains::{section}"
+    parent_name = filepath.parent.name
+    if filepath.name == "roadmap.md":
+        parent_name = "roadmap"
+    section = normalize_section(parent_name)  # e.g. "nodes-paths", "plans", "roadmap"
+
+    if filepath.name == "roadmap.md":
+        base_id = "domains::roadmap"
+    elif filepath.parent.name == "plans":
+        base_id = f"domains::plans::{filepath.parent.parent.name}::{filepath.stem}"
+    else:
+        base_id = f"domains::{section}"
 
     # 按 ## 二级标题分段
     parts = re.split(r"\n(?=##\s)", text)
@@ -199,7 +210,7 @@ def _parse_domain_markdown(filepath: Path) -> list[KbDocument]:
 # ── 源文件扫描 ──
 
 def scan_source_files(knowledge_root: str | Path) -> list[Path]:
-    """扫描知识库源文件（seed JSON + domains/*.md），返回有序绝对路径列表。"""
+    """扫描知识库源文件（seed JSON + domains/*.md + plans/*.md + roadmap.md），返回有序绝对路径列表。"""
     root = Path(knowledge_root).resolve()
     files: list[Path] = []
 
@@ -212,6 +223,21 @@ def scan_source_files(knowledge_root: str | Path) -> list[Path]:
         for domain_dir in sorted(domains_dir.iterdir()):
             if domain_dir.is_dir():
                 files.extend(sorted(domain_dir.glob("*.md")))
+
+    # 扫描 roadmap.md
+    repo_root = root.parent
+    roadmap_file = repo_root / "docs" / "roadmap.md"
+    if roadmap_file.is_file():
+        files.append(roadmap_file)
+
+    # 扫描 docs/projects/*/plans/*.md
+    projects_dir = repo_root / "docs" / "projects"
+    if projects_dir.is_dir():
+        for proj_dir in sorted(projects_dir.iterdir()):
+            if proj_dir.is_dir():
+                plans_dir = proj_dir / "plans"
+                if plans_dir.is_dir():
+                    files.extend(sorted(plans_dir.glob("*.md")))
 
     return files
 

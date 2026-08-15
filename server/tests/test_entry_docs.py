@@ -1,4 +1,4 @@
-"""入口文档门禁测试：AGENTS.md / CLAUDE.md / CURSOR.md 零硬编码 + 必需指针。"""
+"""入口文档门禁测试：AGENTS.md / CLAUDE.md 零硬编码 + 必需指针（CURSOR.md 已随 Cursor 弃用移除）。"""
 
 from __future__ import annotations
 

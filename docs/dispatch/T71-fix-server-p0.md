@@ -1,6 +1,6 @@
 # 任务卡 T71 · server P0 修复（F01/F02/F11 · T70 审计）
 
-> 关联：T70 审计 P0（F01 卡头替换误改正文 / F02 非 UTF-8 卡拖垮扫描 / F11 SSE 断流不 settle）· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 关联：ccc-plan-001· 执行体：Claude Code · 验收：Codex · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
 > 工作目录：请先创建独立 worktree `git -C /Users/fan/program/CCC worktree add /Users/fan/program/ccc-dev-ws-t71 -b codex/t71-fix-server-p0 origin/main`；分支 `codex/t71-fix-server-p0`
 > 依据：`docs/dispatch/T70-audit-report.md` F01/F02/F11 条目
 > **分步提交纪律（硬）**：每条修复单独 commit+push；禁止 `git add -A`；超时 7200s。
@@ -72,3 +72,26 @@
     * `fix(loader): F02 catch UnicodeDecodeError and OSError to skip binary files safely`
   * **F11 (api.js)**: `a1f07c8`
     * `fix(web): F11 settle error on network failure to avoid hanging UI streaming state`
+
+## 验收区
+
+**合入批准** · 日期：2026-08-06
+- 判定：✅ 通过
+
+## 机审区
+
+**机审：通过**
+- 说明：历史卡，无存档证据，按看板已关闭态标注
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

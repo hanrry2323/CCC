@@ -1,7 +1,7 @@
 # CCC Infrastructure — 机器 / 端口 / 服务总览
 
 > **现行（2026-08-06）**。旧 Hub `:7777` / Board `:7775` / sidecar / hub-tunnel 已退役。  
-> 权威链：`docs/INDEX.md` §0 · `CURSOR.md` · `.cursor/rules/location-truth.mdc`  
+> 权威链：`docs/INDEX.md` §0 · `.cursor/rules/location-truth.mdc`（CURSOR.md 已随 Cursor 弃用移除）  
 > 老板面：M1 IDE 中枢聊意图 + 浏览器看 2017 看板/运维；中间 pull/派发自动。
 
 ---
@@ -10,8 +10,8 @@
 
 | 主机 | IP | 角色 | 说明 |
 |------|-----|------|------|
-| **M1** | 192.168.3.140 | 开发副本（唯一写源） | git → GitHub `main`；IDE（Claude/OpenCode）开仓；**不跑** `:7788` / Engine |
-| **Mac 2017** | 192.168.3.116 | 生产 / 执行节点 | 只 `pull --ff-only`；`:7788` + Engine + board-scheduler + 中继 |
+| **M1** | 192.168.3.140 | 中枢节点 | git 主仓（M1）；IDE（Claude/OpenCode）开仓；**不跑** `:7788` / Engine |
+| **Mac 2017** | 192.168.3.116 | 生产与执行节点 | 生产运行 + Engine 派发 + 机审 + 执行写码（engine worktree） |
 
 ---
 
@@ -22,7 +22,7 @@
 | 端口 | 服务 | 说明 |
 |------|------|------|
 | **7788** | `com.ccc.web-server` | HTTP：看板 / 运维 / 对话 / API |
-| **6100** | ai-loop-router（Anthropic） | 大脑 + Claude Code 执行体 |
+| **6100** | ai-loop-router（Anthropic） | 大脑 + Claude Code 机审/合入执行体（开发归 OpenCode） |
 | **6102** | ai-loop-router（openai-chat） | OpenCode code 档 |
 
 | launchd | 进程 |
@@ -36,7 +36,7 @@
 
 ---
 
-## M1（开发）
+## M1（中枢）
 
 - 开仓：`/Users/apple/program/CCC`
 - 看生产：浏览器 → `http://192.168.3.116:7788/#/board` · `#/ops`

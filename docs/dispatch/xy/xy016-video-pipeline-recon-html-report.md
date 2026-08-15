@@ -1,6 +1,6 @@
 # 任务卡 xy016 · 视频出片链路全摸底与架构图 HTML 产出（OpenCode 执行）
 
-> 关联：阶段 3 P1 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-07
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-07
 
 ## 目标
 
@@ -55,10 +55,65 @@
 
 （老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
 
+## 验收区
+
+**合入批准** · 日期：2026-08-12
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
+
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-07
 
-## 批注落实
+### 1. 摸底结论摘要
+- **视频生成双轨机制**:
+  1. **主生产链路 (`video-pipeline/`)**: 纯程序化、基于模板的确定性过程渲染，**无任何大模型依赖**。通过 10 套 `_SCRIPT_PLANS` lambda 模板组装选题文本并自动渲染（PIL 帧序列 -> edge-tts -> ffmpeg 缝合）。
+  2. **每日历史旁路定时任务 (`generate_video.py`)**: 高依赖 AI 代理模式。通过**本地 Ollama** (`qwen2.5:7b` + fallback `phi3:mini`) 生成脚本及画面关键词，结合 macOS system `say` 与 picsum.photos/pexels 完成合成。
+- **中间及成片产物路径 (Track 1)**: `video-pipeline/output/`。含成片 `final.mp4`、脚本 `script.json`、音频 `audio.mp3`、字幕 `subs.srt` 与帧图像 `frames/*.png`。
+- **LLM 调用明细**: 生产管线 0 LLM 依赖；历史旁路任务全部指向内网/本地 Ollama `/v1/chat/completions` 兼容端点 (默认：`http://192.168.3.131:11434/v1` 模型 `qwen2.5:7b`)。
+- **架构闲置现状**: Remotion 模板 React 项目与 HyperFrames HTML 模板项目目前在生产链路中均处于**闲置/死分支 (Bypassed / Dead)** 状态，未被 `pipeline.py` 触发调用。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. HTML 报告路径
+已在 2017 实机桌面成功生成单文件自包含、支持 Mermaid.js 交互的完整架构图报告：
+`/Users/fan/Desktop/xianyu-video-pipeline-arch.html`
+
+### 3. 未解/待厘清疑问清单
+1. 缺失 `credentials/pexels-001.json`，在生产环境跑 Pexels 关键词图片检索时的具体 API Key 追溯受阻。
+2. 旁路 `src/xianyu/video/bgm.py` 内的随机 BGM 库路径 `data/bgm` 尚未确立与生产云端同步的静态校验机制。
+3. 对本地/局域网 Ollama 服务的异常熔断、离线自检或跨节点同步尚未部署全局监控探针。
+
+### 4. 测试与验证结果
+- 执行 xianyu 仓 `git status` 确认完全干净，零业务代码/配置破坏：
+  ```
+  nothing to commit, working tree clean
+  ```
+- 验证 `/Users/fan/Desktop/xianyu-video-pipeline-arch.html` 文件存在性、CSS 完备性及 Mermaid CDN 加载解析成功。
+
+### 5. 提交证据
+- **Commit Hash**: 0ebe597f6e83b17f29b261a8abcb655b1c7de98e
+- **Branch**: `codex/xy016-video-pipeline-recon-html-report`
+
+## 机审区
+
+机审：通过
+来源：2017 机审席独立审查 · 2026-08-07
+证据：通过。已对 `/Users/fan/Desktop/xianyu-video-pipeline-arch.html` 及 xianyu 仓 `git status` 进行独立核对。
+1. 报告文件存在，为单自包含 HTML，大小 21K，内嵌 Mermaid.js 支持与精细样式。
+2. 明确且有深度地回答了出片链路、输出文件夹、LLM 调用以及本地与在线模型的四问。
+3. 包含了完整的 Mermaid.js 双轨渲染链路图以及 LLM 调用明细表。
+4. xianyu 仓状态干净，在 xy016 任务开发期间，该只读侦察任务完全遵循红线约束，没有修改任何 xianyu 仓的代码和配置。
+5. 回写区对测试结果、未解疑问、HTML 路径等证据填写完备，且 Commit Hash `0ebe597f6e83b17f29b261a8abcb655b1c7de98e` 与本地 git log 一致。
+符合所有验收标准。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

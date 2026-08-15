@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""ccc-run-inline — Run Code 模式辅助：内存临时脚本执行（快、稳、零残留）。
+
+吸收自 DeepSeek Harness 的 Run Code 模式：执行体处理复杂 JSON/Markdown
+元数据或文本改动时，用内存临时脚本（node -e / python3 -c）替代 sed/awk 拼装。
+
+为什么：sed/awk 在复杂 JSON/Markdown 变换上易错、难调试、多步命令可读性差；
+内存脚本一次到位、有真实反馈、临时目录自动清理（项目零残留）。
+
+用法：
+  ccc-run-inline node 'const x = {a:1}; console.log(x.a);'
+  ccc-run-inline py   'import json; d=json.load(open("x.json")); print(d.keys())'
+  echo 'console.log(1+2)' | ccc-run-inline node          # 从 stdin 读代码
+  ccc-run-inline node '...' --timeout 10                  # 超时（默认 30s）
+  ccc-run-inline --help
+
+行为：
+  - 在临时目录执行（脚本自身的临时文件不落项目，执行后自动清理 → 零残留）。
+  - 原工作目录经环境变量 CCC_PROJECT_DIR 暴露，脚本可读写项目目标文件（有意的变换）。
+  - 超时自动终止（默认 30s），退出码透传，stdout/stderr 原样返回。
+
+适合：JSON 种子批量改、Markdown 表结构替换、多文件一致性编辑。
+不适合：长驻服务、交互式程序、需要项目内持久临时文件的场景。
+"""
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="内存临时脚本执行（Run Code 模式）")
+    ap.add_argument("lang", choices=["node", "py", "python"], help="node | py")
+    ap.add_argument("code", nargs="?", default=None, help="内联代码（缺省从 stdin 读）")
+    ap.add_argument("--timeout", type=int, default=30, help="超时秒数（默认 30）")
+    ap.add_argument("--project", default=None, help="项目目录（默认取当前 cwd，注入 CCC_PROJECT_DIR）")
+    args = ap.parse_args()
+
+    code = args.code or sys.stdin.read()
+    if not code.strip():
+        print("错误：空代码（用参数传内联代码，或经 stdin 提供）", file=sys.stderr)
+        return 2
+
+    proj = os.path.abspath(args.project or os.getcwd())
+    if not os.path.isdir(proj):
+        print(f"错误：项目目录不存在：{proj}", file=sys.stderr)
+        return 2
+
+    tmp = tempfile.mkdtemp(prefix="ccc-run-inline-")
+    try:
+        env = os.environ.copy()
+        env["CCC_PROJECT_DIR"] = proj
+        cmd = (["node", "-e", code] if args.lang == "node"
+               else ["python3", "-c", code])
+        try:
+            r = subprocess.run(cmd, cwd=tmp, env=env, timeout=args.timeout,
+                               capture_output=True, text=True)
+        except subprocess.TimeoutExpired:
+            print(f"超时（>{args.timeout}s，已终止）", file=sys.stderr)
+            return 124
+        sys.stdout.write(r.stdout)
+        sys.stderr.write(r.stderr)
+        return r.returncode
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

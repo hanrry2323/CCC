@@ -1,3 +1,5 @@
+> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub/Desktop 旧架构（:7777/control.json），已被现行架构（INDEX §0 薄驱动 Engine，2017 :7788）取代。禁止引用；历史追溯见 git 历史。
+
 # Getting Started — CCC Hub + Loop Engineer
 
 > 目标：陌生人 **10 分钟内**打开 Desktop，走通「战略讨论 → Agent 自动投意图链 → 自动进代办」。  

@@ -23,11 +23,13 @@ class ProjectEntry:
     taskable: bool
     forbidden: bool
     status: str
-    dossier: str | None
-    role: str
     path_m1: str | None
     path_mac2017: str | None
     location: str = ""
+    category: str = ""  # platform | business | legacy — 平台自研项跳过业务展示
+    # 业务仓隔离（2026-08-12 · 事故修复）：每卡独立 worktree + 同仓并发上限
+    isolation_worktree_root: str = ""
+    isolation_max_concurrent: int = 1
 
 
 def _as_bool(v: Any) -> bool:
@@ -59,6 +61,7 @@ def _parse_registry_yaml(text: str) -> dict[str, Any]:
     in_projects = False
     current: dict[str, Any] | None = None
     in_paths = False
+    in_isolation = False
 
     def indent_of(line: str) -> int:
         return len(line) - len(line.lstrip(" "))
@@ -96,7 +99,14 @@ def _parse_registry_yaml(text: str) -> dict[str, Any]:
 
         if stripped.startswith("paths:"):
             in_paths = True
+            in_isolation = False
             current["paths"] = {}
+            continue
+
+        if stripped.startswith("isolation:"):
+            in_paths = False
+            in_isolation = True
+            current["isolation"] = {}
             continue
 
         # paths children are indented deeper than project fields (typically 6 spaces)
@@ -105,12 +115,28 @@ def _parse_registry_yaml(text: str) -> dict[str, Any]:
             current.setdefault("paths", {})[key.strip()] = _parse_scalar(val)
             continue
 
+        if in_isolation and ind >= 6 and ":" in stripped:
+            key, _, val = stripped.partition(":")
+            current.setdefault("isolation", {})[key.strip()] = _parse_scalar(val)
+            continue
+
         if ":" in stripped:
             in_paths = False
+            in_isolation = False
             key, _, val = stripped.partition(":")
             current[key.strip()] = _parse_scalar(val)
 
     return root
+
+
+def _default_worktree_root(path_mac2017: str | None, prefix: str | None) -> str:
+    """业务仓 worktree 默认根：`<业务仓父目录>/.ccc-wt/<prefix>/`。
+
+    放业务仓同级（不在业务仓内），避免污染主仓工作区；前缀用于多项目并存的命名空间。
+    """
+    if not path_mac2017 or not prefix:
+        return ""
+    return str(Path(path_mac2017).expanduser().parent / ".ccc-wt" / prefix)
 
 
 def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
@@ -123,6 +149,22 @@ def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
     dossier = raw.get("dossier")
     if dossier is not None:
         dossier = str(dossier).strip() or None
+    isolation = raw.get("isolation") or {}
+    if not isinstance(isolation, dict):
+        isolation = {}
+    path_mac2017 = str(paths["mac2017"]) if paths.get("mac2017") not in (None, "") else None
+    iso_root = str(isolation.get("worktree_root") or "").strip() or ""
+    if not iso_root:
+        # 默认隔离根只对 mac2017-apps 业务仓生成；平台例外（ccc）不走隔离
+        location_tags = {t.strip() for t in str(raw.get("location") or "").split(",") if t.strip()}
+        if _as_bool(raw.get("taskable")) and "mac2017-apps" in location_tags:
+            iso_root = _default_worktree_root(path_mac2017, prefix)
+    try:
+        iso_max = int(isolation.get("max_concurrent") or 1)
+    except (TypeError, ValueError):
+        iso_max = 1
+    if iso_max < 1:
+        iso_max = 1
     return ProjectEntry(
         prefix=prefix,
         id=str(raw.get("id") or "").strip(),
@@ -131,13 +173,12 @@ def _parse_entry(raw: dict[str, Any]) -> ProjectEntry:
         taskable=_as_bool(raw.get("taskable")),
         forbidden=_as_bool(raw.get("forbidden")),
         status=str(raw.get("status") or "").strip(),
-        dossier=dossier,
-        role=str(raw.get("role") or "").strip(),
         path_m1=(str(paths["m1"]) if paths.get("m1") not in (None, "") else None),
-        path_mac2017=(
-            str(paths["mac2017"]) if paths.get("mac2017") not in (None, "") else None
-        ),
+        path_mac2017=path_mac2017,
         location=str(raw.get("location") or "").strip(),
+        category=str(raw.get("category") or "").strip(),
+        isolation_worktree_root=iso_root,
+        isolation_max_concurrent=iso_max,
     )
 
 
@@ -209,6 +250,16 @@ def check_path_locations(
                 issues.append(
                     f"{label}: 2017 平台路径异常 {p.path_mac2017}（平台例外 ~/program/CCC）"
                 )
+        if p.isolation_worktree_root:
+            wt = Path(p.isolation_worktree_root).expanduser()
+            if "mac2017-apps" in tags and not str(wt).startswith("/Users/fan/program/"):
+                issues.append(
+                    f"{label}: 隔离 worktree 根越界 {p.isolation_worktree_root}（须在 ~/program/ 下）"
+                )
+            elif p.path_mac2017 and str(wt).startswith(str(Path(p.path_mac2017).expanduser()) + "/"):
+                issues.append(
+                    f"{label}: 隔离 worktree 根 {p.isolation_worktree_root} 不能位于业务仓内部"
+                )
     return issues
 
 
@@ -239,3 +290,10 @@ def taskable_names(registry_path: str | None = None) -> frozenset[str]:
         if p.display:
             names.add(p.display)
     return frozenset(names)
+
+
+def platform_prefixes(registry_path: str | None = None) -> frozenset[str]:
+    """返回 category==platform 的前缀集合（平台自研项目，不参与业务展示）。"""
+    return frozenset(
+        p.prefix for p in load_projects(registry_path) if p.prefix and p.category == "platform"
+    )

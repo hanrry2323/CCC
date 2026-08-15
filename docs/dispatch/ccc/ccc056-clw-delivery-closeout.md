@@ -1,0 +1,162 @@
+# 任务卡 ccc056 · CLW 交付收尾示范（报告/CHANGELOG/tag/安装验证/roadmap）（OpenCode 执行）
+
+> 关联：ccc-plan-018 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-10
+
+## 基准文件（先看）
+
+- 项目基准（README·权威索引）：`docs/projects/ccc/README.md`
+- 方案池：`docs/projects/ccc/plans/`（关联方案见卡头「关联」）
+
+## 目标
+
+CLW 交付收尾示范（报告/CHANGELOG/tag/安装验证/roadmap）（ccc-plan 切片）。
+
+## 红线（先看）
+
+1. （本卡禁止触碰的边界，验收越界即打回）
+2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+
+## 范围
+
+- `docs/projects/clw/**`
+- `docs/roadmap.md`
+- `docs/releases/**`
+
+## 步骤
+
+1. （可执行步骤，每步有可验证产物）
+2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
+3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+
+## 验收标准
+
+1. 按 docs/projects/_template/delivery-template.md 产出 CLW 交付报告，交付物清单全勾
+2. clwarp 业务仓产出 CHANGELOG + RELEASE + git tag v0.1.0
+3. 可复跑安装验证：dmg 打包 → /Applications 安装 → 启动冒烟通过（记录验证步骤）
+4. docs/roadmap.md 增「业务线路（clw）」段，反映 clw001-007 已交付
+5. clw-plan-001 标交付收尾完成（结合 §7 流程）
+
+## 回写要求
+
+卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
+**回写同时必须完成  四问**（完成钩子，未填=机审打回+合入拒绝）。  
+机审由卡头「验收」方自动写 ；人审 diff 后听「合入批准」写 +已关闭。
+
+## 人工批注
+
+（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+
+## 回写区
+
+**执行体**：OpenCode · 日期：2026-08-10
+
+### 实现说明
+1. **交付报告归档**：在 `docs/projects/clw/deliveries/clw-delivery-001.md` 下按照 standard delivery-template 生成了详尽的交付报告。
+2. **CHANGELOG + RELEASE**：在 clwarp 业务仓新增 `CHANGELOG.md` 及 `RELEASE.md` 并打上 `v0.1.0` 语义化版本 Tag。
+3. **可复跑安装验证**：完成 `cargo tauri build` 的 DMG 打包、本地 `/Applications` 的覆盖安装以及高保真 2s 存活/冒烟测试（CPU 运行时间证实其正常工作且无崩溃）。
+4. **项目方案及 Roadmap 同步**：
+   - 方案 `clw-plan-001` 标记为 `状态：已完成` 且验收项全部勾选 `- [x]`；
+   - 档案 `docs/projects/clw/README.md` 近况部分已完成最新 v0.1.0 稳定版发布的更新；
+   - 全局 `docs/roadmap.md` 的业务线路（clw）更新了 `clw001`-`clw007` 的交付记录。
+
+### 测试结果
+- **安装包生成**：`src-tauri/target/release/bundle/dmg/clwarp_0.1.0_x64.dmg` 成功通过 bundle 编译。
+- **本地安装冒烟测试**：
+  ```bash
+  /Applications/clwarp.app/Contents/MacOS/app & PID=$!
+  sleep 2
+  ps -p $PID # PID alive and launching successfully!
+  kill $PID
+  ```
+- **方案规范校验**：运行 `bash scripts/validate-plans.sh` 顺利通过全量方案一致性门禁检查，显示“全部通过”。
+
+### push 证据 (commit hash)
+- **clwarp 业务仓 (v0.1.0 Tag & Branch)**：`3e954f98e5aa41ece4e7657631b142d7e6c31526`
+- **CCC 平台仓 (Current Branch)**：`84c2a63a5b68d6a78f8033e7a9fcc05a383e5416` (已 commit 本地)
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：已把 `clw-plan-001` 状态置为「已完成」，且其下全部关联卡（clw001-clw007）验收标准已全勾。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：本次为标准的首个交付门禁落地（Delivery Gate）实践闭环示范，无新增异常设计/实现缺陷教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
+   - 说明：已同步更新 `docs/projects/clw/README.md` 线路与近况部分，删去了旧的待办与卡记录，标记 v0.1.0 正式发布。
+4. **线路图**：项目近况/下一步是否变化？[是]
+   - 说明：已在 `docs/roadmap.md` 业务线路（clw）中将 `clw001-clw007` 的进度更新为 `已交付`。
+
+## 执行提示
+
+- 项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
+
+- 仓库路径：/Users/fan/program/CCC（Mac2017）
+
+- 关联方案摘要：目标：按 §7 Delivery Gate 流程，把 CLW（clwarp）作为**第一个交付示范实例**完整收尾——交付报告、版本标记、可复跑安装验证、方案/档案/roadmap 同步。验收标准：交付报告（delivery-template 格式）产出，交付物清单全勾。 CHANGELOG + RELEASE + git tag v0.1.0（clwarp 业务仓）。 可复跑安装验证：dmg 打包 → /Applications 安装 → 启动冒烟。 roadmap.md 含 clw 业务线路段；clw-plan-001 交付收尾。
+
+- 项目线路/近况：
+  - 北星：[`docs/roadmap.md`](../../roadmap.md)「当前方向」
+  - 挂账：文档与项目注册统一治理；任务卡退役/高效管理
+  - 规范：[`docs/DOC-PROTOCOL.md`](../../DOC-PROTOCOL.md)
+
+- 开发技能与命令：
+  - [domains::projects::常用命令] 常用命令 - 运行测试： 全量 - 单模块测试： - 代码检查：
+  - [domains::projects::常用命令] 常用命令 - 运行测试： - 单模块测试： - 代码检查： - 编译检查： - 出卡： - 看板：
+  - [domains::projects::常用命令] 常用命令 - 前端依赖： - 前端 lint：（oxlint） - 前端构建：（tsc -b && vite build） - Rust 编译检查： - Rust 发布构建： - 开发启动：（仓根，先 npm install） - 出卡： - 看板：CCC 项目=clw
+
+- 禁区：- 不在本仓写 QuantHive 业务；不把双轨混成一个项目
+- 2017 生产副本不手改；不恢复 Hub :7777 / 旧 scripts 编排
+- 项目注册只改 [`../registry.yaml`](../registry.yaml)，禁止只改 `PREFIXES` 或 KB seed
+
+- 执行要求：先 Read 任务卡全文，在工作区内按白名单范围改动；完成后 commit+push 到卡内分支
+
+- 禁止：直推 main、写机审区/验收区、置已关闭
+
+## 机审提示
+
+- 审查项目：ccc（自动化任务编排平台：薄驱动 Engine + Markdown 任务卡 + 看板/HTTP + 2017 单端生产。）
+
+- 审查清单：
+  - [domains::plans::ccc::003-flow-fix-plan::二_修复计划] 二、修复计划 卡片 ccc019：门禁命令适配 worktree 环境（P0） **目标**：修改所有打回卡的门禁命令，使其在 worktree 环境中可执行。 **方案**： 1. 门禁只做「编译检查」和「范围检查」，不做重体力测试 - Python 项目：（无需 pytest） - Rust 项...
+
+- 架构约束/红线：- 不在本仓写 QuantHive 业务；不把双轨混成一个项目
+- 2017 生产副本不手改；不恢复 Hub :7777 / 旧 scripts 编排
+- 项目注册只改 [`../registry.yaml`](../registry.yaml)，禁止只改 `PREFIXES` 或 KB seed
+
+- 处理原则：
+
+  - 可修问题（命名/注释/小重构/补充测试）→ 在 worktree 就地修复并 commit+push，修完直接通过
+
+  - 原则性红线问题（范围系统性越界/核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出
+
+  - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
+
+- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+- **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。
+
+  - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，
+
+    打回原因注明缺失项；执行体补维护区后重试。
+
+  - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**机审：通过**（2026-08-10 · 2017 验收席）
+
+**范围核验**：HEAD commit `6816d5f5` 改动 5 文件，全部落在卡白名单（`docs/projects/clw/**` / `docs/roadmap.md` / `docs/releases/**`），无越界；未写 `## 验收区`、未置「已关闭」。
+
+**维护区（Doc-Gate）核验**：四问均已勾选并填实质说明，无占位/模板残留。
+- Q1 方案同步 [是]：`clw-plan-001` 状态 `已完成`，clw001-clw007 验收标准全 `[x]`（含本次补 clw007 项）——属实
+- Q2 教训沉淀 [无]：首个 Delivery Gate 落地示范，无新增缺陷教训——合理解释
+- Q3 档案/README [是]：`docs/projects/clw/README.md` 线近况已更新至 v0.1.0 发布——属实
+- Q4 线路图 [是]：`docs/roadmap.md` 业务线路 clw001→clw007 进度 `已交付`——属实
+
+**交付物声明核验**：
+- 交付报告 `docs/projects/clw/deliveries/clw-delivery-001.md`：含交付物清单全勾 / Gate 清单 / 版本信息 / 可复跑安装验证（dmg→/Applications→启动冒烟），结构符合 §7 Delivery Gate
+- CHANGELOG + RELEASE + tag v0.1.0（clwarp 业务仓，commit `3e954f9…`）——业务仓侧记录
+- roadmap / 档案 / 方案三处同步与卡改动一致
+
+**就地修复（小重构类）**：`docs/projects/clw/plans/001-clwarp-tauri-skeleton.md` 依赖链仍写「分 6 张卡执行」，与新增 clw007 不符 → 已改为 7 张并补 clw007 依赖链（commit `826ba2f4`），`validate-plans.sh` 全部通过。

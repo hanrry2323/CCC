@@ -6,10 +6,12 @@
 
 ## 0. 自举必读（先读这个，五分钟上手）
 
-1. [`docs/product/card-hub-manual.md`](docs/product/card-hub-manual.md) — **制卡发卡操作手册**（任何工具的自举路径）
-2. [`docs/INDEX.md`](docs/INDEX.md) §0 — 权威链与北星
-3. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **卡命名定死** / 禁写哪里
-4. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源
+1. [`docs/CCC-PRIME-DIRECTIVE.md`](docs/CCC-PRIME-DIRECTIVE.md) — **最高准则：三层全自动开发模式（线路图管未来，计划管当前，看板管正在进行时）**
+2. [`docs/product/card-hub-manual.md`](docs/product/card-hub-manual.md) — **制卡发卡操作手册**（任何工具的自举路径）
+3. [`docs/INDEX.md`](docs/INDEX.md) §0 — 权威链与北星
+4. [`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) — 写哪里 / **卡命名定死** / 禁写哪里
+5. [`docs/projects/registry.yaml`](docs/projects/registry.yaml) — 项目唯一事实源
+6. [`docs/projects/onboarding.md`](docs/projects/onboarding.md) — 从零到一准入 / **完成钩子 Doc-Gate（回写必填维护区四问）**
 
 ## 文档与项目注册（硬 · 读写必遵）
 
@@ -33,6 +35,14 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 | 人在本仓打开 IDE / CLI 聊天 | **制卡发卡中枢** | 陪聊 → **出卡** → 盯板。**不代执行** |
 | Engine `-p` / `--dir` 拉起 | **产线执行体** | 只按卡白名单写码 → 已回写；停 |
 
+## 计划页面（方案池 · 线路图与看板之间）
+
+方案/计划统一路径：`docs/projects/<prefix>/plans/<NNN>-<slug>.md`，模板 `docs/projects/_template/plan-template.md`。
+命名规则见 `DOC-PROTOCOL.md` §2.7，状态机见 §2.8。校验：`scripts/validate-plans.sh`。
+
+**三层金字塔**：线路图（骨架）→ 计划（方案池）→ 看板（执行中）。
+写方案前先查 `docs/projects/<prefix>/plans/` 是否已有同主题方案。转卡由人触发，不全自动。
+
 ## 中枢出卡（硬 · 别把自己当执行体）
 
 出卡前怎么了解项目 → `docs/product/hub-context-sop.md`（固定 6 步，禁止满仓漫游）。
@@ -54,7 +64,7 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 - 产线：不直推 `main`；不写机审区/验收区/已关闭。  
 - 禁 `git add -A`；不手改运行面/密钥。  
 - 机审与终验只认验收席角色（工具绑定见 qx-map `ide/tool-roles.md`）。  
-- **读写文档必须按 DOC-PROTOCOL**；**入口文档零硬编码**（绝对路径/IP/端口不进 `AGENTS.md`/`CLAUDE.md`/`CURSOR.md`，门禁 `scripts/check-entry-docs.py`）。
+- **读写文档必须按 DOC-PROTOCOL**；**入口文档零硬编码**（绝对路径/IP/端口不进 `AGENTS.md`/`CLAUDE.md`，门禁 `scripts/check-entry-docs.py`）。
 
 ## 工作收口（硬 · 不做完不交）
 

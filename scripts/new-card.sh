@@ -21,7 +21,10 @@
 #   --executor "OpenCode"     卡头「执行体」（默认 $CCC_CARD_EXECUTOR 或 OpenCode）
 #   --acceptance "Claude Code" 卡头「验收」（默认自验收：与执行体同工具）
 #   --related "关联文本"       卡头「关联」字段（默认 "阶段 3 P1"）
-#   --dispatch engine|manual  卡头「派发」字段（默认 engine）
+#   --depends "卡ID列表"       卡头「依赖」字段（逗号分隔卡 ID，如 "ccc042,ccc043"；空则无依赖）
+#   --role "角色名"            卡头「角色」字段（如 "前端设计"；Engine 按 role-skills.yaml 注入对应 Skill）
+#   --dispatch engine|manual|scheduler  卡头「派发」字段（默认 engine；scheduler=定时运维，Worker 认领）
+#   --schedule "HH:MM"                  卡头「定时」字段（配 --dispatch scheduler；未到点 Worker 不认领）
 #   --dispatch-dir <目录>     任务卡目录（默认 docs/dispatch；测试可用临时目录）
 #   --id <前缀><NNN>[-slug]   显式卡编号（跳过自增；如 ccc064-auto-naming）
 #   --slug <slug>             文件名 slug 覆盖（默认从标题派生；小写字母数字+单连字符）
@@ -43,6 +46,9 @@ EXECUTOR="${CCC_CARD_EXECUTOR:-OpenCode}"
 ACCEPTANCE_EXPLICIT=false
 ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-}"
 RELATED="${CCC_CARD_RELATED:-阶段 3 P1}"
+DEPENDS="${CCC_CARD_DEPENDS:-}"
+ROLE="${CCC_CARD_ROLE:-}"
+SCHEDULE="${CCC_CARD_SCHEDULE:-}"
 DISPATCH="${CCC_CARD_DISPATCH:-engine}"
 PYTHON_BIN="${CCC_PYTHON_BIN:-}"
 
@@ -63,6 +69,9 @@ while [[ $# -gt 0 ]]; do
     --executor) EXECUTOR="$2"; shift 2 ;;
     --acceptance) ACCEPTANCE="$2"; ACCEPTANCE_EXPLICIT=true; shift 2 ;;
     --related) RELATED="$2"; shift 2 ;;
+    --depends) DEPENDS="$2"; shift 2 ;;
+    --role) ROLE="$2"; shift 2 ;;
+    --schedule) SCHEDULE="$2"; shift 2 ;;
     --dispatch) DISPATCH="$2"; shift 2 ;;
     --dispatch-dir) DISPATCH_DIR="$2"; shift 2 ;;
     --id) ID_OVERRIDE="$2"; shift 2 ;;
@@ -101,20 +110,67 @@ if [[ ! "$PROJECT_PREFIX" =~ ^[a-z]{2,4}$ ]]; then
   echo "[ERROR] 前缀非法: ${PROJECT_PREFIX}（须 2-4 位小写字母；合法表见 docs/projects/registry.yaml · DOC-PROTOCOL §2）" >&2
   exit 2
 fi
-# QuantHive 禁止走 CCC（双轨独立）
-if [[ "$PROJECT_PREFIX" == "qh" ]]; then
-  echo "[ERROR] 前缀 qh（QuantHive）禁止走 CCC Engine 出卡；QuantHive 独立轨道开发" >&2
-  exit 2
-fi
 
 # 解析目标目录（相对路径按仓库根解析）
 case "$DISPATCH_DIR" in
   /*) TARGET_DIR="$DISPATCH_DIR" ;;
   *)  TARGET_DIR="$PROJECT_ROOT/$DISPATCH_DIR" ;;
 esac
+
+# 禁卡前缀（FORBIDDEN_CARD_PREFIXES，源自 registry）——禁止走 CCC Engine 出卡
+# 2026-08-10：从「硬编码 qh」升级为读 registry 禁卡表（ccc/qh 均在列）
+# 豁免：仅当 TARGET_DIR 在 PROJECT_ROOT 的 git 树内才拦截（测试用临时仓 dispatch-dir 不受限）
+PROJECT_ROOT_REAL="$(cd "$PROJECT_ROOT" && git rev-parse --show-toplevel 2>/dev/null)"
+if [[ -n "$PROJECT_ROOT_REAL" && "$TARGET_DIR" == "$PROJECT_ROOT_REAL"/* ]]; then
+  FORBIDDEN_PREFIXES="$(cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys; sys.path.insert(0, '.')
+from server.board.registry import forbidden_prefixes
+print(' '.join(sorted(forbidden_prefixes())))
+" 2>/dev/null)"
+  if [[ -z "$FORBIDDEN_PREFIXES" ]]; then
+    FORBIDDEN_PREFIXES="qh"
+  fi
+  case " $FORBIDDEN_PREFIXES " in
+    *" $PROJECT_PREFIX "*)
+      echo "[ERROR] 前缀 ${PROJECT_PREFIX} 在禁卡表（FORBIDDEN_CARD_PREFIXES: ${FORBIDDEN_PREFIXES}）——禁止走 CCC Engine 出卡（平台自研/独立轨道）" >&2
+      exit 2 ;;
+  esac
+fi
 PREFIX_DIR="$TARGET_DIR/$PROJECT_PREFIX"
 
+# ── 出卡前先 git fetch origin main ──
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git remote | grep -q "^origin$"; then
+    git fetch origin main >/dev/null 2>&1 || true
+  fi
+fi
+
+# 计算相对路径，供 git ls-tree 使用
+REL_PREFIX_DIR=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  GIT_ROOT="$(git rev-parse --show-toplevel)"
+  if [[ "$PREFIX_DIR" == "$GIT_ROOT"/* ]]; then
+    REL_PREFIX_DIR="${PREFIX_DIR#"$GIT_ROOT"/}"
+  fi
+fi
+
 # ── 编号：--id 覆盖 or 前缀内自动自增（同前缀最大序号 +1，三位补零） ──
+# ── 出卡并发锁（A2）：<dispatch-dir>/.card-lock，同前缀并发出卡编号互斥 ──
+# macOS 无 flock 二进制 → 用 python3 fcntl（PYTHON_BIN 已解析）
+LOCK_FILE="$TARGET_DIR/.card-lock"
+mkdir -p "$TARGET_DIR"
+exec 9>"$LOCK_FILE"
+if ! "$PYTHON_BIN" -c '
+import fcntl, sys
+try:
+    fcntl.flock(9, fcntl.LOCK_EX)
+except OSError as exc:
+    print(f"[ERROR] 获取出卡锁失败: {exc}", file=sys.stderr)
+    sys.exit(1)
+'; then
+  exit 3
+fi
+
 next_num=0
 if [[ -d "$PREFIX_DIR" ]]; then
   for f in "$PREFIX_DIR"/"$PROJECT_PREFIX"[0-9][0-9][0-9]-*.md; do
@@ -125,6 +181,17 @@ if [[ -d "$PREFIX_DIR" ]]; then
       (( n > next_num )) && next_num=$n
     fi
   done
+fi
+
+if [[ -n "$REL_PREFIX_DIR" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    base="$(basename "$f" .md)"
+    if [[ "$base" =~ ^"$PROJECT_PREFIX"([0-9]{3}) ]]; then
+      n=$((10#${BASH_REMATCH[1]}))
+      (( n > next_num )) && next_num=$n
+    fi
+  done < <(git ls-tree -r --name-only origin/main -- "$REL_PREFIX_DIR" 2>/dev/null || true)
 fi
 
 if [[ -n "$ID_OVERRIDE" ]]; then
@@ -146,6 +213,17 @@ if [[ -n "$ID_OVERRIDE" ]]; then
         exit 3
       fi
     done
+    # 查重：在 origin/main 中同前缀同序号已存在也拒绝
+    if [[ -n "$REL_PREFIX_DIR" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+      while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        existing="$(basename "$f" .md)"
+        if [[ "$existing" =~ ^"$PROJECT_PREFIX"([0-9]{3}) && "${BASH_REMATCH[1]}" == "$id_num" ]]; then
+          echo "[ERROR] 卡编号冲突：${ID_OVERRIDE} 与 ${existing} 重复（${PROJECT_PREFIX}${id_num} 已存在于 origin/main）" >&2
+          exit 3
+        fi
+      done < <(git ls-tree -r --name-only origin/main -- "$REL_PREFIX_DIR" 2>/dev/null || true)
+    fi
   else
     echo "[ERROR] --id 格式非法: $ID_OVERRIDE（须 <前缀><三位序号>[-slug]，如 ccc064-auto-naming）" >&2
     exit 3
@@ -153,7 +231,44 @@ if [[ -n "$ID_OVERRIDE" ]]; then
   CARD_ID="${id_prefix}${id_num}"
   [[ -n "$id_slug" ]] && SLUG_OVERRIDE="$id_slug"
 else
-  CARD_ID="$(printf '%s%03d' "$PROJECT_PREFIX" "$(( next_num + 1 ))")"
+  # 自动编号：跳过方案链保留编号（2026-08-12 · 统一保留表，出卡即避开，不再生成后删除）
+  RESERVED_IDS="$("$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.plan_reservations import plan_reserved_ids
+res = plan_reserved_ids().get('$PROJECT_PREFIX', set())
+print(' '.join(str(n) for n in sorted(res)))
+" 2>/dev/null)" || RESERVED_IDS=""
+  CANDIDATE="$(( next_num + 1 ))"
+  while :; do
+    if [[ "$CANDIDATE" -gt 999 ]]; then
+      echo "[ERROR] 项目 ${PROJECT_PREFIX} 自动编号空间已用尽（现有最大 ${next_num}，方案保留编号占满剩余区间），请使用 --id 显式指定或新增方案链。" >&2
+      exit 3
+    fi
+    # 跳过方案保留编号
+    if [[ " $RESERVED_IDS " == *" $CANDIDATE "* ]]; then
+      CANDIDATE=$((CANDIDATE + 1))
+      continue
+    fi
+    # 跳过同前缀已存在文件（含 origin/main 已有卡，next_num 已并入最大序号，此处兜底洞号）
+    CAND_NUM="$(printf '%03d' "$CANDIDATE")"
+    collision=""
+    for f in "$PREFIX_DIR"/"$PROJECT_PREFIX"[0-9][0-9][0-9]-*.md; do
+      [[ -e "$f" ]] || continue
+      base="$(basename "$f" .md)"
+      if [[ "$base" =~ ^"$PROJECT_PREFIX"([0-9]{3}) && "${BASH_REMATCH[1]}" == "$CAND_NUM" ]]; then
+        collision="$f"
+        break
+      fi
+    done
+    if [[ -n "$collision" ]]; then
+      CANDIDATE=$((CANDIDATE + 1))
+      continue
+    fi
+    break
+  done
+  CARD_ID="$(printf '%s%03d' "$PROJECT_PREFIX" "$CANDIDATE")"
+  [[ "$QUIET" != true ]] && echo "[提示] 自动编号 ${CARD_ID}（已跳过方案保留编号）；附加卡/修复卡建议使用 --id 显式编号。"
 fi
 
 # ── slug：显式 or 从标题派生（ASCII 词；中文标题回落 task）；T54 校验小写字母数字+单连字符 ──
@@ -176,16 +291,51 @@ if [[ -e "$CARD_PATH" ]]; then
   exit 3
 fi
 
+if [[ -n "$REL_PREFIX_DIR" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+  if git ls-tree -r --name-only origin/main -- "$REL_PREFIX_DIR" 2>/dev/null | grep -q -x "${REL_PREFIX_DIR}/${CARD_FILE}"; then
+    echo "[ERROR] 同名卡已存在于 origin/main：$CARD_FILE" >&2
+    exit 3
+  fi
+fi
+
 # ── 卡骨架 ──
 TODAY="$(date +%Y-%m-%d)"
+
+# ── 基准文件节：从 docs/projects/<prefix>/ 自动生成（注册即带基准，缺基准时给指引） ──
+BASELINE=""
+PROJ_README="$PROJECT_ROOT/docs/projects/$PROJECT_PREFIX/README.md"
+PROJ_PLANS="$PROJECT_ROOT/docs/projects/$PROJECT_PREFIX/plans"
+if [[ -f "$PROJ_README" ]]; then
+  BASELINE="- 项目基准（README·权威索引）：\`docs/projects/$PROJECT_PREFIX/README.md\`"
+fi
+if [[ -d "$PROJ_PLANS" && -n "$(ls "$PROJ_PLANS" 2>/dev/null)" ]]; then
+  if [[ -n "$BASELINE" ]]; then BASELINE+="
+"; fi
+  BASELINE+="- 方案池：\`docs/projects/$PROJECT_PREFIX/plans/\`（关联方案见卡头「关联」）"
+fi
+if [[ -z "$BASELINE" ]]; then
+  BASELINE="- 本项目暂无基准文件。执行前必须先补齐项目基准（\`docs/projects/$PROJECT_PREFIX/README.md\` 五节档案），再执行本卡；缺少基准的卡视为流程缺陷，机审打回。"
+fi
+
 read -r -d '' CARD_BODY <<EOF || true
 # 任务卡 ${CARD_ID} · ${TITLE}（${EXECUTOR} 执行）
 
 > 关联：${RELATED} · 执行体：${EXECUTOR} · 验收：${ACCEPTANCE} · 状态：待分派 · 派发：${DISPATCH} · 项目：${PROJECT_PREFIX} · 日期：${TODAY}
+$([ -n "$DEPENDS" ] && echo "> 依赖：${DEPENDS}")
+$([ -n "$ROLE" ] && echo "> 角色：${ROLE}")
+$([ -n "$SCHEDULE" ] && echo "> 定时：${SCHEDULE}")
+
+## 基准文件（先看）
+
+${BASELINE}
 
 ## 目标
 
 （一句话，可验收。）
+
+## 实现
+
+（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
 
 ## 红线（先看）
 
@@ -209,7 +359,8 @@ read -r -d '' CARD_BODY <<EOF || true
 ## 回写要求
 
 卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
-机审由卡头「验收」方自动写 \`## 机审区\`；人审 diff 后听「合入批准」写 \`## 验收区\`+已关闭。
+**回写同时必须完成 `## 维护区` 四问**（完成钩子，未填=机审打回+合入拒绝）。  
+机审由卡头「验收」方自动写 `## 机审区`；人审 diff 后听「合入批准」写 `## 验收区`+已关闭。
 
 ## 人工批注
 
@@ -219,9 +370,30 @@ read -r -d '' CARD_BODY <<EOF || true
 
 **执行体**：${EXECUTOR} · 日期：
 
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：\`关联方案\` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：
+2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 \`docs/projects/<prefix>/README.md\` 同步更新）
+   - 说明：
+4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → \`docs/roadmap.md\` 或档案「线路/近况」更新）
+   - 说明：
+
 ## 批注落实
 
 （若卡含 \`## 人工批注\`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+
+## 执行提示
+
+（中枢在出卡时注入，执行体（开发大模型）读到本节后优先遵循。）
+
+## 机审提示
+
+（中枢在出卡时注入，验收体（机审大模型）读到本节后优先遵循。）
 EOF
 
 if [[ "$DRY_RUN" == true ]]; then
@@ -232,6 +404,16 @@ fi
 
 mkdir -p "$PREFIX_DIR"
 printf '%s\n' "$CARD_BODY" > "$CARD_PATH"
+
+# ── 中枢 Prompt 注入：从 registry + README + KB 生成 LLM 专用提示段 ──
+# 注入执行提示（给开发大模型）和机审提示（给验收大模型），
+# 仅当卡文件含空占位段时才注入，已有内容不覆盖。
+if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.prompt_inject "$CARD_PATH" --project "$PROJECT_PREFIX" --title "$TITLE" ); then
+  [[ "$QUIET" != true ]] && echo "[OK] 提示段注入成功"
+else
+  # 注入失败不阻塞出卡（提示段为可选增强）
+  [[ "$QUIET" != true ]] && echo "[WARN] 提示段注入失败（卡已生成，提示段保持占位符）" >&2
+fi
 
 # ── 联动 validate 门禁：不合规卡拒绝并删除 ──
 # ccc003 修复：validate 前先刷新卡片索引（走 server.board 加载/落盘，使新卡入索引），
@@ -246,11 +428,25 @@ load_dispatch_cards(sys.argv[1])
   exit 1
 fi
 
-if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -m server.board.validate "$TARGET_DIR" ); then
+if ( cd "$PROJECT_ROOT" && "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.validate import validate_cards
+issues = validate_cards(sys.argv[1])
+errs = [i for i in issues if i.severity == 'error' and i.card_id.startswith(sys.argv[2])]
+if errs:
+    print(f'卡头校验发现 {len(errs)} 个本项目 error：', file=sys.stderr)
+    for e in errs:
+        print(f'  [{e.card_id}] {e.path}: {e.reason}', file=sys.stderr)
+    sys.exit(1)
+" "$TARGET_DIR" "$PROJECT_PREFIX" ); then
   [[ "$QUIET" != true ]] && echo "[OK] 出卡成功 + validate 通过: $CARD_PATH"
+  # 机器可读精确路径（供 plan-to-cards 直接捕获，替代 find | head -1 歧义扫描）
+  echo "CARD_PATH=$CARD_PATH"
   exit 0
 else
   echo "[ERROR] validate 校验失败，已删除生成卡：$CARD_PATH" >&2
   rm -f "$CARD_PATH"
+  echo "CARD_PATH="
   exit 1
 fi

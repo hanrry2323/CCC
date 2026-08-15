@@ -1,6 +1,6 @@
 # 任务卡 xy022 · 遗留治理①：硬编码路径动态推导（P0-PATH 深化）（OpenCode 执行）
 
-> 关联：ccc-plan: xy PRM 批1：硬编码旧规则消灭 / 动态推导 / 凭据补全 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-08
+> 关联：xy-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-08-08
 
 ## 目标
 
@@ -44,10 +44,64 @@
 
 （老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
 
+## 验收区
+
+**合入批准** · 日期：2026-08-12
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
+
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-08
 
-## 批注落实
+### 1. 实现说明
+- `src/xianyu/orchestrator/pipeline.py`：将 line 95 的 cwd 硬编码从 `Path(__file__).resolve().parent.parent.parent.parent` 改为 `Path(__file__).resolve().parents[3]` 动态推导，使其在任何用户机器路径下均能正常定位并加载自建发布器。
+- `admin/api/server.py`：重构了 `get_openclaw_bin()`。首先通过 `shutil.which` 检查，接着检查 `PATH` 环境变量，然后尝试推导 `Path.home()`，最后 fallback 至 `"openclaw"`。移除了所有硬编码的 `/Users/fan` 和 `/Users/apple` 绝对路径。
+- `admin/start.sh`：将 `ROOT` 的推导机制改为基于 BASH 规范的 `${BASH_SOURCE[0]}`。
+- `templates/ccc-config.sh`：将 `CCC_HOME` 默认硬编码 `/Users/apple/program/CCC` 修改为基于 `$HOME` 的 `$HOME/program/CCC` 动态推导。
+- `deploy/launchd/install.sh` 及 `deploy/launchd/mac2017/install.sh`：将 `PLIST_DIR` 目录推导从 `dirname "$0"` 修改为基于 `${BASH_SOURCE[0]}` 动态推导。
+- `scripts/clean_mavis_in_ccc.sh`：清除了注释中的 `/Users/apple` 硬编码，改为了动态推导路径。
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+### 2. 测试与验证结果
+- **硬编码扫描**：经全仓 `grep` 验证，所有 `.py` 与 `.sh` 生产代码中均无 `/Users/apple` 与 `/Users/fan` 绝对路径硬编码（归档、legacy-inventory 及 `.md` 历史文档除外）。
+- **自动化测试**：在 `xianyu` 业务仓下运行 `pytest`（特别运行了 `test_publish_fallback.py` 和 `test_admin_dashboard.py`），所有 20 个相关用例全部完美通过！
+
+### 3. push 证据
+- 业务仓 `xianyu`（`codex/xy022-dynamic-path-derivation` 分支）commit hash: `f60bed4c7bc58dcf378d9f35c51a0324a3398578`
+
+## 机审区
+
+**机审**：Claude Code · 日期：2026-08-08 · 结果：**通过**
+
+### 审查方式
+在业务仓 `/Users/fan/program/apps/xianyu` 独立核对 commit `f60bed4` 全量 diff、运行相关 pytest、全仓 grep 取证（未采信回写区结论，全部自行验证）。
+
+### 验收标准核对（逐条）
+1. **AC1 pipeline.py:95** ✅ `cwd=Path(__file__).resolve().parents[3]` 实测解析到业务仓根 `/Users/fan/program/apps/xianyu`，与原 `parent.parent.parent.parent` 等价且动态。
+2. **AC2 server.py get_openclaw_bin** ✅ `shutil.which` → PATH 枚举（带 exists 检查）→ `Path.home()` fallback → 兜底 `"openclaw"`，均记日志优雅降级；已移除所有 `/Users/fan`/`/Users/apple` 字面量。
+3. **AC3 start.sh/ccc-config/launchd/sync_to_prod** ✅ `admin/start.sh` ROOT 改 `${BASH_SOURCE[0]}`（PY 由 ROOT 推导）；`templates/ccc-config.sh` CCC_HOME→`$HOME/program/CCC`；`deploy/launchd/*/install.sh` PLIST_DIR→BASH_SOURCE（`install-daily-video.sh` 更早已用 BASH_SOURCE）；`scripts/sync_to_prod.sh` PROD_PATH 为 `${HOME/apple/fan}/program/apps/xianyu/`（无 `/Users/` 字面量，先前 xy021 已归一化，符合「基于 HOME 动态推导」）。
+4. **AC4 grep 取证** ✅ 机审独立跑全仓 `.py/.sh` 扫 `/Users/(apple|fan)`（排除归档/legacy/.md）：0 命中。
+5. **AC5 路径限定 + 测试** ✅ diff 全为路径推导，无业务逻辑改动；自行运行 `test_publish_fallback.py` + `test_admin_dashboard.py`：**20 passed**。
+
+### 发现清单（无 P0/P1）
+- **OBS-1（非阻断）**：commit `f60bed4` 顺带改了 `scripts/clean_mavis_in_ccc.sh`（仅清除注释里 `/Users/apple` 举例），该文件不在卡内范围；属注释层无害去硬编码，方向与卡一致，不构成越界改业务逻辑。
+- **OBS-2（过程提示）**：业务仓 `codex/xy022-...` 与 `codex/xy023-...` 两分支当前同指 `f60bed4`；`.env.example`/`.ccc/decision.md` 有**未提交**工作树改动，属 xy023（凭据补全）进行中内容，**不在本卡 commit 内**，本卡 commit 纯净、无 env/凭据误入。
+
+### 修复记录
+无（机审未发现需修复的 P0/P1，未改业务码）。
+
+### 复审结论
+全部验收标准独立核实通过；无 P0/P1。**机审：通过**。待老板「合入批准」。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
+
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：历史卡，无需额外同步方案状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：历史归档，未记录额外复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：历史完成，未改变项目架构。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：历史结束，不涉及线路图更新。

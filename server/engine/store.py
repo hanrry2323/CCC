@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Protocol
 
@@ -45,7 +46,48 @@ _STR_TO_STATE: dict[str, State] = {
     "已回写": State.DONE,
     "已关闭": State.CLOSED,
     "打回": State.REJECTED,
+    "作废": State.VOIDED,
 }
+
+
+def _branch_envelope_state(project_root: Path, entry: dict) -> str:
+    """远端 ``codex/<slug>`` 分支卡文件状态（分支信封 = 终态权威之一）。
+
+    磁盘 main 镜像在合入前永远旧值（待分派）；收单后 sidecar 按契约清除；
+    AUTO 业务仓卡的真值在执行体 push 的 codex 分支卡文件里。
+    分支不存在/读取失败返回空串（不覆盖现有判定，不阻断）。
+    """
+    raw_path = entry.get("path") or ""
+    if not raw_path:
+        return ""
+    try:
+        path = str(Path(raw_path).expanduser().resolve().relative_to(Path(project_root).expanduser().resolve()))
+    except ValueError:
+        path = str(raw_path).replace("\\", "/")
+    stem = Path(path).stem.lower()
+    branch = f"codex/{stem}"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(project_root), "show", f"origin/{branch}:{path}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception:
+        return ""
+    if res.returncode != 0:
+        return ""
+    from server.board.card_header import parse_metadata
+
+    try:
+        meta = parse_metadata(res.stdout)
+    except Exception:
+        return ""
+    state = (meta.get("状态") or "").strip()
+    if base_state(state) in ("已回写", "已关闭", "打回", "作废"):
+        return state
+    return ""
 
 
 def _retry_count_from_state_str(raw_state: str) -> int:
@@ -130,6 +172,7 @@ class FileBoardStore:
     def list_work(self, state: State | None = None) -> list[Work]:
         """走索引列出 work (扫描仅用于重建/校验)。"""
         from server.board.loader import load_dispatch_cards, load_index_file
+
         load_dispatch_cards(self._dir)
 
         index_entries = load_index_file(self._dir)
@@ -137,7 +180,12 @@ class FileBoardStore:
 
         runtime = read_card_state(self._log_dir) if self._log_dir else {}
         works: list[Work] = []
-        project_root = Path(__file__).resolve().parents[2]
+        try:
+            from server.git_sync import resolve_repo_root
+
+            project_root = resolve_repo_root(self._dir)
+        except Exception:
+            project_root = Path(__file__).resolve().parents[2]
 
         for entry in index_entries.values():
             # 归档卡不进 Engine 派发队列（看板 loader 已过滤；store 须对齐）
@@ -149,6 +197,13 @@ class FileBoardStore:
             # 若磁盘状态是「已关闭」「打回」，忽略 sidecar 状态。
             if base_state(raw_state) in ("待分派", "已回写", "执行中") and rt.get("state"):
                 raw_state = str(rt["state"])
+            # 分支信封（2026-08-12 · 终态权威补齐）：磁盘 main 镜像未合入前永远旧值，
+            # sidecar 收单后按契约清除 → 磁盘待分派会误重派、机审扫不到。
+            # 远端 codex/<slug> 分支卡是执行体回写后的真值，合并进状态判定。
+            if base_state(raw_state) in ("待分派", "执行中") and not rt.get("state"):
+                branch_state = _branch_envelope_state(project_root, entry)
+                if branch_state:
+                    raw_state = branch_state
             st = _state_from_str(raw_state)
             if st is None:
                 logger.warning(
@@ -165,10 +220,38 @@ class FileBoardStore:
             role = self._registry.role_for_binding(executor_name) or ""
             executor_binding = "" if executor_name == UNKNOWN else executor_name
 
-            rel_path = entry.get("path", "")
-            abs_path = project_root / rel_path
+            card_id = entry["id"]
+            # work.id -> card_path 解析改为每次从磁盘索引重新匹配，避免改名后残留旧 card_path
+            matched_path = None
+            try:
+                candidates = list(Path(self._dir).glob(f"**/*{card_id}*.md"))
+                candidates = [c for c in candidates if not c.name.endswith(".tmp") and not c.name.endswith(".bak")]
+                if candidates:
+                    for c in candidates:
+                        stem = c.stem.lower()
+                        if (
+                            stem == card_id.lower()
+                            or stem.startswith(card_id.lower() + "-")
+                            or stem.startswith(card_id.lower() + "_")
+                        ):
+                            matched_path = c
+                            break
+                    if not matched_path:
+                        matched_path = candidates[0]
+            except Exception:
+                pass
 
-            retry_count = int(rt.get("retry_count") or 0) if rt.get("retry_count") is not None else _retry_count_from_state_str(str(raw_state or ""))
+            if matched_path:
+                abs_path = matched_path.resolve()
+            else:
+                rel_path = entry.get("path", "")
+                abs_path = project_root / rel_path
+
+            retry_count = (
+                int(rt.get("retry_count") or 0)
+                if rt.get("retry_count") is not None
+                else _retry_count_from_state_str(str(raw_state or ""))
+            )
             reason = str(rt.get("reason") or "")[:200]
 
             work = Work(
@@ -182,6 +265,7 @@ class FileBoardStore:
                 type=entry.get("card_type", "task"),
                 project=entry.get("project", ""),
                 parent=entry.get("parent_card", "") or "",
+                depends_on=list(entry.get("depends_on") or []),
                 acceptance=entry.get("acceptance", "") or "",
                 thread_id=entry.get("thread_id", ""),
                 retry_count=retry_count,
@@ -216,10 +300,13 @@ class FileBoardStore:
             return
         text = path.read_text(encoding="utf-8")
         new_state_str = work.state.value
-        # 打回 / 待分派重试：附首个问题（截断）；重试带 n/max 便于跨心跳恢复
+        # 打回 / 作废 / 待分派重试：附首个问题（截断）；重试带 n/max 便于跨心跳恢复
         if work.state is State.REJECTED and work.problems:
             reason = work.problems[0][:40]
             new_state_str = f"打回（{reason}）"
+        elif work.state is State.VOIDED and work.problems:
+            reason = work.problems[0][:40]
+            new_state_str = f"作废（{reason}）"
         elif work.state is State.TODO and (work.problems or work.retry_count > 0):
             reason = (work.problems[0] if work.problems else "重试")[:32]
             if work.retry_count > 0:
@@ -232,6 +319,11 @@ class FileBoardStore:
         except ValueError as exc:
             logger.warning("save_work: 未在卡头找到「状态」段 %s (%s)", path, exc)
             return
+        # 打回次数修复（统一化）：进入「打回」时递增卡头 打回次数：N（此前只读不写）
+        if work.state is State.REJECTED:
+            from server.board.card_header import bump_reject_count
+
+            new_text = bump_reject_count(new_text)
         # 原子写：tmp → rename
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(new_text, encoding="utf-8")
@@ -240,6 +332,7 @@ class FileBoardStore:
         # 写卡后失效：重新加载索引以同步最新状态
         try:
             from server.board.loader import load_dispatch_cards
+
             load_dispatch_cards(self._dir)
         except Exception:
             logger.exception("save_work: 索引失效重扫失败（不影响回写成功）")
@@ -272,6 +365,7 @@ class FileBoardStore:
             type=item.type,
             project=item.project,
             parent=item.parent or "",
+            depends_on=list(item.depends_on),
             thread_id=item.thread_id,
             acceptance=(item.acceptance or "") if item.acceptance != "未知" else "",
             retry_count=_retry_count_from_state_str(item.state or ""),

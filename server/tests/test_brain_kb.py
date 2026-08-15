@@ -24,7 +24,7 @@ from server.web.brain import _build_prompt, _retrieve_kb_context
 def _reset_kb_and_env(monkeypatch):
     """每个测试前重置 KB 全局引擎 + 清理 brain KB env，避免跨用例污染。"""
     reset_engine()
-    for k in ("CCC_BRAIN_KB", "CCC_BRAIN_KB_TOP_K", "CCC_KB_INDEX_DIR"):
+    for k in ("CCC_BRAIN_KB", "CCC_BRAIN_KB_TOP_K", "CCC_KB_INDEX_DIR", "CCC_KB_HP_FALLBACK"):
         monkeypatch.delenv(k, raising=False)
     yield
     reset_engine()
@@ -71,9 +71,14 @@ def small_index(tmp_path) -> str:
 
 
 def _enable_kb(monkeypatch, index_dir: str) -> None:
-    """开启 KB 检索并指向给定索引目录。"""
+    """开启 KB 检索并指向给定索引目录。
+
+    2026-08-14 HP 混合检索上线：本组测试专注本地 BM25 注入行为，
+    显式关闭 HP fallback（CCC_KB_HP_FALLBACK=0），避免 hp 语义补充污染「未命中/数学不注入」断言。
+    """
     monkeypatch.setenv("CCC_BRAIN_KB", "1")
     monkeypatch.setenv("CCC_KB_INDEX_DIR", index_dir)
+    monkeypatch.setenv("CCC_KB_HP_FALLBACK", "0")
     reset_engine()
 
 

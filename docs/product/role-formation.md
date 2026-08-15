@@ -5,7 +5,7 @@
 > 本文完整重写待后续卡处理。
 
 > **状态**：架构定稿（2026-07-21）  
-> **冲突裁决**：[`VISION.md`](../VISION.md) §「无穷角色机制」> 本文 > 任何残留「7 角色」字面表述  
+> **冲突裁决**：[`../ENGINEERING-CANON.md`](../ENGINEERING-CANON.md) > 本文（VISION/STRATEGY-MAP 已 RETRACTED 2026-08-11）  
 > **一句话**：CCC **不依赖任何固定 skill / prompt**；角色 = **任务 → 工具路由 → 注入 Skill + Prompt** 的即时产物。`skills/ccc-*` 是流水线阶段的**默认 seed**，不是用户菜单。
 
 ---
@@ -71,8 +71,8 @@
 
 ## 6. 关联
 
-- 叙事 SSOT：[`../VISION.md`](../VISION.md) §「无穷角色机制」  
-- 战略地图：[`../STRATEGY-MAP.md`](../STRATEGY-MAP.md) §0 翻译口径  
+- 叙事 SSOT：`../ENGINEERING-CANON.md`（VISION 已 RETRACTED）  
+- 战略地图：`../ENGINEERING-CANON.md`（STRATEGY-MAP 已 RETRACTED）  
 - 启动简报：[`../../STARTUP-BRIEF.md`](../../STARTUP-BRIEF.md)  
 - 红线：[`../../references/red-lines.md`](../../references/red-lines.md) R-6 / R-12  
 - 看板契约：[`../../references/board-task-schema.md`](../../references/board-task-schema.md) §复杂度分流

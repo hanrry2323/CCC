@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from server.board.registry import card_prefixes as _card_prefixes
 from server.board.registry import forbidden_prefixes as _forbidden_prefixes
@@ -22,11 +22,12 @@ UNCLASSIFIED = "未分类"
 PREFIXES: dict[str, str] = _card_prefixes()
 FORBIDDEN_CARD_PREFIXES: frozenset[str] = _forbidden_prefixes()
 
-# 契约 §2 五态（卡头唯一合法状态；校验用）
-STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")
+# 契约 §2 六态（卡头唯一合法状态；校验用）
+# 人审调整动作统一化（2026-08-14）：新增「作废」终态——人审取消单卡（待分派/执行中/已回写/打回均可作废）。
+STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回", "作废")
 
-# 看板列（派生视图）：「已回写」且无机审通过 →「机审」；已关闭置末
-BOARD_COLUMNS: tuple[str, ...] = ("待分派", "执行中", "机审", "已回写", "打回", "已关闭")
+# 看板列（派生视图）：「已回写」且无机审通过 →「机审」；已关闭/作废置末
+BOARD_COLUMNS: tuple[str, ...] = ("待分派", "执行中", "机审", "已回写", "打回", "已关闭", "作废")
 
 # P3 线路图桶（占位；已验收待确认 为预留空桶）
 ROADMAP_BUCKETS: tuple[str, ...] = (
@@ -99,9 +100,13 @@ def machine_audit_passed_text(text: str) -> bool:
 
                 # 匹配形如 `机审：通过` / `结论：通过` / `机审：不通过` / `结论：不通过`
                 # 采用 (不通过|通过) 确保「不通过」优先匹配，避免被「通过」子串截断
-                match = re.search(r'(机审|结论)\s*[:：]\s*(不通过|通过)', line_normalized)
+                match = re.search(r"(机审|结论)\s*[:：]\s*(不通过|通过)", line_normalized)
+                if not match:
+                    # 兼容 agent 输出格式 `**机审**：<评审人>· 结果：**通过**`（clw011 事故）
+                    # 「结果」字段在机审结论行内给出明确裁决 → 视为有效结论行
+                    match = re.search(r"结果\s*[:：]\s*(不通过|通过)", line_normalized)
                 if match:
-                    last_verdict = match.group(2)
+                    last_verdict = match.group(2) if match.lastindex >= 2 else match.group(1)
 
                 j += 1
 
@@ -152,13 +157,15 @@ class BoardItem:
     dispatch: str = "engine"
     type: str = "task"
     parent: str = ""
-    progress: str = ""
     thread_id: str = ""
     acceptance: str = UNKNOWN
     archived: bool = False
     machine_audit_passed: bool = False
+    depends_on: list[str] = field(default_factory=list)
     closed_at: str = ""
     audit_status: str = ""
+    approval: str = ""
+    reason: str = ""
 
     def to_dict(self) -> dict[str, str | int | bool]:
         """转纯字典（JSON 可序列化）。"""
@@ -169,6 +176,7 @@ class BoardItem:
             "state": self.state,
             "board_column": col,
             "machine_audit_passed": self.machine_audit_passed,
+            "depends_on": list(self.depends_on),
             "project": self.project,
             "executor": self.executor,
             "dispatched_at": self.dispatched_at,
@@ -177,10 +185,11 @@ class BoardItem:
             "dispatch": self.dispatch,
             "type": self.type,
             "parent": self.parent,
-            "progress": self.progress,
             "thread_id": self.thread_id,
             "acceptance": self.acceptance,
             "archived": self.archived,
             "closed_at": self.closed_at,
             "audit_status": self.audit_status,
+            "approval": self.approval,
+            "reason": self.reason,
         }

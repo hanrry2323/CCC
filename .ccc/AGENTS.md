@@ -8,7 +8,7 @@
 ## Project
 
 - **Name**: CCC
-- **Path**: /Users/apple/program/CCC（M1 写源）· /Users/fan/program/CCC（2017 生产）
+- **Path**: /Users/apple/program/CCC（M1 中枢）· /Users/fan/program/CCC（2017 生产与执行）
 - **Primary Language**: Python
 
 ## 文档（硬）

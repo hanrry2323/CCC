@@ -1,0 +1,12 @@
+# 已知无引用死文件清单（arch-drift-check 门禁检查：清单内文件必须不存在，防复活）。
+# 新增死文件：删除文件 + 在此登记一行相对路径。
+# 注意：server/web/data/arch/*.json 是 arch 体系保留数据（022 方案经核），勿登记。
+
+server/web/legacy-chat/arch/ccc-arch.html
+server/web/legacy-chat/arch/cluster-arch.html
+server/web/legacy-chat/arch/medio-0-arch.html
+server/web/legacy-chat/arch/qb-arch.html
+server/web/legacy-chat/arch/quanthive-arch.html
+server/web/legacy-chat/arch/qxmap-arch.html
+scripts/gen_arch.py
+server/web/data/arch/ARCH-SCHEMA.md

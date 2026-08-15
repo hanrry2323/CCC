@@ -15,10 +15,12 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import sys
 import time
+import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -27,6 +29,15 @@ from server.config.loader import ConfigError, load_config
 logger = logging.getLogger("ccc.engine.scheduler")
 
 DEFAULT_INTERVAL_SECONDS = 60
+
+# 单任务硬性执行超时（秒）：超时自动放弃，不阻塞后续任务（P0 调度器裸奔加固）。
+DEFAULT_TASK_TIMEOUT_SECONDS = 60
+# 巡检任务并发上限（线程隔离）：单任务挂死/超时不影响其它巡检。
+TASK_MAX_WORKERS = 4
+
+# 持久线程池：跨轮复用，不再每轮新建/销毁，避免挂死线程随轮次累积造成资源泄漏。
+# 挂死任务只占用 1 个 worker，其余 worker 继续服务后续任务 → 不阻塞整轮。
+_TASK_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=TASK_MAX_WORKERS)
 
 
 # ── 任务类型 ──
@@ -44,6 +55,7 @@ class ScheduledTask:
         task_type: TASK_TYPE_READONLY 或 TASK_TYPE_CHANGE。
         run: 可调用对象，接收 config dict，返回 (ok: bool, summary: dict)。
     """
+
     name: str
     task_type: str
     run: Callable[[dict[str, Any]], tuple[bool, dict[str, Any]]]
@@ -51,9 +63,11 @@ class ScheduledTask:
 
 # ── 注册表 ──
 
+
 @dataclass
 class TaskRegistry:
     """定时任务注册表。"""
+
     tasks: list[ScheduledTask] = field(default_factory=list)
 
     def register(self, task: ScheduledTask) -> None:
@@ -68,6 +82,51 @@ class TaskRegistry:
 
 # ── 执行 ──
 
+
+def _task_timeout_seconds(cfg: dict[str, Any]) -> int:
+    """单个巡检/变更任务硬性超时（秒）。可经 SCHEDULER_TASK_TIMEOUT 覆盖。"""
+    try:
+        return max(1, int(cfg.get("SCHEDULER_TASK_TIMEOUT") or DEFAULT_TASK_TIMEOUT_SECONDS))
+    except (TypeError, ValueError):
+        return DEFAULT_TASK_TIMEOUT_SECONDS
+
+
+def _guarded_task_result(
+    task: ScheduledTask,
+    cfg: dict[str, Any],
+    timeout: int,
+    executor: concurrent.futures.ThreadPoolExecutor,
+) -> dict[str, Any]:
+    """在线程中执行单个任务并保护后续调度：
+
+    - 每个任务跑独立线程（线程隔离，单个挂死不拖垮全局）。
+    - 硬性超时 ``timeout`` 秒：超时自动放弃（cancel 不可中断已运行线程，仅等超时放弃结果）。
+    - ``task.run`` 抛出异常 / 超时均捕获：打 error 日志，返回 ok=False，不中断整轮。
+
+    返回结构：name / type / ok / summary / crashed（True=异常或超时，说明为基础设施失败）。
+    """
+    base: dict[str, Any] = {"name": task.name, "type": task.task_type, "ok": False}
+    future = executor.submit(task.run, cfg)
+    try:
+        ok, summary = future.result(timeout=timeout)
+        base["ok"] = bool(ok)
+        base["summary"] = summary if summary is not None else {}
+    except concurrent.futures.TimeoutError:
+        # 超时：线程仍在跑（无法中断 daemon 线程），主动放弃该任务结果，不阻塞后续。
+        base["crashed"] = True
+        base["summary"] = {"timeout": True, "reason": f"exceeded {timeout}s hard timeout"}
+        logger.error("巡检任务 %s 超时放弃（>%ds）: %s", task.name, timeout, task.name)
+    except Exception as exc:
+        base["crashed"] = True
+        base["summary"] = {
+            "crashed": True,
+            "reason": f"{type(exc).__name__}: {exc}",
+            "traceback": traceback.format_exc()[:2000],
+        }
+        logger.error("巡检任务 %s 异常（已隔离，不中断本轮）: %s\n%s", task.name, exc, traceback.format_exc()[:1000])
+    return base
+
+
 def run_tasks(
     registry: TaskRegistry,
     cfg: dict[str, Any],
@@ -75,52 +134,47 @@ def run_tasks(
     """执行所有注册任务，返回结果列表。
 
     只读巡检总是执行；变更类仅在 SCHEDULER_DISPATCH_DIR 非空时执行。
+    每个任务线程隔离并带硬性超时（见 _guarded_task_result），异常/超时不影响其它任务。
     """
     results: list[dict[str, Any]] = []
     dispatch_dir = cfg.get("SCHEDULER_DISPATCH_DIR", "")
+    timeout = _task_timeout_seconds(cfg)
 
-    for task in registry.list_readonly():
-        ok, summary = task.run(cfg)
-        results.append({
-            "name": task.name,
-            "type": task.task_type,
-            "ok": ok,
-            "summary": summary,
-        })
-        if ok:
-            logger.info("巡检任务 %s 完成: %s", task.name, summary)
-        else:
-            logger.warning("巡检任务 %s 失败: %s", task.name, summary)
+    readonly_tasks = registry.list_readonly()
 
-    if dispatch_dir:
+    # 只读巡检线程隔离执行（持久池 _TASK_POOL：挂死任务仅占 1 worker，不阻塞整轮）
+    if not dispatch_dir:
+        skipped: list[dict[str, Any]] = []
         for task in registry.list_change():
-            ok, summary = task.run(cfg)
-            results.append({
-                "name": task.name,
-                "type": task.task_type,
-                "ok": ok,
-                "summary": summary,
-            })
-            if ok:
-                logger.info("变更任务 %s 完成: %s", task.name, summary)
-            else:
-                logger.warning("变更任务 %s 失败: %s", task.name, summary)
-    else:
-        for task in registry.list_change():
-            logger.info(
-                "变更任务 %s 跳过（SCHEDULER_DISPATCH_DIR 未配置）", task.name
+            logger.info("变更任务 %s 跳过（SCHEDULER_DISPATCH_DIR 未配置）", task.name)
+            skipped.append(
+                {
+                    "name": task.name,
+                    "type": task.task_type,
+                    "ok": True,
+                    "summary": {"skipped": True, "reason": "dispatch_dir not configured"},
+                }
             )
-            results.append({
-                "name": task.name,
-                "type": task.task_type,
-                "ok": True,
-                "summary": {"skipped": True, "reason": "dispatch_dir not configured"},
-            })
+        readonly = [_guarded_task_result(t, cfg, timeout, _TASK_POOL) for t in readonly_tasks]
+        results = readonly + skipped
+    else:
+        readonly = [_guarded_task_result(t, cfg, timeout, _TASK_POOL) for t in readonly_tasks]
+        change = [_guarded_task_result(t, cfg, timeout, _TASK_POOL) for t in registry.list_change()]
+        results = readonly + change
+
+    for r in results:
+        if r.get("crashed"):
+            logger.error("任务 %s 异常（已隔离）: %s", r["name"], r.get("summary"))
+        elif r["ok"]:
+            logger.info("任务 %s 完成: %s", r["name"], r.get("summary"))
+        else:
+            logger.warning("任务 %s 失败: %s", r["name"], r.get("summary"))
 
     return results
 
 
 # ── CLI ──
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -188,18 +242,51 @@ def main(argv: list[str] | None = None) -> int:
 
 # ── 默认注册表 ──
 
+
 def _default_registry() -> TaskRegistry:
     """返回默认注册表（含集群采集巡检任务）。"""
     registry = TaskRegistry()
 
     # 延迟导入避免循环依赖
     from server.engine.cluster import collect_cluster_status
+    from server.engine.observer import run_observation_metrics, run_observer
 
-    registry.register(ScheduledTask(
-        name="cluster-collect",
-        task_type=TASK_TYPE_READONLY,
-        run=collect_cluster_status,
-    ))
+    def _trigger_scheduled_ops_wrapper(cfg):
+        from server.engine.observer import trigger_scheduled_ops
+
+        return trigger_scheduled_ops(cfg)
+
+    registry.register(
+        ScheduledTask(
+            name="cluster-collect",
+            task_type=TASK_TYPE_READONLY,
+            run=collect_cluster_status,
+        )
+    )
+
+    registry.register(
+        ScheduledTask(
+            name="loop-observer",
+            task_type=TASK_TYPE_READONLY,
+            run=run_observer,
+        )
+    )
+
+    registry.register(
+        ScheduledTask(
+            name="observation-metrics",
+            task_type=TASK_TYPE_READONLY,
+            run=run_observation_metrics,
+        )
+    )
+
+    registry.register(
+        ScheduledTask(
+            name="scheduled-ops-trigger",
+            task_type=TASK_TYPE_READONLY,
+            run=_trigger_scheduled_ops_wrapper,
+        )
+    )
 
     return registry
 

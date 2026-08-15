@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 from server.board.export import build_board_data, export_board
@@ -28,7 +29,7 @@ def _items() -> list[BoardItem]:
 
 def _extract_payload(text: str) -> dict[str, object]:
     assert text.startswith(PREFIX)
-    payload = text[len(PREFIX):].rstrip().rstrip(";")
+    payload = text[len(PREFIX) :].rstrip().rstrip(";")
     return json.loads(payload)
 
 
@@ -55,7 +56,7 @@ class TestBuildBoardData:
     """聚合数据结构完整。"""
 
     def test_roundtrip(self) -> None:
-        data = build_board_data(_items())
+        data = build_board_data(_items(), now=date(2026, 8, 3))
         assert data["states"]["待分派"] == 1
         assert data["views"]["recent"][0]["id"] == "T1"
         assert data["views"]["by_project"][0]["project"] == "PRJ-X"
