@@ -1,6 +1,6 @@
 # 任务卡 mx039 · API 路由层服务复用（OpenCode 执行）
 
-> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-15
+> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-15
 
 
 
@@ -55,24 +55,34 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-15
+
+### 实现说明
+1. 对 `AppState` 结构体进行了扩展，新增 `rss_service: Option<Arc<RssService>>` 字段、初始化设置以及对应的 `.with_rss_service(rss_service)` builder 方法。
+2. 在 `src/backend/server/src/main.rs` 和 `src/backend/tauri/src/server_runner.rs` 初始化时实例化单例 `RssService`，并在构造 `AppState` 时注入此共享服务。
+3. 在 `src/backend/core/src/api/routes/rss.rs` 路由层的所有 handlers 中，删除原先每次请求时局部调用 `RssService::new(state.db.clone())` 的行为，统一使用从 `AppState` 取出并克隆的注入服务实例。
+4. 清理了 `rss.rs` 中因重构而变成未使用的 `use crate::service::rss::service::RssService;` 引入。
+
+### 测试结果
+- 全量/局部编译检查完美通过，且无任何警告。
+- 本地 RSS 相关测试如 `tests/rss_list_items.rs` 和 `tests/service_crawler.rs` 运行全绿并顺利通过。
+
+### push 证据
+- 关联分支：`codex/mx039-api`
+- 提交哈希：`e40cffe3a4770f8f6a4ac241168ad886b6f602a1`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案 mx-plan-003 进入部分执行阶段，关联卡为 mx039）
+   - 说明：已同步状态并关联。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（此为按部就班的依赖注入重构，不涉及特殊的新教训）
+   - 说明：无。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（没有新增项目或修改路径，仅内部依赖重构）
+   - 说明：否。
+4. **线路图**：项目近况/下一步是否变化？[否]（整体 v0.9.0 之后按计划平稳演进）
+   - 说明：否。
 
 ## 执行提示
 
@@ -138,3 +148,25 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**验收席**：2017 机审 · 日期：2026-08-15
+
+**机审：通过**
+
+### 审查摘要
+
+- 审查范围：medio-0 仓 `codex/mx039-api` 分支 commit `e40cffe`（API 路由层服务复用）。4 个文件改动（`api/routes/rss.rs`、`api/state.rs`、`server/main.rs`、`tauri/server_runner.rs`），均在卡声明范围（后端 core 相关模块）内；CCC 仓 worktree 分支 `codex/mx039-api` 仅改卡文件，无平台越界。
+- 实现审查：
+  - `AppState` 新增 `rss_service: Option<Arc<RssService>>` 字段（state.rs:21）+ `with_rss_service()` builder（state.rs:79），`new()` 默认 `None`（state.rs:51），与既有 `cover_service`/`crawl_scheduler`/`media_service` 注入模式一致。
+  - RssService 单例在两条启动路径各构造一次（server `main.rs:244`、tauri `server_runner.rs:123`），与 `state.db` 共用同一 `SqlitePool`（同一 Arc）；RssService 仅持 pool、无内部可变状态 → 并发安全、行为等价。
+  - 15 个 RSS 路由 handler 全部由 `RssService::new(state.db.clone())` 反模式改为从 state 取注入单例；`grep RssService::new api/routes/rss.rs` = 0，全仓非测试构造点仅剩两条启动路径。未注入时返回 `AppError::Internal`（500），与同文件 `crawl_scheduler` 既有 `as_ref().ok_or_else` 防御写法一致，运行面两路径均注入、正常不可达。
+  - 清理重构后未使用的 `use crate::service::rss::service::RssService;` 引入（rss.rs）；state.rs 新增同路径 import 被字段类型使用，无告警。
+- 验收标准核对：
+  1. 路由 handler 无每次请求 new 服务 ✔（rss.rs 内 `RssService::new` 清零）。
+  2. API 路由测试全绿 ✔（机械门禁裁决，本机不再重复）。
+  3. `cargo test` 相关测试全绿 ✔（机械门禁裁决，本机不再重复）。
+- 维护区四问逐项填写、无占位；方案同步 [是] 与 `mx-plan-003` 状态「部分执行」一致（plan 文件 line 3 状态、line 5 关联卡 mx036-041 已核实）；push 证据 commit `e40cffe` 已上 `origin/codex/mx039-api`（本地与远端一致）；无声明不实。
+- 协调提示（P2·不阻断）：本卡与并行卡 mx037（已机审通过，采用 `AppState::rss_service()` 防御性回退工厂）在 `state.rs` rss_service 字段/builder 与 `rss.rs` 15 个 handler 转换上重叠。两卡同属 mx-plan-003 并行拆分，属计划层面重复，非本卡缺陷。合入 main 时 rebase 会产生冲突，建议以 mx037 已通过的 helper 实现为准收敛。
+- 小建议（不阻断）：15 处重复 `as_ref().ok_or_else` 可抽为 `AppState` 辅助方法（与 mx037 方向一致）；当前与同文件既有 `crawl_scheduler` 写法一致，可接受，不强制。
