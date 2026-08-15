@@ -3507,3 +3507,164 @@ body.ro-viewer [data-write] {
 
 /* 草案标签 */
 .rm-tag.draft { background: rgba(163, 158, 147, 0.15); color: #7a7468; }
+
+/* ══ DSH 巡检页（2026-08-15 · 全 var，随 dark 主题） ═══════════ */
+
+.dsh-page.hub-page {
+  max-width: 1200px;   /* 复用 hub-page 基类口径，不新增第 5 种宽度 */
+}
+.dsh-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ccc-space-md);
+  padding-bottom: var(--ccc-space-lg);
+  border-bottom: 1px solid var(--ccc-border-subtle);
+  margin-bottom: var(--ccc-space-lg);
+}
+.dsh-bar h2 { margin: 0; font-size: 20px; color: var(--ccc-text-base); }
+.dsh-sub { font-size: 13px; color: var(--ccc-text-muted); }
+.dsh-last { font-size: 12px; color: var(--ccc-text-muted); }
+
+.dsh-section { margin-bottom: var(--ccc-space-xl); }
+.dsh-section h3 {
+  font-size: 15px;
+  color: var(--ccc-text-base);
+  margin: 0 0 var(--ccc-space-md);
+}
+.dsh-section h3 .badge {
+  background: var(--ccc-bg-hover);
+  color: var(--ccc-text-secondary);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+.dsh-scan-at { font-size: 12px; color: var(--ccc-text-muted); font-weight: 400; }
+.dsh-empty {
+  padding: var(--ccc-space-xl);
+  color: var(--ccc-text-muted);
+  border: 1px dashed var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-md);
+  text-align: center;
+  font-size: 13px;
+}
+
+/* ① 结论摘要 */
+.dsh-summary-cards {
+  display: flex;
+  gap: var(--ccc-space-md);
+  margin-bottom: var(--ccc-space-md);
+}
+.dsh-sum-card {
+  flex: 1;
+  min-width: 80px;
+  padding: var(--ccc-space-md);
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-md);
+  text-align: center;
+}
+.dsh-sum-card b { display: block; font-size: 24px; }
+.dsh-sum-card span { font-size: 12px; color: var(--ccc-text-muted); }
+.dsh-sum-red { color: var(--ccc-danger); }
+.dsh-sum-yellow { color: var(--ccc-warn); }
+.dsh-sum-blue { color: var(--ccc-text-secondary); }
+.dsh-sum-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccc-space-sm);
+  font-size: 13px;
+  color: var(--ccc-text-secondary);
+  padding: var(--ccc-space-sm) 0;
+}
+.dsh-face {
+  background: var(--ccc-bg-hover);
+  color: var(--ccc-text-base);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.dsh-sum-sep { color: var(--ccc-text-muted); }
+.dsh-act-sum { font-weight: 600; color: var(--ccc-danger); }
+.dsh-act-sum.del { color: var(--ccc-warn); }
+.dsh-act-sum.keep { color: var(--ccc-success); }
+.dsh-sum-meta { font-size: 12px; color: var(--ccc-text-muted); }
+.dsh-sum-meta code { color: var(--ccc-text-secondary); }
+
+/* ② 发现清单 */
+.dsh-review-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ccc-space-sm);
+  padding: var(--ccc-space-md);
+  margin-bottom: var(--ccc-space-sm);
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-md);
+}
+.dsh-pill {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.dsh-pill.conf-high { color: var(--ccc-danger); background: color-mix(in srgb, var(--ccc-danger) 12%, transparent); }
+.dsh-pill.conf-mid { color: var(--ccc-warn); background: color-mix(in srgb, var(--ccc-warn) 12%, transparent); }
+.dsh-pill.conf-low { color: var(--ccc-success); background: color-mix(in srgb, var(--ccc-success) 12%, transparent); }
+.dsh-act-badge {
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.dsh-act-badge.act-fix { color: var(--ccc-danger); background: color-mix(in srgb, var(--ccc-danger) 10%, transparent); }
+.dsh-act-badge.act-del { color: var(--ccc-warn); background: color-mix(in srgb, var(--ccc-warn) 10%, transparent); }
+.dsh-act-badge.act-keep { color: var(--ccc-success); background: color-mix(in srgb, var(--ccc-success) 10%, transparent); }
+.dsh-loc {
+  font-size: 12px;
+  color: var(--ccc-text-secondary);
+  background: var(--ccc-bg-hover);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.dsh-title { flex: 1; min-width: 160px; font-size: 13px; color: var(--ccc-text-base); }
+.dsh-evidence summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  user-select: none;
+}
+.dsh-evidence pre {
+  margin: var(--ccc-space-sm) 0 0;
+  padding: var(--ccc-space-md);
+  background: var(--ccc-bg-hover);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ccc-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.dsh-low-group {
+  margin-top: var(--ccc-space-md);
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+}
+.dsh-low-group summary { cursor: pointer; user-select: none; }
+.dsh-low-group .dsh-review-item { opacity: 0.75; }
+
+/* ③ 原始报告 */
+.dsh-raw summary { cursor: pointer; font-size: 13px; color: var(--ccc-text-secondary); user-select: none; }
+.dsh-raw-content {
+  margin-top: var(--ccc-space-sm);
+  padding: var(--ccc-space-lg);
+  background: var(--ccc-bg-hover);
+  border-radius: var(--ccc-radius-md);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ccc-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow-y: auto;
+}

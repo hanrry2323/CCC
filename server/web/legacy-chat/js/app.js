@@ -17,6 +17,7 @@ import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
 import { mountPlans, unmountPlans } from './pages/plansPage.js';
 import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js';
+import { mountDsh, unmountDsh } from './pages/dshPage.js';
 import {
   initDualPaneControls,
   isEnabled as dualPaneEnabled,
@@ -203,6 +204,7 @@ async function onHubRoute(route) {
     roadmap: { mount: mountRoadmap, unmount: unmountRoadmap },
     console: { mount: mountConsole, unmount: unmountConsole },
     ops: { mount: mountOps, unmount: unmountOps },
+    dsh: { mount: mountDsh, unmount: unmountDsh },
   };
   if (route === 'chat') {
     for (const name of Object.keys(PAGES)) PAGES[name].unmount();
