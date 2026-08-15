@@ -1,8 +1,8 @@
 # clw (clwarp) 开发技能指南
 
-> 项目：clwarp — 统一 AI 开发桌面驾驶舱（一个窗口管理 Claude Code / OpenCode / Codex 会话，内嵌 CCC 看板，GPU 原生终端渲染）
+> 项目：clwarp — 统一 AI 开发桌面驾驶舱（一个窗口管理 Claude Code / OpenCode / Codex 会话，内嵌 CCC 看板，xterm.js 前端终端渲染）
 > 仓库：/Users/fan/program/apps/clwarp（Mac2017）
-> 技术栈：Tauri 2.0（Rust + React/TypeScript）+ alacritty_terminal + Metal GPU
+> 技术栈：Tauri 2.0（Rust + React/TypeScript）+ alacritty_terminal（仅 PTY）+ @xterm/xterm 前端渲染
 
 ## 常用命令
 
