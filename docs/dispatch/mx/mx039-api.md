@@ -1,6 +1,6 @@
 # 任务卡 mx039 · API 路由层服务复用（OpenCode 执行）
 
-> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-15
+> 关联：mx-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-15
 
 
 
@@ -55,24 +55,34 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-15
+
+### 实现说明
+1. 对 `AppState` 结构体进行了扩展，新增 `rss_service: Option<Arc<RssService>>` 字段、初始化设置以及对应的 `.with_rss_service(rss_service)` builder 方法。
+2. 在 `src/backend/server/src/main.rs` 和 `src/backend/tauri/src/server_runner.rs` 初始化时实例化单例 `RssService`，并在构造 `AppState` 时注入此共享服务。
+3. 在 `src/backend/core/src/api/routes/rss.rs` 路由层的所有 handlers 中，删除原先每次请求时局部调用 `RssService::new(state.db.clone())` 的行为，统一使用从 `AppState` 取出并克隆的注入服务实例。
+4. 清理了 `rss.rs` 中因重构而变成未使用的 `use crate::service::rss::service::RssService;` 引入。
+
+### 测试结果
+- 全量/局部编译检查完美通过，且无任何警告。
+- 本地 RSS 相关测试如 `tests/rss_list_items.rs` 和 `tests/service_crawler.rs` 运行全绿并顺利通过。
+
+### push 证据
+- 关联分支：`codex/mx039-api`
+- 提交哈希：`e40cffe3a4770f8f6a4ac241168ad886b6f602a1`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案 mx-plan-003 进入部分执行阶段，关联卡为 mx039）
+   - 说明：已同步状态并关联。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（此为按部就班的依赖注入重构，不涉及特殊的新教训）
+   - 说明：无。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（没有新增项目或修改路径，仅内部依赖重构）
+   - 说明：否。
+4. **线路图**：项目近况/下一步是否变化？[否]（整体 v0.9.0 之后按计划平稳演进）
+   - 说明：否。
 
 ## 执行提示
 
