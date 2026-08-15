@@ -13,16 +13,10 @@
  */
 
 import { apiGet, apiPost } from '../api.js';
+import { esc } from '../ui.js';
 
 let _root = null;
 let _timer = null;
-
-function esc(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
 
 function agoText(ts) {
   const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));

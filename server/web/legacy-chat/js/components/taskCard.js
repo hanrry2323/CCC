@@ -1,3 +1,5 @@
+import { STATE_TONES } from '../ui.js';
+
 export const STATE_TONE = {
   '待分派': 'pending',
   '执行中': 'running',
@@ -15,19 +17,15 @@ export const STATE_TONE = {
 };
 
 export const STATE_COLORS = {
-  '待分派': '#a39e93',
-  '执行中': '#c47a2c',
-  '机审': '#8b6cc1',
-  '已回写': '#3d9a5f',
+  ...STATE_TONES,
   '已关闭': '#5a7a9a',
-  '打回': '#c44',
 
-  'pending': '#a39e93',
-  'running': '#c47a2c',
-  'audit': '#8b6cc1',
-  'written': '#3d9a5f',
+  'pending': STATE_TONES['待分派'],
+  'running': STATE_TONES['执行中'],
+  'audit': STATE_TONES['机审'],
+  'written': STATE_TONES['已回写'],
   'closed': '#5a7a9a',
-  'returned': '#c44'
+  'returned': STATE_TONES['打回']
 };
 
 export function escapeHtml(s) {

@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260809t12">
-<link rel="stylesheet" href="/css/base.css?v=20260809t12">
-<link rel="stylesheet" href="/css/themes.css?v=20260809t12">
-<link rel="stylesheet" href="/css/components.css?v=20260809t12">
-<link rel="stylesheet" href="/css/shell.css?v=20260809t12">
-<link rel="stylesheet" href="/css/dual-pane.css?v=20260809t12">
+<link rel="stylesheet" href="/css/variables.css?v=20260815t1">
+<link rel="stylesheet" href="/css/base.css?v=20260815t1">
+<link rel="stylesheet" href="/css/themes.css?v=20260815t1">
+<link rel="stylesheet" href="/css/components.css?v=20260815t1">
+<link rel="stylesheet" href="/css/shell.css?v=20260815t1">
+<link rel="stylesheet" href="/css/dual-pane.css?v=20260815t1">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
-<script src="/js/theme-init.js?v=20260809t12"></script>
+<script src="/js/theme-init.js?v=20260815t1"></script>
 <script>
 (function () {
   var port = String(location.port || '');
@@ -29,11 +29,12 @@
 </head>
 <body class="hub-mode">
 <nav id="hub-nav" aria-label="CCC 控制台">
-  <div class="hub-brand" title="2017 单端 :7788 · 对话/看板/计划/线路图/运维/控制台六视图">CCC <span class="build-stamp" title="前端构建版本">v20260809t12</span></div>
+  <div class="hub-brand" title="2017 单端 :7788 · 对话/看板/计划/线路图/运维/巡检/控制台七视图">CCC <span class="build-stamp" title="前端构建版本">v20260815t1</span></div>
   <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
   <a class="hub-nav-link" data-route="plans" href="#/plans">计划</a>
   <a class="hub-nav-link" data-route="roadmap" href="#/roadmap">线路图</a>
   <a class="hub-nav-link" data-route="ops" href="#/ops">运维</a>
+  <a class="hub-nav-link" data-route="dsh" href="#/dsh">巡检</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
   <a class="hub-nav-link" data-route="chat" href="#/chat">对话</a>
   <div class="hub-nav-spacer"></div>
@@ -106,6 +107,14 @@
           <span class="soft-row-icon soft-icon-ops" aria-hidden="true"></span>
           <span class="soft-row-label">运维</span>
         </button>
+        <button type="button" class="soft-row" data-dest="dsh" title="DSH 巡检">
+          <span class="soft-row-icon soft-icon-dsh" aria-hidden="true"></span>
+          <span class="soft-row-label">巡检</span>
+        </button>
+        <button type="button" class="soft-row" data-dest="console" title="控制台">
+          <span class="soft-row-icon soft-icon-console" aria-hidden="true"></span>
+          <span class="soft-row-label">控制台</span>
+        </button>
       </nav>
       <div class="sidebar-divider" aria-hidden="true"></div>
       <div class="sidebar-projects" id="sidebar-projects" role="list" aria-label="项目">
@@ -173,11 +182,12 @@
   <div class="hub-view" id="view-roadmap"></div>
   <div class="hub-view" id="view-console"></div>
   <div class="hub-view" id="view-ops"></div>
+  <div class="hub-view" id="view-dsh"></div>
 </div>
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
 <select id="project-select" style="display:none;"></select>
 
-<script src="/js/shell-ui.js?v=20260809t12"></script>
+<script src="/js/shell-ui.js?v=20260815t1"></script>
 <div id="login-view" class="login-view">
   <div class="login-card">
     <div class="login-title" id="login-title">CCC 登录</div>
@@ -190,8 +200,8 @@
     </form>
   </div>
 </div>
-<script src="/js/login-gate.js?v=20260809t12"></script>
+<script src="/js/login-gate.js?v=20260815t1"></script>
 <!-- T68: classic bootloader — retries critical ES module graph; banner on exhaust -->
-<script src="/js/bootloader.js?v=20260809t12" onerror="(function(){try{sessionStorage.removeItem('ccc-resource-boot-fails')}catch(e){}var b=document.createElement('button');b.id='ccc-resource-fail-banner';b.type='button';b.className='ccc-resource-fail-banner';b.setAttribute('role','alert');b.textContent='资源加载失败，点击重试';b.onclick=function(){location.reload()};var n=document.getElementById('hub-nav');if(n&&n.parentNode)n.parentNode.insertBefore(b,n.nextSibling);else document.body.insertBefore(b,document.body.firstChild)})()"></script>
+<script src="/js/bootloader.js?v=20260815t1" onerror="(function(){try{sessionStorage.removeItem('ccc-resource-boot-fails')}catch(e){}var b=document.createElement('button');b.id='ccc-resource-fail-banner';b.type='button';b.className='ccc-resource-fail-banner';b.setAttribute('role','alert');b.textContent='资源加载失败，点击重试';b.onclick=function(){location.reload()};var n=document.getElementById('hub-nav');if(n&&n.parentNode)n.parentNode.insertBefore(b,n.nextSibling);else document.body.insertBefore(b,document.body.firstChild)})()"></script>
 </body>
 </html>

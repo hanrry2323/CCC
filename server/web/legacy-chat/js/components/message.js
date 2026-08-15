@@ -822,9 +822,6 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       if (state.get('currentProject') === ownerProject) {
         refreshSidebar();
       }
-      import('./runtimeStatus.js')
-        .then((m) => m.refreshRuntimeStatus?.())
-        .catch(() => {});
     },
     (errorText) => {
       if (waitTimer) {

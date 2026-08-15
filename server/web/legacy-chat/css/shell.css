@@ -2304,13 +2304,13 @@ body.ro-viewer [data-write] {
   padding: 6px 14px;
   border-radius: 999px;
   border: 1px solid var(--ccc-border-subtle, #e3e3e3);
-  background: #fff;
-  color: #444;
+  background: var(--ccc-bg-surface, #fff);
+  color: var(--ccc-text-base, #444);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
 }
-.hub-btn:hover { border-color: #0c4a6e; color: #0c4a6e; }
+.hub-btn:hover { border-color: var(--ccc-text-accent, #0c4a6e); color: var(--ccc-text-accent, #0c4a6e); }
 .rm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
@@ -2996,8 +2996,8 @@ body.ro-viewer [data-write] {
   flex-direction: column;
   gap: 8px;
   padding: 14px 16px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: var(--ccc-bg-surface, #fff);
+  border: 1px solid var(--ccc-border-subtle, rgba(0, 0, 0, 0.07));
   border-left-width: 4px;
   border-radius: 12px;
 }
@@ -3005,7 +3005,7 @@ body.ro-viewer [data-write] {
 .ops-proj-card.done { border-left-color: #2a9d4a; }
 .ops-proj-card.risk { border-left-color: #c44; }
 .ops-proj-head { display: flex; align-items: baseline; justify-content: space-between; }
-.ops-proj-head b { font-size: 15px; color: #1c1c1e; }
+.ops-proj-head b { font-size: 15px; color: var(--ccc-text-base, #1c1c1e); }
 .ops-proj-head span { font-size: 11.5px; color: #999; }
 .ops-proj-bar { height: 6px; border-radius: 999px; background: rgba(120, 120, 120, 0.13); overflow: hidden; }
 .ops-proj-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #3a7bd5, #2a9d4a); }
@@ -3137,8 +3137,8 @@ body.ro-viewer [data-write] {
 .console-bar h2 { font-size: 20px; font-weight: 700; margin: 0; }
 .console-sub { font-size: 13px; color: var(--ccc-text-muted, #888); }
 .console-card {
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: var(--ccc-bg-surface, #fff);
+  border: 1px solid var(--ccc-border-subtle, rgba(0, 0, 0, 0.07));
   border-radius: 14px;
   padding: 16px 18px;
   margin-bottom: 14px;
@@ -3196,7 +3196,7 @@ body.ro-viewer [data-write] {
 .console-node.up { border-left-color: #2a9d4a; }
 .console-node.down { border-left-color: #c44; }
 .console-node-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.console-node-head b { font-size: 13.5px; color: #1c1c1e; }
+.console-node-head b { font-size: 13.5px; color: var(--ccc-text-base, #1c1c1e); }
 .console-node-meta { font-size: 11.5px; color: #888; margin-top: 3px; }
 .console-pill {
   display: inline-flex;
@@ -3230,7 +3230,7 @@ body.ro-viewer [data-write] {
   font-size: 12.5px;
 }
 .console-port-item:hover { border-color: rgba(12, 74, 110, 0.4); }
-.console-port-item b { color: #0c4a6e; font-weight: 700; }
+.console-port-item b { color: var(--ccc-text-accent, #0c4a6e); font-weight: 700; }
 .console-port-item span { color: #555; font-weight: 600; }
 .console-port-item i { margin-left: auto; font-style: normal; font-size: 11px; color: #999; }
 .console-gone-list { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -3339,7 +3339,7 @@ body.ro-viewer [data-write] {
 }
 .console-settings-group h5 { grid-column: 1 / -1; margin: 0 0 4px; font-size: 12px; color: #888; font-weight: 650; }
 .console-settings-group span { font-size: 12px; color: #888; }
-.console-settings-group b { font-size: 12px; color: #333; font-weight: 600; }
+.console-settings-group b { font-size: 12px; color: var(--ccc-text-base, #333); font-weight: 600; }
 
 /* ═══════════ 线路图 v3：草案池 + 里程碑卡片 ═══════════ */
 

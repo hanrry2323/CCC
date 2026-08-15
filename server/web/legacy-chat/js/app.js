@@ -11,8 +11,6 @@ import {
   createEmptyState,
 } from './components/message.js';
 import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
-import { initRuntimeStatus } from './components/runtimeStatus.js';
-import { initEngineControl } from './components/engineControl.js';
 import { initRouter, navigate } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
@@ -191,58 +189,36 @@ async function onHubRoute(route) {
   // 关闭 tab（close-tab 里 cancelStream）。切到 #/board 再回 #/chat，活跃流
   // 保持接收、DOM 容器不被重建（showTabContent 从 tab.messages 增量重绘）。
   // 违反此约定的代码 = 切换即中断的回归源。
-  document.title =
-    route === 'chat' ? 'CCC · 对话' :
-      route === 'board' ? 'CCC · 看板' :
-        route === 'plans' ? 'CCC · 计划' :
-          route === 'roadmap' ? 'CCC · 线路图' :
-            route === 'console' ? 'CCC · 控制台' :
-            route === 'ops' ? 'CCC · 运维' :
-              'CCC';
+  const TITLES = {
+    chat: 'CCC · 对话', board: 'CCC · 看板', plans: 'CCC · 计划',
+    roadmap: 'CCC · 线路图', console: 'CCC · 控制台', ops: 'CCC · 运维',
+    dsh: 'CCC · DSH 巡检',
+  };
+  document.title = TITLES[route] || 'CCC';
+  // 路由→页面注册表（P1-7 重构 2026-08-15）：加新路由只需补一条 + index.html 空壳，
+  // 不再手写 if/else 逐个 unmount——消灭「漏 unmount 残留定时器」的雷。
+  const PAGES = {
+    board: { mount: mountBoard, unmount: unmountBoard },
+    plans: { mount: mountPlans, unmount: unmountPlans },
+    roadmap: { mount: mountRoadmap, unmount: unmountRoadmap },
+    console: { mount: mountConsole, unmount: unmountConsole },
+    ops: { mount: mountOps, unmount: unmountOps },
+  };
   if (route === 'chat') {
-    unmountBoard();
-    unmountConsole();
-    unmountOps();
-    unmountPlans();
-    unmountRoadmap();
+    for (const name of Object.keys(PAGES)) PAGES[name].unmount();
     // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
     import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
-  } else if (route === 'board') {
-    unmountConsole();
-    unmountOps();
-    unmountPlans();
-    unmountRoadmap();
-    await mountBoard(document.getElementById('view-board'));
-  } else if (route === 'plans') {
-    unmountBoard();
-    unmountConsole();
-    unmountOps();
-    unmountRoadmap();
-    await mountPlans(document.getElementById('view-plans'));
-  } else if (route === 'roadmap') {
-    unmountBoard();
-    unmountConsole();
-    unmountOps();
-    unmountPlans();
-    await mountRoadmap(document.getElementById('view-roadmap'));
-  } else if (route === 'console') {
-    unmountBoard();
-    unmountOps();
-    unmountPlans();
-    unmountRoadmap();
-    await mountConsole(document.getElementById('view-console'));
-  } else if (route === 'ops') {
-    unmountBoard();
-    unmountConsole();
-    unmountPlans();
-    unmountRoadmap();
-    await mountOps(document.getElementById('view-ops'));
-  } else {
-    unmountBoard();
-    unmountConsole();
-    unmountOps();
-    unmountRoadmap();
+    return;
   }
+  const page = PAGES[route];
+  if (!page) {
+    for (const name of Object.keys(PAGES)) PAGES[name].unmount();
+    return;
+  }
+  for (const name of Object.keys(PAGES)) {
+    if (name !== route) PAGES[name].unmount();
+  }
+  await page.mount(document.getElementById('view-' + route));
 }
 
 function applyShellMode() {
@@ -277,8 +253,6 @@ async function init() {
   initDualPaneControls(generateId);
   import('./components/relayStats.js').then((m) => m.initRelayStats());
   initComposer();
-  initRuntimeStatus();
-  initEngineControl();
   setupCancel();
   await import('./components/toast.js');
   import('./components/keyboard.js').then((m) => m.initKeyboard());

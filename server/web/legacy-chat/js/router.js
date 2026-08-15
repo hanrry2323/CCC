@@ -6,7 +6,7 @@
 
 import { dialogueEntryUrl, isDialogueShell } from './ports.js';
 
-const ROUTES = ['chat', 'board', 'plans', 'console', 'ops', 'roadmap'];
+const ROUTES = ['chat', 'board', 'plans', 'console', 'ops', 'roadmap', 'dsh'];
 // T44：首要场景是对话，默认路由固定 #/chat（登录后直达对话视图）。
 const DEFAULT_ROUTE = 'chat';
 

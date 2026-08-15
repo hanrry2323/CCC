@@ -10,7 +10,7 @@
  *   show a clickable banner instead of a silent white screen.
  */
 (function () {
-  var VERSION = '20260809t12';
+  var VERSION = '20260815t1';
   var STORAGE_KEY = 'ccc-resource-boot-fails';
   var MAX_ATTEMPTS = 3;
   var BASE_DELAY_MS = 400;

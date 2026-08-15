@@ -14,6 +14,7 @@
  */
 
 import { apiGet, apiPost } from '../api.js';
+import { esc } from '../ui.js';
 
 const STATUSES = ['已确认', '部分执行', '已完成', '作废'];
 const STATUS_COLORS = {
@@ -55,13 +56,6 @@ let _formOpen = false;   // 新建表单是否打开
 let _hideClosed = true;  // 默认只看未完成（隐藏已完成/作废列，给活跃列腾宽度）
 
 // ── 工具 ──
-
-function esc(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
 
 /** 内联 SVG 图标（lucide 风格，stroke=currentColor，16px） */
 function icon(name) {

@@ -16,17 +16,11 @@
  */
 
 import { apiGet } from '../api.js';
+import { esc, STATE_TONES } from '../ui.js';
 
 let _root = null;
 let _timer = null;    // 系统/工程 15s
 let _rtimer = null;   // 后台任务 8s
-
-function esc(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
 
 function pill(ok, label) {
   return `<span class="console-pill ${ok ? 'ok' : 'bad'}">${esc(label)}</span>`;
@@ -240,7 +234,7 @@ function renderKPI(states) {
   const columns = base.columns || {};
   const counts = (s) => base[s] != null ? base[s] : (columns[s] != null ? columns[s] : 0);
   const order = ['待分派', '执行中', '机审', '已回写', '打回'];
-  const tones = { '待分派': '#a39e93', '执行中': '#c47a2c', '机审': '#8b6cc1', '已回写': '#3d9a5f', '打回': '#c44' };
+  const tones = STATE_TONES;
   const items = order.map((s) => `<a class="console-kpi-item" href="#/board" title="去看板 ${s}">
     <b style="color:${tones[s]}">${counts(s)}</b><span>${s}</span>
   </a>`).join('');

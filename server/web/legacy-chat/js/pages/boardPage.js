@@ -14,18 +14,13 @@ import { apiGet, apiPost, getCards } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
 import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
+import { esc, STATE_TONES } from '../ui.js';
 
 /** 看板列（2026-08-12 重排）：第一竖列待分派/打回 + 执行中/机审（上下分栏）+ 已回写；已关闭删除。 */
 const FLOW_COLS = ['待分派', '打回', '执行中', '机审', '已回写'];
 const PAIR_COLS = ['待分派', '打回'];
 const RUN_COLS = ['执行中', '机审'];
-const COLORS = {
-  待分派: '#a39e93',
-  执行中: '#c47a2c',
-  机审: '#8b6cc1',
-  已回写: '#3d9a5f',
-  打回: '#c44',
-};
+const COLORS = STATE_TONES;
 
 let _root = null;
 let _timer = null;
@@ -48,13 +43,6 @@ let _streamCache = {};                   // work_id → 最近中文行（卡片
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
 let _kanbanPageSizes = {};
-
-function esc(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
 
 async function copyTextToClipboard(text) {
   const payload = String(text || '');

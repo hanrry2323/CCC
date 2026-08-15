@@ -8,10 +8,7 @@
  * - 下方卡分组列表（已完成/进行中/待开发）+ 风险提示
  */
 
-export function esc(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
+// esc 收敛（2026-08-15 前端架构重构 P0-3）：原本地实现与 utils.escapeHtml 语义等价，
+// 统一 re-export 共享原语 ui.js，本文件不再自维护。
+export { esc } from './ui.js';
 
