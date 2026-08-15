@@ -1,6 +1,6 @@
 {
  "version": "2",
- "description": "CCC 执行体注册表：OpenCode=开发；回写后 Claude/OpenCode 机审=质量门；人侧「合入批准」。",
+ "description": "CCC 执行体注册表模板：OpenCode=开发（仅 OpenCode，2026-08-15 F5 定）；Claude/OpenCode 机审=质量门；DSH=只读取证/审计执行体；人侧「合入批准」。复制本文件为 executors.json 启用。",
  "executors": [
   {
    "角色": "开发执行体",
@@ -12,17 +12,6 @@
    "worktree_base": "",
    "备注": "2017 默认开发（6102）。停在已回写；机审由验收席（自验收，同工具）自动拉起。",
    "worker_id": "W4"
-  },
-  {
-   "角色": "开发执行体",
-   "分类": "可后台 CLI",
-   "当前绑定": "Claude Code",
-   "命令": "claude",
-   "参数模板": "-p \"请按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。只做开发回写，禁止写验收区/机审区/置已关闭。\" 业务仓 worktree：{biz_worktree}（若提供，所有业务代码改动必须在其中完成，禁止在主仓目录切换卡分支或直接开发）；",
-   "工作目录": "",
-   "worktree_base": "",
-   "备注": "点名 Claude 开发（6100）；机审须 OpenCode。",
-   "worker_id": "W2"
   },
   {
    "角色": "维护执行体",
@@ -66,6 +55,17 @@
    "worktree_base": "",
    "备注": "Claude 开发后自动机审；人侧合入批准",
    "worker_id": "W4"
+  },
+  {
+   "角色": "只读取证/审计执行体",
+   "分类": "可后台 CLI",
+   "当前绑定": "DSH headless",
+   "命令": "dsh",
+   "参数模板": "headless --task {card_path}（one-shot runner；只读取证/合规扫描；退出码收单；禁止写项目文件）",
+   "工作目录": "",
+   "worktree_base": "",
+   "备注": "DSH 只读取证/审计席（2026-08-15 实测：Code Run 真执行、取证精准、零残留；弱模型不作开发）。headless 具体参数待 6102 接入实测定稿（ccc-plan-029 卡2）。",
+   "worker_id": "DSH"
   }
  ]
 }
