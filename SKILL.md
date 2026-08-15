@@ -54,7 +54,6 @@ grep -A 15 "## 红线 11" references/red-lines.md
 | 席位 | 绑定 |
 |------|------|
 | 日常开发 | **OpenCode**（2017 默认，6102）→ 已回写；不写机审/验收区 |
-| 点名开发 | **Claude Code**（6100）→ 则 OpenCode 机审/终验 |
 | 2017 机审 | 卡头「验收」方（默认 Claude）写 `## 机审区`（回写后自动） |
 | M1 终验 | 听「验收看板」；Claude↔OpenCode 交叉；写 `## 验收区`+已关闭 |
 | 难度突击 | 按需由 Claude Code/OpenCode 顶替（原 Cursor，2026-08-14 弃用） |

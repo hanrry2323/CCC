@@ -6,8 +6,8 @@
 
 - **版本**：v0.70.0；main = `fecbe4e`（2026-08-05 新栈对齐收口）
 - **架构**：薄驱动 Engine + Markdown 任务卡（`docs/dispatch/TNN-*.md` 唯一事实源）+ 看板/HTTP/桌面双壳；生产与执行在 Mac2017（:7788 + 中继 6100/6102 + engine worktree 写码），M1 = 中枢出卡/验收/合入/看板
-- **流程**：Codex 出卡 → Engine 派发 Claude Code（2017 worktree）→ 分步提交 → Codex 验收 → 合入部署
-- **执行体**：日常 = OpenCode / Claude Code（注册表可后台 CLI）；**Cursor = 难度开发突击手**（硬骨头 / 复杂排查 / 点名硬任务）
+- **流程**：Codex 出卡 → Engine 派发 OpenCode（2017 worktree）→ 分步提交 → Codex 验收 → 合入部署
+- **执行体**：日常 = OpenCode（开发）；Claude Code = 机审/合入（注册表可后台 CLI）；**Cursor = 难度开发突击手**（硬骨头 / 复杂排查 / 点名硬任务）
 - **看板**：74 已关闭 / 0 待分派 / 4 历史打回；今天（08-05）T54-T69 全链路闭环部署
 
 ## 二、代码结构地图

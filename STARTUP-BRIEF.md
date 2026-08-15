@@ -38,7 +38,7 @@ SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) ·
 | | |
 |--|--|
 | **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（默认免登录，`CCC_WEB_AUTH_REQUIRED=0`） |
-| **大脑 / Claude Code `:6100`** | Anthropic 出口 flash：对话 + Claude Code 执行体 |
+| **大脑 / Claude Code `:6100`** | Anthropic 出口 flash：对话 + Claude Code 机审/合入执行体（开发归 OpenCode） |
 | **Relay / OpenCode `:6102`** | code 档上游路由（OpenCode 等） |
 | **3 个 launchd 服务** | `com.ccc.web-server` + `com.ccc.engine` + `com.ccc.board-scheduler`（仅 2017） |
 

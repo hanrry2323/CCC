@@ -2806,7 +2806,7 @@ def _run_machine_audit_after_writeback(
                 return True, [], True
             logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
     # 2017 机审固定交叉配对（老板 2026-08-08 定稿，恢复 08-06 原规则）：
-    # OpenCode 开发 → Claude Code 机审；Claude Code 开发 → OpenCode 机审。
+    # OpenCode 开发 → Claude Code 机审（2026-08-15 起开发仅 OpenCode，Claude Code 不接触开发职能）。
     # 卡头「验收」字段只决定 M1 端合入验收席（自验收），不决定 2017 机审工具。
     executor_norm = normalize_tool(work.executor)
     acceptor = "OpenCode" if executor_norm == "Claude Code" else "Claude Code"

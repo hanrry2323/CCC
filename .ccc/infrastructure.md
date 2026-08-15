@@ -22,7 +22,7 @@
 | 端口 | 服务 | 说明 |
 |------|------|------|
 | **7788** | `com.ccc.web-server` | HTTP：看板 / 运维 / 对话 / API |
-| **6100** | ai-loop-router（Anthropic） | 大脑 + Claude Code 执行体 |
+| **6100** | ai-loop-router（Anthropic） | 大脑 + Claude Code 机审/合入执行体（开发归 OpenCode） |
 | **6102** | ai-loop-router（openai-chat） | OpenCode code 档 |
 
 | launchd | 进程 |
