@@ -51,3 +51,13 @@
 - **机审 6 卡**（mx036-041，机审 v4）
 - **合入** + **交付收尾**（mx-plan-003 已完成 + 交付报告）
 - **深度代码质量评估**（可读性/优雅度/健壮性/可维护性/测试质量逐维度）
+
+---
+
+## 七、优雅合入（2026-08-16 · 老板定案采用）
+
+深度质量评估后，6 卡采用**优雅合入**而非直接 ff-merge（方法沉淀见记忆 `graceful-merge-method`）。
+
+- **结果**：6 个 codex 分支逐一顺序合入 `graceful` 分支 → 冲突协调（rss_service 迁入 RssState 子域、playback trait 化）→ 合入期优化（DRY：14 处重复样板抽 `state.rss_service()` 访问器；重复 RssService 构造去重保留 WebSub callback）→ **main = eea18c0**。
+- **验证**：`cargo check` 零警告零错误（core/tauri/server 三 crate）+ `cargo test` **554 passed / 0 failed**。编译抓出 3 处跨卡重叠合入残留（state.rs 重复 `with_rss_service`、`self.rss_service` 旧引用、tauri 重复注入）——修复后通过。
+- **状态**：代码已入 main；卡关闭待老板机审（机审 v4）+ 合入批准（approve-merge 将走「分支已在 main → 仅关卡」）。
