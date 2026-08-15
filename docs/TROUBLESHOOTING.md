@@ -203,7 +203,7 @@ bash scripts/v1.0-validation.sh   # cluster-bus / dispatch 全 PASS
 ### 症状
 - `python3 scripts/ccc-dispatch.py` 输出 `candidates: NONE` + VERDICT: ABORT exit=2
 - "recommendation: NO_NODE_HAS_REQUIRED_CAPABILITY"
-- 计划提到 `claude-p` 但 cluster-bus 只注册了 `feiniu` (只有 `ollama-bge-m3`)
+- 计划提到 `claude-p` 但 cluster-bus 只注册了 `hp` (只有 `ollama-bge-m3`)
 
 ### 根因
 1. 节点没注册到 cluster-bus
