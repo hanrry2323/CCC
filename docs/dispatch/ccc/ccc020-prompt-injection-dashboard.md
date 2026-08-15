@@ -1,4 +1,5 @@
 # 任务卡 ccc020 · prompt injection dashboard（OpenCode 执行）
+> 批准：老板合入批准 · 2026-08-15
 
 > 关联：ccc-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
 
