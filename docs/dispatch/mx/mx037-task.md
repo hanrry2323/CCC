@@ -140,3 +140,24 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+**验收席**：2017 机审 · 日期：2026-08-15
+
+**机审：通过**
+
+### 审查摘要
+
+- 审查范围：medio-0 仓 `codex/mx037-task` 分支 commit `53a536b`（统一依赖注入）+ 机审修复 `f7cac77`（收敛 RssService 单例访问）。8 个文件改动，均在卡声明范围（core 依赖注入相关）内，未触碰无关模块。
+- 实现审查：
+  - RssService 在 server `main.rs` 与 tauri `server_runner.rs` 两个启动路径各构造一次 Arc 单例，注入 `AppState`；15 个 RSS 路由 handler 由 `RssService::new(state.db.clone())` 反模式改为取注入单例（机审修复收敛为 `AppState::rss_service()` 一处回退工厂，消除 15 处重复 `unwrap_or_else`）。
+  - ScanScheduler 注入 media_service 单例，消除 `run_scan_static` 原两次 `MediaLibraryService::new`（scan 与 probe 改为共用 `service.clone()`）；`on_progress` 改 `RwLock<Option<ProgressCallback>>` + `set_progress_callback(&self, …)`，支持共享单例动态注入回调。`probe_and_update_metadata` 不读 `on_progress`，probe 复用无行为偏移；扫描单飞（scan_in_progress）保证回调不并发覆盖。
+  - 防御性回退保留（`AppState::rss_service()` 工厂、scan_scheduler 未注入分支并注释说明），生产路径（server/tauri）始终注入，正常运行时不可达。
+  - `lib.rs` 单测补 `host/port/data_dir` 必填字段：`ServerConfig` 三字段无 `serde(default)`，main 上该测试本已破损（`test_admin_token_env_var_injection`），修复合理。
+- 验收标准核对：
+  1. 路由层/扫描层 grep 无 `new RssService`/`new MediaLibraryService`（非构造点）——handler 已清零，仅剩构造点与已注释的防御性回退。
+  2. 服务为 Arc 单例注入 AppState/ScanScheduler，单测可注入 mock。
+  3. `cargo test` 全绿由引擎机械门禁裁决（456 tests）。
+- 维护区四问逐项填写、无占位；`mx-plan-003` 状态「部分执行」与关联卡声明一致，无声明不实。
+- 机审修复 commit `f7cac77` 已 push `codex/mx037-task`。
