@@ -66,6 +66,8 @@ DeepSeek Harness（DSH）2026-08-13 发布开源（MIT · 一切皆插件 · 基
 
 ### 卡1 · 吸收 Run Code 模式（执行层内存临时 worker 约定）
 
+> 状态：**完成 2026-08-15** —— `scripts/ccc-run-inline` 辅助脚本 + `docs/product/run-code-convention.md` 约定；实测 node/py/stdin/超时/零残留/语义正确性全过（sed 盲替换会把冷冻节点端口改错，内存脚本一次做对）。
+
 目标：把 DSH 的 Run Code 执行模式吸收进 CCC 执行层——执行体处理复杂元数据/文本改动时，**写内存临时脚本（Node/Python）替代 sed/awk 拼装**，快、稳、零项目残留。
 
 实现：① 在 executors 参数模板/开发约定中写明该模式；② 提供一个轻量辅助（`scripts/ccc-run-inline`，支持 `node -e`/`python -c` 风格的内存脚本执行，带超时/只读约束）；③ 用真实场景（改 JSON 种子/Markdown 元数据）验证速度与零残留。
@@ -74,6 +76,9 @@ DeepSeek Harness（DSH）2026-08-13 发布开源（MIT · 一切皆插件 · 基
 
 ### 卡2 · executors.json 落地 + DSH headless 槽位
 
+> 状态：**注册表落地完成 2026-08-15** —— example 模板 F5 对齐（去 Claude 开发槽）+ DSH 只读取证/审计槽已提交；麦克2017 运行时 `executors.json` 已建（`EXECUTOR_REGISTRY_PATH` 本就指向它），6 槽可读、服务健康。
+> 待办：**dsh headless 探针实测**——dsh CLI 不在 PATH（web 为主形态），headless 具体参数未定稿；按验收"跑不通则记录原因"，标记挂账。
+
 目标：把 `server/config/executors.example.json` 变为真实注册表 `server/config/executors.json`，登记 DSH headless 为执行体槽位，验证 6102 code 档接入。
 
 实现：① 评估 example 各槽位（OpenCode 开发 / 维护 / 管理席）实际启用情况，落地为真实注册表；② 加 DSH headless 条目（one-shot runner，退出码收单，与 OpenCode 同位可切换）；③ 实测 `dsh headless` 跑一张纯文档探针卡，记录「拉起→执行→退出码→回写」。
@@ -81,6 +86,8 @@ DeepSeek Harness（DSH）2026-08-13 发布开源（MIT · 一切皆插件 · 基
 验收：① executors.json 为真实文件并被 Engine 读取；② DSH 槽位已登记；③ 探针卡实测结论落卡（能跑通给出接入方案 / 跑不通记录原因）。
 
 ### 卡3 · DSH 只读取证席启用
+
+> 状态：**待启** —— DSH 只读取证/审计槽已登记于卡2（executors.json）；本卡补审计输出契约文档 + 跑一单真实合规扫描。
 
 目标：启用 DSH 的只读取证/合规扫描席位（今天三轮实测的最强项），跑一单真实审计验证流程。
 
