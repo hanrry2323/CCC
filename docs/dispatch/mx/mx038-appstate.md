@@ -72,7 +72,8 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
 
 ## 机审区
 
-机审：通过
+机审：通过（被审 379d79fb086a）
+
 - 审查摘要：范围 = medio-0 业务分支 `codex/mx038-appstate` 两张 commit：`bb6b237`（AppState 拆子状态）＋机审可修项 `9740a5c`（cargo fmt 收口）。逐条独立取证：
 - 范围：`bb6b237` 仅改 9 个文件（`api/state.rs`、6 个 route 文件、`server/main.rs`、`core/lib.rs` 测试夹具），全部在「AppState 拆子状态」白名单内；`rss/service.rs`（WebSub 联动）零改动，mx025 历史教训（路径重构断 WebSub）未复发；未直推 main、未写验收区/未置已关闭。
 - 架构与质量：`AppState` 拆为 rss/media/scan/cache/playback 五个子状态域，各域持有依赖、AppState 聚合，跨切面基础设施（db/config/event_tx/rate_limiter/audit_service）留在顶层合理；builder 注入方法（`with_cover_service` 等 6 个）保留，`AppState::new` 签名不变 → tauri `server_runner.rs` 与测试构造点零改动兼容；分支上 grep 无旧字段路径残留。
