@@ -83,6 +83,29 @@ medio-0 后端 core 相关模块（见「实现」），白名单内改动。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：否。项目近况和线路图按照原定计划进行，无额外变更。
 
+## 机审区
+
+**机审：通过**（2017 机审席 · 2026-08-15）
+
+### 审查摘要
+
+- **范围合规**：业务仓 `codex/mx040-task` 提交 `cd558c18` 改动限 `config.toml` / `config-test.toml`、core 配置（`lib.rs`）、`ImageCacheService` 及其 4 个调用点（server / tauri / 两处测试），与卡「image_proxy 配置外置」范围一致，无越界。
+- **实现正确**：`ImageCacheService` 的爬虫 UA/超时已改读 `ImageProxyConfig`，`get_crawler_config()` 读自身字段，**无硬编码 UA/超时残留**（验收 1/2 达成）；`AppConfig.image_proxy` 字段带 `#[serde(default)]`，旧配置无 `[image_proxy]` 段亦可解析（向后兼容）；默认值保持 Mozilla UA / 30s，与 `config.toml` 对齐。
+- **机械门禁**：`cargo test -p medio-core` lib 全绿（457 passed，含本次新增测试）。
+- **人工批注**：卡无人工批注，无需落实。
+- **维护区四问**：已逐项勾选并填实，声明与工件一致（commit hash 核实无误、`mx-plan-003` 关联卡含 mx040 且状态「部分执行」相符）。
+
+### 机审修复（业务仓就地 commit `6d4b3d7` 并已 push）
+
+1. `ImageProxyConfig` 增加 `#[serde(default)]` + 字段级默认函数：配置文件只覆盖 UA（或只覆盖超时）时仍可解析，缺失字段回退安全默认（超时 30s，而非 0s——0 会让 reqwest 立即超时）。此前部分 `[image_proxy]` 段会导致整段配置解析失败、静默回退全局默认配置，反爬配置仍不生效，与本卡目标相悖。
+2. `AppConfig::default()` 改用 `ImageProxyConfig::default()`，消除默认值字面量重复（单一事实源）。
+3. 新增单元测试 `image_proxy_partial_section_uses_defaults`，锁定部分段行为。
+
+### 观察项（不阻塞，记录备后续处理）
+
+- `src/backend/core/src/api/routes/media.rs:652` 的 `/api/media/proxy` 路由仍硬编码同款 UA 与 15s 超时——这是另一条代码路径（SSRF 校验的图片代理路由），不在本卡「ImageCacheService 爬虫」范围内，未改动；建议后续单卡将其一并外置到 `[image_proxy]`。
+- `tests/media_library.rs:467` `file_move_results_in_old_soft_deleted_and_new_added` 在 mx040 提交前即失败（预存在、与图片代理无关），建议单独排查。
+
 ## 执行提示
 
 - 项目：mx（Mac2017 上的全栈媒体管理应用；Rust 后端 + React 前端 + Tauri 桌面壳 + HarmonyOS 移动端，经 CCC 出卡驱动开发。）
