@@ -73,6 +73,7 @@ hp/ (git tracked files at top-level)
 │   └── kb_entry_guard.py # Knowledgebase entry guard CLI
 ├── tests/                # Dashboard API & embedding unit/E2E tests
 │   └── server/           # Dashboard backend testing (pytest)
+├── pipeline/             # Knowledge base ingest & query pipeline (git tracked)
 ├── README.md             # Project overview
 ├── AGENTS.md             # Workspace setup instructions
 ├── CLAUDE.md             # Developer guidelines
@@ -81,7 +82,7 @@ hp/ (git tracked files at top-level)
 └── daily-summary.py      # Local summary generator
 ```
 
-*注：运行时代码 `local/`（含 `auto-collect/`, `pipeline/`, `memory-store/`, `memory-bridge/`, `graph/`, `cluster/`, `scripts/`）按设计 untracked，部署在 hp@hp 节点上。*
+*注：运行时代码 `local/`（含 `auto-collect/`, `memory-store/`, `memory-bridge/`, `graph/`, `cluster/`, `scripts/`）按设计 untracked，部署在 hp@hp 节点上；但 `pipeline/` 已迁入 SSOT 并纳入 git 跟踪。*
 
 ## 附 C 业务线路梳理
 
