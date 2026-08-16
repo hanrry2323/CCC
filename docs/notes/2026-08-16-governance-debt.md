@@ -25,5 +25,10 @@
 - `scripts/approve-merge.sh` 只跑 Doc-Gate 维护区校验（`verify_maintenance`），不跑全量 `server.board.validate` → 红灯可合入。
 - 修复方向（后置）：approve-merge 对目标卡挂全量 validate（error 阻断）。
 
+### G5 · test_real_dispatch_cards 状态白名单缺「作废」态（2026-08-17 新增）
+- **现象**：`server/tests/test_board_loader.py:175` 断言 `base_state(item.state) in {待分派,执行中,已回写,已关闭,打回,未知}`，缺 `作废`；hp009 卡状态「作废（任务本身高风险…）」触发失败（8-16 卡作废，括号变体归并后为 `作废`）。
+- **根因**：`base_state()` 归并逻辑正确（括号前基础态），是**测试白名单过时**——「作废」是卡合法终态，08-02 验收记录 `docs/acceptance-full-2026-08-02.md` P1-1 已提「状态断言未按基础态」同源线索，未修。
+- **修复方向（后置）**：白名单补 `作废`（与卡状态机六态一致），或断言改读 `VALID_STATES` 常量。
+
 ---
 **关联**：`docs/notes/2026-08-16-clw-lessons.md`（封板收尾清单教训）
