@@ -288,6 +288,13 @@ function _subprojectCardsHTML(mile, project) {
     </div>`;
 }
 
+/* 默认选中第一个有子项目的里程碑（封板/待定里程碑无子项目，右栏显示里程碑退路会让老板误以为是「大任务」） */
+function _firstSubprojectIdx(detail) {
+  const miles = (detail && detail.milestones) || [];
+  const idx = miles.findIndex((m) => (m.subprojects || []).length > 0);
+  return idx >= 0 ? idx : 0;
+}
+
 /* master-detail（2026-08-16）：右栏只显示选中里程碑的 header + 子任务卡片 */
 function _subprojectPanelHTML(detail, activeIdx = 0) {
   const miles = detail.milestones || [];
@@ -319,7 +326,7 @@ function _subprojectPanelHTML(detail, activeIdx = 0) {
 }
 
 /* master-detail 点击切换（2026-08-16 线路图页改造）：点左栏里程碑 → 重渲染右栏为该里程碑的子任务卡 */
-function _setupRailNavigation(host, detail, project) {
+function _setupRailNavigation(host, detail, project, initialIdx = 0) {
   const rail = host.querySelector('.rm2-rail');
   const panelWrap = host.querySelector('.rm2-panel-wrap');
   if (!rail || !panelWrap) return;
@@ -342,7 +349,7 @@ function _setupRailNavigation(host, detail, project) {
   railBtns.forEach((btn, i) => {
     btn.addEventListener('click', () => _render(i));
   });
-  _render(0); // 默认选中第一个里程碑
+  _render(initialIdx); // 默认选中第一个有子项目的里程碑（非 0）
   host._rmObserver = null;
 }
 
@@ -402,10 +409,10 @@ async function openProject(project) {
         ${_draftPoolHTML(detail.drafts, project)}
         <div class="rm2-body">
           ${_railHTML(detail)}
-          ${_subprojectPanelHTML(detail)}
+          ${_subprojectPanelHTML(detail, _firstSubprojectIdx(detail))}
         </div>
       </div>`;
-    _setupRailNavigation(body, detail, project);
+    _setupRailNavigation(body, detail, project, _firstSubprojectIdx(detail));
     // 027 缝隙5：里程碑写入口（创建 / 编辑：状态·描述·关联方案）
     body.querySelector('#rm2-milestone-new')?.addEventListener('click', () => _showMilestoneForm(project, null));
     _bindPanelEvents(body, project);
