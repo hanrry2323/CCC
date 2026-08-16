@@ -559,6 +559,8 @@ async function loadBoard() {
     refreshAllWsIndicators().catch(() => {});
     _connectStream(); // 5s 刷新统一在这里重建 SSE（上栏卡变化自动跟随）
   } catch (err) {
+    // M3：切页 pageScopeAbort 主动中止是预期行为，不 toast
+    if (_disposed || (err && err.name === 'AbortError')) return;
     window.showToast?.(err && err.message ? err.message : '加载看板失败', 'error');
   }
 }

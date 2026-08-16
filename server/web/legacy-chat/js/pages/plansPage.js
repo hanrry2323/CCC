@@ -141,7 +141,8 @@ async function loadPlans() {
     _plans = (listData.plans || []);
     _planCardStates = (statesData && statesData.states) || {};
   } catch (e) {
-    console.error('plans: load failed', e);
+    // M3：切页 pageScopeAbort 主动中止是预期行为，不打 error 噪音
+    if (!(e && e.name === 'AbortError')) console.error('plans: load failed', e);
     _plans = [];
     _planCardStates = {};
   }
