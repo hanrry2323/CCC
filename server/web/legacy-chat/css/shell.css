@@ -2685,8 +2685,8 @@ body.ro-viewer [data-write] {
 }
 .rm2-body {
   display: grid;
-  /* 2026-08-16 子项目层：左=子项目列表面板（panel），右=里程碑导航（rail） */
-  grid-template-columns: 1fr 300px;
+  /* 2026-08-16 线路图页改造：rail 回左栏（老板反馈右栏不习惯）；右=子任务卡片面板 */
+  grid-template-columns: 300px 1fr;
   gap: 16px;
   align-items: start;
 }
@@ -3475,6 +3475,38 @@ body.ro-viewer [data-write] {
   color: #aaa;
   margin-left: 6px;
 }
+/* 2026-08-16 线路图页改造：子任务卡片化（复用 .rm2-draft-grid/.rm2-draft-card 基底） */
+.rm2-sp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.rm2-sp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--ccc-border, #e0e0e0);
+  border-radius: 10px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.rm2-sp-card:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); border-color: #b8b0a3; }
+.rm2-sp-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rm2-sp-card-id {
+  font-size: 11px; font-weight: 600; color: #4f7cff;
+  background: rgba(79, 124, 255, 0.1); padding: 1px 8px; border-radius: 999px;
+}
+.rm2-sp-card-status { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.rm2-sp-card-status.todo { background: rgba(120, 120, 120, 0.12); color: #888; }
+.rm2-sp-card-status.doing { background: rgba(240, 180, 40, 0.15); color: #b58900; }
+.rm2-sp-card-status.done { background: rgba(60, 160, 90, 0.15); color: #2e8b57; }
+.rm2-sp-card-status.void { background: rgba(200, 60, 60, 0.12); color: #a33; }
+.rm2-sp-card-title { font-size: 13px; color: #333; line-height: 1.5; font-weight: 600; }
+.rm2-sp-card-meta { font-size: 11px; color: #999; }
+.rm2-sp-card-progress { font-size: 11px; color: #666; }
+.rm2-sp-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
 .rm2-sp-item {
   display: flex;
   align-items: center;

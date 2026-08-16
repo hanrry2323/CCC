@@ -41,10 +41,23 @@ function html() {
 
 function _progressPct(milestones) {
   if (!milestones || !milestones.length) return 0;
-  // 统一口径：按里程碑数量算完成率（done / total），不再混用 linked_plans 计数（Bug 9）
-  const total = milestones.length;
-  const done = milestones.filter(m => m.status === '已完成').length;
-  return total > 0 ? Math.round((done / total) * 100) : 0;
+  // 2026-08-16 口径统一（Bug 9）：有子项目的项目用「子项目完成率」（与二级页 compute_milestone_progress 一致），
+  // 无子项目退回里程碑计数（旧口径）。
+  let hasSub = false;
+  let total = 0;
+  let done = 0;
+  for (const m of milestones) {
+    const sps = m.subprojects || [];
+    if (sps.length) {
+      hasSub = true;
+      total += sps.length;
+      done += sps.filter(s => s.dev_status === '已开发').length;
+    }
+  }
+  if (hasSub && total > 0) return Math.round((done / total) * 100);
+  const t = milestones.length;
+  const d = milestones.filter(m => m.status === '已完成').length;
+  return t > 0 ? Math.round((d / t) * 100) : 0;
 }
 
 function projectCard(roadmap) {
@@ -241,150 +254,133 @@ function _railHTML(detail) {
 
 /* 2026-08-16 子项目层：里程碑面板渲染「子项目列表」（替代里程碑详情卡）。
  * 右侧 rail 里程碑导航 + 左侧 子项目列表，可下钻方案、激活转计划。 */
-function _subprojectListHTML(mile, project) {
+/* 2026-08-16 线路图页改造：子任务卡片化（复用 .rm2-sp-grid/.rm2-sp-card 卡片样式） */
+function _subprojectCardsHTML(mile, project) {
   const sps = mile.subprojects || [];
-  const plans = mile.linked_plans || [];
   if (!sps.length) return _milestoneProgressHTML(mile); // 旧格式里程碑：退回关联方案展示
-  const light = { '未启动': '⚪', '计划中': '🟡', '已完成': '🟢' };
-  return `<div class="rm2-sp-list">
-    <div class="rm2-sp-hd">子项目（${sps.length}）<span class="rm2-sp-hint">未激活只停留 · 激活转计划 → 生成方案 → 逐步投入</span></div>
-    ${sps.map(sp => {
-      const st = sp.status || '未启动';
-      const planLink = sp.plan_id
-        ? `<a class="rm2-mile-planlink" href="#/plans?plan=${encodeURIComponent(sp.plan_id)}" title="跳转计划页查看 ${esc(sp.plan_id)}">${esc(sp.plan_id)}</a>`
-        : '';
-      const activateBtn = st === '未启动'
-        ? `<button type="button" class="hub-btn rm2-sp-activate" data-project="${esc(project)}" data-milestone="${esc(mile.title)}" data-sp="${esc(sp.id)}" title="人审节点①：激活子项目转计划">激活</button>`
-        : '';
-      const dotCls = st === '已完成' ? 'done' : st === '计划中' ? 'doing' : 'none';
-      return `<div class="rm2-sp-item">
-        <span class="rm2-mile-dot ${dotCls}"></span>
-        <div class="rm2-sp-body">
-          <span class="rm2-sp-title">${esc(sp.id)} ${esc(sp.title)}</span>
-          <span class="rm2-sp-meta">${light[st] || '⚪'} ${esc(st)}${planLink ? ' · ' + planLink : ''}</span>
+  const statusCls = { '未开发': 'todo', '进行中': 'doing', '已开发': 'done', '已废弃': 'void' };
+  const statusLight = { '未开发': '⚪', '进行中': '🟡', '已开发': '🟢', '已废弃': '⚫' };
+  return `<div class="rm2-sp-hd">子任务（${sps.length}）<span class="rm2-sp-hint">激活转计划 → 生成方案 → 逐步投入</span></div>
+    <div class="rm2-sp-grid">
+      ${sps.map(sp => {
+        const dev = sp.dev_status || '未开发';
+        const cls = statusCls[dev] || 'todo';
+        const planLink = sp.plan_id
+          ? `<a class="rm2-mile-planlink" href="#/plans?plan=${encodeURIComponent(sp.plan_id)}" title="跳转计划页查看 ${esc(sp.plan_id)}">${esc(sp.plan_id)}</a>`
+          : '';
+        const activateBtn = sp.status === '未启动'
+          ? `<button type="button" class="hub-btn rm2-sp-activate" data-project="${esc(project)}" data-milestone="${esc(mile.title)}" data-sp="${esc(sp.id)}" title="人审节点①：激活子项目转计划">激活</button>`
+          : '';
+        const prog = (sp.plan_progress && sp.plan_progress.total > 0)
+          ? `<span class="rm2-sp-card-progress">进度 ${sp.plan_progress.closed}/${sp.plan_progress.total}</span>`
+          : '';
+        const planStatus = sp.plan_status ? `<span class="rm2-sp-card-meta">方案 ${esc(sp.plan_status)}</span>` : '';
+        return `<div class="rm2-sp-card">
+          <div class="rm2-sp-card-top">
+            <span class="rm2-sp-card-id">${esc(sp.id)}</span>
+            <span class="rm2-sp-card-status ${cls}">${statusLight[dev]} ${esc(dev)}</span>
+          </div>
+          <div class="rm2-sp-card-title">${esc(sp.title)}</div>
+          <div class="rm2-sp-card-meta">${planStatus}${prog}${planLink ? ' · ' + planLink : ''}</div>
+          <div class="rm2-sp-card-actions">${activateBtn}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+/* master-detail（2026-08-16）：右栏只显示选中里程碑的 header + 子任务卡片 */
+function _subprojectPanelHTML(detail, activeIdx = 0) {
+  const miles = detail.milestones || [];
+  if (!miles.length) return '<div class="rm2-panel-wrap"><div class="rm2-empty">暂无里程碑</div></div>';
+  const m = miles[activeIdx] || miles[0];
+  const tone = m.status === '已完成' ? 'done' : m.status === '进行中' ? 'doing' : 'planned';
+  const tl = m.timeline || m.target_date || '';
+  const ver = m.version && m.version !== '—' ? m.version : '';
+  const spCount = (m.subprojects && m.subprojects.length) ? `<span class="rm2-mile-sp-count" title="子任务">🧩 ${m.subprojects.length} 子任务</span>` : '';
+  return `<div class="rm2-panel-wrap">
+    <div class="rm2-mile-card" id="rm2-mile-${activeIdx}">
+      <span class="rm2-mile-dot ${_milestoneDotClass(m.status)}"></span>
+      <div class="rm2-mile-info">
+        <div class="rm2-mile-title-row">
+          <span class="rm2-mile-title">${esc(m.title)}</span>
+          <span class="rm2-mile-status ${tone}">${_milestoneLight(m.status)} ${esc(m.status)}</span>
         </div>
-        ${activateBtn}
-      </div>`;
-    }).join('')}
+        <div class="rm2-mile-sub">
+          ${tl ? `<span class="rm2-mile-tl" title="时间线">📅 ${esc(tl)}</span>` : ''}
+          ${ver ? `<span class="rm2-mile-ver" title="版本">🏷️ ${esc(ver)}</span>` : ''}
+          ${spCount}
+        </div>
+        ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
+        ${_subprojectCardsHTML(m, detail.project)}
+        <button type="button" class="hub-btn rm2-mile-edit" data-title="${esc(m.title)}" data-status="${esc(m.status)}" data-desc="${esc(m.description || '')}" data-plans="${esc((m.linked_plans || []).join(', '))}" title="编辑里程碑（状态/描述/关联方案）" style="margin-top:6px">编辑</button>
+      </div>
+    </div>
   </div>`;
 }
 
-function _subprojectPanelHTML(detail) {
-  const miles = detail.milestones || [];
-  if (!miles.length) return '<div class="rm2-panel-wrap"><div class="rm2-empty">暂无里程碑</div></div>';
-
-  // 按状态分组：进行中 → 待确认 → 已完成
-  const groups = [
-    { key: 'doing', label: '进行中', miles: miles.filter(m => m.status === '进行中') },
-    { key: 'planned', label: '待确认', miles: miles.filter(m => m.status !== '进行中' && m.status !== '已完成') },
-    { key: 'done', label: '已完成', miles: miles.filter(m => m.status === '已完成') },
-  ];
-
-  return `<div class="rm2-panel-wrap">${groups.map(g => {
-    if (!g.miles.length) return '';
-    const cards = g.miles.map(m => {
-      // 2026-08-16 机审前遗留修复：卡片 id 用原始下标（与 rail data-mile-idx 对齐，避免分组重排错位）
-      const idx = detail.milestones.indexOf(m);
-      const tone = g.key === 'done' ? 'done' : g.key === 'doing' ? 'doing' : 'planned';
-      const tl = m.timeline || m.target_date || '';
-      const ver = m.version && m.version !== '—' ? m.version : '';
-      const spCount = (m.subprojects && m.subprojects.length) ? `<span class="rm2-mile-sp-count" title="子项目">🧩 ${m.subprojects.length} 子项目</span>` : '';
-      return `<div class="rm2-mile-card" id="rm2-mile-${idx}">
-        <span class="rm2-mile-dot ${_milestoneDotClass(m.status)}"></span>
-        <div class="rm2-mile-info">
-          <div class="rm2-mile-title-row">
-            <span class="rm2-mile-title">${esc(m.title)}</span>
-            <span class="rm2-mile-status ${tone}">${_milestoneLight(m.status)} ${esc(m.status)}</span>
-          </div>
-          <div class="rm2-mile-sub">
-            ${tl ? `<span class="rm2-mile-tl" title="时间线">📅 ${esc(tl)}</span>` : ''}
-            ${ver ? `<span class="rm2-mile-ver" title="版本">🏷️ ${esc(ver)}</span>` : ''}
-            ${spCount}
-          </div>
-          ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
-          ${_subprojectListHTML(m, detail.project)}
-          <button type="button" class="hub-btn rm2-mile-edit" data-title="${esc(m.title)}" data-status="${esc(m.status)}" data-desc="${esc(m.description || '')}" data-plans="${esc((m.linked_plans || []).join(', '))}" title="编辑里程碑（状态/描述/关联方案）" style="margin-top:6px">编辑</button>
-        </div>
-      </div>`;
-    }).join('');
-    return `<div class="rm2-group">
-      <div class="rm2-group-hd ${g.key}">
-        <span class="rm2-group-dot"></span>
-        <span class="rm2-group-label">${esc(g.label)}</span>
-        <span class="rm2-group-cnt">${g.miles.length}</span>
-      </div>
-      ${cards}
-    </div>`;
-  }).join('')}</div>`;
-}
-
-function _setupRailNavigation(host) {
+/* master-detail 点击切换（2026-08-16 线路图页改造）：点左栏里程碑 → 重渲染右栏为该里程碑的子任务卡 */
+function _setupRailNavigation(host, detail, project) {
   const rail = host.querySelector('.rm2-rail');
-  if (!rail) return;
-
-  const panel = host.querySelector('.rm2-panel-wrap');
-  if (!panel) return;
-
+  const panelWrap = host.querySelector('.rm2-panel-wrap');
+  if (!rail || !panelWrap) return;
   const railBtns = Array.from(rail.querySelectorAll('.rm2-mile'));
-  const cards = Array.from(panel.querySelectorAll('.rm2-mile-card'));
+  if (!railBtns.length) return;
 
-  if (!railBtns.length || !cards.length) return;
-
-  let _activeIdx = 0;
-  let _observer = null;
-
-  function _highlight(idx) {
+  function _render(idx) {
     if (idx < 0 || idx >= railBtns.length) return;
-    _activeIdx = idx;
     railBtns.forEach((b, i) => b.classList.toggle('active', i === idx));
+    const newHtml = _subprojectPanelHTML(detail, idx);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = newHtml;
+    const newPanel = tmp.firstElementChild;
+    panelWrap.replaceWith(newPanel);
+    _bindPanelEvents(newPanel, project);
   }
 
-  // 点击左侧导航项 → 用 data-mile-idx 查找右侧对应卡片
   railBtns.forEach((btn, i) => {
+    btn.addEventListener('click', () => _render(i));
+  });
+  _render(0); // 默认选中第一个里程碑
+  host._rmObserver = null;
+}
+
+/* 绑定右栏 panel 内交互（激活 + 编辑）；master-detail 重渲染后复用 */
+function _bindPanelEvents(container, project) {
+  container.querySelectorAll('.rm2-mile-edit').forEach((btn) => {
     btn.addEventListener('click', () => {
-      _highlight(i);
-      const mileIdx = btn.dataset.mileIdx;
-      if (mileIdx != null) {
-        const target = panel.querySelector(`#rm2-mile-${mileIdx}`);
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      _showMilestoneForm(project, {
+        title: btn.dataset.title || '',
+        status: btn.dataset.status || '待启动',
+        description: btn.dataset.desc || '',
+        linked_plans: (btn.dataset.plans || '').split(/[,，\s]+/).filter(Boolean),
+      });
+    });
+  });
+  container.querySelectorAll('.rm2-sp-activate').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const proj = btn.dataset.project;
+      const milestone = btn.dataset.milestone;
+      const sp = btn.dataset.sp;
+      if (!window.confirm(`确认激活子项目「${sp}」转计划？将 1:1 生成一个方案。`)) return;
+      btn.disabled = true;
+      btn.textContent = '激活中…';
+      try {
+        const res = await apiPost(`/roadmap/${encodeURIComponent(proj)}/subproject/activate`, { milestone, subproject_id: sp });
+        if (res && res.ok) {
+          window.showToast?.(`子项目已激活 → ${res.plan}`, 'success');
+          await openProject(proj);
+        } else {
+          window.showToast?.((res && res.error) || '激活失败', 'error');
+          btn.disabled = false;
+          btn.textContent = '激活';
         }
+      } catch (e) {
+        window.showToast?.(e.message || '激活失败', 'error');
+        btn.disabled = false;
+        btn.textContent = '激活';
       }
     });
   });
-
-  // IntersectionObserver：右侧滚动时，左侧自动高亮对应项
-  if (typeof IntersectionObserver !== 'undefined') {
-    _observer = new IntersectionObserver(
-      (entries) => {
-        // 找到当前可见卡片中第一个（最靠上的）
-        let firstVisible = -1;
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            const idMatch = el.id && el.id.match(/^rm2-mile-(\d+)$/);
-            if (idMatch) {
-              const idx = parseInt(idMatch[1], 10);
-              if (firstVisible === -1 || idx < firstVisible) {
-                firstVisible = idx;
-              }
-            }
-          }
-        }
-        if (firstVisible >= 0) {
-          _highlight(firstVisible);
-        }
-      },
-      { root: panel, threshold: 0.3, rootMargin: '-20px 0px 0px 0px' }
-    );
-    cards.forEach((card) => _observer.observe(card));
-  }
-
-  // 默认选中第一个
-  _highlight(0);
-
-  // 暴露清理方法（unmount 时用）
-  host._rmObserver = _observer;
 }
 
 async function openProject(project) {
@@ -403,49 +399,14 @@ async function openProject(project) {
         </div>
         ${_draftPoolHTML(detail.drafts, project)}
         <div class="rm2-body">
-          ${_subprojectPanelHTML(detail)}
           ${_railHTML(detail)}
+          ${_subprojectPanelHTML(detail)}
         </div>
       </div>`;
-    _setupRailNavigation(body);
+    _setupRailNavigation(body, detail, project);
     // 027 缝隙5：里程碑写入口（创建 / 编辑：状态·描述·关联方案）
     body.querySelector('#rm2-milestone-new')?.addEventListener('click', () => _showMilestoneForm(project, null));
-    body.querySelectorAll('.rm2-mile-edit').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        _showMilestoneForm(project, {
-          title: btn.dataset.title || '',
-          status: btn.dataset.status || '待启动',
-          description: btn.dataset.desc || '',
-          linked_plans: (btn.dataset.plans || '').split(/[,，\s]+/).filter(Boolean),
-        });
-      });
-    });
-    // 2026-08-16 子项目激活（人审节点①细化）：POST /roadmap/<proj>/subproject/activate
-    body.querySelectorAll('.rm2-sp-activate').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const proj = btn.dataset.project;
-        const milestone = btn.dataset.milestone;
-        const sp = btn.dataset.sp;
-        if (!window.confirm(`确认激活子项目「${sp}」转计划？将 1:1 生成一个方案。`)) return;
-        btn.disabled = true;
-        btn.textContent = '激活中…';
-        try {
-          const res = await apiPost(`/roadmap/${encodeURIComponent(proj)}/subproject/activate`, { milestone, subproject_id: sp });
-          if (res && res.ok) {
-            window.showToast?.(`子项目已激活 → ${res.plan}`, 'success');
-            await openProject(proj);
-          } else {
-            window.showToast?.((res && res.error) || '激活失败', 'error');
-            btn.disabled = false;
-            btn.textContent = '激活';
-          }
-        } catch (e) {
-          window.showToast?.(e.message || '激活失败', 'error');
-          btn.disabled = false;
-          btn.textContent = '激活';
-        }
-      });
-    });
+    _bindPanelEvents(body, project);
     // P0 全链路修复：草案→方案一键升级（人审节点①动作入口，老板确认后由 Agent 打标）
     body.querySelectorAll('.rm2-draft-promote').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -592,8 +553,7 @@ function _showMilestoneForm(project, milestone) {
   });
 }
 
-/* Bug 7：二级页字段映射对齐 /roadmap/<project>（roadmap.py 模型：milestones 含 title/status/linked_plans/description）
- * 不用 buildTimelineOverview（它读旧 /board/roadmap/<project> 的 counts/cards/risks 字段，新数据下全为 0）。 */
+/* 二级页字段映射对齐 /roadmap/<project>（roadmap.py 模型：milestones 含 title/status/linked_plans/description/subprojects） */
 function _overviewHTML(detail) {
   const miles = (detail && detail.milestones) || [];
   const doneN = miles.filter((m) => m.status === '已完成').length;

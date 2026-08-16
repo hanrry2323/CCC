@@ -2510,6 +2510,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                     "title": _sp.title,
                                     "status": _sp.status,
                                     "plan_id": _sp.plan_id,
+                                    **_rm._enrich_subproject(_p, _sp),
                                 }
                                 for _sp in _m.subprojects
                             ],
@@ -2554,6 +2555,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                 "title": _sp.title,
                                 "status": _sp.status,
                                 "plan_id": _sp.plan_id,
+                                **_rm._enrich_subproject(project, _sp),
                             }
                             for _sp in _m.subprojects
                         ],
@@ -3764,6 +3766,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                                             "title": _sp.title,
                                             "status": _sp.status,
                                             "plan_id": _sp.plan_id,
+                                            **_roadmap_mod._enrich_subproject(_p, _sp),
                                         }
                                         for _sp in _m.subprojects
                                     ],
