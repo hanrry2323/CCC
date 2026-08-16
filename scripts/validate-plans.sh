@@ -99,12 +99,10 @@ validate_file() {
   local rel="${file#$REPO_ROOT/}"
   local fname="$(basename "$file")"
 
-  # ── 1. 路径校验 ──
-  # 提取 prefix 和 NNN-slug
+  # ── 0. 附加文档跳过（2026-08-17 补）──
+  # 非 <NNN>-<ascii-slug>.md 的 plans/*.md 视为方案附加文档（验收打回/点验记录等），
+  # 不按方案校验（路径格式/必填字段/编号唯一性均不适用）。
   if ! echo "$rel" | grep -qE '^docs/projects/[a-z]{2,4}/plans/[0-9]{3}-[a-z0-9][-a-z0-9]*\.md$'; then
-    red "  FAIL 路径格式: $rel"
-    red "        期望: docs/projects/<prefix>/plans/<NNN>-<slug>.md"
-    ERRORS=$((ERRORS + 1))
     return
   fi
 
@@ -302,12 +300,18 @@ validate_file() {
 
 # ── 9. 全局编号唯一性校验（2026-08-14 补 · 并发窗口撞号拦截）──
 # 同前缀 NNN 必须全局唯一；命中即报错。兼容 macOS bash3（无关联数组）。
+# 2026-08-17 补：只统计合法方案文件名（<NNN>-<ascii-slug>.md，与 check_file 路径校验同款），
+# 排除验收打回/点验记录等附加文档（slug 含中文，非独立方案，否则误报撞号）。
 check_unique_numbers() {
   local dir="$1"
   local keys=()
   while read -r f; do
     [ -z "$f" ] && continue
     local rel="${f#$REPO_ROOT/}"
+    # 与 validate_file 第 1 步同款：非 <NNN>-<ascii-slug>.md 的文件不参与编号唯一性
+    if ! echo "$rel" | grep -qE '^docs/projects/[a-z]{2,4}/plans/[0-9]{3}-[a-z0-9][-a-z0-9]*\.md$'; then
+      continue
+    fi
     local prefix
     prefix=$(echo "$rel" | sed -E 's|^docs/projects/([a-z]{2,4})/plans/.*|\1|')
     local num
