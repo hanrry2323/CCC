@@ -12,16 +12,14 @@
 ### M1 · 知识库底座固化
 - 状态：已完成
 - 关联方案：hp-plan-001、hp-plan-002
-- 描述：从零搭建集群知识库底座——数据结构（PG18+pgvector）、MCP 服务六工具、语义检索、种子入库全链路；22 卡 + 20 分支合入，5267 docs 在线。
-- 子节点：数据模型（documents/chunks/memory_store）｜MCP 服务（knowledge_search/kb_status/memory_*，双入口）｜语义检索（向量化+ivfflat）｜种子入库
-- 遗留：hp009 分支未合入 → 转 M2 治理
+- 描述：从零搭建集群知识库底座——数据结构（PG18+pgvector）、MCP 服务六工具、语义检索、种子入库全链路；22 卡 + 20 分支合入，5267 docs 在线。（子节点：点：数据模型（documents/chunks/memory_store）｜MCP 服务（knowledge_search/kb_status/memory_*，双入口）｜语义检索（向量化+ivfflat）｜种子入库）
 
 ### M2 · 稳控与可恢复
 - 状态：进行中
 - 关联方案：hp-plan-008, hp-plan-009, hp-plan-010, hp-plan-011, hp-plan-012, hp-plan-013, hp-plan-014
 - 描述：让 HP **可恢复、可重建**——pipeline 源码回灌 SSOT、双仓 git 归一、运行时与 SSOT 对齐、全文摄入改造（主备分层基础）、凭据治理、可重建灾备验证。开发（mac2017）与部署（hp 节点）彻底隔离。（2026-08-15 原 hp-plan-004 已按流程改造作废；2026-08-16 按子项目重新立项）
 - 子项目：
-  - 2.1 pipeline 源码回灌 SSOT · 状态：计划中 · 方案：hp-plan-008
+  - 2.1 pipeline 源码回灌 SSOT · 状态：已完成 · 方案：hp-plan-008
   - 2.2 双仓 git 归一 · 状态：计划中 · 方案：hp-plan-009
   - 2.3 运行时↔SSOT 对齐 · 状态：计划中 · 方案：hp-plan-010
   - 2.4 全文摄入改造 · 状态：计划中 · 方案：hp-plan-011
