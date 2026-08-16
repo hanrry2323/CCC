@@ -88,6 +88,7 @@ lint：
 
 - **审查摘要**：
   - **敏感历史清洗验证**：核查 `medio-0` 项目仓，运行验证命令无输出，确认敏感文件 `medio.p7b.pem` 已从所有 git 历史（所有 commits）中完全抹除，净化率 100%。
+  - **安全漏洞台账闭环**：在本次审查中，机审席就地闭合了 `issues.jsonl`、`SECURITY_AUDIT.md` 以及 `PROJECT_PLAN.md` 中对应的签名证书历史泄露漏洞，登记为 `Closed`（闭环 commit: `9ec7c18`）。
   - **本地签名安全性**：该私钥因 `.gitignore` 的忽略规则（`entry/signing/*.pem`）转为本地不受追踪（untracked & ignored）文件，既保证本地签名打包正常工作，又避免了推送至公开仓库的泄漏风险。
   - **结构与分支完整性**：分支 `codex/mx045-medio-0-ci-cd-filter-repo` 的提交历史结构重写正确，未产生断链或损坏。
   - **完成钩子（Doc-Gate）核对**：维护区四问已逐项勾选填妥，说明详实，且相关工件（方案状态、卡关联等）已真实同步完成。
