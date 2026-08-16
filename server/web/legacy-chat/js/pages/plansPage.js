@@ -2,7 +2,7 @@
  * plansPage.js — 计划页面（#/plans · 方案池）
  *
  * 设计：方案池 = 四态流水线看板（与看板页同语言）。
- * 列 = 状态（已确认/部分执行/已完成/作废），列内为紧凑方案条目：
+ * 列 = 状态（待排期/部分执行/已完成/作废），列内为紧凑方案条目：
  * 项目徽标 + 编号 + 标题 + 作者/工具 + 验收进度条 + 关联卡。
  * 项目筛选为看板同款按钮组；点击条目进详情面板。
  *
@@ -16,10 +16,10 @@
 import { apiGet, apiPost } from '../api.js';
 import { esc } from '../ui.js';
 
-const STATUSES = ['已确定', '已确认', '部分执行', '待验收', '已完成', '作废'];
+const STATUSES = ['已确定', '待排期', '部分执行', '待验收', '已完成', '作废'];
 const STATUS_COLORS = {
   '已确定': '#7a6cc4',
-  '已确认': '#3d9a5f',
+  '待排期': '#3d9a5f',
   '部分执行': '#c47a2c',
   '待验收': '#3d7cc4',
   '已完成': '#5a7a9a',
@@ -187,7 +187,7 @@ function renderPlanItem(plan) {
   });
   if (warnRefs.length) tags.push('<span class="pcard-tag warn">警示</span>');
   if (accPct === null || acc.done < acc.total) tags.push('<span class="pcard-tag gap">缺口</span>');
-  if (plan.status === '已确认' || plan.status === '部分执行') tags.push('<span class="pcard-tag plan">计划</span>');
+  if (plan.status === '待排期' || plan.status === '部分执行') tags.push('<span class="pcard-tag plan">计划</span>');
   if (plan.approval) tags.push(`<span class="pcard-tag approved" title="人审批准：${esc(plan.approval)}">✓ 已批准</span>`);
   // 流程条：关联卡在看板六列的分布（ccc-plan-024）
   const cs = _planCardStates[plan.path] || { total: 0, cols: {} };
@@ -301,7 +301,8 @@ function renderFlow() {
     _colSigs[status] = sig;
     const items = list.filter((p) => p.status === status);
     const color = STATUS_COLORS[status];
-    const hints = { '已确定': '待确认', '已确认': '待排期', '部分执行': '已转卡', '待验收': '待拍板', '已完成': '验收通过', '作废': '不执行' };
+    // 2026-08-17 老板定：已确定旁不标「待确认」（删）；已确认改列名「待排期」，备注表下一步
+    const hints = { '已确定': '', '待排期': '待转卡', '部分执行': '已转卡', '待验收': '待拍板', '已完成': '验收通过', '作废': '不执行' };
     section.innerHTML = `
       <header class="pcol-h">
         <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
@@ -421,8 +422,8 @@ function bindEvents() {
 }
 
 const STATE_FLOW = {
-  '已确定': ['已确认', '作废'],
-  '已确认': ['部分执行', '作废'],
+  '已确定': ['待排期', '作废'],
+  '待排期': ['部分执行', '作废'],
   '部分执行': ['待验收', '作废'],
   '待验收': ['已完成', '作废'],
   '已完成': [],
@@ -523,7 +524,7 @@ function renderDetail(plan) {
       ${_funcCardsHTML(plan.content)}
       <div class="pdetail-body">${renderMarkdown(plan.content)}</div>
       <div class="pdetail-actions">
-        ${(plan.status === '已确认' || plan.status === '部分执行') ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        ${(plan.status === '待排期' || plan.status === '部分执行') ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
         ${plan.status === '待验收' ? `<button type="button" class="ptool-new" id="plans-detail-accept" title="033：老板/验收席按验收标准拍板">验收拍板</button>` : ''}
         <button type="button" class="ptool-new" id="plans-detail-edit">${icon('edit')}编辑</button>
         <select id="plans-detail-status" class="plans-status-select" aria-label="修改状态">

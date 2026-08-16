@@ -45,7 +45,7 @@ function html() {
 
   <!-- 人审闸门（033 三大人审节点对齐：出卡 / 合入 / 验收） -->
   <div class="ops-section">
-    <h3>人审闸门 <span class="ops-scan-at">出卡（已确定→已确认→转卡）→ 合入批准 → 验收拍板 · 老板动作待办</span></h3>
+    <h3>人审闸门 <span class="ops-scan-at">出卡（已确定→待排期→转卡）→ 合入批准 → 验收拍板 · 老板动作待办</span></h3>
     <div class="ops-todo-grid">
       <div class="ops-card ops-block">
         <h4 class="ops-block-title">① 未排期草案 <span class="badge" id="ops-gate1-count">0</span></h4>
@@ -198,25 +198,25 @@ function renderHumanGates(roadmaps, plansData, merge) {
       </div>`).join('')
     : '<div class="ops-empty">草案池空 🎉 无需确认</div>');
 
-  // ② 出卡待办（033）：已确定（待老板确认→已确认）+ 已确认（待转卡）
+  // ② 出卡待办（033）：已确定（待老板确认→待排期）+ 待排期（待转卡）
   const plans = (plansData && plansData.plans) || [];
   const determined = plans.filter((p) => p.status === '已确定');
-  const confirmed = plans.filter((p) => p.status === '已确认');
+  const confirmed = plans.filter((p) => p.status === '待排期');
   const g2cnt = _root.querySelector('#ops-gate2-count');
   if (g2cnt) g2cnt.textContent = String(determined.length + confirmed.length);
   setHtml(plansEl, (determined.length || confirmed.length)
     ? [
         ...determined.slice(0, 5).map((p) => `
           <div class="ops-review-item">
-            <span class="ops-todo-type pending">待确认·已确定</span>
+            <span class="ops-todo-type pending">已确定</span>
             <span class="ops-review-id">${esc(p.id || '')}</span>
             <span class="ops-review-title">${esc(p.title || '')}</span>
             <span class="ops-review-proj">${esc(p.project || '')}</span>
-            <a class="ops-goto-board" href="#/plans" title="去计划页确认到已确认">去处理 →</a>
+            <a class="ops-goto-board" href="#/plans" title="去计划页确认到待排期">去处理 →</a>
           </div>`),
         ...confirmed.slice(0, 5).map((p) => `
           <div class="ops-review-item">
-            <span class="ops-todo-type pending">待转卡·已确认</span>
+            <span class="ops-todo-type pending">待转卡·待排期</span>
             <span class="ops-review-id">${esc(p.id || '')}</span>
             <span class="ops-review-title">${esc(p.title || '')}</span>
             <span class="ops-review-proj">${esc(p.project || '')}</span>
@@ -464,7 +464,7 @@ async function poll() {
     apiGet('/loop/findings').catch(() => null),
     apiGet('/board/ready_for_merge').catch(() => null),
     apiGet('/cards?page_size=500').catch(() => null),
-    apiGet('/plans/list?status=已确认').catch(() => null),
+    apiGet('/plans/list?status=待排期').catch(() => null),
     apiGet('/ops/failures').catch(() => null),
   ]);
   if (_disposed || !_root) return; // 卸载后回来不再写 DOM

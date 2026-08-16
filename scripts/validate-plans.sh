@@ -34,7 +34,7 @@ print('\\n'.join(sorted(card_prefixes(sys.argv[1]))))
 
 # 有效状态（ccc-plan-027 状态机统一：方案层去「草案」，草案概念归线路图草案池；已覆盖为兼容旧值）
 # 033 F1+M4（2026-08-16）：补「已确定」（Plan 调研态）+「待验收」（卡全关待老板拍板）
-VALID_STATES="已确定|已确认|部分执行|待验收|已完成|作废|已覆盖"
+VALID_STATES="已确定|待排期|部分执行|待验收|已完成|作废|已覆盖"
 
 ERRORS=0
 WARNINGS=0
@@ -238,10 +238,10 @@ validate_file() {
     fi
   fi
 
-  # 8.2 方案关联卡已全部关闭/作废但方案状态仍为已确认/部分执行（未推进） -> 报错
+  # 8.2 方案关联卡已全部关闭/作废但方案状态仍为待排期/部分执行（未推进） -> 报错
   # 8.3 作废方案的关联卡必须已关闭/已作废（存在活跃卡 = 孤儿卡） -> 报错
   # 人审调整动作统一化（2026-08-14）：作废=终态，作废卡从方案总数剔除；作废方案不得留孤儿卡。
-  if [ "$status" = "已确认" ] || [ "$status" = "部分执行" ] || [ "$status" = "作废" ]; then
+  if [ "$status" = "待排期" ] || [ "$status" = "部分执行" ] || [ "$status" = "作废" ]; then
     local cards_line
     cards_line=$(echo "$head_content" | grep '关联卡：' | head -1 || true)
     if [ -n "$cards_line" ]; then
@@ -284,7 +284,7 @@ validate_file() {
             return
           fi
         else
-          # 8.2：已确认/部分执行 但关联卡已全部关闭/作废（未推进）
+          # 8.2：待排期/部分执行 但关联卡已全部关闭/作废（未推进）
           if [ "$card_count" -gt 0 ] && [ "$active_count" -eq 0 ]; then
             red "  FAIL 方案关联卡已全部关闭/作废但状态仍为 '$status': $rel"
             ERRORS=$((ERRORS + 1))

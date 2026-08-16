@@ -180,8 +180,8 @@ class TestListPlans:
     def test_list_all(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc", "xy"])
         _make_plan(tmp_path, "ccc", "001", "test-a", "草案")
-        _make_plan(tmp_path, "ccc", "002", "test-b", "已确认")
-        _make_plan(tmp_path, "xy", "001", "video", "已确认")
+        _make_plan(tmp_path, "ccc", "002", "test-b", "待排期")
+        _make_plan(tmp_path, "xy", "001", "video", "待排期")
 
         plans = list_plans(tmp_path)
         assert len(plans) == 3
@@ -189,7 +189,7 @@ class TestListPlans:
     def test_filter_by_project(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc", "xy"])
         _make_plan(tmp_path, "ccc", "001", "test-a", "草案")
-        _make_plan(tmp_path, "xy", "001", "video", "已确认")
+        _make_plan(tmp_path, "xy", "001", "video", "待排期")
 
         plans = list_plans(tmp_path, project="ccc")
         assert len(plans) == 1
@@ -198,7 +198,7 @@ class TestListPlans:
     def test_filter_by_status(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_plan(tmp_path, "ccc", "001", "draft", "草案")
-        _make_plan(tmp_path, "ccc", "002", "confirmed", "已确认")
+        _make_plan(tmp_path, "ccc", "002", "confirmed", "待排期")
 
         plans = list_plans(tmp_path, status="草案")
         assert len(plans) == 1
@@ -207,7 +207,7 @@ class TestListPlans:
     def test_filter_by_keyword(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
         _make_plan(tmp_path, "ccc", "001", "upgrade", "草案", title="系统升级方案")
-        _make_plan(tmp_path, "ccc", "002", "fix", "已确认", title="修复计划")
+        _make_plan(tmp_path, "ccc", "002", "fix", "待排期", title="修复计划")
 
         plans = list_plans(tmp_path, q="升级")
         assert len(plans) == 1
@@ -316,7 +316,7 @@ class TestUpdatePlan:
         assert result.get("ok")
         path = result["path"]
 
-        # Phase2：create_plan 默认状态 = 已确认；更新为部分执行（合法流转）
+        # Phase2：create_plan 默认状态 = 待排期；更新为部分执行（合法流转）
         r2 = update_plan(tmp_path, rel_path=path, status="部分执行")
         assert r2.get("ok")
 
@@ -339,7 +339,7 @@ class TestUpdatePlan:
         (tmp_path / path).unlink()
 
     def test_nonexistent_file(self, tmp_path: Path):
-        r = update_plan(tmp_path, rel_path="docs/projects/ccc/plans/999-x.md", status="已确认")
+        r = update_plan(tmp_path, rel_path="docs/projects/ccc/plans/999-x.md", status="待排期")
         assert "error" in r
 
     def test_content_replacement_preserves_header(self, tmp_path: Path):
@@ -356,7 +356,7 @@ class TestUpdatePlan:
         detail = get_plan(tmp_path, path)
         assert "新内容" in detail["content"]
         assert "项目：ccc" in detail["content"]  # 头部保留
-        assert "状态：已确认" in detail["content"]  # 头部保留（Phase2 默认已确认，未改状态）
+        assert "状态：待排期" in detail["content"]  # 头部保留（Phase2 默认待排期，未改状态）
 
         (tmp_path / path).unlink()
 
@@ -378,11 +378,11 @@ class TestUpdatePlan:
     def test_extract_header_fields_value_with_middle_dot(self):
         """033 M5：字段值含「 · 」不截断（里程碑标题 M2 · 稳控与可恢复 保持完整）。"""
         fields = _extract_header_fields(
-            "> 项目：hp · 编号：hp-plan-008 · 状态：已确认 · 里程碑：M2 · 稳控与可恢复 · 作者：x"
+            "> 项目：hp · 编号：hp-plan-008 · 状态：待排期 · 里程碑：M2 · 稳控与可恢复 · 作者：x"
         )
         assert fields.get("里程碑") == "M2 · 稳控与可恢复", fields
         assert fields.get("编号") == "hp-plan-008"
-        assert fields.get("状态") == "已确认"
+        assert fields.get("状态") == "待排期"
 
     def test_accept_plan_requires_daiyanshou(self, tmp_path: Path):
         """033 M4：accept_plan 仅对「待验收」方案生效；验收标准未勾选拒绝；拍板置已完成+批准行。"""
@@ -397,7 +397,7 @@ class TestUpdatePlan:
         assert "状态：已完成" in p.read_text()
         assert "老板验收拍板" in p.read_text()
         # 非待验收方案拒绝
-        p2 = _make_plan(tmp_path, "ccc", "002", "test2", "已确认")
+        p2 = _make_plan(tmp_path, "ccc", "002", "test2", "待排期")
         r2 = accept_plan(tmp_path, rel_path=str(p2.relative_to(tmp_path)))
         assert "error" in r2
         # 待验收但验收标准未勾选拒绝
@@ -426,22 +426,22 @@ class TestUpdatePlan:
         assert "error" in r3 and "验收标准" in r3["error"]
 
     def test_update_plan_yididing_transitions(self, tmp_path: Path):
-        """033 F1：已确定 可流转到 已确认/作废，不可直跳已完成（白名单）。"""
+        """033 F1：已确定 可流转到 待排期/作废，不可直跳已完成（白名单）。"""
         _make_registry(tmp_path, ["ccc"])
         p = _make_plan(tmp_path, "ccc", "001", "test", "已确定")
         rel = str(p.relative_to(tmp_path))
         with patch("server.board.plans._git_commit_push", return_value=(True, "")):
-            # 已确定 → 已确认 允许（老板确认排队）
-            r1 = update_plan(tmp_path, rel_path=rel, status="已确认")
+            # 已确定 → 待排期 允许（老板确认排队）
+            r1 = update_plan(tmp_path, rel_path=rel, status="待排期")
             assert r1.get("ok") is True, r1
-            # 已确认 → 已完成 拒绝（白名单不含）
+            # 待排期 → 已完成 拒绝（白名单不含）
             r2 = update_plan(tmp_path, rel_path=rel, status="已完成")
             assert "error" in r2
 
     def test_update_plan_date_not_corrupted(self, tmp_path: Path):
         """2026-08-16 机审修复（缺陷3）：update_plan 更新日期不被 `\\1{` 组引用歧义破坏（改用 `\\g<1>`）。"""
         _make_registry(tmp_path, ["ccc"])
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期")
         rel = str(p.relative_to(tmp_path))
         with patch("server.board.plans._git_commit_push", return_value=(True, "")):
             result = update_plan(tmp_path, rel_path=rel, status="部分执行")
@@ -473,7 +473,7 @@ class TestUpdatePlan:
         path = result["path"]
 
         # 合法流转到已完成
-        update_plan(tmp_path, rel_path=path, status="已确认")
+        update_plan(tmp_path, rel_path=path, status="待排期")
         update_plan(tmp_path, rel_path=path, status="部分执行")
         update_plan(tmp_path, rel_path=path, status="已完成")
 
@@ -484,16 +484,16 @@ class TestUpdatePlan:
         (tmp_path / path).unlink()
 
     def test_transition_confirm_to_partial_allowed(self, tmp_path: Path):
-        """已确认到部分执行应放行（转卡自动推进）。"""
+        """待排期到部分执行应放行（转卡自动推进）。"""
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
         result = create_plan(tmp_path, project="ccc", title="test", content="## ok", author="T", tool="T")
         assert result.get("ok")
         path = result["path"]
 
-        # 草案到已确认（合法）
-        update_plan(tmp_path, rel_path=path, status="已确认")
-        # 已确认到部分执行（合法）
+        # 草案到待排期（合法）
+        update_plan(tmp_path, rel_path=path, status="待排期")
+        # 待排期到部分执行（合法）
         r2 = update_plan(tmp_path, rel_path=path, status="部分执行")
         assert r2.get("ok")
 
@@ -506,8 +506,8 @@ class TestUpdatePlan:
 class TestConvertPlan:
     def test_missing_plan_section(self, tmp_path: Path):
         _make_registry(tmp_path, ["ccc"])
-        # 使用已确认状态，避免被草案拦截
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="")
+        # 使用待排期状态，避免被草案拦截
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期", plan_section="")
 
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
@@ -544,7 +544,7 @@ class TestConvertPlan:
         """禁出卡前缀（平台自研红线）禁止转卡，方案仍可存在。"""
         _make_registry(tmp_path, ["ccc"], forbidden={"ccc"})
         _make_validate_script(tmp_path)
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="- alpha")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期", plan_section="- alpha")
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
         assert "error" in result
@@ -555,7 +555,7 @@ class TestConvertPlan:
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
         _make_new_card_script(tmp_path)
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="- alpha")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期", plan_section="- alpha")
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel, no_push=True)
         assert result.get("ok") is True
@@ -570,12 +570,12 @@ class TestConvertPlan:
         _make_registry(tmp_path, ["ccc"])
         _make_validate_script(tmp_path)
         _make_new_card_script(tmp_path)
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认", plan_section="- alpha\n- FAIL")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期", plan_section="- alpha\n- FAIL")
         rel = str(p.relative_to(tmp_path))
         result = convert_plan(tmp_path, rel_path=rel)
         assert "error" in result
         assert not (tmp_path / "docs" / "dispatch" / "ccc" / "ccc999-mock.md").exists()
-        assert "状态：已确认" in p.read_text()
+        assert "状态：待排期" in p.read_text()
 
 
 # ── 6. helpers ──
@@ -607,7 +607,7 @@ class TestHelpers:
 
 ## 目标
 
-> 旧状态：已确认（这是旧的，不应被提取）
+> 旧状态：待排期（这是旧的，不应被提取）
 """
         fields = _extract_header_fields(content)
         assert fields["状态"] == "作废"
@@ -730,9 +730,9 @@ class TestPlansPageContract:
     def test_status_filter_options(self) -> None:
         """验证状态筛选为四态（草案已移除 · Bug 8）。"""
         text = self._page()
-        for s in ["已确认", "部分执行", "已完成", "作废"]:
+        for s in ["待排期", "部分执行", "已完成", "作废"]:
             assert s in text, f"Missing status: {s}"
-        # 草案不再是流程列（Phase2 /plans/create 默认已确认，list 默认过滤草案）
+        # 草案不再是流程列（Phase2 /plans/create 默认待排期，list 默认过滤草案）
         assert "状态（草案/已确认" not in text
 
     def test_markdown_renders_links_and_tables(self) -> None:
@@ -882,7 +882,7 @@ class TestSyncPlanProgress:
     def test_no_cards(self, tmp_path: Path) -> None:
         """无关联卡时，进度为 0/0。"""
         _make_registry(tmp_path, ["ccc"])
-        _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        _make_plan(tmp_path, "ccc", "001", "test", "待排期")
 
         # 构造空的 cards.index.jsonl
         dispatch_dir = tmp_path / "docs" / "dispatch"
@@ -899,7 +899,7 @@ class TestSyncPlanProgress:
     def test_cards_set_to_none(self, tmp_path: Path) -> None:
         """关联卡字段为「无」时，进度为 0/0。"""
         _make_registry(tmp_path, ["ccc"])
-        _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        _make_plan(tmp_path, "ccc", "001", "test", "待排期")
 
         result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
         assert result.get("ok") is True
@@ -909,7 +909,7 @@ class TestSyncPlanProgress:
         """有 3 张关联卡，其中 2 张已关闭 → 进度 2/3 (66%)。"""
         _make_registry(tmp_path, ["ccc"])
         # 更新方案关联卡字段
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期")
         content = p.read_text()
         content = content.replace("关联卡：无", "关联卡：ccc001, ccc002, ccc003")
         p.write_text(content)
@@ -933,7 +933,7 @@ class TestSyncPlanProgress:
     def test_all_cards_closed(self, tmp_path: Path) -> None:
         """全部卡已关闭 → 进度 2/2 (100%)。"""
         _make_registry(tmp_path, ["ccc"])
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期")
         content = p.read_text()
         content = content.replace("关联卡：无", "关联卡：ccc001, ccc002")
         p.write_text(content)
@@ -958,7 +958,7 @@ class TestSyncPlanProgress:
     def test_progress_field_update(self, tmp_path: Path) -> None:
         """已有进度字段时，应原地更新而非新增行。"""
         _make_registry(tmp_path, ["ccc"])
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期")
         content = p.read_text()
         content = content.replace("关联卡：无", "关联卡：ccc001")
         # 手动插入旧进度
@@ -1056,7 +1056,7 @@ class Test027CoreFlow:
         p.write_text(
             """# 方案 · 功能卡测试
 
-> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 项目：ccc · 编号：ccc-plan-001 · 状态：待排期 · 作者：测试 · 工具：pytest
 > 创建：2026-08-09 · 更新：2026-08-09
 > 关联卡：无
 > 关联方案：无
@@ -1089,7 +1089,7 @@ class Test027CoreFlow:
         p.write_text(
             """# 方案 · 功能卡测试
 
-> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 项目：ccc · 编号：ccc-plan-001 · 状态：待排期 · 作者：测试 · 工具：pytest
 > 创建：2026-08-09 · 更新：2026-08-09
 > 关联卡：无
 > 关联方案：无
@@ -1136,7 +1136,7 @@ class Test027CoreFlow:
         p.write_text(
             """# 方案 · 功能卡测试
 
-> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 项目：ccc · 编号：ccc-plan-001 · 状态：待排期 · 作者：测试 · 工具：pytest
 > 创建：2026-08-09 · 更新：2026-08-09
 > 关联卡：无
 > 关联方案：无
@@ -1171,7 +1171,7 @@ class Test027CoreFlow:
         p2.write_text(
             """# 方案 · 依赖悬空
 
-> 项目：ccc · 编号：ccc-plan-002 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 项目：ccc · 编号：ccc-plan-002 · 状态：待排期 · 作者：测试 · 工具：pytest
 > 创建：2026-08-09 · 更新：2026-08-09
 > 关联卡：无
 > 关联方案：无
@@ -1203,7 +1203,7 @@ class Test027CoreFlow:
         p.write_text(
             """# 方案 · 功能卡测试
 
-> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 项目：ccc · 编号：ccc-plan-001 · 状态：待排期 · 作者：测试 · 工具：pytest
 > 创建：2026-08-09 · 更新：2026-08-09
 > 关联卡：无
 > 关联方案：无
@@ -1244,7 +1244,7 @@ class Test027CoreFlow:
         p.write_text(
             """# 方案 · 环境准备测试
 
-> 项目：ccc · 编号：ccc-plan-001 · 状态：已确认 · 作者：测试 · 工具：pytest
+> 项目：ccc · 编号：ccc-plan-001 · 状态：待排期 · 作者：测试 · 工具：pytest
 > 创建：2026-08-09 · 更新：2026-08-09
 > 关联卡：无
 > 关联方案：无
@@ -1412,7 +1412,7 @@ class Test027CoreFlow:
             "# 测试线路图\n\n> 项目：ccc · 更新：2026-08-09\n\n## 草案池\n\n无。\n\n## 里程碑\n\n### 旧里程碑\n- 状态：进行中\n- 关联方案：ccc-plan-001\n\n### 新里程碑\n- 状态：草案\n",
             encoding="utf-8",
         )
-        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待排期")
         # 方案头补旧里程碑字段（业务场景：方案归属旧里程碑，现要改到新里程碑）
         content = p.read_text()
         content = content.replace("关联方案：无", "关联方案：无\n> 里程碑：旧里程碑")

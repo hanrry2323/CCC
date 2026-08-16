@@ -154,7 +154,7 @@ ARCH_POS_OVERRIDE = {}  # 大多数已在上面
 def plan_body(num, mile, spid, title, goal, bg, env, arch, pre):
     return f"""# 方案 · {title}（{mile.split(' · ')[0]}）
 
-> 项目：hp · 编号：hp-plan-{num} · 状态：已确认 · 作者：Claude（中枢） · 工具：Claude Code
+> 项目：hp · 编号：hp-plan-{num} · 状态：待排期 · 作者：Claude（中枢） · 工具：Claude Code
 > 创建：2026-08-16 · 更新：2026-08-16
 > 关联卡：无
 > 关联方案：无

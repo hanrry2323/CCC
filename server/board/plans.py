@@ -25,13 +25,15 @@ from typing import Any
 logger = logging.getLogger("ccc.board.plans")
 
 # 有效状态（2026-08-16 033 F1+M4：补「已确定」= Plan 调研态；「待验收」= 卡全关待老板拍板）
-VALID_STATES = frozenset({"已确定", "已确认", "部分执行", "待验收", "已完成", "作废", "已覆盖"})
+# 2026-08-17 老板定：状态字更清晰——「已确认」→「待排期」（= 老板确认过、排队待转卡）；
+# 已确定旁不再标「待确认」备注（避免歧义）。
+VALID_STATES = frozenset({"已确定", "待排期", "部分执行", "待验收", "已完成", "作废", "已覆盖"})
 
 # 状态流转白名单（from → allowed to）
-# 033 基线：草案(池)→已确定(Plan 调研)→已确认(老板排队)→转卡→部分执行→待验收→已完成
+# 033 基线：草案(池)→已确定(Plan 调研)→待排期(老板排队)→转卡→部分执行→待验收→已完成
 _TRANSITIONS: dict[str, frozenset[str]] = {
-    "已确定": frozenset({"已确认", "作废", "已覆盖"}),  # 033 F1：已确定 → 老板确认 → 已确认
-    "已确认": frozenset({"部分执行", "作废", "已覆盖"}),
+    "已确定": frozenset({"待排期", "作废", "已覆盖"}),  # 033 F1：已确定 → 老板确认 → 待排期
+    "待排期": frozenset({"部分执行", "作废", "已覆盖"}),
     "部分执行": frozenset({"待验收", "作废"}),  # 033 M4：卡全关→待验收，不再直接已完成
     "待验收": frozenset({"已完成", "作废"}),  # 033 M4：老板/验收席拍板→已完成
     "作废": frozenset({"已覆盖"}),
@@ -431,11 +433,11 @@ def create_plan(
     tool: str,
     milestone: str | None = None,
     approved: bool = False,
-    initial_status: str = "已确认",
+    initial_status: str = "待排期",
 ) -> dict[str, Any]:
     """创建新方案文件。
 
-    initial_status：创建初始态（默认「已确认」兼容存量；033 F1 promote 产出「已确定」）。
+    initial_status：创建初始态（默认「待排期」；033 F1 promote 产出「已确定」，老板确认后转「待排期」）。
 
     Returns:
         {ok, path, id} or {error}
@@ -968,7 +970,7 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
     auto_completed = False
     status_m = re.search(r"状态：([^\s·]+)", current)
     cur_status = status_m.group(1) if status_m else ""
-    if cur_status in ("已确认", "部分执行"):
+    if cur_status in ("待排期", "部分执行"):
         if total_active > 0 and closed == total_active:
             current = re.sub(r"(状态：)([^\s·]+)", r"\1待验收", current, count=1)
             auto_completed = True
@@ -1095,11 +1097,11 @@ def _convert_plan_locked(
     except OSError:
         return {"error": "读取方案文件失败"}
 
-    # 状态检查：只允许已确认/部分执行转卡
+    # 状态检查：只允许待排期/部分执行转卡
     current_fields = _extract_header_fields(content)
     current_status = current_fields.get("状态", "").split("·")[0].strip()
-    if current_status not in ("已确认", "部分执行"):
-        return {"error": f"当前状态「{current_status}」不可转卡，只有「已确认」或「部分执行」状态可以转卡"}
+    if current_status not in ("待排期", "部分执行"):
+        return {"error": f"当前状态「{current_status}」不可转卡，只有「待排期」或「部分执行」状态可以转卡"}
 
     # 2026-08-16 环境准备门禁联动：子项目方案必须声明「环境准备」才能转卡
     # （承接作废 hp-plan-004 的「开发/部署隔离 + 可重建验证」为强制前置门禁）

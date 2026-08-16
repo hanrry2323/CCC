@@ -2538,7 +2538,7 @@ class TestPromptInjection:
         plan_file = plan_dir / "011-loop-observer-architecture.md"
         plan_file.write_text(
             "# 方案 · Loop Observer 架构\n\n"
-            "> 项目：ccc · 编号：ccc-plan-011 · 状态：已确认\n\n"
+            "> 项目：ccc · 编号：ccc-plan-011 · 状态：待排期\n\n"
             "## 目标\n"
             "实现执行 Agent 心智注入，自动拼入关联方案摘要。\n\n"
             "## 验收标准\n"

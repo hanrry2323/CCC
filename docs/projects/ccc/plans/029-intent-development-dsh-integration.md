@@ -1,6 +1,6 @@
 # 方案 · 意图开发定位强化 + DeepSeek Harness 接入
 
-> 项目：ccc · 编号：ccc-plan-029 · 状态：已确认 · 作者：老板 · 工具：Claude Code
+> 项目：ccc · 编号：ccc-plan-029 · 状态：待排期 · 作者：老板 · 工具：Claude Code
 > 创建：2026-08-14 · 更新：2026-08-14
 > 关联卡：无
 > 关联方案：ccc-plan-027（功能卡两级模型）

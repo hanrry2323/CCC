@@ -713,7 +713,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
     _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
 
     # 调用 plans.py create_plan 创建方案（033 F1：promote 产出「已确定」= Plan 调研态，
-    # 老板后续在计划页确认「已确定」→「已确认」才排队转卡；approved=True 打「老板确认方案」标签）
+    # 老板后续在计划页确认「已确定」→「待排期」才排队转卡；approved=True 打「老板确认方案」标签）
     from server.board.plans import create_plan as _create_plan
 
     repo_root = _repo_root()
@@ -826,7 +826,7 @@ def _enrich_subproject(project: str, sp: Any) -> dict[str, Any]:
 
     读关联方案头部 状态 + 进度（X/Y），预计算 dev_status（未开发/进行中/已开发/已废弃），
     把「已开发/未开发/进行中」判定收敛到后端一处，前端直接消费。
-    sp.status 三态不精确（计划中 混「已确认未开发」+「部分执行进行中」），用方案状态细分。
+    sp.status 三态不精确（计划中 混「待排期未开发」+「部分执行进行中」），用方案状态细分。
     """
     plan_status = ""
     plan_progress: dict[str, Any] | None = None
@@ -854,7 +854,7 @@ def _enrich_subproject(project: str, sp: Any) -> dict[str, Any]:
         dev_status = "已废弃"
     elif plan_status == "部分执行":
         dev_status = "进行中"
-    elif plan_status in ("已确认", "已确定"):
+    elif plan_status in ("待排期", "已确定"):
         # 已确定 = Plan 调研完成态（033 F1）：调研完、未开发
         dev_status = "未开发"
     elif sp.plan_id:

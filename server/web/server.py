@@ -2223,7 +2223,7 @@ class _APIHandler(BaseHTTPRequestHandler):
 
     def _handle_plans_list(self):
         """GET /plans/list?project=&status=&q=
-        Phase2：默认过滤掉「草案」状态（只返回已确认/部分执行/已完成/作废），
+        Phase2：默认过滤掉「草案」状态（只返回待排期/部分执行/已完成/作废），
         显式传 status=草案 才含草案；传 status 精确过滤。
         """
         from urllib.parse import parse_qs

@@ -1,6 +1,6 @@
 # 方案 · CCC 历史包袱渐进清理
 
-> 项目：ccc · 编号：ccc-plan-030 · 状态：已确认 · 作者：Claude Code · 工具：claude
+> 项目：ccc · 编号：ccc-plan-030 · 状态：待排期 · 作者：Claude Code · 工具：claude
 > 创建：2026-08-15 · 更新：2026-08-15
 > 关联卡：无
 > 关联方案：无
