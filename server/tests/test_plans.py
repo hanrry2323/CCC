@@ -20,6 +20,7 @@ import pytest
 
 from server.board.plans import (
     VALID_STATES,
+    accept_plan,
     convert_plan,
     create_plan,
     get_plan,
@@ -373,6 +374,69 @@ class TestUpdatePlan:
         assert "ccc001" in detail["cards"]
 
         (tmp_path / path).unlink()
+
+    def test_extract_header_fields_value_with_middle_dot(self):
+        """033 M5：字段值含「 · 」不截断（里程碑标题 M2 · 稳控与可恢复 保持完整）。"""
+        fields = _extract_header_fields(
+            "> 项目：hp · 编号：hp-plan-008 · 状态：已确认 · 里程碑：M2 · 稳控与可恢复 · 作者：x"
+        )
+        assert fields.get("里程碑") == "M2 · 稳控与可恢复", fields
+        assert fields.get("编号") == "hp-plan-008"
+        assert fields.get("状态") == "已确认"
+
+    def test_accept_plan_requires_daiyanshou(self, tmp_path: Path):
+        """033 M4：accept_plan 仅对「待验收」方案生效；验收标准未勾选拒绝；拍板置已完成+批准行。"""
+        _make_registry(tmp_path, ["ccc"])
+        # 待验收方案 → 拍板成功（先全勾选验收项，_make_plan 默认 1 未勾）
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待验收")
+        p.write_text(p.read_text().replace("- [ ] 测试项 1", "- [x] 测试项 1"))
+        rel = str(p.relative_to(tmp_path))
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            r = accept_plan(tmp_path, rel_path=rel)
+        assert r.get("ok") is True, r
+        assert "状态：已完成" in p.read_text()
+        assert "老板验收拍板" in p.read_text()
+        # 非待验收方案拒绝
+        p2 = _make_plan(tmp_path, "ccc", "002", "test2", "已确认")
+        r2 = accept_plan(tmp_path, rel_path=str(p2.relative_to(tmp_path)))
+        assert "error" in r2
+        # 待验收但验收标准未勾选拒绝
+        plans_dir = tmp_path / "docs" / "projects" / "ccc" / "plans"
+        p3 = plans_dir / "003-test3.md"
+        p3.write_text(
+            """# 方案 · 测试3
+
+> 项目：ccc · 编号：ccc-plan-003 · 状态：待验收 · 作者：测试 · 工具：pytest
+> 创建：2026-08-09 · 更新：2026-08-09
+> 关联卡：无
+> 关联方案：无
+
+## 目标
+
+测试。
+
+## 验收标准
+
+- [ ] 未勾选项
+
+""",
+            encoding="utf-8",
+        )
+        r3 = accept_plan(tmp_path, rel_path="docs/projects/ccc/plans/003-test3.md")
+        assert "error" in r3 and "验收标准" in r3["error"]
+
+    def test_update_plan_yididing_transitions(self, tmp_path: Path):
+        """033 F1：已确定 可流转到 已确认/作废，不可直跳已完成（白名单）。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确定")
+        rel = str(p.relative_to(tmp_path))
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            # 已确定 → 已确认 允许（老板确认排队）
+            r1 = update_plan(tmp_path, rel_path=rel, status="已确认")
+            assert r1.get("ok") is True, r1
+            # 已确认 → 已完成 拒绝（白名单不含）
+            r2 = update_plan(tmp_path, rel_path=rel, status="已完成")
+            assert "error" in r2
 
     def test_update_plan_date_not_corrupted(self, tmp_path: Path):
         """2026-08-16 机审修复（缺陷3）：update_plan 更新日期不被 `\\1{` 组引用歧义破坏（改用 `\\g<1>`）。"""
@@ -1230,7 +1294,7 @@ class Test027CoreFlow:
         assert "登录成功跳转。" in text
 
     def test_sync_plan_progress_auto_complete(self, tmp_path: Path):
-        """自动完成：关联卡全关 → 方案状态自动推进「已完成」。"""
+        """033 M4：关联卡全关 → 方案自动推进「待验收」（非已完成，等老板/验收席拍板）。"""
         _make_registry(tmp_path, ["ccc"])
         p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
         content = p.read_text()
@@ -1240,7 +1304,7 @@ class Test027CoreFlow:
         with patch("server.board.loader.load_index_file", return_value=mock_index):
             result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
         assert result.get("auto_completed") is True
-        assert "状态：已完成" in p.read_text()
+        assert "状态：待验收" in p.read_text()
         assert "进度：1/1 (100%)" in p.read_text()
 
     def test_sync_plan_progress_not_all_closed(self, tmp_path: Path):
@@ -1278,7 +1342,7 @@ class Test027CoreFlow:
         assert "进度：1/2 (50%)（作废 1）" in p.read_text()
 
     def test_remaining_active_all_closed_with_voided_completes(self, tmp_path: Path):
-        """活跃卡全关（含部分作废）→ 方案自动完成。"""
+        """033 M4：活跃卡全关（含部分作废）→ 方案自动置「待验收」（非已完成）。"""
         _make_registry(tmp_path, ["ccc"])
         p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
         content = p.read_text()
@@ -1291,7 +1355,7 @@ class Test027CoreFlow:
         with patch("server.board.loader.load_index_file", return_value=mock_index):
             result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
         assert result.get("auto_completed") is True
-        assert "状态：已完成" in p.read_text()
+        assert "状态：待验收" in p.read_text()
 
     def test_all_voided_auto_void_plan(self, tmp_path: Path):
         """全作废边界：全部关联卡作废 → 方案自动置「作废」。"""

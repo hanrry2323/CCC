@@ -24,13 +24,16 @@ from typing import Any
 
 logger = logging.getLogger("ccc.board.plans")
 
-# 有效状态
-VALID_STATES = frozenset({"已确认", "部分执行", "已完成", "作废", "已覆盖"})
+# 有效状态（2026-08-16 033 F1+M4：补「已确定」= Plan 调研态；「待验收」= 卡全关待老板拍板）
+VALID_STATES = frozenset({"已确定", "已确认", "部分执行", "待验收", "已完成", "作废", "已覆盖"})
 
 # 状态流转白名单（from → allowed to）
+# 033 基线：草案(池)→已确定(Plan 调研)→已确认(老板排队)→转卡→部分执行→待验收→已完成
 _TRANSITIONS: dict[str, frozenset[str]] = {
+    "已确定": frozenset({"已确认", "作废", "已覆盖"}),  # 033 F1：已确定 → 老板确认 → 已确认
     "已确认": frozenset({"部分执行", "作废", "已覆盖"}),
-    "部分执行": frozenset({"已完成", "作废"}),
+    "部分执行": frozenset({"待验收", "作废"}),  # 033 M4：卡全关→待验收，不再直接已完成
+    "待验收": frozenset({"已完成", "作废"}),  # 033 M4：老板/验收席拍板→已完成
     "作废": frozenset({"已覆盖"}),
     # 已完成 / 已覆盖 = 终态，不可再改
 }
@@ -43,17 +46,20 @@ _FIELD_RE = re.compile(r"([^：]+)：(.+)")
 
 
 def _extract_header_fields(content: str) -> dict[str, str]:
-    """从方案文件头部提取字段。只扫描标题后的连续 > 行块。"""
+    """从方案文件头部提取字段。只扫描标题后的连续 > 行块。
+
+    2026-08-16 033 M5 修复：按「 · 」切段，段以「键：值」开头才开新字段，
+    否则并入前一字段值——值内含「 · 」不再被截断（如里程碑标题「M2 · 稳控与可恢复」
+    此前被截成「M2」，导致换里程碑时旧关联残留）。
+    """
     fields: dict[str, str] = {}
     lines = content.split("\n")
     in_header = False
     for line in lines[:30]:
         if line.startswith(">"):
             in_header = True
-            # 去掉开头的 > 和空格
             text = line.lstrip("> ").strip()
-            # 按 · 分割字段
-            for segment in text.split("·"):
+            for segment in text.split(" · "):
                 segment = segment.strip()
                 m = _FIELD_RE.match(segment)
                 if m:
@@ -62,6 +68,10 @@ def _extract_header_fields(content: str) -> dict[str, str]:
                     # 只取第一次出现的字段（后面的旧状态不覆盖）
                     if key not in fields:
                         fields[key] = val
+                elif fields:
+                    # 值续段（前字段值含「 · 」）：并入上一个字段
+                    last_key = next(reversed(fields))
+                    fields[last_key] += " · " + segment
         elif in_header and not line.startswith(">"):
             # 头部块结束（非 > 行）
             break
@@ -421,8 +431,11 @@ def create_plan(
     tool: str,
     milestone: str | None = None,
     approved: bool = False,
+    initial_status: str = "已确认",
 ) -> dict[str, Any]:
     """创建新方案文件。
+
+    initial_status：创建初始态（默认「已确认」兼容存量；033 F1 promote 产出「已确定」）。
 
     Returns:
         {ok, path, id} or {error}
@@ -460,7 +473,7 @@ def create_plan(
         _approval_line = f"> 批准：老板确认方案 · {today}\n" if approved else ""
         plan_content = f"""# 方案 · {title}
 
-> 项目：{project} · 编号：{plan_id} · 状态：已确认 · 作者：{author} · 工具：{tool}
+> 项目：{project} · 编号：{plan_id} · 状态：{initial_status} · 作者：{author} · 工具：{tool}
 {_approval_line}> 创建：{today} · 更新：{today}
 > 关联卡：无
 > 关联方案：无
@@ -789,6 +802,49 @@ def _extract_created_card(stdout: str, prefix: str, repo_root: Path) -> tuple[Pa
     return path, fname.split("-", 1)[0]
 
 
+def accept_plan(
+    repo_root: Path,
+    *,
+    rel_path: str,
+) -> dict[str, Any]:
+    """验收拍板（033 M4）：待验收 方案 → 老板/验收席按验收标准拍板 → 已完成 + 批准行。
+
+    校验：方案状态为「待验收」；验收标准全部勾选（未勾选拒绝，督促先核对）。
+    """
+    plan_file = repo_root / rel_path
+    if not plan_file.exists():
+        return {"error": "方案文件不存在"}
+    if not _PLAN_PATH_RE.match(rel_path):
+        return {"error": "无效的方案路径格式"}
+    try:
+        current = plan_file.read_text()
+    except OSError:
+        return {"error": "读取方案文件失败"}
+    fields = _extract_header_fields(current)
+    cur_status = fields.get("状态", "").split("·")[0].strip()
+    if cur_status != "待验收":
+        return {"error": f"当前状态「{cur_status}」不可验收拍板，只有「待验收」方案可拍板"}
+
+    acc = _extract_acceptance(current)
+    if acc["total"] > 0 and acc["done"] < acc["total"]:
+        return {"error": f"验收标准未全部勾选（{acc['done']}/{acc['total']}）——请先核对并勾选验收项"}
+
+    today = date.today().isoformat()
+    current = re.sub(r"(状态：)([^\s·]+)", r"\1已完成", current, count=1)
+    current = re.sub(r"(更新：)([0-9-]+)", f"\\g<1>{today}", current, count=1)
+    # 写「老板验收拍板」批准行（三节点验收权威源）
+    if re.search(r"(^|\n)\s*> 批准：", current):
+        current = re.sub(r"(\n\s*> 批准：)([^\n]*)", f"\\1老板验收拍板 · {today}", current, count=1)
+    else:
+        current = re.sub(r"(> 项目：[^\n]*\n)", f"\\1> 批准：老板验收拍板 · {today}\n", current, count=1)
+    plan_file.write_text(current)
+
+    ok, err = _git_commit_push(repo_root, [rel_path], f"plans: accept {rel_path}")
+    if not ok:
+        return {"ok": True, "accepted": True, "partial": True, "warning": err}
+    return {"ok": True, "accepted": True}
+
+
 def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
     """读取方案关联的卡，从 cards.index.jsonl 查每张卡的状态，计算 closed/total，
     回写方案文件头部的进度信息。
@@ -882,15 +938,15 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
             lines.insert(2, f"> {progress_text}")
         current = "\n".join(lines)
 
-    # 027 缝隙3：自动完成——活跃关联卡全关 → 方案状态推进「已完成」；
-    # 人审调整动作统一化：作废卡剔除出 total，剩余活跃卡全关即完成。
+    # 027 缝隙3 + 033 M4：活跃关联卡全关 → 方案置「待验收」（非已完成），老板/验收席拍板才「已完成」；
+    # 作废卡剔除出 total，剩余活跃卡全关即待验收。
     # 边界：全部关联卡作废（total_active==0）→ 方案自动置「作废」（没有活卡=方案作废）。
     auto_completed = False
     status_m = re.search(r"状态：([^\s·]+)", current)
     cur_status = status_m.group(1) if status_m else ""
     if cur_status in ("已确认", "部分执行"):
         if total_active > 0 and closed == total_active:
-            current = re.sub(r"(状态：)([^\s·]+)", r"\1已完成", current, count=1)
+            current = re.sub(r"(状态：)([^\s·]+)", r"\1待验收", current, count=1)
             auto_completed = True
         elif total_active == 0 and voided > 0:
             # 全作废边界：方案自动作废（级联卡已作废，方案不再有活卡）

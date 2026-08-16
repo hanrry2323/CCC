@@ -42,21 +42,25 @@ function html() {
     <div id="ops-projects" class="ops-projects-grid"><div class="ops-empty">加载中…</div></div>
   </div>
 
-  <!-- 人审闸门（第三步：三大人审节点可见化） -->
+  <!-- 人审闸门（033 三大人审节点对齐：出卡 / 合入 / 验收） -->
   <div class="ops-section">
-    <h3>人审闸门 <span class="ops-scan-at">确认方案 → 转卡 → 合入批准 · 老板动作待办</span></h3>
+    <h3>人审闸门 <span class="ops-scan-at">出卡（已确定→已确认→转卡）→ 合入批准 → 验收拍板 · 老板动作待办</span></h3>
     <div class="ops-todo-grid">
       <div class="ops-card ops-block">
-        <h4 class="ops-block-title">① 待确认方案 <span class="badge" id="ops-gate1-count">0</span></h4>
+        <h4 class="ops-block-title">① 未排期草案 <span class="badge" id="ops-gate1-count">0</span></h4>
         <div id="ops-gate-drafts"><div class="ops-empty">加载中…</div></div>
       </div>
       <div class="ops-card ops-block">
-        <h4 class="ops-block-title">② 待转卡方案 <span class="badge" id="ops-gate2-count">0</span></h4>
+        <h4 class="ops-block-title">② 出卡待办 <span class="badge" id="ops-gate2-count">0</span></h4>
         <div id="ops-gate-plans"><div class="ops-empty">加载中…</div></div>
       </div>
       <div class="ops-card ops-block">
         <h4 class="ops-block-title">③ 待合入批准 <span class="badge" id="ops-gate3-count">0</span></h4>
         <div id="ops-gate-merge"><div class="ops-empty">加载中…</div></div>
+      </div>
+      <div class="ops-card ops-block">
+        <h4 class="ops-block-title">④ 待验收拍板 <span class="badge" id="ops-gate4-count">0</span></h4>
+        <div id="ops-gate-accept"><div class="ops-empty">加载中…</div></div>
       </div>
     </div>
   </div>
@@ -144,7 +148,7 @@ function renderProjects(roadmaps, details, cards, loopData, mergeData) {
       <div class="ops-proj-stats">
         <span>完成 ${st.done}</span><span>进行中 ${st.doing}</span>
         ${st.risk ? `<span class="ops-proj-risk">未启动 ${st.risk}</span>` : ''}
-        ${issues ? `<span class="ops-proj-risk">待办 ${issues}</span>` : ''}
+        ${issues ? `<span class="ops-proj-risk">待处理 ${issues}</span>` : ''}
       </div>
     </div>`);
   }
@@ -153,7 +157,7 @@ function renderProjects(roadmaps, details, cards, loopData, mergeData) {
 
 /* ── 人审闸门（第三步）─────────────────────── */
 
-const APPROVED_PREFIXES = ['老板确认方案', '老板确认转卡', '老板合入批准'];
+const APPROVED_PREFIXES = ['老板确认方案', '老板确认转卡', '老板合入批准', '老板验收拍板'];
 
 function approvalStage(a) {
   if (!a) return '';
@@ -168,9 +172,10 @@ function renderHumanGates(roadmaps, plansData, merge) {
   const draftsEl = _root.querySelector('#ops-gate-drafts');
   const plansEl = _root.querySelector('#ops-gate-plans');
   const mergeEl = _root.querySelector('#ops-gate-merge');
-  if (!draftsEl || !plansEl || !mergeEl) return;
+  const acceptEl = _root.querySelector('#ops-gate-accept');
+  if (!draftsEl || !plansEl || !mergeEl || !acceptEl) return;
 
-  // ① 待确认方案 = 线路图草案池（按项目分组）
+  // ① 未排期草案 = 线路图草案池（按项目分组；标签统一「未排期」，033）
   const draftGroups = {};
   for (const rm of roadmaps || []) {
     const drafts = (rm.drafts || []).filter(Boolean);
@@ -185,27 +190,39 @@ function renderHumanGates(roadmaps, plansData, merge) {
         <h5>${esc(proj)}（${items.length}）</h5>
         ${items.slice(0, 8).map((t) => `
           <div class="ops-review-item">
-            <span class="ops-todo-type pending">待确认</span>
+            <span class="ops-todo-type pending">未排期</span>
             <span class="ops-review-title">${esc(typeof t === 'string' ? t : (t && t.title || ''))}</span>
             <a class="ops-goto-board" href="#/plans" title="去计划页确认">去处理 →</a>
           </div>`).join('')}
       </div>`).join('')
     : '<div class="ops-empty">草案池空 🎉 无需确认</div>';
 
-  // ② 待转卡方案 = 已确认未转卡（status=已确认）
-  const confirmed = ((plansData && plansData.plans) || []).filter((p) => p.status === '已确认');
+  // ② 出卡待办（033）：已确定（待老板确认→已确认）+ 已确认（待转卡）
+  const plans = (plansData && plansData.plans) || [];
+  const determined = plans.filter((p) => p.status === '已确定');
+  const confirmed = plans.filter((p) => p.status === '已确认');
   const g2cnt = _root.querySelector('#ops-gate2-count');
-  if (g2cnt) g2cnt.textContent = String(confirmed.length);
-  plansEl.innerHTML = confirmed.length
-    ? confirmed.slice(0, 10).map((p) => `
-      <div class="ops-review-item">
-        <span class="ops-todo-type pending">待转卡</span>
-        <span class="ops-review-id">${esc(p.id || '')}</span>
-        <span class="ops-review-title">${esc(p.title || '')}</span>
-        <span class="ops-review-proj">${esc(p.project || '')}</span>
-        <a class="ops-goto-board" href="#/plans" title="去计划页转卡">去处理 →</a>
-      </div>`).join('')
-    : '<div class="ops-empty">无待转卡方案 🎉</div>';
+  if (g2cnt) g2cnt.textContent = String(determined.length + confirmed.length);
+  plansEl.innerHTML = (determined.length || confirmed.length)
+    ? [
+        ...determined.slice(0, 5).map((p) => `
+          <div class="ops-review-item">
+            <span class="ops-todo-type pending">待确认·已确定</span>
+            <span class="ops-review-id">${esc(p.id || '')}</span>
+            <span class="ops-review-title">${esc(p.title || '')}</span>
+            <span class="ops-review-proj">${esc(p.project || '')}</span>
+            <a class="ops-goto-board" href="#/plans" title="去计划页确认到已确认">去处理 →</a>
+          </div>`),
+        ...confirmed.slice(0, 5).map((p) => `
+          <div class="ops-review-item">
+            <span class="ops-todo-type pending">待转卡·已确认</span>
+            <span class="ops-review-id">${esc(p.id || '')}</span>
+            <span class="ops-review-title">${esc(p.title || '')}</span>
+            <span class="ops-review-proj">${esc(p.project || '')}</span>
+            <a class="ops-goto-board" href="#/plans" title="去计划页转卡">去处理 →</a>
+          </div>`),
+      ].join('')
+    : '<div class="ops-empty">无出卡待办 🎉</div>';
 
   // ③ 待合入批准 = ready_for_merge
   const mergeCards = ((merge && merge.cards) || []).filter((c) => !String(c.approval || '').includes('合入批准'));
@@ -221,6 +238,21 @@ function renderHumanGates(roadmaps, plansData, merge) {
         <a class="ops-goto-board" href="#/board" title="去看板合入批准">去处理 →</a>
       </div>`).join('')
     : '<div class="ops-empty">无待合入卡 🎉</div>';
+
+  // ④ 待验收拍板（033 新增）：待验收方案（卡全关待老板/验收席拍板）
+  const awaitingAccept = plans.filter((p) => p.status === '待验收');
+  const g4cnt = _root.querySelector('#ops-gate4-count');
+  if (g4cnt) g4cnt.textContent = String(awaitingAccept.length);
+  acceptEl.innerHTML = awaitingAccept.length
+    ? awaitingAccept.slice(0, 10).map((p) => `
+      <div class="ops-review-item">
+        <span class="ops-todo-type pending">待拍板</span>
+        <span class="ops-review-id">${esc(p.id || '')}</span>
+        <span class="ops-review-title">${esc(p.title || '')}</span>
+        <span class="ops-review-proj">${esc(p.project || '')}</span>
+        <a class="ops-goto-board" href="#/plans" title="去计划页验收拍板">去处理 →</a>
+      </div>`).join('')
+    : '<div class="ops-empty">无待验收方案 🎉</div>';
 }
 
 /* ── ② diff 审查 + 代码健康发现 ──────────────── */

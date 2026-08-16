@@ -710,7 +710,8 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
     data["drafts"].pop(index)
     _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
 
-    # 调用 plans.py create_plan 创建方案（节点① 老板确认 → approved=True 打批准标签）
+    # 调用 plans.py create_plan 创建方案（033 F1：promote 产出「已确定」= Plan 调研态，
+    # 老板后续在计划页确认「已确定」→「已确认」才排队转卡；approved=True 打「老板确认方案」标签）
     from server.board.plans import create_plan as _create_plan
 
     repo_root = _repo_root()
@@ -722,6 +723,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
         author=author,
         tool=tool,
         approved=True,
+        initial_status="已确定",
     )
 
     if "error" in result:
@@ -850,7 +852,8 @@ def _enrich_subproject(project: str, sp: Any) -> dict[str, Any]:
         dev_status = "已废弃"
     elif plan_status == "部分执行":
         dev_status = "进行中"
-    elif plan_status == "已确认":
+    elif plan_status in ("已确认", "已确定"):
+        # 已确定 = Plan 调研完成态（033 F1）：调研完、未开发
         dev_status = "未开发"
     elif sp.plan_id:
         dev_status = "未开发"

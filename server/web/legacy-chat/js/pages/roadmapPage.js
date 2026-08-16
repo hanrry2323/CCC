@@ -568,7 +568,7 @@ function _overviewHTML(detail) {
       <span class="rm2-stat"><b>${miles.length}</b>里程碑</span>
       <span class="rm2-stat done"><b>${doneN}</b>已完成</span>
       <span class="rm2-stat doing"><b>${doingN}</b>进行中</span>
-      <span class="rm2-stat planned"><b>${plannedN}</b>待确认</span>
+      <span class="rm2-stat planned"><b>${plannedN}</b>未启动</span>
     </div>
     <div class="rm2-progress"><div class="rm2-progress-fill" style="width:${pct}%"></div></div>
   </div>`;

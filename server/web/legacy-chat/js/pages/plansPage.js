@@ -16,10 +16,12 @@
 import { apiGet, apiPost } from '../api.js';
 import { esc } from '../ui.js';
 
-const STATUSES = ['已确认', '部分执行', '已完成', '作废'];
+const STATUSES = ['已确定', '已确认', '部分执行', '待验收', '已完成', '作废'];
 const STATUS_COLORS = {
+  '已确定': '#7a6cc4',
   '已确认': '#3d9a5f',
   '部分执行': '#c47a2c',
+  '待验收': '#3d7cc4',
   '已完成': '#5a7a9a',
   '作废': '#b0563f',
 };
@@ -215,7 +217,7 @@ function renderColumn(status) {
   if (_hideClosed && (status === '已完成' || status === '作废')) return '';
   const color = STATUS_COLORS[status];
   const items = filteredPlans().filter(p => p.status === status);
-  const hints = { '已确认': '待排期', '部分执行': '已转卡', '已完成': '卡全关', '作废': '不执行' };
+  const hints = { '已确定': '待确认', '已确认': '待排期', '部分执行': '已转卡', '待验收': '待拍板', '已完成': '验收通过', '作废': '不执行' };
   return `
     <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
       <header class="pcol-h">
@@ -358,8 +360,10 @@ function bindEvents() {
 }
 
 const STATE_FLOW = {
+  '已确定': ['已确认', '作废'],
   '已确认': ['部分执行', '作废'],
-  '部分执行': ['已完成', '作废'],
+  '部分执行': ['待验收', '作废'],
+  '待验收': ['已完成', '作废'],
   '已完成': [],
   '作废': [],
 };
@@ -458,7 +462,8 @@ function renderDetail(plan) {
       ${_funcCardsHTML(plan.content)}
       <div class="pdetail-body">${renderMarkdown(plan.content)}</div>
       <div class="pdetail-actions">
-        ${plan.status !== '已完成' && plan.status !== '作废' ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        ${(plan.status === '已确认' || plan.status === '部分执行') ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        ${plan.status === '待验收' ? `<button type="button" class="ptool-new" id="plans-detail-accept" title="033：老板/验收席按验收标准拍板">验收拍板</button>` : ''}
         <button type="button" class="ptool-new" id="plans-detail-edit">${icon('edit')}编辑</button>
         <select id="plans-detail-status" class="plans-status-select" aria-label="修改状态">
           <option value="">改状态…</option>
@@ -478,6 +483,26 @@ function bindDetailEvents(path) {
   });
 
   _root?.querySelector('#plans-detail-convert')?.addEventListener('click', () => doConvert(path));
+
+  // 033 M4：验收拍板（待验收 → 已完成）
+  _root?.querySelector('#plans-detail-accept')?.addEventListener('click', async () => {
+    const btn = _root?.querySelector('#plans-detail-accept');
+    if (!window.confirm('确认验收拍板？方案将由「待验收」置「已完成」（老板/验收席按验收标准确认）。')) return;
+    if (btn) { btn.disabled = true; btn.textContent = '拍板中…'; }
+    try {
+      const res = await apiPost('/plans/accept', { path });
+      if (res && res.ok) {
+        window.showToast?.('验收拍板完成 → 已完成', 'success');
+        await loadPlans();
+      } else {
+        alert((res && res.error) || '验收失败');
+        if (btn) { btn.disabled = false; btn.textContent = '验收拍板'; }
+      }
+    } catch (e) {
+      alert('验收失败: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '验收拍板'; }
+    }
+  });
 
   // 人审调整动作统一化：方案「修改」——节点② 改内容/功能卡清单
   _root?.querySelector('#plans-detail-edit')?.addEventListener('click', async () => {

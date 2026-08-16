@@ -90,6 +90,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from server.board.loader import load_dispatch_cards
 from server.board.plans import (
     convert_plan,
+    accept_plan,
     create_plan,
     get_plan,
     list_plans,
@@ -2359,6 +2360,22 @@ class _APIHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(result)
 
+    def _handle_plans_accept(self):
+        """POST /plans/accept {path} — 验收拍板（033 M4）：待验收 → 已完成 + 批准行。"""
+        body = self._read_body()
+        if body is None:
+            self._send_json({"error": "无效的请求体"}, 400)
+            return
+        rel_path = body.get("path", "").strip()
+        if not rel_path:
+            self._send_json({"error": "缺少 path 参数"}, 400)
+            return
+        result = accept_plan(_PROJECT_ROOT, rel_path=rel_path)
+        if "error" in result:
+            self._send_json(result, 400)
+        else:
+            self._send_json(result)
+
     # ── Phase2 线路图 API（roadmap.py）─────────────────────────────
 
     _ROADMAP_PREFIX_RE = re.compile(r"^[a-z]{2,4}$")
@@ -3840,6 +3857,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_plans_update()
         elif path == "/plans/convert":
             self._handle_plans_convert()
+        elif path == "/plans/accept":
+            self._handle_plans_accept()
         elif path == "/conversation":
             self._handle_conversation_post()
         elif m := self._match_thread_route(path, "rename"):
