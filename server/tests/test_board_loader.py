@@ -172,7 +172,7 @@ class TestLoadDispatchCards:
         assert "T-mapping" not in ids
         for item in items:
             # 契约 §2 允许括号变体（如「打回（原因）」），断言按基础态归并
-            assert base_state(item.state) in {"待分派", "执行中", "已回写", "已关闭", "打回", "未知"}
+            assert base_state(item.state) in {"待分派", "执行中", "已回写", "已关闭", "打回", "作废", "未知"}
 
 
 class TestSubdirScan:
