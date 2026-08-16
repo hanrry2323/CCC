@@ -329,12 +329,14 @@ function _setupRailNavigation(host, detail, project) {
   function _render(idx) {
     if (idx < 0 || idx >= railBtns.length) return;
     railBtns.forEach((b, i) => b.classList.toggle('active', i === idx));
+    // 每次重新 query 当前 panel-wrap（避免闭包旧引用 replaceWith 后无 parent 报错 → 点击失效）
+    const current = host.querySelector('.rm2-panel-wrap');
+    if (!current) return;
     const newHtml = _subprojectPanelHTML(detail, idx);
     const tmp = document.createElement('div');
     tmp.innerHTML = newHtml;
-    const newPanel = tmp.firstElementChild;
-    panelWrap.replaceWith(newPanel);
-    _bindPanelEvents(newPanel, project);
+    current.replaceWith(tmp.firstElementChild);
+    _bindPanelEvents(host.querySelector('.rm2-panel-wrap'), project);
   }
 
   railBtns.forEach((btn, i) => {
@@ -623,7 +625,9 @@ export async function mountRoadmap(el) {
   el.innerHTML = html();
   bind();
   await loadRoadmap();
-  _timer = setInterval(() => loadRoadmap().catch(() => {}), 30000);
+  // 2026-08-16 bug 修复：二级页不被自动刷新冲刷（openProject 重渲染会闪/丢交互状态），
+  // 一级页仍自动刷新，二级页刷新走手动「刷新」按钮。
+  _timer = setInterval(() => { if (!_currentProject) loadRoadmap().catch(() => {}); }, 30000);
 }
 
 export function unmountRoadmap() {
