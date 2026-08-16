@@ -1,7 +1,7 @@
 # 任务卡 hp039 · pg-health 前端渲染（M3） — 实施「pg-health 前端渲染」（OpenCode 执行）
 > 批准：老板确认转卡 · 2026-08-17
 
-> 关联：hp-plan-016 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-17
+> 关联：hp-plan-016 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-17
 
 
 
@@ -58,24 +58,37 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-17
+
+### 实现说明
+- 成功在 `consolePage.js` 里的 `pollSystem()` 并发请求中添加了对 `/ops/pg-health` 的数据获取。
+- 实现了 `renderPg(pg)` 用于渲染 PostgreSQL 健康状况，包含一个自适应的三态/四态 pill（正常 / 僵尸 / 下线 / 未上报）和相关的元数据（IP、端口、最近探测时间、连续失败次数）。
+- 更新了 `renderNodes(summary, hp, pg)` 把 PostgreSQL DB 节点并入集群节点和节点计数的计算，当 PG 上线时显示“在线”，其他状态下显示对应的非正常提示。
+- 在 `pollSystem()` 的 API 获取完成后，自动计算并统一更新知识库健康卡的右上角 badge `#console-kb-n` 计数。
+
+### 测试结果
+- 扩展了 `server/tests/test_t53_console_roadmap.py` 里的 `TestConsolePage` 类，新增了 `test_pg_health_rendering_contract` 测试函数，静态契约断言通过。
+- 运行 `python3 -m pytest server/tests/test_t53_console_roadmap.py` 成功通过全部 8 个测试。
+
+### Push 证据
+- Commit Hash: `e2b678057a5a9b5c827e6fad587aa8a6fbaf24ba`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：已同步方案推进，前端部分执行。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：本卡属于常规的前端重构和接口接入，暂无特别的新教训产出。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变项目结构或技术栈，仅在现有框架内实现前端渲染功能。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：线路图保持一致，继续稳步推进 M3 其他子任务。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+本卡无人工批注。
 
 ## 执行提示
 
