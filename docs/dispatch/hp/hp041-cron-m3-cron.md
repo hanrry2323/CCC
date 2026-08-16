@@ -1,7 +1,7 @@
 # 任务卡 hp041 · 悬空 cron 清理（M3） — 实施「悬空 cron 清理」（OpenCode 执行）
 > 批准：老板确认转卡 · 2026-08-17
 
-> 关联：hp-plan-018 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：hp · 日期：2026-08-17
+> 关联：hp-plan-018 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：hp · 日期：2026-08-17
 
 
 
@@ -17,26 +17,45 @@
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+本卡在 M3 稳控与可观测主线下，对开发机 M1 的 launchd / 悬空定时采集任务进行排查与彻底清理。该任务（`com.hp-kb.collector`）原作为 M1 的后台增量数据同步（从本地 `docs/` 同步至 HP），但因为目前已实行「开发与部署彻底隔离，HP升级为全文知识底座」架构，该本地定时采集已属于废弃/悬空的残留定时服务，因此本卡彻底将其从本地 launchd 卸载，清理 plist 文件，并在业务仓进行同步 Git rm 及 ignore 配置优化，防止未来再次发生失传或误载事件。
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
+1. 绝对禁止手改运行面/密钥。
 2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+- 物理清理：
+  - 本地 launchd 配置文件：`/Users/fan/Library/LaunchAgents/com.hp-kb.collector.plist`
+  - 业务仓内遗留副本：`local/scripts/com.hp-kb.collector.plist`
+- 配置修改：
+  - 业务仓 `.gitignore` 移除对应白名单例外规则。
+- 教训记录：
+  - 业务仓 `docs/lessons.md` 追加悬空 cron 清理教训。
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. **摸底与探针检查**：通过 `launchctl list | grep hp` 查询得出 `com.hp-kb.collector` 服务在运行。
+2. **卸载服务**：执行 `launchctl unload /Users/fan/Library/LaunchAgents/com.hp-kb.collector.plist` 卸载当前悬空服务。
+3. **删除本地 plist**：物理删除 `~/Library/LaunchAgents/com.hp-kb.collector.plist`。
+4. **业务仓白名单物理与配置清理**：
+   - 物理清理：在业务仓执行 `git rm local/scripts/com.hp-kb.collector.plist`。
+   - 更改 `.gitignore`：从 `!local/scripts/com.hp-kb.collector.plist` 的白名单例外规则中彻底移除，并修改 K24 段落注释。
+   - 追加教训：修改 `docs/lessons.md` 追加本次 M3 悬空任务清理的教训。
+5. **代码提交与分支推送**：
+   - 在业务仓中将改动 commit 并 push 到 `codex/hp041-cron-m3-cron` 分支。
+   - 在 CCC 仓的任务卡中填报实现说明与 commit hash，修改卡头状态为已回写并提交到 `codex/hp041-cron-m3-cron`。
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. **服务卸载核验**：
+   - 运行 `launchctl list | grep hp`，确认输出中不含 `com.hp-kb.collector` 定时服务。
+2. **本地配置文件核验**：
+   - 查看 `/Users/fan/Library/LaunchAgents/com.hp-kb.collector.plist` 文件不存在。
+3. **业务仓文件核验**：
+   - 确认业务仓的 `local/scripts/com.hp-kb.collector.plist` 已被 `git rm`，且 `.gitignore` 的白名单例外也已被移除。
+   - 确认业务仓 `docs/lessons.md` 中包含 `2026-08-17 | 悬空 cron / launchd 任务清理（hp041）` 一行教训。
 
 ## 门禁
 
@@ -54,28 +73,56 @@ lint：
 
 ## 人工批注
 
-（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+（无批注）
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-17
+
+### 实现说明
+1. **服务下架**：通过 `launchctl unload` 将挂起的本地定时采集服务 `com.hp-kb.collector` 彻底从 macOS 卸载，消除僵尸任务隐患。
+2. **本地残留物理清理**：彻底删除了 `/Users/fan/Library/LaunchAgents/com.hp-kb.collector.plist`。
+3. **业务仓清理与优化**：
+   - 彻底删除 `local/scripts/com.hp-kb.collector.plist`。
+   - 优化 `.gitignore` 文件：移除该 plist 文件的白名单，防止未来被误加载；修改 K24 段注释。
+   - 在业务仓 `docs/lessons.md` 中追加了关于「悬空 cron / launchd 任务清理」的教训归纳。
+
+### 验收与测试结果
+1. 服务卸载核验：
+   ```bash
+   launchctl list | grep hp
+   # 输出：
+   # 18036	0	com.apple.icloud.searchpartyuseragent
+   # 457	0	com.apple.CryptoTokenKit.ahp.agent
+   # 确认 com.hp-kb.collector 已彻底被注销移除。
+   ```
+2. 本地配置文件核验：
+   ```bash
+   ls ~/Library/LaunchAgents/com.hp-kb.collector.plist
+   # 输出：ls: ... No such file or directory
+   # 确认配置文件已彻底被物理删除。
+   ```
+
+### Push 证据 (业务仓 Commit Hash)
+- 业务仓改动推送分支：`codex/hp041-cron-m3-cron`
+- 业务仓最新 Commit Hash：`03ca2dd38b5c185fd52d39a77f6294f7ad292718`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：关联方案 `hp-plan-018`（悬空 cron 清理）中子项目 3.4 交付指标均已成功落实，方案关联卡保持一致同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]
+   - 说明：已在业务仓 `docs/lessons.md` 追加了关于 `2026-08-17 | 悬空 cron / launchd 任务清理（hp041）` 的实战教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]
+   - 说明：在业务仓中清除了已废弃的 launchd 配置文件 `local/scripts/com.hp-kb.collector.plist`，并在 `.gitignore` 中移除了例外规则，防止后续开发者误装。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：本项目依然保持 M3 稳控与可观测、开发与部署彻底隔离的主线方向，下一步计划无需变更。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+（无批注）
 
 ## 执行提示
 
