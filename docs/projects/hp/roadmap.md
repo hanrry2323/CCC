@@ -12,7 +12,7 @@
 ### M1 · 知识库底座固化
 - 状态：已完成
 - 关联方案：hp-plan-001、hp-plan-002
-- 描述：从零搭建集群知识库底座——数据结构（PG18+pgvector）、MCP 服务六工具、语义检索、种子入库全链路；22 卡 + 20 分支合入，5267 docs 在线。（子节点：点：数据模型（documents/chunks/memory_store）｜MCP 服务（knowledge_search/kb_status/memory_*，双入口）｜语义检索（向量化+ivfflat）｜种子入库）
+- 描述：从零搭建集群知识库底座——数据结构（PG18+pgvector）、MCP 服务六工具、语义检索、种子入库全链路；22 卡 + 20 分支合入，5267 docs 在线。（子节点：数据模型（documents/chunks/memory_store）｜MCP 服务（knowledge_search/kb_status/memory_*，双入口）｜语义检索（向量化+ivfflat）｜种子入库）（遗留：hp009 分支未合入 → 转 M2 治理）
 
 ### M2 · 稳控与可恢复
 - 状态：进行中

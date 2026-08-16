@@ -154,13 +154,15 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     current_ms["timeline"] = stripped[6:].strip().lstrip("：").strip()
                 elif stripped.startswith("- 版本："):
                     current_ms["version"] = stripped[5:].strip().lstrip("：").strip()
-                elif stripped.startswith("- 子节点："):
-                    # 兼容旧格式「子节点」单行（如 hp M1 封板内容）——并入描述，防序列化丢数据（2026-08-16）
-                    _subnode = stripped[4:].strip().lstrip("：").strip()
-                    if _subnode:
+                elif stripped.startswith("- 子节点：") or stripped.startswith("- 遗留："):
+                    # 兼容旧格式「子节点/遗留」单行（如 hp M1 封板内容）——并入描述，防 sync 写盘丢数据（2026-08-16）
+                    # 2026-08-16 修复：用完整前缀长度截断（此前 [4:] 残留「节点：」），并补「遗留」防丢
+                    _tag = "子节点" if stripped.startswith("- 子节点：") else "遗留"
+                    _val = stripped[len(f"- {_tag}："):].strip()
+                    if _val:
                         current_ms["description"] = (
-                            current_ms["description"] + "（子节点：" + _subnode + "）"
-                            if current_ms["description"] else "子节点：" + _subnode
+                            current_ms["description"] + f"（{_tag}：{_val}）"
+                            if current_ms["description"] else f"{_tag}：{_val}"
                         )
                 elif line.startswith("  ") and current_ms["description"] and stripped.strip():
                     # 多行描述续行：以 >=2 空格缩进且非空行 → 追加
