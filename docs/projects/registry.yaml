@@ -7,6 +7,21 @@ schema: ccc-project-registry-v1
 updated_at: "2026-08-07"
 
 projects:
+  - prefix: cla
+    id: cla
+    name: clawmed-ccc
+    display: cla
+    location: mac2017-apps
+    paths:
+      m1: null
+      mac2017: /Users/fan/program/apps/clawmed-ccc
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/clawmed-ccc
+      max_concurrent: 1
+    taskable: true
+    forbidden: false
+    status: active
+
   # ── 可出卡前缀（PREFIXES）──
   - prefix: ccc
     id: CCC
