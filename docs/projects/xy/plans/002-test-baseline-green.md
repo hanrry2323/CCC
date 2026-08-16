@@ -1,9 +1,11 @@
 # 方案 · 测试基线绿（M2-2.1）
 
-> 项目：xy · 编号：xy-plan-002 · 状态：待排期 · 作者：Claude（中枢） · 工具：Claude Code
+> 项目：xy · 编号：xy-plan-002 · 状态：部分执行 · 作者：Claude（中枢） · 工具：Claude Code
+> 批准：老板确认转卡 · 2026-08-17
 > 创建：2026-08-17 · 更新：2026-08-17
-> 关联卡：无
+> 关联卡：xy033, xy034, xy035, xy036
 > 关联方案：无
+> 进度：0/4 (0%)
 > 里程碑：M2 · 生产就绪
 > 子项目：2.1 测试基线绿
 > 环境准备：mac2017 xianyu 业务仓可写（`/Users/fan/program/apps/xianyu`）；`playwright install chromium` 可执行
