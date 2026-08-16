@@ -1030,6 +1030,10 @@ def convert_plan(
 ) -> dict[str, Any]:
     """将方案转为任务卡。
 
+    2026-08-17 修复：repo_root 统一为绝对路径——调用方传相对路径（如 Path('.')）
+    时，commit 阶段 `p.relative_to(repo_root)` 抛「not in subpath」导致卡已生成但
+    commit+push 中断（状态已推进、卡是孤儿，engine 感知不到）。
+
     1. 读取方案的「功能卡」/「转卡计划」段
     2. 调 new-card.sh 生成任务卡（全部成功才推进状态；失败回滚已生成卡）
     3. slices 指定时只转该子集（逐步投入——一次一个子项目的功能卡，2026-08-16）
@@ -1040,6 +1044,8 @@ def convert_plan(
     Returns:
         {ok, cards: [card_id]} or {error}
     """
+    # 2026-08-17：repo_root 规范化绝对路径（防相对路径下 relative_to 不匹配）
+    repo_root = repo_root.resolve()
     plan_file = repo_root / rel_path
     if not plan_file.exists():
         return {"error": "方案文件不存在"}
