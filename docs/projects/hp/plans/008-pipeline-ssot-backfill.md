@@ -1,9 +1,11 @@
 # 方案 · pipeline 源码回灌 SSOT（M2）
 
-> 项目：hp · 编号：hp-plan-008 · 状态：已确认 · 作者：Claude（中枢） · 工具：Claude Code
+> 项目：hp · 编号：hp-plan-008 · 状态：部分执行 · 作者：Claude（中枢） · 工具：Claude Code
+> 批准：老板确认转卡 · 2026-08-16
 > 创建：2026-08-16 · 更新：2026-08-16
-> 关联卡：无
+> 关联卡：hp023
 > 关联方案：无
+> 进度：0/1 (0%)
 > 里程碑：M2 · 稳控与可恢复
 > 子项目：2.1 pipeline 源码回灌 SSOT
 > 环境准备：mac2017 hp 业务仓可写；hp 节点 /data/knowledge/pipeline 只读访问

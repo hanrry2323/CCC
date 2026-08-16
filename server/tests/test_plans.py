@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -372,6 +373,18 @@ class TestUpdatePlan:
         assert "ccc001" in detail["cards"]
 
         (tmp_path / path).unlink()
+
+    def test_update_plan_date_not_corrupted(self, tmp_path: Path):
+        """2026-08-16 机审修复（缺陷3）：update_plan 更新日期不被 `\\1{` 组引用歧义破坏（改用 `\\g<1>`）。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "已确认")
+        rel = str(p.relative_to(tmp_path))
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            result = update_plan(tmp_path, rel_path=rel, status="部分执行")
+        assert result.get("ok") is True
+        text = p.read_text()
+        assert re.search(r"更新：\d{4}-\d{2}-\d{2}", text), f"更新日期被破坏（\\1 组引用歧义）: {text}"
+        assert "P2" not in text
 
     def test_transition_draft_to_done_rejected(self, tmp_path: Path):
         """草案到已完成应被拒绝。"""

@@ -213,7 +213,7 @@ def _inject_func_card(path: Path, card: dict[str, str]) -> None:
                 count=1,
             )
         else:
-            text = re.sub(r"(## 实现\n\n)([^\n]+)", f"\\1{card['impl']}", text, count=1)
+            text = re.sub(r"(## 实现\n\n)([^\n]+)", f"\\g<1>{card['impl']}", text, count=1)
     if card.get("acceptance"):
         text = text.replace("1. （可执行的验收点，附命令/可观察结果）", card["acceptance"], 1)
     path.write_text(text, encoding="utf-8")
@@ -560,7 +560,7 @@ def update_plan(
         # 替换状态字段
         current = re.sub(
             r"(状态：)([^ ·]+)",
-            f"\\1{status}",
+            f"\\g<1>{status}",
             current,
             count=1,
         )
@@ -568,7 +568,7 @@ def update_plan(
     # 更新日期
     current = re.sub(
         r"(更新：)([0-9-]+)",
-        f"\\1{today}",
+        f"\\g<1>{today}",
         current,
         count=1,
     )
@@ -578,7 +578,7 @@ def update_plan(
         if "关联卡：" in current:
             current = re.sub(
                 r"(关联卡：)([^\n]*)",
-                f"\\1{cards}",
+                f"\\g<1>{cards}",
                 current,
                 count=1,
             )
@@ -605,7 +605,7 @@ def update_plan(
         _ms_prev = _extract_header_fields(current).get("里程碑", "").strip()
         _ms_new = milestone if milestone.strip() else "无"
         if "里程碑：" in current:
-            current = re.sub(r"(里程碑：)([^\n]*)", f"\\1{_ms_new}", current, count=1)
+            current = re.sub(r"(里程碑：)([^\n]*)", f"\\g<1>{_ms_new}", current, count=1)
         else:
             lines = current.split("\n")
             inserted = False
@@ -1157,9 +1157,9 @@ def _convert_plan_locked(
     # 更新状态
     current = re.sub(r"(状态：)([^ ·]+)", r"\1部分执行", current, count=1)
     # 更新日期
-    current = re.sub(r"(更新：)([0-9-]+)", f"\\1{today}", current, count=1)
+    current = re.sub(r"(更新：)([0-9-]+)", f"\\g<1>{today}", current, count=1)
     # 更新关联卡
-    current = re.sub(r"(关联卡：)([^\n]*)", f"\\1{card_list}", current, count=1)
+    current = re.sub(r"(关联卡：)([^\n]*)", f"\\g<1>{card_list}", current, count=1)
     # 人审节点②：方案批准行更新为「老板确认转卡」（无则插入到头部引用块）
     if re.search(r"(^|\n)\s*> 批准：", current):
         current = re.sub(r"(\n\s*> 批准：)([^\n]*)", f"\\1老板确认转卡 · {today}", current, count=1)

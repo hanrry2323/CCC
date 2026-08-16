@@ -79,7 +79,7 @@ class Milestone:
 
 def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
     """解析 roadmap.md 文本，返回 {drafts, milestones, updated}。"""
-    result: dict[str, Any] = {"drafts": [], "milestones": [], "updated": ""}
+    result: dict[str, Any] = {"drafts": [], "milestones": [], "updated": "", "tail": ""}
 
     # 提取更新日期
     m = re.search(r"更新：(\d{4}-\d{2}-\d{2})", text)
@@ -92,6 +92,7 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
     in_drafts = False
     in_milestones = False
     in_subprojects = False  # 子项目段收集状态（2026-08-16）
+    tail_lines: list[str] = []  # 未识别尾部内容（blockquote 封板脚注等），序列化保留（2026-08-16 机审缺陷4）
     current_ms: dict[str, Any] | None = None
 
     for line in text.split("\n"):
@@ -156,6 +157,9 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                 elif line.startswith("  ") and current_ms["description"] and stripped.strip():
                     # 多行描述续行：以 >=2 空格缩进且非空行 → 追加
                     current_ms["description"] += " " + stripped
+                elif stripped and not stripped.startswith("- "):
+                    # 未识别尾部内容（blockquote 封板脚注/自由文本）→ 保留，防序列化丢数据（2026-08-16）
+                    tail_lines.append(line)
 
     if current_ms is not None:
         current_ms["subprojects"] = [
@@ -163,6 +167,9 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
             for sp in current_ms.get("subprojects", [])
         ]
         result["milestones"].append(Milestone(**current_ms))
+
+    if tail_lines:
+        result["tail"] = "\n".join(tail_lines)
 
     for draft_line in drafts_section.strip().split("\n"):
         raw = draft_line.strip()
@@ -287,7 +294,7 @@ def list_milestones(project: str) -> list[Milestone]:
 # ── 写入 ──
 
 
-def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone]) -> None:
+def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone], tail: str = "") -> None:
     """序列化写入 roadmap.md（带 fcntl 文件锁，防并发写覆盖）。"""
     from datetime import date
 
@@ -344,6 +351,11 @@ def _write_roadmap(project: str, drafts: list[Draft], milestones: list[Milestone
                 lines.append("")
         else:
             lines.append("无。")
+            lines.append("")
+
+        # 2026-08-16 机审缺陷4：保留未识别尾部内容（blockquote 封板脚注等），防序列化丢数据
+        if tail:
+            lines.append(tail)
             lines.append("")
 
         path.write_text("\n".join(lines), encoding="utf-8")
@@ -427,7 +439,7 @@ def create_milestone(
         target_date=target_date,
     )
     data["milestones"].append(ms)
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "milestone": title}
 
 
@@ -473,7 +485,7 @@ def update_milestone(
         if computed["status"] != found.status:
             found.status = computed["status"]
 
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "milestone": title}
 
 
@@ -500,7 +512,7 @@ def activate_subproject(
                     sp.plan_id = plan_id
                     if plan_id not in ms.linked_plans:
                         ms.linked_plans.append(plan_id)
-                    _write_roadmap(project, data["drafts"], data["milestones"])
+                    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
                     return {"ok": True, "subproject": subproject_id, "plan": plan_id}
             return {"error": f"子项目 {subproject_id} 不在里程碑 {milestone_title} 中"}
     return {"error": f"里程碑 {milestone_title} 不存在"}
@@ -530,7 +542,7 @@ def delete_milestone(project: str, title: str) -> dict[str, Any]:
         return {"error": f"里程碑 {title} 仍有 {len(ms.linked_plans)} 个关联方案，先解绑再删除"}
 
     data["milestones"] = [m for m in data["milestones"] if m.title != title]
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "removed": title}
 
 
@@ -572,7 +584,7 @@ def link_plan_to_milestone(
             changed = True
 
     if changed:
-        _write_roadmap(project, data["drafts"], data["milestones"])
+        _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "updated": changed}
 
 
@@ -600,7 +612,7 @@ def create_draft(
 
         created = date.today().isoformat()
     data["drafts"].append(Draft(title=title, project=project, created=created, source=source))
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "draft": title}
 
 
@@ -628,7 +640,7 @@ def edit_draft(project: str, index: int, new_title: str) -> dict[str, Any]:
             return {"error": f"草案 {new_title} 已存在"}
 
     data["drafts"][index].title = new_title
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "draft": new_title, "index": index}
 
 
@@ -650,7 +662,7 @@ def remove_draft(project: str, index: int) -> dict[str, Any]:
         return {"error": f"草案索引 {index} 越界（共 {len(data['drafts'])} 条）"}
 
     removed = data["drafts"].pop(index)
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
     return {"ok": True, "removed": removed.title}
 
 
@@ -688,7 +700,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
 
     # 从草案池移除
     data["drafts"].pop(index)
-    _write_roadmap(project, data["drafts"], data["milestones"])
+    _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
 
     # 调用 plans.py create_plan 创建方案（节点① 老板确认 → approved=True 打批准标签）
     from server.board.plans import create_plan as _create_plan
@@ -707,7 +719,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
     if "error" in result:
         # 回滚：把草案放回池中
         data["drafts"].insert(index, draft)
-        _write_roadmap(project, data["drafts"], data["milestones"])
+        _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
         return {"error": f"方案创建失败: {result['error']}"}
 
     return {"ok": True, "plan": {"path": result.get("path"), "id": result.get("id")}, "draft_title": draft_title}
@@ -745,7 +757,9 @@ def sync_milestone_progress(project: str, plan_rel_path: str) -> dict[str, Any]:
             continue
         # 2026-08-16 机审修复：方案状态变更 → 同步子项目状态（已完成/计划中/未启动）
         if ms.subprojects:
-            _sync_subproject_statuses(project, ms)
+            _sp_changed = _sync_subproject_statuses(project, ms)
+            if _sp_changed:
+                updated.append(f"{ms.title}·子项目")
         progress = compute_milestone_progress(project, ms.title)
         if "error" in progress:
             continue
@@ -756,40 +770,43 @@ def sync_milestone_progress(project: str, plan_rel_path: str) -> dict[str, Any]:
             updated.append(ms.title)
 
     if updated:
-        _write_roadmap(project, data["drafts"], data["milestones"])
+        _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
 
     return {"ok": True, "updated_milestones": updated}
 
 
-def _sync_subproject_statuses(project: str, ms: Any) -> None:
+def _sync_subproject_statuses(project: str, ms: Any) -> bool:
     """根据关联方案状态同步子项目状态（2026-08-16 机审修复：子项目进度有完成通路）。
 
     已完成 → 已完成；作废/已覆盖 → 未启动（剔除）；其余 → 计划中（有方案）。
     未激活子项目（无 plan_id）→ 未启动。
+    Returns: 是否有子项目状态发生变更（供 sync_milestone_progress 决定是否写盘）。
     """
     plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
+    changed = False
     for sp in ms.subprojects:
-        if not sp.plan_id:
-            sp.status = "未启动"
-            continue
-        match = re.match(rf"{project}-plan-(\d+)", sp.plan_id)
-        if not match:
-            continue
-        candidates = sorted(plans_dir.glob(f"{match.group(1)}-*.md"))
-        if not candidates:
-            continue
-        try:
-            plan_text = candidates[0].read_text(encoding="utf-8")
-            status_m = re.search(r"状态：([^\s·]+)", plan_text)
-            plan_status = status_m.group(1) if status_m else ""
-        except OSError:
-            continue
-        if plan_status == "已完成":
-            sp.status = "已完成"
-        elif plan_status in ("作废", "已覆盖"):
-            sp.status = "未启动"
-        else:
-            sp.status = "计划中"
+        target = ""
+        if sp.plan_id:
+            match = re.match(rf"{project}-plan-(\d+)", sp.plan_id)
+            if match:
+                candidates = sorted(plans_dir.glob(f"{match.group(1)}-*.md"))
+                if candidates:
+                    try:
+                        plan_text = candidates[0].read_text(encoding="utf-8")
+                        status_m = re.search(r"状态：([^\s·]+)", plan_text)
+                        plan_status = status_m.group(1) if status_m else ""
+                    except OSError:
+                        plan_status = ""
+                    if plan_status == "已完成":
+                        target = "已完成"
+                    elif plan_status in ("作废", "已覆盖"):
+                        target = "未启动"
+                    else:
+                        target = "计划中"
+        if target and sp.status != target:
+            sp.status = target
+            changed = True
+    return changed
 
 
 def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:

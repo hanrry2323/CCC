@@ -518,6 +518,31 @@ class TestRoundtrip:
         mss = list_milestones("clw")
         assert mss[0].subprojects[0].status == "已完成"
 
+    def test_tail_preserved_on_write(self) -> None:
+        """2026-08-16 机审缺陷4：序列化保留未识别尾部内容（blockquote 封板脚注），防巡逻写盘丢数据。"""
+        self.clw_roadmap.write_text(
+            """# clwarp 线路图
+> 项目：clw · 更新：2026-08-16
+
+## 草案池
+
+无。
+
+## 里程碑
+
+### M1 · 测试
+- 状态：进行中
+- 描述：测试。
+
+> **项目封板（2026-08-15）**：历史使命已完成。
+""",
+            encoding="utf-8",
+        )
+        create_draft("clw", "新增草案")  # 触发 _write_roadmap
+        out = self.clw_roadmap.read_text(encoding="utf-8")
+        assert "项目封板" in out
+        assert "新增草案" in out
+
     def test_promote_draft_to_plan_success(self) -> None:
         """草案→方案一键升级：从草案池取一条草案创建方案，并从草案池移除。"""
         from server.board.roadmap import promote_draft_to_plan
