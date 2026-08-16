@@ -33,7 +33,8 @@ print('\\n'.join(sorted(card_prefixes(sys.argv[1]))))
 " "$REPO_ROOT/docs/projects/registry.yaml" 2>/dev/null || true)
 
 # 有效状态（ccc-plan-027 状态机统一：方案层去「草案」，草案概念归线路图草案池；已覆盖为兼容旧值）
-VALID_STATES="已确认|部分执行|已完成|作废|已覆盖"
+# 033 F1+M4（2026-08-16）：补「已确定」（Plan 调研态）+「待验收」（卡全关待老板拍板）
+VALID_STATES="已确定|已确认|部分执行|待验收|已完成|作废|已覆盖"
 
 ERRORS=0
 WARNINGS=0

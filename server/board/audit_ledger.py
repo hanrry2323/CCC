@@ -246,3 +246,48 @@ def _now_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+# ── 批准真值账本（033 阶段 2 M6 · 2026-08-16）────────────────────────
+# 三大人审节点的「老板确认/拍板/合入」由自证盖章升级为账本证据链：
+# 每次动作追加写（不可改），校验时查 ledger 而非只信卡/方案文本。
+
+# 批准/流转动作类型
+ACTION_TYPES = ("confirm_plan", "convert", "approve_merge", "accept", "machine_audit_pass")
+
+
+def record_action(action: str, object_id: str, source: str = "", detail: str = "") -> None:
+    """记录批准/流转动作（追加写、只增不改——批准真值账本）。
+
+    Args:
+        action: confirm_plan（方案确认）/ convert（转卡）/ approve_merge（合入）/
+                accept（验收拍板）/ machine_audit_pass（机审通过）
+        object_id: 方案 plan_id 或卡 ID
+        source: 调用方（engine / approve-merge / ccc-api / tool）
+        detail: 附加信息（如被审 commit、卡 IDs）
+    """
+    _append(
+        {
+            "ts": _now_iso(),
+            "action": action,
+            "object_id": object_id,
+            "source": source,
+            "detail": detail,
+            "kind": "approval",
+        }
+    )
+
+
+def has_action(action: str, object_id: str, source: str = "") -> bool:
+    """查 ledger 是否有对应批准/流转动作记录。
+
+    source 非空时精确匹配来源；为空只按 action+object_id 匹配。
+    """
+    rows = load_ledger()
+    for r in rows:
+        if r.get("action") != action or r.get("object_id") != object_id:
+            continue
+        if source and r.get("source") != source:
+            continue
+        return True
+    return False

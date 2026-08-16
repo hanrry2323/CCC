@@ -459,6 +459,17 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
+  # 033 阶段 2 M6：机审 provenance——查 ledger 有 machine_audit_pass 记录（不只信卡文件「机审：通过」文本）
+  # 存量卡（无账本记录）→ WARN 放行 + 合入后人工复核机审来源（渐进真值化）
+  if ! "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.audit_ledger import has_action
+sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
+" 2>/dev/null; then
+    echo "[WARN] ${id}: 无 machine_audit_pass 账本记录（存量降级放行；合入后人工复核机审 provenance）" >&2
+  fi
+
   # 工作树须在 main
   current="$(git rev-parse --abbrev-ref HEAD)"
   if [[ "$current" != "main" ]]; then
@@ -497,6 +508,13 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
 
   close_card "$path"
+  # 033 阶段 2 M6：合入成功写批准真值账本（approve_merge）——「老板合入批准」不再仅靠卡头批准行
+  "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.audit_ledger import record_action
+record_action('approve_merge', '${id}', source='approve-merge', detail='${branch}')
+" 2>/dev/null || echo "[WARN] ${id}: approve_merge 账本写入失败（不影响合入，建议补记）" >&2
   sync_plan_cards "$path"
   # 机审命中率台账（v4 · 2026-08-14 复审 P1-C）：合入后关卡（无返工）→ 通过行标命中
   "$PYTHON_BIN" -c "

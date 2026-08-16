@@ -128,6 +128,7 @@ function html() {
       <button type="button" class="hub-btn" id="board-rd" style="display:none">重新分派</button>
       <button type="button" class="hub-btn" id="board-fp" style="display:none">标误报</button>
       <button type="button" class="hub-btn" id="board-audit" style="display:none">机审</button>
+      <button type="button" class="hub-btn" id="board-merge" style="display:none" title="033 合入闭环：合入批准在 2017 执行">合入批准</button>
       <button type="button" class="hub-btn" id="board-void" style="display:none">作废</button>
       <button type="button" class="hub-btn" id="board-dclose">关闭</button>
     </div>
@@ -579,6 +580,14 @@ async function showDetail(id) {
       auditBtn.style.display = base === '已回写' ? 'inline-block' : 'none';
       auditBtn.disabled = false;
     }
+    // 033 合入闭环：已回写（待合入）卡显示「合入批准」入口（动作在 2017 CLI，此处引导）
+    const mergeBtn = _root.querySelector('#board-merge');
+    if (mergeBtn) {
+      const base = String(r.status || r.state || '').split('（')[0].trim();
+      mergeBtn.style.display = base === '已回写' ? 'inline-block' : 'none';
+      mergeBtn.disabled = false;
+      mergeBtn.dataset.cardId = r.id || '';
+    }
     // 机审命中率台账：打回卡可标「误报」（回填 hit=False）
     const fpBtn = _root.querySelector('#board-fp');
     if (fpBtn) {
@@ -639,6 +648,13 @@ function bind() {
     } finally {
       btn.disabled = false;
     }
+  });
+
+  // 033 合入闭环：board-merge 引导（合入批准在 2017 执行 approve-merge.sh，需 git 环境）
+  _root.querySelector('#board-merge')?.addEventListener('click', () => {
+    const btn = _root.querySelector('#board-merge');
+    const cardId = (btn && btn.dataset.cardId) || '';
+    window.showToast?.('合入批准需在 2017 执行：scripts/approve-merge.sh ' + cardId, 'info');
   });
 
   _root.querySelector('#board-dclose').addEventListener('click', () => {

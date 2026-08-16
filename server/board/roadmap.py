@@ -154,6 +154,14 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
                     current_ms["timeline"] = stripped[6:].strip().lstrip("：").strip()
                 elif stripped.startswith("- 版本："):
                     current_ms["version"] = stripped[5:].strip().lstrip("：").strip()
+                elif stripped.startswith("- 子节点："):
+                    # 兼容旧格式「子节点」单行（如 hp M1 封板内容）——并入描述，防序列化丢数据（2026-08-16）
+                    _subnode = stripped[4:].strip().lstrip("：").strip()
+                    if _subnode:
+                        current_ms["description"] = (
+                            current_ms["description"] + "（子节点：" + _subnode + "）"
+                            if current_ms["description"] else "子节点：" + _subnode
+                        )
                 elif line.startswith("  ") and current_ms["description"] and stripped.strip():
                     # 多行描述续行：以 >=2 空格缩进且非空行 → 追加
                     current_ms["description"] += " " + stripped
@@ -702,7 +710,8 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
     data["drafts"].pop(index)
     _write_roadmap(project, data["drafts"], data["milestones"], data.get("tail", ""))
 
-    # 调用 plans.py create_plan 创建方案（节点① 老板确认 → approved=True 打批准标签）
+    # 调用 plans.py create_plan 创建方案（033 F1：promote 产出「已确定」= Plan 调研态，
+    # 老板后续在计划页确认「已确定」→「已确认」才排队转卡；approved=True 打「老板确认方案」标签）
     from server.board.plans import create_plan as _create_plan
 
     repo_root = _repo_root()
@@ -714,6 +723,7 @@ def promote_draft_to_plan(project: str, index: int = 0, author: str = "system", 
         author=author,
         tool=tool,
         approved=True,
+        initial_status="已确定",
     )
 
     if "error" in result:
@@ -807,6 +817,54 @@ def _sync_subproject_statuses(project: str, ms: Any) -> bool:
             sp.status = target
             changed = True
     return changed
+
+
+def _enrich_subproject(project: str, sp: Any) -> dict[str, Any]:
+    """富化子项目供前端卡片展示（2026-08-16 线路图页改造）。
+
+    读关联方案头部 状态 + 进度（X/Y），预计算 dev_status（未开发/进行中/已开发/已废弃），
+    把「已开发/未开发/进行中」判定收敛到后端一处，前端直接消费。
+    sp.status 三态不精确（计划中 混「已确认未开发」+「部分执行进行中」），用方案状态细分。
+    """
+    plan_status = ""
+    plan_progress: dict[str, Any] | None = None
+    if sp.plan_id:
+        match = re.match(rf"{project}-plan-(\d+)", sp.plan_id)
+        if match:
+            plans_dir = _repo_root() / "docs" / "projects" / project / "plans"
+            candidates = sorted(plans_dir.glob(f"{match.group(1)}-*.md"))
+            if candidates:
+                try:
+                    plan_text = candidates[0].read_text(encoding="utf-8")
+                    status_m = re.search(r"状态：([^\s·]+)", plan_text)
+                    plan_status = status_m.group(1) if status_m else ""
+                    prog_m = re.search(r"进度：(\d+)/(\d+)\s*\((\d+)%\)", plan_text)
+                    if prog_m:
+                        closed, total, pct = int(prog_m.group(1)), int(prog_m.group(2)), int(prog_m.group(3))
+                        plan_progress = {"total": total, "closed": closed, "progress_pct": pct}
+                except OSError:
+                    pass
+
+    # dev_status：以关联方案状态细分
+    if plan_status == "已完成":
+        dev_status = "已开发"
+    elif plan_status in ("作废", "已覆盖"):
+        dev_status = "已废弃"
+    elif plan_status == "部分执行":
+        dev_status = "进行中"
+    elif plan_status in ("已确认", "已确定"):
+        # 已确定 = Plan 调研完成态（033 F1）：调研完、未开发
+        dev_status = "未开发"
+    elif sp.plan_id:
+        dev_status = "未开发"
+    else:
+        dev_status = "未开发"
+
+    return {
+        "plan_status": plan_status,
+        "plan_progress": plan_progress,
+        "dev_status": dev_status,
+    }
 
 
 def compute_milestone_progress(project: str, title: str) -> dict[str, Any]:

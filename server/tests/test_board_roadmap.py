@@ -614,6 +614,9 @@ class TestRoundtrip:
         # 草案已移除
         drafts = list_drafts("clw")
         assert "真实升级草稿" not in [d.title for d in drafts]
+        # 033 F1：promote 产出「已确定」（Plan 调研态，非直接已确认）
+        plan_path = self.mock_root / result["plan"]["path"]
+        assert "状态：已确定" in plan_path.read_text(encoding="utf-8")
 
     def test_all_voided_milestone_returns_待启动(self) -> None:
         """全作废边界：关联方案全部作废 → 里程碑归「待启动」。"""

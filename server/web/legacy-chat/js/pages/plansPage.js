@@ -16,10 +16,12 @@
 import { apiGet, apiPost } from '../api.js';
 import { esc } from '../ui.js';
 
-const STATUSES = ['已确认', '部分执行', '已完成', '作废'];
+const STATUSES = ['已确定', '已确认', '部分执行', '待验收', '已完成', '作废'];
 const STATUS_COLORS = {
+  '已确定': '#7a6cc4',
   '已确认': '#3d9a5f',
   '部分执行': '#c47a2c',
+  '待验收': '#3d7cc4',
   '已完成': '#5a7a9a',
   '作废': '#b0563f',
 };
@@ -215,7 +217,7 @@ function renderColumn(status) {
   if (_hideClosed && (status === '已完成' || status === '作废')) return '';
   const color = STATUS_COLORS[status];
   const items = filteredPlans().filter(p => p.status === status);
-  const hints = { '已确认': '待排期', '部分执行': '已转卡', '已完成': '卡全关', '作废': '不执行' };
+  const hints = { '已确定': '待确认', '已确认': '待排期', '部分执行': '已转卡', '待验收': '待拍板', '已完成': '验收通过', '作废': '不执行' };
   return `
     <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
       <header class="pcol-h">
@@ -358,8 +360,10 @@ function bindEvents() {
 }
 
 const STATE_FLOW = {
+  '已确定': ['已确认', '作废'],
   '已确认': ['部分执行', '作废'],
-  '部分执行': ['已完成', '作废'],
+  '部分执行': ['待验收', '作废'],
+  '待验收': ['已完成', '作废'],
   '已完成': [],
   '作废': [],
 };
@@ -458,7 +462,8 @@ function renderDetail(plan) {
       ${_funcCardsHTML(plan.content)}
       <div class="pdetail-body">${renderMarkdown(plan.content)}</div>
       <div class="pdetail-actions">
-        ${plan.status !== '已完成' && plan.status !== '作废' ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        ${(plan.status === '已确认' || plan.status === '部分执行') ? `<button type="button" class="ptool-new" id="plans-detail-convert">${icon('convert')}转为任务卡</button>` : ''}
+        ${plan.status === '待验收' ? `<button type="button" class="ptool-new" id="plans-detail-accept" title="033：老板/验收席按验收标准拍板">验收拍板</button>` : ''}
         <button type="button" class="ptool-new" id="plans-detail-edit">${icon('edit')}编辑</button>
         <select id="plans-detail-status" class="plans-status-select" aria-label="修改状态">
           <option value="">改状态…</option>
@@ -478,6 +483,26 @@ function bindDetailEvents(path) {
   });
 
   _root?.querySelector('#plans-detail-convert')?.addEventListener('click', () => doConvert(path));
+
+  // 033 M4：验收拍板（待验收 → 已完成）
+  _root?.querySelector('#plans-detail-accept')?.addEventListener('click', async () => {
+    const btn = _root?.querySelector('#plans-detail-accept');
+    if (!window.confirm('确认验收拍板？方案将由「待验收」置「已完成」（老板/验收席按验收标准确认）。')) return;
+    if (btn) { btn.disabled = true; btn.textContent = '拍板中…'; }
+    try {
+      const res = await apiPost('/plans/accept', { path });
+      if (res && res.ok) {
+        window.showToast?.('验收拍板完成 → 已完成', 'success');
+        await loadPlans();
+      } else {
+        alert((res && res.error) || '验收失败');
+        if (btn) { btn.disabled = false; btn.textContent = '验收拍板'; }
+      }
+    } catch (e) {
+      alert('验收失败: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '验收拍板'; }
+    }
+  });
 
   // 人审调整动作统一化：方案「修改」——节点② 改内容/功能卡清单
   _root?.querySelector('#plans-detail-edit')?.addEventListener('click', async () => {
@@ -581,7 +606,8 @@ function _showConvertOverlay(path, items) {
       </div>
       <div class="plans-convert-list" style="max-height:340px;overflow:auto;margin:12px 0">
         ${items.map((c, i) => `
-          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid #242d42">
+          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid #242d42;align-items:flex-start">
+            <input type="checkbox" class="plans-convert-check" data-title="${esc(c.title)}" checked style="margin-top:3px;flex:none" title="取消勾选=本张后续再转（逐步投入）">
             <span style="flex:none;width:22px;height:22px;border-radius:50%;background:#2a354d;color:#8b93a7;font-size:11px;display:flex;align-items:center;justify-content:center">${i + 1}</span>
             <div style="min-width:0">
               <div style="font-weight:600;color:#d6dce8">${esc(c.title)}</div>
@@ -589,7 +615,7 @@ function _showConvertOverlay(path, items) {
             </div>
           </div>`).join('')}
       </div>
-      <div style="font-size:12px;color:#77809a;margin-bottom:12px">确认后一次生成 ${items.length} 张任务卡进看板「待分派」，方案自动推进「部分执行」。</div>
+      <div style="font-size:12px;color:#77809a;margin-bottom:12px">默认全选。2026-08-16 子项目层：取消勾选 = 该功能卡本批不转，后续按子项目逐步投入。</div>
       <div class="plans-form-actions">
         <button type="button" class="ptool-btn-plain" id="plans-convert-cancel2">取消</button>
         <button type="button" class="ptool-new" id="plans-convert-ok">${icon('convert')}确认转卡（${items.length} 张）</button>
@@ -605,7 +631,18 @@ function _showConvertOverlay(path, items) {
     btn.disabled = true;
     btn.textContent = '转卡中…';
     try {
-      const result = await apiPost('/plans/convert', { path });
+      // 2026-08-16 逐步投入：收集勾选的功能卡标题，取消勾选=本批不转（slices 子集）
+      const checks = Array.from(overlay.querySelectorAll('.plans-convert-check'));
+      const selected = checks.filter((c) => c.checked).map((c) => c.dataset.title).filter(Boolean);
+      if (!selected.length) {
+        alert('未选择任何功能卡（至少勾选一张才能转卡）');
+        btn.disabled = false;
+        btn.textContent = `确认转卡（${items.length} 张）`;
+        return;
+      }
+      const body = { path };
+      if (selected.length < checks.length) body.slices = selected; // 只转选中子集 → 逐步投入
+      const result = await apiPost('/plans/convert', body);
       overlay.style.display = 'none';
       if (result.ok) {
         window.showToast ? window.showToast(`转卡成功：${(result.cards || []).join(', ')}`, 'success') : alert('转卡成功！生成卡片：' + (result.cards || []).join(', '));
@@ -841,10 +878,22 @@ function renderMarkdown(md) {
 
 // ── mount / unmount ──
 
+/** 2026-08-16 下钻深链：#/plans?plan=<plan-id> → 打开对应方案详情（从线路图子项目下钻） */
+function _applyDeepLink() {
+  const m = (location.hash || '').match(/[?&]plan=([^&]+)/);
+  if (!m) return;
+  const planId = decodeURIComponent(m[1]);
+  const target = _plans.find((p) => p.id === planId);
+  if (target && target.path && target.path !== _detailPath) {
+    showDetail(target.path);
+  }
+}
+
 export async function mountPlans(root) {
   _root = root;
   _root.innerHTML = '<div class="plans-loading">加载方案池…</div>';
   await loadPlans();
+  _applyDeepLink();
   _timer = setInterval(loadPlans, 30000); // 30s 自动刷新
 }
 
