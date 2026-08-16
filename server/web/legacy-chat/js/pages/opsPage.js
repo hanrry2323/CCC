@@ -13,10 +13,11 @@
  */
 
 import { apiGet, apiPost } from '../api.js';
-import { esc } from '../ui.js';
+import { esc, setHtml } from '../ui.js';
 
 let _root = null;
 let _timer = null;
+let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 
 function agoText(ts) {
   const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
@@ -131,7 +132,7 @@ function renderProjects(roadmaps, details, cards, loopData, mergeData) {
     findingsBy[proj] = (findingsBy[proj] || 0) + 1;
   }
   if (!roadmaps.length) {
-    el.innerHTML = '<div class="ops-empty">无业务线路数据（roadmap.md 未配置）</div>';
+    setHtml(el, '<div class="ops-empty">无业务线路数据（roadmap.md 未配置）</div>');
     return;
   }
   const cardsHtml = [];
@@ -152,7 +153,7 @@ function renderProjects(roadmaps, details, cards, loopData, mergeData) {
       </div>
     </div>`);
   }
-  el.innerHTML = cardsHtml.length ? cardsHtml.join('') : '<div class="ops-empty">项目均无业务线路数据</div>';
+  setHtml(el, cardsHtml.length ? cardsHtml.join('') : '<div class="ops-empty">项目均无业务线路数据</div>');
 }
 
 /* ── 人审闸门（第三步）─────────────────────── */
@@ -184,7 +185,7 @@ function renderHumanGates(roadmaps, plansData, merge) {
   const draftN = Object.values(draftGroups).flat().length;
   const g1cnt = _root.querySelector('#ops-gate1-count');
   if (g1cnt) g1cnt.textContent = String(draftN);
-  draftsEl.innerHTML = draftN
+  setHtml(draftsEl, draftN
     ? Object.entries(draftGroups).map(([proj, items]) => `
       <div class="ops-subgroup">
         <h5>${esc(proj)}（${items.length}）</h5>
@@ -195,7 +196,7 @@ function renderHumanGates(roadmaps, plansData, merge) {
             <a class="ops-goto-board" href="#/plans" title="去计划页确认">去处理 →</a>
           </div>`).join('')}
       </div>`).join('')
-    : '<div class="ops-empty">草案池空 🎉 无需确认</div>';
+    : '<div class="ops-empty">草案池空 🎉 无需确认</div>');
 
   // ② 出卡待办（033）：已确定（待老板确认→已确认）+ 已确认（待转卡）
   const plans = (plansData && plansData.plans) || [];
@@ -203,7 +204,7 @@ function renderHumanGates(roadmaps, plansData, merge) {
   const confirmed = plans.filter((p) => p.status === '已确认');
   const g2cnt = _root.querySelector('#ops-gate2-count');
   if (g2cnt) g2cnt.textContent = String(determined.length + confirmed.length);
-  plansEl.innerHTML = (determined.length || confirmed.length)
+  setHtml(plansEl, (determined.length || confirmed.length)
     ? [
         ...determined.slice(0, 5).map((p) => `
           <div class="ops-review-item">
@@ -222,13 +223,13 @@ function renderHumanGates(roadmaps, plansData, merge) {
             <a class="ops-goto-board" href="#/plans" title="去计划页转卡">去处理 →</a>
           </div>`),
       ].join('')
-    : '<div class="ops-empty">无出卡待办 🎉</div>';
+    : '<div class="ops-empty">无出卡待办 🎉</div>');
 
   // ③ 待合入批准 = ready_for_merge
   const mergeCards = ((merge && merge.cards) || []).filter((c) => !String(c.approval || '').includes('合入批准'));
   const g3cnt = _root.querySelector('#ops-gate3-count');
   if (g3cnt) g3cnt.textContent = String(mergeCards.length);
-  mergeEl.innerHTML = mergeCards.length
+  setHtml(mergeEl, mergeCards.length
     ? mergeCards.slice(0, 10).map((c) => `
       <div class="ops-review-item">
         <span class="ops-todo-type pending">待合入</span>
@@ -237,13 +238,13 @@ function renderHumanGates(roadmaps, plansData, merge) {
         <span class="ops-review-proj">${esc(c.project || '')}</span>
         <a class="ops-goto-board" href="#/board" title="去看板合入批准">去处理 →</a>
       </div>`).join('')
-    : '<div class="ops-empty">无待合入卡 🎉</div>';
+    : '<div class="ops-empty">无待合入卡 🎉</div>');
 
   // ④ 待验收拍板（033 新增）：待验收方案（卡全关待老板/验收席拍板）
   const awaitingAccept = plans.filter((p) => p.status === '待验收');
   const g4cnt = _root.querySelector('#ops-gate4-count');
   if (g4cnt) g4cnt.textContent = String(awaitingAccept.length);
-  acceptEl.innerHTML = awaitingAccept.length
+  setHtml(acceptEl, awaitingAccept.length
     ? awaitingAccept.slice(0, 10).map((p) => `
       <div class="ops-review-item">
         <span class="ops-todo-type pending">待拍板</span>
@@ -252,7 +253,7 @@ function renderHumanGates(roadmaps, plansData, merge) {
         <span class="ops-review-proj">${esc(p.project || '')}</span>
         <a class="ops-goto-board" href="#/plans" title="去计划页验收拍板">去处理 →</a>
       </div>`).join('')
-    : '<div class="ops-empty">无待验收方案 🎉</div>';
+    : '<div class="ops-empty">无待验收方案 🎉</div>');
 }
 
 /* ── ② diff 审查 + 代码健康发现 ──────────────── */
@@ -298,9 +299,9 @@ function renderReview(mergeData, cards) {
       <span class="ops-review-proj">${esc(c.project || '')}</span>
       <span class="ops-todo-type">机审中</span>
     </div>`).join('') : '<div class="ops-empty">无机审中</div>'}</div>`);
-  el.innerHTML = htmlParts.length
+  setHtml(el, htmlParts.length
     ? htmlParts.join('')
-    : '<div class="ops-empty">无待审查项 🎉</div>';
+    : '<div class="ops-empty">无待审查项 🎉</div>');
 }
 
 /* 本会话已留档的 finding 标题（sessionStorage 持久化，防重复处理） */
@@ -329,7 +330,7 @@ function renderFindings(loopData) {
   const scanEl = _root.querySelector('#ops-scan-at');
   if (scanEl) scanEl.textContent = latest.mtime ? `上次巡检 ${agoText(latest.mtime)}` : '';
   if (!findings.length) {
-    el.innerHTML = '<div class="ops-empty">代码健康无发现 🎉 项目治理干净</div>';
+    setHtml(el, '<div class="ops-empty">代码健康无发现 🎉 项目治理干净</div>');
     return;
   }
   const adopted = _loadAdopted();
@@ -345,7 +346,7 @@ function renderFindings(loopData) {
     const done = adopted.has(f.title || '');
     return `<button type="button" class="hub-btn ops-act ${done ? 'adopted' : 'adopt'}" data-find="${esc(f.title || '')}" data-report="${esc(f._report)}" title="标记已处理（/loop/adopt 留档）" ${done ? 'disabled' : ''}>${done ? '已留档 ✓' : '已处理'}</button>`;
   };
-  el.innerHTML = Object.entries(byProj).map(([proj, items]) => `
+  setHtml(el, Object.entries(byProj).map(([proj, items]) => `
     <div class="ops-subgroup">
       <h5>${esc(proj)}（${items.length}）</h5>
       ${items.slice(0, 10).map((f) => `
@@ -356,7 +357,7 @@ function renderFindings(loopData) {
           ${f._cmd ? `<button type="button" class="hub-btn ops-act" data-cmd="${esc(f._cmd)}" title="复制转卡命令">转卡</button>` : ''}
           ${adoptBtn(f)}
         </div>`).join('')}
-    </div>`).join('');
+    </div>`).join(''));
   el.querySelectorAll('button[data-cmd]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const cmd = btn.getAttribute('data-cmd') || '';
@@ -413,7 +414,7 @@ function renderFailures(failuresData) {
   const top = data.top_reasons || [];
   const stageLabel = { run: '执行失败', audit: '机审不通过' };
   const phaseLabel = (p) => stageLabel[p] || '打回';
-  el.innerHTML = `
+  setHtml(el, `
     <div class="ops-subgroup">
       <h5>原因 Top（共 ${data.total_fail_events || 0} 条失败事件）</h5>
       ${top.length ? top.slice(0, 5).map((r) => `
@@ -430,7 +431,7 @@ function renderFailures(failuresData) {
           <span class="ops-todo-type returned">${esc(phaseLabel(f.phase))}</span>
           <span class="ops-review-title" title="${esc(f.problem)}">${esc(String(f.problem || '').slice(0, 40))}${String(f.problem || '').length > 40 ? '…' : ''}</span>
         </div>`).join('') : '<div class="ops-empty">无最近失败 🎉</div>'}
-    </div>`;
+    </div>`);
 }
 
 function renderLoopProgress(loopData, cards, mergeData) {
@@ -445,18 +446,19 @@ function renderLoopProgress(loopData, cards, mergeData) {
     [col('机审'), '机审'],
     [((mergeData && mergeData.count) || 0), '合入'],
   ];
-  el.innerHTML = `<div class="ops-loop-progress">
+  setHtml(el, `<div class="ops-loop-progress">
     ${segs.map(([n, label], i) => `
       <span class="ops-loop-seg ${n ? 'on' : ''}">
         <b>${n}</b>${label}
         ${i < segs.length - 1 ? '<i>→</i>' : ''}
       </span>`).join('')}
-  </div>`;
+  </div>`);
 }
 
 /* ── poll ────────────────────────────────────── */
 
 async function poll() {
+  if (_disposed || !_root) return;
   const [roadmapsData, loop, merge, cardsData, plansConfirmed, failuresData] = await Promise.all([
     apiGet('/board/roadmap').catch(() => null),
     apiGet('/loop/findings').catch(() => null),
@@ -465,13 +467,16 @@ async function poll() {
     apiGet('/plans/list?status=已确认').catch(() => null),
     apiGet('/ops/failures').catch(() => null),
   ]);
+  if (_disposed || !_root) return; // 卸载后回来不再写 DOM
   const cards = (cardsData && cardsData.cards) || [];
   const roadmaps = (roadmapsData && roadmapsData.roadmaps) || [];
   const details = {};
   if (roadmaps.length) {
-    // P1#15：详情改用 /roadmap/{proj}（per-project 新模型），与 roadmapPage 同真值
+    // P1#15：详情改用 /roadmap/{proj}（per-project 新模型），与 roadmapPage 同真值；
+    // M2 缓存：/roadmap/{proj} TTL 20s（见 api.js CACHEABLE_PREFIXES），消 N+1 重复拉
     const dets = await Promise.all(roadmaps.map((rm) =>
       apiGet(`/roadmap/${encodeURIComponent(rm.project)}`).catch(() => null)));
+    if (_disposed || !_root) return;
     roadmaps.forEach((rm, i) => {
       if (dets[i] && !dets[i].error) details[rm.project] = dets[i];
     });
@@ -482,6 +487,7 @@ async function poll() {
   renderFindings(loop);
   renderLoopProgress(loop, cards, merge);
   renderFailures(failuresData);
+  if (_disposed || !_root) return;
   const cnt = _root.querySelector('#ops-todo-count');
   if (cnt) {
     const reviewN = ((merge && merge.cards) || []).length + cards.filter((c) => (c.board_column || c.state) === '打回').length;
@@ -491,8 +497,9 @@ async function poll() {
   }
 }
 
-export async function mountOps(el) {
+export function mountOps(el, ctx = {}) {
   _root = el;
+  _disposed = false;
   el.innerHTML = html();
   el.querySelector('#ops-refresh')?.addEventListener('click', async () => {
     const btn = el.querySelector('#ops-refresh');
@@ -500,11 +507,16 @@ export async function mountOps(el) {
     await poll();
     btn.disabled = false;
   });
-  await poll();
-  _timer = setInterval(poll, 15000);
+  // M3 非阻塞：同步渲染骨架 → 后台拉数据
+  poll();
+  // M4 降频：15s → 30s（M2 缓存已让数据快，降频降服务器负载）
+  _timer = setInterval(() => {
+    if (!_disposed && document.visibilityState === 'visible') poll();
+  }, 30000);
 }
 
 export function unmountOps() {
+  _disposed = true;
   if (_timer) {
     clearInterval(_timer);
     _timer = null;

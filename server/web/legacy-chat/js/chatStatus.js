@@ -168,6 +168,8 @@ export function startHealthPing(intervalMs) {
   if (_pingTimer != null) return;
   const ms = intervalMs || HEALTH_PING_MS;
   const ping = async () => {
+    // M3：页面不可见时不打健康轮询（省服务器请求；回来立即打一次恢复横幅判定）
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     try {
       const r = await fetch(agentUrl('/health'));
       if (!r.ok) {

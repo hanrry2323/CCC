@@ -1872,9 +1872,33 @@ def _filter_log_line(raw: str) -> str | None:
 class _APIHandler(BaseHTTPRequestHandler):
     """HTTP API 请求处理器。"""
 
+    # HTTP/1.1 keep-alive（2026-08-17）：默认是 HTTP/1.0 + Connection: close，
+    # 每个请求一条新 TCP 连接——浏览器同源连接池（~6 并发）排队 + abort 窗口放大。
+    # JSON/静态响应都带 Content-Length，keep-alive 帧完整，可安全复用连接。
+    # SSE 无限流（无 Content-Length）必须显式 Connection: close（见各 stream handler）。
+    protocol_version = "HTTP/1.1"
+
     # 禁用父类日志（测试不污染 stdout）
     def log_message(self, fmt, *args):
         pass
+
+    def handle(self) -> None:
+        """覆写父类 handle()，一处静默客户端断开（根治 traceback 噪音）。
+
+        背景：Python 3.14 的 handle_one_request 只 catch TimeoutError；浏览器
+        导航/切换 abort 在途请求产生的 ConnectionResetError（写 body 时对方已断、
+        parse_request 阶段收到 RST）会沿 do_GET/do_POST → handle_error 打完整
+        traceback。客户端断开是正常事件，这里统一静默。
+
+        settimeout(30)：keep-alive 空闲连接回收阀——连接 30s 无请求即读请求行
+        超时，close_connection=True 关线程，防止空闲 keep-alive 连接堆积线程。
+        """
+        try:
+            self.connection.settimeout(30)
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError, OSError, TimeoutError):
+            # 客户端 abort / 空闲超时：正常事件，静默关闭连接
+            self.close_connection = True
 
     def _send_json(self, data: dict, status: int = 200):
         status_line, content_type, body = _json_response(data, status)
@@ -3593,7 +3617,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Connection", "close")
         self.end_headers()
 
         def emit(event: str, data: dict) -> None:
@@ -4073,7 +4097,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         self.send_response(resp.status)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Connection", "close")
         self.end_headers()
         try:
             while True:
@@ -4089,8 +4113,6 @@ class _APIHandler(BaseHTTPRequestHandler):
                 conn.close()
             except Exception:
                 pass
-            return
-        self._send_404()
 
     def _match_thread_route(self, path: str, kind: str) -> tuple[str, str] | None:
         """解析 /projects/<project>/threads/<thread>[/<kind>]（kind=delete|rename 时要求路径后缀）。

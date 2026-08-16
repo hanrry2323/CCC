@@ -14,6 +14,7 @@ import { apiGet, apiPost } from '../api.js';
 import { esc } from '../ui.js';
 
 let _root = null;
+let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _timer = null;
 
 function agoText(ts) {
@@ -211,8 +212,10 @@ function bindButtons(el) {
 }
 
 async function poll() {
+  if (_disposed || !_root) return;
   try {
     const data = await apiGet('/ops/dsh-findings');
+    if (_disposed || !_root) return;
     const reports = (data && data.dsh_reports) || [];
     const latest = reports[0] || {};
     const findings = (latest.findings || []).map((f) => ({ ...f, _ts: f.ts || latest.mtime || 0 }));
@@ -233,16 +236,18 @@ async function poll() {
   }
 }
 
-export function mountDsh(el) {
+export function mountDsh(el, ctx = {}) {
   _root = el;
+  _disposed = false;
   _root.innerHTML = html();
   const refresh = _root.querySelector('#dsh-refresh');
   if (refresh) refresh.addEventListener('click', poll);
   poll();
-  _timer = setInterval(poll, 30000); // DSH 低频，30s 轮询
+  _timer = setInterval(() => { if (!_disposed && document.visibilityState === 'visible') poll(); }, 30000); // DSH 低频，30s 轮询
 }
 
 export function unmountDsh() {
+  _disposed = true;
   if (_timer) { clearInterval(_timer); _timer = null; }
   _root = null;
 }

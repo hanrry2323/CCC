@@ -668,7 +668,8 @@ class TestPlansPageContract:
 
     def test_exports_mount(self) -> None:
         text = self._page()
-        assert "export async function mountPlans" in text
+        # 2026-08-17 M3 非阻塞 mount：同步渲染骨架 + 后台拉数据，切路由不再 await 网络阻塞
+        assert "export function mountPlans" in text
         assert "export function unmountPlans" in text
 
     def test_api_endpoints(self) -> None:

@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { generateId, desktopThreadId } from './utils.js';
-import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects } from './api.js';
+import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects, pageScopeAbort, setRouteSwitching } from './api.js';
 import { initChatStatus } from './chatStatus.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -11,7 +11,7 @@ import {
   createEmptyState,
 } from './components/message.js';
 import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
-import { initRouter, navigate } from './router.js';
+import { initRouter, navigate, currentRoute } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
@@ -184,43 +184,55 @@ function switchToProjectTab(projectId) {
   });
 }
 
+let _routeGen = 0;
+
 async function onHubRoute(route) {
   // T46 A1 护栏：路由切换 / 视图 mount-unmount 不得调用 cancelStream/abort。
   // 流的取消仅允许用户主动点停止（composer cancel-btn → cancelStream），或
   // 关闭 tab（close-tab 里 cancelStream）。切到 #/board 再回 #/chat，活跃流
   // 保持接收、DOM 容器不被重建（showTabContent 从 tab.messages 增量重绘）。
   // 违反此约定的代码 = 切换即中断的回归源。
-  const TITLES = {
-    chat: 'CCC · 对话', board: 'CCC · 看板', plans: 'CCC · 计划',
-    roadmap: 'CCC · 线路图', console: 'CCC · 控制台', ops: 'CCC · 运维',
-    dsh: 'CCC · DSH 巡检',
-  };
-  document.title = TITLES[route] || 'CCC';
-  // 路由→页面注册表（P1-7 重构 2026-08-15）：加新路由只需补一条 + index.html 空壳，
-  // 不再手写 if/else 逐个 unmount——消灭「漏 unmount 残留定时器」的雷。
-  const PAGES = {
-    board: { mount: mountBoard, unmount: unmountBoard },
-    plans: { mount: mountPlans, unmount: unmountPlans },
-    roadmap: { mount: mountRoadmap, unmount: unmountRoadmap },
-    console: { mount: mountConsole, unmount: unmountConsole },
-    ops: { mount: mountOps, unmount: unmountOps },
-    dsh: { mount: mountDsh, unmount: unmountDsh },
-  };
-  if (route === 'chat') {
-    for (const name of Object.keys(PAGES)) PAGES[name].unmount();
-    // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
-    import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
-    return;
+  // 2026-08-17 M3：只 abort「页面级 GET」作用域（pageScopeAbort），不动流/写操作。
+  const gen = ++_routeGen;
+  setRouteSwitching(true);   // api.js：切换窗口内网络错误静默（不弹「网络中断」）
+  pageScopeAbort();          // api.js：中断旧页全部页面级在途 GET（快速连点防洪峰）
+  try {
+    const TITLES = {
+      chat: 'CCC · 对话', board: 'CCC · 看板', plans: 'CCC · 计划',
+      roadmap: 'CCC · 线路图', console: 'CCC · 控制台', ops: 'CCC · 运维',
+      dsh: 'CCC · DSH 巡检',
+    };
+    document.title = TITLES[route] || 'CCC';
+    // 路由→页面注册表（P1-7 重构 2026-08-15）：加新路由只需补一条 + index.html 空壳，
+    // 不再手写 if/else 逐个 unmount——消灭「漏 unmount 残留定时器」的雷。
+    const PAGES = {
+      board: { mount: mountBoard, unmount: unmountBoard },
+      plans: { mount: mountPlans, unmount: unmountPlans },
+      roadmap: { mount: mountRoadmap, unmount: unmountRoadmap },
+      console: { mount: mountConsole, unmount: unmountConsole },
+      ops: { mount: mountOps, unmount: unmountOps },
+      dsh: { mount: mountDsh, unmount: unmountDsh },
+    };
+    if (route === 'chat') {
+      for (const name of Object.keys(PAGES)) PAGES[name].unmount();
+      // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
+      import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
+      return;
+    }
+    const page = PAGES[route];
+    if (!page) {
+      for (const name of Object.keys(PAGES)) PAGES[name].unmount();
+      return;
+    }
+    for (const name of Object.keys(PAGES)) {
+      if (name !== route) PAGES[name].unmount();
+    }
+    // M3 非阻塞 mount：mount 内部同步渲染骨架、后台拉数据（不 await 网络），
+    // 切换立即返回；数据到达时若令牌已失效（_disposed）则丢弃。
+    page.mount(document.getElementById('view-' + route), { gen });
+  } finally {
+    setRouteSwitching(false);
   }
-  const page = PAGES[route];
-  if (!page) {
-    for (const name of Object.keys(PAGES)) PAGES[name].unmount();
-    return;
-  }
-  for (const name of Object.keys(PAGES)) {
-    if (name !== route) PAGES[name].unmount();
-  }
-  await page.mount(document.getElementById('view-' + route));
 }
 
 function applyShellMode() {
@@ -509,7 +521,9 @@ async function startConversationLongPoll(sid) {
   const pid = state.get('currentProject') || 'ccc';
 
   while (!abort.signal.aborted) {
-    if (document.visibilityState !== 'visible' || state.get('activeTabId') === '') {
+    // M3：仅在对话路由 + 页面可见时轮询（非 chat 页/后台挂起，省服务器常驻长轮询；
+    // 光标在 api.js._historyCursors 前端态，切回 chat 恢复续拉增量，不丢上下文）
+    if (document.visibilityState !== 'visible' || state.get('activeTabId') === '' || currentRoute() !== 'chat') {
       await new Promise(r => setTimeout(r, 2000));
       continue;
     }

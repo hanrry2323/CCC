@@ -14,6 +14,7 @@ import { esc } from '../roadmapTimeline.js';
 
 let _root = null;
 let _timer = null;
+let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _rmFilter = 'all';
 let _currentProject = null; // 二级页当前项目（闪退修复：loadRoadmap/定时器尊重当前视图，不再跳回一级）
 
@@ -393,6 +394,7 @@ function _bindPanelEvents(container, project) {
 }
 
 async function openProject(project) {
+  if (_disposed || !_root) return;
   _currentProject = project;
   const back = _root.querySelector('#roadmap-back');
   const body = _root.querySelector('#roadmap-body');
@@ -400,6 +402,7 @@ async function openProject(project) {
   body.innerHTML = '<div class="board-empty">加载线路图…</div>';
   try {
     const detail = await apiGet(`/roadmap/${encodeURIComponent(project)}`);
+    if (_disposed || !_root) return; // 卸载后回来不再写 DOM（空指针守卫）
     body.innerHTML = `
       <div class="rm2">
         ${_overviewHTML(detail)}
@@ -582,7 +585,7 @@ function _overviewHTML(detail) {
 }
 
 async function loadRoadmap() {
-  if (!_root) return;
+  if (_disposed || !_root) return;
   try {
     // 闪退修复：若在二级页，刷新当前项目详情（不跳回一级概览）
     if (_currentProject) {
@@ -590,8 +593,10 @@ async function loadRoadmap() {
       return;
     }
     const data = await apiGet('/board/roadmap');
+    if (_disposed || !_root) return; // 卸载后回来不再写 DOM
     renderOverview(data);
   } catch (err) {
+    if (_disposed || !_root) return;
     const host = _root.querySelector('#roadmap-body');
     if (host) host.innerHTML = '<div class="board-empty">线路图加载失败: ' + esc(err.message || String(err)) + '</div>';
   }
@@ -623,21 +628,25 @@ function bind() {
   });
 }
 
-export async function mountRoadmap(el) {
-  if (_root) {
-    await loadRoadmap();
+export function mountRoadmap(el, ctx = {}) {
+  if (_disposed === false && _root) {
+    // 未卸载的重挂：只刷新数据（DOM 保留，避免重建交互状态）
+    loadRoadmap();
     return;
   }
   _root = el;
+  _disposed = false;
   el.innerHTML = html();
   bind();
-  await loadRoadmap();
+  // M3 非阻塞：同步渲染骨架 → 后台拉数据
+  loadRoadmap();
   // 2026-08-16 bug 修复：二级页不被自动刷新冲刷（openProject 重渲染会闪/丢交互状态），
   // 一级页仍自动刷新，二级页刷新走手动「刷新」按钮。
-  _timer = setInterval(() => { if (!_currentProject) loadRoadmap().catch(() => {}); }, 30000);
+  _timer = setInterval(() => { if (!_disposed && !_currentProject) loadRoadmap().catch(() => {}); }, 30000);
 }
 
 export function unmountRoadmap() {
+  _disposed = true;
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
@@ -647,4 +656,6 @@ export function unmountRoadmap() {
     _root._rmObserver.disconnect();
     _root._rmObserver = null;
   }
+  _root = null;
+  _currentProject = null; // 切走再切回回到总览（M3：状态清理）
 }

@@ -19,6 +19,7 @@ import { apiGet } from '../api.js';
 import { esc, STATE_TONES } from '../ui.js';
 
 let _root = null;
+let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _timer = null;    // 系统/工程 15s
 let _rtimer = null;   // 后台任务 8s
 
@@ -311,6 +312,7 @@ function renderSettings(config, concurrency) {
 /* ── 轮询 ───────────────────────────────────── */
 
 async function pollSystem() {
+  if (_disposed || !_root) return;
   const [summary, ports, relay, hp, kb, states, ready, config, concurrency] = await Promise.all([
     apiGet('/ops/summary').catch(() => null),
     apiGet('/ops/ports').catch(() => null),
@@ -322,6 +324,7 @@ async function pollSystem() {
     apiGet('/config').catch(() => null),
     apiGet('/ops/concurrency').catch(() => null),
   ]);
+  if (_disposed || !_root) return; // 卸载后回来不再写 DOM
   renderOverview(summary, relay);
   renderNodes(summary, hp);
   renderPorts(ports);
@@ -333,15 +336,18 @@ async function pollSystem() {
 }
 
 async function pollRunning() {
+  if (_disposed || !_root) return;
   const [tasks, concurrency] = await Promise.all([
     apiGet('/tasks/running').catch(() => null),
     apiGet('/ops/concurrency').catch(() => null),
   ]);
+  if (_disposed || !_root) return; // 卸载后回来不再写 DOM
   renderRunning(tasks, concurrency);
 }
 
-export async function mountConsole(el) {
+export function mountConsole(el, ctx = {}) {
   _root = el;
+  _disposed = false;
   el.innerHTML = html();
   el.querySelector('#console-refresh')?.addEventListener('click', async () => {
     const btn = el.querySelector('#console-refresh');
@@ -349,12 +355,14 @@ export async function mountConsole(el) {
     await Promise.all([pollSystem(), pollRunning()]);
     btn.disabled = false;
   });
-  await Promise.all([pollSystem(), pollRunning()]);
-  _timer = setInterval(pollSystem, 15000);
-  _rtimer = setInterval(pollRunning, 8000);
+  // M3 非阻塞：后台拉数据
+  Promise.all([pollSystem(), pollRunning()]);
+  _timer = setInterval(() => { if (!_disposed && document.visibilityState === 'visible') pollSystem(); }, 15000);
+  _rtimer = setInterval(() => { if (!_disposed && document.visibilityState === 'visible') pollRunning(); }, 8000);
 }
 
 export function unmountConsole() {
+  _disposed = true;
   if (_timer) {
     clearInterval(_timer);
     _timer = null;

@@ -46,6 +46,7 @@ function projectColor(prefix) {
 
 let _root = null;
 let _timer = null;
+let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _plans = [];
 let _cardStates = {};   // card_id → 实时状态（关联卡徽标）
 let _planCardStates = {}; // plan_path → {total, cols}（流程条，/plans/card-states）
@@ -56,6 +57,7 @@ let _projectDisplay = {}; // prefix → 展示名
 let _detailPath = null;  // 当前打开的详情路径，null=列表视图
 let _formOpen = false;   // 新建表单是否打开
 let _hideClosed = true;  // 默认只看未完成（隐藏已完成/作废列，给活跃列腾宽度）
+let _colSigs = {};       // status → 列渲染签名（M4：数据没变不重建列 DOM）
 
 // ── 工具 ──
 
@@ -118,25 +120,38 @@ async function loadCards() {
 }
 
 async function loadPlans() {
-  if (!_projects.length) await loadProjects();
-  await loadCards();
   try {
-    const [data, states] = await Promise.all([
+    // M2：并行拉（原 /projects→/cards 串行 + plans 两个接口）；M2 缓存让命中零网络
+    const [projData, cardsData, listData, statesData] = await Promise.all([
+      _projects.length ? Promise.resolve() : apiGet('/projects'),
+      apiGet('/cards?page_size=500'),
       apiGet('/plans/list'),
       apiGet('/plans/card-states').catch(() => null),
     ]);
-    _plans = data.plans || [];
-    _planCardStates = (states && states.states) || {};
+    if (_disposed) return; // 卸载后回来不再写 DOM
+    if (projData) {
+      _projects = (projData.projects || []).filter(p => p.is_taskable && p.prefix);
+      _projectDisplay = {};
+      for (const p of _projects) _projectDisplay[p.prefix] = p.display || p.name || p.prefix;
+    }
+    _cardStates = {};
+    for (const c of (cardsData.cards || [])) {
+      if (c && c.id) _cardStates[String(c.id).toLowerCase()] = c.state || '';
+    }
+    _plans = (listData.plans || []);
+    _planCardStates = (statesData && statesData.states) || {};
   } catch (e) {
     console.error('plans: load failed', e);
     _plans = [];
     _planCardStates = {};
   }
+  if (_disposed) return;
   if (_detailPath || _formOpen) {
     updateListOnly();
     return;
   }
   render();
+  _applyDeepLink(); // 数据到达后应用深链（M3 非阻塞：首帧 _plans 已就绪）
 }
 
 // ── 筛选（客户端，列即状态） ──
@@ -213,24 +228,6 @@ function renderPlanItem(plan) {
     </article>`;
 }
 
-function renderColumn(status) {
-  if (_hideClosed && (status === '已完成' || status === '作废')) return '';
-  const color = STATUS_COLORS[status];
-  const items = filteredPlans().filter(p => p.status === status);
-  const hints = { '已确定': '待确认', '已确认': '待排期', '部分执行': '已转卡', '待验收': '待拍板', '已完成': '验收通过', '作废': '不执行' };
-  return `
-    <section class="pcol" data-status="${esc(status)}" data-drop-status="${esc(status)}">
-      <header class="pcol-h">
-        <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
-        <span class="pcol-hint">${hints[status] || ''}</span>
-        <span class="pcol-count">${items.length}</span>
-      </header>
-      <div class="pcol-body">
-        ${items.length ? items.map(renderPlanItem).join('') : `<div class="pcol-empty"><div class="pcol-empty-line"></div><span>暂无方案</span></div>`}
-      </div>
-    </section>`;
-}
-
 function renderToolbar() {
   const projBtns = ['', ..._projects.map(p => p.prefix)].map(prefix => {
     const label = prefix ? (_projectDisplay[prefix] || prefix) : '全部';
@@ -250,28 +247,84 @@ function renderToolbar() {
     </div>`;
 }
 
-function render() {
-  if (!_root) return;
-  _root.innerHTML = `
+/** 静态壳：toolbar + 列容器骨架 + detail + overlay。只建一次（M4），数据变化只刷 #plans-flow。 */
+function shellHTML() {
+  return `
     <div class="plans-page">
       ${renderToolbar()}
       <div class="plans-flow" id="plans-flow">
-        ${STATUSES.map(renderColumn).join('')}
+        ${STATUSES.map((s) => `<section class="pcol" data-status="${esc(s)}" data-drop-status="${esc(s)}"></section>`).join('')}
       </div>
       <div class="plans-detail" id="plans-detail" style="display:none"></div>
       <div class="plans-form-overlay" id="plans-form-overlay" style="display:none"></div>
     </div>`;
-  bindEvents();
+}
+
+/** 列渲染签名：数据没变 → 复用列 DOM，不重建（根治整页 innerHTML 全量重建）。 */
+function columnSig(status) {
+  const items = filteredPlans().filter((p) => p.status === status);
+  const sig = items
+    .map((p) => {
+      const acc = p.acceptance || {};
+      const cs = _planCardStates[p.path] || { total: 0, cols: {} };
+      return [
+        p.path, p.status,
+        acc.done + '/' + acc.total,
+        (cs.total || 0) + ':' + Object.entries(cs.cols || {}).sort().map(([c, n]) => c + n).join(''),
+        _cardStates[String(p.id || p.num || '').toLowerCase()] || '',
+      ].join('|');
+    })
+    .join('\n');
+  return sig;
+}
+
+/** 只刷列表列 + 总数（toolbar 静态；M4 列签名去抖）。 */
+function renderFlow() {
+  if (_disposed || !_root) return;
+  const flowEl = _root.querySelector('#plans-flow');
+  if (!flowEl) return;
+  const list = filteredPlans(); // 每 render 只算 1 次（原 renderColumn/toolbar 各算 1 次，共 7 次）
+  const countEl = _root.querySelector('.plans-total');
+  if (countEl) countEl.textContent = String(list.length);
+  // 每列：签名变了才重建该列；未变复用 DOM（拖拽/事件不重绑）
+  for (const status of STATUSES) {
+    const section = flowEl.querySelector(`.pcol[data-status="${esc(status)}"]`);
+    if (!section) continue;
+    if (_hideClosed && (status === '已完成' || status === '作废')) {
+      if (section.style.display !== 'none') section.style.display = 'none';
+      continue;
+    }
+    section.style.display = '';
+    const sig = columnSig(status);
+    if (_colSigs[status] === sig) continue;
+    _colSigs[status] = sig;
+    const items = list.filter((p) => p.status === status);
+    const color = STATUS_COLORS[status];
+    const hints = { '已确定': '待确认', '已确认': '待排期', '部分执行': '已转卡', '待验收': '待拍板', '已完成': '验收通过', '作废': '不执行' };
+    section.innerHTML = `
+      <header class="pcol-h">
+        <span class="pcol-name"><span class="board-dot" style="background:${color}"></span>${esc(status)}</span>
+        <span class="pcol-hint">${hints[status] || ''}</span>
+        <span class="pcol-count">${items.length}</span>
+      </header>
+      <div class="pcol-body">
+        ${items.length ? items.map(renderPlanItem).join('') : `<div class="pcol-empty"><div class="pcol-empty-line"></div><span>暂无方案</span></div>`}
+      </div>`;
+  }
   applyFlowColumns();
 }
 
-function updateListOnly() {
-  const flowEl = _root?.querySelector('#plans-flow');
-  const countEl = _root?.querySelector('.plans-total');
-  if (flowEl) flowEl.innerHTML = STATUSES.map(renderColumn).join('');
-  if (countEl) countEl.textContent = filteredPlans().length;
+function render() {
+  if (_disposed || !_root) return;
+  _root.innerHTML = shellHTML();
+  _colSigs = {}; // 整页重建 → 列签名重置
   bindEvents();
   applyFlowColumns();
+  renderFlow(); // 首帧就填充列（数据已在 _plans 时）
+}
+
+function updateListOnly() {
+  renderFlow();
 }
 
 function applyFlowColumns() {
@@ -283,6 +336,7 @@ function applyFlowColumns() {
 
 // ── events ──
 
+/** 壳事件一次性绑定（M4：toolbar 静态 + 列表用事件委托，列重建无需重绑）。 */
 function bindEvents() {
   const root = _root;
   if (!root) return;
@@ -294,7 +348,8 @@ function bindEvents() {
       _filterProject = btn.dataset.proj || '';
       root.querySelectorAll('.ptool-proj').forEach(b => b.classList.toggle('on', b === btn));
       flow?.classList.add('no-anim');
-      render();
+      _colSigs = {};
+      renderFlow();
       if (flow) flow.scrollTop = st;
       requestAnimationFrame(() => flow?.classList.remove('no-anim'));
     });
@@ -303,60 +358,65 @@ function bindEvents() {
   const search = root.querySelector('#plans-search');
   search?.addEventListener('input', debounce(() => {
     _searchQ = search.value.trim();
-    if (_detailPath || _formOpen) updateListOnly(); else render();
+    _colSigs = {};
+    if (_detailPath || _formOpen) updateListOnly(); else renderFlow();
   }, 250));
 
   root.querySelector('#plans-btn-new')?.addEventListener('click', showCreateForm);
   root.querySelector('#plans-empty-clear')?.addEventListener('click', () => {
     _filterProject = '';
     _searchQ = '';
-    render();
+    _colSigs = {};
+    renderFlow();
   });
   root.querySelector('#plans-toggle-closed')?.addEventListener('click', () => {
     _hideClosed = !_hideClosed;
-    render();
+    _colSigs = {};
+    renderFlow();
   });
 
-  // 条目 → 详情
-  root.querySelectorAll('.pcard').forEach(card => {
-    const open = () => {
-      const path = card.dataset.path;
-      if (path) showDetail(path);
-    };
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', e => {
+  // 事件委托（列 DOM 复用/重建都不重绑）：点击/键盘/拖拽 → 按 data-path 找方案
+  const flow = root.querySelector('#plans-flow');
+  if (flow) {
+    const openFrom = (path) => { if (path) showDetail(path); };
+    flow.addEventListener('click', (e) => {
+      const openBtn = e.target.closest('.pcard-open');
+      if (openBtn) { e.stopPropagation(); openFrom(openBtn.closest('.pcard')?.dataset.path); return; }
+      const card = e.target.closest('.pcard');
+      if (card) openFrom(card.dataset.path);
+    });
+    flow.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        open();
+        const card = e.target.closest('.pcard');
+        if (card) { e.preventDefault(); openFrom(card.dataset.path); }
       }
     });
-    const openBtn = card.querySelector('.pcard-open');
-    if (openBtn) openBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      open();
+    flow.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.pcard');
+      if (card) {
+        e.dataTransfer.setData('text/plain', card.dataset.path || '');
+        card.classList.add('dragging');
+      }
     });
-    // 拖拽：拖动卡片 → 目标列 drop 改状态（非法流转前端预判，后台白名单兜底）
-    card.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', card.dataset.path || '');
-      card.classList.add('dragging');
+    flow.addEventListener('dragend', (e) => {
+      e.target.closest('.pcard')?.classList.remove('dragging');
     });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-  });
-
-  root.querySelectorAll('.pcol').forEach(col => {
-    col.addEventListener('dragover', (e) => {
+    flow.addEventListener('dragover', (e) => {
+      const col = e.target.closest('.pcol');
+      if (col) { e.preventDefault(); col.classList.add('drag-over'); }
+    });
+    flow.addEventListener('dragleave', (e) => {
+      e.target.closest('.pcol')?.classList.remove('drag-over');
+    });
+    flow.addEventListener('drop', (e) => {
       e.preventDefault();
-      col.classList.add('drag-over');
-    });
-    col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
-    col.addEventListener('drop', (e) => {
-      e.preventDefault();
-      col.classList.remove('drag-over');
+      const col = e.target.closest('.pcol');
+      col?.classList.remove('drag-over');
       const path = e.dataTransfer.getData('text/plain');
-      const target = col.dataset.dropStatus;
+      const target = col?.dataset.dropStatus;
       if (path && target) doMoveCard(path, target);
     });
-  });
+  }
 }
 
 const STATE_FLOW = {
@@ -889,15 +949,21 @@ function _applyDeepLink() {
   }
 }
 
-export async function mountPlans(root) {
+export function mountPlans(root, ctx = {}) {
   _root = root;
+  _disposed = false;
+  _colSigs = {};
   _root.innerHTML = '<div class="plans-loading">加载方案池…</div>';
-  await loadPlans();
-  _applyDeepLink();
-  _timer = setInterval(loadPlans, 30000); // 30s 自动刷新
+  // M3 非阻塞：同步渲染骨架 → 后台拉数据（M2 缓存命中即零网络）；切回不重拉。
+  // 深链（?plan=）在 loadPlans 数据到达 render 后应用（避免首帧 _plans 空丢失）。
+  loadPlans();
+  _timer = setInterval(() => {
+    if (!_disposed && document.visibilityState === 'visible') loadPlans();
+  }, 30000); // 30s 自动刷新（可见才刷）
 }
 
 export function unmountPlans() {
+  _disposed = true;
   if (_timer) {
     clearInterval(_timer);
     _timer = null;

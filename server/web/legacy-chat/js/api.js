@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { getToken, clearToken } from './auth.js';
-import { cancelStream as registryCancelStream } from './streamRegistry.js';
+import { cancelStream as registryCancelStream, cancelAllStreams as registryCancelAllStreams } from './streamRegistry.js';
 import { friendlyChatError, humanizeBrainError } from './chatErrors.js';
 
 /** 请求头：从 localStorage 读 ccc_chat_token，返回 Bearer 头。 */
@@ -39,13 +39,120 @@ if (typeof document !== 'undefined') {
   document.addEventListener('switch-tab', () => {
     abortActiveConnections();
   });
+  // 2026-08-17 M2：离开整个 SPA（全页导航/刷新/关标签）时中止在途流 + 全清 registry，
+  // 避免浏览器导航 abort 在途 SSE 后残留脏流状态。
+  document.addEventListener('pagehide', () => {
+    try {
+      abortActiveConnections();
+      registryCancelAllStreams();
+    } catch (_) {
+      /* 卸载期清理尽力而为 */
+    }
+  });
+}
+
+// ===== 2026-08-17 M2：页面切换根治 · 数据层 =====
+// 三件事：① 页面级 GET 作用域 abort（切页即中断旧页在途请求，配合 app.js 令牌）；
+// ② 内存短 TTL 缓存（切回不重拉，stale-while-revalidate）；③ GET 统一 15s 超时
+// 杜绝永久 pending。写操作成功后全清缓存。
+
+// —— ① 页面级请求作用域：切路由时 abort 全部页面级 GET ——
+let _pageAbort = new AbortController();
+/** 切路由时调用：中断旧页全部在途页面级 GET。 */
+export function pageScopeAbort() {
+  _pageAbort.abort();
+  _pageAbort = new AbortController();
+}
+function _pageScopeSignal() {
+  return _pageAbort.signal;
+}
+
+// —— ② 内存短 TTL 缓存（GET 可缓存接口）——
+const _cache = new Map();    // key -> { t, data }
+const _inflight = new Map(); // key -> Promise（同 key 在途合并，防重复请求）
+const CACHE_TTL_MS = 10000;
+// 可缓存前缀（状态类/实时类接口绝不缓存：/cards、/tasks、/board/ready_for_merge、
+// /conversation、/health、SSE）
+const CACHEABLE_PREFIXES = [
+  '/projects', '/config', '/claude/projects', '/claude/sessions',
+  '/plans/list', '/plans/card-states', '/plans/detail',
+  '/roadmap', '/board/roadmap', '/board/summaries',
+  '/loop/findings', '/ops/failures', '/ops/relay-stats',
+];
+function _isCacheable(path) {
+  for (const p of CACHEABLE_PREFIXES) {
+    if (path === p || path.startsWith(p + '/') || path.startsWith(p + '?')) return true;
+  }
+  return false;
+}
+function _cacheKey(method, path) {
+  return method + ' ' + path;
+}
+function _cacheGet(key) {
+  const e = _cache.get(key);
+  if (e && e.t > Date.now()) return e.data;
+  return undefined;
+}
+function _cacheSet(key, data) {
+  _cache.set(key, { t: Date.now() + CACHE_TTL_MS, data });
+}
+/** 写操作成功后调用：清缓存（全清最简，低频人审动作零漏清）。 */
+export function invalidateCache(prefix) {
+  if (!prefix) {
+    _cache.clear();
+    return;
+  }
+  for (const k of _cache.keys()) {
+    if (k.includes(prefix)) _cache.delete(k);
+  }
+}
+
+// —— ③ GET 统一 15s 超时 + 瞬时错误 1 次静默重试 ——
+const GET_TIMEOUT_MS = 15000;
+function _cacheDisabled() {
+  return !!(typeof window !== 'undefined' && window.__CCC_CACHE_DISABLED__);
+}
+/** 导航/路由切换中止判定：切换中、页面隐藏都视为「主动中止」，不弹网络错误。 */
+let _routeSwitching = false;
+export function setRouteSwitching(v) {
+  _routeSwitching = !!v;
+}
+function _isNavAbort() {
+  if (typeof document === 'undefined') return false;
+  return _routeSwitching || document.visibilityState === 'hidden' || document.hidden;
+}
+function _mergedSignal({ signal, pageScoped, noTimeout } = {}) {
+  if (noTimeout && !pageScoped && !signal) return undefined;
+  const parts = [];
+  // 超时与页面作用域是「防卡死/防洪峰」护栏，不随缓存回滚开关关闭；
+  // __CCC_CACHE_DISABLED__ 只关数据缓存（见 apiGet 的 cacheable 判断）。
+  if (!noTimeout && typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+    parts.push(AbortSignal.timeout(GET_TIMEOUT_MS));
+  }
+  if (signal) parts.push(signal);
+  if (pageScoped) parts.push(_pageScopeSignal());
+  if (!parts.length) return undefined;
+  if (parts.length === 1) return parts[0];
+  return typeof AbortSignal !== 'undefined' && AbortSignal.any
+    ? AbortSignal.any(parts)
+    : parts[parts.length - 1];
 }
 
 async function _fetchWithAuth(path, options = {}, json = true) {
   const tok = getToken();
+  const method = options.method || 'GET';
+  // 页面级 GET 默认挂页面作用域（切路由即 abort）；POST/PUT/DELETE 写操作不挂
+  // （服务端应完成，客户端忽略响应）；noTimeout 供长轮询/SSE 跳过超时。
+  const signal = _mergedSignal({
+    signal: options.signal,
+    pageScoped: options.pageScoped !== false && method === 'GET',
+    noTimeout: options.noTimeout === true,
+  });
   const resp = await fetch(path, {
-    ...options,
+    method,
     headers: { ...(options.headers || {}), ..._headers(json) },
+    body: options.body,
+    signal,
   });
   if (resp.status === 401) {
     if (tok && !_loginPrompted) {
@@ -62,13 +169,48 @@ function _chatBase() {
   return (typeof window !== 'undefined' && window.__CCC_CHAT_BRIDGE_URL__) || '';
 }
 
-export async function apiGet(path, options = {}) {
-  const resp = await _fetchWithAuth(path, { method: 'GET', ...options }, false);
+async function _checkGetOk(path, resp) {
   if (!resp.ok) {
     if (resp.status === 401) throw new Error('登录状态已失效，请刷新页面重新连接');
     throw new Error('GET ' + path + ' ' + resp.status);
   }
   return resp.json();
+}
+
+/** 瞬时网络错误（TypeError: Failed to fetch）静默重试一次；Abort/导航中止/HTTP 错误不重试。 */
+async function _doGet(path, options = {}) {
+  try {
+    const resp = await _fetchWithAuth(path, { method: 'GET', ...options }, false);
+    return await _checkGetOk(path, resp);
+  } catch (err) {
+    if (err instanceof TypeError && !_isNavAbort()) {
+      await new Promise((r) => setTimeout(r, 400)); // 退避 400ms
+      const resp2 = await _fetchWithAuth(path, { method: 'GET', ...options }, false);
+      return _checkGetOk(path, resp2);
+    }
+    throw err;
+  }
+}
+
+export async function apiGet(path, options = {}) {
+  // 缓存只服务默认 GET（带自定义 signal 的调用视为特殊流，跳过缓存）。
+  // 写操作后 invalidateCache 已清缓存 → 下次必拉新。
+  const cacheable = !options.signal && !_cacheDisabled() && _isCacheable(path);
+  if (!cacheable) return _doGet(path, options);
+  const key = _cacheKey('GET', path);
+  const cached = _cacheGet(key);
+  if (cached !== undefined) return cached;
+  if (_inflight.has(key)) return _inflight.get(key); // 同 key 在途合并
+  const p = _doGet(path, options)
+    .then((data) => {
+      _cacheSet(key, data);
+      return data;
+    })
+    .finally(() => {
+      _inflight.delete(key);
+    });
+  _inflight.set(key, p);
+  return p;
 }
 
 export async function apiPost(path, body) {
@@ -82,6 +224,7 @@ export async function apiPost(path, body) {
     const msg = friendlyChatError(resp.status, data.message || data.error);
     throw new Error(msg);
   }
+  invalidateCache('/'); // 写操作成功 → 清缓存，下次必拉新
   return data;
 }
 
@@ -96,12 +239,15 @@ export async function apiPut(path, body) {
     const msg = friendlyChatError(resp.status, data.message || data.error);
     throw new Error(msg);
   }
+  invalidateCache('/'); // 写操作成功 → 清缓存
   return data;
 }
 
 export async function apiDelete(path) {
   const resp = await _fetchWithAuth(path, { method: 'DELETE' }, false);
-  return resp.json();
+  const data = await resp.json().catch(() => ({}));
+  if (resp.ok) invalidateCache('/'); // 写操作成功 → 清缓存
+  return data;
 }
 
 export async function loadProjects() {
@@ -190,7 +336,7 @@ async function _fetchHistory(threadId) {
     const path = base
       ? base + '/chat/history' + qs + '&project=' + encodeURIComponent(state.get('currentProject') || 'ccc')
       : '/conversation' + qs;
-    data = await apiGet(path, { signal });
+    data = await apiGet(path, { signal, noTimeout: true, pageScoped: false });
   } catch (err) {
     if (err && err.name === 'AbortError') {
       return { messages: [], seq: cur.seq };
@@ -363,6 +509,8 @@ export async function streamChat(
           model: state.get('model') || null,
         }),
         signal,
+        noTimeout: true,
+        pageScoped: false,
       },
       true
     );
@@ -405,6 +553,10 @@ export async function streamChat(
       resp = await openStream();
     } catch (e) {
       if (e && e.name === 'AbortError') return 'settled';
+      if (_isNavAbort()) {
+        settleDone(); // 导航/路由切换中止：静默结算（复位 UI），不弹「网络中断」
+        return 'settled';
+      }
       // fetch 失败
       return 'network';
     }
@@ -479,6 +631,10 @@ export async function streamChat(
     } catch (e) {
       if (e && e.name === 'AbortError') {
         settled = true;
+        return 'settled';
+      }
+      if (_isNavAbort()) {
+        settleDone(); // 导航/路由切换中止：静默结算（复位 UI），不弹「网络中断」
         return 'settled';
       }
       return 'network';  // SSE 读中断

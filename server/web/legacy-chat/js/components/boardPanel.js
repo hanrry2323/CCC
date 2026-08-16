@@ -101,11 +101,13 @@ export function maybeAutoOpen() {
 
 function startBoardAutoRefresh() {
   stopBoardAutoRefresh();
+  // M3/M4：5s → 10s + 可见性门控（task_status 事件已驱动即时刷新，10s 只是兜底）
   pollTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     if (document.getElementById('board-panel')?.classList.contains('open')) {
       refreshBoardPanel({ quiet: true });
     }
-  }, 5000);
+  }, 10000);
 }
 
 function stopBoardAutoRefresh() {

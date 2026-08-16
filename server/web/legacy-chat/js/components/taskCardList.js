@@ -81,7 +81,14 @@ export class TaskCardList {
     if (!this.useVirtualScroll) return;
     this.scrollTop = this.scroller.scrollTop;
     this.containerHeight = this.scroller.clientHeight;
-    this.renderVirtual();
+    // M4：rAF 节流——一帧最多重建一次虚拟窗口（原每次 scroll 事件同步重建，卡顿源）
+    if (this._rafPending) return;
+    this._rafPending = true;
+    requestAnimationFrame(() => {
+      this._rafPending = false;
+      if (!this.scroller.isConnected) return; // 卸载/脱离文档不再重建
+      this.renderVirtual();
+    });
   }
 
   setupPagination({ currentPage, totalPages, onPageChange }) {

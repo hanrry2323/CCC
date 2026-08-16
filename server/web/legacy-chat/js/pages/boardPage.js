@@ -13,7 +13,7 @@
 import { apiGet, apiPost, getCards } from '../api.js';
 import { TaskCardList } from '../components/taskCardList.js';
 import { renderTaskCardDetail } from '../components/taskCardDetail.js';
-import { fmtTaskCopy, renderTaskCard } from '../components/taskCard.js';
+import { fmtTaskCopy, renderTaskCard, renderWorktreeBadges } from '../components/taskCard.js';
 import { esc, STATE_TONES } from '../ui.js';
 
 /** 看板列（2026-08-12 重排）：第一竖列待分派/打回 + 执行中/机审（上下分栏）+ 已回写；已关闭删除。 */
@@ -24,6 +24,7 @@ const COLORS = STATE_TONES;
 
 let _root = null;
 let _timer = null;
+let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _allCards = [];
 let _ws = 'all';
 let _wsNames = [];
@@ -358,36 +359,54 @@ function _connectStream() {
 function renderRunCol(col, cards) {
   const el = _root.querySelector(`#col-list-${col}`);
   if (!el) return;
-  const sig = cards.map((c) => [c.id, c.board_column || c.state, c.tool_calls, c.audit_runs, c.audit_status || ''].join(':')).join('|');
-  if (sig === _runColSig[col]) return; // 数据未变不重建（消闪烁）
-  _runColSig[col] = sig;
-  el.innerHTML = cards.length
-    ? cards.map((c) => renderTaskCard(c, { stream: true })).join('')
-    : '<div class="board-empty">暂无任务</div>';
-  // 恢复缓存的中文行：刷新重建后没有新中文输出时，保持显示旧信息（老板 2026-08-12）
-  for (const c of cards) {
-    const box = el.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(c.id)}"] .board-card-stream-lines`);
-    const cached = _streamCache[c.id];
-    if (box && cached && cached.length) {
-      box.innerHTML = cached.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('');
+  // M4：签名去掉瞬态字段（tool_calls/audit_runs 每 tick 变 → 整列销毁重建杀 stream 盒），
+  // 只在卡集合/顺序/列变化时重建列骨架；实时指标走增量更新（_updateRunColMetrics）。
+  const sig = cards.map((c) => c.id + ':' + (c.board_column || c.state)).join('|');
+  if (sig !== _runColSig[col]) {
+    _runColSig[col] = sig;
+    el.innerHTML = cards.length
+      ? cards.map((c) => renderTaskCard(c, { stream: true })).join('')
+      : '<div class="board-empty">暂无任务</div>';
+    // 恢复缓存的中文行：刷新重建后没有新中文输出时，保持显示旧信息（老板 2026-08-12）
+    for (const c of cards) {
+      const box = el.querySelector(`.board-card-stream[data-stream-id="${CSS.escape(c.id)}"] .board-card-stream-lines`);
+      const cached = _streamCache[c.id];
+      if (box && cached && cached.length) {
+        box.innerHTML = cached.map((l) => `<div class="board-stream-line">${esc(l)}</div>`).join('');
+      }
     }
+    el.querySelectorAll('.board-task-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.card-copy-btn')) return;
+        showDetail(card.dataset.id);
+      });
+    });
+    el.querySelectorAll('.card-copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const t = _allCards.find((x) => x.id === id) || { id, title: '' };
+        const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
+        if (ok) window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+        else window.showToast?.('复制失败', 'error');
+      });
+    });
   }
-  el.querySelectorAll('.board-task-card').forEach((card) => {
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.card-copy-btn')) return;
-      showDetail(card.dataset.id);
-    });
-  });
-  el.querySelectorAll('.card-copy-btn').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const t = _allCards.find((x) => x.id === id) || { id, title: '' };
-      const ok = await copyTextToClipboard(fmtTaskCopy(t, col));
-      if (ok) window.showToast?.('已复制任务块，可粘贴到对话', 'success');
-      else window.showToast?.('复制失败', 'error');
-    });
-  });
+  // 增量更新运行指标（工具调用/时长/Δ 文件实时变化，但不动列骨架/stream 盒）
+  _updateRunColMetrics(el, cards);
+}
+
+/** M4：只更新运行卡 metrics 徽标（保留 stream 盒，避免每 tick 销毁重建）。 */
+function _updateRunColMetrics(el, cards) {
+  for (const c of cards) {
+    const cardEl = el.querySelector(`.board-task-card[data-id="${CSS.escape(c.id)}"]`);
+    if (!cardEl) continue;
+    const metricsEl = cardEl.querySelector('.board-card-metrics');
+    if (!metricsEl) continue;
+    const statsHtml = renderWorktreeBadges(c);
+    const next = statsHtml || '<span class="board-card-badge badge-none" title="暂无运行指标">—</span>';
+    if (metricsEl.innerHTML !== next) metricsEl.innerHTML = next;
+  }
 }
 
 function classifyWsStatus(payload) {
@@ -524,6 +543,7 @@ function mergeDirtyFromRunning(cards, runningTasks) {
 }
 
 async function loadBoard() {
+  if (_disposed || !_root) return;
   try {
     const project = _ws === 'all' ? '' : _ws;
     const [r, running, ready] = await Promise.all([
@@ -531,6 +551,7 @@ async function loadBoard() {
       apiGet('/tasks/running').catch(() => ({ tasks: [] })),
       apiGet('/board/ready_for_merge').catch(() => ({ count: 0 })),
     ]);
+    if (_disposed || !_root) return; // 卸载后回来不再写 DOM
     _allCards = mergeDirtyFromRunning(r.cards || [], running.tasks || []);
     _readyForMergeInfo = ready;
 
@@ -742,30 +763,38 @@ function bind() {
 
 }
 
-export async function mountBoard(el) {
+export function mountBoard(el, ctx = {}) {
   const want = preferredWorkspace();
 
-  if (_root) {
+  if (_disposed === false && _root) {
     if (want && want !== _ws) {
       _ws = want;
       syncWsButtons();
     }
-    await loadBoard();
-    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+    loadBoard();
+    if (!_timer) _timer = setInterval(() => {
+      if (!_disposed && document.visibilityState === 'visible') loadBoard().catch(() => {});
+    }, 10000);
     _connectStream();
     return;
   }
   _root = el;
+  _disposed = false;
   if (want) _ws = want;
   el.innerHTML = html();
   bind();
-  await loadConfig();
-  await loadBoard();
-  _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+  // M3 非阻塞：loadConfig + loadBoard 后台拉（不 await 阻塞切换）
+  loadConfig();
+  loadBoard();
+  // M4 降频 5s→10s + 可见性门控（SSE /task_status 已覆盖实时，10s 只是兜底）
+  _timer = setInterval(() => {
+    if (!_disposed && document.visibilityState === 'visible') loadBoard().catch(() => {});
+  }, 10000);
   _connectStream();
 }
 
 export function unmountBoard() {
+  _disposed = true;
   if (_timer) {
     clearInterval(_timer);
     _timer = null;

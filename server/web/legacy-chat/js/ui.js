@@ -12,6 +12,12 @@ import { escapeHtml } from './utils.js';
 /** HTML 转义（别名，替代各页本地自写 esc()）。 */
 export { escapeHtml as esc };
 
+/** 幂等 innerHTML：HTML 串未变则不动 DOM（2026-08-17 M4 渲染根治）。
+ * 高频轮询渲染（ops 等）数据没变时跳过浏览器 parse+layout，从「全量重建」降为「字符串比较」。 */
+export function setHtml(el, html) {
+  if (el && el.innerHTML !== html) el.innerHTML = html;
+}
+
 /** 卡五态色板（唯一真值；taskCard/boardPage/consolePage 从这 import）。 */
 export const STATE_TONES = {
   待分派: '#a39e93',

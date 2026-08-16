@@ -51,6 +51,8 @@ function render(data) {
 }
 
 export async function refreshRelayStats() {
+  // M3：页面不可见时不拉（省服务器请求；回来立即拉一次刷新顶栏）
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
   try {
     const data = await apiGet('/ops/relay-stats');
     render(data);
