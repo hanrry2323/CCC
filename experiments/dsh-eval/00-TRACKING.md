@@ -14,7 +14,7 @@
 | B3 | 模式（C组） | C8 fork工具集 / C9 both路径 / C10 python flavor | ✅ |
 | B4 | 会话（D组） | D11 pruner+compaction / D12 KV / D13 title / D14 spill / D15 并发 | ✅ |
 | B5 | 多代理（E组） | E16 递归 / E17 冷恢复 / E18 fork上下文 / E19 patch / E20 IPv6 / E21 凭证 / E22 续写 | ✅（3挂账） |
-| B6 | 模型（F组） | F23 漏参率 / F24 sandbox-exec / F25 下行协议 | 🔲 |
+| B6 | 模型（F组） | F23 漏参率 / F24 sandbox-exec / F25 下行协议 | ✅（1挂账） |
 
 ## 实验明细
 
@@ -68,6 +68,6 @@
 ### B6 · 模型
 | ID | 内容 | 状态 | 结果链接 |
 |---|---|---|---|
-| F23 | description 漏参率 × 模型/effort 对比 | 🔲 | notes/23-f23-description-rate.md |
-| F24 | sandbox-exec 废弃节奏 + bwrap 迁移评估 | 🔲 | notes/24-f24-sandbox-exec.md |
-| F25 | 生产下行协议确认（WS vs SSE） | 🔲 | notes/25-f25-downlink.md |
+| F23 | description 漏参率 × 模型/effort 对比 | ✅（基线+对比挂账） | notes/23-f23-description-rate.md |
+| F24 | sandbox-exec 废弃节奏 + bwrap 迁移评估 | ✅ | notes/24-f24-sandbox-exec.md |
+| F25 | 生产下行协议确认（WS vs SSE） | ✅ | notes/25-f25-downlink.md |
