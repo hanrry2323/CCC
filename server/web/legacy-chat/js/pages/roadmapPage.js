@@ -406,11 +406,11 @@ async function openProject(project) {
         <div class="rm2-actions" style="display:flex;gap:8px;margin:8px 0 4px">
           <button type="button" class="hub-btn" id="rm2-milestone-new">＋ 新建里程碑</button>
         </div>
-        ${_draftPoolHTML(detail.drafts, project)}
         <div class="rm2-body">
           ${_railHTML(detail)}
           ${_subprojectPanelHTML(detail, _firstSubprojectIdx(detail))}
         </div>
+        ${_draftPoolHTML(detail.drafts, project)}
       </div>`;
     _setupRailNavigation(body, detail, project, _firstSubprojectIdx(detail));
     // 027 缝隙5：里程碑写入口（创建 / 编辑：状态·描述·关联方案）
