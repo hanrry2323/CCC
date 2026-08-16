@@ -63,14 +63,15 @@ hp/ (git tracked files at top-level)
 │   ├── _archive/         # hp_scripts B-line draft (paused)
 │   ├── _archive_2026-06-23/  # One-time fast snapshot archive
 │   ├── audit/            # Phase 0 Baseline Report 2026-08-03
-│   ├── knowledgebase/    # In-depth research papers & VERIFY.md
+│   ├── knowledgebase/    # In-depth research papers, VERIFY.md & REBUILD_VERIFY_REPORT.md (hp037)
 │   │   ├── research/     # Survey papers
 │   ├── postmortems/      # Retrospectives and incident analysis
 │   ├── dev-plan.md       # Development plan & SSOT
 │   └── lessons.md        # Lessons learned (DATE | TASK | FAILURE | FIX)
 ├── scripts/              # Shared scripts and QA validation
 │   ├── qa/               # Quality assurance verification
-│   │   └── hp-probes.py  # Service health 3-state probes (M3.1)
+│   │   ├── hp-probes.py  # Service health 3-state probes (M3.1)
+│   │   └── dr_drill_test.sh # Disaster recovery rebuild verification drill script (M2.7/hp037)
 │   └── kb_entry_guard.py # Knowledgebase entry guard CLI
 ├── tests/                # Dashboard API & embedding unit/E2E tests
 │   └── server/           # Dashboard backend testing (pytest)
@@ -100,3 +101,4 @@ hp/ (git tracked files at top-level)
 | **向量检索与数据质量 (hp006)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp006-search-quality-short-chunks` 分支)。清理并分析短 chunk，优化检索相关性，避免检索漂移。 | 下一阶段（hp007）对新入库短 chunk 进行硬拦截。 |
 | **健康三态探针 (hp030/M3.1)** | 🚀 已回写。新增 `hp-probes.py` 并行探针对 postgres/ollama/memory-store/mcp/graph 进行三态探活，接入 `cluster-health.sh`。 | 持续提升服务的可观测度与自动化告警。 |
 | **凭据治理 (hp036/M2)** | 🚀 已回写 (本卡)。重构 `rss-to-hp-kb.py` 中硬编码的 `feeds.json` 路径为动态加载机制，防止敏感文件入库，新增 `.env.example` 模版。 | 提升环境配置规范度与开发独立性。 |
+| **可重建验证 (hp037/M2.7)** | 🚀 已回写 (本卡)。开发 `dr_drill_test.sh` 脚本和 `REBUILD_VERIFY_REPORT.md`，全自动通过沙箱完美验证一键系统完全重建与恢复能力。 | 已圆满收口，M2「稳控与可恢复」里程碑完美闭环。 |
