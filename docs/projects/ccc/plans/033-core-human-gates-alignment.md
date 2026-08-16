@@ -209,3 +209,9 @@
 - **机审验收**：阶段 1（M1-M5）验收通过（fea3ec1b）。六条验收标准全过；929 passed / 2 skipped；validate-plans 全绿；三端对齐（M1=远端=2017）。联动影响已核查（已确定→convert 限制正确、M5 解析器兼容全仓「·」格式、sync→待验收 + validate 8.2 兼容）。
 - **遗留（接受）**：① onboarding §0 line 21「合入机械门禁」措辞残留已顺手修（2026-08-16）；② 验收拍板仍「自证」（无角色门禁）→ 归阶段 2（M6 批准真值化 audit ledger）。
 - **待办**：阶段 2（M6 批准真值化 + 鉴权角色 + observer 巡检补齐）按老板安排立项。
+
+### 033 验收记录（W1 机审验收 · 2026-08-16）
+
+- **阶段 1（fea3ec1b）：通过**。三节点语义/后端状态机/文档措辞/前端人审闸门四块全对齐；929 测试全绿 + validate 通过；遗留 = onboarding §0 line 21 措辞残留（已由 5293a843 修复）+ 验收拍板自证（归阶段 2）。
+- **阶段 2 M6（dd641851）：通过**。批准真值账本（audit_ledger 只增不改，5 类动作）+ 5 写入点（confirm_plan/convert/accept/approve_merge/machine_audit_pass）+ 3 门禁（convert←confirm、accept←convert、合入←machine_audit_pass，存量 WARN 降级）；929 全绿 + validate 通过；三端对齐 dd641851。
+- **遗留（按老板安排）**：① M6-4 鉴权/角色（CCC_WEB_AUTH_REQUIRED=1 + 老板角色门禁，涉局域网便利性取舍，老板定）；② DSH 审计执行体按三节点定位接入（账本就绪，DSH 可对出卡/合入/验收做真值审计取证）。
