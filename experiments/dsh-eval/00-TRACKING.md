@@ -13,7 +13,7 @@
 | B2 | 链路（B组） | B4 seq582 / B5 超时 / B6 车道 / B7 MCP白名单 | 🔲 |
 | B3 | 模式（C组） | C8 fork工具集 / C9 both路径 / C10 python flavor | ✅ |
 | B4 | 会话（D组） | D11 pruner+compaction / D12 KV / D13 title / D14 spill / D15 并发 | ✅ |
-| B5 | 多代理（E组） | E16 递归 / E17 冷恢复 / E18 fork上下文 / E19 patch / E20 IPv6 / E21 凭证 / E22 续写 | 🔲 |
+| B5 | 多代理（E组） | E16 递归 / E17 冷恢复 / E18 fork上下文 / E19 patch / E20 IPv6 / E21 凭证 / E22 续写 | ✅（3挂账） |
 | B6 | 模型（F组） | F23 漏参率 / F24 sandbox-exec / F25 下行协议 | 🔲 |
 
 ## 实验明细
@@ -57,13 +57,13 @@
 ### B5 · 多代理
 | ID | 内容 | 状态 | 结果链接 |
 |---|---|---|---|
-| E16 | workflow 无限递归（无 maxDepth 实测） | 🔲 | notes/16-e16-workflow-recursion.md |
-| E17 | 连续式子代理冷恢复端到端 | 🔲 | notes/17-e17-subagent-cold-recover.md |
-| E18 | fork 中途上下文缺失 | 🔲 | notes/18-e18-fork-context.md |
-| E19 | patch `-id: dsh-web-app` 静默 no-op 终判 | 🔲 | notes/19-e19-patch-noop.md |
-| E20 | headless IPv6 残余 | 🔲 | notes/20-e20-ipv6.md |
-| E21 | web-search credentials 持久化 | 🔲 | notes/21-e21-websearch-creds.md |
-| E22 | max-tokens 截断续写方案评估 | 🔲 | notes/22-e22-max-tokens.md |
+| E16 | workflow 无限递归（无 maxDepth 实测） | ⚠️挂账 | notes/16-e16-workflow-recursion.md |
+| E17 | 连续式子代理冷恢复端到端 | ⚠️挂账 | notes/17-e17-subagent-cold-recover.md |
+| E18 | fork 中途上下文缺失 | ⚠️挂账 | notes/18-e18-fork-context.md |
+| E19 | patch `-id: dsh-web-app` 静默 no-op 终判 | ✅ | notes/19-e19-patch-noop.md |
+| E20 | headless IPv6 残余 | ✅ | notes/20-e20-ipv6.md |
+| E21 | web-search credentials 持久化 | ✅（源码） | notes/21-e21-websearch-creds.md |
+| E22 | max-tokens 截断续写方案评估 | ✅（机制） | notes/22-e22-max-tokens.md |
 
 ### B6 · 模型
 | ID | 内容 | 状态 | 结果链接 |
