@@ -57,7 +57,10 @@ function html() {
       </div>
       <div class="console-card">
         <h4 class="console-card-title">知识库健康 <span id="console-kb-n" class="badge">0</span></h4>
-        <div id="console-kb"><div class="console-empty">加载中…</div></div>
+        <div id="console-kb">
+          <div id="console-kb-list"><div class="console-empty">加载中…</div></div>
+          <div id="console-pg-container"></div>
+        </div>
       </div>
     </div>
     <div class="console-right">
@@ -109,12 +112,14 @@ function renderOverview(summary, relay) {
 
 /* ── ② 集群节点 ─────────────────────────────── */
 
-function renderNodes(summary, hp) {
+function renderNodes(summary, hp, pg) {
   const el = _root.querySelector('#console-nodes');
   if (!el) return;
   const machines = ((summary && summary.overview) || {}).machines || [];
   const nEl = _root.querySelector('#console-node-n');
-  if (nEl) nEl.textContent = String(machines.length + (hp && hp.configured ? 1 : 0));
+  const hpCount = (hp && hp.configured) ? 1 : 0;
+  const pgCount = (pg && pg.configured) ? 1 : 0;
+  if (nEl) nEl.textContent = String(machines.length + hpCount + pgCount);
   const cards = machines.map((m) => `<div class="console-node ${m.reachable ? 'up' : 'down'}">
     <div class="console-node-head"><b>${esc(m.name || '')}</b>${pill(!!m.reachable, m.reachable ? '在线' : '不可达')}</div>
     <div class="console-node-meta">${esc(m.ip || '')} · ${esc(m.role || '')} · ${m.alive_ports || 0}/${m.port_count || 0} 端口</div>
@@ -123,6 +128,14 @@ function renderNodes(summary, hp) {
     cards.push(`<div class="console-node ${hp.reachable ? 'up' : 'down'}">
       <div class="console-node-head"><b>HP 知识库</b>${pill(!!hp.reachable, hp.reachable ? '在线' : '不可达')}</div>
       <div class="console-node-meta">${esc(hp.host || '')}:${esc(String(hp.port || ''))} · ${hp.latency_ms != null ? `${hp.latency_ms}ms` : ''}</div>
+    </div>`);
+  }
+  if (pg && pg.configured) {
+    const pgOnline = pg.status === 'ok';
+    const pgLabel = pg.status === 'ok' ? '在线' : pg.status === 'zombie' ? '僵尸' : pg.status === 'down' ? '下线' : '未上报';
+    cards.push(`<div class="console-node ${pgOnline ? 'up' : 'down'}">
+      <div class="console-node-head"><b>HP 数据库 (PostgreSQL)</b>${pill(pgOnline, pgLabel)}</div>
+      <div class="console-node-meta">${esc(pg.host || '')}:${esc(String(pg.port || ''))} · ${pg.latency_ms != null ? `${pg.latency_ms}ms` : ''}</div>
     </div>`);
   }
   el.innerHTML = cards.length ? cards.join('') : '<div class="console-empty">未配置集群节点</div>';
@@ -188,12 +201,10 @@ function renderRelay(relay) {
 /* ── 知识库健康（P4）────────────────────── */
 
 function renderKb(kb) {
-  const el = _root.querySelector('#console-kb');
-  const badge = _root.querySelector('#console-kb-n');
+  const el = _root.querySelector('#console-kb-list');
   if (!el) return;
   if (!kb || (!kb.ccc_kb && !kb.hp_kb)) {
     el.innerHTML = '<div class="console-empty">无数据</div>';
-    if (badge) badge.textContent = '0';
     return;
   }
   const c = kb.ccc_kb || {};
@@ -222,7 +233,50 @@ function renderKb(kb) {
       <div class="console-node-name">hp-kb <span class="console-pill ${hOk ? 'ok' : 'bad'}">${hLabel}</span></div>
       <div class="console-node-meta">${hpMeta}</div>${sync}
     </div>`;
-  if (badge) badge.textContent = (cOk ? 1 : 0) + (hOk ? 1 : 0);
+}
+
+function pgPill(status) {
+  let cls = 'gone';
+  let text = status || 'missing';
+  if (status === 'ok') {
+    cls = 'ok';
+    text = '正常';
+  } else if (status === 'zombie') {
+    cls = 'warn';
+    text = '僵尸';
+  } else if (status === 'down') {
+    cls = 'bad';
+    text = '下线';
+  } else if (status === 'missing') {
+    cls = 'gone';
+    text = '未上报';
+  }
+  return `<span class="console-pill ${cls}">${esc(text)}</span>`;
+}
+
+function renderPg(pg) {
+  const el = _root.querySelector('#console-pg-container');
+  if (!el) return;
+  if (!pg || !pg.configured) {
+    el.innerHTML = '';
+    return;
+  }
+  const pgOk = pg.status === 'ok';
+  
+  let meta = `${esc(pg.host || '')}:${esc(String(pg.port || ''))}`;
+  if (pg.latency_ms != null) meta += ` · ${pg.latency_ms}ms`;
+  if (pg.probe_ts) {
+    meta += ` · 最近探测: ${esc(pg.probe_ts)}`;
+  }
+  if (pg.consecutive_fail > 0) {
+    meta += ` · 连续失败: ${pg.consecutive_fail} 次`;
+  }
+
+  el.innerHTML = `
+    <div class="console-node ${pgOk ? 'up' : 'down'}">
+      <div class="console-node-name">hp-pg (PostgreSQL) ${pgPill(pg.status)}</div>
+      <div class="console-node-meta">${meta}</div>
+    </div>`;
 }
 
 /* ── 工程入口 ───────────────────────────────── */
@@ -313,7 +367,7 @@ function renderSettings(config, concurrency) {
 
 async function pollSystem() {
   if (_disposed || !_root) return;
-  const [summary, ports, relay, hp, kb, states, ready, config, concurrency] = await Promise.all([
+  const [summary, ports, relay, hp, kb, states, ready, config, concurrency, pg] = await Promise.all([
     apiGet('/ops/summary').catch(() => null),
     apiGet('/ops/ports').catch(() => null),
     apiGet('/ops/relay-stats').catch(() => null),
@@ -323,13 +377,24 @@ async function pollSystem() {
     apiGet('/board/ready_for_merge').catch(() => null),
     apiGet('/config').catch(() => null),
     apiGet('/ops/concurrency').catch(() => null),
+    apiGet('/ops/pg-health').catch(() => null),
   ]);
   if (_disposed || !_root) return; // 卸载后回来不再写 DOM
   renderOverview(summary, relay);
-  renderNodes(summary, hp);
+  renderNodes(summary, hp, pg);
   renderPorts(ports);
   renderRelay(relay);
   renderKb(kb);
+  renderPg(pg);
+
+  const badge = _root.querySelector('#console-kb-n');
+  if (badge) {
+    const cOk = kb && kb.ccc_kb && kb.ccc_kb.ok;
+    const hOk = kb && kb.hp_kb && kb.hp_kb.configured;
+    const pgConfigured = pg && pg.configured;
+    badge.textContent = String((cOk ? 1 : 0) + (hOk ? 1 : 0) + (pgConfigured ? 1 : 0));
+  }
+
   renderKPI(states);
   renderReady(ready);
   renderSettings(config, concurrency);

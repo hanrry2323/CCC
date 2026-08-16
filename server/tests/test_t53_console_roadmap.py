@@ -46,6 +46,14 @@ class TestConsolePage:
         text = self._console()
         assert "15000" in text  # 看板快照轮询仍在
 
+    def test_pg_health_rendering_contract(self) -> None:
+        text = self._console()
+        assert "/ops/pg-health" in text
+        assert "renderPg" in text
+        assert "hp-pg (PostgreSQL)" in text
+        assert "console-pg-container" in text
+        assert "pgPill" in text
+
 
 class TestRoadmapPage:
     """线路图：ARCH 体系架构图库渲染契约。"""
