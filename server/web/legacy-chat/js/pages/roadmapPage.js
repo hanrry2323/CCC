@@ -9,7 +9,7 @@
  *   /roadmap/<project> → 单项目详情（二级页）
  */
 
-import { apiGet, apiPost, apiPut } from '../api.js';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api.js';
 import { esc } from '../roadmapTimeline.js';
 
 let _root = null;
@@ -280,14 +280,15 @@ function _subprojectPanelHTML(detail) {
     { key: 'done', label: '已完成', miles: miles.filter(m => m.status === '已完成') },
   ];
 
-  let cardIdx = 0;
   return `<div class="rm2-panel-wrap">${groups.map(g => {
     if (!g.miles.length) return '';
     const cards = g.miles.map(m => {
-      const idx = cardIdx++;
+      // 2026-08-16 机审前遗留修复：卡片 id 用原始下标（与 rail data-mile-idx 对齐，避免分组重排错位）
+      const idx = detail.milestones.indexOf(m);
       const tone = g.key === 'done' ? 'done' : g.key === 'doing' ? 'doing' : 'planned';
       const tl = m.timeline || m.target_date || '';
       const ver = m.version && m.version !== '—' ? m.version : '';
+      const spCount = (m.subprojects && m.subprojects.length) ? `<span class="rm2-mile-sp-count" title="子项目">🧩 ${m.subprojects.length} 子项目</span>` : '';
       return `<div class="rm2-mile-card" id="rm2-mile-${idx}">
         <span class="rm2-mile-dot ${_milestoneDotClass(m.status)}"></span>
         <div class="rm2-mile-info">
@@ -298,7 +299,7 @@ function _subprojectPanelHTML(detail) {
           <div class="rm2-mile-sub">
             ${tl ? `<span class="rm2-mile-tl" title="时间线">📅 ${esc(tl)}</span>` : ''}
             ${ver ? `<span class="rm2-mile-ver" title="版本">🏷️ ${esc(ver)}</span>` : ''}
-            <span class="rm2-mile-sp-count" title="子项目">🧩 ${(m.subprojects || []).length} 子项目</span>
+            ${spCount}
           </div>
           ${m.description ? `<span class="rm2-mile-desc">${esc(m.description)}</span>` : ''}
           ${_subprojectListHTML(m, detail.project)}

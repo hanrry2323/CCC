@@ -581,7 +581,8 @@ function _showConvertOverlay(path, items) {
       </div>
       <div class="plans-convert-list" style="max-height:340px;overflow:auto;margin:12px 0">
         ${items.map((c, i) => `
-          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid #242d42">
+          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid #242d42;align-items:flex-start">
+            <input type="checkbox" class="plans-convert-check" data-title="${esc(c.title)}" checked style="margin-top:3px;flex:none" title="取消勾选=本张后续再转（逐步投入）">
             <span style="flex:none;width:22px;height:22px;border-radius:50%;background:#2a354d;color:#8b93a7;font-size:11px;display:flex;align-items:center;justify-content:center">${i + 1}</span>
             <div style="min-width:0">
               <div style="font-weight:600;color:#d6dce8">${esc(c.title)}</div>
@@ -589,7 +590,7 @@ function _showConvertOverlay(path, items) {
             </div>
           </div>`).join('')}
       </div>
-      <div style="font-size:12px;color:#77809a;margin-bottom:12px">确认后一次生成 ${items.length} 张任务卡进看板「待分派」，方案自动推进「部分执行」。</div>
+      <div style="font-size:12px;color:#77809a;margin-bottom:12px">默认全选。2026-08-16 子项目层：取消勾选 = 该功能卡本批不转，后续按子项目逐步投入。</div>
       <div class="plans-form-actions">
         <button type="button" class="ptool-btn-plain" id="plans-convert-cancel2">取消</button>
         <button type="button" class="ptool-new" id="plans-convert-ok">${icon('convert')}确认转卡（${items.length} 张）</button>
@@ -605,7 +606,18 @@ function _showConvertOverlay(path, items) {
     btn.disabled = true;
     btn.textContent = '转卡中…';
     try {
-      const result = await apiPost('/plans/convert', { path });
+      // 2026-08-16 逐步投入：收集勾选的功能卡标题，取消勾选=本批不转（slices 子集）
+      const checks = Array.from(overlay.querySelectorAll('.plans-convert-check'));
+      const selected = checks.filter((c) => c.checked).map((c) => c.dataset.title).filter(Boolean);
+      if (!selected.length) {
+        alert('未选择任何功能卡（至少勾选一张才能转卡）');
+        btn.disabled = false;
+        btn.textContent = `确认转卡（${items.length} 张）`;
+        return;
+      }
+      const body = { path };
+      if (selected.length < checks.length) body.slices = selected; // 只转选中子集 → 逐步投入
+      const result = await apiPost('/plans/convert', body);
       overlay.style.display = 'none';
       if (result.ok) {
         window.showToast ? window.showToast(`转卡成功：${(result.cards || []).join(', ')}`, 'success') : alert('转卡成功！生成卡片：' + (result.cards || []).join(', '));

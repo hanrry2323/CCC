@@ -347,6 +347,8 @@ def get_plan(repo_root: Path, rel_path: str) -> dict[str, Any] | None:
         "cards": fields.get("关联卡", ""),
         "related": fields.get("关联方案", ""),
         "milestone": fields.get("里程碑", ""),
+        "subproject": fields.get("子项目", ""),
+        "env_prep": fields.get("环境准备", ""),
         "path": rel_path,
         "content": content,
         "acceptance": _extract_acceptance(content),

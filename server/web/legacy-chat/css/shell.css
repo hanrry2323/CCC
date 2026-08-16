@@ -3507,6 +3507,15 @@ body.ro-viewer [data-write] {
   border-radius: 999px;
   background: rgba(120, 120, 120, 0.1);
 }
+.rm2-mile-planlink {
+  color: #4f7cff;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(79, 124, 255, 0.4);
+}
+.rm2-mile-planlink:hover {
+  text-decoration: underline;
+  border-bottom-style: solid;
+}
 /* 里程碑分组（§4.1 检查项 1：分类 + 排序 + 空态） */
 .rm2-group {
   display: flex;

@@ -186,7 +186,7 @@ function renderHumanGates(roadmaps, plansData, merge) {
         ${items.slice(0, 8).map((t) => `
           <div class="ops-review-item">
             <span class="ops-todo-type pending">待确认</span>
-            <span class="ops-review-title">${esc(t)}</span>
+            <span class="ops-review-title">${esc(typeof t === 'string' ? t : (t && t.title || ''))}</span>
             <a class="ops-goto-board" href="#/plans" title="去计划页确认">去处理 →</a>
           </div>`).join('')}
       </div>`).join('')
