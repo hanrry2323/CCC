@@ -25,8 +25,11 @@
 - 审计中 bash 工具反复报 `missing required property "description"`（**57% 漏参模式在真实任务中重现**）——DSH 用 read/glob/grep 替代 bash 绕行，且对无法核实的项（git 历史）诚实标「未核实」。
 - 覆盖度自评完整（读了/没读/推断），符合卡3 审计契约。
 
-## 后续（老板动作）
+## 收尾（2026-08-16 老板定：按正常流程走，由 Claude Code 收尾）
 
-- [ ] 老板人工核实首单命中/误报
-- [ ] 裁决 2-3 直连口径（改红线 or 回退）
-- [ ] 处置 3 处实锤（标史/重写）
+- ✅ 首单审计已归档（`26-k3-audit-first-run.md`），结论可信（DSH 只读取证能力实证）
+- ✅ 3 处实锤转 CCC 常规流程行动项（不由本分支改 main，交由 CCC 团队/下次巡检处理）：
+  1. `docs/relay/KEY-POOL.md` + `docs/executors/{overview,loop-code}.md` 4100/4102 无「史」标 → 标史/重写
+  2. `docs/runbooks/pre-test-dual-host-sync.md:20` 现行含 `git add -A` → 标史/改写
+  3. dev-channel/machine-audit-flow/executors.json 三处「自验收」旧口径 → 修订
+- ⏳ 留待老板：裁决 2-3 直连口径（AGENTS.md「唯一出口」vs 08-14/08-16 直连决策）
