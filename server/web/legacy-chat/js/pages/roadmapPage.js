@@ -201,7 +201,7 @@ function _milestoneProgressHTML(mile) {
   if (!plans.length) return '';
   return `<div class="rm2-mile-progress">
     <span class="rm2-mile-progress-label">关联方案 ${plans.length}</span>
-    <span class="rm2-mile-progress-tags">${plans.map(p => `<a class="rm2-mile-planlink" href="#/plans" title="跳转计划页查看 ${esc(p)}">${esc(p)}</a>`).join(' ')}</span>
+    <span class="rm2-mile-progress-tags">${plans.map(p => `<a class="rm2-mile-planlink" href="#/plans?plan=${encodeURIComponent(p)}" title="跳转计划页查看 ${esc(p)}">${esc(p)}</a>`).join(' ')}</span>
   </div>`;
 }
 
@@ -251,7 +251,7 @@ function _subprojectListHTML(mile, project) {
     ${sps.map(sp => {
       const st = sp.status || '未启动';
       const planLink = sp.plan_id
-        ? `<a class="rm2-mile-planlink" href="#/plans" title="跳转计划页查看 ${esc(sp.plan_id)}">${esc(sp.plan_id)}</a>`
+        ? `<a class="rm2-mile-planlink" href="#/plans?plan=${encodeURIComponent(sp.plan_id)}" title="跳转计划页查看 ${esc(sp.plan_id)}">${esc(sp.plan_id)}</a>`
         : '';
       const activateBtn = st === '未启动'
         ? `<button type="button" class="hub-btn rm2-sp-activate" data-project="${esc(project)}" data-milestone="${esc(mile.title)}" data-sp="${esc(sp.id)}" title="人审节点①：激活子项目转计划">激活</button>`

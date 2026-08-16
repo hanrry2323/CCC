@@ -853,10 +853,22 @@ function renderMarkdown(md) {
 
 // ── mount / unmount ──
 
+/** 2026-08-16 下钻深链：#/plans?plan=<plan-id> → 打开对应方案详情（从线路图子项目下钻） */
+function _applyDeepLink() {
+  const m = (location.hash || '').match(/[?&]plan=([^&]+)/);
+  if (!m) return;
+  const planId = decodeURIComponent(m[1]);
+  const target = _plans.find((p) => p.id === planId);
+  if (target && target.path && target.path !== _detailPath) {
+    showDetail(target.path);
+  }
+}
+
 export async function mountPlans(root) {
   _root = root;
   _root.innerHTML = '<div class="plans-loading">加载方案池…</div>';
   await loadPlans();
+  _applyDeepLink();
   _timer = setInterval(loadPlans, 30000); // 30s 自动刷新
 }
 
