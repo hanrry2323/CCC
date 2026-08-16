@@ -38,3 +38,12 @@
 - 浏览器点验记录齐全（6 页 + 快速连点 + 无「网络中断」误弹）。
 - 存量债务已登记。
 - 点验通过后 → 2017 生产同步 + 关闭。
+
+## 复核通过（W1 验收席 · 2026-08-17）
+
+- 点验证据已补齐：Playwright 无头浏览器对 2017 生产 `192.168.3.116:7788` 逐页点验，6 页全 mounted（切页 3-34ms）+ 骨架秒出 + 切回缓存生效 + 连点 8 页零 JS 错误 + 无「网络中断」误弹 + 服务器 abort 静默（记录见 `034-frontend-performance-rootfix-点验记录-2026-08-17.md`）。
+- 点验中发现并修复的 AbortError 噪音 bug（`33768af4`）：boardPage/plansPage 补 `AbortError`/`_disposed` 守卫，切页主动中止不 toast 不打 error——修复正确。
+- 存量债务已登记：`test_real_dispatch_cards`（hp009 作废态白名单缺项）→ 治理债台账 G5（`docs/notes/2026-08-16-governance-debt.md`）。
+- 三端对齐 `f078a84c`（M1=远端=2017）；116 生产 keep-alive 已生效（web-server 重启 + HTTP/1.1 复用实证）。
+
+→ **034 验收通过，关闭。**
