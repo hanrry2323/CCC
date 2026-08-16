@@ -12,7 +12,7 @@
 | B1 | 安全（A组） | A1 worker 逃逸 / A2 escalation / A3 workflow-vm | ✅ |
 | B2 | 链路（B组） | B4 seq582 / B5 超时 / B6 车道 / B7 MCP白名单 | 🔲 |
 | B3 | 模式（C组） | C8 fork工具集 / C9 both路径 / C10 python flavor | ✅ |
-| B4 | 会话（D组） | D11 pruner+compaction / D12 KV / D13 title / D14 spill / D15 并发 | 🔲 |
+| B4 | 会话（D组） | D11 pruner+compaction / D12 KV / D13 title / D14 spill / D15 并发 | ✅ |
 | B5 | 多代理（E组） | E16 递归 / E17 冷恢复 / E18 fork上下文 / E19 patch / E20 IPv6 / E21 凭证 / E22 续写 | 🔲 |
 | B6 | 模型（F组） | F23 漏参率 / F24 sandbox-exec / F25 下行协议 | 🔲 |
 
@@ -48,11 +48,11 @@
 ### B4 · 会话
 | ID | 内容 | 状态 | 结果链接 |
 |---|---|---|---|
-| D11 | pruner 与 compaction 叠加行为 | 🔲 | notes/11-d11-pruner-compaction.md |
-| D12 | KV 缓存复用收益量化 | 🔲 | notes/12-d12-kv-cache.md |
-| D13 | session-title 双 provider 并发语义 | 🔲 | notes/13-d13-session-title.md |
-| D14 | spill 在 web profile 是否生效 | 🔲 | notes/14-d14-spill.md |
-| D15 | headless 与 web 共享存储并发冲突 | 🔲 | notes/15-d15-storage-concurrency.md |
+| D11 | pruner 与 compaction 叠加行为 | ✅ | notes/11-d11-pruner-compaction.md |
+| D12 | KV 缓存复用收益量化 | ✅（机制） | notes/12-d12-kv-cache.md |
+| D13 | session-title 双 provider 并发语义 | ✅ | notes/13-d13-session-title.md |
+| D14 | spill 在 web profile 是否生效 | ✅（未启用） | notes/14-d14-spill.md |
+| D15 | headless 与 web 共享存储并发冲突 | ✅ | notes/15-d15-storage-concurrency.md |
 
 ### B5 · 多代理
 | ID | 内容 | 状态 | 结果链接 |
