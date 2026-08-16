@@ -50,7 +50,7 @@ HP 个人 AI agent 中央知识库基础设施 + 教训沉淀平台。
 | 运行时服务 | BaseHTTPRequestHandler / pnpm dev | `memory-store` (:8082), `Dashboard API` (:8089), `SPA Server` (:8090) |
 | 数据库存储 | PostgreSQL 18.0 + pgvector | 存储 documents 元数据 (3,533 行)、chunks (74,151 行)、memory_store (2,839 行) |
 | 嵌入/LLM | Ollama (bge-m3:q4 / phi3 / qwen2.5) | 实际向量维度 1024 (bge-m3:q4 / latest)，提供本地嵌入与检索推理 |
-| 契约与测试 | pytest / static verify | `tests/server` 对 Dashboard 端点 TDD，21 行纯 Bash 对 KB 静态自检 |
+| 契约与测试 | pytest / static verify / hp-probes | `tests/server` 对 Dashboard 端点 TDD，21 行纯 Bash 对 KB 静态自检，`hp-probes.py` 远程三态探活 |
 | 数据同步 | com.hp-kb.collector.plist | `auto-collect` 多项目 watcher 配置与 collector 守护进程，本地 scripts/ SSH 互通 |
 
 ## 附 B 目录树（深度 3）
@@ -70,6 +70,7 @@ hp/ (git tracked files at top-level)
 │   └── lessons.md        # Lessons learned (DATE | TASK | FAILURE | FIX)
 ├── scripts/              # Shared scripts and QA validation
 │   ├── qa/               # Quality assurance verification
+│   │   └── hp-probes.py  # Service health 3-state probes (M3.1)
 │   └── kb_entry_guard.py # Knowledgebase entry guard CLI
 ├── tests/                # Dashboard API & embedding unit/E2E tests
 │   └── server/           # Dashboard backend testing (pytest)
@@ -96,3 +97,4 @@ hp/ (git tracked files at top-level)
 | **Phase 5 备份对齐 (hp003)** | ✅ 已完成并合入 (外仓 main 已含)。规范化 psql 异地备份与恢复机制，冷热与异地备份机制已对齐。 | 持续监控定时备份输出完整性。 |
 | **前端治理与合约对齐 (hp005)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp005-frontend-fake-data-contract` 分支)。全面对齐 API 契约，处理伪数据。 | 持续收敛前后端异常接口。 |
 | **向量检索与数据质量 (hp006)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp006-search-quality-short-chunks` 分支)。清理并分析短 chunk，优化检索相关性，避免检索漂移。 | 下一阶段（hp007）对新入库短 chunk 进行硬拦截。 |
+| **健康三态探针 (hp030/M3.1)** | 🚀 已回写 (本卡)。新增 `hp-probes.py` 并行探针对 postgres/ollama/memory-store/mcp/graph 进行三态探活，接入 `cluster-health.sh`。 | 持续提升服务的可观测度与自动化告警。 |
