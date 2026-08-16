@@ -76,6 +76,7 @@ hp/ (git tracked files at top-level)
 │   └── server/           # Dashboard backend testing (pytest)
 ├── pipeline/             # Knowledge base ingest & query pipeline (git tracked)
 ├── README.md             # Project overview
+├── .env.example          # Environment variables template (M2)
 ├── AGENTS.md             # Workspace setup instructions
 ├── CLAUDE.md             # Developer guidelines
 ├── VERSION               # Current repo version (v0.1.2)
@@ -97,4 +98,5 @@ hp/ (git tracked files at top-level)
 | **Phase 5 备份对齐 (hp003)** | ✅ 已完成并合入 (外仓 main 已含)。规范化 psql 异地备份与恢复机制，冷热与异地备份机制已对齐。 | 持续监控定时备份输出完整性。 |
 | **前端治理与合约对齐 (hp005)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp005-frontend-fake-data-contract` 分支)。全面对齐 API 契约，处理伪数据。 | 持续收敛前后端异常接口。 |
 | **向量检索与数据质量 (hp006)** | 🚀 已回写 (外仓 main 未含，在 `codex/hp006-search-quality-short-chunks` 分支)。清理并分析短 chunk，优化检索相关性，避免检索漂移。 | 下一阶段（hp007）对新入库短 chunk 进行硬拦截。 |
-| **健康三态探针 (hp030/M3.1)** | 🚀 已回写 (本卡)。新增 `hp-probes.py` 并行探针对 postgres/ollama/memory-store/mcp/graph 进行三态探活，接入 `cluster-health.sh`。 | 持续提升服务的可观测度与自动化告警。 |
+| **健康三态探针 (hp030/M3.1)** | 🚀 已回写。新增 `hp-probes.py` 并行探针对 postgres/ollama/memory-store/mcp/graph 进行三态探活，接入 `cluster-health.sh`。 | 持续提升服务的可观测度与自动化告警。 |
+| **凭据治理 (hp036/M2)** | 🚀 已回写 (本卡)。重构 `rss-to-hp-kb.py` 中硬编码的 `feeds.json` 路径为动态加载机制，防止敏感文件入库，新增 `.env.example` 模版。 | 提升环境配置规范度与开发独立性。 |
