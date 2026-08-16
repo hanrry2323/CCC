@@ -79,8 +79,19 @@ lint：
 本地跑 `python3 -m pytest pipeline/tests/`，其非 DB 依赖测试（`test_chunker.py`、`test_embedder.py`、`test_metadata.py` 等 23 个 case）全数 PASS。DB 测试由于本地无 PG 实例抛 Connection refused，符合预期。
 
 ### push 证据
-- 业务仓 commit hash: `50c16f9d3ebc3be4025a176882dfbf8199be38d1`
+- 业务仓 commit hash: `50c16f908e0573891bad7ece3bd2329bc5922d90`
 - 业务仓推送分支: `codex/hp023-pipeline-ssot-m2-pipeline-ssot`
+
+## 机审区
+
+**机审：通过**
+
+- 说明：2017 机审席独立复核（2026-08-16）。
+  - **范围合规**：改动仅 `pipeline/` 目录 + hp 文档（卡 / README / plan-008），无越界文件；卡头已回写。
+  - **回灌真实性**：已核实业务仓分支 `codex/hp023-pipeline-ssot-m2-pipeline-ssot` 存在并已推送 origin；核心文件（`ingest.py` / `db.py` / `search.py` / `backfill_metadata.py`）与 hp 节点 `/data/knowledge/pipeline/` 逐文件 md5 一致，回灌为真实快照。
+  - **push 证据修正**：原卡面 commit hash 串有误（非合法 git 对象），已就地修正为实际全量 hash `50c16f908e…2d90`（short `50c16f9`，与分支推送一致）。
+  - **维护区 Doc-Gate**：四问均已逐项勾选并填说明，无占位；`方案同步[是]`（plan-008 → 已完成 1/1）与 `档案/README[是]`（hp README 追加 `pipeline/ (git tracked)`）已核实属实。
+  - **代码审查发现（建议，非打回）**：`pipeline/backfill_metadata.py:147` 调用 `db.update_chunk_metadata`，但 `db.py` 未定义该函数（git 与部署节点均无）；此为部署源码既有缺陷，被如实回灌，不影响 ingest/search 主链路，建议后续独立小卡修复或移除死引用。另建议为 `pipeline/` 补充依赖清单（requirements.txt），当前测试依赖 numpy/PyYAML/psycopg2 等未固化，无法在全新环境确定性复现。
 
 ## 维护区
 
