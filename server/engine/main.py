@@ -1827,6 +1827,11 @@ def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) ->
     ok = _card_machine_audit_passed(card_path)
     if ok:
         logger.info("机审区已自动落盘到生产卡: %s (%s)", card_path, source)
+        # 033 阶段 2 M6：机审通过写批准真值账本（machine_audit_pass）——机审来源不可伪造
+        from server.board.audit_ledger import record_action
+
+        _card_id = Path(card_path).stem.split("-", 1)[0]
+        record_action("machine_audit_pass", _card_id, source=source or "engine", detail=card_path)
     return ok
 
 

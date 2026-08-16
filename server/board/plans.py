@@ -484,6 +484,12 @@ def create_plan(
         file_path = plans_dir / f"{num}-{slug}.md"
         file_path.write_text(plan_content)
 
+        # 033 阶段 2 M6：方案确认写批准真值账本（confirm_plan）——「老板确认方案」不再是文件里一行字
+        if approved:
+            from server.board.audit_ledger import record_action
+
+            record_action("confirm_plan", plan_id, source=tool or "ccc-api", detail=title)
+
         # 027 缝隙1：方案↔里程碑双向关联（同步 roadmap.md linked_plans）
         if milestone and milestone.strip():
             from server.board.roadmap import link_plan_to_milestone
@@ -814,8 +820,10 @@ def accept_plan(
     plan_file = repo_root / rel_path
     if not plan_file.exists():
         return {"error": "方案文件不存在"}
-    if not _PLAN_PATH_RE.match(rel_path):
+    _m_accept = _PLAN_PATH_RE.match(rel_path)
+    if not _m_accept:
         return {"error": "无效的方案路径格式"}
+    project = _m_accept.group(1)
     try:
         current = plan_file.read_text()
     except OSError:
@@ -829,6 +837,19 @@ def accept_plan(
     if acc["total"] > 0 and acc["done"] < acc["total"]:
         return {"error": f"验收标准未全部勾选（{acc['done']}/{acc['total']}）——请先核对并勾选验收项"}
 
+    # 033 阶段 2 M6：验收拍板前查「转卡」批准真值账本（convert）——存量无记录 WARN 放行
+    from server.board.audit_ledger import has_action, record_action
+
+    if not has_action("convert", f"{project}-plan-{_m_accept.group(2)}"):
+        logger.warning("方案 %s 无 convert 账本记录（存量降级放行；新方案须转卡后验收）", f"{project}-plan-{_m_accept.group(2)}")
+
+    # 033 阶段 2 M6：交付物声明校验（轻量 WARN，不全量核查——交付报告/CHANGELOG/RELEASE/tag/可复跑）
+    if not re.search(r"交付|CHANGELOG|RELEASE|deliver", current, re.I):
+        logger.warning(
+            "方案 %s 未声明交付物（交付报告/CHANGELOG/RELEASE/Git Tag/可复跑验证），拍板前建议在备注补齐",
+            rel_path,
+        )
+
     today = date.today().isoformat()
     current = re.sub(r"(状态：)([^\s·]+)", r"\1已完成", current, count=1)
     current = re.sub(r"(更新：)([0-9-]+)", f"\\g<1>{today}", current, count=1)
@@ -838,6 +859,9 @@ def accept_plan(
     else:
         current = re.sub(r"(> 项目：[^\n]*\n)", f"\\1> 批准：老板验收拍板 · {today}\n", current, count=1)
     plan_file.write_text(current)
+
+    # 033 阶段 2 M6：验收拍板写批准真值账本（accept）——「老板验收拍板」不再仅靠批准行
+    record_action("accept", f"{project}-plan-{_m_accept.group(2)}", source="ccc-api", detail=rel_path)
 
     ok, err = _git_commit_push(repo_root, [rel_path], f"plans: accept {rel_path}")
     if not ok:
@@ -1038,9 +1062,20 @@ def convert_plan(
     if lock_f is None:
         return {"error": f"{prefix} 有转卡进行中，请稍后重试"}
     try:
-        return _convert_plan_locked(
+        result = _convert_plan_locked(
             repo_root, rel_path=rel_path, prefix=prefix, slices=slices, no_push=no_push
         )
+        # 033 阶段 2 M6：转卡成功写批准真值账本（convert）
+        if result.get("ok"):
+            from server.board.audit_ledger import record_action
+
+            record_action(
+                "convert",
+                f"{prefix}-plan-{m.group(2)}",
+                source="ccc-api",
+                detail=", ".join(result.get("cards") or []),
+            )
+        return result
     finally:
         _release_convert_lock(lock_f, repo_root, prefix)
 
@@ -1072,6 +1107,14 @@ def _convert_plan_locked(
         return {
             "error": "方案缺「环境准备」声明——子项目方案转卡前必须先声明环境准备（2026-08-16 门禁）"
         }
+
+    # 033 阶段 2 M6：转卡前查「方案确认」批准真值账本（confirm_plan）——「老板确认转卡」不再仅靠卡文件自盖章
+    # 存量方案（阶段 1 前确认、无账本记录）→ WARN 放行（渐进真值化，不阻断存量）
+    from server.board.audit_ledger import has_action
+
+    _plan_key = f"{prefix}-plan-{m.group(2)}"
+    if not has_action("confirm_plan", _plan_key):
+        logger.warning("方案 %s 无 confirm_plan 账本记录（存量降级放行；新方案须确认后转卡）", _plan_key)
 
     # 027：功能卡清单优先（## 功能卡 段），回退旧「## 转卡计划」段（每行一卡）
     _func_cards = _extract_func_cards(content)

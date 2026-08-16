@@ -383,10 +383,10 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
         if not m:
             continue  # 无进度声明行（未级联回写），跳过
         declared_closed, declared_total = int(m.group(1)), int(m.group(2))
-        real_total = len(ref_cards)
-        real_closed = sum(
-            1 for rc in ref_cards if cards_by_id.get(rc.lower(), {}).get("state", "") in closed_states
-        )
+        # 033 M6：作废卡剔除出 total（与 sync_plan_progress 口径一致），避免带作废卡方案误报「进度不一致」
+        _card_states = [cards_by_id.get(rc.lower(), {}).get("state", "") for rc in ref_cards]
+        real_total = sum(1 for s in _card_states if s != "作废")
+        real_closed = sum(1 for s in _card_states if s in closed_states)
         if declared_total != real_total or declared_closed != real_closed:
             findings.append(
                 {
@@ -394,6 +394,35 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
                     "title": f"方案 {plan['id']} 进度不一致：声明 {declared_closed}/{declared_total}，实际 {real_closed}/{real_total}（级联回写滞后或卡状态变动）",
                     "project": plan.get("project", "ccc"),
                     "type": "consistency",
+                    "cross_confirm": 0.5,
+                    "acting_on": plan_path,
+                    "evidence": f"{plan_path}:1",
+                }
+            )
+
+        # 033 阶段 2 M6：验收勾选 + 批准来源检查（P1-E 巡检补齐）
+        _acc_unchecked = len(re.findall(r"^\s*[-*]\s+\[ \]", plan_text, re.M))
+        if "状态：已完成" in plan_text and _acc_unchecked > 0:
+            findings.append(
+                {
+                    "id": f"plan_accept_{plan['id']}",
+                    "title": f"方案 {plan['id']} 已完成但验收标准 {_acc_unchecked} 项未勾选（033 验收归属：拍板前须勾选）",
+                    "project": plan.get("project", "ccc"),
+                    "type": "consistency",
+                    "cross_confirm": 0.5,
+                    "acting_on": plan_path,
+                    "evidence": f"{plan_path}:1",
+                }
+            )
+        from server.board.audit_ledger import has_action
+
+        if "状态：待验收" in plan_text and not has_action("convert", plan["id"]):
+            findings.append(
+                {
+                    "id": f"plan_approval_{plan['id']}",
+                    "title": f"方案 {plan['id']} 待验收但无 convert 账本记录（批准来源缺失，033 批准真值化）",
+                    "project": plan.get("project", "ccc"),
+                    "type": "governance",
                     "cross_confirm": 0.5,
                     "acting_on": plan_path,
                     "evidence": f"{plan_path}:1",
