@@ -11,7 +11,7 @@
 | B0 | 环境冒烟 | 测试实例 run_code 全链路 + 隔离 | 🚧 |
 | B1 | 安全（A组） | A1 worker 逃逸 / A2 escalation / A3 workflow-vm | ✅ |
 | B2 | 链路（B组） | B4 seq582 / B5 超时 / B6 车道 / B7 MCP白名单 | 🔲 |
-| B3 | 模式（C组） | C8 fork工具集 / C9 both路径 / C10 python flavor | 🔲 |
+| B3 | 模式（C组） | C8 fork工具集 / C9 both路径 / C10 python flavor | ✅ |
 | B4 | 会话（D组） | D11 pruner+compaction / D12 KV / D13 title / D14 spill / D15 并发 | 🔲 |
 | B5 | 多代理（E组） | E16 递归 / E17 冷恢复 / E18 fork上下文 / E19 patch / E20 IPv6 / E21 凭证 / E22 续写 | 🔲 |
 | B6 | 模型（F组） | F23 漏参率 / F24 sandbox-exec / F25 下行协议 | 🔲 |
@@ -41,9 +41,9 @@
 ### B3 · 模式
 | ID | 内容 | 状态 | 结果链接 |
 |---|---|---|---|
-| C8 | fork 子代 wire 工具集继承 | 🔲 | notes/08-c8-fork-tools.md |
-| C9 | both 模式实际调用路径 | 🔲 | notes/09-c9-both-mode.md |
-| C10 | python flavor 实测 | 🔲 | notes/10-c10-python-flavor.md |
+| C8 | fork 子代 wire 工具集继承 | ✅（源码） | notes/08-c8-fork-tools.md |
+| C9 | both 模式实际调用路径 | ✅ | notes/09-c9-both-mode.md |
+| C10 | python flavor 实测 | ✅（不可用） | notes/10-c10-python-flavor.md |
 
 ### B4 · 会话
 | ID | 内容 | 状态 | 结果链接 |
