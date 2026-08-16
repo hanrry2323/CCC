@@ -61,10 +61,10 @@
    "分类": "—",
    "当前绑定": "DSH headless",
    "命令": "dsh",
-   "参数模板": "（headless 参数待实测定稿；暂不参与 Engine 自动派发，由人工在麦克2017 触发只读取证/合规扫描）",
+   "参数模板": "--profile headless \"{task}\"（实证 2026-08-16：headless profile 自带 code-runtime，DSH_TOOLS_MODE=code 进 code 模式；须借 web plist 环境 OPENCODE_GO_API_KEY + NODE_OPTIONS=--dns-result-order=ipv4first；用法见 experiments/dsh-eval/scripts/run-headless-code.sh —— 从 ~/Library/LaunchAgents/com.deepseek.dsh-web.plist 借环境、不打印密钥）",
    "工作目录": "",
    "worktree_base": "",
-   "备注": "DSH 只读取证/审计席（2026-08-15 实测：Code Run 真执行、取证精准、零残留；弱模型不作开发）。分类「—」= 不参与 AUTO 派发（防 Engine 拉起不存在的 dsh，机审 2026-08-15 定）。",
+   "备注": "DSH 只读取证/审计席（2026-08-15 实测：Code Run 真执行、取证精准、零残留；弱模型不作开发）。分类「—」= 不参与 AUTO 派发（防 Engine 拉起不存在的 dsh）。headless 探针已实测跑通（2026-08-16，B0 冒烟），挂账解除。",
    "worker_id": "DSH"
   }
  ]
