@@ -1,7 +1,7 @@
 # 任务卡 mx045 · medio-0 公开化搬迁与多端 CI/CD — 敏感历史清洗（filter-repo）（OpenCode 执行）
-> 批准：老板确认转卡 · 2026-08-17
+> 批准：老板合入批准 · 2026-08-17
 
-> 关联：mx-plan-004 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-17
+> 关联：mx-plan-004 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-17
 
 
 
