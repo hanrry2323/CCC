@@ -12,7 +12,7 @@
 | 4 | 中转站 6100 6102 | nodes-paths | 6100 |
 | 5 | CCC 主仓 路径 | projects | CCC |
 | 6 | qb 项目 路径 | projects | qb |
-| 7 | xianyu 自动分发 平台 | projects | xianyu |
+| 7 | xianyu 开发技能 | projects | xianyu |
 | 8 | qx-observer 项目 | projects | qx-observer |
 | 9 | D10 杜绝 硬编码 | decisions | D10 |
 | 10 | 双轨 决议 中转站 | decisions | D11 |
