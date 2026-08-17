@@ -1758,6 +1758,11 @@ class TestOpsRelayStats:
         import json
         import time
         from datetime import datetime
+        from server.web import server as srv
+
+        # Clear cache to avoid state leakage from other tests
+        srv._RELAY_STATS_CACHE = None
+        srv._RELAY_LAST_SNAPSHOT = None
 
         now_ms = int(time.time() * 1000)
         today_start_ms = int(datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000)
