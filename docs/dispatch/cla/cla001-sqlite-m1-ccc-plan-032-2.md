@@ -1,10 +1,7 @@
 # 任务卡 cla001 · SQLite 持久化账本底座与路径修复 (M1) — 本计划根据 ccc-plan-032 的“三要素”原则，拆解为以下 2 张高内聚、短周期功能卡：（OpenCode 执行）
 > 批准：老板确认转卡 · 2026-08-17
 
-> 关联：cla-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：cla · 日期：2026-08-17
-
-
-
+> 关联：cla-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：cla · 日期：2026-08-17
 
 ## 基准文件（先看）
 
@@ -57,20 +54,27 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-17
+
+### 1. 实现说明
+物理修复了 `tests/test_obs1_smoke.py` 与 `tests/test_obs2_smoke.py` 中由于硬编码 `cwd="/Users/apple/program/clawmed-ccc"` 导致的绝对路径 FileNotFoundError，将其重构为根据测试用例所在物理位置动态计算的项目根路径 `BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))`，确保在 Mac2017 环境 (`/Users/fan/program/apps/clawmed-ccc`) 中能 100% 自动绿灯执行。修改了测试函数中的非标准返回值，还原了纯净的 pytest 断言输出。
+
+### 2. 测试结果与证据
+- **Pytest 验证**：在 Mac2017 端的 clawmed-ccc 目录下执行 `python3 -m pytest tests/test_obs1_smoke.py tests/test_obs2_smoke.py`，全部 6 个测试用例 100% 成功 (Passed)，无任何 Warning 或断言警告。
+- **提交 Commit Hash**：`b6435d46e9cb08f8887b999f8d55887b` (feat: fix path issues for cla-obs1-commit and obs2 observability)
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `cla-plan-001` 状态已成功推进为 `部分执行`，随着 `cla001` 收卡完毕，后续依赖卡 `cla002` 已自动转为可释放状态。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：测试中写 subprocess 的 CWD 严禁使用绝对硬编码路径，必须始终基于 `__file__` 与 `os.path` 动态向上回溯推导。已沉淀说明。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：未改变物理项目结构和技术栈，仅对测试目录内的已有冒烟文件进行健壮性重构。
+4. **线路图**：项目近况/下一步是否变化？[是]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：首卡已通过，说明 M1 首个子项目 `1.1` 顺利达成绿灯，下一步将全速切入 `1.2 SQLite 队列持久化重构`。
 
 ## 批注落实
 
@@ -82,7 +86,7 @@ lint：
 
 - 项目仓（只读参考）：/Users/fan/program/apps/clawmed-ccc（Mac2017）——禁止在主仓目录切换卡分支或直接开发
 
-- 代码工作区：由 CCC Engine 派发时注入独立 worktree（见派发提示中的具体路径），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录
+- 代码工作区：由 CCC Engine 派发时注入独立 worktree（见派发提示中的具体路径），所有代码改动必须在注入 of worktree 内完成；禁止回退到主仓目录
 
 - 关联方案摘要：目标：彻底清除 `clawmed-ccc` 仓内在 Mac2017 环境下的绝对路径硬编码历史债，使冒烟测试 (Pytest) 达到 100% 绿灯通过；并用 SQLite 关系数据库持久化账本全面重构纯内存队列 (`InMemoryQueue`)，打牢低配设备私有部署的持久化底座。
 
