@@ -168,9 +168,29 @@ function renderFindings(findings, report) {
         <button type="button" class="hub-btn dsh-act-adopt ${done ? 'adopted' : ''}" data-key="${esc(key)}" data-report="${esc(reportName)}" title="标记已处理（/loop/adopt 留档，source=dsh）" ${done ? 'disabled' : ''}>${done ? '已留档 ✓' : '已处理'}</button>
       </div>`;
   };
-  let htmlOut = main.map(findingHtml).join('');
+  // 按项目分组（ccc-plan-038 卡2）：无 project 字段归「其他」；组内保持置信度排序
+  const groupByProj = (items) => {
+    const byProj = {};
+    for (const f of items) {
+      const proj = f.project || '其他';
+      (byProj[proj] = byProj[proj] || []).push(f);
+    }
+    return Object.entries(byProj).sort((a, b) => b[1].length - a[1].length);
+  };
+  let htmlOut = '';
+  if (main.length) {
+    htmlOut += groupByProj(main).map(([proj, items]) => `
+      <div class="dsh-subgroup">
+        <h5 class="dsh-proj-head">${esc(proj)}（${items.length}）</h5>
+        ${items.map(findingHtml).join('')}
+      </div>`).join('');
+  }
   if (low.length) {
-    htmlOut += `<details class="dsh-low-group"><summary>低置信度（${low.length}）—— 已折叠</summary>${low.map(findingHtml).join('')}</details>`;
+    htmlOut += `<details class="dsh-low-group"><summary>低置信度（${low.length}）—— 已折叠</summary>${groupByProj(low).map(([proj, items]) => `
+      <div class="dsh-subgroup">
+        <h5 class="dsh-proj-head">${esc(proj)}（${items.length}）</h5>
+        ${items.map(findingHtml).join('')}
+      </div>`).join('')}</details>`;
   }
   el.innerHTML = htmlOut || '<div class="dsh-empty">无高/中置信度发现</div>';
   bindButtons(el);

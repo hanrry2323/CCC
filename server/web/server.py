@@ -1711,7 +1711,7 @@ def _dsh_severity_from_confidence(confidence: str) -> str:
 
 
 def _parse_dsh_md(text: str, name: str, mtime: float) -> list[dict[str, Any]]:
-    """解析 DSH 审计报告 6 列表格（| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |）。
+    """解析 DSH 审计报告表格（| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 项目 | 置信度 |）。
 
     与 observer 8 列解析（_handle_loop_findings）完全隔离：表头触发词 ``| 面``
     （observer 是 ``| 权重``），即使两套报告误放目录也不串。
@@ -1719,8 +1719,12 @@ def _parse_dsh_md(text: str, name: str, mtime: float) -> list[dict[str, Any]]:
     容错：仅 ``| 面`` 开头行进入表格；``| ---`` 分隔行跳过；非 ``|`` 行退出表格；
     缺列兜底空串；单元格内竖线不分裂（按简单 split 处理，真实首单后再迭代）。
 
+    列兼容（ccc-plan-038 卡2）：
+    - 6 列旧格式：| 面 | 位置 | 现象 | 证据 | 建议处置 | 置信度 | → project 兜底空串
+    - 7 列新格式：| 面 | 位置 | 现象 | 证据 | 建议处置 | 项目 | 置信度 | → project 取 cells[5]
+
     返回 findings 列表，每项含：
-        face/location/phenomenon/evidence/action/confidence/severity
+        face/location/phenomenon/evidence/action/project/confidence/severity
     """
     findings: list[dict[str, Any]] = []
     in_table = False
@@ -1733,7 +1737,14 @@ def _parse_dsh_md(text: str, name: str, mtime: float) -> list[dict[str, Any]]:
         if in_table and ln.strip().startswith("|"):
             cells = [c.strip() for c in ln.strip().strip("|").split("|")]
             if len(cells) >= 6:
-                confidence = cells[5]
+                if len(cells) >= 7:
+                    # 新 7 列：项目在置信度前
+                    project = cells[5]
+                    confidence = cells[6]
+                else:
+                    # 旧 6 列：无项目列，置信度在末列
+                    project = ""
+                    confidence = cells[5]
                 findings.append(
                     {
                         "face": cells[0],
@@ -1741,6 +1752,7 @@ def _parse_dsh_md(text: str, name: str, mtime: float) -> list[dict[str, Any]]:
                         "phenomenon": cells[2],
                         "evidence": cells[3],
                         "action": cells[4],
+                        "project": project,
                         "confidence": confidence,
                         "severity": _dsh_severity_from_confidence(confidence),
                         "ts": mtime,

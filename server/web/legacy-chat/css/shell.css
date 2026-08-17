@@ -3748,6 +3748,19 @@ body.ro-viewer [data-write] {
 .dsh-low-group summary { cursor: pointer; user-select: none; }
 .dsh-low-group .dsh-review-item { opacity: 0.75; }
 
+/* 项目分组（ccc-plan-038 卡2）：按项目聚合 DSH 发现 */
+.dsh-subgroup { margin-bottom: var(--ccc-space-lg); }
+.dsh-proj-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ccc-text-primary);
+  margin: 0 0 var(--ccc-space-sm);
+  padding: var(--ccc-space-xs) var(--ccc-space-sm);
+  border-left: 3px solid var(--ccc-accent, #4c6ef5);
+  background: var(--ccc-bg-hover);
+  border-radius: var(--ccc-radius-sm);
+}
+
 /* ③ 原始报告 */
 .dsh-raw summary { cursor: pointer; font-size: 13px; color: var(--ccc-text-secondary); user-select: none; }
 .dsh-raw-content {

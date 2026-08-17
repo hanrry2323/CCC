@@ -2461,6 +2461,38 @@ class TestDshFindings:
         assert findings[1]["severity"] == "黄旗"
         assert findings[2]["severity"] == "蓝旗"
 
+    def test_parse_dsh_md_project_column(self):
+        """7 列新契约（加项目列）解析：project 字段映射 + 6 列旧格式兼容兜底空串。"""
+        from server.web.server import _parse_dsh_md
+
+        md7 = (
+            "# DSH 报告\n\n"
+            "| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 项目 | 置信度 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| L1 | program/CCC/server/x:1 | 越权 | grep 实测 | 改 | ccc | 高 |\n"
+            "| L2 | qx-map/ide/x.md:2 | 滞后 | sed 实测 | 留 | qx-map | 中 |\n"
+        )
+        findings7 = _parse_dsh_md(md7, "2026-08-17-test-7col", 1.0)
+        assert len(findings7) == 2
+        assert findings7[0]["project"] == "ccc"
+        assert findings7[0]["confidence"] == "高"
+        assert findings7[0]["severity"] == "红旗"
+        assert findings7[1]["project"] == "qx-map"
+        assert findings7[1]["confidence"] == "中"
+
+        # 6 列旧格式无项目列 → project 兜底空串，confidence 仍在末列
+        md6 = (
+            "# DSH 报告\n\n"
+            "| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |\n"
+            "| --- | --- | --- | --- | --- | --- |\n"
+            "| L1 | server/config/x:1 | 越权 | grep 实测 | 改 | 高 |\n"
+        )
+        findings6 = _parse_dsh_md(md6, "2026-08-17-test-6col", 1.0)
+        assert len(findings6) == 1
+        assert findings6[0]["project"] == ""
+        assert findings6[0]["confidence"] == "高"
+        assert findings6[0]["severity"] == "红旗"
+
     def test_parse_dsh_md_confidence_normalize(self):
         """置信度值域容错：HIGH/High/低 归一化。"""
         from server.web.server import _dsh_severity_from_confidence
