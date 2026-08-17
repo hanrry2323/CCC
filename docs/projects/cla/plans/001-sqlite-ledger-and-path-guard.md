@@ -1,10 +1,8 @@
 # 方案 · SQLite 持久化账本底座与路径修复 (M1)
-
-> 项目：cla
-> 批准：老板确认转卡 · 2026-08-17
-> 编号：cla-plan-001
-> 状态：部分执行 作者：OpenCode
-> 创建：2026-08-17
+> 项目：cla · 编号：cla-plan-001 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 创建：2026-08-17 · 更新：2026-08-17
+> 关联卡：cla001
+> 关联方案：无
 > 里程碑：M1 · 独立底座与路径清零
 > 子项目：1.1 路径纠偏与冒烟测试绿灯, 1.2 SQLite 持久化队列重构
 > 环境准备：Python >= 3.10, SQLite 3
@@ -62,7 +60,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     *   `tests/test_obs1_smoke.py`
     *   `tests/test_obs2_smoke.py`
 *   **改动细则**：
-    *   将子进程执行 CWD 从绝对路径修改为动态计算的 BASE_DIR。
+    *   将子进程执行 CWD 从绝对路径修改为动态计算 of BASE_DIR。
     *   将 test 方法返回值删除，全量改为 `assert`。
 *   **验收标准**：
     *   在 Mac2017 环境下运行 `python3 -m pytest tests/test_obs1_smoke.py tests/test_obs2_smoke.py` 100% 全绿，无 Warning 警告。
