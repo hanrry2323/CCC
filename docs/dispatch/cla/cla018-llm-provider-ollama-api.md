@@ -157,3 +157,19 @@ lint：
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+机审：通过
+severity：轻
+
+### 审查摘要
+1. **代码质量与架构**: 整个适配层架构非常规范。定义了 `LLMProvider` 契约，分别通过 `OllamaProvider` 和 `OnlineAPIProvider` 清晰实现了本地 11434 与在线兼容 API，逻辑严密，异常分类（`LLMTimeoutError`, `LLMUnavailableError`, `LLMLimitExceededError`）十分到位。
+2. **对抗式找茬与就地修复**:
+   - **P1缺陷 (硬编码日期)**: 发现 `src/adapters/llm.py` 中硬编码了 `today = "2026-08-18"`。如果进入新的一天，旧的使用配额统计永远不会自动清零重置，从而导致限额机制在未来第二天、第三天彻底锁死。已就地修改为动态获取：`today = datetime.date.today().isoformat()`。
+   - **P1缺陷 (配额异常扣减)**: 发现 `DualTrackProvider.chat_with_usage` 在整个 primary 与 backup 链路完全失败并抛出异常时，之前在 `_check_and_increment_limits` 预扣的调用次数与 estimated tokens 额度未能予以回滚（造成白扣额度）。已就地实现 `_revert_estimated_limits` 回滚机制并完成双层异常捕获拦截。
+   - **单测增强**: 在 `tests/test_llm.py` 中补充并绿过了 `test_usage_limits_revert_on_failure` 测试，全量 coverage 与健壮性达标。
+3. **范围与红线**: 无敏感 API key 泄露，未触碰采集线与无关代码文件。
+4. **完成钩子（Doc-Gate）校验**: 维护区四问填报扎实，经追溯，工件（业务仓 `docs/lessons.md` 下的 Lesson 12 和 README）均真实存在且一致，通过校验。
+
+相关修改已在业务仓 `codex/cla018-llm-provider-ollama-api` 分支完成 `commit` 与 `push`。
