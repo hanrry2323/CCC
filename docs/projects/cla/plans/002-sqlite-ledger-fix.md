@@ -1,6 +1,6 @@
 # 方案 · SQLite 持久化队列重构（M1-1.2）
 
-> 项目：cla · 编号：cla-plan-002 · 状态：执行中 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-002 · 状态：已完成 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：cla016
 > 关联方案：cla-plan-001（声明已完成，但 SQLite 重构未合入业务仓 main）
