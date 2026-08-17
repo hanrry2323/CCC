@@ -1,8 +1,9 @@
-# 方案 · 销售机会挖掘逻辑与多格式营销话术自动生成 (M4)
-> 项目：cla · 编号：cla-plan-008 · 状态：草案 · 作者：OpenCode · 工具：opencode
+# 方案 · 销售机会挖掘逻辑与多格式营销话术自动生成（M4-4.2）
+
+> 项目：cla · 编号：cla-plan-010 · 状态：计划中 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：待出卡
-> 关联方案：cla-plan-004（价格战机会）、cla-plan-006（库存/补货窗口）、cla-plan-007（LLM 通道）
+> 关联方案：cla-plan-006（价格战机会）、cla-plan-008（库存/补货窗口）、cla-plan-009（LLM 通道）
 > 里程碑：M4 · 双轨决策与话术自动生成
 > 子项目：4.2 销售机会挖掘逻辑与多格式营销话术自动生成
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
@@ -28,19 +29,47 @@
 - `planner.py`：渠道模板（微信/短信/社媒）+ LLM 生成（prompt 模板化，含药品合规约束提示）。
 - 输出多格式并存，`sales_opportunities` 一行 = 一个机会 + 多格式话术 JSON 字段。
 
+## 验收标准
+
+- [ ] 三类机会判定单测（边界：=2 元不触发、库存正常不触发）
+- [ ] 机会幂等去重（同 raw_data 不重复）
+- [ ] 微信/短信/社媒三格式生成成功（mock LLM + 真实 ollama 各一）
+- [ ] 机会默认 pending_review 不直接推送
+- [ ] prompt 含合规约束提示
+
+## 功能卡
+
+### 机会挖掘判定器（三类机会）
+
+目标：完成三类机会判定与去重，交付可验收产物。
+
+实现：按「方案内容」1 节落地——opportunity.py 判定器 + 幂等去重。
+
+验收：验收标准条款 1-2（边界单测 / 幂等）。
+
+颗粒度：子项目内功能卡（约 1.5 天）。
+
+依赖：cla-plan-006（价格战机会）、cla-plan-008（库存数据）
+
+架构位置：`src/workflow/opportunity.py`、`sales_opportunities` 表
+
+### 多格式话术生成 + 入库
+
+目标：完成渠道话术生成与机会入库，交付可验收产物。
+
+实现：按「方案内容」2 节落地——planner.py + LLM 多格式生成 + pending_review 入库。
+
+验收：验收标准条款 3-5（三格式 / pending_review / 合规提示）。
+
+颗粒度：子项目内功能卡（约 2 天）。
+
+依赖：机会挖掘判定器、cla-plan-009（LLM 通道）
+
+架构位置：`src/workflow/planner.py`、`src/workflow/opportunity.py`（扩展）
+
 ## 转卡计划
 
-### cla011 | 机会挖掘判定器（三类机会）
-* 颗粒度：1.5 天（2 文件）
-* 依赖：--depends cla006（可用 mock 数据先行）
-* 架构位置：`src/workflow/opportunity.py`、`sales_opportunities` 表
-* 验收：三类机会判定单测（边界：=2 元不触发、库存正常不触发）；机会幂等去重。
-
-### cla012 | 多格式话术生成 + 入库
-* 颗粒度：2.0 天（3 文件）
-* 依赖：--depends cla011, cla010
-* 架构位置：`src/workflow/planner.py`、`src/workflow/opportunity.py`（扩展）
-* 验收：微信/短信/社媒三格式生成成功（mock LLM + 真实 ollama 各一）；机会默认 pending_review 不直接推送；prompt 含合规约束。
+机会挖掘判定器（1 卡）/ 多格式话术生成（1 卡）
 
 ## 备注
 

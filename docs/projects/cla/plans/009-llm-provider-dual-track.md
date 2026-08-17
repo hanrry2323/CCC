@@ -1,5 +1,6 @@
-# 方案 · LLMProvider 本地 Ollama ↔ 在线 API 配置层 (M4)
-> 项目：cla · 编号：cla-plan-007 · 状态：草案 · 作者：OpenCode · 工具：opencode
+# 方案 · LLMProvider 本地 Ollama ↔ 在线 API 配置层（M4-4.1）
+
+> 项目：cla · 编号：cla-plan-009 · 状态：计划中 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：待出卡
 > 关联方案：无
@@ -29,13 +30,32 @@
 - settings.yaml + secure_keys.env 双轨配置；provider 工厂函数按 mode 装配。
 - 降级链：主 provider 失败 N 次 → 切换备用 → 仍失败则任务打 failed 标签（不静默丢任务）。
 
+## 验收标准
+
+- [ ] ollama 模式本地跑通 chat
+- [ ] online 模式 mock 验证
+- [ ] 主 provider 故障自动降级且任务不静默丢失
+- [ ] token 上限/日上限生效
+
+## 功能卡
+
+### LLM 双轨 Provider + 降级与用量控制
+
+目标：完成 LLM 双轨调用层，交付可验收产物。
+
+实现：按「方案内容」两节落地——provider.py 双轨 + 配置降级链。
+
+验收：验收标准四条款全过（双轨跑通 / 降级 / 不丢任务 / 用量控制）。
+
+颗粒度：子项目级（1 卡，约 2 天）。
+
+依赖：无（可独立开发，与采集线并行）
+
+架构位置：`src/llm/provider.py`、`config/settings.yaml`、`config/secure_keys.env`
+
 ## 转卡计划
 
-### cla010 | LLM 双轨 Provider + 降级与用量控制
-* 颗粒度：2.0 天（3 文件 + 配置）
-* 依赖：无（可独立开发）
-* 架构位置：`src/llm/provider.py`、`config/settings.yaml`、`config/secure_keys.env`
-* 验收：ollama 模式本地跑通 chat；online 模式 mock 验证；主 provider 故障自动降级且任务不静默丢失；token 上限/日上限生效。
+LLM 双轨 Provider（1 卡，待出卡）
 
 ## 备注
 
