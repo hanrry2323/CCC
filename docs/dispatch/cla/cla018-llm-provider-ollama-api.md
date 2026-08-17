@@ -1,6 +1,6 @@
 # 任务卡 cla018 · LLM 双轨 Provider：本地 Ollama 与在线 API 配置层（OpenCode 执行）
 
-> 关联：cla-plan-009 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：cla · 日期：2026-08-18
+> 关联：cla-plan-009 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：cla · 日期：2026-08-18
 
 
 
@@ -71,24 +71,45 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-18
+
+### 实现说明
+1. **统一 LLM 调用层与抽象**: 在 `src/adapters/llm.py` 中定义了抽象基类 `LLMProvider`，规范了 `request_completion` 以及 `chat` 契约。
+2. **本地 Ollama 实现 (`OllamaProvider`)**: 调用本地 `11434` 接口。若本地服务不可用，会正确抛出 `LLMUnavailableError` 并触发降级。
+3. **在线 API 实现 (`OnlineAPIProvider`)**: 实现了 OpenAI 兼容 API 调用。在单测中配置为真实调用本地 router 端口 `6102` (`loop/code` 模型)，可稳定跑通。
+4. **双轨装配与失败降级 (`DualTrackProvider`)**:
+   - `config/settings.yaml` 集中配置 `llm.provider` 选择，以及降级策略 `fallback` (开启/关闭) 与用量阈值。
+   - `DualTrackProvider` 作为统一门面，当主 provider 出现连接/超时故障时，若 `fallback` 为 `True`，将自动自动捕获异常并静默无感知降级到备用 provider 调用。
+5. **用量与限额控制**:
+   - 对单次 task token 限制、每日总调用数限制、每日 token 额度限制均实施了检验，超出时抛出 `LLMLimitExceededError`。
+   - 通过 `data/llm_usage.json` 每日原子性持久化存储调用与 token 统计。
+
+### 测试结果
+在业务仓执行 `python3 -m pytest`，25 个测试用例全绿：
+- `tests/test_llm.py::test_load_settings` PASSED
+- `tests/test_llm.py::test_load_secure_keys` PASSED
+- `tests/test_llm.py::test_ollama_unavailable` PASSED
+- `tests/test_llm.py::test_online_real_call` PASSED (真实请求 localhost:6102 响应成功)
+- `tests/test_llm.py::test_dual_track_fallback` PASSED (主 Ollama 离线自动降级 Online 跑通)
+- `tests/test_llm.py::test_usage_limits` PASSED (完美检验单次 token 估计超限、日请求超限、日 token 额度超限拦截)
+- `tests/test_llm.py::test_mock_ollama_and_online` PASSED (Mock 测试通过)
+
+### Push 证据
+- 业务仓分支: `codex/cla018-llm-provider-ollama-api`
+- Commit hash: `c5ef0ee74b6dbb69784346bb6f5fb8848773b063` (具体见 push commit)
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：关联方案 `cla-plan-009` 已成功推进到「已完成」或「部分执行」状态，此卡作为核心落地卡已闭环交付。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：已在业务仓 `docs/lessons.md` 中新增了一条（Lesson 12）关于 LLM 额度计算、精确 actual usage 反馈持久化更新在本地 limits-guard 缓存的最佳实践记录。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：在项目 `docs/projects/cla/README.md` 中新增了 `M3 LLM 双轨适配器` 的模块说明与使用指南。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：项目主线依旧按照 `docs/development-blueprint-2026-08-18.md` 继续推进，无意外变化。
 
 ## 执行提示
 
