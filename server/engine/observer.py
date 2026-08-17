@@ -1458,10 +1458,6 @@ def main():
         print("[Observer] 框架巡查完成")
 
 
-if __name__ == "__main__":
-    main()
-
-
 def write_roadmap_draft(
     project: str,
     description: str,
@@ -1564,3 +1560,7 @@ def trigger_scheduled_ops(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         logger.info("定时运维任务已触发: %s (schedule=%s)", card_id, schedule or "immediate")
 
     return (True, {"triggered": triggered, "pending": pending})
+
+
+if __name__ == "__main__":
+    main()
