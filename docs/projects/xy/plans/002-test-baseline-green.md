@@ -5,7 +5,7 @@
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：xy033, xy034, xy035, xy036
 > 关联方案：无
-> 进度：0/4 (0%)
+> 进度：1/4 (25%)
 > 里程碑：M2 · 生产就绪
 > 子项目：2.1 测试基线绿
 > 环境准备：mac2017 xianyu 业务仓可写（`/Users/fan/program/apps/xianyu`）；`playwright install chromium` 可执行
