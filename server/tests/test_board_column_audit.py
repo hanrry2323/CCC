@@ -94,3 +94,20 @@ def test_machine_audit_p6_cases():
         "这里不含有机审区\n"
     )
     assert machine_audit_passed_text(no_audit_section) is False
+
+    # 5. 结论在小节标题上（### 机审：通过） -> True
+    section_title_pass = (
+        "# 任务卡 section_pass\n"
+        "## 机审区\n"
+        "### 机审：通过\n"
+    )
+    assert machine_audit_passed_text(section_title_pass) is True
+
+    # 结论在小节标题上且最后是不通过 -> False
+    section_title_fail = (
+        "# 任务卡 section_fail\n"
+        "## 机审区\n"
+        "### 机审：通过\n"
+        "### 结论：不通过\n"
+    )
+    assert machine_audit_passed_text(section_title_fail) is False

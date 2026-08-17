@@ -90,8 +90,13 @@ def machine_audit_passed_text(text: str) -> bool:
                 if cur_stripped.startswith("## "):
                     break  # 下一主节标题
 
-                # 忽略表格行、小节标题
-                if cur_stripped.startswith("|") or cur_stripped.startswith("###"):
+                # 忽略表格行
+                if cur_stripped.startswith("|"):
+                    j += 1
+                    continue
+
+                # 忽略普通小节标题，但如果该行包含具体结论判定，不应忽略（兼容结论写在小节标题上的场景，如 ### 机审：通过）
+                if cur_stripped.startswith("###") and not any(k in cur_stripped for k in ["机审", "结论", "结果"]):
                     j += 1
                     continue
 
