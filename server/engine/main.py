@@ -386,7 +386,16 @@ def _mark_branch_card_state(
             return
         if "docs/dispatch" not in work.card_path:
             return
-        card_file = Path(wt_hint) / work.card_path
+
+        # 获取相对路径，避免 Path(wt_hint) / absolute_path 导致路径漂移至生产卡
+        parts = Path(work.card_path).parts
+        if "docs" in parts:
+            idx = parts.index("docs")
+            rel_card_path = Path(*parts[idx:])
+        else:
+            rel_card_path = Path(work.card_path).name
+
+        card_file = Path(wt_hint) / rel_card_path
         if not card_file.is_file():
             return
         text = card_file.read_text(encoding="utf-8")
@@ -406,8 +415,8 @@ def _mark_branch_card_state(
         card_file.write_text(new_text, encoding="utf-8")
         branch = f"codex/{Path(work.card_path).stem.lower()}"
 
-        # 检查 rc：git add/commit/push 失败时保留脏现场 + 写告警
-        add = subprocess.run(["git", "add", "--", work.card_path], cwd=wt_hint, capture_output=True, check=False, timeout=30)
+        # 检查 rc：git add/commit/push 失败时保留脏现场 + 写告警（使用 worktree 相对路径）
+        add = subprocess.run(["git", "add", "--", str(rel_card_path)], cwd=wt_hint, capture_output=True, check=False, timeout=30)
         if add.returncode != 0:
             logger.error("机审打回落分支 git add 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, add.stderr.strip()[:200])
             _write_pipeline_warning("git_add_failed", work.id, f"git add 失败: {add.stderr.strip()[:200]}")
@@ -2887,7 +2896,7 @@ def _run_machine_audit_after_writeback(
                 source="engine-audit",
                 evidence=evidence,
             ):
-                return False, ["机审通过但机审区落盘到分支卡失败"]
+                return False, ["机审通过但机审区落盘到分支卡失败"], True
             if audited_tip:
                 _pin_audit_commit(str(wt_card), audited_tip)
             if not _commit_and_push_worktree_card(
