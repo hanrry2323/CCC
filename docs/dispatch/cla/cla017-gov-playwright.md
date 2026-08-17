@@ -1,6 +1,6 @@
 # 任务卡 cla017 · gov 爬虫执行器：四川药械挂网价 Playwright 自适应抓取（OpenCode 执行）
 
-> 关联：cla-plan-004 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：cla · 日期：2026-08-18
+> 关联：cla-plan-004 · 执行体：OpenCode · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：cla · 日期：2026-08-18
 
 
 
@@ -71,20 +71,24 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-18
+
+- **实现说明**：已完成 `GovCrawler`（`src/crawlers/gov.py`）设计与开发。支持 UA 伪造、Playwright 无头模式运行、`storage_state` 状态落盘（在 data 目录下自动维护会话 json）以及在 401/过期失效时进行自动重登（Auto-relogin）。
+- **测试结果**：完成了本地 Mock HTTP 服务器的多项 UA、会话保存和重置测试。全量 20 项测试全部绿灯通过（`python3 -m pytest`）。
+- **Push 证据**：业务代码已推送至 business repo 独立分支 `codex/cla017-gov-playwright`，Commit hash: `2a22c5d`。
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：同步完成四川直采模块。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：已在业务仓 `docs/lessons.md` 中新增了 Lesson 12。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：由于正式引入了 `playwright` 并需要 `playwright install chromium` 运行环境，项目依赖及使用细节已做沉淀。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：线路无变化，仍继续按蓝图推进。
 
 ## 批注落实
 
