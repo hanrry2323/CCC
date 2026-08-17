@@ -140,3 +140,21 @@ lint：
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
+
+## 机审区
+
+### 机审：通过
+**severity：中**
+
+### 审查摘要
+
+1. **完成钩子核对（Doc-Gate）**：
+   - 维护区四问全部完成勾选且给出了详细非空说明（[是]/[有]/[是]/[否]），未留任何模板占位。
+   - 核对工件：业务仓中 `docs/lessons.md` 下确凿存在 `Lesson 12`，内容充实，沉淀了 Playwright 在无头环境运行的依赖要点和 storage_state 会话保持的原理，声明引用完全属实。
+
+2. **对抗式找茬与就地修复（Severity 评分：7 / 评级：中）**：
+   - **问题 1（中）**：`_crawl_real_sichuan` 抓取真实四川站点时创建的浏览器 context 遗漏了 `storage_state` 的加载，导致实际在真站运行爬虫时无法共享已保存的登录态。
+   - **问题 2（中）**：外部或基类调用 `run()` 时无脑直接执行 `self.login()` 造成频繁重复登录，没有做前置会话有效性判定，违反了卡片红线 3。
+   - **问题 3（轻）**：默认 `storage_state_path` 没有落在任务卡要求的 `data/sessions/` 目录下，且缺乏对应的 `.gitignore` 规则，容易导致会话凭证泄露进 git 的安全隐患。
+   - **就地修复措施**：机审席已在业务仓 worktree `/Users/fan/program/apps/.ccc-wt/clawmed-ccc/cla017` 中就地修复了上述所有问题（在 `login` 开始处增加 `is_logged_in` 拦截逻辑、在 `_crawl_real_sichuan` 中补充 `storage_state` 加载、将会话默认路径迁移至 `data/sessions/` 并在 `.gitignore` 增加了针对该目录的自动过滤）。已执行 commit 并安全 push 至业务仓独立分支，最新 Commit hash 为 `3151a1b`。
+
