@@ -11,30 +11,46 @@
 
 ## 目标
 
-（一句话，可验收。）
+打通「数据→预警→任务」链路：基于 gov_prices 历史批次价格差自动生成价格战机会并自动入队（Jobs 自动化触发），为 M4 话术生成提供输入。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-006（2026-08-18 红线修正版）落地：src/workflow/opportunity.py 第一阶段——扫描 gov_prices 历史批次（同药品同规格同地区）新批次价 < 历史价 → 产出 opportunity_type='price_war' 原始机会记录；电商价差判定留接口（M3 就绪后接入，禁 mock）；定时巡检生成 JobSpec（capability_tags 含 decision）enqueue 入 SQLite 账本；幂等（同 key 未消费不重复入队）。
+
+> 方案蓝本：`docs/projects/cla/plans/006-price-war-alert.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止 mock 假数据：预警判定只用真实 gov_prices 数据；电商价差接口未接入前不产出记录。
+2. 机会默认 pending_review 状态，不直接推送。
+3. 不改爬虫采集逻辑；不触碰电商线。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/workflow/opportunity.py（第一阶段）、src/scheduler/job.py（如需扩展）、tests/ 新增预警单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-006（红线修正版）+ 架构定稿 §六（商业决策）
+2. 实现降价预警判定器（gov 历史批次价对比）+ 幂等
+3. 实现 Jobs 自动入队（capability_tags decision）
+4. 用真实 gov_prices 数据跑通「数据→机会→入队」
+5. pytest 单测通过（边界不触发/幂等/pending_review/tags）
+6. commit+push 到 codex/cla020-jobs 分支；卡头改「已回写」
+7. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿
+2. 新批次 gov_price < 历史批次价 → 机会记录生成（真实数据验证）
+3. 同机会幂等不重复入队；机会默认 pending_review
+4. 入队任务带 decision capability_tags；电商价差接口存在但未接入不产记录
+
 
 ## 门禁
 

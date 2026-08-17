@@ -11,30 +11,45 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地 gov 采集执行器：Playwright 无头浏览器动态抓取四川药械招采公示网挂网价，输出原始异构数据供 cla019 清洗。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-004「方案内容」两节落地：src/crawlers/gov.py 实现 BaseCrawler 五契约（load_credential/login/crawl/extract/run）——Playwright 异步抓取、UA 伪造、登录态落盘 data/sessions/、仅 401 失效时重登、解析公示列表与详情页输出原始异构数据；config/settings.yaml 站点段 + 站点适配器类，首期实现 sichuan（sc_yjj），结构保证后续省份可插拔。
+
+> 方案蓝本：`docs/projects/cla/plans/004-gov-crawler.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止 mock 假数据：抓取必须打真实站点（四川药械），产出真实结构化数据；单测可用 mock 站点响应但验收须真站跑通。
+2. 不触碰电商线（cla-plan-007/008 范围外）；不复制 CCC 原生调度逻辑。
+3. 凭证/会话文件（data/sessions/）不进 git；仅 401 失效才重登，禁止无脑频繁登录。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/crawlers/gov.py、src/crawlers/base.py（如需扩展基类）、config/settings.yaml、data/sessions/（gitignore）、tests/ 新增 gov 相关单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-004 + 架构定稿 §四.1（BaseCrawler 契约）
+2. 实现 gov.py + 四川适配器；实现登录态落盘与 401 重登
+3. pytest 单测（mock 站点响应）通过
+4. 实际站点（四川药械）手动跑通，产出结构化数据入库验证
+5. commit+push 到 codex/cla017-gov-playwright 分支（勿直推 main）；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿（含 gov 单测）
+2. 实际站点四川药械手动跑通返回结构化数据（附命令输出）
+3. 登录态落盘/仅401重登逻辑有测试覆盖
+4. 不触碰电商线（3.x 范围外）；无 mock 假数据入库
+
 
 ## 门禁
 

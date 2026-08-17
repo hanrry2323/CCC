@@ -11,30 +11,45 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地话术生成：LLM 经渠道模板（微信/短信/社媒）生成多格式差异化营销话术，写入 sales_opportunities（pending_review），prompt 含药品合规约束提示。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-010 落地：src/workflow/planner.py 渠道模板（微信≤500字/短信≤70字/社媒短帖）+ LLM 生成（prompt 模板化含合规约束）；机会一行 = 多格式话术 JSON；复用 cla018 LLM 通道；入库默认 pending_review。
+
+> 方案蓝本：`docs/projects/cla/plans/010-opportunity-mining.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止假数据：话术必须经真实 LLM 通道生成（Ollama 或在线），禁止写死模板文本冒充。
+2. prompt 必含药品合规约束提示；合规正式把关在 cla023。
+3. 不改机会判定逻辑（cla021 范围）。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/workflow/planner.py、src/workflow/opportunity.py（扩展话术字段）、tests/ 新增话术单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-010 功能卡「多格式话术生成」节
+2. 实现 planner.py 渠道模板 + LLM 多格式生成 + pending_review 入库
+3. 真实 LLM 通道生成三格式话术
+4. pytest 单测通过（格式/长度/合规提示）
+5. commit+push 到 codex/cla022-task 分支；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿
+2. 微信/短信/社媒三格式经真实 LLM 生成成功（附样例）
+3. 话术含合规约束（prompt 验证）；机会 pending_review 入库
+4. 无写死文本冒充 LLM 输出
+
 
 ## 门禁
 

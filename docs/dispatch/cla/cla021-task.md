@@ -11,30 +11,46 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地机会挖掘判定器：从 gov 历史价差（price_war）、库存变化（restock_window）、差评舆情（negative_review，留接口）中挖掘销售机会，规则驱动确定性逻辑，幂等去重写入 sales_opportunities。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-010 落地：src/workflow/opportunity.py 扩展三类机会判定器（规则驱动，LLM 仅文案）；同 raw_data 幂等去重；restock_window 依赖电商库存数据（M3 未就绪留判定接口不产出）、negative_review 依赖 media 线（草案池，留接口）；机会默认 pending_review 入库。
+
+> 方案蓝本：`docs/projects/cla/plans/010-opportunity-mining.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止 mock 假数据：机会判定只用真实入库数据；数据源未就绪的机会类型只留接口不产出记录。
+2. LLM 仅用于文案生成，判定逻辑必须确定性规则。
+3. 不触碰话术生成（cla022 范围）。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/workflow/opportunity.py（扩展）、sales_opportunities 表（如需扩展）、tests/ 新增判定单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-010 + 架构定稿 §六
+2. 实现三类机会判定器 + 幂等去重 + pending_review 入库
+3. restock/negative 留接口（数据源未就绪不产出）
+4. 真实数据跑通 price_war 判定
+5. pytest 单测通过（边界 =2 元不触发/幂等/状态）
+6. commit+push 到 codex/cla021-task 分支；卡头改「已回写」
+7. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿
+2. price_war 真实数据判定产出机会（边界 = 不触发）
+3. 同 raw_data 幂等不重复生成
+4. 机会默认 pending_review；restock/negative 接口存在但无数据源不产出
+
 
 ## 门禁
 

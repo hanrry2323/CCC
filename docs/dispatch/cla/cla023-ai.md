@@ -11,30 +11,45 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地三级合规卡关：敏感词初审（AI/L1）→ 代表复审（L2）→ 主管终审（L3），audit_status 状态机流转（pending→approved/rejected→pushed），审核轨迹全留痕。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-011 落地：src/workflow/compliance.py 三级卡关状态机（pending/approved/rejected/pushed）+ 敏感词库（config 加载）+ AI 初审（复用 cla018 LLM 通道做敏感词标红）；compliance_audit_trail 表留痕（level/action/actor/reason）。
+
+> 方案蓝本：`docs/projects/cla/plans/011-compliance-three-level-gate.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止假数据：审核对象必须是真实机会（cla021/022 产出）；敏感词库真实配置。
+2. 审核驳回不推送；审核轨迹 append-only 不篡改。
+3. UI 层在 cla028，本卡只做状态机 + 初审逻辑。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/workflow/compliance.py、compliance_audit_trail 表、config 敏感词库、tests/ 新增合规单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-011 + 架构定稿 §六.2（三级审核）
+2. 实现三级状态机 + 敏感词初审 + 轨迹留痕
+3. 真实机会样例跑通 pending→approved→pushed 与驳回分支
+4. pytest 单测通过（状态流转/敏感词/留痕）
+5. commit+push 到 codex/cla023-ai 分支；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿
+2. 敏感词命中 → L1 初审拦截/标红；人工动作 L2/L3 流转正确
+3. 驳回不推送；审核轨迹完整留痕
+4. 无 mock 假审核对象
+
 
 ## 门禁
 

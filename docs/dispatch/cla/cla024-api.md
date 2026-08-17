@@ -11,30 +11,44 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地审核数据接口：待审列表、详情、approve/reject 动作（含 reason），供前端合规台调用。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-011 落地：src/api/routes/audit.py 三个端点（GET 待审列表/GET 详情含审核轨迹/POST 动作 approve|reject + reason），复用 cla023 状态机；FastAPI 路由前缀 /api/audit。
+
+> 方案蓝本：`docs/projects/cla/plans/011-compliance-three-level-gate.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止假数据：接口返回必须来自真实机会表数据；动作真实写库留痕。
+2. 动作只允许 approve/reject（带 reason），非法动作 400。
+3. 前端 UI 在 cla028，本卡只做后端接口。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/api/routes/audit.py、tests/ 新增 API 单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-011 功能卡「审核 API」节
+2. 实现三个端点 + 动作校验 + 留痕
+3. 真实机会数据接口验证（curl 可测）
+4. pytest 单测通过（列表/详情/动作/非法动作）
+5. commit+push 到 codex/cla024-api 分支；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿
+2. 三端点真实数据可用（附 curl 输出）
+3. approve/reject 动作写库留痕；非法动作 400
+
 
 ## 门禁
 

@@ -11,30 +11,44 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地前端工程骨架（Vite+React+Tailwind+Zustand）+ Data Panel 数据面板（真实 gov/电商价格表 + 筛选），FastAPI 一体化挂载静态产物。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-013 落地：frontend/ Vite 工程（React 18 + Tailwind + Zustand，无重依赖 UI 库）；Data Panel 展示 gov_prices/ecommerce_prices 真实表数据 + 筛选；构建产物输出 src/api/static/；FastAPI StaticFiles 挂载；数据面板验证必须用真实入库数据（电商未就绪时只展示 gov 真实数据，禁 mock）。
+
+> 方案蓝本：`docs/projects/cla/plans/013-spa-console.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止 mock 假数据：面板只展示真实入库数据；电商表未就绪时只显示 gov 真实数据。
+2. 前端纯静态契约：不引入独立前端服务器，FastAPI 一体化挂载。
+3. 整机内存目标 ≤30MB（观测记录，不硬性门禁）。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+frontend/（工程骨架 + Data Panel）、src/api/app.py（挂载）、src/api/static/（构建产物，gitignore 或提交均按约定）
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-013 功能卡「Data Panel」节
+2. 初始化 frontend/ Vite 工程 + 路由 + Tailwind + Zustand
+3. 实现 Data Panel（真实数据 + 筛选）+ FastAPI 挂载
+4. 构建产物挂载访问验证（真实数据上屏）
+5. commit+push 到 codex/cla026-spa-data-panel 分支；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. 构建产物被 FastAPI 挂载可访问（浏览器验证）
+2. 数据面板展示真实入库数据 + 筛选可用（附截图/输出）
+3. 无 mock 假数据填充界面
+
 
 ## 门禁
 

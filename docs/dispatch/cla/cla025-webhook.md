@@ -11,30 +11,44 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地企微推送通道：通过审核的机会话术经企微自建应用 Webhook 推送，失败重试 3 次 + push_logs 留痕。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-012 落地：src/workflow/push_agent.py 企微 Webhook 推送（webhook 地址走 secure_keys.env）+ 重试（3 次退避）+ push_logs 表留痕（pending/sent/failed + retry_count）；已通过审核的机会才推送。
+
+> 方案蓝本：`docs/projects/cla/plans/012-wecom-webhook-push.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止假数据：推送对象必须是真实通过审核的机会；webhook 地址真实配置或明确标注待配置。
+2. 未过审核（非 approved）禁止推送；推送失败不吞错。
+3. webhook 地址不进 git 明文。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/workflow/push_agent.py、push_logs 表、tests/ 新增推送单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-012 + 架构定稿 §六（推送）
+2. 实现 Webhook 推送 + 重试 + 留痕
+3. 通过审核的真实机会跑通推送（或 webhook 待配置时验证状态机）
+4. pytest 单测通过（状态流转/重试/失败留痕）
+5. commit+push 到 codex/cla025-webhook 分支；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿
+2. approved 机会触发推送；失败重试 3 次并留痕
+3. 未过审核机会不推送
+
 
 ## 门禁
 

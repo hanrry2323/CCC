@@ -11,30 +11,45 @@
 
 ## 目标
 
-（一句话，可验收。）
+落地 LLMProvider 抽象与双轨实现：本地 Ollama（OllamaProvider）与在线 API（OnlineAPIProvider）100% 配置化切换，低配设备本地推理兜底。
+
 
 ## 实现
 
-（二级实现详情：功能背景 / 开发要求 / 关键代码思路。ccc-plan-027 功能卡「实现」段自动注入此区；无注入时执行体在实现前补齐。）
+按 cla-plan-009 落地：src/adapters/llm.py 定义 LLMProvider 抽象基类（request_completion）；OllamaProvider 调本地 11434（Qwen2-7B/Llama3-8B）；OnlineAPIProvider 调在线中转/官方 API（DeepSeek/Anthropic）；settings.yaml llm.provider 开关热切换 + 不可用降级（或明确报错不静默）。
+
+> 方案蓝本：`docs/projects/cla/plans/009-llm-provider-dual-track.md`（功能卡节为执行蓝本）
+
 
 ## 红线（先看）
 
-1. （本卡禁止触碰的边界，验收越界即打回）
-2. 若本卡含 `## 人工批注`，执行体必须先读批注并按批注修订目标/步骤后再执行；批注优先于正文。
+1. 禁止假数据：双轨任一通道真实调用验证（Ollama 本地或在线 API），不用写死文本充当 LLM 输出。
+2. API key 只进 secure_keys.env / .env，禁止写死进代码或 JSON。
+3. 不复制 CCC 原生逻辑；不触碰采集线文件。
+
 
 ## 范围
 
-（明确本卡改动范围，白名单式列出。）
+src/adapters/llm.py、config/settings.yaml（llm 段）、tests/ 新增双轨单测
+
 
 ## 步骤
 
-1. （可执行步骤，每步有可验证产物）
-2. commit+push 到卡内分支（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`（减 --close-only）；卡头改为「已回写」。
-3. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
+1. 读 cla-plan-009 + 架构定稿 §四.2（LLMProvider 契约）
+2. 实现 LLMProvider 基类 + OllamaProvider + OnlineAPIProvider
+3. settings.yaml llm.provider 开关 + 降级策略
+4. pytest 单测通过；双轨各真实调用一次话术生成
+5. commit+push 到 codex/cla018-llm-provider-ollama-api 分支；卡头改「已回写」
+6. 停手：禁止写 机审区/验收区/置已关闭。等 2017 机审 → 老板「合入批准」
+
 
 ## 验收标准
 
-1. （可执行的验收点，附命令/可观察结果）
+1. pytest tests/ -q 全绿（含 LLM 双轨单测）
+2. Ollama 与在线 API 各真实跑通一次 completion（附输出）
+3. 配置切换生效；Ollama 不可用时按策略降级或明确报错（不静默假数据）
+4. 无 key 泄漏（git diff 无真值）
+
 
 ## 门禁
 
