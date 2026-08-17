@@ -1195,18 +1195,25 @@ def _load_board_items(include_archived: bool = False):
     if _BOARD_CACHE is not None and now - _BOARD_CACHE[0] < _BOARD_CACHE_TTL_S and _BOARD_CACHE[1] == key:
         return _BOARD_CACHE[2]
 
-    items = load_dispatch_cards(_DISPATCH_DIR, include_archived=include_archived)
-    try:
-        composed = _compose_board_items(items)
-        _BOARD_CACHE = (now, key, composed)
-        return composed
-    except Exception:
-        logger.exception("看板合成失败，回退 git 真相")
-        return items
+    # 单飞锁重建：warmup / watch_loop / 请求线程并发失效时只允许一个重建，
+    # 其余等锁复用，防止并发全量扫卡 + 索引 flock 竞争（2026-08-17 事故修复）。
+    with _BOARD_REBUILD_LOCK:
+        now = time.time()
+        if _BOARD_CACHE is not None and now - _BOARD_CACHE[0] < _BOARD_CACHE_TTL_S and _BOARD_CACHE[1] == key:
+            return _BOARD_CACHE[2]
+        items = load_dispatch_cards(_DISPATCH_DIR, include_archived=include_archived)
+        try:
+            composed = _compose_board_items(items)
+            _BOARD_CACHE = (now, key, composed)
+            return composed
+        except Exception:
+            logger.exception("看板合成失败，回退 git 真相")
+            return items
 
 
 _BOARD_CACHE_TTL_S = 20.0
 _BOARD_CACHE: tuple[float, str, list] | None = None
+_BOARD_REBUILD_LOCK = threading.Lock()
 
 
 def _board_cache_key() -> str:
@@ -1273,6 +1280,9 @@ def _closed_at_map(repo_root, ttl: float = 60.0) -> dict[str, str]:
 
 _ENRICHED_CACHE: tuple[float, str, list[dict]] | None = None
 _ENRICHED_TTL_S = 30.0
+# 单飞锁（2026-08-17 事故修复）：并发请求缓存失效时只允许一个线程重建，
+# 其余等锁后复用新缓存，避免多线程同时全量扫卡/读日志/抢索引 flock 导致雪崩。
+_ENRICHED_REBUILD_LOCK = threading.Lock()
 
 
 _RELAY_USAGE_FILE_DEFAULT = Path("/Users/fan/program/apps/ai-loop-router-ccc/logs/usage.json")
@@ -1426,27 +1436,32 @@ def _enriched_cards(include_archived: bool = False) -> list[dict]:
     if _ENRICHED_CACHE is not None and now - _ENRICHED_CACHE[0] < _ENRICHED_TTL_S and _ENRICHED_CACHE[1] == key:
         return _ENRICHED_CACHE[2]
 
-    cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
-    cards_list.sort(key=lambda x: x["id"])
-    log_dir = _executor_log_dir()
-    # 富化收窄：非关闭卡 + 最新 10 张已关闭（看板只展示这 10 张的徽章），
-    # 避免每轮对全部历史卡做日志/工作树计算（重建从 ~5s 降到 ~1s）。
-    enrich_ids = {c["id"] for c in cards_list if base_state(c.get("state", "")) != "已关闭"}
-    recent_closed = sorted(
-        [c for c in cards_list if base_state(c.get("state", "")) == "已关闭"],
-        key=lambda x: x.get("closed_at") or "",
-        reverse=True,
-    )[:10]
-    enrich_ids.update(c["id"] for c in recent_closed)
-    for c in cards_list:
-        if c["id"] in enrich_ids and card_wants_runtime(c):
-            enrich_card_runtime(
-                c,
-                log_dir,
-                force=False,
-            )
-    _ENRICHED_CACHE = (now, key, cards_list)
-    return cards_list
+    # 单飞锁重建：等锁期间其他线程可能已重建，double-check 后复用。
+    with _ENRICHED_REBUILD_LOCK:
+        now = time.time()
+        if _ENRICHED_CACHE is not None and now - _ENRICHED_CACHE[0] < _ENRICHED_TTL_S and _ENRICHED_CACHE[1] == key:
+            return _ENRICHED_CACHE[2]
+        cards_list = [i.to_dict() for i in _load_board_items(include_archived=include_archived)]
+        cards_list.sort(key=lambda x: x["id"])
+        log_dir = _executor_log_dir()
+        # 富化收窄：非关闭卡 + 最新 10 张已关闭（看板只展示这 10 张的徽章），
+        # 避免每轮对全部历史卡做日志/工作树计算（重建从 ~5s 降到 ~1s）。
+        enrich_ids = {c["id"] for c in cards_list if base_state(c.get("state", "")) != "已关闭"}
+        recent_closed = sorted(
+            [c for c in cards_list if base_state(c.get("state", "")) == "已关闭"],
+            key=lambda x: x.get("closed_at") or "",
+            reverse=True,
+        )[:10]
+        enrich_ids.update(c["id"] for c in recent_closed)
+        for c in cards_list:
+            if c["id"] in enrich_ids and card_wants_runtime(c):
+                enrich_card_runtime(
+                    c,
+                    log_dir,
+                    force=False,
+                )
+        _ENRICHED_CACHE = (now, key, cards_list)
+        return cards_list
 
 
 def _compose_board_items(items):
@@ -4204,7 +4219,9 @@ def _start_card_watcher():
             pass
 
         while True:
-            time.sleep(3)
+            # 降频（2026-08-17 事故修复：3s→10s）：状态变更检测不需要 3s 粒度，
+            # 减少冷缓存重建期间 watch_loop 与请求线程抢索引锁的次数。
+            time.sleep(10)
             try:
                 items = _load_board_items()
                 for item in items:
