@@ -1,5 +1,5 @@
 # 方案 · SQLite 持久化账本底座与路径修复 (M1)
-> 项目：cla · 编号：cla-plan-001 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-001 · 状态：已完成 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：cla001
 > 关联方案：无
