@@ -2559,16 +2559,57 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     死标记 → 回「待分派」自动重派（不进打回）。返回重派张数。
     """
     n = 0
+    now_ts = time.time()
     for w in store.list_work(state=State.RUNNING):
         marker = log_dir / f"{w.id}.running"
         if not marker.is_file():
+            if w.dispatch == "manual":
+                continue
+            # 2026-08-17 v2：执行中卡缺失运行标记。
+            # 为了避免新建卡派发及单元测试时的微秒级竞态，只有当对应的日志文件存在且最后修改时间超过 60s 时，才判定为真正丢失标记并回收。
+            log_path = log_dir / f"{w.id}.log"
+            if log_path.is_file():
+                try:
+                    log_age = now_ts - log_path.stat().st_mtime
+                except OSError:
+                    log_age = 0.0
+                if log_age >= 60:
+                    try:
+                        w.transition(
+                            State.TODO,
+                            problems=["运行标记丢失，自动重派恢复"],
+                        )
+                        store.save_work(w)
+                        n += 1
+                        logger.warning("回收缺失标记的孤儿执行中: work=%s → 待分派", w.id)
+                    except Exception:
+                        logger.exception("回收缺失标记的孤儿执行中失败: work=%s", w.id)
             continue
         try:
             raw = marker.read_text(encoding="utf-8")
+            mtime = marker.stat().st_mtime
         except OSError:
             raw = ""
+            mtime = 0.0
         owner_pids = _parse_running_marker_pids(raw)
         alive = [p for p in owner_pids if _pid_alive(p)]
+
+        # 2026-08-17 v2：即使 PID 存活，若超过最大年龄（2h）同样强制中止并回收。
+        # 否则仅由 cleanup_dead_markers 删标记而子进程不死，会导致卡永久处于假在途、槽死锁状态。
+        if alive and mtime > 0 and (now_ts - mtime) >= MAX_MARKER_AGE_SECONDS:
+            logger.warning(
+                "执行中任务超时未回写（age=%ds，max=%ds），强制中止进程并回收: work=%s",
+                int(now_ts - mtime),
+                MAX_MARKER_AGE_SECONDS,
+                w.id,
+            )
+            for p in alive:
+                try:
+                    os.kill(p, signal.SIGKILL)
+                except OSError:
+                    pass
+            alive = []
+
         if alive:
             logger.info(
                 "跳过孤儿回收: work=%s 存活 pid=%s（标记=%s）",
@@ -2595,7 +2636,7 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     return n
 
 
-def cleanup_dead_markers(log_dir: Path) -> int:
+def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None) -> int:
     """清扫任意卡状态下的死标记（``*.running``，含 ``*-audit.running``）。
 
     引擎崩溃/部署后，非「执行中」卡（已关闭/待分派/打回）上的残留标记不会被
@@ -2614,6 +2655,10 @@ def cleanup_dead_markers(log_dir: Path) -> int:
         return 0
     for marker in markers:
         if not marker.is_file():
+            continue
+        # 2026-08-17 v2：跳过执行中卡的运行标记。这些标记由 reclaim_orphaned_running 独占回收，防竞争。
+        work_id = marker.stem.split("-", 1)[0]
+        if running_ids and work_id in running_ids:
             continue
         try:
             raw = marker.read_text(encoding="utf-8")
@@ -3309,7 +3354,8 @@ def run_once(
     pool = get_dispatch_pool()
     audit_pool = get_audit_pool()
     reclaimed = reclaim_orphaned_running(store, log_dir)
-    dead_markers_cleaned = cleanup_dead_markers(log_dir)
+    running_ids = {w.id for w in store.list_work(state=State.RUNNING)}
+    dead_markers_cleaned = cleanup_dead_markers(log_dir, running_ids=running_ids)
 
     # sidecar 契约（ccc-plan-021）：收敛器入 run_once——孤儿/终态残留 sidecar 自动清除，
     # 去掉人工 sync-runtime-state 依赖。终态（已回写/打回/已关闭）由磁盘卡唯一权威。

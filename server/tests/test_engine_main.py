@@ -600,6 +600,37 @@ class TestFileBoardStore:
         assert store.list_work(state=State.RUNNING)[0].id == "man1"
         assert not (log_dir / "auto1.running").exists()
 
+    def test_reclaim_orphaned_running_missing_marker_with_old_log(self, tmp_path: Path) -> None:
+        """执行中卡丢失 .running 标记但存在旧的 .log 文件时，能够被回收重派，防槽永久死锁。"""
+        import time
+        from server.engine.main import reclaim_orphaned_running
+
+        store = InMemoryBoardStore()
+        orphan = Work(id="missing1", role="开发执行体", state=State.RUNNING)
+        store.seed(orphan)
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        # 1. 如果没有 log 文件，不回收
+        n = reclaim_orphaned_running(store, log_dir)
+        assert n == 0
+        assert store.list_work(state=State.RUNNING)[0].id == "missing1"
+
+        # 2. 如果有新建的 log 文件（年龄 < 60s），不回收
+        log_file = log_dir / "missing1.log"
+        log_file.write_text("start", encoding="utf-8")
+        n = reclaim_orphaned_running(store, log_dir)
+        assert n == 0
+        assert store.list_work(state=State.RUNNING)[0].id == "missing1"
+
+        # 3. 如果 log 文件最后修改时间超过 60s，回收
+        past = time.time() - 100
+        import os
+        os.utime(log_file, (past, past))
+        n = reclaim_orphaned_running(store, log_dir)
+        assert n == 1
+        assert store.list_work(state=State.TODO)[0].id == "missing1"
+
     def test_reclaim_skips_live_owner_pid(self, tmp_path: Path) -> None:
         """标记 pid=<本进程> 且进程存活 → 不回收（防双 Engine 撞车）。"""
         import os
