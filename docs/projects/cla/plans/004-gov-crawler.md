@@ -4,6 +4,7 @@
 > 创建：2026-08-17 · 更新：2026-08-18（cla017 已回写待合入）
 > 关联卡：cla017
 > 关联方案：无
+> 进度：0/1 (0%)
 > 里程碑：M2 · 政府药械招采网价格监测
 > 子项目：2.1 挂网价 Playwright 自适应抓取
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
