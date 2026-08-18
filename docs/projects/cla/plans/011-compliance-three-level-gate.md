@@ -1,11 +1,12 @@
 # 方案 · 医药合规 AI 初审与三级安全卡关系统（M5-5.1）
 
-> 项目：cla · 编号：cla-plan-011 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-011 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18
 > 关联卡：cla023, cla024
 > 关联方案：cla-plan-010（话术输入）、cla-plan-009（LLM 通道）
 > 进度：1/2 (50%)
 > 里程碑：M5 · 前端控制台、合规审核与企微触达
+> 环境准备：Python >= 3.10, LLM 通道（同 009）
 > 子项目：5.1 医药合规 AI 初审与三级安全卡关系统
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

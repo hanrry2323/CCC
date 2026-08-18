@@ -1,6 +1,6 @@
 # 方案 · 螺旋上升人审合并流程（巡检→草案池→人审→开发）
 
-> 项目：ccc · 编号：ccc-plan-039 · 状态：已确认 · 作者：老板 + Claude Code W1 · 工具：Claude Code
+> 项目：ccc · 编号：ccc-plan-039 · 状态：待排期 · 作者：老板 + Claude Code W1 · 工具：Claude Code
 > 创建：2026-08-18 · 更新：2026-08-18
 > 关联卡：无
 > 关联方案：ccc-plan-038（双巡查分类）

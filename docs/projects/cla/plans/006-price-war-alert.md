@@ -1,11 +1,12 @@
 # 方案 · 招采降价预警与 Jobs 自动化触发（M2-2.3）
 
-> 项目：cla · 编号：cla-plan-006 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-006 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18（红线修正：删 mock 假数据表述，预警判定改 gov 历史价对比）
 > 关联卡：cla020
 > 关联方案：cla-plan-005（gov 数据）、cla-plan-008（电商数据）
 > 进度：0/1 (0%)
 > 里程碑：M2 · 政府药械招采网价格监测
+> 环境准备：Python >= 3.10, SQLite 3（gov_prices 表）
 > 子项目：2.3 招采降价预警与 Jobs 自动化触发
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

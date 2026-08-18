@@ -1,11 +1,12 @@
 # 方案 · 销售机会挖掘逻辑与多格式营销话术自动生成（M4-4.2）
 
-> 项目：cla · 编号：cla-plan-010 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-010 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18
 > 关联卡：cla021, cla022
 > 关联方案：cla-plan-006（价格战机会）、cla-plan-008（库存/补货窗口）、cla-plan-009（LLM 通道）
 > 进度：1/2 (50%)
 > 里程碑：M4 · 双轨决策与话术自动生成
+> 环境准备：Python >= 3.10, SQLite 3（gov_prices 表）
 > 子项目：4.2 销售机会挖掘逻辑与多格式营销话术自动生成
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

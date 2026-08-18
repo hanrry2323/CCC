@@ -1,11 +1,12 @@
 # 方案 · 企业微信 Webhook 销售机会秒级推送通道（M5-5.2）
 
-> 项目：cla · 编号：cla-plan-012 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-012 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18
 > 关联卡：cla025
 > 关联方案：cla-plan-011（合规卡关前置）
 > 进度：0/1 (0%)
 > 里程碑：M5 · 前端控制台、合规审核与企微触达
+> 环境准备：Python >= 3.10, 企微机器人 webhook（测试群已配）
 > 子项目：5.2 企业微信 Webhook 销售机会秒级推送通道
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

@@ -1,11 +1,12 @@
 # 方案 · 挂网价 Playwright 自适应抓取（M2-2.1）
 
-> 项目：cla · 编号：cla-plan-004 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-004 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18（cla017 已回写待合入）
 > 关联卡：cla017
 > 关联方案：无
 > 进度：0/1 (0%)
 > 里程碑：M2 · 政府药械招采网价格监测
+> 环境准备：Python >= 3.10, Playwright 浏览器（2017 已装）, 四川药械网公网可访问
 > 子项目：2.1 挂网价 Playwright 自适应抓取
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

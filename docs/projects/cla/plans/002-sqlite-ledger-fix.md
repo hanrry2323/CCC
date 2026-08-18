@@ -1,11 +1,12 @@
 # 方案 · SQLite 持久化队列重构（M1-1.2）
 
-> 项目：cla · 编号：cla-plan-002 · 状态：已完成 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-002 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18
 > 关联卡：cla016
 > 关联方案：cla-plan-001（声明已完成，但 SQLite 重构未合入业务仓 main）
 > 进度：0/1 (0%)
 > 里程碑：M1 · 独立底座与路径清零
+> 环境准备：Python >= 3.10, SQLite 3（M1/2017 均就绪）
 > 子项目：1.2 SQLite 持久化队列重构
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

@@ -1,6 +1,6 @@
 # 方案 · 双巡查体系分类定稿（LoopObserver 固定程序 / DSH 大模型）
 
-> 项目：ccc · 编号：ccc-plan-038 · 状态：已确认 · 作者：老板 + Claude Code W1 · 工具：Claude Code
+> 项目：ccc · 编号：ccc-plan-038 · 状态：待排期 · 作者：老板 + Claude Code W1 · 工具：Claude Code
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：无
 > 关联方案：无

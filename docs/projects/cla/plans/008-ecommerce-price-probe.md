@@ -1,10 +1,11 @@
 # 方案 · 竞品批发价格与库存状态高频采样探针（M3-3.2）
 
-> 项目：cla · 编号：cla-plan-008 · 状态：计划中 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-008 · 状态：待排期 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：待出卡
 > 关联方案：cla-plan-007（采集通道）
 > 里程碑：M3 · 各大医药电商平台数据抓取
+> 环境准备：Python >= 3.10, SQLite 3, 电商采集通道（同 007）
 > 子项目：3.2 竞品批发价格与库存状态高频采样探针
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

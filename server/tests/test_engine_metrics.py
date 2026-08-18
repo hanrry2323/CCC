@@ -43,9 +43,7 @@ def test_worker_event_writes_jsonl(tmp_path: Path) -> None:
         peak_rss_mb=12.5,
         peak_cpu_pct=3.2,
     )
-    rec = json.loads(
-        (tmp_path / "worker-events.jsonl").read_text(encoding="utf-8").splitlines()[0]
-    )
+    rec = json.loads((tmp_path / "worker-events.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert rec["work_id"] == "w1"
     assert rec["phase"] == "run"
     assert rec["ok"] is True
@@ -66,10 +64,12 @@ def test_process_sampler_records_peak(tmp_path: Path) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    sampler = metrics.ProcessSampler(proc, interval=0.2)
+    sampler = metrics.ProcessSampler(proc, interval=0.5)
     sampler.start()
     try:
-        time.sleep(0.7)
+        deadline = time.monotonic() + 3.0
+        while sampler.peak_rss_mb is None and time.monotonic() < deadline:
+            time.sleep(0.1)
     finally:
         sampler.stop()
         proc.terminate()

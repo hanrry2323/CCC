@@ -1,11 +1,12 @@
 # 方案 · 轻量级 SPA 控制台搭建（M5-5.3 · 对应架构定稿 M5.F 三功能卡）
 
-> 项目：cla · 编号：cla-plan-013 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-013 · 状态：待验收 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18（红线修正：删 mock 表述，数据面板以真实 gov 数据验证）
 > 关联卡：cla026, cla027, cla028
 > 关联方案：cla-plan-011（审核 API）、cla-plan-012（推送）
 > 进度：2/3 (66%)
 > 里程碑：M5 · 前端控制台、合规审核与企微触达
+> 环境准备：Python >= 3.10, 前端静态托管（FastAPI 内置）
 > 子项目：5.3 轻量级 SPA 控制台搭建 (Vite + React)
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

@@ -1,10 +1,11 @@
 # 方案 · 电商 B2B 多账户隔离登录与反爬网关（M3-3.1）
 
-> 项目：cla · 编号：cla-plan-007 · 状态：计划中 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-007 · 状态：待排期 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：待出卡
 > 关联方案：无
 > 里程碑：M3 · 各大医药电商平台数据抓取
+> 环境准备：Python >= 3.10, Playwright（2017 已装）, 目标电商站公网可访问（待账号就绪）
 > 子项目：3.1 电商 B2B 多账户凭证隔离登录与反爬网关
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
 

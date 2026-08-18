@@ -1,6 +1,6 @@
 # 方案 · OPML 导出 Bearer Token 强鉴权适配
 
-> 项目：mx · 编号：mx-plan-006 · 状态：计划中 · 作者：Claude Code W1 · 工具：ccc-plan
+> 项目：mx · 编号：mx-plan-006 · 状态：待排期 · 作者：Claude Code W1 · 工具：ccc-plan
 > 创建：2026-08-18 · 更新：2026-08-18
 > 关联卡：无（子项目处于计划中，后续单独出卡）
 > 进度：0/0 (0%)
