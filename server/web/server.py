@@ -3130,13 +3130,13 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "severity 须为 轻/中/重"}, 400)
             return
 
-        from server.config.loader import load_config_from_env
+        from server.config.loader import load_config
         from server.engine.dispatch import load_registry
         from server.engine.main import _card_machine_audit_passed, _run_machine_audit_after_writeback
         from server.engine.store import FileBoardStore
 
         try:
-            cfg = load_config_from_env()
+            cfg = load_config(os.environ.get("CCC_CONFIG_ENV", "server/config/config.env"))
         except Exception as exc:
             self._send_json({"error": f"配置加载失败: {exc}"}, 500)
             return
