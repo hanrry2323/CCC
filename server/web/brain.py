@@ -155,9 +155,9 @@ def _brain_cfg(key: str, default: str = "") -> str:
     此前 getters 只读 ``os.environ``，导致 config.env 新增配置在运行进程里静默失效。
     统一走本函数后，config.env 与 launchd 注入取并集，env 优先、config.env 兜底。
     """
-    raw = os.environ.get(key, "").strip()
-    if raw:
-        return raw
+    if key in os.environ:
+        # 显式设置（含空串）优先：如 CCC_BRAIN_THINKING="" 表示静态关闭，不落到 config.env 默认
+        return os.environ[key].strip()
     cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip()
     if cfg_path:
         try:
