@@ -480,9 +480,13 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
 
   # 跨仓收口：业务仓分支先合业务 main + 删（分叉阻断整卡，杜绝「卡关闭≠代码落地」）
   if ! close_business_repo "$path" "$branch"; then
-    echo "[ERROR] ${id}: 业务仓收口失败（业务分支分叉/不可达）→ 整卡不合入。" >&2
-    echo "  处理：让执行体把业务分支 rebase 到业务 main 后再「合入批准」。" >&2
-    return 1
+    if [[ "$CLOSE_ONLY" == true ]]; then
+      echo "[WARN] ${id}: 业务仓收口失败（业务分支分叉/不可达），但 --close-only 模式放行（请人工确认业务代码已在 main 或手动合入）" >&2
+    else
+      echo "[ERROR] ${id}: 业务仓收口失败（业务分支分叉/不可达）→ 整卡不合入。" >&2
+      echo "  处理：让执行体把业务分支 rebase 到业务 main 后再「合入批准」。" >&2
+      return 1
+    fi
   fi
 
   # 合入策略：ff / 已在 main 仅关卡 / 无分支或分叉时须 --close-only
