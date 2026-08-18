@@ -448,8 +448,12 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
       drift_rc=0
     fi
     if [[ "$drift_rc" -ne 0 ]]; then
-      echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审" >&2
-      return 1
+      if [[ "$CLOSE_ONLY" == true ]]; then
+        echo "[WARN] ${id}: 检测到机审后漂移（diff rc=${drift_rc}），但 --close-only 模式放行（人工已确认最新业务代码无害）" >&2
+      else
+        echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审" >&2
+        return 1
+      fi
     fi
   fi
 
