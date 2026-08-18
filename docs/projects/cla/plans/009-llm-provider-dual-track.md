@@ -4,6 +4,7 @@
 > 创建：2026-08-17 · 更新：2026-08-18（cla018 已回写待合入）
 > 关联卡：cla018
 > 关联方案：无
+> 进度：0/1 (0%)
 > 里程碑：M4 · 双轨决策与话术自动生成
 > 子项目：4.1 LLMProvider 本地 Ollama ↔ 在线 API 配置层
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
