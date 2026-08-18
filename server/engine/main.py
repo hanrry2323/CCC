@@ -2156,22 +2156,25 @@ def _dispatch_and_collect(
             pass
         # 注入：追加到「含 work.id 的 prompt 参数」而非 cmd[-1]
         # （复审 P2-2：与 v4 指令块同定位逻辑；OpenCode 模板 cmd[-1] 是尾随 worktree 串）
-        _hint_block = "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n" + _card_hint
-        if _dyn_role_hint:
-            _hint_block += "\n" + _dyn_role_hint
-        _hint_idx = next(
-            (i for i in range(len(cmd) - 1, -1, -1) if work.id in cmd[i]),
-            len(cmd) - 1,
-        )
-        cmd[_hint_idx] = cmd[_hint_idx] + _hint_block
-        logger.info(
-            "已注入 %s: work=%s arg[%d] (%d 字符, 动态角色=%s)",
-            _card_hint_section,
-            work.id,
-            _hint_idx,
-            len(_card_hint),
-            bool(_dyn_role_hint),
-        )
+        # wrapper 型执行体（entry.inject_hint=False，如 DSH run-executor.sh）自读卡内提示，
+        # Engine 不注入——避免污染 card_path 等非 prompt 参数（2026-08-18 探针发现）。
+        if getattr(entry, "inject_hint", True):
+            _hint_block = "\n\n---\n## 项目提示（由中枢在出卡时注入，请优先遵循）\n" + _card_hint
+            if _dyn_role_hint:
+                _hint_block += "\n" + _dyn_role_hint
+            _hint_idx = next(
+                (i for i in range(len(cmd) - 1, -1, -1) if work.id in cmd[i]),
+                len(cmd) - 1,
+            )
+            cmd[_hint_idx] = cmd[_hint_idx] + _hint_block
+            logger.info(
+                "已注入 %s: work=%s arg[%d] (%d 字符, 动态角色=%s)",
+                _card_hint_section,
+                work.id,
+                _hint_idx,
+                len(_card_hint),
+                bool(_dyn_role_hint),
+            )
 
     # 机审 v4 强化（2026-08-14）：审计阶段追加三级/就地修复/severity 标记指令。
     # 修复 MachineAuditPrompt 死代码——真实审计 prompt 由注册表模板+卡提示+skill 拼装，

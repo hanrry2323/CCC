@@ -97,6 +97,9 @@ class ExecutorEntry:
     transport: str = "local"  # 传输通道：local(本机 spawn) | git(认领协议) | ssh
     worker_status: str = ""  # Worker 状态："" | ready | busy | offline（观测更新）
     remote_workdir: str = ""  # 远端 Worker 执行工作目录
+    # 提示注入开关（2026-08-18）：wrapper 型执行体（如 DSH run-executor.sh）自读卡内
+    # 「## 执行提示」，Engine 不应再注入到参数（会污染 card_path 等非 prompt 参数）。
+    inject_hint: bool = True
 
 
 @dataclass(frozen=True)
@@ -246,6 +249,7 @@ def load_registry(path: Path | str) -> ExecutorRegistry:
                 transport=transport,
                 worker_status=raw.get("worker_status", ""),
                 remote_workdir=raw.get("remote_workdir", ""),
+                inject_hint=bool(raw.get("注入提示", True)),
             )
         )
     return ExecutorRegistry(tuple(entries))

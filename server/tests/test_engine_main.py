@@ -2559,6 +2559,75 @@ class TestPromptInjection:
         log_content = log_file.read_text(encoding="utf-8")
         # 旧卡无提示段 → 不含注入标记
 
+    def test_inject_hint_false_no_injection(self, tmp_path: Path) -> None:
+        """「注入提示: false」执行体（wrapper 型）→ Engine 不注入提示，card_path 不被污染。"""
+        # DSH 槽结构：bash wrapper + card_path 含 work.id，但注入提示=False
+        executors = [
+            {
+                "角色": "只读取证/审计执行体",
+                "分类": "可后台 CLI",
+                "当前绑定": "DSH headless",
+                "命令": "echo",
+                "参数模板": "wrapper-hint {card_path}",
+                "工作目录": "",
+                "备注": "测试夹具",
+                "注入提示": False,
+            }
+        ]
+        reg_path = tmp_path / "executors.json"
+        reg_path.write_text(
+            json.dumps({"version": "2", "executors": executors}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        reg = load_registry(reg_path)
+        store = InMemoryBoardStore()
+
+        dispatch_dir = tmp_path / "dispatch" / "ccc"
+        dispatch_dir.mkdir(parents=True)
+        card_file = dispatch_dir / "ccc999-test.md"
+        card_file.write_text(
+            "# 任务卡 ccc999 · DSH 探针\n"
+            "> 关联：TEST · 执行体：DSH headless · 验收：demo · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-18\n"
+            "\n"
+            "## 目标\n探针\n"
+            "\n"
+            "## 验收标准\n测试通过\n"
+            "\n"
+            "## 执行提示\n"
+            "- 项目：只读审计\n"
+            "- 检查 registry.yaml\n"
+            "\n"
+            "## 回写区\n\n测试回写内容\n",
+            encoding="utf-8",
+        )
+
+        store.seed(
+            Work(id="ccc999", role="只读取证/审计执行体", card_path=str(card_file), executor="DSH headless")
+        )
+        done_work = store.list_work()[0]
+        done_work.state = State.TODO
+        store.save_work(done_work)
+
+        cfg = {
+            "DATA_DIR": str(tmp_path),
+            "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
+            "EXECUTOR_TIMEOUT_SECONDS": "5",
+            "EXECUTOR_MAX_CONCURRENT": "1",
+            "EXECUTOR_MAX_AUDIT_CONCURRENT": "0",
+            "EXECUTOR_PROBE_URL": "",
+            "DISPATCH_DIR": str(tmp_path / "dispatch"),
+        }
+        summary = run_once(reg, store, cfg)
+        assert summary["collected"] == 1
+
+        # cmd 应保持 [bash, wrapper, card_path]，不追加提示（wrapper 自读卡）
+        log_file = tmp_path / "logs" / "ccc999.log"
+        log_content = log_file.read_text(encoding="utf-8")
+        # 日志首行 = start 信息，含完整 cmd；不应含注入标记「项目提示」
+        assert "## 项目提示" not in log_content
+        # 但卡内执行提示本身存在（wrapper 会自己读）
+        assert "只读审计" not in log_content
+
     def test_prompt_inject_plan_extracted(self, tmp_path: Path) -> None:
         """关联含方案编号 → 提取方案并注入摘要。"""
         from server.board.prompt_inject import build_executor_hint

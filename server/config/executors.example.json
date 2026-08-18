@@ -65,7 +65,8 @@
       "工作目录": "",
       "worktree_base": "",
       "备注": "DSH 只读取证/审计席（2026-08-16 headless 探针跑通挂账解除；2026-08-18 P4 升级为可后台 CLI）。经 wrapper run-executor.sh 拉起，env 从 run_audit.sh 提取，Engine 零密钥。仅只读审计，不作开发。",
-      "worker_id": "DSH"
+      "worker_id": "DSH",
+      "注入提示": false
     }
   ]
 }
