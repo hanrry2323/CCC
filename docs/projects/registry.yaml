@@ -17,7 +17,7 @@ projects:
       mac2017: /Users/fan/program/apps/clawmed-ccc
     isolation:
       worktree_root: /Users/fan/program/apps/.ccc-wt/clawmed-ccc
-      max_concurrent: 1
+      max_concurrent: 3
     taskable: true
     forbidden: false
     status: active
