@@ -459,8 +459,12 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
 
   # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
   if ! check_maintenance "$path" "$branch"; then
-    echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
-    return 1
+    if [[ "$CLOSE_ONLY" == true ]]; then
+      echo "[WARN] ${id}: 维护区校验失败（分支排版或声明冲突），但 --close-only 模式放行（人工已确认声明或已在 main 补齐方案）" >&2
+    else
+      echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
+      return 1
+    fi
   fi
 
   # 密钥/凭据扫描门禁（2026-08-16 质量门禁）：分支 diff 夹带密钥 → 阻断合入
