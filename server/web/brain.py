@@ -186,6 +186,11 @@ def _get_brain_thinking() -> str:
     return os.environ.get("CCC_BRAIN_THINKING", "enabled").strip()
 
 
+def _get_brain_direct() -> bool:
+    """是否强制直连大模型中继 (2017 单端服务器推荐，避免 macOS 常驻守护下的 Mach 锁挂起问题)。"""
+    return os.environ.get("CCC_BRAIN_DIRECT", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _is_brain_configured() -> bool:
     """大脑代理配置是否齐全。
 
@@ -517,6 +522,10 @@ def _stream_claude(prompt: str, timeout: int | None = None):
     主循环按剩余超时等待：超时 → kill 并 yield ``error(504)``；
     spawn 失败 → ``error(502)``；正常结束 → 末尾 ``done`` 事件（result 行）。
     """
+    if _get_brain_direct():
+        yield from _stream_relay_direct(prompt)
+        return
+
     timeout = _get_brain_timeout() if timeout is None else timeout
     bin_path = _get_brain_claude_bin()
     env = os.environ.copy()
