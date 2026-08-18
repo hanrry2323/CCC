@@ -40,12 +40,11 @@
   --ccc-radius-xl: 24px;
   --ccc-radius-full: 9999px;
 
-  --ccc-font-sans: "Anthropic Sans", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --ccc-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Segoe UI", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   --ccc-font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", ui-monospace, monospace;
   --ccc-font-size-xs: 11px;
   --ccc-font-size-sm: 13px;
-  --ccc-font-size-base: 15.5px;
+  --ccc-font-size-base: 14.5px;
   --ccc-font-size-lg: 18px;
   --ccc-font-size-xl: 28px;
 

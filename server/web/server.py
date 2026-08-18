@@ -233,8 +233,8 @@ _load_persisted_threads()
 
 
 def _chat_bridge_url() -> str:
-    """M1 对话桥地址（配置后 /conversation 与 threads 走代理）。"""
-    return _env_or_config("CCC_CHAT_BRIDGE_URL", "").strip()
+    """M1 对话桥地址（已下线退役，恒为空以激活 2017 同机直连大模型大脑模式）。"""
+    return ""
 
 
 def _chat_bridge_token() -> str:

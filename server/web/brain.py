@@ -43,6 +43,8 @@ import json
 import os
 import queue
 import signal
+import re
+import http.client
 import subprocess
 import threading
 import time
@@ -539,7 +541,8 @@ def _stream_claude(prompt: str, timeout: int | None = None):
             preexec_fn=os.setsid,
         )
     except (OSError, FileNotFoundError) as exc:
-        yield ("error", {"status": 502, "message": f"brain failed: {exc}"})
+        # Fallback：当本地不具备 claude CLI 时（例如在 2017 单端服务器上），直连中继 (6100/6102/DSH) 获取大模型大脑流
+        yield from _stream_relay_direct(prompt)
         return
 
     lines_q: queue.Queue[tuple[str, Any]] = queue.Queue()
@@ -589,7 +592,92 @@ def _stream_claude(prompt: str, timeout: int | None = None):
         _terminate_proc(proc)
 
 
+def _stream_relay_direct(prompt: str):
+    """2017 本地直连中继 (6100/6102/DSH) 流式大模型生成器。
+
+    将标准 OpenAI / Anthropic 格式的 SSE 字节流转译并 yield 为归一化事件流。
+    这消除了 2017 单端服务器拉起本地 claude 命令行子进程的环境要求与 Mach 锁超时，
+    并完美支持 DeepSeek R1 深度思考 (reasoning_content → thinking)。
+    """
+    import http.client
+
+    base_url = _get_brain_base_url() or "http://127.0.0.1:6100"
+    model = _effective_model() or "deepseek-chat"
+    auth_token = _get_brain_auth_token()
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+
+    body = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "stream": True
+    }, ensure_ascii=False).encode("utf-8")
+
+    m = re.match(r"http://([^:/]+):(\d+)", base_url)
+    if m:
+        host, port = m.group(1), int(m.group(2))
+    else:
+        host, port = "127.0.0.1", 6100
+
+    conn = None
+    try:
+        conn = http.client.HTTPConnection(host, port, timeout=120)
+        conn.request("POST", "/v1/chat/completions", body=body, headers=headers)
+        resp = conn.getresponse()
+        if resp.status != 200:
+            err_msg = resp.read().decode("utf-8", errors="replace")
+            yield ("error", {"status": resp.status, "message": f"DSH Relay error: {err_msg}"})
+            return
+
+        yield ("meta", {"model": model, "tools": [], "mcp_servers": [], "skills": []})
+
+        buffer = b""
+        while True:
+            chunk = resp.read(4096)
+            if not chunk:
+                break
+            buffer += chunk
+            while b"\n" in buffer:
+                line_bytes, buffer = buffer.split(b"\n", 1)
+                line = line_bytes.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                if line.startswith("data:"):
+                    data_str = line[len("data:"):].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        choices = data.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            reasoning = delta.get("reasoning_content", "")
+                            if reasoning:
+                                yield ("thinking", {"data": reasoning})
+                            if content:
+                                yield ("text", {"text": content})
+                    except Exception:
+                        pass
+        yield ("done", {"is_error": False, "text": ""})
+    except Exception as exc:
+        yield ("error", {"status": 502, "message": f"direct relay connection failed: {exc}"})
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def stream_brain_events(
+
     message: str,
     history: list[dict[str, Any]],
     session_key: str | None = None,
