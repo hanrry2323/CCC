@@ -4,6 +4,7 @@
 > 创建：2026-08-17 · 更新：2026-08-18（红线修正：删 mock 表述，数据面板以真实 gov 数据验证）
 > 关联卡：cla027, cla028
 > 关联方案：cla-plan-011（审核 API）、cla-plan-012（推送）
+> 进度：0/2 (0%)
 > 里程碑：M5 · 前端控制台、合规审核与企微触达
 > 子项目：5.3 轻量级 SPA 控制台搭建 (Vite + React)
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
