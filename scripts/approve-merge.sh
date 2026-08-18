@@ -4,10 +4,10 @@
 # 用法：
 #   scripts/approve-merge.sh <card-id> [<card-id>...]
 #   scripts/approve-merge.sh --ready              # 批处理 2017 ready_for_merge 队列
-#   scripts/approve-merge.sh --close-only <id>    # 分支已分叉/已合入时仅关卡（ready 必需）
+#   scripts/approve-merge.sh --close-only <id>    # 分支已在 main 历史/无分支时仅关卡（ready 必需）
 #
 # 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
-# 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡）；
+# 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡，--close-only 也不放行分叉）；
 #       CCC 仓能 ff 则 ff-merge；否则 --close-only / 分支已在 main → 只关卡。
 #       【合入后须部署检查】：成功合入后自动检查 2017 生产 vs 主干，落后则触发热重启部署。
 # 合入前 main 卡头允许滞后；本脚本写关闭态。
@@ -492,14 +492,13 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
   git pull --ff-only origin main
 
   # 跨仓收口：业务仓分支先合业务 main + 删（分叉阻断整卡，杜绝「卡关闭≠代码落地」）
+  # 2026-08-19 回退 b072a72a：--close-only 不再放行业务仓分叉——分叉=代码没合入main，
+  # 必须阻断整卡让执行体 rebase，不存在"close-only 放行分叉"的合理场景。
+  # （b072a72a 曾让 --close-only 绕过此阻断，制造 cla020-028 九卡假关闭事故）
   if ! close_business_repo "$path" "$branch"; then
-    if [[ "$CLOSE_ONLY" == true ]]; then
-      echo "[WARN] ${id}: 业务仓收口失败（业务分支分叉/不可达），但 --close-only 模式放行（请人工确认业务代码已在 main 或手动合入）" >&2
-    else
-      echo "[ERROR] ${id}: 业务仓收口失败（业务分支分叉/不可达）→ 整卡不合入。" >&2
-      echo "  处理：让执行体把业务分支 rebase 到业务 main 后再「合入批准」。" >&2
-      return 1
-    fi
+    echo "[ERROR] ${id}: 业务仓收口失败（业务分支分叉/不可达）→ 整卡不合入（--close-only 也不放行分叉）。" >&2
+    echo "  处理：让执行体把业务分支 rebase 到业务 main 后再「合入批准」。" >&2
+    return 1
   fi
 
   # 合入策略：ff / 已在 main 仅关卡 / 无分支或分叉时须 --close-only
