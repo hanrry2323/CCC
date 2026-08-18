@@ -4,7 +4,7 @@
 > 创建：2026-08-17 · 更新：2026-08-18
 > 关联卡：cla023, cla024
 > 关联方案：cla-plan-010（话术输入）、cla-plan-009（LLM 通道）
-> 进度：0/2 (0%)
+> 进度：1/2 (50%)
 > 里程碑：M5 · 前端控制台、合规审核与企微触达
 > 子项目：5.1 医药合规 AI 初审与三级安全卡关系统
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
