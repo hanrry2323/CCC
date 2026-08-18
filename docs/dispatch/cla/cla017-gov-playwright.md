@@ -85,8 +85,8 @@ lint：
    - 说明：同步完成四川直采模块。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
    - 说明：已在业务仓 `docs/lessons.md` 中新增了 Lesson 12。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：由于正式引入了 `playwright` 并需要 `playwright install chromium` 运行环境，项目依赖及使用细节已做沉淀。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：CCC 侧项目档案已由出卡方建档（docs/projects/cla/README.md）；playwright 运行环境依赖沉淀见业务仓 CLAUDE.md/AGENTS.md。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：线路无变化，仍继续按蓝图推进。
 
