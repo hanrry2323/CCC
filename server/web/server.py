@@ -3684,7 +3684,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             # HP
             {"name": "HP MCP Server", "machine": "HP", "port": 8083, "url": "http://192.168.3.131:8083/mcp"},
             {"name": "HP Memory Store", "machine": "HP", "port": 8082, "url": "http://192.168.3.131:8082"},
-            {"name": "HP Ollama", "machine": "HP", "port": 11434, "url": "http://192.168.3.131:11434"},
             {"name": "HP PostgreSQL", "machine": "HP", "port": 5432, "url": ""},
             # M1
             {"name": "M1 PostgreSQL", "machine": "M1", "port": 5432, "url": ""},
