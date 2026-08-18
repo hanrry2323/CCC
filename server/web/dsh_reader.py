@@ -158,7 +158,6 @@ def _load_workspaces_raw() -> list[dict[str, Any]]:
     global_ids = (reg.get("global") or {}).get("workspaceIds") or []
     archived = set((reg.get("global") or {}).get("archivedSessionIds") or [])
     workspaces = (reg.get("tables") or {}).get("workspaces") or {}
-    root = dsh_data_root()
 
     out: list[dict[str, Any]] = []
     for wid in global_ids:
@@ -168,12 +167,16 @@ def _load_workspaces_raw() -> list[dict[str, Any]]:
         session_ids = [s for s in (w.get("sessionIds") or []) if s not in archived]
         sessions: list[dict[str, Any]] = []
         for sid in session_ids:
-            f = root / "sessions" / sid / "session.jsonl.zstd"
+            # 会话目录在 sessions/<workspace编码目录>/session-<uuid>/，用 _session_dir glob 定位
+            sdir = _session_dir(sid)
+            f = sdir / "session.jsonl.zstd" if sdir else None
             try:
-                mtime = f.stat().st_mtime
+                mtime = f.stat().st_mtime if f else 0
             except OSError:
                 mtime = 0
-            meta_title, count = _session_meta(_events(_decompress(f))) if f.exists() else ("", 0)
+            meta_title, count = (
+                _session_meta(_events(_decompress(f))) if f and f.exists() else ("", 0)
+            )
             sessions.append(
                 {
                     "id": sid,
