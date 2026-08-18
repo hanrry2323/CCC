@@ -440,8 +440,13 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
       return 1
     fi
     local drift_rc=0
-    git diff --quiet "${pin_sha}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
-    drift_rc=$?
+    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+      git diff --quiet "${pin_sha}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
+      drift_rc=$?
+    else
+      echo "[WARN] ${id}: 本地无 ${branch} 分支，跳过本仓漂移检查（业务仓卡片由业务 ff-only 门禁守护）" >&2
+      drift_rc=0
+    fi
     if [[ "$drift_rc" -ne 0 ]]; then
       echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审" >&2
       return 1
