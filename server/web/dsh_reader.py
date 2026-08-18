@@ -116,14 +116,23 @@ def _text_blocks(content: Any) -> str:
     return "".join(parts)
 
 
+# DSH 会话里 user/message 会混入系统注入上下文（workspace 指令/技能清单等），展示时过滤
+_SYS_PREFIXES = ("<system-reminder>", "<system_reminder>", "<environment")
+
+
+def _is_sys_noise(text: str) -> bool:
+    t = text.strip()
+    return any(t.startswith(p) for p in _SYS_PREFIXES)
+
+
 def _extract_history(events: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """事件 → CCC 消息形状 [{role, message}]（user + assistant 最终文本）。"""
+    """事件 → CCC 消息形状 [{role, message}]（user + assistant 最终文本，滤系统注入噪音）。"""
     messages: list[dict[str, str]] = []
     for ev in events:
         etype = ev.get("type")
         if etype == "user/message":
             t = _text_blocks((ev.get("data") or {}).get("content")).strip()
-            if t:
+            if t and not _is_sys_noise(t):
                 messages.append({"role": "user", "message": t})
         elif etype == "assistant/message":
             msg = ((ev.get("data") or {}).get("message")) or {}
@@ -134,19 +143,23 @@ def _extract_history(events: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def _session_meta(events: list[dict[str, Any]]) -> tuple[str, int]:
-    """提取 (标题, 消息数)。标题 = 首条用户消息前 40 字符。"""
+    """提取 (标题, 消息数)。标题 = 首条真实用户消息前 40 字符（滤系统注入噪音）。"""
     title = ""
     count = 0
     for ev in events:
         etype = ev.get("type")
         if etype == "user/message":
+            t = _text_blocks((ev.get("data") or {}).get("content")).strip()
+            if not t or _is_sys_noise(t):
+                continue
             count += 1
             if not title:
-                t = _text_blocks((ev.get("data") or {}).get("content")).strip()
-                if t:
-                    title = t[:40]
+                title = t[:40]
         elif etype == "assistant/message":
-            count += 1
+            msg = ((ev.get("data") or {}).get("message")) or {}
+            t = _text_blocks(msg.get("content")).strip()
+            if t:
+                count += 1
     return title, count
 
 
