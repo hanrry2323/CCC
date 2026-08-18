@@ -183,9 +183,11 @@
 
 ## 4. 线路图挂账（roadmap.md）
 
-- 每个 taskable 项目注册时在 `roadmap.md` 建「业务线路（<prefix>）」段落（挂账制：一行「未排期」也可，不许缺席）。
+- 每个 taskable 项目注册时在**项目级** `docs/projects/<prefix>/roadmap.md` 建「业务线路（<prefix>）」段落（挂账制：一行「未排期」也可，不许缺席）。
 - 段落内容：未出卡意向（挂账） + 里程碑（已定稿方案） + 近况。
+- **项目级 roadmap.md 的 `## 草案池` 段**是草案概念唯一归属（DOC-PROTOCOL §2.8：方案层不再有「草案」态）。
 - 与 `#/roadmap` 页面关系：页面按卡状态聚合展示，文档段落承载意向。
+- 顶层 `docs/roadmap.md` = **CCC 平台自身**发展路线图（索引），与项目业务线路分层，勿混。
 
 ---
 
@@ -253,10 +255,10 @@
 
 ### 6.4 IDE 适配（单一来源）
 
-- **规则正文唯一来源**：qx-map `AGENTS.md`「开发完成钩子」段。
-- **Claude Code**：qx-map `.claude/skills/`（机审/验收席自动加载）；各仓 CLAUDE.md。
-- **OpenCode**：`~/.config/opencode/`（AGENTS.md + workflow.md）引用 qx-map 钩子段。
-- **Codex / Cursor**：workspace rules / .cursorrules 一行指针引 qx-map AGENTS.md，不复制正文。
+- **规则正文唯一来源**：本文件 §6（IDE 各端引用本段，不复制正文）。
+- **Claude Code**：qx-map `.claude/skills/`（机审/验收席自动加载）；qx-map `AGENTS.md`「开发完成钩子」段为摘要指针；各仓 CLAUDE.md。
+- **OpenCode**：`~/.config/opencode/`（AGENTS.md + workflow.md）引用本文件 §6 + qx-map AGENTS.md 摘要段。
+- **Codex / Cursor**：workspace rules / .cursorrules 一行指针引本文件 §6，不复制正文。
 - **业务仓**：看板指针段含钩子行（§5 模板第 5 行）。
 
 ### 6.5 方案「已完成」判定
