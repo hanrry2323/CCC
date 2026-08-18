@@ -565,3 +565,45 @@ def test_scan_findings_tech_debt(
     assert any(f["id"].startswith("tech_unaddressed_annotation_") for f in tech), tech
     assert any(f["id"].startswith("tech_dead_file_resurrected_") for f in tech), tech
     assert any("resurrected.html" in f["title"] for f in tech), tech
+
+
+def test_auto_fix_deterministic_plan_progress(tmp_path):
+    """螺旋上升 P1-2：plan_progress 漂移 finding → subprocess 调修复脚本 + 返回修复 id。"""
+    from server.engine.observer import _auto_fix_deterministic
+
+    findings = [
+        {
+            "id": "plan_progress_ccc010",
+            "type": "consistency",
+            "project": "ccc",
+            "acting_on": "docs/projects/ccc/plans/010-s8.md",
+            "title": "方案 ccc-plan-010 进度不一致",
+        }
+    ]
+    # 建一个假修复脚本避免依赖真实文件
+    script = tmp_path / "scripts" / "auto-fix-plan-progress.py"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("#!/usr/bin/env python3\nprint('ok')\n", encoding="utf-8")
+    with patch("server.engine.observer.subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stderr = ""
+        fixed = _auto_fix_deterministic(findings, tmp_path)
+    assert fixed == ["plan_progress_ccc010"]
+    mock_run.assert_called_once()
+    # 断言 subprocess 调用的是修复脚本（argv: [python, script, rel_path, project]）
+    args = mock_run.call_args[0][0]
+    assert "auto-fix-plan-progress.py" in str(args[1])
+
+
+def test_auto_fix_deterministic_skips_non_deterministic(tmp_path):
+    """螺旋上升 P1-2：非确定性 finding（tech/治理债）不触发自动修复。"""
+    from server.engine.observer import _auto_fix_deterministic
+
+    findings = [
+        {"id": "tech_rejected_cards_xy", "type": "tech", "project": "xy", "acting_on": "x"},
+        {"id": "status_drift_x", "type": "drift", "project": "hp", "acting_on": ""},  # 无 acting_on
+    ]
+    with patch("server.engine.observer.subprocess.run") as mock_run:
+        fixed = _auto_fix_deterministic(findings, tmp_path)
+    assert fixed == []
+    mock_run.assert_not_called()

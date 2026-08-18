@@ -288,6 +288,68 @@ def _default_registry() -> TaskRegistry:
         )
     )
 
+    def _merge_dsh_trigger(cfg):
+        """螺旋上升 P2-1（B2）：新 merge commit → SSH 触发 DSH 全局跑通复核。
+
+        兜底捕获所有 push main 路径（含非 approve-merge 的直接 push），
+        与 approve-merge 钩子（B1）+ 6h cron 并存。记录上次已触发 merge sha
+        于 DATA_DIR/observer/.merge-dsh-last.json，避免重复触发。
+        """
+        import json as _json
+        import os
+        import subprocess as _sp
+
+        data_dir = cfg.get("DATA_DIR", "data")
+        state_file = os.path.join(data_dir, "observer", ".merge-dsh-last.json")
+        try:
+            res = _sp.run(
+                ["git", "log", "origin/main", "--merges", "-n", "1", "--format=%H"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if res.returncode != 0:
+                return (True, {"skipped": "git log 失败"})
+            merge_sha = res.stdout.strip()
+        except Exception as e:  # noqa: BLE001
+            return (True, {"skipped": f"merge 检测异常: {e}"})
+
+        if not merge_sha:
+            return (True, {"skipped": "无 merge commit"})
+
+        # 读上次已触发 sha
+        last_sha = ""
+        try:
+            if os.path.isfile(state_file):
+                with open(state_file, encoding="utf-8") as f:
+                    last_sha = (_json.load(f) or {}).get("merge_sha", "")
+        except Exception:
+            last_sha = ""
+
+        if merge_sha == last_sha:
+            return (True, {"skipped": "无新 merge"})
+
+        # 新 merge → SSH 触发 DSH（fire-and-forget）
+        try:
+            _sp.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                 "fan@192.168.3.116",
+                 "cd /Users/fan && nohup /bin/bash /Users/fan/.dsh/run_patrol.sh >> /Users/fan/.dsh/patrol_merge.log 2>&1 &"],
+                capture_output=True, text=True, timeout=15,
+            )
+            os.makedirs(os.path.dirname(state_file), exist_ok=True)
+            with open(state_file, "w", encoding="utf-8") as f:
+                _json.dump({"merge_sha": merge_sha}, f)
+            return (True, {"triggered": True, "merge_sha": merge_sha})
+        except Exception as e:  # noqa: BLE001
+            return (True, {"error": f"SSH 触发失败: {e}"})
+
+    registry.register(
+        ScheduledTask(
+            name="merge-dsh-trigger",
+            task_type=TASK_TYPE_READONLY,
+            run=_merge_dsh_trigger,
+        )
+    )
+
     return registry
 
 

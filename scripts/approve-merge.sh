@@ -635,6 +635,23 @@ deploy_check_2017() {
   fi
 }
 
+# 螺旋上升 P2-1：合入后即时触发 DSH 全局跑通复核（B1，approve-merge 钩子）
+# 复用 deploy_check_2017 的 SSH 结构；fire-and-forget 后台不阻塞收尾。
+trigger_dsh_patrol() {
+  local host="${CCC_SSH_HOST:-fan@192.168.3.116}"
+  local ssh_cmd="ssh -o BatchMode=yes -o ConnectTimeout=5 ${host}"
+  if ! $ssh_cmd "echo ping" >/dev/null 2>&1; then
+    echo "[WARN] 无法 SSH 连接 ${host}，跳过合入后 DSH 复核触发。"
+    return 0
+  fi
+  echo "[INFO] 触发合入后 DSH 全局跑通复核（${host}，后台执行，结果进巡检页）..."
+  # 后台 + nohup，合入收尾不被 DSH 运行阻塞（DSH 全量核实需数分钟）
+  $ssh_cmd "cd /Users/fan && nohup /bin/bash /Users/fan/.dsh/run_patrol.sh >> /Users/fan/.dsh/patrol_merge.log 2>&1 &" >/dev/null 2>&1 \
+    && echo "[OK] DSH 全局跑通复核已触发（结果 ~数分钟 后进巡检页）" \
+    || echo "[WARN] DSH 复核触发命令执行失败"
+  return 0
+}
+
 # ── C2: 待合入积压提醒 ──
 "$PYTHON_BIN" -c "
 import os, sys
@@ -668,4 +685,6 @@ echo "[OK] 全部合入批准完成（${#IDS[@]}）"
 
 if [[ ${#IDS[@]} -gt 0 ]]; then
   deploy_check_2017
+  # 螺旋上升 P2-1（B1）：合入后即时触发 DSH 全局跑通复核（与 6h cron 并存）
+  trigger_dsh_patrol
 fi

@@ -656,6 +656,62 @@ DEFAULT_SCORING_RULES = {
 }
 
 
+def _auto_fix_deterministic(
+    findings: list[dict[str, Any]], project_root: Path
+) -> list[str]:
+    """螺旋上升 P1-2：确定性漂移自动修复（幂等机械修复，非决策）。
+
+    只处理可机械判定、修复即正确的漂移：
+    - plan_progress_*：方案进度声明 vs 实算不一致 → sync_plan_progress 重算回写
+    - milestone_progress_*：里程碑进度不一致 → sync_milestone_progress 重算
+    - status_drift_*：卡状态与看板漂移 → 经 sync_plan_progress 级联修正方案进度
+
+    护栏：
+    - 只处理 NEW finding（按 id 去重，本次才出现才修）
+    - 修复失败只记日志，不阻断巡检
+    - 非确定性发现（tech/治理债）不在此列，走草案池
+
+    Returns: 已自动修复的 finding id 列表。
+    """
+    fixed: list[str] = []
+    for f in findings:
+        ftype = f.get("type", "")
+        fid = f.get("id", "")
+        acting_on = f.get("acting_on", "") or ""
+        project = f.get("project", "") or ""
+
+        is_plan_progress = ftype == "consistency" and fid.startswith("plan_progress_")
+        is_milestone_progress = ftype == "consistency" and fid.startswith("milestone_progress_")
+        is_status_drift = ftype == "drift" and fid.startswith("status_drift_")
+        if not (is_plan_progress or is_milestone_progress or is_status_drift):
+            continue
+        if not acting_on:
+            continue
+
+        try:
+            # 通过 subprocess 调独立修复脚本（observer 代码层保持只读：
+            # 白名单测试禁止 observer import plans 写接口，见 test_ast_import_whitelist）
+            script = project_root / "scripts" / "auto-fix-plan-progress.py"
+            if not script.is_file():
+                logger.error("自动修复 %s 失败: 脚本不存在 %s", fid, script)
+                continue
+            rel = acting_on if acting_on.startswith("docs/") else acting_on
+            proc = subprocess.run(
+                [sys.executable, str(script), project_root, rel, project],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if proc.returncode == 0:
+                fixed.append(fid)
+                logger.info("自动修复 %s: 方案/里程碑进度已同步", fid)
+            else:
+                logger.warning("自动修复 %s 失败(rc=%d): %s", fid, proc.returncode, proc.stderr.strip()[:200])
+        except Exception as e:  # noqa: BLE001
+            logger.error("自动修复 %s 异常: %s", fid, e)
+    return fixed
+
+
 def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     """定时只读巡检入口。
 
@@ -716,6 +772,13 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
             logger.error("failed to parse custom rules: %s", e)
     scored_findings = [score_finding(f, rules) for f in findings]
     scored_findings.sort(key=lambda x: x.get("weight", 0.0), reverse=True)
+    # 螺旋上升 P1-2：确定性漂移自动修复（方案/里程碑进度重算，幂等机械修复）
+    try:
+        auto_fixed = _auto_fix_deterministic(findings, PROJECT_ROOT)
+        if auto_fixed:
+            logger.info("Loop 自动修复 %d 项确定性漂移: %s", len(auto_fixed), ",".join(auto_fixed))
+    except Exception as e:  # noqa: BLE001
+        logger.error("Loop 自动修复执行异常: %s", e)
     summary = {
         "timestamp": current_state["timestamp"],
         "collected_at": datetime.datetime.fromtimestamp(current_state["timestamp"]).isoformat(),

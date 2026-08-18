@@ -3526,6 +3526,33 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": f"write failed: {exc}"}, 500)
             return
 
+        # 螺旋上升 P1-1（ccc-plan-038）：DSH 发现自动进草案池
+        # 复用 observer 的 write_roadmap_draft 模式（去重 + 标题格式），source=DSH。
+        # 只对带 project 且 action != 留 的 finding 建草案（留=观察项不占开发资源）。
+        try:
+            from server.board import roadmap as _rm
+            parsed = _parse_dsh_md(markdown, target.stem, 0.0)
+            created_drafts: list[str] = []
+            for fd in parsed:
+                project = (fd.get("project") or "").strip()
+                action = (fd.get("action") or "").strip()
+                if not project or action == "留":
+                    continue
+                location = fd.get("location") or fd.get("phenomenon") or "未知"
+                title = f"[DSH][{project}] 修复：{location}"
+                res = _rm.create_draft(project, title, source="DSH")
+                if isinstance(res, dict) and res.get("ok"):
+                    created_drafts.append(title)
+            if created_drafts:
+                self._send_json({"ok": True, "path": str(target), "name": target.stem,
+                                 "drafts": created_drafts})
+                return
+        except Exception as _exc:
+            # 草案池写入失败不阻断报告落盘（降级：报告已在，草案可后续补）
+            self._send_json({"ok": True, "path": str(target), "name": target.stem,
+                             "draft_error": str(_exc)})
+            return
+
         self._send_json({"ok": True, "path": str(target), "name": target.stem})
 
     def _handle_loop_adopt(self):

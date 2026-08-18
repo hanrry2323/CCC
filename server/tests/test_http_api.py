@@ -2572,6 +2572,37 @@ class TestDshFindings:
         assert status == 200, f"findings 提交失败: {data}"
         assert len(sorted(dsh_dir.glob("*.md"))) == 2, "两次提交应落 2 份（同名自动递增序号）"
 
+    def test_dsh_report_auto_draft(self, api_server, tmp_path, monkeypatch):
+        """螺旋上升 P1-1：POST /loop/dsh-report 带 project 的 7 列报告 → 自动建草案池。"""
+        from server.web import server as srv_mod
+        from server.board import roadmap as _rm
+
+        monkeypatch.setattr(srv_mod, "_config_value", lambda k, d: str(tmp_path))
+        token = _get_token(api_server)
+        # mock create_draft 捕获调用（不真写 roadmap 文件）
+        calls: list[tuple] = []
+        original = _rm.create_draft
+
+        def fake_create_draft(project, title, *, source="", created=""):
+            calls.append((project, title, source))
+            return {"ok": True, "draft": title}
+
+        monkeypatch.setattr(_rm, "create_draft", fake_create_draft)
+        md = (
+            "# 测试报告\n\n"
+            "| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 项目 | 置信度 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| L1 | server/x.py:1 | bug | 证据 | 改 | ccc | 高 |\n"
+            "| L2 | qx-map/y.md:2 | 提升 | 证据 | 留 | qx-map | 中 |\n"
+        )
+        status, data = _post(api_server, "/loop/dsh-report", {"markdown": md}, token=token)
+        assert status == 200, f"提交失败: {data}"
+        # 应只建 1 条（改=ccc；留 跳过）
+        assert len(calls) == 1, f"应建 1 条草案，实际 {calls}"
+        assert calls[0][0] == "ccc", f"project 应为 ccc，实际 {calls[0][0]}"
+        assert calls[0][1].startswith("[DSH][ccc]"), f"标题格式应为 [DSH][ccc]，实际 {calls[0][1]}"
+        assert calls[0][2] == "DSH", f"source 应为 DSH，实际 {calls[0][2]}"
+
     def test_adopt_source_field(self, api_server, tmp_path, monkeypatch):
         """POST /loop/adopt 带 source=dsh → 记录含 source；缺省仍为 observer。"""
         from server.web import server as srv_mod
