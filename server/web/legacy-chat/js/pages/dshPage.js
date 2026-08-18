@@ -75,7 +75,7 @@ function _loadAdopted() {
   }
 }
 
-/** ① 渲染结论摘要：严重度分布 + 重点面 + 处置汇总 + 报告信息。 */
+/** ① 渲染结论摘要：严重度分布 + 重点面 + 处置汇总 + 报告信息。已留档（adopted）不计入红旗/蓝旗。 */
 function renderSummary(findings, report) {
   const el = _root.querySelector('#dsh-summary');
   if (!el) return;
@@ -83,10 +83,15 @@ function renderSummary(findings, report) {
     el.innerHTML = '<div class="dsh-empty">DSH 暂无巡检报告 🎉 去麦克2017 跑一单看看</div>';
     return;
   }
+  const adoptedSet = _loadAdopted();
   const bySev = { '红旗': 0, '黄旗': 0, '蓝旗': 0 };
   const byAction = { '改': 0, '删': 0, '留': 0 };
   const byFace = {};
+  let adoptedCount = 0;
   for (const f of findings) {
+    const key = `${f.face}|${f.location}`;
+    const done = f.adopted === true || adoptedSet.has(key);
+    if (done) { adoptedCount += 1; continue; }
     const sev = f.severity || CONF_META[f.confidence]?.sev || '蓝旗';
     bySev[sev] = (bySev[sev] || 0) + 1;
     byAction[f.action] = (byAction[f.action] || 0) + 1;
@@ -106,8 +111,8 @@ function renderSummary(findings, report) {
       <div class="dsh-sum-card">
         <b class="dsh-sum-blue">${bySev['蓝旗']}</b><span>蓝旗</span>
       </div>
-      <div class="dsh-sum-card">
-        <b>${findings.length}</b><span>发现总数</span>
+      <div class="dsh-sum-card dsh-sum-done">
+        <b>${adoptedCount}</b><span>已处理</span>
       </div>
     </div>
     <div class="dsh-sum-line">
@@ -119,7 +124,7 @@ function renderSummary(findings, report) {
       <span class="dsh-act-sum del">删 ×${byAction['删'] || 0}</span>
       <span class="dsh-act-sum keep">留 ×${byAction['留'] || 0}</span>
     </div>
-    <div class="dsh-sum-meta">最新报告 <code>${esc(report.name || '')}</code> · ${findings.length} 条发现 · ${stamp}</div>
+    <div class="dsh-sum-meta">最新报告 <code>${esc(report.name || '')}</code> · ${findings.length} 条发现（${adoptedCount} 已处理） · ${stamp}</div>
   `;
 }
 
@@ -135,22 +140,30 @@ function renderFindings(findings, report) {
   }
   const adopted = _loadAdopted();
   const reportName = report.name || '';
-  // 排序：红旗(0) > 黄旗(1) > 蓝旗(2)；同权重按位置稳定
+  // 排序：红旗(0) > 黄旗(1) > 蓝旗(2)；同权重按位置稳定；已处理置底
   const sorted = findings
     .map((f, i) => ({ ...f, _i: i }))
     .sort((a, b) => {
+      const aDone = a.adopted === true ? 1 : 0;
+      const bDone = b.adopted === true ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
       const oa = CONF_META[a.confidence]?.order ?? 3;
       const ob = CONF_META[b.confidence]?.order ?? 3;
       return oa - ob || a._i - b._i;
     });
-  // 高/中置信度展开；低置信度折叠进 details
-  const main = sorted.filter((f) => CONF_META[f.confidence]?.order <= 1);
-  const low = sorted.filter((f) => CONF_META[f.confidence]?.order >= 2);
+  // 高/中置信度展开；低置信度折叠进 details；已处理项置底且折叠
+  const adoptedFilter = (f) => f.adopted === true;
+  const activeFilter = (f) => f.adopted !== true;
+  const main = sorted.filter((f) => CONF_META[f.confidence]?.order <= 1 && activeFilter(f));
+  const low = sorted.filter((f) => CONF_META[f.confidence]?.order >= 2 && activeFilter(f));
+  const doneList = sorted.filter(adoptedFilter);
   const findingHtml = (f) => {
     const meta = CONF_META[f.confidence] || { cls: 'conf-low', sev: '蓝旗' };
     const actCls = ACTION_CLS[f.action] || '';
     const key = `${f.face}|${f.location}`;
-    const done = adopted.has(key);
+    const done = f.adopted === true || adopted.has(key);
+    const doneCls = done ? ' dsh-done-item' : '';
+    const doneBadge = done ? '<span class="dsh-done-badge">已处理 ✓</span>' : '';
     const evHtml = f.evidence
       ? `<details class="dsh-evidence"><summary>证据</summary><pre>${esc(f.evidence)}</pre></details>`
       : '';
@@ -158,17 +171,17 @@ function renderFindings(findings, report) {
       ? `scripts/new-card.sh --title "修复：${f.location}" --related "dsh: ${reportName}"`
       : '';
     return `
-      <div class="dsh-review-item">
+      <div class="dsh-review-item${doneCls}">
         <span class="dsh-pill ${meta.cls}" title="置信度 ${esc(f.confidence)}">${esc(f.confidence)}</span>
         <span class="dsh-act-badge ${actCls}">${esc(f.action || '—')}</span>
         <code class="dsh-loc">${esc(f.location)}</code>
         <span class="dsh-title">${esc(f.phenomenon)}</span>
+        ${doneBadge}
         ${evHtml}
         ${cmd ? `<button type="button" class="hub-btn dsh-act-copy" data-cmd="${esc(cmd)}" title="复制转卡命令">转卡</button>` : ''}
         <button type="button" class="hub-btn dsh-act-adopt ${done ? 'adopted' : ''}" data-key="${esc(key)}" data-report="${esc(reportName)}" title="标记已处理（/loop/adopt 留档，source=dsh）" ${done ? 'disabled' : ''}>${done ? '已留档 ✓' : '已处理'}</button>
       </div>`;
   };
-  // 按项目分组（ccc-plan-038 卡2）：无 project 字段归「其他」；组内保持置信度排序
   const groupByProj = (items) => {
     const byProj = {};
     for (const f of items) {
@@ -187,6 +200,13 @@ function renderFindings(findings, report) {
   }
   if (low.length) {
     htmlOut += `<details class="dsh-low-group"><summary>低置信度（${low.length}）—— 已折叠</summary>${groupByProj(low).map(([proj, items]) => `
+      <div class="dsh-subgroup">
+        <h5 class="dsh-proj-head">${esc(proj)}（${items.length}）</h5>
+        ${items.map(findingHtml).join('')}
+      </div>`).join('')}</details>`;
+  }
+  if (doneList.length) {
+    htmlOut += `<details class="dsh-done-group" open><summary>已处理（${doneList.length}）</summary>${groupByProj(doneList).map(([proj, items]) => `
       <div class="dsh-subgroup">
         <h5 class="dsh-proj-head">${esc(proj)}（${items.length}）</h5>
         ${items.map(findingHtml).join('')}

@@ -908,9 +908,17 @@ def _read_pg_probe_status(host: str) -> dict[str, Any]:
     probe_path = "/data/knowledge/health/pg-health.status"
     try:
         r = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-             "-o", "StrictHostKeyChecking=accept-new",
-             f"{ssh_user}@{host}", f"cat {probe_path} 2>/dev/null || true"],
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=5",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                f"{ssh_user}@{host}",
+                f"cat {probe_path} 2>/dev/null || true",
+            ],
             capture_output=True,
             text=True,
             timeout=8,
@@ -936,10 +944,16 @@ def _build_pg_health() -> dict[str, Any]:
 
     target = _env_or_config("CLUSTER_PG_TARGET", "").strip()
     empty = {
-        "configured": False, "host": "", "port": None,
-        "tcp_reachable": None, "latency_ms": None,
-        "status": "missing", "probe_ts": None, "probe_detail": None,
-        "probe_elapsed_ms": None, "consecutive_fail": 0,
+        "configured": False,
+        "host": "",
+        "port": None,
+        "tcp_reachable": None,
+        "latency_ms": None,
+        "status": "missing",
+        "probe_ts": None,
+        "probe_detail": None,
+        "probe_elapsed_ms": None,
+        "consecutive_fail": 0,
     }
     if not target:
         return empty
@@ -976,6 +990,7 @@ _KB_HEALTH_TTL = 10.0
 def _build_kb_health() -> dict[str, Any]:
     """知识库健康（P4）：ccc-kb 本地索引 + hp-kb 探活&深度状态。10s 缓存。"""
     import time as _t
+
     now = _t.time()
     if _KB_HEALTH_CACHE["data"] is not None and now - _KB_HEALTH_CACHE["ts"] < _KB_HEALTH_TTL:
         return _KB_HEALTH_CACHE["data"]
@@ -985,11 +1000,14 @@ def _build_kb_health() -> dict[str, Any]:
     try:
         from server.kb import service as kb_service
         from server.kb.indexer import load_mtimes
+
         idx = str(kb_service.default_index_dir().resolve())
         h = kb_service.health()
         out["ccc_kb"] = {
-            "ok": bool(h.get("ok")), "documents": h.get("documents", 0),
-            "sections": h.get("sections", {}), "index_dir": idx,
+            "ok": bool(h.get("ok")),
+            "documents": h.get("documents", 0),
+            "sections": h.get("sections", {}),
+            "index_dir": idx,
         }
         mtimes = load_mtimes(idx)
         if mtimes:
@@ -1005,6 +1023,7 @@ def _build_kb_health() -> dict[str, Any]:
     if hp.get("configured") and hp.get("reachable"):
         try:
             from server.kb import hp_client
+
             st = hp_client.kb_status()
             if st:
                 out["hp_kb"]["documents"] = st.get("total_docs")
@@ -1015,7 +1034,8 @@ def _build_kb_health() -> dict[str, Any]:
                         continue
                     if p.get("domain") == "ccc" and p.get("project") not in ("core", "docs"):
                         ccc_sync[p.get("project")] = {
-                            "docs": p.get("docs"), "chunks": p.get("chunks"),
+                            "docs": p.get("docs"),
+                            "chunks": p.get("chunks"),
                             "last_ingest": p.get("last_ingest"),
                         }
                 out["hp_kb"]["ccc_sync"] = ccc_sync
@@ -2606,8 +2626,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             {
                 "project": project,
                 "drafts": [
-                    {"title": _d.title, "source": _d.source, "created": _d.created}
-                    for _d in _parsed.get("drafts", [])
+                    {"title": _d.title, "source": _d.source, "created": _d.created} for _d in _parsed.get("drafts", [])
                 ],
                 "milestones": [
                     {
@@ -3057,9 +3076,7 @@ class _APIHandler(BaseHTTPRequestHandler):
 
             try:
                 text = card_path.read_text(encoding="utf-8")
-                new_text = _replace_state_in_metadata(
-                    text, f"作废（{reason[:40]}）"
-                )
+                new_text = _replace_state_in_metadata(text, f"作废（{reason[:40]}）")
             except ValueError as exc:
                 self._send_json({"error": f"卡头无状态段: {exc}"}, 500)
                 return
@@ -3169,18 +3186,14 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         card_state = base_state(str(work.state.value) if hasattr(work.state, "value") else str(work.state))
         if card_state != "已回写":
-            self._send_json(
-                {"error": f"当前状态「{card_state}」不可手动机审（仅 已回写 卡可审）"}, 400
-            )
+            self._send_json({"error": f"当前状态「{card_state}」不可手动机审（仅 已回写 卡可审）"}, 400)
             return
         # P2-C 修复：在途防重——同卡审计已在跑则拒绝
         try:
             from server.engine.main import _audit_marker_alive
 
             if _audit_marker_alive(log_dir, work.id):
-                self._send_json(
-                    {"ok": True, "id": task_id, "busy": True, "reason": "该卡机审已在途，请稍后"}
-                )
+                self._send_json({"ok": True, "id": task_id, "busy": True, "reason": "该卡机审已在途，请稍后"})
                 return
         except Exception:
             pass
@@ -3189,15 +3202,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                 {"ok": True, "id": task_id, "skipped": True, "reason": "已有机审通过证据（force 可强制重审）"}
             )
             return
-        timeout = int(
-            cfg.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS")
-            or cfg.get("EXECUTOR_TIMEOUT_SECONDS")
-            or 1800
-        )
+        timeout = int(cfg.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS") or cfg.get("EXECUTOR_TIMEOUT_SECONDS") or 1800)
         try:
             ok, problems, audited = _run_machine_audit_after_writeback(
-                work, registry, cfg, log_dir, timeout,
-                severity=severity or None, force=force, manual=True,
+                work,
+                registry,
+                cfg,
+                log_dir,
+                timeout,
+                severity=severity or None,
+                force=force,
+                manual=True,
             )
         except Exception as exc:
             self._send_json({"error": f"机审拉起失败: {exc}"}, 500)
@@ -3205,14 +3220,25 @@ class _APIHandler(BaseHTTPRequestHandler):
         if not audited:
             # P1-E 修复：无验收席/已跳过 ≠ 通过，明确返回「未审」
             self._send_json(
-                {"ok": True, "id": task_id, "audited": False, "conclusion": "未审",
-                 "reason": "无验收席可审计或已跳过（非通过）"}
+                {
+                    "ok": True,
+                    "id": task_id,
+                    "audited": False,
+                    "conclusion": "未审",
+                    "reason": "无验收席可审计或已跳过（非通过）",
+                }
             )
             return
         conclusion = "通过" if ok else "不通过"
         self._send_json(
-            {"ok": True, "id": task_id, "audited": True, "conclusion": conclusion,
-             "problems": problems, "severity": severity or ""}
+            {
+                "ok": True,
+                "id": task_id,
+                "audited": True,
+                "conclusion": conclusion,
+                "problems": problems,
+                "severity": severity or "",
+            }
         )
 
     def _handle_audit_false_positive(self, task_id: str):
@@ -3441,11 +3467,28 @@ class _APIHandler(BaseHTTPRequestHandler):
         | 面 | 位置 file:行号 | 现象 | 证据 | 建议处置(改/删/留) | 置信度(高/中/低) |）。
         返回：报告清单（最新 10 份）+ 每份结构化 findings（6 列）+ 建议转卡命令。
         无报告/无目录 → 200 + 空。人审留档复用 /loop/adopt（source=dsh）。
+        已留档（adopt）的发现附加 adopted=true（按 face|location 与现象匹配），前端据此隐藏/标记。
         """
         from pathlib import Path as _Path
+        import json as _json
 
         data_dir = _config_value("DATA_DIR", "data")
-        dsh_dir = _Path(data_dir).resolve() / "dsh"
+        data_root = _Path(data_dir).resolve()
+        dsh_dir = data_root / "dsh"
+        # 读人审留档：adopt/reject/pending 均视为已处理（face|location 或现象文本匹配）
+        adopted_keys: set[str] = set()
+        adopt_file = data_root / "observer" / ".adopted.jsonl"
+        if adopt_file.exists():
+            try:
+                for ln in adopt_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    if not ln.strip():
+                        continue
+                    rec = _json.loads(ln)
+                    f = str(rec.get("finding", "")).strip()
+                    if f:
+                        adopted_keys.add(f.replace("`", "").strip())
+            except Exception:
+                pass
         reports: list[dict[str, Any]] = []
         if dsh_dir.exists():
             files = sorted(dsh_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -3453,9 +3496,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                 text = f.read_text(encoding="utf-8", errors="ignore")
                 head = [ln for ln in text.splitlines() if ln.strip()][:5]
                 findings = _parse_dsh_md(text, f.stem, f.stat().st_mtime)
+                for fd in findings:
+                    k1 = f"{fd['face']}|{fd['location']}".replace("`", "").strip()
+                    k2 = fd["phenomenon"].replace("`", "").strip()
+                    fd["adopted"] = bool(
+                        k1 in adopted_keys
+                        or k2 in adopted_keys
+                        or any(a in k2 or k2 in a for a in adopted_keys if len(a) >= 4 and len(k2) >= 4)
+                    )
                 # 建议转卡命令：仅对 action∈{改,删} 的发现合成 new-card.sh（对照 observer）
                 commands = [
-                    f"scripts/new-card.sh --title \"修复：{fd['location']}\" --related \"dsh: {f.stem}\""
+                    f'scripts/new-card.sh --title "修复：{fd["location"]}" --related "dsh: {f.stem}"'
                     for fd in findings
                     if fd["action"] in ("改", "删")
                 ]
@@ -3500,8 +3551,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             rows = ["| 面 | 位置 file:行号 | 现象 | 证据 | 建议处置 | 置信度 |", "|---|---|---|---|---|---|"]
             for fd in findings:
                 rows.append(
-                    f"| {fd.get('face','')} | {fd.get('location','')} | {fd.get('phenomenon','')} "
-                    f"| {fd.get('evidence','')} | {fd.get('action','')} | {fd.get('confidence','')} |"
+                    f"| {fd.get('face', '')} | {fd.get('location', '')} | {fd.get('phenomenon', '')} "
+                    f"| {fd.get('evidence', '')} | {fd.get('action', '')} | {fd.get('confidence', '')} |"
                 )
             markdown = "\n".join(rows)
 
@@ -3532,6 +3583,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         # 只对带 project 且 action != 留 的 finding 建草案（留=观察项不占开发资源）。
         try:
             from server.board import roadmap as _rm
+
             parsed = _parse_dsh_md(markdown, target.stem, 0.0)
             created_drafts: list[str] = []
             for fd in parsed:
@@ -3545,13 +3597,11 @@ class _APIHandler(BaseHTTPRequestHandler):
                 if isinstance(res, dict) and res.get("ok"):
                     created_drafts.append(title)
             if created_drafts:
-                self._send_json({"ok": True, "path": str(target), "name": target.stem,
-                                 "drafts": created_drafts})
+                self._send_json({"ok": True, "path": str(target), "name": target.stem, "drafts": created_drafts})
                 return
         except Exception as _exc:
             # 草案池写入失败不阻断报告落盘（降级：报告已在，草案可后续补）
-            self._send_json({"ok": True, "path": str(target), "name": target.stem,
-                             "draft_error": str(_exc)})
+            self._send_json({"ok": True, "path": str(target), "name": target.stem, "draft_error": str(_exc)})
             return
 
         self._send_json({"ok": True, "path": str(target), "name": target.stem})
@@ -3646,24 +3696,29 @@ class _APIHandler(BaseHTTPRequestHandler):
             try:
                 proc = _sp.run(
                     ["launchctl", "print", f"gui/{uid}/{label}"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if proc.returncode == 0:
                     import re as _re
+
                     m = _re.search(r"pid = (\d+)", proc.stdout)
                     if m:
                         pid = int(m.group(1))
                     running = "state = running" in proc.stdout or pid > 0
             except Exception:
                 pass
-            services.append({
-                "label": label,
-                "name": meta["name"],
-                "port": meta["port"],
-                "url": meta["url"],
-                "running": running,
-                "pid": pid,
-            })
+            services.append(
+                {
+                    "label": label,
+                    "name": meta["name"],
+                    "port": meta["port"],
+                    "url": meta["url"],
+                    "running": running,
+                    "pid": pid,
+                }
+            )
         self._send_json({"services": services})
 
     def _handle_ops_portals(self):
@@ -3695,10 +3750,16 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         def _probe(p: dict) -> dict:
             try:
-                ns = check_tcp_reachable("192.168.3.116" if p["machine"] == "Mac2017"
-                                         else "192.168.3.131" if p["machine"] == "HP"
-                                         else "192.168.3.140" if p["machine"] == "M1"
-                                         else "124.156.166.72", p["port"])
+                ns = check_tcp_reachable(
+                    "192.168.3.116"
+                    if p["machine"] == "Mac2017"
+                    else "192.168.3.131"
+                    if p["machine"] == "HP"
+                    else "192.168.3.140"
+                    if p["machine"] == "M1"
+                    else "124.156.166.72",
+                    p["port"],
+                )
                 alive = ns.reachable
             except Exception:
                 alive = False
@@ -4208,8 +4269,14 @@ class _APIHandler(BaseHTTPRequestHandler):
             "架构位置：待确认\n"
         )
         result = create_plan(
-            _repo_root(), project=project, title=f"{sp.id} {sp.title}", content=content,
-            author="老板", tool="ccc", milestone=milestone_title, approved=True,
+            _repo_root(),
+            project=project,
+            title=f"{sp.id} {sp.title}",
+            content=content,
+            author="老板",
+            tool="ccc",
+            milestone=milestone_title,
+            approved=True,
         )
         if "error" in result:
             self._send_json(result, 400)
@@ -4240,15 +4307,27 @@ class _APIHandler(BaseHTTPRequestHandler):
         try:
             subprocess.run(
                 ["git", "add", "--", result["path"], f"docs/projects/{project}/roadmap.md"],
-                cwd=str(_PROJECT_ROOT), check=True, capture_output=True, text=True, timeout=30,
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             subprocess.run(
                 ["git", "commit", "-m", f"roadmap: activate subproject {sp_id} → {plan_id}"],
-                cwd=str(_PROJECT_ROOT), check=True, capture_output=True, text=True, timeout=30,
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             subprocess.run(
                 ["git", "push"],
-                cwd=str(_PROJECT_ROOT), check=True, capture_output=True, text=True, timeout=60,
+                cwd=str(_PROJECT_ROOT),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
         except subprocess.CalledProcessError as exc:
             logger.warning(
