@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { generateId, desktopThreadId } from './utils.js';
-import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects, pageScopeAbort, setRouteSwitching } from './api.js';
+import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects, loadDshWorkspaces, pageScopeAbort, setRouteSwitching } from './api.js';
 import { initChatStatus } from './chatStatus.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -303,18 +303,39 @@ async function init() {
   }
 
   try {
-    let folders = [];
+    // DSH 只读镜像优先（2017 生产有 DSH 数据 → 对话侧栏显示 DSH workspace/会话）
+    let dsh = [];
     try {
-      folders = await loadClaudeProjects(); // Claude 工作区文件夹（IDE 风格左栏）
+      dsh = await loadDshWorkspaces();
     } catch (_) {
-      folders = [];
+      dsh = [];
     }
-    if (folders.length) {
-      initAppSidebar(folders);
+    if (dsh.length) {
+      const dshProjects = dsh.map((w) => ({
+        _dsh: true,
+        id: w.id,
+        name: w.title,
+        title: w.title,
+        path: w.path || '',
+        kind: 'dsh',
+        sessions: w.sessions || [],
+      }));
+      state.set('defaultProject', dshProjects[0].id);
+      initAppSidebar(dshProjects);
     } else {
-      const projects = await loadProjects();
-      setupProjectSelect(projects);
-      initAppSidebar(projects);
+      let folders = [];
+      try {
+        folders = await loadClaudeProjects(); // Claude 工作区文件夹（IDE 风格左栏）
+      } catch (_) {
+        folders = [];
+      }
+      if (folders.length) {
+        initAppSidebar(folders);
+      } else {
+        const projects = await loadProjects();
+        setupProjectSelect(projects);
+        initAppSidebar(projects);
+      }
     }
   } catch (e) {
     window.showToast('项目加载失败: ' + e.message, 'error');

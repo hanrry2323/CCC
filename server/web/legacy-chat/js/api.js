@@ -302,6 +302,20 @@ export async function deleteThread(project, threadId) {
   return apiDelete('/projects/' + encodeURIComponent(project) + '/threads/' + encodeURIComponent(threadId));
 }
 
+// DSH 只读镜像（对话侧栏与 DSH 左侧栏统一）：workspace + 会话列表
+export async function loadDshWorkspaces() {
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/dsh/workspaces');
+  return data.workspaces || [];
+}
+
+// DSH 会话历史（只读，映射为 CCC 消息形状）
+export async function loadDshSession(sessionId) {
+  const base = _chatBase();
+  const data = await apiGet((base || '') + '/dsh/sessions/' + encodeURIComponent(sessionId));
+  return data.messages || [];
+}
+
 // T43/T44：对话历史长轮询增量同步（GET /conversation?after=<seq>&timeout=<s>）。
 // T44：按 thread_id 分桶（每个会话独立光标 + 缓存），缺省走全局。
 // 首拉无 after 全量，之后带 after=seq 增量；seq 回退（服务端重置）→ 以本次为准。

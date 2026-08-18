@@ -8,7 +8,7 @@ import { showToast } from './toast.js';
 import { setProjectActive } from './composer.js';
 import { navigate, currentRoute } from '../router.js';
 // api.js 新增：loadThreads 拉项目下会话（服务端会话存储）
-import { loadThreads, deleteThread, loadClaudeSessions } from '../api.js';
+import { loadThreads, deleteThread, loadClaudeSessions, loadDshSession } from '../api.js';
 
 let _projects = [];
 // T47：项目下服务端会话缓存（{projectId: [thread...]}），选中项目时懒加载
@@ -173,8 +173,248 @@ function _renderClaudeSidebar(projects) {
   });
 }
 
+// ── DSH 只读镜像（对话侧栏与 DSH 左侧栏统一）：workspace + 会话 ──
+
+function _sortTs(t) {
+  // 会话更新时间 → 可比较秒数（DSH=epoch 秒；CCC 服务端=ISO 串）
+  const v = t && t.updated_at;
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  const n = Date.parse(String(v));
+  return isNaN(n) ? 0 : n / 1000;
+}
+
+function mergedDshThreadsFor(ws) {
+  // DSH 会话（镜像）+ CCC 本地续聊/新建线程 + 本地 tabs，按会话去重
+  const dshSessions = ws.sessions || [];
+  const server = _serverThreads[ws.id] || [];
+  const local = tabsForProject(ws.id);
+  const seen = new Set();
+  const out = [];
+  for (const s of dshSessions) {
+    if (!s.id) continue;
+    seen.add(s.id);
+    out.push({
+      _dsh: true,
+      _server: true,
+      dshId: s.id,
+      threadId: ws.id + '::' + s.id,
+      sessionId: ws.id + '::' + s.id,
+      title: s.title || '对话',
+      updated_at: s.updated_at || '',
+      message_count: s.message_count || 0,
+    });
+  }
+  for (const st of server) {
+    const sid = st.thread_id || '';
+    if (!sid) continue;
+    // 续聊 DSH 会话（<ws>::<dshsid>）已由 DSH 行覆盖；其余为 CCC 本地新建/续聊线程
+    const m = String(sid).match(/^[^:]+::(.+)$/);
+    if (m && seen.has(m[1])) continue;
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    out.push({
+      _server: true,
+      _local: true,
+      threadId: sid,
+      sessionId: sid,
+      title: st.title || '对话',
+      updated_at: st.updated_at || '',
+      message_count: st.message_count || 0,
+    });
+  }
+  for (const t of local) {
+    const sid = t.sessionId || desktopThreadId(ws.id, t.id);
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    out.push({
+      _server: false,
+      threadId: sid,
+      sessionId: sid,
+      id: t.id,
+      tab: t,
+      title: t.title || '对话',
+    });
+  }
+  out.sort((a, b) => {
+    const am = isMainSession(a.sessionId, ws.id) ? 0 : 1;
+    const bm = isMainSession(b.sessionId, ws.id) ? 0 : 1;
+    if (am !== bm) return am - bm;
+    return _sortTs(b) - _sortTs(a);
+  });
+  return out;
+}
+
+function _renderDshSidebar(projects) {
+  _projects = projects.slice();
+  state.set('projects', _projects);
+  const host = document.getElementById('sidebar-projects');
+  if (!host) return;
+
+  const activePid = state.get('currentProject') || projects[0]?.id || '';
+  const activeSid = state.get('currentSessionId');
+
+  // 选中 workspace 懒加载其 CCC 本地线程（续聊/新建），用于与 DSH 镜像合并
+  if (activePid) loadServerThreads(activePid);
+
+  let html = '';
+  for (const p of projects) {
+    const selected = p.id === activePid;
+    const threads = mergedDshThreadsFor(p);
+    const streaming = tabsForProject(p.id).some((t) => t._streaming);
+    html +=
+      '<div class="project-card-wrap" data-project-id="' +
+      escapeHtml(p.id) +
+      '">' +
+      '<div class="project-card' +
+      (selected ? ' selected' : '') +
+      '" role="listitem">' +
+      '<button type="button" class="project-card-main" data-act="open" title="' +
+      escapeHtml(p.path || p.id) +
+      '">' +
+      '<span class="project-card-folder' +
+      (selected ? ' is-open' : '') +
+      '" aria-hidden="true"></span>' +
+      '<span class="project-card-text">' +
+      '<span class="project-card-name">' +
+      escapeHtml(p.name || p.id) +
+      '</span>' +
+      (p.path
+        ? '<span class="project-card-path">' + escapeHtml(p.path) + '</span>'
+        : '') +
+      '</span></button>' +
+      '<button type="button" class="project-card-plus" data-act="new" title="新建会话" aria-label="新建会话">+</button>' +
+      (streaming
+        ? '<span class="project-card-trail"><span class="project-card-spin"></span></span>'
+        : '') +
+      '</div>';
+
+    if (selected) {
+      html += '<div class="sidebar-thread-list">';
+      const rows = threads.slice(0, 12);
+      if (!rows.length) {
+        html += '<div class="sidebar-thread-empty">暂无会话 · 点 + 新建</div>';
+      } else {
+        for (const t of rows) {
+          const sid = t.sessionId || desktopThreadId(p.id, t.id);
+          const on = sid === activeSid || t.id === state.get('activeTabId');
+          const title =
+            t.title && t.title !== '新对话'
+              ? t.title
+              : isMainSession(sid, p.id)
+                ? '对话'
+                : String(sid).split('::').pop()?.slice(0, 12) || '会话';
+          const tabId = t.id || encodeURIComponent(sid);
+          const timeInfo =
+            t._dsh && t.updated_at
+              ? fmtAgo(_sortTs(t))
+              : t.message_count
+                ? t.message_count + ' 条'
+                : '';
+          html +=
+            '<div class="sidebar-thread-row' +
+            (on ? ' selected' : '') +
+            '" data-dsh-session="' +
+            escapeHtml(t.dshId || '') +
+            '" data-tab-id="' +
+            escapeHtml(tabId) +
+            '" data-sid="' +
+            escapeHtml(sid) +
+            '"' +
+            (t._server ? ' data-server="1"' : '') +
+            ' title="单击打开">' +
+            '<span class="sidebar-thread-icon" aria-hidden="true">' +
+            (t._dsh ? '◆' : '○') +
+            '</span>' +
+            '<span class="sidebar-thread-title">' +
+            escapeHtml(title) +
+            '</span>' +
+            '<span class="sidebar-thread-actions"><span class="sidebar-thread-time">' +
+            timeInfo +
+            '</span></span></div>';
+        }
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  host.innerHTML = html;
+
+  host.querySelectorAll('[data-act]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wrap = el.closest('.project-card-wrap');
+      const pid = wrap?.dataset?.projectId;
+      if (!pid) return;
+      if (el.dataset.act === 'open') openProject(pid);
+      else if (el.dataset.act === 'new') createThreadForProject(pid);
+    });
+  });
+  host.querySelectorAll('.sidebar-thread-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const pid = row.closest('.project-card-wrap')?.dataset?.projectId;
+      const dsh = row.dataset.dshSession;
+      if (!pid) return;
+      if (dsh) {
+        openDshSession(pid, dsh);
+        return;
+      }
+      openThreadTab(row.dataset.tabId, pid);
+    });
+  });
+}
+
+// 打开 DSH 会话：拉 DSH 原始历史 + CCC 本地续聊，物化为本地 tab
+async function openDshSession(pid, dshId) {
+  if (!pid || !dshId) return;
+  navigate('chat');
+  if (state.get('currentProject') !== pid) {
+    setProjectActive(pid, pid);
+  }
+  const sid = pid + '::' + dshId;
+  const tabs = state.get('tabs') || [];
+  let tab = tabs.find((t) => (t.sessionId || desktopThreadId(pid, t.id)) === sid);
+  if (!tab) {
+    const { loadSession } = await import('../api.js');
+    const id = 'sid-' + encodeURIComponent(sid).replace(/%/g, '').slice(0, 24);
+    let messages = [];
+    try {
+      const dshMsgs = await loadDshSession(dshId);
+      messages = (dshMsgs || []).map((m) => ({ role: m.role, content: m.message }));
+    } catch (_) {}
+    try {
+      const cont = await loadSession(sid, pid);
+      if (cont && cont.messages && cont.messages.length) {
+        messages = messages.concat(cont.messages);
+      }
+    } catch (_) {}
+    tab = {
+      id,
+      title: String(dshId).split('::').pop()?.slice(0, 12) || '会话',
+      sessionId: sid,
+      messages,
+      projectId: pid,
+    };
+    tabs.push(tab);
+    state.set('tabs', tabs);
+  }
+  state.set('activeTabId', tab.id);
+  state.set('currentSessionId', sid);
+  document.dispatchEvent(new CustomEvent('switch-tab', { detail: { id: tab.id } }));
+  refreshSidebar();
+  closeMobileSidebar();
+}
+
 export function renderAppSidebar(projects) {
-  const isClaudeMode = Array.isArray(projects) && projects.length > 0 && !!projects[0].path;
+  // DSH 只读镜像模式：projects 带 _dsh 标记 → 渲染 DSH workspace + 会话
+  const isDshMode =
+    Array.isArray(projects) && projects.length > 0 && !!projects[0]._dsh;
+  if (isDshMode) {
+    _renderDshSidebar(projects);
+    return;
+  }
+  const isClaudeMode =
+    Array.isArray(projects) && projects.length > 0 && !!projects[0].path;
   if (isClaudeMode) {
     _renderClaudeSidebar(projects);
     return;

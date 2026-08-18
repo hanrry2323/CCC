@@ -112,6 +112,7 @@ from server.engine.cluster import (
 )
 from server.web.brain import call_brain, stream_brain_events
 from server.web import session_store
+from server.web import dsh_reader
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
@@ -3927,6 +3928,20 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/conversation":
             self._handle_conversation_get()
+            return
+        if path == "/dsh/workspaces":
+            # DSH 只读镜像：对话侧栏项目/会话源（无 DSH 数据 → 空列表，前端降级）
+            self._send_json({"workspaces": dsh_reader.load_workspaces()})
+            return
+        if path.startswith("/dsh/sessions/"):
+            # GET /dsh/sessions/<session_id>：DSH 会话历史（只读，映射为 CCC 消息形状）
+            from urllib.parse import unquote
+
+            session_id = unquote(path[len("/dsh/sessions/") :])
+            if not session_id:
+                self._send_json({"error": "session id required"}, 400)
+                return
+            self._send_json({"messages": dsh_reader.load_session_messages(session_id)})
             return
         if path == "/ops/summary":
             self._handle_ops_summary()
