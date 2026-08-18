@@ -14,8 +14,8 @@
 ## 在 CCC 怎么动
 
 - **前缀**：`clw` → `docs/dispatch/clw/`
-- **taskable**：是
-- **出卡**：`scripts/new-card.sh --project clw --title "..."`；执行 cwd 写在卡内（2017 apps/clwarp）
+- **taskable**：否（2026-08-15 老板决策封板，registry taskable:false / status:archived）
+- **出卡**：已封板，不再出卡（历史卡保留只读）
 - **技术栈**：Tauri 2.0（Rust + React/TypeScript）+ xterm.js 终端渲染
 
 ## 技术栈定稿（唯一权威 · 2026-08-11）
