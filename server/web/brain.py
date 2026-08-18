@@ -595,9 +595,9 @@ def _stream_claude(prompt: str, timeout: int | None = None):
 def _stream_relay_direct(prompt: str):
     """2017 本地直连中继 (6100/6102/DSH) 流式大模型生成器。
 
-    将标准 OpenAI / Anthropic 格式的 SSE 字节流转译并 yield 为归一化事件流。
-    这消除了 2017 单端服务器拉起本地 claude 命令行子进程的环境要求与 Mach 锁超时，
-    并完美支持 DeepSeek R1 深度思考 (reasoning_content → thinking)。
+    支持双核转译（Anthropic / OpenAI），消除了冷启动子进程的全部环境要求：
+    - 6100 端口：走 Anthropic 协议 (请求 /v1/messages，转译 content_block_delta)
+    - 6102 / 3080 端口：走 OpenAI 协议 (请求 /v1/chat/completions，支持 DeepSeek R1 reasoning_content 思考流转译)
     """
     import http.client
 
@@ -605,30 +605,47 @@ def _stream_relay_direct(prompt: str):
     model = _effective_model() or "deepseek-chat"
     auth_token = _get_brain_auth_token()
 
-    headers = {
-        "Content-Type": "application/json",
-    }
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
-
-    body = json.dumps({
-        "model": model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "stream": True
-    }, ensure_ascii=False).encode("utf-8")
-
     m = re.match(r"http://([^:/]+):(\d+)", base_url)
     if m:
         host, port = m.group(1), int(m.group(2))
     else:
         host, port = "127.0.0.1", 6100
 
+    is_anthropic = (port == 6100) or ("6100" in base_url)
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+
+    if is_anthropic:
+        if auth_token:
+            headers["x-api-key"] = auth_token
+        headers["anthropic-version"] = "2023-06-01"
+        body = json.dumps({
+            "model": model if "claude" in model else "claude-3-5-sonnet-latest",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 4096,
+            "stream": True
+        }, ensure_ascii=False).encode("utf-8")
+        path = "/v1/messages"
+    else:
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        body = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "stream": True
+        }, ensure_ascii=False).encode("utf-8")
+        path = "/v1/chat/completions"
+
     conn = None
     try:
         conn = http.client.HTTPConnection(host, port, timeout=120)
-        conn.request("POST", "/v1/chat/completions", body=body, headers=headers)
+        conn.request("POST", path, body=body, headers=headers)
         resp = conn.getresponse()
         if resp.status != 200:
             err_msg = resp.read().decode("utf-8", errors="replace")
@@ -638,7 +655,8 @@ def _stream_relay_direct(prompt: str):
         yield ("meta", {"model": model, "tools": [], "mcp_servers": [], "skills": []})
 
         buffer = b""
-        while True:
+        done_triggered = False
+        while not done_triggered:
             chunk = resp.read(4096)
             if not chunk:
                 break
@@ -651,18 +669,31 @@ def _stream_relay_direct(prompt: str):
                 if line.startswith("data:"):
                     data_str = line[len("data:"):].strip()
                     if data_str == "[DONE]":
+                        done_triggered = True
                         break
                     try:
                         data = json.loads(data_str)
-                        choices = data.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            reasoning = delta.get("reasoning_content", "")
-                            if reasoning:
-                                yield ("thinking", {"data": reasoning})
-                            if content:
-                                yield ("text", {"text": content})
+                        if is_anthropic:
+                            etype = data.get("type")
+                            if etype == "content_block_delta":
+                                delta = data.get("delta", {})
+                                if delta.get("type") == "text_delta":
+                                    yield ("text", {"text": delta.get("text", "")})
+                            elif etype == "message_delta":
+                                delta = data.get("delta", {})
+                                if delta.get("stop_reason"):
+                                    done_triggered = True
+                                    break
+                        else:
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                reasoning = delta.get("reasoning_content", "")
+                                if reasoning:
+                                    yield ("thinking", {"data": reasoning})
+                                if content:
+                                    yield ("text", {"text": content})
                     except Exception:
                         pass
         yield ("done", {"is_error": False, "text": ""})
