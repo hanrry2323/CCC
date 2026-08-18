@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from server.engine.gates import DispatchGate, GateContext, GateRegistry, GateResult
-from server.engine.main import _build_dispatch_gates
+from server.engine.main import _build_dispatch_gates, _load_registry_cached
 from server.engine.store import InMemoryBoardStore
 from server.engine.task import State, Work
 
@@ -315,3 +315,86 @@ class TestDispatchGateChain:
             assert res is not None
             assert res.passed is False
             assert ctx.counters.get("queued") == 1
+
+
+# ── executors.json 热重载（P4 扩展） ──
+
+
+class TestRegistryHotReload:
+    def test_reload_on_mtime_change(self, tmp_path: Path) -> None:
+        import json as _json
+
+        p = tmp_path / "executors.json"
+        p.write_text(
+            _json.dumps(
+                {
+                    "version": "2",
+                    "executors": [
+                        {
+                            "角色": "开发执行体",
+                            "分类": "可后台 CLI",
+                            "当前绑定": "demo",
+                            "命令": "echo",
+                            "参数模板": "work={work_id}",
+                            "工作目录": "",
+                            "备注": "v1",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        reg1, mtime1 = _load_registry_cached(p, None)
+        assert reg1 is not None and mtime1 is not None
+        # mtime 未变 → 返回 None（复用）
+        reg2, mtime2 = _load_registry_cached(p, mtime1)
+        assert reg2 is None and mtime2 == mtime1
+        # 改文件（mtime 变）→ 重新加载
+        p.write_text(
+            _json.dumps(
+                {
+                    "version": "2",
+                    "executors": [
+                        {
+                            "角色": "开发执行体",
+                            "分类": "可后台 CLI",
+                            "当前绑定": "demo",
+                            "命令": "echo",
+                            "参数模板": "new={work_id}",
+                            "工作目录": "",
+                            "备注": "v2",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        reg3, mtime3 = _load_registry_cached(p, mtime1)
+        assert reg3 is not None
+        assert mtime3 is not None and mtime3 != mtime1
+
+    def test_invalid_file_keeps_last_registry(self, tmp_path: Path) -> None:
+        import json as _json
+
+        p = tmp_path / "executors.json"
+        p.write_text(
+            _json.dumps({"version": "2", "executors": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        reg, mtime = _load_registry_cached(p, None)
+        assert reg is not None and mtime is not None
+        # 损坏文件 → 沿用旧 registry
+        p.write_text("{bad json", encoding="utf-8")
+        reg2, mtime2 = _load_registry_cached(p, mtime)
+        assert reg2 is None
+        assert mtime2 == mtime
+
+    def test_missing_file_returns_none(self, tmp_path: Path) -> None:
+        p = tmp_path / "nonexistent.json"
+        reg, mtime = _load_registry_cached(p, None)
+        assert reg is None and mtime is None
+        # 传 None path
+        reg2, mtime2 = _load_registry_cached(None, None)
+        assert reg2 is None and mtime2 is None

@@ -737,6 +737,36 @@ def _fail_retry_or_reject(
     return False
 
 
+def _load_registry_cached(
+    registry_path: str | Path | None,
+    last_mtime: float | None,
+) -> tuple[ExecutorRegistry | None, float | None]:
+    """executors.json mtime 级热重载（仿 _slot_limits 热读模式）。
+
+    改注册表免重启：文件 mtime 变化才重新 load_registry，否则返回原 registry。
+    ``last_mtime=None`` 表示首次加载（无条件重载）。
+
+    Returns:
+        (registry 或 None（未变/不可读）, 最新 mtime 或 None)。
+    """
+    if not registry_path:
+        return None, None
+    p = Path(registry_path)
+    try:
+        mtime = p.stat().st_mtime
+    except OSError:
+        return None, last_mtime
+    if last_mtime is not None and mtime == last_mtime:
+        return None, last_mtime  # 未变，复用
+    try:
+        registry = load_registry(p)
+    except (ConfigError, OSError, ValueError) as exc:
+        logger.warning("executors.json 热重载失败（沿用旧注册表）: %s", exc)
+        return None, last_mtime
+    logger.info("executors.json 热重载完成 (mtime=%s)", mtime)
+    return registry, mtime
+
+
 def _slot_limits(cfg: dict[str, Any], config_path: str | Path | None = None) -> tuple[int, int]:
     """执行/机审槽位上限；config_path 可读时热读文件值（改配置免重启）。
 
@@ -3355,11 +3385,10 @@ def _build_dispatch_gates() -> GateRegistry:
     reg.register(DispatchGate(name="infra_cooldown", order=10, check=_infra_cooldown))
 
     def _worktree_card_copy(ctx: GateContext) -> GateResult:
+        # 2026-08-18 清理 is_pytest 嗅探：wt_hint 为空（无 worktree_base 的注册行/测试夹具）时
+        # 短路，检查不会触发；is_pytest 豁免属多余防御（worktree_path 空即跳过）。
         wt_hint = _worktree_hint_for(ctx.work, ctx.registry)
-        import sys as _sys
-
-        is_pytest = "pytest" in _sys.modules or any("pytest" in arg for arg in _sys.argv)
-        if not is_pytest and wt_hint and os.path.isdir(wt_hint) and "docs/dispatch" in ctx.work.card_path:
+        if wt_hint and os.path.isdir(wt_hint) and "docs/dispatch" in ctx.work.card_path:
             if _worktree_card_candidate(wt_hint, ctx.work.card_path) is None:
                 logger.warning(
                     "派发防护：worktree %s 存在但无对应卡副本 %s，跳过派发避免空转",
@@ -3964,7 +3993,14 @@ def run_loop(
     logger.info("Engine 持续模式启动（收割+补位，真实派发/收单）")
     dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
     last_mtime = _dispatch_dir_mtime(dispatch_dir)
+    # executors.json 热重载（2026-08-18）：每轮按 mtime 决定是否重新加载注册表
+    registry_path = cfg.get("EXECUTOR_REGISTRY_PATH")
+    registry_mtime: float | None = None
     while True:
+        new_reg, new_mtime = _load_registry_cached(registry_path, registry_mtime)
+        if new_reg is not None:
+            registry = new_reg
+        registry_mtime = new_mtime if new_mtime is not None else registry_mtime
         summary = run_once(registry, store, cfg, wait=False, config_path=config_path)
         summary = {**summary, "mode": "loop"}
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
