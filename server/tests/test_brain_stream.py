@@ -294,6 +294,7 @@ class TestStreamClaude:
 
     def test_spawn_failure_error_502(self, monkeypatch):
         _configure_brain(monkeypatch)
+        monkeypatch.setenv("CCC_BRAIN_BASE_URL", "http://127.0.0.1:23456")
 
         def _boom(*args, **kwargs):
             raise OSError("no such file")
