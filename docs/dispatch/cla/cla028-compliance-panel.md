@@ -1,7 +1,7 @@
 # 任务卡 cla028 · Compliance Panel 合规审核台（OpenCode 执行）
 
 > 关联：cla-plan-013 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：cla · 日期：2026-08-18
-> 依赖：cla027,cla024
+> 依赖：无
 
 
 

@@ -1,7 +1,7 @@
 # 任务卡 cla019 · 数据清洗管线与 SSOT 药名归一（OpenCode 执行）
 
 > 关联：cla-plan-005 · 执行体：OpenCode · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：cla · 日期：2026-08-18
-> 依赖：cla017
+> 依赖：无
 
 
 
