@@ -62,15 +62,21 @@ def _decompress(path: Path) -> str:
 
 
 def _session_dir(session_id: str) -> Path | None:
-    """按会话 id 定位会话目录（glob 匹配，不依赖路径编码规则）。"""
+    """按会话 id 定位会话目录（glob 匹配，不依赖路径编码规则）。
+
+    ``session_id`` 来自 workspace.json，已带 ``session-`` 前缀（如 session-<uuid>）；
+    兼容仅传 uuid 的情况。
+    """
     base = dsh_data_root() / "sessions"
     if not base.is_dir():
         return None
+    candidates = {session_id, "session-" + session_id.removeprefix("session-")}
     try:
         for d in base.iterdir():
-            cand = d / f"session-{session_id}"
-            if cand.is_dir():
-                return cand
+            for c in candidates:
+                cand = d / c
+                if cand.is_dir():
+                    return cand
     except OSError:
         pass
     return None
@@ -162,7 +168,7 @@ def _load_workspaces_raw() -> list[dict[str, Any]]:
         session_ids = [s for s in (w.get("sessionIds") or []) if s not in archived]
         sessions: list[dict[str, Any]] = []
         for sid in session_ids:
-            f = root / "sessions" / f"session-{sid}" / "session.jsonl.zstd"
+            f = root / "sessions" / sid / "session.jsonl.zstd"
             try:
                 mtime = f.stat().st_mtime
             except OSError:
