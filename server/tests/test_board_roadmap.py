@@ -518,6 +518,51 @@ class TestRoundtrip:
         mss = list_milestones("clw")
         assert mss[0].subprojects[0].status == "已完成"
 
+    def test_subproject_sync_pending_accept(self) -> None:
+        """2026-08-19 回写闭环修复：方案「待验收」→ 子项目状态「待验收」+ dev_status「已开发」。
+
+        待验收=开发完成待老板拍板：不计入里程碑 completed（保守口径，验收拍板归老板 033），
+        但子项目不再误归「计划中」，前端不再误显示「未开发」。
+        """
+        from server.board.roadmap import _enrich_subproject
+
+        self.clw_roadmap.write_text(
+            """# clwarp 线路图
+> 项目：clw · 更新：2026-08-19
+
+## 草案池
+
+无。
+
+## 里程碑
+
+### M1 · 测试
+- 状态：进行中
+- 子项目：
+  - 2.1 子项目A · 状态：计划中 · 方案：clw-plan-008
+""",
+            encoding="utf-8",
+        )
+        plans_dir = self.mock_root / "docs" / "projects" / "clw" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        # 方案置「待验收」（卡全关、待老板拍板，而非「已完成」）
+        (plans_dir / "008-a.md").write_text(
+            "# 方案 · A\n\n> 项目：clw · 编号：clw-plan-008 · 状态：待验收 · 作者：x · 工具：pytest\n> 创建：2026-08-19 · 更新：2026-08-19\n\n## 目标\n\nx\n",
+            encoding="utf-8",
+        )
+        # sync_milestone_progress 同步子项目状态为「待验收」（不再误归「计划中」）
+        r = sync_milestone_progress("clw", "docs/projects/clw/plans/008-a.md")
+        assert r.get("ok") is True
+        mss = list_milestones("clw")
+        assert mss[0].subprojects[0].status == "待验收"
+        # 待验收不计入 completed（保守口径，逼老板拍板，符合 033 验收拍板归老板）
+        prog = compute_milestone_progress("clw", "M1 · 测试")
+        assert prog["total"] == 1 and prog["completed"] == 0
+        # _enrich_subproject：待验收 → dev_status「已开发」（开发已完成，仅待验收拍板）
+        enriched = _enrich_subproject("clw", mss[0].subprojects[0])
+        assert enriched["dev_status"] == "已开发"
+        assert enriched["plan_status"] == "待验收"
+
     def test_tail_preserved_on_write(self) -> None:
         """2026-08-16 机审缺陷4：序列化保留未识别尾部内容（blockquote 封板脚注），防巡逻写盘丢数据。"""
         self.clw_roadmap.write_text(

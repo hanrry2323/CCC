@@ -51,7 +51,7 @@ class Subproject:
 
     id: str = ""  # 子项目编号（如 2.1）
     title: str = ""  # 子项目标题
-    status: str = "未启动"  # 未启动 | 计划中 | 已完成
+    status: str = "未启动"  # 未启动 | 计划中 | 待验收 | 已完成
     plan_id: str = ""  # 关联方案 ID（激活后写入），无则空
 
 
@@ -811,6 +811,8 @@ def _sync_subproject_statuses(project: str, ms: Any) -> bool:
                         plan_status = ""
                     if plan_status == "已完成":
                         target = "已完成"
+                    elif plan_status == "待验收":
+                        target = "待验收"
                     elif plan_status in ("作废", "已覆盖"):
                         target = "未启动"
                     else:
@@ -857,6 +859,9 @@ def _enrich_subproject(project: str, sp: Any) -> dict[str, Any]:
     elif plan_status in ("待排期", "已确定"):
         # 已确定 = Plan 调研完成态（033 F1）：调研完、未开发
         dev_status = "未开发"
+    elif plan_status == "待验收":
+        # 待验收 = 开发完成待老板/验收席拍板：开发已完成，仅待验收
+        dev_status = "已开发"
     elif sp.plan_id:
         dev_status = "未开发"
     else:

@@ -525,6 +525,13 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
   fi
 
   close_card "$path"
+  # ★ 刷新 cards.index.jsonl：close_card 改了卡 .md 但索引未同步，sync_plan_progress 读旧索引会算 closed=0
+  # （同 plans.py:748 范式：写卡后 load_dispatch_cards 刷新索引，让 sync 读到最新「已关闭」）
+  "$PYTHON_BIN" -c "
+import sys; sys.path.insert(0, '.')
+from server.board.loader import load_dispatch_cards
+load_dispatch_cards('docs/dispatch')
+" 2>/dev/null || echo "[WARN] ${id}: 索引刷新失败（不阻断合入，sync 可能滞后）" >&2
   # 033 阶段 2 M6：合入成功写批准真值账本（approve_merge）——「老板合入批准」不再仅靠卡头批准行
   "$PYTHON_BIN" -c "
 import sys
