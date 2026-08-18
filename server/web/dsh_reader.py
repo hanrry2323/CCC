@@ -116,8 +116,14 @@ def _text_blocks(content: Any) -> str:
     return "".join(parts)
 
 
-# DSH 会话里 user/message 会混入系统注入上下文（workspace 指令/技能清单等），展示时过滤
-_SYS_PREFIXES = ("<system-reminder>", "<system_reminder>", "<environment")
+# DSH 会话里 user/message 会混入系统注入上下文（workspace 指令/技能清单/运行时快照等），展示时过滤
+_SYS_PREFIXES = (
+    "<system-reminder>",
+    "<system_reminder>",
+    "<environment",
+    "Current runtime context",
+    "A skill is a reusable set",
+)
 
 
 def _is_sys_noise(text: str) -> bool:
