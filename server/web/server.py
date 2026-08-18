@@ -3555,6 +3555,159 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         self._send_json({"ok": True, "path": str(target), "name": target.stem})
 
+    def _handle_ops_service(self, action: str):
+        """POST /ops/service/{action} → 服务启停控制（一键开关，模块 A）。
+
+        action: start | stop | restart
+        body: {"service": "<label>", "confirm": true}
+        label 必须在本机已知服务白名单内（防任意 launchctl 命令注入）。
+        前端二次确认弹窗后带 confirm=true 调用；缺 confirm 返回 400（前端弹窗）。
+        """
+        import os as _os
+        import subprocess as _sp
+
+        # 本机已知服务白名单（label → 显示名/端口/URL；仅收录 CCC 集群可管服务）
+        KNOWN_SERVICES = {
+            "com.ccc.web-server": {"name": "CCC Web", "port": 7788, "url": "http://192.168.3.116:7788"},
+            "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
+            "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
+            "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
+            "com.ccc.ai-loop-router": {"name": "AI Loop Router", "port": 6100, "url": "http://192.168.3.116:6100"},
+            "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
+            "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
+            "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
+            "com.qb.data-engine": {"name": "QB Data Engine", "port": 8091, "url": "http://127.0.0.1:8091"},
+            "com.qb.order-gateway": {"name": "QB Order Gateway", "port": 0, "url": ""},
+            "com.ccc.sync-skills": {"name": "Sync Skills", "port": 0, "url": ""},
+        }
+        if action not in ("start", "stop", "restart"):
+            self._send_json({"error": f"无效 action: {action}"}, 400)
+            return
+
+        body = self._read_body() or {}
+        label = str(body.get("service", "")).strip()
+        if label not in KNOWN_SERVICES:
+            self._send_json({"error": f"未知服务: {label}"}, 400)
+            return
+        if not body.get("confirm"):
+            self._send_json({"error": "需二次确认（confirm=true）", "service": label}, 400)
+            return
+
+        try:
+            uid = _os.getuid()
+            domain = f"gui/{uid}"
+            if action == "restart":
+                cmd = ["launchctl", "kickstart", "-k", f"{domain}/{label}"]
+            elif action == "start":
+                cmd = ["launchctl", "kickstart", f"{domain}/{label}"]
+            else:  # stop
+                cmd = ["launchctl", "stop", f"{domain}/{label}"]
+            proc = _sp.run(cmd, capture_output=True, text=True, timeout=10)
+            ok = proc.returncode == 0
+            self._send_json(
+                {
+                    "ok": ok,
+                    "action": action,
+                    "service": label,
+                    "detail": proc.stderr.strip() or proc.stdout.strip(),
+                },
+                200 if ok else 500,
+            )
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"ok": False, "action": action, "service": label, "error": str(e)}, 500)
+
+    def _handle_ops_services(self):
+        """GET /ops/services → 已知服务清单 + 运行状态（供控制台服务开关卡片渲染）。
+
+        与 _handle_ops_service 共享 KNOWN_SERVICES 白名单。状态用 launchctl print 探测。
+        """
+        import os as _os
+        import subprocess as _sp
+
+        KNOWN_SERVICES = {
+            "com.ccc.web-server": {"name": "CCC Web", "port": 7788, "url": "http://192.168.3.116:7788"},
+            "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
+            "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
+            "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
+            "com.ccc.ai-loop-router": {"name": "AI Loop Router", "port": 6100, "url": "http://192.168.3.116:6100"},
+            "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
+            "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
+            "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
+            "com.qb.data-engine": {"name": "QB Data Engine", "port": 8091, "url": "http://127.0.0.1:8091"},
+            "com.qb.order-gateway": {"name": "QB Order Gateway", "port": 0, "url": ""},
+            "com.ccc.sync-skills": {"name": "Sync Skills", "port": 0, "url": ""},
+        }
+        uid = _os.getuid()
+        services = []
+        for label, meta in KNOWN_SERVICES.items():
+            running = False
+            pid = 0
+            try:
+                proc = _sp.run(
+                    ["launchctl", "print", f"gui/{uid}/{label}"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if proc.returncode == 0:
+                    import re as _re
+                    m = _re.search(r"pid = (\d+)", proc.stdout)
+                    if m:
+                        pid = int(m.group(1))
+                    running = "state = running" in proc.stdout or pid > 0
+            except Exception:
+                pass
+            services.append({
+                "label": label,
+                "name": meta["name"],
+                "port": meta["port"],
+                "url": meta["url"],
+                "running": running,
+                "pid": pid,
+            })
+        self._send_json({"services": services})
+
+    def _handle_ops_portals(self):
+        """GET /ops/portals → 已开发成果汇总（模块 C）。
+
+        全集群已开发服务/页面清单（服务名/机器/端口/URL），TCP 探测在线状态。
+        数据源：本机白名单 + 跨机已知服务（HP/M1/HK）。仅展示，不控制。
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        PORTALS = [
+            # 2017（本机）
+            {"name": "CCC 控制台", "machine": "Mac2017", "port": 7788, "url": "http://192.168.3.116:7788"},
+            {"name": "DSH Web", "machine": "Mac2017", "port": 3080, "url": "http://192.168.3.116:3080"},
+            {"name": "中转站 Anthropic", "machine": "Mac2017", "port": 6100, "url": "http://192.168.3.116:6100"},
+            {"name": "中转站 OpenAI", "machine": "Mac2017", "port": 6102, "url": "http://192.168.3.116:6102/v1"},
+            {"name": "xy Admin", "machine": "Mac2017", "port": 8765, "url": "http://192.168.3.116:8765"},
+            {"name": "QB Data Engine", "machine": "Mac2017", "port": 8091, "url": "http://127.0.0.1:8091"},
+            # HP
+            {"name": "HP MCP Server", "machine": "HP", "port": 8083, "url": "http://192.168.3.131:8083/mcp"},
+            {"name": "HP Memory Store", "machine": "HP", "port": 8082, "url": "http://192.168.3.131:8082"},
+            {"name": "HP Ollama", "machine": "HP", "port": 11434, "url": "http://192.168.3.131:11434"},
+            {"name": "HP PostgreSQL", "machine": "HP", "port": 5432, "url": ""},
+            # M1
+            {"name": "M1 PostgreSQL", "machine": "M1", "port": 5432, "url": ""},
+            # 腾讯云 HK
+            {"name": "QuantHive API", "machine": "HK", "port": 8000, "url": "http://127.0.0.1:8000"},
+            {"name": "QuantHive Gateway", "machine": "HK", "port": 443, "url": "https://124.156.166.72"},
+        ]
+
+        def _probe(p: dict) -> dict:
+            try:
+                ns = check_tcp_reachable("192.168.3.116" if p["machine"] == "Mac2017"
+                                         else "192.168.3.131" if p["machine"] == "HP"
+                                         else "192.168.3.140" if p["machine"] == "M1"
+                                         else "124.156.166.72", p["port"])
+                alive = ns.reachable
+            except Exception:
+                alive = False
+            return {**p, "alive": alive, "known": True}
+
+        with ThreadPoolExecutor(max_workers=min(8, len(PORTALS))) as ex:
+            portals = list(ex.map(_probe, PORTALS))
+        self._send_json({"portals": portals})
+
     def _handle_loop_adopt(self):
         """POST /loop/adopt → 人审闸门：采纳/不采纳/待定 Loop 发现，留档。
 
@@ -3803,6 +3956,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/ops/dsh-findings":
             self._handle_ops_dsh_findings()
             return
+        if path == "/ops/services":
+            self._handle_ops_services()
+            return
+        if path == "/ops/portals":
+            self._handle_ops_portals()
+            return
         if path == "/loop/findings":
             self._handle_loop_findings()
             return
@@ -3945,6 +4104,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_loop_adopt()
         elif path == "/loop/dsh-report":
             self._handle_loop_dsh_report()
+        elif path.startswith("/ops/service/"):
+            action = path[len("/ops/service/") :].strip("/")
+            self._handle_ops_service(action)
         elif path.startswith("/tasks/") and path.endswith("/transition"):
             task_id = path[len("/tasks/") : -len("/transition")].strip("/")
             self._handle_task_transition(task_id)

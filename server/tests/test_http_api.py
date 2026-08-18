@@ -1661,6 +1661,73 @@ class TestOpsSummary:
         assert "error" in data
 
 
+class TestOpsServices:
+    """GET /ops/services + POST /ops/service/{action}（一键开关，模块 A）"""
+
+    def test_get_services_shape(self, api_server):
+        """GET /ops/services → 服务清单含 label/name/running。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/services", token=token)
+        assert status == 200
+        assert "services" in data
+        assert isinstance(data["services"], list)
+        assert len(data["services"]) > 0
+        for s in data["services"]:
+            assert "label" in s
+            assert "name" in s
+            assert "running" in s
+            assert isinstance(s["running"], bool)
+
+    def test_post_service_requires_confirm(self, api_server):
+        """POST /ops/service/restart 缺 confirm → 400（前端二次确认弹窗）。"""
+        token = _get_token(api_server)
+        status, data = _post(
+            api_server, "/ops/service/restart",
+            {"service": "com.ccc.web-server"}, token=token,
+        )
+        assert status == 400
+        assert "confirm" in str(data)
+
+    def test_post_service_unknown_rejected(self, api_server):
+        """POST /ops/service/restart 未知服务 → 400（白名单拦截防命令注入）。"""
+        token = _get_token(api_server)
+        status, data = _post(
+            api_server, "/ops/service/restart",
+            {"service": "com.evil.service", "confirm": True}, token=token,
+        )
+        assert status == 400
+        assert "未知服务" in str(data)
+
+
+class TestOpsPortals:
+    """GET /ops/portals（已开发成果汇总，模块 C）"""
+
+    def test_get_portals_shape(self, api_server):
+        """GET /ops/portals → 成果清单含 name/machine/port/url/alive。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/portals", token=token)
+        assert status == 200
+        assert "portals" in data
+        assert isinstance(data["portals"], list)
+        assert len(data["portals"]) > 0
+        for p in data["portals"]:
+            assert "name" in p
+            assert "machine" in p
+            assert "port" in p
+            assert "url" in p
+            assert "alive" in p
+            assert isinstance(p["alive"], bool)
+
+    def test_portals_include_known_services(self, api_server):
+        """成果清单应含 CCC/DSH/HP MCP 等已知服务。"""
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/ops/portals", token=token)
+        names = {p["name"] for p in data["portals"]}
+        assert "CCC 控制台" in names
+        assert "DSH Web" in names
+        assert "HP MCP Server" in names
+
+
 class TestOpsPgHealth:
     """GET /ops/pg-health（HP PostgreSQL 健康：探针状态文件 + TCP 兜底，ccc-plan-031）"""
 

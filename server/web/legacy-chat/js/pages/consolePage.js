@@ -15,7 +15,7 @@
  *   /config           → 设置（只读）
  */
 
-import { apiGet } from '../api.js';
+import { apiGet, apiPost } from '../api.js';
 import { esc, STATE_TONES } from '../ui.js';
 
 let _root = null;
@@ -74,6 +74,18 @@ function html() {
         <div id="console-running" class="console-running"><div class="console-empty">当前无后台任务</div></div>
       </div>
     </div>
+  </div>
+
+  <!-- ②b 服务开关（一键开关 · 模块 A） -->
+  <div class="console-card">
+    <h4 class="console-card-title">服务开关 <span class="console-sub">launchctl 一键启停</span> <span id="console-svc-n" class="badge">0</span></h4>
+    <div id="console-services" class="console-services"><div class="console-empty">加载中…</div></div>
+  </div>
+
+  <!-- ②c 已开发成果（端口/网址汇总 · 模块 C） -->
+  <div class="console-card">
+    <h4 class="console-card-title">已开发成果 <span class="console-sub">内网页面 · 端口 · 网址</span> <span id="console-portal-n" class="badge">0</span></h4>
+    <div id="console-portals" class="console-portals"><div class="console-empty">加载中…</div></div>
   </div>
 
   <!-- ③ 设置 -->
@@ -363,11 +375,82 @@ function renderSettings(config, concurrency) {
     : '').join('') || '<div class="console-empty">配置不可用</div>';
 }
 
+/* ── ②b 服务开关（一键开关 · 模块 A） ───────── */
+
+function renderServices(services) {
+  const el = _root.querySelector('#console-services');
+  const cnt = _root.querySelector('#console-svc-n');
+  if (!el) return;
+  if (!services || !services.length) {
+    el.innerHTML = '<div class="console-empty">无服务数据</div>';
+    if (cnt) cnt.textContent = '0';
+    return;
+  }
+  if (cnt) cnt.textContent = String(services.length);
+  el.innerHTML = `<div class="console-svc-grid">${services.map((s) => `
+    <div class="console-svc-item ${s.running ? 'on' : 'off'}">
+      <span class="console-dot ${s.running ? 'green' : 'red'}"></span>
+      <b>${esc(s.name)}</b>
+      <code class="console-svc-label">${esc(s.label)}</code>
+      ${s.port ? `<span class="console-svc-port">:${s.port}</span>` : ''}
+      <span class="console-svc-status">${s.running ? '运行中' : '已停'}</span>
+      <div class="console-svc-actions">
+        <button type="button" class="hub-btn console-svc-btn" data-svc="${esc(s.label)}" data-action="restart" ${s.running ? '' : 'disabled'}>重启</button>
+        <button type="button" class="hub-btn console-svc-btn" data-svc="${esc(s.label)}" data-action="start" ${s.running ? 'disabled' : ''}>启动</button>
+        <button type="button" class="hub-btn console-svc-btn danger" data-svc="${esc(s.label)}" data-action="stop" ${s.running ? '' : 'disabled'}>停止</button>
+      </div>
+    </div>`).join('')}</div>`;
+  el.querySelectorAll('button.console-svc-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const svc = btn.getAttribute('data-svc') || '';
+      const action = btn.getAttribute('data-action') || '';
+      const actionLabel = { start: '启动', stop: '停止', restart: '重启' }[action] || action;
+      if (!window.confirm(`确定${actionLabel}服务 ${svc}？`)) return;
+      btn.disabled = true;
+      try {
+        const r = await apiPost(`/ops/service/${action}`, { service: svc, confirm: true });
+        if (r && r.ok) {
+          // 稍后刷新状态
+          setTimeout(() => pollSystem(), 2500);
+        } else {
+          alert(`操作失败：${(r && r.detail) || (r && r.error) || '未知'}`);
+          btn.disabled = false;
+        }
+      } catch (e) {
+        alert(`请求失败：${e.message}`);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+/* ── ②c 已开发成果（端口/网址汇总 · 模块 C） ─── */
+
+function renderPortals(portals) {
+  const el = _root.querySelector('#console-portals');
+  const cnt = _root.querySelector('#console-portal-n');
+  if (!el) return;
+  if (!portals || !portals.length) {
+    el.innerHTML = '<div class="console-empty">无已开发成果数据</div>';
+    if (cnt) cnt.textContent = '0';
+    return;
+  }
+  if (cnt) cnt.textContent = String(portals.length);
+  el.innerHTML = `<div class="console-portal-grid">${portals.map((p) => `
+    <div class="console-portal-item">
+      <span class="console-dot ${p.alive ? 'green' : p.known ? 'red' : 'amber'}"></span>
+      <b>${esc(p.name)}</b>
+      <span class="console-portal-meta">${esc(p.machine)}${p.port ? ` :${p.port}` : ''}</span>
+      ${p.url ? `<a class="console-portal-link" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url)}</a>` : ''}
+      <span class="console-portal-status">${p.alive ? '在线' : p.known ? '离线' : '未配置'}</span>
+    </div>`).join('')}</div>`;
+}
+
 /* ── 轮询 ───────────────────────────────────── */
 
 async function pollSystem() {
   if (_disposed || !_root) return;
-  const [summary, ports, relay, hp, kb, states, ready, config, concurrency, pg] = await Promise.all([
+  const [summary, ports, relay, hp, kb, states, ready, config, concurrency, pg, services, portals] = await Promise.all([
     apiGet('/ops/summary').catch(() => null),
     apiGet('/ops/ports').catch(() => null),
     apiGet('/ops/relay-stats').catch(() => null),
@@ -378,6 +461,8 @@ async function pollSystem() {
     apiGet('/config').catch(() => null),
     apiGet('/ops/concurrency').catch(() => null),
     apiGet('/ops/pg-health').catch(() => null),
+    apiGet('/ops/services').catch(() => null),
+    apiGet('/ops/portals').catch(() => null),
   ]);
   if (_disposed || !_root) return; // 卸载后回来不再写 DOM
   renderOverview(summary, relay);
@@ -398,6 +483,8 @@ async function pollSystem() {
   renderKPI(states);
   renderReady(ready);
   renderSettings(config, concurrency);
+  renderServices(services && services.services);
+  renderPortals(portals && portals.portals);
 }
 
 async function pollRunning() {

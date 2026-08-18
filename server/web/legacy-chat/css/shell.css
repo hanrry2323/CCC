@@ -3176,6 +3176,39 @@ body.ro-viewer [data-write] {
 .console-dot.ok { background: #2a9d4a; }
 .console-dot.warn { background: #d9822b; }
 .console-dot.gone { background: #999; }
+.console-dot.green { background: #2a9d4a; }
+.console-dot.red { background: #cc4444; }
+.console-dot.amber { background: #d9822b; }
+
+/* 服务开关（一键开关 · 模块 A） */
+.console-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.console-svc-item {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px; border: 1px solid #eee; border-radius: 8px;
+  background: #fafafa;
+}
+.console-svc-item.on { border-left: 3px solid #2a9d4a; }
+.console-svc-item.off { border-left: 3px solid #cc4444; }
+.console-svc-item b { font-size: 13px; }
+.console-svc-label { font-size: 11px; color: #999; }
+.console-svc-port { font-size: 12px; color: #555; }
+.console-svc-status { font-size: 11px; color: #666; }
+.console-svc-actions { display: flex; gap: 6px; margin-top: 4px; }
+.console-svc-actions .hub-btn { font-size: 12px; padding: 3px 10px; }
+.console-svc-actions .hub-btn.danger { background: #cc4444; color: #fff; }
+
+/* 已开发成果（模块 C） */
+.console-portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.console-portal-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border: 1px solid #eee; border-radius: 8px;
+  background: #fafafa; flex-wrap: wrap;
+}
+.console-portal-item b { font-size: 13px; }
+.console-portal-meta { font-size: 11px; color: #999; }
+.console-portal-link { font-size: 12px; color: #4c6ef5; text-decoration: none; word-break: break-all; }
+.console-portal-link:hover { text-decoration: underline; }
+.console-portal-status { font-size: 11px; color: #666; margin-left: auto; }
 .console-overview-line { font-size: 13.5px; color: #333; min-width: 0; }
 .console-overview-chips { margin-left: auto; display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .console-grid {
