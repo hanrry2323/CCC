@@ -1,6 +1,6 @@
 # 任务卡 ccc999 · DSH 只读取证/审计探针（DSH 执行）
 
-> 关联：ccc-plan-029 卡3 · 执行体：DSH headless · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-18
+> 关联：ccc-plan-029 卡3 · 执行体：DSH headless · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-18
 
 ## 基准文件（先看）
 
