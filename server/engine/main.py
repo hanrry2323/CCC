@@ -43,6 +43,7 @@ from server.engine.dispatch import (
     decide_work,
     load_registry,
 )
+from server.engine.gates import DispatchGate, GateContext, GateRegistry, GateResult
 from server.engine.metrics import ProcessSampler, record_slot_snapshot, record_worker_event
 from server.engine.pool import get_audit_pool, get_dispatch_pool
 from server.engine.store import BoardStore, FileBoardStore
@@ -3325,6 +3326,226 @@ def _run_audit_worker(
     return outcome
 
 
+def _build_dispatch_gates() -> GateRegistry:
+    """装配派发门禁链（借鉴 Cordis 依赖图思想 · 轻量前置条件版）。
+
+    11 个门禁与 run_once 原 if/elif 顺序一一对应；`requires` 声明前置条件，
+    框架按 order 排序 + 环校验。每个 gate 的 check 闭包逐字搬运原逻辑
+    （含日志/计数/副作用），保证行为不回归。
+
+    门禁链：
+        infra_cooldown → worktree_card_copy → accepted_card → parent_closed
+        → depends_closed → dependency_cycle → decision
+        → slot_available → biz_isolation → relay_probe → submit
+
+    submit gate 为原子占槽（transition RUNNING + marker + pool.submit + 回滚），
+    绝不拆分——拆开会产生「假 RUNNING + marker 泄漏」，破坏 reclaim 不变量。
+    """
+    reg = GateRegistry()
+
+    def _infra_cooldown(ctx: GateContext) -> GateResult:
+        if _infra_cooldown_active(ctx.runtime, ctx.work.id, ctx.now_ts):
+            logger.info("基础设施冷却中，跳过派发: work=%s", ctx.work.id)
+            return GateResult(passed=False, reason="infra_cooldown")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="infra_cooldown", order=10, check=_infra_cooldown))
+
+    def _worktree_card_copy(ctx: GateContext) -> GateResult:
+        wt_hint = _worktree_hint_for(ctx.work, ctx.registry)
+        import sys as _sys
+
+        is_pytest = "pytest" in _sys.modules or any("pytest" in arg for arg in _sys.argv)
+        if not is_pytest and wt_hint and os.path.isdir(wt_hint) and "docs/dispatch" in ctx.work.card_path:
+            if _worktree_card_candidate(wt_hint, ctx.work.card_path) is None:
+                logger.warning(
+                    "派发防护：worktree %s 存在但无对应卡副本 %s，跳过派发避免空转",
+                    wt_hint,
+                    ctx.work.card_path,
+                )
+                ctx.counters["none_skips"] = ctx.counters.get("none_skips", 0) + 1
+                return GateResult(passed=False, reason="worktree_no_card_copy")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="worktree_card_copy", order=20, check=_worktree_card_copy))
+
+    def _accepted_card(ctx: GateContext) -> GateResult:
+        if is_card_accepted(ctx.work.card_path):
+            logger.warning("已验收卡不派发: work=%s", ctx.work.id)
+            return GateResult(passed=False, reason="accepted")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="accepted_card", order=30, check=_accepted_card))
+
+    def _parent_closed(ctx: GateContext) -> GateResult:
+        block = _parent_blocks_dispatch(ctx.work, ctx.by_id)
+        if block:
+            ctx.counters["parent_skips"] = ctx.counters.get("parent_skips", 0) + 1
+            logger.info("父卡未关闭，跳过派发: work=%s (%s)", ctx.work.id, block)
+            return GateResult(passed=False, reason=block)
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="parent_closed", order=40, check=_parent_closed))
+
+    def _depends_closed(ctx: GateContext) -> GateResult:
+        dep_block = _depends_on_blocks_dispatch(ctx.work, ctx.by_id)
+        if dep_block:
+            ctx.counters["dep_skips"] = ctx.counters.get("dep_skips", 0) + 1
+            logger.info("依赖卡未关闭，跳过派发: work=%s (%s)", ctx.work.id, dep_block)
+            return GateResult(passed=False, reason=dep_block)
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="depends_closed", order=50, check=_depends_closed))
+
+    def _dependency_cycle(ctx: GateContext) -> GateResult:
+        cycle = _detect_dependency_cycle(ctx.work, ctx.by_id)
+        if cycle:
+            ctx.counters["cycle_skips"] = ctx.counters.get("cycle_skips", 0) + 1
+            logger.warning("检测到依赖环，跳过派发: work=%s 环=%s", ctx.work.id, cycle)
+            return GateResult(passed=False, reason=f"cycle:{cycle}")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="dependency_cycle", order=60, check=_dependency_cycle))
+
+    def _decision(ctx: GateContext) -> GateResult:
+        """派发决策：MANUAL→RUNNING+save（派发非跳过，短路后续）；REMOTE/NONE→跳过；AUTO→PASS。
+
+        注意：MANUAL 的 transition(RUNNING)+save 是「派发」，必须在 decision gate
+        内完成并返回 passed=False（短路后续 slot/probe），否则 MANUAL 卡会错误
+        流到槽位/探活。
+        """
+        decision = decide_work(ctx.work, ctx.registry)
+        if decision is DispatchDecision.MANUAL:
+            logger.info(
+                "挂起等人接单: work=%s role=%s executor=%s",
+                ctx.work.id,
+                ctx.work.role,
+                ctx.work.executor or "(未指定)",
+            )
+            ctx.work.transition(State.RUNNING)
+            ctx.store.save_work(ctx.work)
+            ctx.counters["dispatched"] = ctx.counters.get("dispatched", 0) + 1
+            return GateResult(passed=False, reason="manual")
+        if decision is DispatchDecision.REMOTE:
+            ctx.counters["remote_pending"] = ctx.counters.get("remote_pending", 0) + 1
+            logger.info(
+                "远端卡待 Worker 认领（保持待分派，不标执行中）: work=%s role=%s executor=%s",
+                ctx.work.id,
+                ctx.work.role,
+                ctx.work.executor or "(未指定)",
+            )
+            return GateResult(passed=False, reason="remote")
+        if decision is not DispatchDecision.AUTO:
+            ctx.counters["none_skips"] = ctx.counters.get("none_skips", 0) + 1
+            logger.warning(
+                "不参与派发: work=%s role=%s executor=%s",
+                ctx.work.id,
+                ctx.work.role,
+                ctx.work.executor or "(未指定)",
+            )
+            return GateResult(passed=False, reason="none")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="decision", order=70, check=_decision))
+
+    def _slot_available(ctx: GateContext) -> GateResult:
+        if ctx.slots <= 0:
+            ctx.counters["queued"] = ctx.counters.get("queued", 0) + 1
+            logger.info(
+                "无空闲执行槽位，进入排队等待: work=%s, 当前并发数=%d, 上限=%d",
+                ctx.work.id,
+                ctx.pool.occupancy(ctx.store, ctx.log_dir),
+                ctx.max_concurrent,
+            )
+            return GateResult(passed=False, reason="no_slot")
+        return GateResult(passed=True)
+
+    reg.register(
+        DispatchGate(name="slot_available", order=80, check=_slot_available, requires=("decision",))
+    )
+
+    def _biz_isolation(ctx: GateContext) -> GateResult:
+        biz_project = _business_project(ctx.work)
+        if biz_project:
+            running_same_project = [
+                w for w in ctx.store.list_work(state=State.RUNNING) if w.project == ctx.work.project
+            ]
+            if len(running_same_project) >= biz_project.isolation_max_concurrent:
+                ctx.counters["queued"] = ctx.counters.get("queued", 0) + 1
+                logger.info(
+                    "同业务仓已达并发上限 %d，排队等待: work=%s project=%s running=%s",
+                    biz_project.isolation_max_concurrent,
+                    ctx.work.id,
+                    ctx.work.project,
+                    [w.id for w in running_same_project],
+                )
+                return GateResult(passed=False, reason="biz_isolation")
+        return GateResult(passed=True)
+
+    reg.register(
+        DispatchGate(name="biz_isolation", order=90, check=_biz_isolation, requires=("decision",))
+    )
+
+    def _relay_probe(ctx: GateContext) -> GateResult:
+        if ctx.probe_url and not probe_relay(ctx.probe_url):
+            ctx.counters["probe_skips"] = ctx.counters.get("probe_skips", 0) + 1
+            logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", ctx.work.id)
+            return GateResult(passed=False, reason="probe_fail")
+        return GateResult(passed=True)
+
+    reg.register(
+        DispatchGate(name="relay_probe", order=100, check=_relay_probe, requires=("decision",))
+    )
+
+    def _submit(ctx: GateContext) -> GateResult:
+        """原子占槽：transition RUNNING → save → marker → pool.submit → 回滚。
+
+        绝不拆分（见模块 docstring）——拆开产生假 RUNNING + marker 泄漏。
+        """
+        ctx.work.transition(State.RUNNING)
+        ctx.store.save_work(ctx.work)
+        try:
+            from server.git_sync import resolve_repo_root
+
+            dispatch_main_repo = resolve_repo_root(ctx.cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        except Exception:
+            dispatch_main_repo = Path(__file__).resolve().parents[2]
+        _claim_running_marker(ctx.log_dir, ctx.work.id, main_repo=dispatch_main_repo)
+
+        def _make_fn(w: Work = ctx.work) -> Any:
+            def _fn() -> dict[str, int]:
+                return _run_auto_worker(w, ctx.registry, ctx.store, ctx.cfg, ctx.log_dir, ctx.timeout)
+
+            return _fn
+
+        try:
+            ctx.pool.submit(ctx.work.id, _make_fn())
+        except RuntimeError as exc:
+            logger.warning("submit 跳过: work=%s (%s)", ctx.work.id, exc)
+            # 回滚占槽
+            try:
+                ctx.work.transition(State.TODO, problems=[str(exc)])
+                ctx.store.save_work(ctx.work)
+            except Exception:
+                logger.exception("submit 失败回滚待分派失败: work=%s", ctx.work.id)
+            _clear_running_marker(ctx.log_dir, ctx.work.id)
+            return GateResult(passed=False, reason=f"submit_fail:{exc}")
+        ctx.counters["dispatched"] = ctx.counters.get("dispatched", 0) + 1
+        ctx.slots -= 1
+        return GateResult(passed=True)
+
+    reg.register(
+        DispatchGate(
+            name="submit",
+            order=110,
+            check=_submit,
+            requires=("decision", "biz_isolation", "relay_probe"),
+        )
+    )
+
+    return reg
+
+
 def run_once(
     registry: ExecutorRegistry,
     store: BoardStore,
@@ -3411,144 +3632,41 @@ def run_once(
 
     runtime_for_dispatch = read_card_state(log_dir) if log_dir else {}
     now_ts = time.time()
-    dispatched = 0
-    probe_skips = 0
-    parent_skips = 0
-    dep_skips = 0
-    cycle_skips = 0
-    none_skips = 0
-    remote_pending = 0
-    queued = 0
+    # 派发门禁链（Cordis 依赖图思想）：11 门禁经 _build_dispatch_gates 装配，
+    # counters 跨卡累计，summary 前解包回本地变量。
+    counters: dict[str, int] = {
+        "dispatched": 0,
+        "probe_skips": 0,
+        "parent_skips": 0,
+        "dep_skips": 0,
+        "cycle_skips": 0,
+        "none_skips": 0,
+        "remote_pending": 0,
+        "queued": 0,
+    }
     slots = pool.free_slots(max_concurrent, store, log_dir)
 
+    dispatch_gates = _build_dispatch_gates()
+    ctx = GateContext(
+        work=Work(id="", role=""),  # 占位，每卡覆盖
+        registry=registry,
+        by_id=by_id,
+        runtime=runtime_for_dispatch,
+        now_ts=now_ts,
+        store=store,
+        log_dir=log_dir,
+        cfg=cfg,
+        pool=pool,
+        probe_url=probe_url or "",
+        slots=slots,
+        max_concurrent=max_concurrent,
+        timeout=timeout,
+        counters=counters,
+    )
+
     for work in pending:
-        if _infra_cooldown_active(runtime_for_dispatch, work.id, now_ts):
-            logger.info("基础设施冷却中，跳过派发: work=%s", work.id)
-            continue
-        # 派发前校验 worktree 内是否存在对应卡，若不存在，跳过派发避免空转
-        wt_hint = _worktree_hint_for(work, registry)
-        import sys
-
-        is_pytest = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
-        if not is_pytest and wt_hint and os.path.isdir(wt_hint) and "docs/dispatch" in work.card_path:
-            if _worktree_card_candidate(wt_hint, work.card_path) is None:
-                logger.warning("派发防护：worktree %s 存在但无对应卡副本 %s，跳过派发避免空转", wt_hint, work.card_path)
-                none_skips += 1
-                continue
-        if is_card_accepted(work.card_path):
-            logger.warning("已验收卡不派发: work=%s", work.id)
-            continue
-        block = _parent_blocks_dispatch(work, by_id)
-        if block:
-            parent_skips += 1
-            logger.info("父卡未关闭，跳过派发: work=%s (%s)", work.id, block)
-            continue
-        dep_block = _depends_on_blocks_dispatch(work, by_id)
-        if dep_block:
-            dep_skips += 1
-            logger.info("依赖卡未关闭，跳过派发: work=%s (%s)", work.id, dep_block)
-            continue
-        cycle = _detect_dependency_cycle(work, by_id)
-        if cycle:
-            cycle_skips += 1
-            logger.warning("检测到依赖环，跳过派发: work=%s 环=%s", work.id, cycle)
-            continue
-        decision = decide_work(work, registry)
-        if decision is DispatchDecision.MANUAL:
-            logger.info(
-                "挂起等人接单: work=%s role=%s executor=%s",
-                work.id,
-                work.role,
-                work.executor or "(未指定)",
-            )
-            work.transition(State.RUNNING)
-            store.save_work(work)
-            dispatched += 1
-            continue
-        if decision is DispatchDecision.REMOTE:
-            # 远端 Worker 认领（ccc-plan-020 v2 · clw020 事故修复）：
-            # REMOTE 卡保持待分派（不标执行中），由远端 Worker 认领后写「执行中」。
-            # Engine 不本地拉起、不占槽、不写 marker——未认领 = 待分派，不是假执行中。
-            remote_pending += 1
-            logger.info(
-                "远端卡待 Worker 认领（保持待分派，不标执行中）: work=%s role=%s executor=%s",
-                work.id,
-                work.role,
-                work.executor or "(未指定)",
-            )
-            continue
-        if decision is not DispatchDecision.AUTO:
-            none_skips += 1
-            logger.warning(
-                "不参与派发: work=%s role=%s executor=%s",
-                work.id,
-                work.role,
-                work.executor or "(未指定)",
-            )
-            continue
-        if slots <= 0:
-            queued += 1
-            logger.info(
-                "无空闲执行槽位，进入排队等待: work=%s, 当前并发数=%d, 上限=%d",
-                work.id,
-                pool.occupancy(store, log_dir),
-                max_concurrent,
-            )
-            continue
-        # 业务仓并发闸门（2026-08-12 隔离升级）：同仓 RUNNING 卡达到 max_concurrent 才排队。
-        # 默认 max_concurrent=1（保守）；跨仓可并行。manual 挂起（假 RUNNING）同样计入。
-        biz_project = _business_project(work)
-        if biz_project:
-            running_same_project = [
-                w for w in store.list_work(state=State.RUNNING) if w.project == work.project
-            ]
-            if len(running_same_project) >= biz_project.isolation_max_concurrent:
-                queued += 1
-                logger.info(
-                    "同业务仓已达并发上限 %d，排队等待: work=%s project=%s running=%s",
-                    biz_project.isolation_max_concurrent,
-                    work.id,
-                    work.project,
-                    [w.id for w in running_same_project],
-                )
-                continue
-        if probe_url and not probe_relay(probe_url):
-            probe_skips += 1
-            logger.warning("探活失败，跳过该卡（保持待分派）: work=%s", work.id)
-            continue
-
-        # 占槽：先标执行中 + marker（含派发 tip），再 submit（空位已按 occupancy 核算）
-        work.transition(State.RUNNING)
-        store.save_work(work)
-        try:
-            from server.git_sync import resolve_repo_root
-
-            dispatch_main_repo = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-        except Exception:
-            dispatch_main_repo = Path(__file__).resolve().parents[2]
-        _claim_running_marker(log_dir, work.id, main_repo=dispatch_main_repo)
-
-        def _make_fn(w: Work = work) -> Any:
-            def _fn() -> dict[str, int]:
-                return _run_auto_worker(w, registry, store, cfg, log_dir, timeout)
-
-            return _fn
-
-        try:
-            pool.submit(work.id, _make_fn())
-        except RuntimeError as exc:
-            logger.warning("submit 跳过: work=%s (%s)", work.id, exc)
-            # 回滚占槽
-            try:
-                work.transition(State.TODO, problems=[str(exc)])
-                store.save_work(work)
-            except Exception:
-                logger.exception("submit 失败回滚待分派失败: work=%s", work.id)
-            _clear_running_marker(log_dir, work.id)
-            continue
-
-        dispatched += 1
-        slots -= 1
+        ctx.work = work
+        dispatch_gates.run(ctx)
 
     # ── 认领协议收单（ccc-plan-020 v2）：REMOTE 卡按「认领态」收单，不靠本地 PID ──
     def _claim_round() -> tuple[int, int, int]:
@@ -3719,6 +3837,15 @@ def run_once(
     global _WORKTREE_FAILURES
     worktrees_failed = _WORKTREE_FAILURES
     _WORKTREE_FAILURES = 0
+    # 派发门禁链计数器 → 本地变量（summary 兼容原接口）
+    dispatched = counters.get("dispatched", 0)
+    probe_skips = counters.get("probe_skips", 0)
+    parent_skips = counters.get("parent_skips", 0)
+    dep_skips = counters.get("dep_skips", 0)
+    cycle_skips = counters.get("cycle_skips", 0)
+    none_skips = counters.get("none_skips", 0)
+    remote_pending = counters.get("remote_pending", 0)
+    queued = counters.get("queued", 0)
     summary: dict[str, int] = {
         "mode": "once",
         "scanned": len(pending),

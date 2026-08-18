@@ -167,13 +167,14 @@ class TestExecutorsExample:
     REQUIRED_FIELDS = frozenset({"角色", "分类", "当前绑定", "备注"})
 
     # 契约：开发仅 OpenCode（2026-08-15 F5 定）+ 维护 + 管理 + 双机审 CLI（验收席）+ DSH 只读取证/审计
+    # DSH 槽 2026-08-18 P4 升级：分类「—」→「可后台 CLI」（headless 探针跑通，经 wrapper run-executor.sh 拉起）
     CONTRACT_ROLES: list[dict[str, str]] = [
         {"角色": "开发执行体", "分类": "可后台 CLI"},
         {"角色": "维护执行体", "分类": "可后台 CLI"},
         {"角色": "管理席", "分类": NOT_APPLICABLE_CATEGORY},
         {"角色": "验收席", "分类": "可后台 CLI"},
         {"角色": "验收席", "分类": "可后台 CLI"},
-        {"角色": "只读取证/审计执行体", "分类": NOT_APPLICABLE_CATEGORY},
+        {"角色": "只读取证/审计执行体", "分类": "可后台 CLI"},
     ]
     EXECUTOR_ROLES = frozenset({"开发执行体", "维护执行体"})
     STAFF_ROLES = frozenset({"管理席", "验收席"})
