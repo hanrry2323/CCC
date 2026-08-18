@@ -46,18 +46,27 @@ def _workspace_registry() -> dict[str, Any] | None:
         return None
 
 
+# zstd CLI 候选：launchd 精简 PATH 下 `zstd` 可能不可寻，需显式路径兜底
+_ZSTD_CANDIDATES = ("zstd", "/usr/local/bin/zstd", "/opt/homebrew/bin/zstd")
+
+
 def _decompress(path: Path) -> str:
-    """zstd CLI 解压会话文件；zstd 缺失/失败/超时 → 空串。"""
-    try:
-        r = subprocess.run(
-            ["zstd", "-d", "-c", str(path)],
-            capture_output=True,
-            timeout=20,
-        )
-        if r.returncode == 0:
-            return r.stdout.decode("utf-8", errors="replace")
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    """zstd CLI 解压会话文件；zstd 缺失/失败/超时 → 空串。
+
+    launchd 进程 PATH 精简（/usr/bin:/bin:/usr/sbin:/sbin），``zstd``（/usr/local/bin）
+    不在其中，故按候选路径依次尝试，避免解压静默失败。
+    """
+    for exe in _ZSTD_CANDIDATES:
+        try:
+            r = subprocess.run(
+                [exe, "-d", "-c", str(path)],
+                capture_output=True,
+                timeout=20,
+            )
+            if r.returncode == 0:
+                return r.stdout.decode("utf-8", errors="replace")
+        except (OSError, subprocess.TimeoutExpired):
+            continue
     return ""
 
 
