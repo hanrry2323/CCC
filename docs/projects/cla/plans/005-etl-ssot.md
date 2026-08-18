@@ -1,9 +1,10 @@
 # 方案 · 数据清洗与 SSOT 药名归一（M2-2.2）
 
 > 项目：cla · 编号：cla-plan-005 · 状态：部分执行 · 作者：OpenCode · 工具：opencode
-> 创建：2026-08-17 · 更新：2026-08-17
+> 创建：2026-08-17 · 更新：2026-08-18
 > 关联卡：cla019
 > 关联方案：cla-plan-004（原始数据源）
+> 进度：0/1 (0%)
 > 里程碑：M2 · 政府药械招采网价格监测
 > 子项目：2.2 数据清洗与 SSOT 药名归一
 > 决策源：/Users/apple/qx-map/__archive__/decisions/ClawMed-CCC-Architecture-2026-08-17.md
