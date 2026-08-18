@@ -48,6 +48,7 @@ import http.client
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 # ── CCC 大脑人格（系统提示词，注入 prompt 头部；T41 心智升级：全能智能体四职责） ──
@@ -145,24 +146,51 @@ def _effective_model() -> str:
 
 
 # ── 配置读取（运行时可刷新，测试可覆盖） ──
+def _brain_cfg(key: str, default: str = "") -> str:
+    """读取大脑配置：环境变量 → ``CCC_CONFIG_ENV`` 文件 → 默认值。
+
+    与 ``server.py._config_value`` 同一优先级约定（环境变量优先，其次 config.env）。
+    背景：2017 生产 web-server 经 launchd plist 注入部分 ``CCC_BRAIN_*`` 环境变量，
+    但 config.env 中的其余配置（如 ``CCC_BRAIN_DIRECT=1``）不会自动进入 os.environ；
+    此前 getters 只读 ``os.environ``，导致 config.env 新增配置在运行进程里静默失效。
+    统一走本函数后，config.env 与 launchd 注入取并集，env 优先、config.env 兜底。
+    """
+    raw = os.environ.get(key, "").strip()
+    if raw:
+        return raw
+    cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip()
+    if cfg_path:
+        try:
+            for line in Path(cfg_path).expanduser().read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, _, v = s.partition("=")
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+        except OSError:
+            pass
+    return default
+
+
 def _get_brain_claude_bin() -> str:
     """Claude Code CLI 可执行文件路径（默认 `claude`）。"""
-    return os.environ.get("CCC_BRAIN_CLAUDE_BIN", "claude").strip() or "claude"
+    return _brain_cfg("CCC_BRAIN_CLAUDE_BIN", "claude").strip() or "claude"
 
 
 def _get_brain_model() -> str:
     """大脑模型逻辑名（如 flash / Pro / code）。"""
-    return os.environ.get("CCC_BRAIN_MODEL", "").strip()
+    return _brain_cfg("CCC_BRAIN_MODEL", "").strip()
 
 
 def _get_brain_base_url() -> str:
     """Claude Code 出口 base URL（如 http://127.0.0.1:6100）。"""
-    return os.environ.get("CCC_BRAIN_BASE_URL", "").strip()
+    return _brain_cfg("CCC_BRAIN_BASE_URL", "").strip()
 
 
 def _get_brain_auth_token() -> str:
     """Claude Code 出口 Bearer token。"""
-    return os.environ.get("CCC_BRAIN_AUTH_TOKEN", "").strip()
+    return _brain_cfg("CCC_BRAIN_AUTH_TOKEN", "").strip()
 
 
 def _get_brain_timeout() -> int:
@@ -171,7 +199,7 @@ def _get_brain_timeout() -> int:
     防止重度工具调用（如全局知识检索等）发生超时，上调到 300。
     """
     try:
-        return int(os.environ.get("CCC_BRAIN_TIMEOUT", "300"))
+        return int(_brain_cfg("CCC_BRAIN_TIMEOUT", "300"))
     except ValueError:
         return 300
 
@@ -183,12 +211,12 @@ def _get_brain_thinking() -> str:
     `redacted_thinking` 块且其 data 为可读推理文本 → 思考可达，走 B6 渲染。
     用 config 控制避免硬编码（红线 #7）；默认 enabled 以真跑通 B6。
     """
-    return os.environ.get("CCC_BRAIN_THINKING", "enabled").strip()
+    return _brain_cfg("CCC_BRAIN_THINKING", "enabled").strip()
 
 
 def _get_brain_direct() -> bool:
     """是否强制直连大模型中继 (2017 单端服务器推荐，避免 macOS 常驻守护下的 Mach 锁挂起问题)。"""
-    return os.environ.get("CCC_BRAIN_DIRECT", "").strip().lower() in ("1", "true", "yes", "on")
+    return _brain_cfg("CCC_BRAIN_DIRECT", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _is_brain_configured() -> bool:
@@ -204,18 +232,18 @@ def _is_brain_configured() -> bool:
 
 def _get_brain_kb_enabled() -> bool:
     """大脑知识库检索开关（CCC_BRAIN_KB=1/true/yes/on 启用，默认关闭）。"""
-    return os.environ.get("CCC_BRAIN_KB", "0").strip().lower() in ("1", "true", "yes", "on")
+    return _brain_cfg("CCC_BRAIN_KB", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _get_brain_kb_index_dir() -> str:
     """BM25 索引目录（CCC_KB_INDEX_DIR；空则交由 server.kb.search 走默认 knowledge/.index/）。"""
-    return os.environ.get("CCC_KB_INDEX_DIR", "").strip()
+    return _brain_cfg("CCC_KB_INDEX_DIR", "").strip()
 
 
 def _get_brain_kb_top_k() -> int:
     """知识库检索 top-k（默认 3，最小 1）。"""
     try:
-        return max(1, int(os.environ.get("CCC_BRAIN_KB_TOP_K", "3")))
+        return max(1, int(_brain_cfg("CCC_BRAIN_KB_TOP_K", "3")))
     except ValueError:
         return 3
 
