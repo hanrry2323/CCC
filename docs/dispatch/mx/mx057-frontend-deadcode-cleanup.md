@@ -152,7 +152,17 @@ lint：`npm run lint`
 
 ## 机审区
 
-（机审方填写）
+机审：通过（severity：轻 · 2026-08-20）
+
+**审查摘要：**
+- 删除项 2/3（alert-dialog.tsx、icons.ts）均 grep 确认无引用，安全删除 ✓
+- 组件桶文件 components/index.ts：卡称"无人从桶导入"，执行体 grep 发现 RssPage/SettingsPage/PlayerPage 均通过 `from '../components'` 桶导入→正确保留，回写区如实记录 ✓
+- useOnlineStatus.tsx：卡称"无人 import"，执行体 grep 发现 App.tsx import OfflineBanner→正确保留，仅去除未用的 useOnlineStatus export ✓
+- 3 个依赖卸载干净，src 无残留 import ✓
+- 12+7 处未用导出清理逐一确认无外部引用 ✓
+- 测试文件 19 个 .test.tsx 未动 ✓；sw.js/boot.js 未动 ✓
+- 回写区实现说明与实际 diff 一致，维护区四问已逐项填写 ✓
+- 主 chunk 哈希未变（tree-shake 已在构建时消除这些导出），本次收益在源码噪音降低+依赖瘦身
 
 ## 执行提示
 
