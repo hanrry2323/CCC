@@ -4,6 +4,7 @@
 > 创建：2026-08-03 · 更新：2026-08-10
 > 关联卡：qb001, qb002, qb003, qb004, qb005, qb006
 > 关联方案：无
+> 进度：6/6 (100%)
 > 迁移自：qx-map `__archive__/decisions/qb-refactor-方案-2026-08-03.md`
 > 决策人：老板 · 记录/管理：Codex · 执行：Trae · 验收：Codex
 > 关联：`command-post/intents.md`（INT-121）
