@@ -1,6 +1,6 @@
 # 任务卡 mx057 · 前端死代码清扫 + 依赖瘦身（OpenCode 执行）
 
-> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-20
+> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-20
 
 ## 基准文件（先看）
 
@@ -97,32 +97,58 @@ lint：`npm run lint`
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：（回写时填）
+**执行体**：OpenCode · 日期：2026-08-20
 
 ### 实现说明
 
-（回写时填：删/清/保留清单 + 原因）
+**① 删除死文件（2 个，卡原列 3 个，grep 纠错 1 个保留）**
+- `src/components/ui/alert-dialog.tsx` — 已删除（grep 确认无人 import）
+- `src/lib/icons.ts` — 已删除（grep 确认无人 import）
+- `src/components/index.ts` — **保留**（卡称无人从桶导入，但 grep 发现 PlayerPage.tsx / RssPage.tsx / SettingsPage.tsx 均通过 `from '../components'` 桶导入组件，删后 tsc 编译失败，已恢复）
+- `src/hooks/useOnlineStatus.tsx` — **保留**（卡称无人 import，但 App.tsx import 了 `OfflineBanner`；文件内 `useOnlineStatus` hook 函数 export 未用→仅去 export 关键字）
+
+**② 卸载白装依赖（3 个）**
+- `@radix-ui/react-alert-dialog`、`@radix-ui/react-slot`、`class-variance-authority` — 均已卸载，package-lock.json 同步更新
+
+**③ 清理未用导出（逐一 grep 复核，均确认无外部引用）**
+- `RssReader.tsx`：`SafeHtmlRenderer` export 去除（内部在用）
+- `ui/dialog.tsx`：`DialogTrigger`、`DialogClose` 整行删除（完全未用）；`DialogPortal`、`DialogOverlay` export 去除（内部在用）
+- `constants/api.ts`：`HTTP`、`BOOLEAN_QUERY` 删除（整个文件无任何 import，仅保留注释）
+- `constants/keys.ts`：`PLAYER_KEYBINDINGS`、`KeyCode` 类型删除
+- `constants/player.ts`：`PLAYBACK` 删除
+- `constants/rss.ts`：`RSS` 删除
+- `constants/types.ts`：`SCAN_TYPE`/`ScanType`、`AUDIT_ACTION`/`AuditAction`、`STARRED_STATUS`/`StarredStatus` 删除
+- `constants/ui.ts`：`BREAKPOINTS`、`SKELETON`、`PREVIEW`、`PlaybackRate` 类型删除
+- `constants/routes.ts`：`RouteKey` 类型删除
+- `api/client.ts`：`CollectionVideo` export 去除（内部 CollectionDetail 在用）
+- `types/index.ts`：`Starred`、`PlayHistory`、`Settings` 接口删除（grep 确认无 import）；`ROOT_SUBFOLDER_MARKER` 删除；`CountedItem` export 去除（内部 MetadataStats 在用）
+- `Breadcrumb.tsx`：`BreadcrumbItem` export 去除（内部 BreadcrumbProps 在用）
 
 ### 测试结果
 
-（回写时填：门禁命令逐条结果 + 主 chunk 体积前后对比）
+- `npm run build`（tsc -b && vite build）：✅ 全绿
+- `npm test -- --run`（vitest）：✅ 32 文件 / 381 测试全通过
+- `npm run lint`（eslint）：✅ 无告警
+- 主 chunk 体积：清理前 index-xmoNuKLC.js ≈321K → 清理后 index-xmoNuKLC.js 328.44K（gzip 102.64K）
+  - 哈希未变，说明清理的导出已被 Vite tree-shake，运行时 bundle 无实质变化；本次清理收益主要在源码噪音降低 + 依赖瘦身
 
 ### push 证据
 
-（回写时填：commit hash + 分支名）
+- commit: `0ae5667` refactor(mx057): frontend dead code cleanup + dependency slimming
+- 分支: `codex/mx057-frontend-deadcode-cleanup`（已 push 到 origin）
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[ ]
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[ ]
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[ ]
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[ ]
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：本卡为治理任务，无关联方案，无关联卡，N/A。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]
+   - 说明：knip 对桶文件（components/index.ts）和含多导出的文件（useOnlineStatus.tsx）有误报——knip 报"无人 import"但实际通过桶导入或部分导出被引用；必须 grep 复核而非盲信 knip。本卡 2 项（components/index.ts、useOnlineStatus.tsx）因 grep 复核而避免误删。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[有]
+   - 说明：删除 2 个死文件（ui/alert-dialog.tsx、lib/icons.ts）；卸载 3 个依赖；多个常量文件导出缩减。不影响运行时行为，README 无需更新。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：治理任务，不影响项目路线图或下一步计划。
 
 ## 机审区
 
