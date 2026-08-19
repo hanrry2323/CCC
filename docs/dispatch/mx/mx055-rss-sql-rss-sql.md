@@ -1,7 +1,7 @@
 # 任务卡 mx055 · RSS 统计接口后端 SQL 聚合优化 — RSS 统计接口 SQL 聚合优化（OpenCode 执行）
 > 批准：老板确认转卡 · 2026-08-19
 
-> 关联：mx-plan-007 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-19
+> 关联：mx-plan-007 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-19
 
 
 
@@ -58,24 +58,42 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-19
+
+### 实现说明
+
+后端 `GET /api/v1/rss/stats`（`api/routes/rss.rs` `get_rss_stats`）已使用 `COUNT(*)` SQL 聚合返回轻量 JSON，前端 `RssStatsPage.tsx` 通过 `rssApi.stats()` 请求该接口渲染统计页，不再拉取 1000 条全量数据。
+
+本卡新增测试覆盖锁定行为正确性：
+1. 后端集成测试 `tests/rss_stats.rs`（3 项）：COUNT(*) 准确性 / 1500 条无阈值截断 / Top 订阅源聚合
+2. 前端单元测试 `client-pure.test.ts`：`rssApi.stats()` snake_case 到 camelCase 映射
+
+### 测试结果
+
+- 后端 cargo test --test rss_stats：3/3 通过
+- 前端 vitest client-pure.test.ts：98/98 通过
+- Clippy：无新增警告
+- TypeScript tsc --noEmit：无错误
+- 前端 vite build：构建成功
+
+### push 证据
+
+- commit: c6c7a95 (test(rss): add stats endpoint test coverage (mx055))
+- 分支: codex/mx055-rss-sql-rss-sql
+- 已 push 到 origin，rebase origin/main 无冲突
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
-
-## 批注落实
-
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+   - 说明：mx-plan-007 目标（后端 COUNT(*) 聚合 + 前端废弃全量拉取）已在 main 实现，本卡补充测试覆盖锁定正确性，方案目标已达成。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：标准测试覆盖补充，无新型踩坑。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：仅新增测试文件，不改项目结构/技术栈/路径。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：RSS 统计优化收口，项目近况/下一步无变化。
 
 ## 执行提示
 
