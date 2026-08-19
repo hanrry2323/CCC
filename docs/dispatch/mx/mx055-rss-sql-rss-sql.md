@@ -62,38 +62,46 @@ lint：
 
 ### 实现说明
 
-后端 `GET /api/v1/rss/stats`（`api/routes/rss.rs` `get_rss_stats`）已使用 `COUNT(*)` SQL 聚合返回轻量 JSON，前端 `RssStatsPage.tsx` 通过 `rssApi.stats()` 请求该接口渲染统计页，不再拉取 1000 条全量数据。
+核心实现在 mx012（commit `f2bc5f9` "feat(rss): replace client-side aggregation with backend stats API"）已完成：
+- 后端 `api/routes/rss.rs` 已有 `GET /api/v1/rss/stats`（`get_rss_stats`），使用 8 条 `COUNT(*)` SQL 聚合查询返回 `RssStatsResponse`（含 unread_items / starred_items / read_items 等）。
+- 前端 `RssStatsPage.tsx` 已调用 `rssApi.stats()` 请求 `/rss/stats`，不拉取全量数据。
+- 全仓搜索确认无 `perPage: 1000` 或全量拉取残留。
 
-本卡新增测试覆盖锁定行为正确性：
-1. 后端集成测试 `tests/rss_stats.rs`（3 项）：COUNT(*) 准确性 / 1500 条无阈值截断 / Top 订阅源聚合
-2. 前端单元测试 `client-pure.test.ts`：`rssApi.stats()` snake_case 到 camelCase 映射
+本卡补齐了缺失的测试覆盖：
+1. **前端测试**（`client-pure.test.ts`）：验证 `rssApi.stats()` 调用 `/rss/stats` 并将 snake_case 响应正确映射为 camelCase。
+2. **后端集成测试**（`tests/rss_stats.rs`，3 个用例）：
+   - `stats_count_queries_are_accurate` — 5 条种子数据验证 unread/read/starred 计数准确。
+   - `stats_count_no_threshold_truncation` — 1500 条数据验证 COUNT(*) 不受阈值截断。
+   - `stats_top_subscriptions_aggregation` — JOIN + GROUP BY 聚合验证。
 
 ### 测试结果
 
-- 后端 cargo test --test rss_stats：3/3 通过
-- 前端 vitest client-pure.test.ts：98/98 通过
-- Clippy：无新增警告
-- TypeScript tsc --noEmit：无错误
-- 前端 vite build：构建成功
+| 检查项 | 结果 |
+|--------|------|
+| `cargo check` | 通过 |
+| `cargo test --test rss_stats` | 3/3 通过 |
+| `npx vitest run client-pure.test.ts` | 98/98 通过 |
+| `npm run build`（tsc + vite） | 通过 |
+| `eslint`（--max-warnings 0） | 0 警告 |
 
-### push 证据
+### Push 证据
 
-- commit: c6c7a95 (test(rss): add stats endpoint test coverage (mx055))
-- 分支: codex/mx055-rss-sql-rss-sql
-- 已 push 到 origin，rebase origin/main 无冲突
+- 业务仓分支：`codex/mx055-rss-sql-rss-sql`
+- Commit：`c6c7a95`
+- Remote：已 push 到 `origin/codex/mx055-rss-sql-rss-sql`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
-   - 说明：mx-plan-007 目标（后端 COUNT(*) 聚合 + 前端废弃全量拉取）已在 main 实现，本卡补充测试覆盖锁定正确性，方案目标已达成。
-2. **教训沉淀**：本卡是否产出可复用教训？[无]
-   - 说明：标准测试覆盖补充，无新型踩坑。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
-   - 说明：仅新增测试文件，不改项目结构/技术栈/路径。
-4. **线路图**：项目近况/下一步是否变化？[否]
-   - 说明：RSS 统计优化收口，项目近况/下一步无变化。
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：mx-plan-007 状态更新为「已完成」，进度 1/1 (100%)，验收标准三项全勾选。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：mx012 实现了后端 COUNT(*) 聚合端点但未配套测试覆盖。本卡补齐了 stats 端点的前后端测试缺口——新功能交付时应同步交付集成测试。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅新增测试文件（tests/rss_stats.rs + client-pure.test.ts 测试用例），未改变项目结构/技术栈/路径。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：本卡为测试补强，不改变项目线路图或近况。
 
 ## 执行提示
 
