@@ -100,6 +100,21 @@ OPML 导出按钮的 fetch+Blob+虚拟点击修复已在 commit `e1ee68f`（feat
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
    - 说明：本卡为安全加固补丁，不影响线路图。
 
+## 机审区
+
+**审查席**：2017 机审席 · 日期：2026-08-20
+
+severity：轻
+
+**审查摘要**：
+
+- 实现侧（RssSidebar.tsx fetch+Blob+虚拟点击）已在 main（commit `e1ee68f`），代码质量合格：条件性 Bearer 头、401 事件派发、revokeObjectURL 防泄漏、错误 toast。
+- 测试侧（RssSidebar.test.tsx）新增 3 条 vitest 用例，覆盖有 token / 无 token / 401 三条路径，mock 完整，断言覆盖 fetch 调用、headers、createObjectURL、click、revokeObjectURL。
+- 维护区四问已填：Q1 [是] mx-plan-006 存在 ✅；Q2 原声明 [有] 但无实际 lesson 文件 → 已机审修正为 [无]（commit `bdfd5756f`）；Q3 [否] ✅；Q4 [否] ✅。
+- 声明与工件一致，无原则性红线问题。
+
+**结论：机审：通过**
+
 ## 批注落实
 
 无人工批注。
