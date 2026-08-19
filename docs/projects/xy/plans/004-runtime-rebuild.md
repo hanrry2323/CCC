@@ -1,11 +1,11 @@
 # 方案 · 运行方式重建（M2-2.3）
 
-> 项目：xy · 编号：xy-plan-004 · 状态：待验收 · 作者：Claude（中枢） · 工具：Claude Code
+> 项目：xy · 编号：xy-plan-004 · 状态：已完成 · 作者：Claude（中枢） · 工具：Claude Code
 > 批准：老板确认转卡 · 2026-08-17
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：xy049, xy050, xy051
 > 关联方案：无
-> 进度：2/3 (66%)
+> 进度：3/3 (100%)
 > 里程碑：M2 · 生产就绪
 > 子项目：2.3 运行方式重建
 > 环境准备：mac2017 xianyu 业务仓可写；可创建 launchd plist（`~/Library/LaunchAgents/`）
@@ -28,10 +28,10 @@
 
 ## 验收标准
 
-- [ ] `bash admin/start.sh` 后 admin 8765 可访问（Basic Auth 登录成功）、8080 静态页可打开
-- [ ] worker 池可常驻运行（launchd 拉起或文档化的 manual 方式），日志可观测
-- [ ] `ARCHITECTURE.md` 部署段与实际运行方式一致（无残留「deploy/launchd/ 已删」的描述）
-- [ ] 不引入新轮子（K5 红线：不写调度器，用 openclaw cron）
+- [x] `bash admin/start.sh` 后 admin 8765 可访问（Basic Auth 登录成功）、8080 静态页可打开
+- [x] worker 池可常驻运行（launchd 拉起或文档化的 manual 方式），日志可观测
+- [x] `ARCHITECTURE.md` 部署段与实际运行方式一致（无残留「deploy/launchd/ 已删」的描述）
+- [x] 不引入新轮子（K5 红线：不写调度器，用 openclaw cron）
 
 ## 功能卡
 

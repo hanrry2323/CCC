@@ -1,10 +1,10 @@
 # 方案 · LLMProvider 本地 Ollama ↔ 在线 API 配置层（M4-4.1）
 
-> 项目：cla · 编号：cla-plan-009 · 状态：待验收 · 作者：OpenCode · 工具：opencode
+> 项目：cla · 编号：cla-plan-009 · 状态：已完成 · 作者：OpenCode · 工具：opencode
 > 创建：2026-08-17 · 更新：2026-08-18（cla018 已回写待合入）
 > 关联卡：cla018
 > 关联方案：无
-> 进度：0/1 (0%)
+> 进度：1/1 (100%)
 > 里程碑：M4 · 双轨决策与话术自动生成
 > 环境准备：Python >= 3.10, Ollama（2017 本机）+ OpenAI 兼容 API（有配额 key）
 > 子项目：4.1 LLMProvider 本地 Ollama ↔ 在线 API 配置层
@@ -34,10 +34,10 @@
 
 ## 验收标准
 
-- [ ] ollama 模式本地跑通 chat
-- [ ] online 模式 mock 验证
-- [ ] 主 provider 故障自动降级且任务不静默丢失
-- [ ] token 上限/日上限生效
+- [x] ollama 模式本地跑通 chat
+- [x] online 模式 mock 验证
+- [x] 主 provider 故障自动降级且任务不静默丢失
+- [x] token 上限/日上限生效
 
 ## 功能卡
 

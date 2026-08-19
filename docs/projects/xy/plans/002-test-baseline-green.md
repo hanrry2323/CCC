@@ -1,11 +1,11 @@
 # 方案 · 测试基线绿（M2-2.1）
 
-> 项目：xy · 编号：xy-plan-002 · 状态：待验收 · 作者：Claude（中枢） · 工具：Claude Code
+> 项目：xy · 编号：xy-plan-002 · 状态：已完成 · 作者：Claude（中枢） · 工具：Claude Code
 > 批准：老板确认转卡 · 2026-08-17
 > 创建：2026-08-17 · 更新：2026-08-17
 > 关联卡：xy033, xy034, xy035, xy036
 > 关联方案：无
-> 进度：3/4 (75%)
+> 进度：4/4 (100%)
 > 里程碑：M2 · 生产就绪
 > 子项目：2.1 测试基线绿
 > 环境准备：mac2017 xianyu 业务仓可写（`/Users/fan/program/apps/xianyu`）；`playwright install chromium` 可执行
@@ -29,10 +29,10 @@ xy 债务清理后代码本体健康（677 用例），但 `pytest` 不能全绿
 
 ## 验收标准
 
-- [ ] `pytest`（业务仓）全绿：0 failed（当前 7 failed → 0）
-- [ ] 环境类红测补装 chromium 后通过
-- [ ] rewriter 测试不再依赖真实 Ollama 在线调用（显式 mock）
-- [ ] 无「为了绿而绿」的断言弱化（每个修正都有根因说明）
+- [x] `pytest`（业务仓）全绿：0 failed（当前 7 failed → 0）
+- [x] 环境类红测补装 chromium 后通过
+- [x] rewriter 测试不再依赖真实 Ollama 在线调用（显式 mock）
+- [x] 无「为了绿而绿」的断言弱化（每个修正都有根因说明）
 
 ## 功能卡
 
