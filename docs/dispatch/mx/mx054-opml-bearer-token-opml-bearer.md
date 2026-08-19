@@ -94,7 +94,7 @@ OPML 导出按钮的 fetch+Blob+虚拟点击修复已在 commit `e1ee68f`（feat
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
    - 说明：mx-plan-006 关联卡 mx054 已完成回写，方案状态待中枢同步。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：OPML 导出按钮原用 `<a href>` 无法附加 Authorization 头导致强鉴权 401，修复模式为 fetch+Blob+虚拟点击。该模式适用于所有需要 Bearer Token 鉴权的文件下载场景（不仅是 OPML）。
+   - 说明：OPML 导出按钮原用 `<a href>` 无法附加 Authorization 头导致强鉴权 401，修复模式为 fetch+Blob+虚拟点击。该模式适用于所有需要 Bearer Token 鉴权的文件下载场景（不仅是 OPML）。教训已记录于本卡回写区实现说明。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：仅新增测试文件 `src/frontend/src/components/RssSidebar.test.tsx`，未改变项目结构/技术栈/路径。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
@@ -103,6 +103,21 @@ OPML 导出按钮的 fetch+Blob+虚拟点击修复已在 commit `e1ee68f`（feat
 ## 批注落实
 
 无人工批注。
+
+## 机审区
+
+**审查人**：S116-01@2017 · 日期：2026-08-20
+
+**severity**：轻（维护区声明不实1项，已就地修复）
+
+**审查摘要**：
+- 实现 commit `e1ee68f`（main）：`<a href>` → `<button onClick={async)}>` + fetch+Blob+虚拟点击，Authorization header 条件附加，401 派发 `medio:unauthorized` 事件，内存清理完整。代码质量合格。
+- 测试 commit `a0cc662`：`RssSidebar.test.tsx` 3 条用例覆盖鉴权/无 token/401 三路径，mock 完整。
+- 类型修复 commit `5ffb341`：URL mock 类型 `as unknown as typeof` 修复 tsc 错误。
+- 维护区原第 2 项「教训沉淀」声称 `[有]` 但 `docs/notes/` 无 mx054 专用文件 → 声明不实，已就地修正为「教训已记录于本卡回写区实现说明」。
+- 范围未越界：仅改 `RssSidebar.tsx` + 新增测试文件，符合白名单。
+
+**结论：机审：通过**
 
 ## 执行提示
 
