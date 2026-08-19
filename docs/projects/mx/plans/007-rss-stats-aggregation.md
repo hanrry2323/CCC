@@ -1,9 +1,10 @@
 # 方案 · RSS 统计接口后端 SQL 聚合优化
 
-> 项目：mx · 编号：mx-plan-007 · 状态：待排期 · 作者：Claude Code W1 · 工具：ccc-plan
-> 创建：2026-08-18 · 更新：2026-08-18
-> 关联卡：无（子项目处于计划中，后续单独出卡）
-> 进度：0/0 (0%)
+> 项目：mx · 编号：mx-plan-007 · 状态：部分执行 · 作者：Claude Code W1 · 工具：ccc-plan
+> 批准：老板确认转卡 · 2026-08-19
+> 创建：2026-08-18 · 更新：2026-08-19
+> 关联卡：mx055
+> 进度：0/1 (0%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.3）
 
 ## 目标
@@ -23,6 +24,22 @@
 ### 2. 前端请求对齐
 - 重构 `RssStatsPage.tsx`，废弃原有的 `rssApi.items({ perPage: 1000 })` 拉取全量文章流并过滤的逻辑。
 - 对齐新接口，异步请求 `GET /api/v1/rss/stats` 获取预先统计好的数值并秒级渲染。
+
+## 功能卡
+
+### RSS 统计接口 SQL 聚合优化
+
+目标：消除前端拉 1000 条全量数据计算统计的卡顿，改后端 COUNT(*) 聚合返回数值。
+
+实现：①后端 `api/routes/rss.rs` 新增 `GET /api/v1/rss/stats`，SQL `SELECT COUNT(*) ... WHERE unread=?` 组装 `{unread_count, starred_count}` 轻量 JSON；②前端 `RssStatsPage.tsx` 废弃 `rssApi.items({perPage:1000})` 全量拉取+filter，改请求新接口秒级渲染。
+
+验收：新接口数据准确不受阈值截断；前端统计页带宽<1KB；后端编译+前端打包测试全绿。
+
+颗粒度：前后端各一处（rss.rs + RssStatsPage.tsx），1 张卡。
+
+依赖：无（独立端点，不改既有 RSS 列表接口）。
+
+架构位置：后端 api/routes/rss.rs 聚合层 → 前端 RssStatsPage 统计视图。
 
 ## 验收标准
 

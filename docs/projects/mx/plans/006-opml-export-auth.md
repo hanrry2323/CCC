@@ -1,9 +1,10 @@
 # 方案 · OPML 导出 Bearer Token 强鉴权适配
 
-> 项目：mx · 编号：mx-plan-006 · 状态：待排期 · 作者：Claude Code W1 · 工具：ccc-plan
-> 创建：2026-08-18 · 更新：2026-08-18
-> 关联卡：无（子项目处于计划中，后续单独出卡）
-> 进度：0/0 (0%)
+> 项目：mx · 编号：mx-plan-006 · 状态：部分执行 · 作者：Claude Code W1 · 工具：ccc-plan
+> 批准：老板确认转卡 · 2026-08-19
+> 创建：2026-08-18 · 更新：2026-08-19
+> 关联卡：mx054
+> 进度：0/1 (0%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.2）
 
 ## 目标
@@ -29,6 +30,22 @@
    - `link.download = 'subscriptions.opml';`
 7. 将虚拟链接 append 进 DOM，程序调用 `link.click()`，触发安全下载。
 8. 触发后从 DOM 移除该虚拟链接，并释放 `URL.revokeObjectURL(objectUrl)` 规避内存泄露。
+
+## 功能卡
+
+### OPML 导出 Bearer 鉴权下载重构
+
+目标：修复强鉴权模式下 OPML 导出 401 漏洞，用 fetch+Blob+虚拟点击替代原生 a 标签。
+
+实现：重构 `RssSidebar.tsx` OPML 导出按钮——绑定点击回调（非 href），fetch `/rss/opml` 携带 `Authorization: Bearer ${token}`，响应转 Blob，`URL.createObjectURL` + 虚拟 a 元素 `link.click()` 触发下载，完成后移除+revokeObjectURL 防内存泄漏。
+
+验收：强鉴权模式点击导出不 401、成功下载 OPML 文件；前端 vitest 全绿。
+
+颗粒度：单文件前端改动（RssSidebar.tsx + 可能的 hook/util），1 张卡。
+
+依赖：无（后端 `/rss/opml` 端点已存在，本卡只改前端触发方式）。
+
+架构位置：前端 RSS 视图层（RssSidebar）→ 后端 /rss/opml 端点。
 
 ## 验收标准
 

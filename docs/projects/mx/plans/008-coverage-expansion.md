@@ -1,9 +1,10 @@
 # 方案 · 后端核心模块测试覆盖率除债与单测补齐
 
-> 项目：mx · 编号：mx-plan-008 · 状态：待排期 · 作者：Claude Code W1 · 工具：ccc-plan
-> 创建：2026-08-18 · 更新：2026-08-18
-> 关联卡：无（子项目处于计划中，后续单独出卡）
-> 进度：0/0 (0%)
+> 项目：mx · 编号：mx-plan-008 · 状态：部分执行 · 作者：Claude Code W1 · 工具：ccc-plan
+> 批准：老板确认转卡 · 2026-08-19
+> 创建：2026-08-18 · 更新：2026-08-19
+> 关联卡：mx053
+> 进度：0/1 (0%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.4）
 
 ## 目标
@@ -22,6 +23,22 @@
 ### 2. SQLite 内存单测补齐
 - 为 `rss_service` 和 `scan_scheduler` 设计轻量级、无状态的 SQLite 内存（`:memory:`）数据库测试套件。
 - 测试覆盖订阅状态转换、扫描重试次数递增、错误日志状态写回等核心边界逻辑。
+
+## 功能卡
+
+### 后端核心模块测试覆盖率补齐
+
+目标：收窄 tarpaulin 覆盖率屏蔽，补 websub_service/scan_scheduler/rss_service 等核心后端单测，行覆盖率≥80%。
+
+实现：①`Cargo.toml`/`tarpaulin.toml` 移除对 `service/rss/*`、`scan_scheduler` 等的排除项（覆盖率屏蔽收缩）；②为 rss_service、scan_scheduler 设计 SQLite `:memory:` 无状态单测套件，覆盖订阅状态转换、扫描重试递增、错误日志写回等边界逻辑。
+
+验收：覆盖率排除配置缩减后单测全绿；后端核心模块实际行覆盖率≥80%。
+
+颗粒度：配置改动 + 多个单测文件（service/rss、scan_scheduler），1-2 张卡（建议 1 张，配置+单测同批）。
+
+依赖：无（纯增量测试，不改业务逻辑）。
+
+架构位置：后端 core 服务层（rss_service/scan_scheduler/websub_service）+ Cargo/tarpaulin 覆盖率配置。
 
 ## 验收标准
 

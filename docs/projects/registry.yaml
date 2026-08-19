@@ -49,7 +49,7 @@ projects:
       mac2017: /Users/fan/program/apps/qb
     isolation:
       worktree_root: /Users/fan/program/apps/.ccc-wt/qb
-      max_concurrent: 1
+      max_concurrent: 2
     taskable: true
     forbidden: false
     status: active
@@ -67,7 +67,7 @@ projects:
       mac2017: /Users/fan/program/apps/medio-0
     isolation:
       worktree_root: /Users/fan/program/apps/.ccc-wt/mx
-      max_concurrent: 1
+      max_concurrent: 3
     taskable: true
     forbidden: false
     status: active
