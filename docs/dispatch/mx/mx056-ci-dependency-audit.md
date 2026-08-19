@@ -1,6 +1,6 @@
 # 任务卡 mx056 · CI 依赖审计补全 — cargo deny + npm audit（OpenCode 执行）
 
-> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-20
+> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-20
 
 ## 基准文件（先看）
 
@@ -67,46 +67,32 @@ lint：`cargo clippy --workspace --all-targets -- -D warnings`
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：2026-08-20
+**执行体**：OpenCode · 日期：（回写时填）
 
 ### 实现说明
 
-改动文件（6 个，零 .rs/.ts 业务逻辑改动）：
-
-1. deny.toml（新建，repo 根）：cargo-deny 配置（advisories: unmaintained=all, ignore RUSTSEC-2023-0071; licenses: 16 个 SPDX 白名单; bans: 默认）
-2. .github/workflows/ci.yml（修改）：新增 dependency-deny job（cargo deny check licenses/bans/advisories）；frontend job 追加 npm audit --audit-level=high 步骤（node 脚本比对 .npm-audit-ignore.json）
-3. src/frontend/.npm-audit-ignore.json（新建）：21 个已知高危项及理由
-4. src/backend/{core,server,tauri}/Cargo.toml（metadata 修复）：各加 license.workspace = true 继承 workspace.package.license = MIT
+（回写时填：改动点与文件）
 
 ### 测试结果
 
-cargo deny check licenses: exit 0 (licenses ok)
-cargo deny check bans: exit 0 (bans ok, duplicate warnings 为 Tauri 生态传递非 error)
-cargo deny check advisories: 本地网络不通 (GitHub advisory DB 无法 clone；CI 可正常拉取)
-cargo check --workspace --all-targets: exit 0
-cargo clippy --workspace --all-targets -- -D warnings: exit 101 (2 个 pre-existing 错误 scan_scheduler.rs 测试代码，本卡未改动任何 .rs 文件)
-cargo test --workspace: exit 0
-npm audit ignore check: pass (21 个高危项全部在忽略清单中)
-YAML 语法: valid
+（回写时填：门禁命令逐条结果）
 
 ### push 证据
 
-commit: f3559a1
-分支: codex/mx056-ci-dependency-audit
-remote: git@github.com:hanrry2323/medio-0.git
+（回写时填：commit hash + 分支名）
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[x]
-   - 说明：本卡无关联方案（卡头关联为-），无需同步。
-2. **教训沉淀**：本卡是否产出可复用教训？[x]
-   - 说明：cargo-deny private.ignore 需要 crate 有 publish=false；workspace crate 未声明 license 字段被判定 Unlicensed。解决：加 license.workspace=true。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[x]
-   - 说明：新增 deny.toml 和 .npm-audit-ignore.json，ci.yml 新增 job。技术栈不变，CI 新增 cargo-deny。
-4. **线路图**：项目近况/下一步是否变化？[x]
-   - 说明：CI 依赖审计覆盖面补齐。下一步可考虑统一依赖版本。
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[ ]
+   - 说明：
+2. **教训沉淀**：本卡是否产出可复用教训？[ ]
+   - 说明：
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[ ]
+   - 说明：
+4. **线路图**：项目近况/下一步是否变化？[ ]
+   - 说明：
 
 ## 机审区
 
