@@ -1,6 +1,7 @@
-# 任务卡 mx056 · CI 依赖审计补全 — cargo deny + npm audit（OpenCode 执行）
+# 任务卡 
+> 打回次数：1mx056 · CI 依赖审计补全 — cargo deny + npm audit（OpenCode 执行）
 
-> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-20
+> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：打回（机审：不通过） · 派发：engine · 项目：mx · 日期：2026-08-20
 
 ## 基准文件（先看）
 
