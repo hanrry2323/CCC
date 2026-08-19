@@ -99,13 +99,13 @@ remote: git@github.com:hanrry2323/medio-0.git
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[x]
+1. **方案同步：`关联方案` 状态/关联卡是否已同步？[否]
    - 说明：本卡无关联方案（卡头关联为-），无需同步。
-2. **教训沉淀**：本卡是否产出可复用教训？[x]
+2. **教训沉淀：本卡是否产出可复用教训？[有]
    - 说明：cargo-deny private.ignore 需要 crate 有 publish=false；workspace crate 未声明 license 字段被判定 Unlicensed。解决：加 license.workspace=true。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[x]
+3. **档案/README：本卡是否改变了项目结构/技术栈/路径？[有]
    - 说明：新增 deny.toml 和 .npm-audit-ignore.json，ci.yml 新增 job。技术栈不变，CI 新增 cargo-deny。
-4. **线路图**：项目近况/下一步是否变化？[x]
+4. **线路图：项目近况/下一步是否变化？[有]
    - 说明：CI 依赖审计覆盖面补齐。下一步可考虑统一依赖版本。
 
 ## 机审区
