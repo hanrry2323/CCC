@@ -1,7 +1,7 @@
 # 任务卡 qb008 · 策略接口统一（StrategyCore 共享核心 · R14） — 策略接口统一与 StrategyCore 抽取（OpenCode 执行）
-> 批准：老板确认转卡 · 2026-08-19
+> 批准：老板合入批准 · 2026-08-19
 
-> 关联：qb-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：qb · 日期：2026-08-19
+> 关联：qb-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：qb · 日期：2026-08-19
 
 
 
