@@ -1,7 +1,7 @@
 # 任务卡 mx053 · 后端核心模块测试覆盖率除债与单测补齐 — 后端核心模块测试覆盖率补齐（OpenCode 执行）
 > 批准：老板确认转卡 · 2026-08-19
 
-> 关联：mx-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-19
+> 关联：mx-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-19
 
 
 
@@ -58,24 +58,45 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-19
+
+### 实现说明
+
+1. tarpaulin 配置收窄（.tarpaulin.toml）：crawler 全目录排除收窄为仅排除 scheduler.rs/builtin.rs；trait.rs/registry.rs/mod.rs 纳入统计。
+2. rss_service 单测补齐（service/rss/service.rs）：新增 mark_unread 往返、with_websub_callback 构造、边界测试等共 17 个。
+3. websub_service 单测补齐（service/rss/websub.rs）：新增 handle_notification 边界、detect_websub_links 引号边界共 8 个。
+4. scan_scheduler 单测补齐（service/scan_scheduler.rs）：新增 builder、跳过逻辑、状态转换、persist_scan 语义等共 15 个。
+5. clippy 修复：auth.rs manual_contains、websub.rs redundant_slicing。
+
+### 测试结果
+
+- cargo test -p medio-core：481 passed; 0 failed
+- cargo clippy -p medio-core -- -D warnings：0 errors
+- cargo tarpaulin --config .tarpaulin.toml：83.60% coverage（>=80% 门禁通过）
+
+### push 证据
+
+- 分支：codex/mx053-task
+- commit d4f4c94：test(mx053): narrow tarpaulin exclusions + add unit tests
+- commit 9748ab4：fix(clippy): resolve manual_contains and redundant_slicing lints
+- 已 push 到 origin/codex/mx053-task
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：mx-plan-008 关联卡 mx053 已完成执行，方案状态待中枢同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：tarpaulin --lib 仅跑内联测试会显著低估覆盖率（78.59% vs 83.60%），CI 应不加 --lib。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅新增测试和收窄覆盖率配置，未改变项目结构。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：覆盖率除债完成，线路图无变化。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+无人工批注，本节留空。
 
 ## 执行提示
 
