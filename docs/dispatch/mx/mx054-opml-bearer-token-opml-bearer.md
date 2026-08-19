@@ -1,7 +1,7 @@
 # 任务卡 mx054 · OPML 导出 Bearer Token 强鉴权适配 — OPML 导出 Bearer 鉴权下载重构（OpenCode 执行）
 > 批准：老板确认转卡 · 2026-08-19
 
-> 关联：mx-plan-006 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：mx · 日期：2026-08-19
+> 关联：mx-plan-006 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-19
 
 
 
@@ -58,24 +58,48 @@ lint：
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：
+**执行体**：OpenCode · 日期：2026-08-19
+
+### 实现说明
+
+OPML 导出按钮的 fetch+Blob+虚拟点击修复已在 commit `e1ee68f`（feat(rss): protect OPML export with Bearer authentication）中合入 main，当前 main 分支代码已包含完整修复：
+- `<a href>` 已替换为 `<button onClick={async () => {...}}>`（非 href 绑定点击回调）
+- `fetch(rssApi.opml.export(), { headers })` 携带 `Authorization: Bearer ${tok}`
+- 响应转 `Blob` → `URL.createObjectURL` → 虚拟 `a` 元素 `click()` → 移除 + `revokeObjectURL` 防泄漏
+- 401 时派发 `medio:unauthorized` 事件触发 token 输入浮层
+
+本卡新增 `RssSidebar.test.tsx` 组件级测试，覆盖三条验收路径：
+1. 导出 OPML 携带 `Authorization: Bearer token` 头（验证 fetch URL、headers、createObjectURL、click、revokeObjectURL 全链路）
+2. 无 token 时不附加 Authorization header
+3. 401 时派发 `medio:unauthorized` 事件并 toast 报错
+
+### 测试结果
+
+- vitest run — 32 files passed, 380 tests passed (377 baseline + 3 new)
+- eslint — 无错误
+
+### push 证据
+
+- 业务仓分支：`codex/mx054-opml-bearer-token-opml-bearer`
+- commit：`a0cc662` — test(opml): verify Bearer token attached to OPML export fetch
+- 已 push 到 origin：`codex/mx054-opml-bearer-token-opml-bearer`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：mx-plan-006 关联卡 mx054 已完成回写，方案状态待中枢同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：OPML 导出按钮原用 `<a href>` 无法附加 Authorization 头导致强鉴权 401，修复模式为 fetch+Blob+虚拟点击。该模式适用于所有需要 Bearer Token 鉴权的文件下载场景（不仅是 OPML）。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅新增测试文件 `src/frontend/src/components/RssSidebar.test.tsx`，未改变项目结构/技术栈/路径。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：本卡为安全加固补丁，不影响线路图。
 
 ## 批注落实
 
-（若卡含 `## 人工批注`，这里填写批注如何落实——老板批注是最高开发指令，未落实=机审不通过；无批注可删本节。）
+无人工批注。
 
 ## 执行提示
 
