@@ -2970,6 +2970,34 @@ def _ledger_record(
         logger.exception("机审台账写入失败（不阻断）: work=%s", getattr(work, "id", ""))
 
 
+def _record_machine_audit_pass(work: Work, source: str = "engine-audit") -> None:
+    """机审通过 → 写批准真值账本 machine_audit_pass（8-16 后合入门禁 provenance 依赖）。
+
+    2026-08-20 事故修复（mx054/mx055 合入被拒）：机审通过存在 4 条出口
+    （已通过跳过/补提交/分支路径/生产卡兜底），其中「已通过跳过」「补提交」
+    路径不调 _append_machine_audit_pass → 不写 machine_audit_pass ledger，
+    合入门禁 `has_action('machine_audit_pass', id)` 拒绝放行。
+    修复：所有通过出口统一调本 helper，幂等（已存在不重复写）。
+    失败不阻断主流程（账本是证据面，机审结论仍以卡内机审区为准）。
+    """
+    try:
+        from server.board.audit_ledger import has_action, record_action
+
+        card_id = Path(work.card_path).stem.split("-", 1)[0] if work.card_path else (getattr(work, "id", "") or "")
+        if not card_id:
+            return
+        if has_action("machine_audit_pass", card_id):
+            return
+        record_action(
+            "machine_audit_pass",
+            card_id,
+            source=source,
+            detail=f"engine 机审通过（work={getattr(work, 'id', '')}）",
+        )
+    except Exception:
+        logger.exception("machine_audit_pass 账本写入失败（不阻断）: work=%s", getattr(work, "id", ""))
+
+
 def _run_machine_audit_after_writeback(
     work: Work,
     registry: ExecutorRegistry,
@@ -2991,6 +3019,7 @@ def _run_machine_audit_after_writeback(
     worktree_hint = _worktree_hint_for(work, registry)
     if not force and _audit_evidence_passed(work, worktree_hint):
         logger.info("机审已通过（分支/生产卡证据），跳过: work=%s", work.id)
+        _record_machine_audit_pass(work)
         return True, [], False
     # 补提交：机审区已在 worktree 文件但未进分支（commit 被吞的历史洞）→ 直接补提交，不重审
     if worktree_hint:
@@ -3002,6 +3031,7 @@ def _run_machine_audit_after_writeback(
         ):
             if _commit_and_push_worktree_card(worktree_hint, work.card_path, work.id):
                 logger.info("机审区补提交进分支（历史遗留）: work=%s", work.id)
+                _record_machine_audit_pass(work)
                 return True, [], True
             logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
     # 2017 机审固定交叉配对（老板 2026-08-08 定稿，恢复 08-06 原规则）：
@@ -3104,6 +3134,7 @@ def _run_machine_audit_after_writeback(
             _ledger_record(
                 work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit"
             )
+            _record_machine_audit_pass(work)
             return True, [], True
         logger.warning("worktree 卡缺失，回退生产卡落证据: work=%s", work.id)
     if not _append_machine_audit_pass(
@@ -3122,6 +3153,7 @@ def _run_machine_audit_after_writeback(
         )
         return False, ["机审通过但机审区落盘失败"], True
     _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
+    _record_machine_audit_pass(work)
     return True, [], True
 
 
