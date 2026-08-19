@@ -63,9 +63,9 @@ lint：
 ### 实现说明
 
 1. tarpaulin 配置收窄（.tarpaulin.toml）：crawler 全目录排除收窄为仅排除 scheduler.rs/builtin.rs；trait.rs/registry.rs/mod.rs 纳入统计。
-2. rss_service 单测补齐（service/rss/service.rs）：新增 mark_unread 往返、with_websub_callback 构造、边界测试等共 17 个。
+2. rss_service 单测补齐（service/rss/service.rs）：新增 mark_unread 往返、with_websub_callback 构造、边界测试等共 4 个。
 3. websub_service 单测补齐（service/rss/websub.rs）：新增 handle_notification 边界、detect_websub_links 引号边界共 8 个。
-4. scan_scheduler 单测补齐（service/scan_scheduler.rs）：新增 builder、跳过逻辑、状态转换、persist_scan 语义等共 15 个。
+4. scan_scheduler 单测补齐（service/scan_scheduler.rs）：新增 builder、跳过逻辑、状态转换、persist_scan 语义等共 5 个。
 5. clippy 修复：auth.rs manual_contains、websub.rs redundant_slicing。
 
 ### 测试结果
