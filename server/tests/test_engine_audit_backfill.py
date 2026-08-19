@@ -38,7 +38,7 @@ def test_append_machine_audit_pass(tmp_path: Path) -> None:
     )
     text = card.read_text(encoding="utf-8")
     assert "## 机审区" in text
-    assert "机审：通过" in text
+    assert "结论：通过" in text
     assert _card_machine_audit_passed(str(card))
 
 
@@ -79,3 +79,20 @@ def test_audit_reject_with_result_format(tmp_path: Path) -> None:
     from server.engine.main import _card_machine_audit_passed
 
     assert not _card_machine_audit_passed(str(card))
+
+
+def test_append_rejects_invalid_audit_section(tmp_path, monkeypatch):
+    """F1 挂钩：validate_audit_section 判非法时拒绝落盘，卡内容保持不变。
+
+    engine 输出的机审区格式恒合法，故 monkeypatch 校验器触发拦截路径，
+    钉死「挂钩存在且生效」不变量（防 F1 被误删 / section 模板被改坏）。
+    """
+    card = tmp_path / "ccc035-hook.md"
+    card.write_text("# 卡\n\n> 状态：已回写\n\n## 回写区\n\nok\n", encoding="utf-8")
+    original = card.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        "server.board.card_header.validate_audit_section",
+        lambda _t: (False, "测试注入：非法格式"),
+    )
+    assert _append_machine_audit_pass(str(card), source="test", evidence="x") is False
+    assert card.read_text(encoding="utf-8") == original  # 未落盘

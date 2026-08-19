@@ -47,10 +47,16 @@ _REJECT_RE = re.compile(r"打回次数\s*[:：]\s*(\d+)")
 
 
 def parse_metadata(text: str) -> dict[str, str]:
-    """解析 `>` 元数据行的 `key：value` 对（唯一实现；loader/validate/docgate/prompt_inject 共用）。"""
+    """解析 `>` 元数据行的 `key：value` 对（唯一实现；loader/validate/docgate/prompt_inject 共用）。
+
+    F2（ccc-plan-035）：遇 ``## `` 标题行即停止——卡头元信息只在标题行后、
+    第一个 ``## `` 节之前。机审区内 ``> 状态：`` 等行不再污染卡头。
+    """
     meta: dict[str, str] = {}
     for line in text.splitlines():
         line = line.strip()
+        if line.startswith("## "):
+            break  # 进入正文节，卡头元信息区结束
         if not line.startswith(">"):
             continue
         body = line.lstrip(">").strip()
@@ -157,3 +163,61 @@ class CardHeader:
             depends=meta.get("依赖", ""),
             approval=meta.get("批准", ""),
         )
+
+
+# ── F1（ccc-plan-035）：机审区格式校验器 ──
+
+_AUDIT_VERDICT_RE = re.compile(r"(机审|结论)\s*[:：]\s*(不通过|通过)")
+_AUDIT_RESULT_RE = re.compile(r"结果\s*[:：]\s*(不通过|通过)")
+_AUDIT_STATE_PREFIX_RE = re.compile(r"^>\s*状态\s*[:：]", re.MULTILINE)
+
+
+def validate_audit_section(text: str) -> tuple[bool, str]:
+    """校验机审区格式契约（ccc-plan-035 · F1）。
+
+    落盘前调用：非法格式当场报错打回，防静默降级。
+
+    规则：
+    1. 每个 ``## 机审区`` 节必须含至少一条结论行（``机审：通过/不通过`` 或 ``结论：通过/不通过``，
+       含 ``### 机审：通过`` 兼容写法）。
+    2. 机审区内禁止 ``> 状态：`` 前缀行——会被 ``parse_metadata`` 误当卡头状态覆盖真值
+       （F2 已隔离，此处为前置拦截双保险）。
+    3. 无 ``## 机审区`` 节 → 合法（尚未添加机审区）。
+
+    Returns:
+        (True, "") 合法；(False, reason) 非法并附原因。
+    """
+    if not text:
+        return True, ""
+    lines = text.splitlines()
+    n = len(lines)
+    section_idx = 0
+    i = 0
+    while i < n:
+        line_stripped = lines[i].strip()
+        if line_stripped.startswith("## 机审区"):
+            section_idx += 1
+            has_verdict = False
+            has_state_prefix = False
+            j = i + 1
+            while j < n:
+                cur = lines[j]
+                cur_stripped = cur.strip()
+                if cur_stripped.startswith("## "):
+                    break
+                # 检测 > 状态： 前缀
+                if _AUDIT_STATE_PREFIX_RE.match(cur):
+                    has_state_prefix = True
+                # 去加粗后匹配结论行
+                normalized = cur_stripped.replace("**", "").replace("*", "")
+                if _AUDIT_VERDICT_RE.search(normalized) or _AUDIT_RESULT_RE.search(normalized):
+                    has_verdict = True
+                j += 1
+            if has_state_prefix:
+                return False, f"机审区{section_idx}含 `> 状态：` 前缀行——会被 parse_metadata 误当卡头状态覆盖，请改用 `> 结论：`"
+            if not has_verdict:
+                return False, f"机审区{section_idx}缺少结论行（需含 `机审：通过/不通过` 或 `结论：通过/不通过`）"
+            i = j
+        else:
+            i += 1
+    return True, ""

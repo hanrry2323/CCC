@@ -1856,11 +1856,20 @@ def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) ->
         return _card_machine_audit_passed(card_path)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     snippet = re.sub(r"\s+", " ", (evidence or "").strip())[:400]
+    # F3（ccc-plan-035）：engine 输出对齐契约格式（> 结论： + > 来源：）
     section = (
-        f"\n\n## 机审区\n\n机审：通过\n来源：engine 自动落盘（{source}）· {stamp}\n证据：{snippet or '见 audit.log'}\n"
+        f"\n\n## 机审区\n\n> 结论：通过\n> 来源：engine 自动落盘（{source}）· {stamp}\n> 证据：{snippet or '见 audit.log'}\n"
     )
+    new_text = text.rstrip() + section
+    # F1（ccc-plan-035）：落盘前校验机审区格式，非法即拦截
+    from server.board.card_header import validate_audit_section
+
+    valid, reason = validate_audit_section(new_text)
+    if not valid:
+        logger.error("机审区格式校验失败，拒绝落盘: %s (%s)", card_path, reason)
+        return False
     try:
-        prod.write_text(text.rstrip() + section, encoding="utf-8")
+        prod.write_text(new_text, encoding="utf-8")
     except OSError as exc:
         logger.warning("写入机审区失败: %s (%s)", card_path, exc)
         return False
