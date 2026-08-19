@@ -93,8 +93,8 @@ OPML 导出按钮的 fetch+Blob+虚拟点击修复已在 commit `e1ee68f`（feat
 
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]（方案推进「部分执行」或「已完成」，关联卡补全）
    - 说明：mx-plan-006 关联卡 mx054 已完成回写，方案状态待中枢同步。
-2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：OPML 导出按钮原用 `<a href>` 无法附加 Authorization 头导致强鉴权 401，修复模式为 fetch+Blob+虚拟点击。该模式适用于所有需要 Bearer Token 鉴权的文件下载场景（不仅是 OPML）。教训已记录于本卡回写区实现说明。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：OPML 导出按钮原用 `<a href>` 无法附加 Authorization 头导致强鉴权 401，修复模式为 fetch+Blob+虚拟点击。该模式适用于所有需要 Bearer Token 鉴权的文件下载场景。教训已在卡回写区实现说明中记录，未单独写入 lessons.md。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：仅新增测试文件 `src/frontend/src/components/RssSidebar.test.tsx`，未改变项目结构/技术栈/路径。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
