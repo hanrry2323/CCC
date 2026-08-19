@@ -1,6 +1,7 @@
 # 任务卡 mx056 · CI 依赖审计补全 — cargo deny + npm audit（OpenCode 执行）
+> 批准：老板合入批准 · 2026-08-20
 
-> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-20
+> 关联：- · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-20
 
 ## 基准文件（先看）
 
