@@ -68,7 +68,11 @@ def _business_project(work: Work):
     from server.board.registry import load_projects
 
     for e in load_projects():
-        if ((e.prefix and e.prefix == work.project) or e.id == work.project) and e.path_mac2017 and e.isolation_worktree_root:
+        if (
+            ((e.prefix and e.prefix == work.project) or e.id == work.project)
+            and e.path_mac2017
+            and e.isolation_worktree_root
+        ):
             return e
     return None
 
@@ -177,7 +181,12 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
         if is_clean:
             return str(target), None
         # 脏或分叉：强重建
-        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(target)], capture_output=True, check=False, timeout=60)
+        subprocess.run(
+            ["git", "-C", str(repo), "worktree", "remove", "--force", str(target)],
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
         subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, check=False, timeout=30)
         subprocess.run(["git", "-C", str(repo), "branch", "-D", branch], capture_output=True, check=False, timeout=30)
         rc, err = _try_add(new_branch=True)
@@ -193,6 +202,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             if rc2 != 0:
                 return None, f"业务仓 worktree 创建失败: {err or err2}"
         return str(target), None
+
 
 logger = logging.getLogger("ccc.engine")
 metrics_logger = logging.getLogger("ccc.engine.metrics")
@@ -222,6 +232,7 @@ def _git_run(
         timeout=timeout,
         check=check,
     )
+
 
 _probe_failures_count = 0
 
@@ -417,9 +428,16 @@ def _mark_branch_card_state(
         branch = f"codex/{Path(work.card_path).stem.lower()}"
 
         # 检查 rc：git add/commit/push 失败时保留脏现场 + 写告警（使用 worktree 相对路径）
-        add = subprocess.run(["git", "add", "--", str(rel_card_path)], cwd=wt_hint, capture_output=True, check=False, timeout=30)
+        add = subprocess.run(
+            ["git", "add", "--", str(rel_card_path)], cwd=wt_hint, capture_output=True, check=False, timeout=30
+        )
         if add.returncode != 0:
-            logger.error("机审打回落分支 git add 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, add.stderr.strip()[:200])
+            logger.error(
+                "机审打回落分支 git add 失败（保留脏现场）: work=%s branch=%s stderr=%s",
+                work.id,
+                branch,
+                add.stderr.strip()[:200],
+            )
             _write_pipeline_warning("git_add_failed", work.id, f"git add 失败: {add.stderr.strip()[:200]}")
             return
 
@@ -431,13 +449,25 @@ def _mark_branch_card_state(
             timeout=30,
         )
         if commit.returncode != 0:
-            logger.error("机审打回落分支 git commit 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, commit.stderr.strip()[:200])
+            logger.error(
+                "机审打回落分支 git commit 失败（保留脏现场）: work=%s branch=%s stderr=%s",
+                work.id,
+                branch,
+                commit.stderr.strip()[:200],
+            )
             _write_pipeline_warning("git_commit_failed", work.id, f"git commit 失败: {commit.stderr.strip()[:200]}")
             return
 
-        push = subprocess.run(["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False, timeout=60)
+        push = subprocess.run(
+            ["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False, timeout=60
+        )
         if push.returncode != 0:
-            logger.error("机审打回落分支 git push 失败（保留脏现场）: work=%s branch=%s stderr=%s", work.id, branch, push.stderr.strip()[:200])
+            logger.error(
+                "机审打回落分支 git push 失败（保留脏现场）: work=%s branch=%s stderr=%s",
+                work.id,
+                branch,
+                push.stderr.strip()[:200],
+            )
             _write_pipeline_warning("git_push_failed", work.id, f"git push 失败: {push.stderr.strip()[:200]}")
             return
 
@@ -983,14 +1013,44 @@ def _commit_and_push_worktree_card(
         return False
 
 
-def _audit_marker_alive(log_dir: Path, work_id: str) -> bool:
-    """``{id}-audit.running`` 标记含任一存活 PID → 机审在途（跨重启防双审）。"""
+AUDIT_MARKER_GRACE_SECONDS = 900  # 机审标记宽限期：子进程未拉起/刚结束的防双审窗（对齐 AUDIT_TIMEOUT）
+
+
+def _audit_marker_alive(
+    log_dir: Path,
+    work_id: str,
+    grace_seconds: int = AUDIT_MARKER_GRACE_SECONDS,
+) -> bool:
+    """``{id}-audit.running`` 标记判定机审在途（跨重启防双审）。
+
+    2026-08-20 事故修复（mx055 卡死）：engine 自身 PID 常驻永活，不能作为
+    在途依据——机审子进程失败残留的标记若只含 engine_pid，会让失败卡永远
+    「在途」不重审。修复语义：
+
+    - 排除 engine 自身 PID；
+    - 存在存活子进程 → 在途；
+    - 无存活子进程 → 仅刚写入（宽限期内）算在途（子进程拉起前的防双审窗）；
+      超宽限期 = 残留死标记 → 可重审。
+    """
     marker = log_dir / f"{work_id}-audit.running"
     try:
         raw = marker.read_text(encoding="utf-8")
+        mtime = marker.stat().st_mtime
     except OSError:
-        raw = ""
-    return any(_pid_alive(p) for p in _parse_running_marker_pids(raw))
+        return False
+    engine_pid = os.getpid()
+    pids: list[int] = []
+    for line in (raw or "").splitlines():
+        text = line.strip()
+        if text.startswith("engine_pid="):
+            continue  # engine 常驻，不作为在途依据
+        if text.startswith(("pid=", "child_pid=")) and "=" in text:
+            rest = text.split("=", 1)[1].strip().split()[0]
+            if rest.isdigit() and int(rest) > 1:
+                pids.append(int(rest))
+    if any(_pid_alive(p) for p in pids if p != engine_pid):
+        return True
+    return (time.time() - mtime) < grace_seconds
 
 
 def _cleanup_closed_worktrees(
@@ -1839,8 +1899,25 @@ def _read_text_best_effort(path: Path) -> str:
     return ""
 
 
+def _replace_audit_section(text: str, section: str) -> str:
+    """把卡内已有的 ``## 机审区`` 整节替换为新内容（重审通过覆盖旧「不通过」区）。
+
+    保留节标题行，替换到下一个 ``## `` 主节标题或文件尾。
+    """
+    m = re.search(r"^##\s*机审区\s*$", text, flags=re.MULTILINE)
+    if not m:
+        return text.rstrip() + section
+    rest = text[m.end() :]
+    nxt = re.search(r"^##\s", rest, flags=re.MULTILINE)
+    end = m.end() + (nxt.start() if nxt else len(rest))
+    new_section = section.lstrip("\n")
+    if not new_section.endswith("\n"):
+        new_section += "\n"
+    return text[: m.start()] + new_section + text[end:]
+
+
 def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) -> bool:
-    """生产卡尚无 ## 机审区时，写入通过机审区（已有机审区则不覆盖）。"""
+    """生产卡写入通过机审区；已有「不通过」区则替换为通过（2026-08-20 事故修复）。"""
     if not card_path:
         return False
     if _card_machine_audit_passed(card_path):
@@ -1851,16 +1928,15 @@ def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) ->
     except OSError as exc:
         logger.warning("读取生产卡失败，无法落盘机审区: %s (%s)", card_path, exc)
         return False
-    if re.search(r"^##\s*机审区\s*$", text, flags=re.MULTILINE):
-        # 已有机审区：不覆盖（可能是不通过或其他结论）
-        return _card_machine_audit_passed(card_path)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     snippet = re.sub(r"\s+", " ", (evidence or "").strip())[:400]
     # F3（ccc-plan-035）：engine 输出对齐契约格式（> 结论： + > 来源：）
-    section = (
-        f"\n\n## 机审区\n\n> 结论：通过\n> 来源：engine 自动落盘（{source}）· {stamp}\n> 证据：{snippet or '见 audit.log'}\n"
-    )
-    new_text = text.rstrip() + section
+    section = f"\n\n## 机审区\n\n> 结论：通过\n> 来源：engine 自动落盘（{source}）· {stamp}\n> 证据：{snippet or '见 audit.log'}\n"
+    if re.search(r"^##\s*机审区\s*$", text, flags=re.MULTILINE):
+        # 已有机审区（不通过结论）→ 替换旧区，重审通过覆盖
+        new_text = _replace_audit_section(text, section)
+    else:
+        new_text = text.rstrip() + section
     # F1（ccc-plan-035）：落盘前校验机审区格式，非法即拦截
     from server.board.card_header import validate_audit_section
 
@@ -2056,9 +2132,7 @@ def _dispatch_and_collect(
                         capture_output=True,
                         check=False,
                     )
-                    subprocess.run(
-                        ["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False
-                    )
+                    subprocess.run(["git", "-C", str(main_repo), "worktree", "prune"], capture_output=True, check=False)
                     cmd_add = [
                         "git",
                         "-C",
@@ -2240,9 +2314,7 @@ def _dispatch_and_collect(
             len(cmd) - 1,
         )
         cmd[_prompt_idx] = cmd[_prompt_idx] + _v4_audit_block
-        logger.info(
-            "机审 v4 指令已注入审计 prompt(arg[%d]): work=%s fresh=%s", _prompt_idx, work.id, fresh
-        )
+        logger.info("机审 v4 指令已注入审计 prompt(arg[%d]): work=%s fresh=%s", _prompt_idx, work.id, fresh)
         # 重度 fresh：注入完成后追加新会话标志（不污染 prompt）
         if fresh:
             from server.engine.dispatch import _FRESH_FLAG_BY_CMD
@@ -2492,7 +2564,12 @@ def _dispatch_and_collect(
                                             gate_name,
                                             res_gate.returncode,
                                         )
-                                        _emit(False, 1, "ok", [f"门禁【{gate_name}】未通过（2026-08-16 起硬门禁）: {snippet[:300]}"])
+                                        _emit(
+                                            False,
+                                            1,
+                                            "ok",
+                                            [f"门禁【{gate_name}】未通过（2026-08-16 起硬门禁）: {snippet[:300]}"],
+                                        )
                                         return False, [f"门禁【{gate_name}】未通过: {snippet[:300]}"]
                                 elif gate_name == "范围":
                                     if str(cmd).strip().lower() in ("true", "yes", "1", "on"):
@@ -2714,7 +2791,9 @@ def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None) -> 
             # 存活的 PID + 未超时 → 保留；超时 → 兜底强制回收
             if mtime > 0 and (now_ts - mtime) < MAX_MARKER_AGE_SECONDS:
                 continue
-            logger.warning("标记超时强制回收（age=%ds，max=%ds）: %s", int(now_ts - mtime), MAX_MARKER_AGE_SECONDS, marker.name)
+            logger.warning(
+                "标记超时强制回收（age=%ds，max=%ds）: %s", int(now_ts - mtime), MAX_MARKER_AGE_SECONDS, marker.name
+            )
         try:
             marker.unlink(missing_ok=True)
             n += 1
@@ -2778,14 +2857,18 @@ def _clear_claim_marker(card_path: Path, card_id: str) -> None:
         card_path.write_text(text, encoding="utf-8")
         import subprocess
 
-        subprocess.run(["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True, timeout=30)
+        subprocess.run(
+            ["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True, timeout=30
+        )
         subprocess.run(
             ["git", "commit", "-m", f"claim-reclaim: 认领超时回收 {card_id}"],
             cwd=card_path.parents[2],
             check=False,
             capture_output=True,
         )
-        subprocess.run(["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True, timeout=60)
+        subprocess.run(
+            ["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True, timeout=60
+        )
         logger.info("认领标记已清理（超时回收）: %s", card_id)
     except OSError:
         logger.warning("清理认领标记失败（写）: %s", card_id)
@@ -2966,13 +3049,29 @@ def _run_machine_audit_after_writeback(
     # 仅凭 exit code 会把「不通过」误判为通过/落盘失败 → 进 infra 冷却死循环（clw009 事故）。
     if _audit_output_indicates_rejection(audit_text):
         rejection = _audit_rejection_reason(audit_text) or "机审：不通过"
-        _ledger_record(work, severity, "不通过", [rejection], fix_action="", source=("manual" if manual else "engine"), kind="audit")
+        _ledger_record(
+            work,
+            severity,
+            "不通过",
+            [rejection],
+            fix_action="",
+            source=("manual" if manual else "engine"),
+            kind="audit",
+        )
         logger.warning("机审明确不通过（业务，按 audit 文本判定）: work=%s reason=%s", work.id, rejection)
         return False, [rejection], True
 
     if not ok and not _audit_output_indicates_pass(audit_text):
         # P1-C 修复：机审执行失败 = 基建故障（kind=infra），不参与命中判定
-        _ledger_record(work, severity, "不通过", problems or ["机审执行失败"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
+        _ledger_record(
+            work,
+            severity,
+            "不通过",
+            problems or ["机审执行失败"],
+            fix_action="",
+            source=("manual" if manual else "engine"),
+            kind="infra",
+        )
         return False, problems or ["机审执行失败"], True
 
     evidence = audit_text[-800:]
@@ -2992,9 +3091,19 @@ def _run_machine_audit_after_writeback(
                 work.card_path,
                 work.id,
             ):
-                _ledger_record(work, severity, "不通过", ["机审通过但分支证据未推送"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
+                _ledger_record(
+                    work,
+                    severity,
+                    "不通过",
+                    ["机审通过但分支证据未推送"],
+                    fix_action="",
+                    source=("manual" if manual else "engine"),
+                    kind="infra",
+                )
                 return False, ["机审通过但分支证据未推送（ready 不可见）"], True
-            _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
+            _ledger_record(
+                work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit"
+            )
             return True, [], True
         logger.warning("worktree 卡缺失，回退生产卡落证据: work=%s", work.id)
     if not _append_machine_audit_pass(
@@ -3002,7 +3111,15 @@ def _run_machine_audit_after_writeback(
         source="engine-audit",
         evidence=evidence,
     ):
-        _ledger_record(work, severity, "不通过", ["机审通过但机审区落盘失败"], fix_action="", source=("manual" if manual else "engine"), kind="infra")
+        _ledger_record(
+            work,
+            severity,
+            "不通过",
+            ["机审通过但机审区落盘失败"],
+            fix_action="",
+            source=("manual" if manual else "engine"),
+            kind="infra",
+        )
         return False, ["机审通过但机审区落盘失败"], True
     _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
     return True, [], True
@@ -3272,9 +3389,7 @@ def _run_audit_worker(
 
                     clear_card_state(log_dir, work.id)
                     outcome["failed"] = 1
-                    logger.warning(
-                        "机审重度不通过直接打回（不重试）: work=%s reasons=%s", work.id, reasons[:2]
-                    )
+                    logger.warning("机审重度不通过直接打回（不重试）: work=%s reasons=%s", work.id, reasons[:2])
                 elif severity == "轻":
                     # 独立轻修复轮：sidecar 记 light_fix_count，超上限升级中度（避免无限修）
                     from server.engine.runtime_state import read_card_state, write_card_state
@@ -3288,20 +3403,18 @@ def _run_audit_worker(
                     if light_fix >= light_max:
                         _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                         outcome["failed"] = 1
-                        logger.warning(
-                            "轻修复轮超限(%d≥%d)升级中度处理: work=%s", light_fix, light_max, work.id
-                        )
+                        logger.warning("轻修复轮超限(%d≥%d)升级中度处理: work=%s", light_fix, light_max, work.id)
                     else:
                         work.transition(State.TODO, problems=reasons)
                         store.save_work(work)
                         write_card_state(
-                            log_dir, work.id, state="待分派",
+                            log_dir,
+                            work.id,
+                            state="待分派",
                             light_fix_count=light_fix + 1,
                         )
                         outcome["failed"] = 1
-                        logger.warning(
-                            "机审轻度不通过→轻修复轮(%d/%d): work=%s", light_fix + 1, light_max, work.id
-                        )
+                        logger.warning("机审轻度不通过→轻修复轮(%d/%d): work=%s", light_fix + 1, light_max, work.id)
                 else:
                     _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                     outcome["failed"] = 1
@@ -3501,9 +3614,7 @@ def _build_dispatch_gates() -> GateRegistry:
             return GateResult(passed=False, reason="no_slot")
         return GateResult(passed=True)
 
-    reg.register(
-        DispatchGate(name="slot_available", order=80, check=_slot_available, requires=("decision",))
-    )
+    reg.register(DispatchGate(name="slot_available", order=80, check=_slot_available, requires=("decision",)))
 
     def _biz_isolation(ctx: GateContext) -> GateResult:
         biz_project = _business_project(ctx.work)
@@ -3523,9 +3634,7 @@ def _build_dispatch_gates() -> GateRegistry:
                 return GateResult(passed=False, reason="biz_isolation")
         return GateResult(passed=True)
 
-    reg.register(
-        DispatchGate(name="biz_isolation", order=90, check=_biz_isolation, requires=("decision",))
-    )
+    reg.register(DispatchGate(name="biz_isolation", order=90, check=_biz_isolation, requires=("decision",)))
 
     def _relay_probe(ctx: GateContext) -> GateResult:
         if ctx.probe_url and not probe_relay(ctx.probe_url):
@@ -3534,9 +3643,7 @@ def _build_dispatch_gates() -> GateRegistry:
             return GateResult(passed=False, reason="probe_fail")
         return GateResult(passed=True)
 
-    reg.register(
-        DispatchGate(name="relay_probe", order=100, check=_relay_probe, requires=("decision",))
-    )
+    reg.register(DispatchGate(name="relay_probe", order=100, check=_relay_probe, requires=("decision",)))
 
     def _submit(ctx: GateContext) -> GateResult:
         """原子占槽：transition RUNNING → save → marker → pool.submit → 回滚。

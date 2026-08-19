@@ -33,24 +33,41 @@ def test_append_machine_audit_pass(tmp_path: Path) -> None:
     card = tmp_path / "ccc999-demo.md"
     card.write_text("# 卡\n\n> 状态：已回写\n\n## 回写区\n\nok\n", encoding="utf-8")
     assert not _card_machine_audit_passed(str(card))
-    assert _append_machine_audit_pass(
-        str(card), source="test", evidence="log says 机审通过"
-    )
+    assert _append_machine_audit_pass(str(card), source="test", evidence="log says 机审通过")
     text = card.read_text(encoding="utf-8")
     assert "## 机审区" in text
     assert "结论：通过" in text
     assert _card_machine_audit_passed(str(card))
 
 
-def test_append_skips_existing_section(tmp_path: Path) -> None:
+def test_append_replaces_existing_reject_section(tmp_path: Path) -> None:
+    """已有「不通过」机审区 → 重审通过时替换旧区为「通过」（2026-08-20 事故修复）。
+
+    事故：mx055 首审「不通过」（误判），重审通过时旧区阻塞落盘 → 重审链路断。
+    新契约：不通过区必须可被通过区覆盖；通过区保持不重复写。
+    """
     card = tmp_path / "ccc998-demo.md"
     card.write_text(
-        "# 卡\n\n## 机审区\n\n机审：不通过\n原因：x\n",
+        "# 卡\n\n## 机审区\n\n**机审：不通过（维护区声明不实）**\n\n原因：x\n\n## 回写区\n\nok\n",
         encoding="utf-8",
     )
-    assert not _append_machine_audit_pass(str(card), source="test", evidence="pass")
-    assert "机审：不通过" in card.read_text(encoding="utf-8")
-    assert "engine 自动落盘" not in card.read_text(encoding="utf-8")
+    assert not _card_machine_audit_passed(str(card))
+    assert _append_machine_audit_pass(str(card), source="test", evidence="pass")
+    text = card.read_text(encoding="utf-8")
+    assert "机审：不通过" not in text
+    assert "结论：通过" in text
+    assert "## 回写区" in text
+    assert _card_machine_audit_passed(str(card))
+
+
+def test_append_keeps_existing_pass_section(tmp_path: Path) -> None:
+    """已有「通过」机审区 → 不重复写，内容保持不变。"""
+    card = tmp_path / "ccc997-demo.md"
+    original = "# 卡\n\n## 机审区\n\n结论：通过\n证据：x\n\n## 回写区\n\nok\n"
+    card.write_text(original, encoding="utf-8")
+    assert _card_machine_audit_passed(str(card))
+    assert _append_machine_audit_pass(str(card), source="test", evidence="pass")
+    assert card.read_text(encoding="utf-8") == original
 
 
 def test_audit_pass_with_result_format(tmp_path: Path) -> None:
