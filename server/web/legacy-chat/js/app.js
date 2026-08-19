@@ -12,12 +12,6 @@ import {
 } from './components/message.js';
 import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
 import { initRouter, navigate, currentRoute } from './router.js';
-import { mountBoard, unmountBoard } from './pages/boardPage.js';
-import { mountConsole, unmountConsole } from './pages/consolePage.js';
-import { mountOps, unmountOps } from './pages/opsPage.js';
-import { mountPlans, unmountPlans } from './pages/plansPage.js';
-import { mountRoadmap, unmountRoadmap } from './pages/roadmapPage.js';
-import { mountDsh, unmountDsh } from './pages/dshPage.js';
 import {
   initDualPaneControls,
   isEnabled as dualPaneEnabled,
@@ -205,31 +199,61 @@ async function onHubRoute(route) {
     document.title = TITLES[route] || 'CCC';
     // 路由→页面注册表（P1-7 重构 2026-08-15）：加新路由只需补一条 + index.html 空壳，
     // 不再手写 if/else 逐个 unmount——消灭「漏 unmount 残留定时器」的雷。
-    const PAGES = {
-      board: { mount: mountBoard, unmount: unmountBoard },
-      plans: { mount: mountPlans, unmount: unmountPlans },
-      roadmap: { mount: mountRoadmap, unmount: unmountRoadmap },
-      console: { mount: mountConsole, unmount: unmountConsole },
-      ops: { mount: mountOps, unmount: unmountOps },
-      dsh: { mount: mountDsh, unmount: unmountDsh },
+    // 2026-08-20 懒加载：页面模块改为路由命中时动态 import（首屏不再全量拉 6 个页面），
+    // PAGES 仅含已加载页面（unmount 循环天然跳过未访问过的路由）。
+    const PAGES_LOADERS = {
+      board: () =>
+        import('./pages/boardPage.js').then((m) => ({
+          mount: m.mountBoard,
+          unmount: m.unmountBoard,
+        })),
+      plans: () =>
+        import('./pages/plansPage.js').then((m) => ({
+          mount: m.mountPlans,
+          unmount: m.unmountPlans,
+        })),
+      roadmap: () =>
+        import('./pages/roadmapPage.js').then((m) => ({
+          mount: m.mountRoadmap,
+          unmount: m.unmountRoadmap,
+        })),
+      console: () =>
+        import('./pages/consolePage.js').then((m) => ({
+          mount: m.mountConsole,
+          unmount: m.unmountConsole,
+        })),
+      ops: () =>
+        import('./pages/opsPage.js').then((m) => ({
+          mount: m.mountOps,
+          unmount: m.unmountOps,
+        })),
+      dsh: () =>
+        import('./pages/dshPage.js').then((m) => ({
+          mount: m.mountDsh,
+          unmount: m.unmountDsh,
+        })),
     };
+    const PAGES = {};
     if (route === 'chat') {
       for (const name of Object.keys(PAGES)) PAGES[name].unmount();
       // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
       import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
       return;
     }
-    const page = PAGES[route];
-    if (!page) {
+    const pageLoader = PAGES_LOADERS[route];
+    if (!pageLoader) {
       for (const name of Object.keys(PAGES)) PAGES[name].unmount();
       return;
     }
     for (const name of Object.keys(PAGES)) {
       if (name !== route) PAGES[name].unmount();
     }
+    if (!PAGES[route]) {
+      PAGES[route] = await pageLoader();
+    }
     // M3 非阻塞 mount：mount 内部同步渲染骨架、后台拉数据（不 await 网络），
     // 切换立即返回；数据到达时若令牌已失效（_disposed）则丢弃。
-    page.mount(document.getElementById('view-' + route), { gen });
+    PAGES[route].mount(document.getElementById('view-' + route), { gen });
   } finally {
     setRouteSwitching(false);
   }

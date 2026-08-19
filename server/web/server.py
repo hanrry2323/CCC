@@ -63,6 +63,7 @@ API:
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import hmac
 import json
@@ -1238,9 +1239,15 @@ _BOARD_REBUILD_LOCK = threading.Lock()
 
 
 def _board_cache_key() -> str:
-    """看板缓存键：dispatch 目录 + 索引 + 运行时状态文件的 mtime。"""
+    """看板缓存键：索引 + 运行时状态文件的 mtime。
+
+    2026-08-20 优化：去掉 dispatch 目录整体 mtime（engine 高频写卡/日志导致
+    目录 mtime 频繁变化 → 缓存每次重建 ~1s → 看板打开变慢）。索引反映卡增减、
+    派发；cards.jsonl 反映执行状态。卡内容回写/机审状态漂移由 TTL（30s）兜底，
+    看板语义本就是 30s 级缓存，可接受。
+    """
     parts: list[str] = []
-    for p in (_DISPATCH_DIR, _DISPATCH_DIR / "cards.index.jsonl"):
+    for p in (_DISPATCH_DIR / "cards.index.jsonl",):
         try:
             parts.append(str(p.stat().st_mtime_ns))
         except OSError:
@@ -1985,10 +1992,28 @@ class _APIHandler(BaseHTTPRequestHandler):
         if ctype.startswith("text/html") or str(target).endswith(".html"):
             text = body.decode("utf-8", errors="replace").replace("v=20260809t12", f"v={_compute_static_version()}")
             body = text.encode("utf-8")
+        # 2026-08-20 传输优化：带 ?v= 版本参数的静态资源长缓存（immutable），
+        # 无版本参数（index.html）no-cache 保证每次取最新版本号；大资源 gzip 压缩。
+        accept_encoding = self.headers.get("Accept-Encoding", "")
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        versioned = "v=" in query
+        cache_control = "max-age=31536000, immutable" if versioned else "no-cache"
+        if "gzip" in accept_encoding and len(body) > 512:
+            body = gzip.compress(body, 6)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Cache-Control", cache_control)
+            self.end_headers()
+            self.wfile.write(body)
+            return True
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(body)
         return True
