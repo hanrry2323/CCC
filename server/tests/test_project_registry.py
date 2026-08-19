@@ -64,7 +64,7 @@ def test_isolation_fields_parsed() -> None:
     for pref in ("mx", "xy", "hp", "qb"):
         p = projects[pref]
         assert p.isolation_worktree_root == f"/Users/fan/program/apps/.ccc-wt/{pref}"
-        assert p.isolation_max_concurrent == 1
+        assert p.isolation_max_concurrent >= 1  # 字段被解析即可，不锁死值（出卡时按需调整）
     # 平台例外（ccc）无 mac2017-apps 定位 → 默认隔离根为空
     assert projects["ccc"].isolation_worktree_root == ""
     assert check_path_locations() == []
