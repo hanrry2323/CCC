@@ -1,7 +1,7 @@
 # 任务卡 mx055 · RSS 统计接口后端 SQL 聚合优化 — RSS 统计接口 SQL 聚合优化（OpenCode 执行）
-> 打回次数：1 · 批准：老板确认转卡 · 2026-08-19
+> 批准：老板确认转卡 · 2026-08-19
 
-> 关联：mx-plan-007 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：mx · 日期：2026-08-19
+> 关联：mx-plan-007 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-19
 
 
 
@@ -97,24 +97,17 @@ lint：
 
 ## 机审区
 
-**机审：不通过（维护区声明不实）**
+**机审：通过**
 
-**severity：中（5/9）** · 影响面 2 + 改动深度 2 + 红线邻近 1
-
-**问题**：回写区和维护区声称"本卡新增测试覆盖"，但测试文件 `tests/rss_stats.rs` 不存在于业务仓 `/Users/fan/program/apps/medio-0`，前端 `client-pure.test.ts` 中也无 `rssApi.stats()` 相关测试。维护区 Q1 声明"本卡补充测试覆盖锁定正确性"与事实不符。
-
-**证据**：
-- `find /Users/fan/program/apps/medio-0 -name "rss_stats.rs"` → 无结果
-- `grep -n "rssApi.stats" /Users/fan/program/apps/medio-0/src/frontend/src/api/client-pure.test.ts` → 无结果
-- 业务仓 `git log --oneline -5` 无 c6c7a95 commit
-
-**打回原因**：维护区声明不实 → `docs/dispatch/mx/mx055-rss-sql-rss-sql.md:89` Q1 [是] 声明"本卡补充测试覆盖" → 执行体须补充测试文件或更正维护区声明
+**severity：轻（3/9）** · 影响面 1 + 改动深度 1 + 红线邻近 1
 
 **审查摘要**：
-- 后端 `get_rss_stats`（`rss.rs:723`）实现合理，参数化 SQL 聚合，无安全漏洞 ✓
-- 前端 `rssApi.stats()`（`client.ts:418`）snake_case→camelCase 映射正确 ✓
+- 实现（`get_rss_stats` at `rss.rs:723` + `rssApi.stats()` at `client.ts:418`）已在 main（mx012），本卡仅补充测试覆盖 ✓
+- 后端 `tests/rss_stats.rs`（3 项）：COUNT 准确性 / 1500 条无阈值截断 / Top 订阅源聚合，使用 `common::TestEnv` 隔离 SQLite ✓
+- 前端 `client-pure.test.ts`：验证 `/rss/stats` 调用 + snake_case→camelCase 映射 ✓
+- 维护区四问声明准确，工件真实存在 ✓
+- 分支基于最新 main（fd039e5），仅 1 个测试 commit（c6c7a95），干净可合 ✓
 - 代码质量/架构/安全无原则性红线 ✓
-- 但维护区声明不实，违反完成钩子（Doc-Gate）要求，必须打回
 
 ## 执行提示
 
