@@ -1,7 +1,7 @@
 # 任务卡 mx054 · OPML 导出 Bearer Token 强鉴权适配 — OPML 导出 Bearer 鉴权下载重构（OpenCode 执行）
-> 批准：老板确认转卡 · 2026-08-19
+> 批准：老板合入批准 · 2026-08-20
 
-> 关联：mx-plan-006 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：mx · 日期：2026-08-19
+> 关联：mx-plan-006 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-19
 
 
 
