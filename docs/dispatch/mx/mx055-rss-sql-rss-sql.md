@@ -1,7 +1,7 @@
 # 任务卡 mx055 · RSS 统计接口后端 SQL 聚合优化 — RSS 统计接口 SQL 聚合优化（OpenCode 执行）
 > 打回次数：1 · 批准：老板确认转卡 · 2026-08-19
 
-> 关联：mx-plan-007 · 执行体：OpenCode · 验收：OpenCode · 状态：打回（机审：不通过） · 派发：engine · 项目：mx · 日期：2026-08-19
+> 关联：mx-plan-007 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：mx · 日期：2026-08-19
 
 
 
