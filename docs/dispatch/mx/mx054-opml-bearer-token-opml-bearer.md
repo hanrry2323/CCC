@@ -75,13 +75,16 @@ OPML 导出按钮的 fetch+Blob+虚拟点击修复已在 commit `e1ee68f`（feat
 
 ### 测试结果
 
-- vitest run — 32 files passed, 380 tests passed (377 baseline + 3 new)
-- eslint — 无错误
+- vitest run — RssSidebar.test.tsx 3 passed (3) ✅
+- tsc -b --noEmit — 无错误 ✅（修复 URL mock 类型赋值：`as unknown as typeof URL.createObjectURL/revokeObjectURL`）
+- eslint — 无错误 ✅
 
 ### push 证据
 
 - 业务仓分支：`codex/mx054-opml-bearer-token-opml-bearer`
-- commit：`a0cc662` — test(opml): verify Bearer token attached to OPML export fetch
+- 实现 commit：`e1ee68f`（已在 origin/main）
+- 测试 commit：`a0cc662` — test(opml): verify Bearer token attached to OPML export fetch
+- 类型修复 commit：`5ffb341` — fix(types): resolve tsc errors on URL mock type assignments in RssSidebar test
 - 已 push 到 origin：`codex/mx054-opml-bearer-token-opml-bearer`
 
 ## 维护区
