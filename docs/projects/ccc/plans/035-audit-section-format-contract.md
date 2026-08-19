@@ -117,3 +117,20 @@ server/tests/test_audit_format_contract.py  (新)
 docs/projects/onboarding.md
 docs/projects/ccc/plans/035-audit-section-format-contract.md
 ```
+
+## 终验结论（Codex 异席终验 · 2026-08-19）
+
+**总判：可合。** 三道防线逻辑正确、正则对齐、测试覆盖充分、无回归。F1/F2/F3 三层职责清晰互不依赖，任一失效不导致死循环；权威写法 `> 结论：通过` 成文，禁止写法 `> 结论：机审通过` 有校验器前置拦截；旧格式存量卡判定器仍识别不被误杀。
+
+### 开发者核实纠正（机审席/本次开发者 · 防幻觉不附和）
+
+Codex 终验报告有 2 处与事实出入，已实测核实：
+
+1. **测试点数**：Codex 报告"28 点全过"，实测 **34 passed**（test_audit_format_contract 17 + test_engine_audit_backfill 7 + test_card_header 6 + test_board_column_audit 4）。不影响"全过"结论，但数字偏少。
+2. **合入状态**：Codex 称"建议合入、走合入流程"——但 `f3f571e7` 是 `origin/main` 最新提交，**代码已在 main**。本卡平台自研（ccc taskable:false），按方案档 §转卡计划"M1 主窗口直接开发，不走 engine 合入流程"，合入在 push 时已完成，无待合入分支、无合入动作。
+
+### 收尾状态
+
+- 代码：`f3f571e7` 已在 origin/main（平台自研直接进 main）
+- 全流程实跑验证：见 qx-map `sync/notes/ccc-fullflow-verify-2026-08-19.md`（读路径/旧格式存量卡/死循环根因路径/异常卡诊断 4 项全过）
+- 待老板对"已在 main 的本次改动"认可收尾
