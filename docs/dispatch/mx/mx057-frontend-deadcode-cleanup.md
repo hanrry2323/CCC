@@ -141,10 +141,10 @@ lint：`npm run lint`
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
    - 说明：本卡为治理任务，无关联方案，无关联卡，N/A。
-2. **教训沉淀**：本卡是否产出可复用教训？[有]
-   - 说明：knip 对桶文件（components/index.ts）和含多导出的文件（useOnlineStatus.tsx）有误报——knip 报"无人 import"但实际通过桶导入或部分导出被引用；必须 grep 复核而非盲信 knip。本卡 2 项（components/index.ts、useOnlineStatus.tsx）因 grep 复核而避免误删。
+2. **教训沉淀**：本卡是否产出可复用教训？[否]
+   - 说明：knip 对桶文件（components/index.ts）和含多导出的文件（useOnlineStatus.tsx）有误报——knip 报"无人 import"但实际通过桶导入或部分导出被引用；必须 grep 复核而非盲信 knip。本卡 2 项因 grep 复核而避免误删。未沉淀到 docs/notes 文件。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[有]
    - 说明：删除 2 个死文件（ui/alert-dialog.tsx、lib/icons.ts）；卸载 3 个依赖；多个常量文件导出缩减。不影响运行时行为，README 无需更新。
 4. **线路图**：项目近况/下一步是否变化？[否]
