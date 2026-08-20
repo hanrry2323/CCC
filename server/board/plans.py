@@ -908,7 +908,14 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
     from server.board.models import base_state
 
     index = load_index_file(repo_root / "docs" / "dispatch")
-    card_id_lower_map = {k.lower(): v for k, v in index.items()}
+    # 容错：索引 id 可能带 slug（如 xy054-preview-pages——标题损坏 fallback 产物），
+    # 注册纯卡号别名，保证按关联卡纯卡号（xy054）也能命中（xy054 进度漏算事故）
+    card_id_lower_map: dict[str, Any] = {}
+    for k, v in index.items():
+        card_id_lower_map[k.lower()] = v
+        _idm = re.match(r"^([a-z]{2,4}\d{3})", k)
+        if _idm:
+            card_id_lower_map.setdefault(_idm.group(1), v)
 
     total = len(card_ids)
     closed = 0

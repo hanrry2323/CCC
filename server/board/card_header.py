@@ -92,7 +92,14 @@ def bump_reject_count(text: str) -> str:
     title_m = _CARD_TITLE_RE.search(text)
     if not title_m:
         return text
-    insert_at = title_m.end()
+    # 插入点 = 标题行行尾（而非标题前缀之后）——否则会把卡号/标题挤到下一行
+    # （xy054 事故：insert_at=title_m.end() 只到「# 任务卡 」前缀，导致标题被拆成
+    #   「# 任务卡 \n> 打回次数：1xy054 · 标题」，CardHeader 解析 id 时 _TITLE_RE 失配，
+    #   fallback 成文件 stem「xy054-preview-pages」，sync_plan_progress 按纯卡号查不到 → 方案进度漏算）
+    line_end = text.find("\n", title_m.end())
+    if line_end == -1:
+        line_end = len(text)
+    insert_at = line_end
     return text[:insert_at] + "\n> 打回次数：1" + text[insert_at:]
 
 

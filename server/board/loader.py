@@ -99,7 +99,13 @@ def _parse_written_at(text: str) -> str:
 def parse_card(path: Path | str) -> BoardItem:
     """解析单张任务卡；字段缺失容错标「未知」。"""
     text = Path(path).read_text(encoding="utf-8")
-    header = CardHeader.from_text(text, fallback_id=Path(path).stem)
+    # fallback_id 提纯卡号前缀（xy054-preview-pages → xy054）：标题损坏时也能维持
+    # 纯卡号 id，避免 sync_plan_progress 按纯卡号查索引漏算进度（xy054 事故）
+    fallback_id = Path(path).stem
+    _fb = re.match(r"^([a-z]{2,4}\d{3})", fallback_id)
+    if _fb:
+        fallback_id = _fb.group(1)
+    header = CardHeader.from_text(text, fallback_id=fallback_id)
 
     p = Path(path)
     is_archived = "docs/archive" in p.as_posix() or "docs/archive" in p.resolve().as_posix()
