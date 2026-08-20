@@ -1,7 +1,7 @@
 # 任务卡 xy053 · 工作流 API（M6-2）— 生产任务阶段进度只读接口（OpenCode 执行）
 > 批准：老板合入批准 · 2026-08-20
 
-> 关联：xy-plan-009 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-20
+> 关联：xy-plan-009 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-20
 > 依赖：xy052
 
 ## 基准文件（先看）
@@ -111,10 +111,10 @@ lint：`ruff check admin/ src/`
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[✓]
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是]
    - 说明：xy-plan-009 功能卡「工作流 API」已实现完毕；本卡依赖 xy052（已合入 ✅），下游 xy055（工作流可视化页）可开始出卡。
-2. **教训沉淀**：本卡是否产出可复用教训？[✓]
-   - 说明：admin 只读适配层的「产物检测推导 stage 状态」模式可复用——pipeline.py 只有 stage 定义无运行态表，通过产物文件反推 stage 完成状态是唯一可行路径（以实测为准，勿假设有 tasks 表）。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]
+   - 说明：admin 只读适配层的「产物检测推导 stage 状态」模式可复用——pipeline.py 只有 stage 定义无运行态表，通过产物文件反推 stage 完成状态是唯一可行路径（以实测为准，勿假设有 tasks 表）。教训已落盘：docs/notes/xy053-workflow-api-lesson.md
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
    - 说明：仅扩展 admin/api/server.py 端点 + 测试，未新增目录/文件路径/技术栈。
 4. **线路图**：项目近况/下一步是否变化？[否]
@@ -122,7 +122,17 @@ lint：`ruff check admin/ src/`
 
 ## 机审区
 
-（机审方填写）
+**机审：通过** · severity：轻（3/9）· 2026-08-20
+
+审查范围：`admin/api/server.py`（+316 行）、`tests/admin/test_workflows.py`（新增 19 测试）。
+
+- 只读适配层：代码只新增端点 + 辅助函数，未修改 `src/`、`video-pipeline/` 任何生产文件。`_get_pipeline_stages()` 通过 `PIPELINES` 只读导入，每次请求实时读取。
+- 状态源一致性：stage 名称动态读取 `pipeline.py` 的 `PIPELINES` 字典（video 7 stages / image_text 5 stages），测试 `test_video_pipeline_stage_names_match_definition` 显式校验。
+- 降级正确：空目录 → `stages=[]` + `"未开始"`；产出目录不存在 → 空列表；在途 run 无产物 → topic 进行中。均不抛 500。
+- 测试覆盖：19 测试覆盖运行中/历史终态/无记录/失败/image_text pipeline/在途 run/扁平结构/排序/认证/空目录。
+- 维护区四问已逐项填写，声明与实际改动一致。
+- push 证据：commit `794b64a`，分支 `codex/xy053-workflow-api`，已推送 origin。
+- 未发现可修问题。
 
 ## 执行提示
 
