@@ -1,15 +1,12 @@
 # 任务卡 xy056 · Playwright 帧渲染器（M5-1）— HTML 场景→帧→视频主链路合拢（OpenCode 执行）
 
-> 批准：老板合入批准 · 2026-08-20
-
 > 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-20
-> 依赖：xy052, xy053, xy054, xy055
 
 ## 基准文件（先看）
 
 - 项目基准（README·权威索引）：`docs/projects/xy/README.md`
 - 方案池：`docs/projects/xy/plans/`（关联方案见卡头「关联」，本卡 = xy-plan-008 功能卡 5.1 Playwright 帧渲染器）
-- **依赖链（2026-08-20 定稿，见方案转卡计划）**：本卡无代码级依赖（承接 M3 已落地的 html_scene + Hyperframes）；但方案定序 **M6 优先、M5 在 M6 全部卡验收后启动**——卡头「依赖」列为 M6 全部四卡（xy052/xy053/xy054/xy055），engine 按依赖自动排程，M6 未全关本卡不派发。同仓 max_concurrent=1，M5 内部 xy056→xy057→xy058 顺序。
+- **依赖链（2026-08-21 修订）**：本卡无代码级依赖（承接 M3 已落地的 html_scene + Hyperframes），可立即启动。与 xy055/xy057 并行开发，合入时各自验证。M6 API（xy052-xy054）不影响本卡开发。
 
 ## 目标
 
@@ -117,12 +114,12 @@ lint：`ruff check video-pipeline/`
 
 - 代码工作区：由 CCC Engine 派发时注入独立 worktree（见派发提示中的具体路径），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录
 
-- 关联方案摘要（xy-plan-008 M5 视频高表现力二期·功能卡 5.1 Playwright 帧渲染器）：HTML 场景→帧→视频。验收：任一样片经帧渲染器出片且质量量化达标；模拟 Playwright 不可用验证降级路径。依赖：无（承接已落地 Hyperframes）；M6 全部验收后启动（方案定序）。
+- 关联方案摘要（xy-plan-008 M5 视频高表现力二期·功能卡 5.1 Playwright 帧渲染器）：HTML 场景→帧→视频。验收：任一样片经帧渲染器出片且质量量化达标；模拟 Playwright 不可用验证降级路径。依赖：无（承接已落地 Hyperframes），可立即启动。
 
 - 项目线路/近况：
   - 50 张卡（xy001-051）全部关闭；M1 视频里程碑 / M2 生产就绪 / M3 高表现力全部完成
   - **2026-08-20 新里程碑**：M5 高表现力二期（本卡所在）/ M6 前端展示台 / M7 发布闭环（等 Cookie）
-  - M6 进度：4 卡全部完成后本卡启动（当前 xy053/xy054/xy055 依次执行中）
+  - M6 进度：xy052/xy053/xy054 已关闭，xy055 待分派；本卡可与 M6 卡并行开发
   - M3 已落地：视觉模板库（xy-plan-005）、质量量化（xy-plan-006）、渲染引擎升级（xy-plan-007，Hyperframes + PIL 线程池回退 + glass-card/dark-tech）
   - html_scene 骨架已有（agent/schema/renderer）；`frame_capture.py`/`html_composer.py` 尚不存在——本卡补上
 

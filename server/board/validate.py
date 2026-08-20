@@ -340,6 +340,14 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             issues.append(CardIssue(card_id, str(path), "缺少卡头元数据行（> 且含 key：value）"))
             continue
 
+        # 禁止自造卡头字段（如 "批准"）——卡头字段定死，见 DOC-PROTOCOL §2.3
+        FORBIDDEN_HEADER_KEYS = {"批准", "审批", "review", "approval"}
+        for forbidden in FORBIDDEN_HEADER_KEYS:
+            if forbidden in meta:
+                issues.append(
+                    CardIssue(card_id, str(path), f"卡头禁止自造字段「{forbidden}」——卡头字段定死（DOC-PROTOCOL §2.3），「合入批准」是人审动作不是卡头字段")
+                )
+
         # Check epic/task specific rules
         type_raw = meta.get("类型")
         if type_raw:
