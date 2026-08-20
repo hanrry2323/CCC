@@ -1,7 +1,7 @@
 # 任务卡 xy053 · 工作流 API（M6-2）— 生产任务阶段进度只读接口（OpenCode 执行）
 > 批准：老板合入批准 · 2026-08-20
 
-> 关联：xy-plan-009 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派· 派发：engine · 项目：xy · 日期：2026-08-20
+> 关联：xy-plan-009 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-20
 > 依赖：xy052
 
 ## 基准文件（先看）
@@ -76,32 +76,49 @@ lint：`ruff check admin/ src/`
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：（回写时填）
+**执行体**：OpenCode · 日期：2026-08-20
 
 ### 实现说明
 
-（回写时填：改动点与文件）
+在 admin/api/server.py 新增 M6-2 工作流 API 段（316 行，沿用 xy052 只读适配模式）：
+
+1. stage 定义只读导入：_get_pipeline_stages() 从 src/xianyu/core/pipeline.py 只读导入 VIDEO_PIPELINE / IMAGE_TEXT_PIPELINE 的 stage 名称，不修改 pipeline.py，不缓存，每次请求实时读取。
+
+2. 产物检测：_has_config / _has_script / _has_frames / _has_audio / _has_video / _has_article_output 检测各 stage 产物文件是否存在（以实测为准）。终态产物存在时标记全部 stage 完成。
+
+3. 状态组装：_build_workflow_progress() 组装 {task_id, pipeline, status, stages, current_stage, updated_at}。运行中任务 frontier stage=进行中；历史终态各 stage=完成/失败；无记录任务返回 stages 空数组 + 未开始。
+
+4. scan_workflows()：扫描 video-pipeline/output/ 任务目录 + _run_history 内存运行态，按 updated_at 倒序。
+
+5. 端点：GET /api/v1/workflows（Basic Auth 保护）返回 {count, items}。
+
+改动文件：admin/api/server.py（+316 行）、tests/admin/test_workflows.py（新增 19 测试）。未改动 src/、video-pipeline/ 任何生产文件。
 
 ### 测试结果
 
-（回写时填：门禁命令逐条结果）
+- pytest tests/admin/test_workflows.py -q → 19 passed
+- pytest tests/ -q --ignore=tests/html_scene → 662 passed, 2 failed（openclaw Node 模块缺失，预存在与本卡无关），9 skipped
+- ruff check admin/ src/ → All checks passed
+- python3 -m compileall admin/ src/ -q → 无错误
+- mypy admin/api/server.py → 新增代码零新增告警（预存在的无类型注解函数不在本卡范围）
 
 ### push 证据
 
-（回写时填：commit hash + 分支名）
+- commit：794b64a · 分支：codex/xy053-workflow-api
+- push：git push origin codex/xy053-workflow-api → 已推送至 origin
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[ ]
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[ ]
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[ ]
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[ ]
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[✓]
+   - 说明：xy-plan-009 功能卡「工作流 API」已实现完毕；本卡依赖 xy052（已合入 ✅），下游 xy055（工作流可视化页）可开始出卡。
+2. **教训沉淀**：本卡是否产出可复用教训？[✓]
+   - 说明：admin 只读适配层的「产物检测推导 stage 状态」模式可复用——pipeline.py 只有 stage 定义无运行态表，通过产物文件反推 stage 完成状态是唯一可行路径（以实测为准，勿假设有 tasks 表）。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：仅扩展 admin/api/server.py 端点 + 测试，未新增目录/文件路径/技术栈。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：M6 进度推进至 6.2 完成；下一步顺序不变：xy054（6.3 预览页面）→ xy055（6.4 工作流可视化页，消费本卡 /api/v1/workflows）。
 
 ## 机审区
 
