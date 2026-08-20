@@ -391,6 +391,7 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
                 type=entry.get("card_type", "task"),
                 parent=entry.get("parent_card", ""),
                 thread_id=entry.get("thread_id", ""),
+                depends_on=entry.get("depends_on", []),
                 acceptance=entry.get("acceptance", UNKNOWN),
                 archived=entry.get("archived", False),
                 machine_audit_passed=bool(entry.get("machine_audit_passed", False)),
