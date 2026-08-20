@@ -106,7 +106,16 @@ lint：`ruff check admin/`
 
 ## 机审区
 
-（机审方填写）
+机审：通过（severity：轻）
+
+- **范围合规**：3 文件全在 `admin/pages/` + `admin/js/` + `tests/admin/` 白名单内，未动 `src/`、`video-pipeline/`、`admin/api/server.py` ✅
+- **数据源**：只读消费 `GET /api/v1/library`（xy052 产物），无自造后端端点 ✅
+- **零重型依赖**：纯原生 JS + CSS，无 npm/构建链引入 ✅
+- **空态降级**：API 异常 → catch 显示连接失败提示 + 计数归零；空产出 → 显示「今日暂无…」文案，不白屏 ✅
+- **测试覆盖**：13 用例全过（数据契约 10 + 辅助逻辑 3），覆盖字段完整性/空态/排序/日期格式/duration ✅
+- **修复项**：就地修复 `escapeAttr` XSS 漏洞（仅转义引号遗漏反斜杠）→ 改用 data-attr 事件委托，已 commit+push `bdcb71a`
+- **维护区**：四问逐项勾选，说明具体无占位 ✅
+- **历史教训（WebSub）**：本卡仅新增静态页面 + 导航入口，未触碰已有路由/链接，无 WebSub 断链风险 ✅
 
 ## 执行提示
 
