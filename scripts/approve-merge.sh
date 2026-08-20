@@ -721,8 +721,71 @@ if [[ "$FAILED" -gt 0 ]]; then
 fi
 echo "[OK] 全部合入批准完成（${#IDS[@]}）"
 
+# ── 业务仓部署端健康检查（2026-08-20 加 · 覆盖所有已注册项目）──
+# 部署端表与 qx-map AGENTS.md「项目部署端一览」一致：开发机≠部署机。
+# 规则：部署端不健康 = 告警并提示（不阻断合卡，但回执必须明确）。
+deploy_check_business() {
+  local ssh_2017="ssh -o BatchMode=yes -o ConnectTimeout=5 ${CCC_SSH_HOST}"
+  echo "== 正在检查关联业务仓部署端健康 =="
+  local checked=""
+  for id in "${IDS[@]}"; do
+    local prefix="${id%%[0-9]*}"
+    [[ -z "$prefix" || "$checked" == *" $prefix "* ]] && continue
+    checked="$checked $prefix "
+    case "$prefix" in
+      ccc|cla|clw|cd|hp*|qb|xy|mx)
+        ;;
+      *)
+        echo "[INFO] ${prefix}: 未知项目前缀，跳过部署端检查。"
+        continue
+        ;;
+    esac
+    case "$prefix" in
+      xy)
+        # 部署端 = Mac2017 :8765 admin API
+        local xy_ok
+        xy_ok=$($ssh_2017 "curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:8765/api/health 2>/dev/null || echo 000" 2>/dev/null || echo SKIP)
+        if [[ "$xy_ok" =~ ^(200|401|404)$ ]]; then
+          echo "[OK] xy 部署端健康（2017:8765 HTTP ${xy_ok}）"
+        else
+          echo "[WARN] xy 部署端异常（2017:8765 → ${xy_ok}）——admin 服务可能未运行或未重启，需人工确认！"
+        fi
+        ;;
+      mx)
+        # 部署端 = HP :3000 medio-server（M1/2017 均 HTTP 直连）
+        local mx_ok
+        mx_ok=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://192.168.3.131:3000/api/v1/health 2>/dev/null || echo 000)
+        if [[ "$mx_ok" == "200" ]]; then
+          echo "[OK] mx 部署端健康（HP:3000 HTTP 200）"
+        else
+          echo "[WARN] mx 部署端异常（HP:3000 → ${mx_ok}）——medio-server 未运行，需人工确认！"
+        fi
+        ;;
+      hp)
+        # 部署端 = HP :8082/:8083（M1 SSH 密钥缺失，走 HTTP 直连）
+        local hp_ok
+        hp_ok=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://192.168.3.131:8082/ 2>/dev/null || echo 000)
+        if [[ "$hp_ok" =~ ^(200|404)$ ]]; then
+          echo "[OK] hp 部署端可达（HP:8082 HTTP ${hp_ok}）"
+        else
+          echo "[WARN] hp 部署端异常（HP:8082 → ${hp_ok}）——memory-store 未运行，需人工确认！"
+        fi
+        ;;
+      qb)
+        echo "[INFO] qb: 自动化测试项目，无常驻生产服务，跳过部署端检查。"
+        ;;
+      ccc|cla|clw|cd)
+        echo "[INFO] ${prefix}: CCC 底座位卡，部署端检查已由 deploy_check_2017 覆盖。"
+        ;;
+    esac
+  done
+}
+
 if [[ ${#IDS[@]} -gt 0 ]]; then
   deploy_check_2017
-  # 螺旋上升 P2-1（B1）：合入后即时触发 DSH 全局跑通复核（与 6h cron 并存）
-  trigger_dsh_patrol
+  deploy_check_business
+  # DSH 全局跑通复核触发去重（2026-08-20）：合入后复核由 2017 scheduler 的
+  # merge_sha 去重触发承担（server/engine/scheduler.py），此处的无条件触发停用，
+  # 避免一次合入双触发；6h cron 作为定时兜底。函数定义保留供手动复用。
+  # trigger_dsh_patrol
 fi
