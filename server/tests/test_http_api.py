@@ -2356,6 +2356,13 @@ class TestCardsFallback:
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
 
+        # 重置模块级看板缓存（api_server 为 module 级共享实例，跨测试泄漏缓存
+        # 会导致「索引缺失时命中旧缓存、断言重建失败」的顺序依赖 flaky）。
+        import server.web.server as _srv
+
+        monkeypatch.setattr(_srv, "_BOARD_CACHE", None)
+        monkeypatch.setattr(_srv, "_ENRICHED_CACHE", None)
+
         # 模拟 dispatch 目录
         dispatch_dir = tmp_path / "docs" / "dispatch"
         dispatch_dir.mkdir(parents=True, exist_ok=True)
