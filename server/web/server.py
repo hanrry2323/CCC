@@ -1251,7 +1251,9 @@ def _board_cache_key() -> str:
         try:
             parts.append(str(p.stat().st_mtime_ns))
         except OSError:
-            pass
+            # 索引缺失是有效信号（删除后应触发重建），显式标记而非跳过——
+            # 否则 key 与「无索引的旧缓存」相同，命中缓存导致索引永不重建。
+            parts.append("missing")
     log_dir = _executor_log_dir()
     if log_dir:
         try:
