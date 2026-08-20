@@ -104,7 +104,17 @@ lint：`ruff check admin/ src/`
 
 ## 机审区
 
-（机审方填写）
+**机审：通过** · severity：轻（3/9）· 2026-08-20
+
+审查范围：`admin/api/server.py`（+316 行）、`tests/admin/test_workflows.py`（新增 19 测试）。
+
+- 只读适配层：代码只新增端点 + 辅助函数，未修改 `src/`、`video-pipeline/` 任何生产文件。`_get_pipeline_stages()` 通过 `PIPELINES` 只读导入，每次请求实时读取。
+- 状态源一致性：stage 名称动态读取 `pipeline.py` 的 `PIPELINES` 字典（video 7 stages / image_text 5 stages），测试 `test_video_pipeline_stage_names_match_definition` 显式校验。
+- 降级正确：空目录 → `stages=[]` + `"未开始"`；产出目录不存在 → 空列表；在途 run 无产物 → topic 进行中。均不抛 500。
+- 测试覆盖：19 测试覆盖运行中/历史终态/无记录/失败/image_text pipeline/在途 run/扁平结构/排序/认证/空目录。
+- 维护区四问已逐项填写，声明与实际改动一致。
+- push 证据：commit `794b64a`，分支 `codex/xy053-workflow-api`，已推送 origin。
+- 未发现可修问题。
 
 ## 执行提示
 
