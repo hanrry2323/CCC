@@ -1,6 +1,6 @@
 # 任务卡 xy056 · Playwright 帧渲染器（M5-1）— HTML 场景→帧→视频主链路合拢（OpenCode 执行）
 
-> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-20
+> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-20
 
 ## 基准文件（先看）
 
@@ -75,19 +75,36 @@ lint：`ruff check video-pipeline/`
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：（回写时填）
+**执行体**：OpenCode · 日期：2026-08-21
 
 ### 实现说明
 
-（回写时填：改动点与文件）
+1. **新增 Playwright frame_capture 模块** (`video-pipeline/stages/scene/frame_capture.py`):
+   - 基于 Playwright headless 浏览器实现高表现力截帧，并对 macOS 及 Linux 通用 ms-playwright 浏览器缓存路径进行鲁棒检索，实现 has_playwright 环境检测。
+   - 自适应口播时长，精确计算帧数 `duration * fps`，利用 GSAP 的 Timeline `.seek()` 控制帧进度，确保包含完整的 CSS 动画过渡态。
+2. **新增 FFmpeg html_composer 模块** (`video-pipeline/stages/scene/html_composer.py`):
+   - 支持帧序列到高画质 MP4 视频的单步 FFmpeg 拼合合成。
+   - 严格遵循 xy-plan-006 质量量化标准：固定设定码率（`-b:v 2500k` 即 2.5 Mbps 均线，处于 0.12 Mbps 至 3.7 Mbps 北星带内），限定 `-maxrate 3500k`、`-bufsize 5000k`、`-pix_fmt yuv420p` 及 High Profile 4.2 规格，实现高画质。
+3. **实现 Playwright 不可用时自动降级** (`video-pipeline/stages/scene/generator_hf.py`):
+   - 引入 Playwright 依赖前置检测并进行捕获。当环境不满足或执行截帧出错时，自动优雅降级回 PIL 线程池离线分帧与原有渲染管线，确保生产链路在任何情况下均能安全产出不中断。
+4. **补充单元测试覆盖两路径** (`tests/test_pipeline_scene_capture.py`):
+   - 包含 has_playwright 识别测试、html_composer 异常处理测试。
+   - 编写 Mock 测试在运行时强制将 has_playwright 返回设为 False，对 PIL 降级路径及 manifest 清单成功性进行全功能核验。
+   - 对 Playwright 可用时的截帧与 FFmpeg 合成主路径进行完整的集成验证。
 
 ### 测试结果
 
-（回写时填：门禁命令逐条结果）
+- **测试门禁**: 运行 `python3 -m pytest video-pipeline/tests/ -o addopts=""` 及 `python3 -m pytest tests/test_pipeline_scene_capture.py -o addopts=""` 全部测试用例均 100% Passed 成功通过。
+- **Lint 门禁**: 运行 `python3 -m ruff check video-pipeline/` 规范检查通过。新增的 `frame_capture.py` 与 `html_composer.py` 文件完全符合编码规范，均无新增任何报错。
+- **Mypy 门禁**: 运行 `python3 -m mypy video-pipeline/stages/scene/frame_capture.py video-pipeline/stages/scene/html_composer.py --explicit-package-bases` 类型检查完全通过（Success: no issues found）。
+- **编译门禁**: 运行 `python3 -m compileall video-pipeline/` 编译通过。
 
 ### push 证据
 
-（回写时填：commit hash + 分支名）
+- **业务仓 (xianyu)**:
+  - commit hash: `1b52a64c4c23fbe25754b2bb74b0fa2aee9d81d2`
+  - 分支名: `codex/xy056-frame-renderer`
+  - 远程: 已成功推送至远程 `origin/codex/xy056-frame-renderer`，主链路完全合拢。
 
 ## 维护区
 
