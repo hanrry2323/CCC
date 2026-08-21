@@ -121,7 +121,36 @@ lint：`ruff check video-pipeline/`
 
 ## 机审区
 
-（机审方填写）
+**机审：不通过（severity：重）**
+
+**审查摘要**：
+
+---
+
+### 发现 1 · 范围越界（admin 文件被改动） — P0
+
+**文件**：`admin/js/common.js`、`admin/pages/logs.html`、`admin/pages/workflows.html`（删除）、`tests/admin/test_workflow_page.py`（删除）
+
+xy056 卡红线明确只动 `video-pipeline/stages/scene/` 及测试，禁止改动其他生产链路。但分支包含 admin 相关改动（删除工作流页面、修改导航、移除日志查询参数），这些属于 xy055 范围，不应出现在 xy056 分支中。范围外改动阻塞合入。
+
+→ **修复动作**：在 `xianyu` 仓 `codex/xy056-frame-renderer` 分支执行 `git revert` 撤销 admin 文件的 4 处改动（或 `git checkout origin/main -- admin/` 恢复后 commit），确保分支只含 scene 帧渲染器相关改动。
+
+---
+
+### 发现 2 · gsap.min.js 文件头损坏 — P0
+
+**文件**：`video-pipeline/stages/scene/gsap.min.js`
+
+文件前 10 行包含 markdown 元数据头（`Content type application/javascript; charset=utf-8 cannot be simplified to markdown...`），这不是合法 JavaScript。浏览器加载 `gsap.min.js` 时会因无法解析而报错，导致所有动画帧渲染失败。
+
+→ **修复动作**：用纯净的 GSAP 3.14.2 原始 minified 文件替换当前文件（从 `https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js` 重新下载，**不带**任何 markdown 包装头），确保首行即为 `/*!` 许可证注释。
+
+---
+
+### 其他观察（不阻塞合入，记录）
+
+- `tests/test_pipeline_scene_capture.py` 中 `import asyncio` 在函数内（行 35），建议移至文件顶部（PEP 8），可一并修复。
+- 维护区声明「新增 frame_capture.py 和 html_composer.py」但未提 gsap.min.js 和 generator_hf.py 的改动，建议补充说明以保持声明完整性。
 
 ## 执行提示
 
