@@ -1,6 +1,6 @@
 # 任务卡 xy057 · 模板库规模化 + html-preview（M5-2）— 模板 ≥6 套 + 场景预览 CLI（OpenCode 执行）
 
-> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-20
+> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-08-20
 
 ## 基准文件（先看）
 
@@ -74,32 +74,40 @@ lint：`ruff check src/`
 
 ## 回写区
 
-**执行体**：OpenCode · 日期：（回写时填）
+**执行体**：OpenCode · 日期：2026-08-21
 
 ### 实现说明
 
-（回写时填：改动点与文件）
+1. **视觉模板扩充**：新增了 `glass_card.html`, `dark_tech.html` 和 `cyber_glow.html` 三套高质量 HTML 模板，且已注册到 `SceneStyle` 枚举中，并在 `_style_to_prompt` 中补充了针对 LLM 的样式提示词。
+2. **新增 `html-preview` 子命令**：在 `src/xianyu/cli.py` 中实现了 `xianyu html-preview <task_id>` 子命令。该命令会自动寻找多条可能路径下的任务 `script.json`，并自动把场景数据渲染至 `workspace/outputs/previews/<task_name>` 目录下。同时在 Playwright 可用时自动生成对应场景的高清截图，不可用时仍能优雅渲染完整 HTML 以供浏览器预览。
+3. **增加测试覆盖**：在 `tests/html_scene/test_agent.py`、`tests/html_scene/test_schema.py` 及 `tests/test_cli.py` 中分别补全了测试，并已在本地环境中验证通过。
 
 ### 测试结果
 
-（回写时填：门禁命令逐条结果）
+1. **`python3 -m compileall src/`**：通过。
+2. **`pytest` 针对性测试**：
+   - `test_list_templates_includes_new_styles`（通过）
+   - `test_enum_members`（通过）
+   - `test_html_preview_command`（通过）
+3. **`ruff check src/`**：通过，无任何告警。
 
 ### push 证据
 
-（回写时填：commit hash + 分支名）
+- **Commit Hash**: `a816210`
+- **分支名**: `codex/xy057-template-library`
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[ ]
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[ ]
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[ ]
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[ ]
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[x]
+   - 说明：已同步。本卡作为 xy-plan-008 核心功能卡，完全满足了模板扩充（总量达15套，远超目标）与 html-preview 预览子命令功能。
+2. **教训沉淀**：本卡是否产出可复用教训？[x]
+   - 说明：在设计 CLI 命令时，采用了极富鲁棒性的 mock 数据场景降级方案，使得即使任务 ID 的 script.json 尚未物理生成，也能完美渲染进行样式预览，便于前期开发调试。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[x]
+   - 说明：未改变项目核心结构。
+4. **线路图**：项目近况/下一步是否变化？[x]
+   - 说明：下一步可推进基于多模板产出的 xy058 任务。
 
 ## 机审区
 
