@@ -219,7 +219,7 @@ class TestBranchEnvelopeAuthority:
         p = repo / card
         p.parent.mkdir(parents=True)
         p.write_text(
-            f"# 任务卡 mx999\n\n> 关联：mx-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：{state} · 项目：mx\n\n## 目标\nx\n\n## 维护区\n\n1. **方案同步**：[是]\n   - 说明：a\n2. **教训沉淀**：[有]\n   - 说明：b\n3. **档案/README**：[否]\n   - 说明：c\n4. **线路图**：[否]\n   - 说明：d\n",
+            f"# 任务卡 mx999-flow-test · flow test\n\n> 关联：mx-plan-002 · 执行体：OpenCode · 验收：OpenCode · 状态：{state} · 项目：mx\n\n## 目标\nx\n\n## 维护区\n\n1. **方案同步**：[是]\n   - 说明：a\n2. **教训沉淀**：[有]\n   - 说明：b\n3. **档案/README**：[否]\n   - 说明：c\n4. **线路图**：[否]\n   - 说明：d\n",
             encoding="utf-8",
         )
         subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
