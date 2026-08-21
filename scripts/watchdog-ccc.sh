@@ -7,30 +7,11 @@
 #
 # 机制：
 #   1. 检查 com.ccc.engine (server.engine.main) 进程是否存在
-#   2. 检查日志 ~/.ccc/logs/engine.stderr.log 的最近心跳修改时间 (mtime < 120s)（engine 实际心跳写 stderr）
-#   3. 如果以上任何一项异常，触发 kickstart-ccc.sh 并记录动作到 ~/.ccc/logs/watchdog.log
+#   2. 检查 com.ccc.web-server 进程是否存在
+#   3. 检查日志 ~/.ccc/logs/engine.stderr.log 的最近心跳修改时间 (mtime < 120s)
+#   4. 如果任何一项异常，只重启对应服务（不连带重启其他服务）
 #
-# 部署说明（如何挂载到 cron 或 launchd，实现 60 秒高频轮询）：
-#   CRON 挂载 (每周一至周日, 每分钟执行一次):
-#     * * * * * /Users/apple/program/CCC/scripts/watchdog-ccc.sh >/dev/null 2>&1
-#
-#   LAUNCHD 部署 (plist 示例，挂载到 ~/Library/LaunchAgents/com.ccc.watchdog.plist):
-#     <?xml version="1.0" encoding="UTF-8"?>
-#     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-#     <plist version="1.0">
-#     <dict>
-#         <key>Label</key>
-#         <string>com.ccc.watchdog</string>
-#         <key>ProgramArguments</key>
-#         <array>
-#             <string>/Users/apple/program/CCC/scripts/watchdog-ccc.sh</string>
-#         </array>
-#         <key>StartInterval</key>
-#         <integer>60</integer>
-#         <key>RunAtLoad</key>
-#         <true/>
-#     </dict>
-#     </plist>
+# 2026-08-21 修复：分离服务健康检查，避免 engine 故障时连带重启 web-server
 
 set -euo pipefail
 
@@ -42,27 +23,32 @@ HEARTBEAT_LOG="${LOG_DIR}/engine.stderr.log"
 WATCHDOG_LOG="${LOG_DIR}/watchdog.log"
 
 ENGINE_PNAME="server.engine.main"
+WEB_PNAME="server.web.server"
 
 log_watchdog() {
   local msg="$1"
   local ts
-  today="$(date '+%Y-%m-%d %H:%M:%S')"
-  echo "[${today}] ${msg}" >> "${WATCHDOG_LOG}"
+  ts="$(date '+%Y-%m-%d %H:%M:%S')"
+  echo "[${ts}] ${msg}" >> "${WATCHDOG_LOG}"
 }
 
-# 1. 检查常驻进程是否存在
-is_alive() {
+# 1. 检查 engine 进程是否存在
+is_engine_alive() {
   pgrep -f "${ENGINE_PNAME}" >/dev/null 2>&1
 }
 
-# 2. 检查日志心跳 (mtime < 120s)
-is_healthy_heartbeat() {
+# 2. 检查 web-server 进程是否存在
+is_web_alive() {
+  pgrep -f "${WEB_PNAME}" >/dev/null 2>&1
+}
+
+# 3. 检查 engine 日志心跳 (mtime < 120s)
+is_engine_heartbeat_healthy() {
   if [[ ! -f "${HEARTBEAT_LOG}" ]]; then
     return 1
   fi
 
   local last_mod
-  # mac/darwin vs linux compatibility
   if [[ "$OSTYPE" == "darwin"* ]]; then
     last_mod=$(stat -f "%m" "${HEARTBEAT_LOG}")
   else
@@ -74,38 +60,82 @@ is_healthy_heartbeat() {
   local diff=$((now - last_mod))
 
   if [[ $diff -lt 120 ]]; then
-    return 0 # 健康
+    return 0
   else
-    return 1 # 心跳超时
+    return 1
   fi
 }
 
-HEALTHY=true
-REASON=""
+# 4. 检查 web-server HTTP 健康
+is_web_http_healthy() {
+  local http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://localhost:7788/health 2>/dev/null || echo "000")
+  if [[ "$http_code" == "200" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
 
-if ! is_alive; then
-  HEALTHY=false
-  REASON="Engine 进程不存在"
-elif ! is_healthy_heartbeat; then
-  HEALTHY=false
-  REASON="Engine 日志心跳超时 (未在120s内刷新)"
+# 检查各服务状态
+ENGINE_ISSUES=()
+WEB_ISSUES=()
+
+# Engine 检查
+if ! is_engine_alive; then
+  ENGINE_ISSUES+=("进程不存在")
+elif ! is_engine_heartbeat_healthy; then
+  ENGINE_ISSUES+=("日志心跳超时")
 fi
 
-if [[ "$HEALTHY" == "true" ]]; then
+# Web Server 检查
+if ! is_web_alive; then
+  WEB_ISSUES+=("进程不存在")
+elif ! is_web_http_healthy; then
+  WEB_ISSUES+=("HTTP 健康检查失败")
+fi
+
+# 如果都没问题，退出
+if [[ ${#ENGINE_ISSUES[@]} -eq 0 ]] && [[ ${#WEB_ISSUES[@]} -eq 0 ]]; then
   echo "健康"
   exit 0
 fi
 
-# 不健康，触发自愈热重启
-log_watchdog "发现故障: ${REASON} -> 正在触发 kickstart 自愈重启机制"
-echo "[WARN] 发现故障: ${REASON}，启动热重启自愈..." >&2
+# 只重启有问题的服务，不连带重启
+FAILED=0
 
-if "${SCRIPT_DIR}/kickstart-ccc.sh" >/dev/null 2>&1; then
-  log_watchdog "自愈成功：kickstart 触发完毕"
-  echo "已拉起"
-  exit 0
-else
-  log_watchdog "ERROR：自愈失败，kickstart 重启异常"
-  echo "失败"
+if [[ ${#ENGINE_ISSUES[@]} -gt 0 ]]; then
+  REASON="Engine: ${ENGINE_ISSUES[*]}"
+  log_watchdog "发现故障 [${REASON}] -> 正在触发 kickstart --engine-only"
+  echo "[WARN] 发现故障: ${REASON}，启动针对性自愈..." >&2
+  
+  if "${SCRIPT_DIR}/kickstart-ccc.sh" --engine-only >/dev/null 2>&1; then
+    log_watchdog "自愈成功：engine 重启完毕"
+    echo "Engine 已拉起"
+  else
+    log_watchdog "ERROR：engine 自愈失败"
+    echo "Engine 重启失败"
+    FAILED=$((FAILED + 1))
+  fi
+fi
+
+if [[ ${#WEB_ISSUES[@]} -gt 0 ]]; then
+  REASON="Web Server: ${WEB_ISSUES[*]}"
+  log_watchdog "发现故障 [${REASON}] -> 正在触发 kickstart --web-only"
+  echo "[WARN] 发现故障: ${REASON}，启动针对性自愈..." >&2
+  
+  if "${SCRIPT_DIR}/kickstart-ccc.sh" --web-only >/dev/null 2>&1; then
+    log_watchdog "自愈成功：web-server 重启完毕"
+    echo "Web Server 已拉起"
+  else
+    log_watchdog "ERROR：web-server 自愈失败"
+    echo "Web Server 重启失败"
+    FAILED=$((FAILED + 1))
+  fi
+fi
+
+if [[ $FAILED -gt 0 ]]; then
   exit 1
 fi
+
+exit 0
