@@ -329,10 +329,11 @@ def _default_registry() -> TaskRegistry:
 
         # 新 merge → SSH 触发 DSH（fire-and-forget）
         try:
+            deploy_home = os.environ.get("M2_DEPLOY_HOME", "/Users/fan")
             _sp.run(
                 ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
                  "fan@192.168.3.116",
-                 "cd /Users/fan && nohup /bin/bash /Users/fan/.dsh/run_patrol.sh >> /Users/fan/.dsh/patrol_merge.log 2>&1 &"],
+                 f"cd {deploy_home} && nohup /bin/bash {deploy_home}/.dsh/run_patrol.sh >> {deploy_home}/.dsh/patrol_merge.log 2>&1 &"],
                 capture_output=True, text=True, timeout=15,
             )
             os.makedirs(os.path.dirname(state_file), exist_ok=True)

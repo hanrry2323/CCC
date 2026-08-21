@@ -260,9 +260,10 @@ def _ensure_chat_bridge() -> None:
         return
     except OSError:
         pass
+    chat_data_dir = os.environ.get("CCC_DATA_DIR", os.path.expanduser("~/.ccc-chat"))
     remote = (
         f"cd ~/program/CCC && nohup env CCC_CHAT_BRIDGE_PORT={port} "
-        f"CCC_CHAT_DATA_DIR=/Users/apple/.ccc-chat "
+        f"CCC_CHAT_DATA_DIR={chat_data_dir} "
         f"/opt/homebrew/bin/python3 -m server.web.chat_bridge > /tmp/chat-bridge.log 2>&1 < /dev/null &"
     )
     try:
