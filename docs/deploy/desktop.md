@@ -10,7 +10,7 @@
 默认 `CCC_SERVER`：
 
 ```text
-http://192.168.3.116:7777
+http://192.168.3.116:7788
 ```
 
 应用内 Settings 可改；Basic Auth 默认 `ccc` / `ccc`。  

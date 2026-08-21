@@ -1,5 +1,7 @@
 # 测前双机对齐与清扰（Runbook）
 
+> 🔴 **已退役（2026-08-02 重构）**：本文描述旧 Hub 双机对齐（sidecar `:7788` / Hub `:7777` / 隧道 `:17777`）与 `ccc-dual-host-check.sh`，链路已全部退役。现行架构为 **2017 单端 `:7788`** 生产 + M1 中枢（`CCC_AUTO_PULL` 负责同步）；**禁止据此操作**。现行拓扑见 [`../deploy/topology.md`](../deploy/topology.md)；**（原文保留，仅供历史追溯）**
+
 > **目的**：开测前让 M1 / Mac2017 / Desktop / sidecar 跑同一 commit，并清掉会污染右栏、Engine、绑定态的残留。  
 > **权威**：平台改仓只在 Cursor（M1）；2017 用 **`git pull --ff-only`**，禁止整仓 rsync 当 SSOT（见 [`../product/dev-channel.md`](../product/dev-channel.md)）。  
 > **核对命令**：[`../deploy/dual-host-version-check.md`](../deploy/dual-host-version-check.md) · `bash scripts/ccc-dual-host-check.sh`

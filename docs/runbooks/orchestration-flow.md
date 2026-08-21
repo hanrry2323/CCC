@@ -1,5 +1,7 @@
 # 编排流程 Runbook — M1 对话 → Mac2017 编排 → 产出
 
+> 🔴 **已退役（2026-08-02 重构）**：本文描述旧 Hub 双机编排（sidecar `:7788` / Hub `:7777` / `:17777` 隧道），链路已全部退役。现行架构为 **2017 单端 `:7788`**（web/engine/board-scheduler/relay）+ M1 中枢出卡/验收/合入；**禁止据此操作**。现行拓扑见 [`../deploy/topology.md`](../deploy/topology.md)；**（原文保留，仅供历史追溯）**
+
 > 架构对齐 2026-07-19。  
 > 边界基线：[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)  
 > 拓扑：[`../deploy/topology.md`](../deploy/topology.md)  

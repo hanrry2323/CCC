@@ -1,5 +1,7 @@
 # 双机版本对齐核对（F2-2）
 
+> 🔴 **已退役（2026-08-02 重构）**：本文描述旧 Hub 时代的双机对齐核对。`ccc-dual-host-check.sh` / `ccc-chat-server.py` / `ccc-board-server.py` 已随 Hub `:7777`、Board `:7775` 一并退役（归档 `docs/archive/legacy-retired-2026-08-02/`）；⚠️ 本文及所涉脚本均不再现行，**禁止据此操作**。现行 2017 单端 `:7788` 顶层见 [`topology.md`](topology.md)；**（原文保留，仅供历史追溯）**
+
 > 一键命令：核对 **M1** 本机 `VERSION`/`git HEAD` 与 **Mac2017 Hub** `GET /api/desktop/version` 是否对齐。  
 > **只核对，不部署**。契约：[`../product/hub-api-v1.md`](../product/hub-api-v1.md) §5。
 
