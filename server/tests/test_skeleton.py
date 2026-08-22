@@ -265,6 +265,7 @@ class TestExecutorsExample:
             for ph in ("{card_path}", "{work_id}", "{worktree}"):
                 assert ph in tpl, f"DSH 行参数模板缺 {ph}"
             assert entry.get("注入提示", True) is False, "DSH wrapper 须 注入提示=false"
-        # 执行体行（不含 description 历史说明）无 opencode 引用
-        raw = json.dumps(executors_data["executors"], ensure_ascii=False).lower()
-        assert "opencode" not in raw, "执行体行不得再含 opencode（2026-08-22 工具收口）"
+        # 执行体绑定/命令无 OpenCode（备注提及环境变量/回退说明不在此列）
+        for e in executors_data["executors"]:
+            assert str(e.get("当前绑定", "")) != "OpenCode", "当前绑定不得为 OpenCode"
+            assert "opencode" not in str(e.get("命令", "")).lower(), "命令不得指向 opencode"
