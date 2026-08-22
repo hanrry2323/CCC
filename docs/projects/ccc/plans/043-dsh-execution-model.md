@@ -46,7 +46,11 @@ load-card → plan → implement → self-test → audit → writeback
 - 实测 DSH 是否原生支持「主+回退」模型链；不支持则加「检测 429/402→切模型重试」路由层。
 - **免费模型稳定性实测**：ox-alpha-free 跑一次真实开发链（读卡→改码→自测→回写）；不稳退 mimo-v2.5/hy3。
 
-> **2026-08-22 实测结论（S1 前置）**：`dsh --profile headless` 探测 ox-alpha-free → **QUOTA 429「Weekly usage limit reached. Resets in 1 day」**——免费周配额当前已耗尽。**回退机制从「可选」升级为「刚需」**：免费配额耗尽时若无回退，开发直接中断。DSH 原生无 headless 模型覆盖 flag；`--patch` 覆盖需研究 patch-list 格式。**S3 前置任务**：①研究 DSH 模型覆盖/回退配置 ②验证 mimo-v2.5/hy3 直连可用 ③落地「429→切备用模型重试」。
+> **2026-08-22 实测结论（S1 前置，已解决）**：
+> 1. 首次探测 429 = **DSH launchd 未配 OPENCODE_GO_API_KEY + ~/.zshrc 旧 key 配额耗尽**（双因）。
+> 2. **老板配新 OpenCode key**（已写 `com.deepseek.dsh-web.plist` EnvironmentVariables + `~/.zshrc`，用户本地配置，不进仓）→ **ox-alpha-free 正常响应**。
+> 3. **关键验证：ox-alpha-free 带 tools 可工作**（DSH headless 实测真实列出目录 13 文件/9 目录，非幻觉）——免费模型做开发的障碍解除。注意：`~/.zshrc` 里 claude-ox 别名注释「ox-alpha-free 拒绝 tools[1210]」是 Claude Code CLI 场景（`--tools ""`），**DSH headless 场景 tools 可用**，两者不冲突。
+> 4. **回退机制仍保留（降为常规保险）**：免费配额确实会耗尽（本次就是），S3 仍落地「429→切备用模型重试」；备用候选 mimo-v2.5/hy3（同 provider 直连）。
 
 ## 验收标准
 
