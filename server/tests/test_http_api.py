@@ -2700,3 +2700,23 @@ class TestDshFindings:
             token=token,
         )
         assert data["record"]["source"] == "observer"
+
+
+def test_last_worker_problem_reads_worker_events(tmp_path: Path) -> None:
+    """P2：看板详情接 worker-events.jsonl 的失败原因（此前只显次数不显原因）。"""
+    from server.web.server import _last_worker_problem
+
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "worker-events.jsonl").write_text(
+        '{"ts":"2026-08-22T01:00:00Z","kind":"worker","work_id":"xy057","phase":"run","ok":false,"returncode":1,"problem":"退出码非 0: 1"}\n'
+        '{"ts":"2026-08-22T02:00:00Z","kind":"worker","work_id":"xy057","phase":"audit","ok":false,"problem":"**机审：不通过（severity：重）**"}\n'
+        '{"ts":"2026-08-22T03:00:00Z","kind":"worker","work_id":"xy999","phase":"run","ok":true,"problem":null}\n',
+        encoding="utf-8",
+    )
+    # 取该卡最后一条有 problem 的事件（audit 那条）
+    assert "机审：不通过" in _last_worker_problem(log_dir, "xy057")
+    # 无 problem 的卡 → 空串
+    assert _last_worker_problem(log_dir, "xy999") == ""
+    # 无匹配卡 → 空串
+    assert _last_worker_problem(log_dir, "nonexistent") == ""

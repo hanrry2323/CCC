@@ -609,6 +609,34 @@ def _infer_project_kind(item: dict[str, Any]) -> str:
     return "business"
 
 
+def _last_worker_problem(log_dir: Path | None, work_id: str) -> str:
+    """worker-events.jsonl 中该卡最后一条 problem（执行/机审失败原因），无则空串。
+
+    P2（2026-08-22）：看板详情接失败原因——后台早已埋点（worker-events.jsonl `problem` 字段），
+    此前只显打回次数不显原因。倒序扫该卡最近事件取 problem，TTL 免每次全扫。
+    """
+    if log_dir is None:
+        return ""
+    try:
+        path = log_dir / "worker-events.jsonl"
+        if not path.is_file():
+            return ""
+        with path.open(encoding="utf-8") as fh:
+            for line in reversed(list(fh)):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("kind") == "worker" and rec.get("work_id") == work_id and rec.get("problem"):
+                    return str(rec["problem"])
+    except Exception:
+        pass
+    return ""
+
+
 def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | None:
     """按 id 查找任务卡详情；未找到返回 None。"""
     item = next((i for i in items if i.id == task_id), None)
@@ -637,6 +665,9 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
         "acceptance": _parse_task_acceptance(item.id),
         # P1 修复：详情补打回原因/人审批准（此前前端 taskCardDetail 读 t.reason 恒空）
         "reason": reason or item.reason or "",
+        # P2（2026-08-22）：补执行/机审失败原因（worker-events.jsonl 最后一条 problem），
+        # 看板不再只显打回次数，能看到「为什么失败」
+        "last_problem": _last_worker_problem(log_dir, item.id) if log_dir else "",
         "approval": item.approval or "",
         "phases": [],
         "events": [],

@@ -87,9 +87,12 @@ for b in out.splitlines():
         if main_card.returncode == 0 and "状态：已关闭" in main_card.stdout:
             continue
         card = subprocess.check_output(["git", "show", f"{b}:{f}"], text=True)
-        if machine_audit_passed_text(card):
-            m = re.match(r"^([a-z]{2,4}\d{3})-", Path(f).stem)
-            if m:
+        m = re.match(r"^([a-z]{2,4}\d{3})-", Path(f).stem)
+        if m and machine_audit_passed_text(card):
+            # P0 硬化（2026-08-22）：ready 入队须账本有机审记录（卡文自写不算，防假关闭污染批次）
+            from server.board.audit_ledger import has_pass
+
+            if has_pass(m.group(1)):
                 ready.append(m.group(1))
             break
 print("\n".join(sorted(set(ready))))
@@ -417,11 +420,9 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
       audit_ok=true
     fi
   elif [[ "$CLOSE_ONLY" == true ]]; then
-    # close-only 且无分支：回退本地卡机审区（分支已删/已合入），加告警标记
-    if check_audit "$path"; then
-      echo "[WARN] ${id}: 分支已删除，回退本地卡机审区（close-only 模式，请人工确认机审证据）" >&2
-      audit_ok=true
-    fi
+    # close-only 且无分支：分支信封已不可得（已删/已合入）。机审真值走下方 ledger 校验，
+    # 不再回退本地卡文机审区（2026-08-22 P0 硬化：卡文自写不算真值，防假关闭复发）。
+    audit_ok=true
   fi
   if [[ "$audit_ok" != true ]]; then
     echo "[ERROR] ${id}: 分支信封无机审通过证据（origin/${branch} 卡无机审区，本地卡也无）" >&2
@@ -448,23 +449,17 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
       drift_rc=0
     fi
     if [[ "$drift_rc" -ne 0 ]]; then
-      if [[ "$CLOSE_ONLY" == true ]]; then
-        echo "[WARN] ${id}: 检测到机审后漂移（diff rc=${drift_rc}），但 --close-only 模式放行（人工已确认最新业务代码无害）" >&2
-      else
-        echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审" >&2
-        return 1
-      fi
+      # 2026-08-22 P0 硬化：机审后漂移一律硬拒绝，--close-only 不再放行（防未复审代码合入）
+      echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
+      return 1
     fi
   fi
 
   # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
   if ! check_maintenance "$path" "$branch"; then
-    if [[ "$CLOSE_ONLY" == true ]]; then
-      echo "[WARN] ${id}: 维护区校验失败（分支排版或声明冲突），但 --close-only 模式放行（人工已确认声明或已在 main 补齐方案）" >&2
-    else
-      echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试。" >&2
-      return 1
-    fi
+    # 2026-08-22 P0 硬化：维护区失败一律硬拒绝，--close-only 不再放行（完成钩子不可绕过）
+    echo "[ERROR] ${id}: 维护区未完成 → 拒绝合入。请执行体补齐 ## 维护区 四问后重试（--close-only 不放行）。" >&2
+    return 1
   fi
 
   # 密钥/凭据扫描门禁（2026-08-16 质量门禁）：分支 diff 夹带密钥 → 阻断合入
@@ -539,12 +534,17 @@ from server.board.loader import load_dispatch_cards
 load_dispatch_cards('docs/dispatch')
 " 2>/dev/null || echo "[WARN] ${id}: 索引刷新失败（不阻断合入，sync 可能滞后）" >&2
   # 033 阶段 2 M6：合入成功写批准真值账本（approve_merge）——「老板合入批准」不再仅靠卡头批准行
-  "$PYTHON_BIN" -c "
+  # 2026-08-22 P0 硬化：账本写失败 = 合入失败回滚（此前仅 WARN，三节点证据链断，审计不可追溯）
+  if ! "$PYTHON_BIN" -c "
 import sys
 sys.path.insert(0, '.')
 from server.board.audit_ledger import record_action
 record_action('approve_merge', '${id}', source='approve-merge', detail='${branch}')
-" 2>/dev/null || echo "[WARN] ${id}: approve_merge 账本写入失败（不影响合入，建议补记）" >&2
+" 2>/dev/null; then
+    echo "[ERROR] ${id}: approve_merge 账本写入失败 → 合入失败回滚（卡已置关闭未提交，已 git checkout 还原）" >&2
+    git checkout -- "$path" 2>/dev/null || true
+    return 1
+  fi
   sync_plan_cards "$path"
   # 机审命中率台账（v4 · 2026-08-14 复审 P1-C）：合入后关卡（无返工）→ 通过行标命中
   "$PYTHON_BIN" -c "

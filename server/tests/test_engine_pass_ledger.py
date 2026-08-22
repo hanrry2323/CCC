@@ -103,3 +103,42 @@ def test_pass_prod_card_path_records_ledger(ledger_file, monkeypatch, tmp_path: 
     ok, problems, audited = _run_machine_audit_after_writeback(work, None, {}, tmp_path / "logs", 300)
     assert ok is True
     assert any(cid == "mx099" for cid, _ in called)
+
+
+def test_branch_audit_requires_ledger_not_card_text(monkeypatch, tmp_path: Path) -> None:
+    """P0 硬化：branch_card_audit_passed 卡文「机审：通过」但账本无记录 → 不算通过。
+
+    对应假关闭复发风险：执行体在分支卡里写「结论：通过」伪造，看板/ready 队列不得再信纯文本。
+    """
+    from server.web.audit_evidence import branch_card_audit_passed
+
+    class _R:
+        returncode = 0
+        stdout = "# 任务卡 xy200 · fake\n\n## 机审区\n\n> 结论：通过\n"
+
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: _R(),
+    )
+    # 空账本（无 machine_audit_pass 记录）
+    monkeypatch.setattr("server.board.audit_ledger._ledger_path", lambda d=None: tmp_path / "empty.jsonl")
+    (tmp_path / "empty.jsonl").write_text("", encoding="utf-8")
+    assert branch_card_audit_passed(Path("."), "docs/dispatch/xy/xy200.md", "codex/xy200-fake") is False, \
+        "卡文写通过但账本无记录 → 必须 False（防假关闭）"
+
+    # 账本有该卡 machine_audit_pass → True
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        '{"ts":"2026-08-16T00:00:00Z","action":"machine_audit_pass","object_id":"xy200","source":"engine"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("server.board.audit_ledger._ledger_path", lambda d=None: ledger)
+    # 清两个缓存（ledger path 变了 + branch 缓存要重算）
+    from server.board.audit_ledger import _pass_ids_cache
+    from server.web import audit_evidence as _ae
+
+    _pass_ids_cache["key"] = None
+    _pass_ids_cache["ids"] = None
+    _ae._branch_cache.clear()
+    assert branch_card_audit_passed(Path("."), "docs/dispatch/xy/xy200.md", "codex/xy200-fake") is True, \
+        "账本有 machine_audit_pass → True"

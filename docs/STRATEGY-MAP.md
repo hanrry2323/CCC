@@ -1,4 +1,7 @@
-> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub 旧架构或标注「待核（T31 基线收口）」，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止据此判断现行架构；对外叙事以 INDEX §0 为准。
+> 🔴 **RETRACTED（2026-08-11 收敛）· 归档说明（2026-08-22）**：本文描述 Hub 旧架构或标注「待核（T31 基线收口）」，已被现行架构（INDEX §0 薄驱动 Engine）取代。
+> **归档原因**：本文大量 v0.65/v0.70 前旧口径（7 角色、Hub :7777、loop-engineer-authority、阶段能力包）与现行架构冲突；保留仅作范式演进史，**禁止据此判断现行架构**。
+> **权威替代**：现行架构 = `docs/architecture.md`；文档索引 = `docs/INDEX.md` §0；演进方向 = `docs/roadmap.md`；工程规范 = `docs/ENGINEERING-CANON.md`。
+> **状态**：史（archived）。不重写（历史演进叙事已由 roadmap/CHANGELOG 覆盖，重写产生双写）。
 
 # CCC 战略地图
 

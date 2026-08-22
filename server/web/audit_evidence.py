@@ -43,8 +43,16 @@ def branch_card_audit_passed(
             timeout=10,
             check=False,
         )
-        if res.returncode == 0:
-            passed = machine_audit_passed_text(res.stdout)
+        if res.returncode == 0 and machine_audit_passed_text(res.stdout):
+            # P0 硬化（2026-08-22）：机审真值 = 账本 machine_audit_pass；卡文仅作提示。
+            # 卡文「机审：通过」但账本无记录（执行体自写伪造）→ 不算通过，防假关闭复发。
+            import re as _re
+
+            from server.board.audit_ledger import has_pass
+
+            _m = _re.match(r"^([a-z]{2,4}\d{3})", branch.removeprefix("codex/"))
+            card_id = _m.group(1) if _m else ""
+            passed = has_pass(card_id) if card_id else False
     except Exception:
         passed = None
     _branch_cache[branch] = (now, passed)

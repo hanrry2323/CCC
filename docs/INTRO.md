@@ -1,4 +1,7 @@
-> 🔴 **RETRACTED（2026-08-11 收敛）**：本文描述 Hub 旧架构或标注「待核（T31 基线收口）」，已被现行架构（INDEX §0 薄驱动 Engine）取代。禁止据此判断现行架构；对外叙事以 INDEX §0 为准。
+> 🔴 **RETRACTED（2026-08-11 收敛）· 归档说明（2026-08-22）**：本文描述 Hub 旧架构或标注「待核（T31 基线收口）」，已被现行架构（INDEX §0 薄驱动 Engine）取代。
+> **归档原因**：2026-08-02 架构重构定稿后，Hub 入口/阶段能力包/角色超市等口径全部退役；本文保留仅作范式演进史追溯，**禁止据此判断现行架构**。
+> **权威替代**：现行叙事 = `docs/ENGINEERING-CANON.md`；架构 = `docs/architecture.md`；文档索引 = `docs/INDEX.md` §0；对外介绍 = 根目录 `README.md`。
+> **状态**：史（archived）。不重写（新架构介绍已由 README/architecture 覆盖，重写产生双写）。
 
 # CCC 完整介绍 — Connect–Claude Code · Loop Engineer
 

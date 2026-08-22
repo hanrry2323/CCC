@@ -72,7 +72,7 @@
 │   ├── VISION.md                               # 叙事
 │   ├── STRATEGY-MAP.md                         # 全景演进史
 │   ├── dispatch/                               # ★ 任务卡文档（唯一事实源）
-│   │   └── T<n>-*.md                           #   T1–T35 任务卡
+│   │   └── <prefix><NNN>-*.md                  #   <prefix>NNN 任务卡（docs/dispatch/<prefix>/）
 │   ├── archive/                                # 历史归档（旧 scripts/ 等已迁入）
 │   └── ...                                     # 其余专题文档
 │
@@ -177,7 +177,7 @@
             打回（附问题清单）→ 待分派（人工重派）
 ```
 
-- **任务卡文档 = 唯一事实源**：`docs/dispatch/T<n>-*.md`，元数据行含 `状态：X` / `执行体：Y` / `日期：Z`。
+- **任务卡文档 = 唯一事实源**：`docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md`，元数据行含 `状态：X` / `执行体：Y` / `日期：Z`。
 - **非法状态转移** 一律抛 `IllegalTransitionError`。
 - 无旧看板状态机（planned/verified/released）残留。
 
