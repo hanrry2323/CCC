@@ -1,6 +1,6 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表模板（2026-08-22 方向标注）：当前 OpenCode=开发、Claude Code=机审、DSH=只读取证/审计。**目标（老板 2026-08-22 方向）**：执行体/机审/质量验证/项目运营全部迁 **DSH**（CCC×DSH 深度绑定，见 qx-map `docs/ccc-dsh-integration-direction.md`）；DSH 用 Cordis 插件承载开发内部工作流 + 自定义 Agent 作项目运营。本表为过渡态配置，等 engine 调度→DSH 集成定稿后重写。复制本文件为 executors.json 启用。",
+  "description": "CCC 执行体注册表（2026-08-22 工具收口后现行态）：开发/维护执行体、机审验收席、只读取证全 DSH（dsh-executor.sh / dsh-auditor.sh / headless wrapper）；管理席与最终审核合入 = Claude Code（出卡裁决 + audit-merge-agent 一条龙）；OpenCode 已移除。链路 = DSH 内核 + Claude Code 终审（老板 2026-08-22 定调）。复制本文件为 executors.json 启用。",
   "executors": [
     {
       "角色": "开发执行体",
