@@ -556,6 +556,14 @@ try:
 except Exception:
     pass
 " "$id" || true
+  # S5（2026-08-22）：合入后 L1 质量分（增量不可劣化）——出分进 ledger，劣化则 WARN 报告
+  if [ -f scripts/quality-score.py ]; then
+    if "$PYTHON_BIN" scripts/quality-score.py . "${branch}" --record >/tmp/quality-${id}.json 2>&1; then
+      echo "[OK] ${id} 质量分达标（见 /tmp/quality-${id}.json）"
+    else
+      echo "[WARN] ${id} 质量分劣化（增量不可劣化门禁，软告警）——见 /tmp/quality-${id}.json" >&2
+    fi
+  fi
   git add -- "$path"
   if ! git diff --cached --quiet; then
     git commit -m "$(cat <<EOF
