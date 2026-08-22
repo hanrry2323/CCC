@@ -104,10 +104,11 @@ class TestLoadRegistry:
         assert len(reg.entries) == 6
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
-        assert cli.binding == "OpenCode"
-        assert cli.command == "opencode"
-        assert "run --auto" in cli.args_template
-        assert "--dir {worktree}" in cli.args_template
+        # S3（2026-08-22）：开发执行体切 DSH（wrapper 自读提示，注入关闭）
+        assert cli.binding == "DSH（S3 切换 · 2026-08-22）"
+        assert cli.command == "scripts/dsh-executor.sh"
+        assert cli.args_template == "{card_path} {work_id} {worktree} {role}"
+        assert cli.inject_hint is False
         cc = reg.cli_entry_for_binding("Claude Code")
         assert cc is not None
         assert cc.role == "验收席"  # F5 定稿：开发仅 OpenCode，Claude Code 为机审验收席
@@ -490,3 +491,61 @@ class TestBuildCommand:
             worktree="/Users/fan/program/ccc-dev-ws-t64",
         )
         assert cmd == ["echo", "--dir", "/Users/fan/program/ccc-dev-ws-t64", "-p", "完成 T64"]
+
+
+class TestDshExecutor:
+    """S3：DSH 开发执行体——build_command + inject_hint 跳过（wrapper 自读提示）。"""
+
+    def test_dsh_executor_builds_positional_argv(self) -> None:
+        """dsh-executor.sh 位置参数模板正确构建 argv（card_path work_id worktree role）。"""
+        entry = ExecutorEntry(
+            role="开发执行体",
+            category="可后台 CLI",
+            binding="dsh",
+            note="",
+            command="scripts/dsh-executor.sh",
+            args_template="{card_path} {work_id} {worktree} {role}",
+            workdir="",
+            inject_hint=False,
+        )
+        cmd = build_command(
+            entry,
+            work_id="dshtest1",
+            role="开发执行体",
+            card_path="docs/dispatch/ccc/ccc001.md",
+            default_workdir="/data",
+            worktree="/tmp/wt/dshtest1",
+        )
+        assert cmd == [
+            "scripts/dsh-executor.sh",
+            "docs/dispatch/ccc/ccc001.md",
+            "dshtest1",
+            "/tmp/wt/dshtest1",
+            "开发执行体",
+        ]
+
+    def test_registry_loads_inject_hint_from_json(self, tmp_path) -> None:
+        """JSON「注入提示」字段 → ExecutorEntry.inject_hint（DSH wrapper 关闭注入）。"""
+        import json as _json
+
+        from server.engine.dispatch import load_registry
+
+        cfg = tmp_path / "executors.json"
+        cfg.write_text(_json.dumps({
+            "version": "2",
+            "executors": [{
+                "角色": "开发执行体",
+                "分类": "可后台 CLI",
+                "当前绑定": "DSH",
+                "命令": "scripts/dsh-executor.sh",
+                "参数模板": "{card_path} {work_id} {worktree} {role}",
+                "工作目录": "",
+                "worktree_base": "",
+                "注入提示": False,
+                "备注": "DSH 开发执行体",
+            }]
+        }, ensure_ascii=False), encoding="utf-8")
+        reg = load_registry(cfg)
+        entry = reg.cli_entry_for_role("开发执行体")
+        assert entry.command == "scripts/dsh-executor.sh"
+        assert entry.inject_hint is False

@@ -10,7 +10,8 @@
       "参数模板": "{card_path} {work_id} {worktree} {role}",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "CCC×DSH 整合：开发执行体改 DSH headless（读卡→实现→自测→回写）。前置：2017 配 OPENCODE_GO_API_KEY。过渡态：DSH 不稳时回退 OpenCode。机审由 DSH 审计插件另做（S4）。",
+      "注入提示": false,
+      "备注": "CCC×DSH 整合：开发执行体改 DSH headless（读卡→实现→自测→回写）。inject_hint=false：wrapper 自读卡内提示，Engine 不注入（防污染位置参数）。前置：2017 配 OPENCODE_GO_API_KEY。过渡态：DSH 不稳时回退 OpenCode。机审由 DSH 审计插件另做（S4）。",
       "worker_id": "W4"
     },
     {
