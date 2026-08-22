@@ -109,12 +109,15 @@ class TestLoadRegistry:
         assert cli.command == "scripts/dsh-executor.sh"
         assert cli.args_template == "{card_path} {work_id} {worktree} {role}"
         assert cli.inject_hint is False
-        cc = reg.cli_entry_for_binding("Claude Code")
-        assert cc is not None
-        assert cc.role == "验收席"  # F5 定稿：开发仅 OpenCode，Claude Code 为机审验收席
-        # 验收席绑定为可后台 CLI（机审）
+        # S4（2026-08-22）：机审验收席切 DSH（dsh-auditor.sh）；Claude Code 不再绑定
+        dsh_audit = reg.cli_entry_for_binding("DSH（S4 切换 · 2026-08-22）")
+        assert dsh_audit is not None
+        assert dsh_audit.role == "验收席"
+        assert dsh_audit.command == "scripts/dsh-auditor.sh"
+        assert dsh_audit.inject_hint is False
+        # 验收席绑定为可后台 CLI（机审：DSH + OpenCode 回退）
         acc_rows = [e for e in reg.entries if e.role == "验收席"]
-        assert {e.binding for e in acc_rows} == {"Claude Code", "OpenCode"}
+        assert {e.binding for e in acc_rows} == {"DSH（S4 切换 · 2026-08-22）", "OpenCode"}
         assert all(e.category == "可后台 CLI" for e in acc_rows)
         assert all(e.command for e in acc_rows)
 

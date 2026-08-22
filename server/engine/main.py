@@ -2294,7 +2294,9 @@ def _dispatch_and_collect(
     # v4 指令必须在此实际注入审计 agent 才能生效。
     # 重度复审 P1-A：v4 块注入到「含 work.id 的 prompt 参数」而非 cmd[-1]
     # （OpenCode 模板 cmd[-1] 是尾随 worktree 串；fresh 标志在注入后追加，保住 prompt 不变量）。
-    if (log_phase or "").strip().lower() == "audit" and cmd:
+    if (log_phase or "").strip().lower() == "audit" and cmd and getattr(entry, "inject_hint", True):
+        # S4（2026-08-22）：wrapper 型机审执行体（如 dsh-auditor.sh，inject_hint=False）自含 v4 指令，
+        # Engine 不注入——避免污染位置参数（与 run 阶段 inject_hint 守卫一致）。
         _v4_audit_block = (
             "\n\n---\n## 机审 v4 指令（三级 · 必须遵循）\n"
             "1. 对抗式找茬：假设有 P0/P1，找具体可复现问题；0 发现须给风险论证。\n"
