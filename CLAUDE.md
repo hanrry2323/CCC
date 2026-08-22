@@ -54,9 +54,13 @@ ID=<prefix><NNN>  分支=codex/<文件名去.md>
 **了解 ≠ 代执行**：中枢禁止代执行体 commit/push 业务仓分支、禁止手改运行面、禁止 ssh 连环侦察业务仓；
 核实步骤写进卡内探针，交给 Engine 执行体。业务仓路径以 `registry.yaml` 的 `paths` 为准。
 
-## 合入批准（硬路由 · 人唯一常规动作）
+## 审核合入（硬路由 · 两大人审环节之② · 2026-08-22 老板修订）
 
-老板说 **「合入批准」**（旧称「验收看板」等同义 → 同一动作）→ `scripts/approve-merge.sh`。
+> **人审两环节**（033 三环节 → 两环节，2026-08-22 修订）：① **出卡**（方案投递确认）② **审核合入**（合入即验收）。
+> 执行体/机审目标迁 **DSH**（过渡态：当前执行体 OpenCode、机审 Claude Code/OpenCode，方向标注见 `server/config/executors.example.json`）。
+
+老板说 **「审核合入」**（旧称「合入批准 / 验收看板」等同义 → 同一动作）→ `scripts/approve-merge.sh`。
+**合入即验收**：Claude Code 一条龙 **收卡 → 审核 → 合入 → 推送 → 部署**；不合入条件 → 打回重做，或 Claude Code 修改后合入部署。
 取证：`scripts/card-evidence.sh`；ready：看板 `/board/ready_for_merge`。**禁止**自认机审席、禁止 `/tmp` merge 考古。
 
 ## 红线
