@@ -384,9 +384,17 @@ class TestUpdatePlan:
         assert fields.get("编号") == "hp-plan-008"
         assert fields.get("状态") == "待排期"
 
-    def test_accept_plan_requires_daiyanshou(self, tmp_path: Path):
+    def _empty_ledger(self, tmp_path: Path, monkeypatch) -> Path:
+        """独立空 ledger（无 convert 记录 → 存量方案降级路径），避免真实 ledger 污染测试。"""
+        ledger = tmp_path / "ledger.jsonl"
+        ledger.write_text("", encoding="utf-8")
+        monkeypatch.setenv("CCC_AUDIT_LEDGER", str(ledger))
+        return ledger
+
+    def test_accept_plan_requires_daiyanshou(self, tmp_path: Path, monkeypatch):
         """033 M4：accept_plan 仅对「待验收」方案生效；验收标准未勾选拒绝；拍板置已完成+批准行。"""
         _make_registry(tmp_path, ["ccc"])
+        self._empty_ledger(tmp_path, monkeypatch)  # 存量方案（无 convert 记录）→ 不强制 delivery
         # 待验收方案 → 拍板成功（先全勾选验收项，_make_plan 默认 1 未勾）
         p = _make_plan(tmp_path, "ccc", "001", "test", "待验收")
         p.write_text(p.read_text().replace("- [ ] 测试项 1", "- [x] 测试项 1"))
@@ -424,6 +432,40 @@ class TestUpdatePlan:
         )
         r3 = accept_plan(tmp_path, rel_path="docs/projects/ccc/plans/003-test3.md")
         assert "error" in r3 and "验收标准" in r3["error"]
+
+    def test_accept_plan_requires_delivery_for_new_era(self, tmp_path: Path, monkeypatch):
+        """P1-2 交付层强制：新规方案（有 convert 账本记录）验收拍板前必须有交付报告。
+
+        无交付报告 → 阻断；补上交付报告（引用方案编号）→ 放行置已完成。
+        """
+        import json as _json
+
+        _make_registry(tmp_path, ["ccc"])
+        # 新规方案：ledger 含该方案 convert 记录
+        ledger = tmp_path / "ledger.jsonl"
+        ledger.write_text(
+            _json.dumps({"ts": "2026-08-16T00:00:00Z", "action": "convert", "object_id": "ccc-plan-001"}) + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CCC_AUDIT_LEDGER", str(ledger))
+        p = _make_plan(tmp_path, "ccc", "001", "test", "待验收")
+        p.write_text(p.read_text().replace("- [ ] 测试项 1", "- [x] 测试项 1"))
+        rel = str(p.relative_to(tmp_path))
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            r = accept_plan(tmp_path, rel_path=rel)
+        assert "error" in r and "交付报告" in r["error"], "新规方案缺交付报告必须阻断"
+        assert "状态：已完成" not in p.read_text()
+
+        # 补交付报告 → 放行
+        deliveries_dir = tmp_path / "docs" / "projects" / "ccc" / "deliveries"
+        deliveries_dir.mkdir(parents=True, exist_ok=True)
+        (deliveries_dir / "ccc-delivery-001.md").write_text(
+            "# 交付报告\n\n> 方案：ccc-plan-001\n", encoding="utf-8"
+        )
+        with patch("server.board.plans._git_commit_push", return_value=(True, "")):
+            r2 = accept_plan(tmp_path, rel_path=rel)
+        assert r2.get("ok") is True, r2
+        assert "状态：已完成" in p.read_text()
 
     def test_update_plan_yididing_transitions(self, tmp_path: Path):
         """033 F1：已确定 可流转到 待排期/作废，不可直跳已完成（白名单）。"""
@@ -1357,6 +1399,57 @@ class Test027CoreFlow:
             result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
         assert result.get("auto_completed") is True
         assert "状态：待验收" in p.read_text()
+
+    def test_approve_merge_index_refresh_propagates_progress(self, tmp_path: Path):
+        """P0-1（断链#1）复现：approve-merge 关闭卡后须刷新 cards.index.jsonl，进度才实时正确。
+
+        不 mock load_index_file——走真实 load_dispatch_cards 增量索引链路：
+        1) 卡已回写 → sync 读到旧值 → 0/1（未关闭）
+        2) 模拟 close_card 改 .md 状态为已关闭（不刷新索引）→ sync 仍 0/1（旧 bug）
+        3) load_dispatch_cards 刷新索引（approve-merge 2026-08-19 补的步骤）→ sync 读到 1/1
+        """
+        from server.board.loader import load_dispatch_cards
+
+        _make_registry(tmp_path, ["ccc"])
+        # 真实任务卡文件（含 # 任务卡 卡头，状态 已回写）
+        dispatch_dir = tmp_path / "docs" / "dispatch"
+        card_dir = dispatch_dir / "ccc"
+        card_dir.mkdir(parents=True, exist_ok=True)
+        card_path = card_dir / "ccc001-refresh-test.md"
+        card_path.write_text(
+            "# 任务卡 ccc001 · 索引刷新复现\n\n"
+            "> 状态：已回写 · 项目：ccc · 关联：ccc-plan-001 · 执行体：OpenCode · 日期：2026-08-09\n\n"
+            "## 回写区\n\n**日期**：2026-08-22\n\n## 维护区\n\n1. **方案同步**：[是]\n   - 说明：ok\n",
+            encoding="utf-8",
+        )
+        # 方案关联卡指向 ccc001
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001")
+        p.write_text(content)
+
+        # 建立索引（状态：已回写）
+        load_dispatch_cards(tmp_path / "docs" / "dispatch")
+        result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result["progress"]["closed"] == 0
+        assert "进度：0/1 (0%)" in p.read_text(), "卡未关闭时进度应为 0/1"
+
+        # 模拟 approve-merge.sh close_card：只改卡 .md 状态，不刷新索引
+        text = card_path.read_text(encoding="utf-8")
+        text = text.replace("状态：已回写", "状态：已关闭", 1)
+        card_path.write_text(text, encoding="utf-8")
+
+        # 旧 bug：不刷新索引 → sync_plan_progress 读旧索引（已回写）→ closed=0
+        stale = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert stale["progress"]["closed"] == 0, "索引未刷新时 closed 应仍为 0（旧 bug 行为）"
+        assert "进度：0/1 (0%)" in p.read_text(), "索引未刷新时进度不应更新（旧 bug 行为）"
+
+        # P0-1 修复：close_card 后 load_dispatch_cards 刷新索引（approve-merge.sh L544-548）
+        load_dispatch_cards(tmp_path / "docs" / "dispatch")
+        result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+        assert result["progress"]["closed"] == 1
+        assert "进度：1/1 (100%)" in p.read_text(), "索引刷新后进度应实时正确同步为 1/1"
+        assert "状态：待验收" in p.read_text(), "关联卡全关后方案应自动推进「待验收」"
 
     def test_all_voided_auto_void_plan(self, tmp_path: Path):
         """全作废边界：全部关联卡作废 → 方案自动置「作废」。"""

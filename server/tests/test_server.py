@@ -62,7 +62,8 @@ class TestAuthLogic:
             "username": "testuser",
             "expires": time.time() - 1000  # 已过期
         }
-        import base64, json
+        import base64
+        import json
         token = base64.urlsafe_b64encode(
             json.dumps(expired_token_data).encode()
         ).decode()

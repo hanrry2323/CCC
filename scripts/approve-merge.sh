@@ -473,29 +473,21 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
   fi
 
   # 033 阶段 2 M6：机审 provenance——查 ledger 有 machine_audit_pass 记录（不只信卡文件「机审：通过」文本）
-  # 2026-08-19 硬化（断点③）：8-16 ledger 能力后的卡必须有机审 provenance，缺失=阻断。
-  # 8-16 前存量卡（无 ledger 能力）降级 WARN 放行（日期边界 2026-08-16）。
+  # 2026-08-19 硬化（断点③）：ledger 能力后的卡必须有机审 provenance，缺失=阻断。
+  # 2026-08-22 单源化（P0-3）：日期边界由「卡文日期(可伪造)」改为「账本是否为空(伪造免疫)」。
+  #   - 账本为空 = 账本能力前(pre-era) → 降级卡文机审区（旧卡兼容，可加 --close-only）
+  #   - 账本已有记录但缺本卡 → 硬拒绝（卡文自写「机审：通过」不构成真值）
   # 根因：cla020-028 卡体写"机审通过"但 board flag=false + 无 ledger 记录，被 close-only 放行（假关闭事故）。
   if ! "$PYTHON_BIN" -c "
 import sys
 sys.path.insert(0, '.')
-from server.board.audit_ledger import has_action
+from server.board.audit_ledger import has_action, _machine_audit_pass_ids
+if not _machine_audit_pass_ids():
+    sys.exit(0)  # 账本为空（pre-era）→ 降级放行，卡文机审区作旧卡兼容
 sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
 " 2>/dev/null; then
-    # 查卡日期：8-16 前的存量卡降级放行，之后的卡必须 provenance
-    card_date=$("$PYTHON_BIN" -c "
-import re,sys
-from pathlib import Path
-t=Path(sys.argv[1]).read_text(encoding='utf-8')
-m=re.search(r'日期：(\d{4}-\d{2}-\d{2})',t)
-print(m.group(1) if m else '2099-01-01')
-" "$path" 2>/dev/null)
-    if [[ "$card_date" < "2026-08-16" ]]; then
-      echo "[WARN] ${id}: 存量卡(日期${card_date}早于8-16)无 machine_audit_pass 记录，降级放行（人工复核机审 provenance）" >&2
-    else
-      echo "[ERROR] ${id}: 无 machine_audit_pass 账本记录（8-16 后的卡必须机审 provenance）→ 拒绝合入。请先走机审（manual-audit.sh）留 ledger 记录。" >&2
-      return 1
-    fi
+    echo "[ERROR] ${id}: 账本已有机审记录但缺本卡 machine_audit_pass（机审真值单源化：卡文自写不算）→ 拒绝合入。请先走机审（manual-audit.sh）留 ledger 记录，或 scripts/sync-audit-ledger.py 同步双机台账。" >&2
+    return 1
   fi
 
   # 工作树须在 main
@@ -707,6 +699,14 @@ try:
 except Exception as e:
     pass
 " || true
+
+# P0-3 单源化前置：合入前尝试同步双机机审台账（2017→M1），保证 provenance 最新。
+# 失败仅 WARN 不阻断——硬校验仍按本机 ledger 判定（fail-closed，宁拒勿放）。
+if [ -x scripts/sync-audit-ledger.py ]; then
+  if ! "$PYTHON_BIN" scripts/sync-audit-ledger.py >/dev/null 2>&1; then
+    echo "[WARN] 机审台账同步失败（provenance 可能滞后，硬校验按本机 ledger 判定）" >&2
+  fi
+fi
 
 FAILED=0
 for id in "${IDS[@]}"; do

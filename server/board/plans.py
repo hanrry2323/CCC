@@ -842,15 +842,32 @@ def accept_plan(
     # 033 阶段 2 M6：验收拍板前查「转卡」批准真值账本（convert）——存量无记录 WARN 放行
     from server.board.audit_ledger import has_action, record_action
 
-    if not has_action("convert", f"{project}-plan-{_m_accept.group(2)}"):
+    is_legacy = not has_action("convert", f"{project}-plan-{_m_accept.group(2)}")
+    if is_legacy:
         logger.warning("方案 %s 无 convert 账本记录（存量降级放行；新方案须转卡后验收）", f"{project}-plan-{_m_accept.group(2)}")
 
-    # 033 阶段 2 M6：交付物声明校验（轻量 WARN，不全量核查——交付报告/CHANGELOG/RELEASE/tag/可复跑）
-    if not re.search(r"交付|CHANGELOG|RELEASE|deliver", current, re.I):
-        logger.warning(
-            "方案 %s 未声明交付物（交付报告/CHANGELOG/RELEASE/Git Tag/可复跑验证），拍板前建议在备注补齐",
-            rel_path,
-        )
+    # 交付层强制（P1-2 · 2026-08-22）：新规方案（有 convert 记录）验收拍板前必须有交付报告
+    # docs/projects/<prefix>/deliveries/ 内存在引用本方案编号的交付报告；存量方案不追溯（WARN）。
+    delivery_path = _find_delivery_for_plan(repo_root, project, _m_accept.group(2))
+    if not is_legacy and delivery_path is None:
+        return {
+            "error": (
+                f"方案 {project}-plan-{_m_accept.group(2)} 缺交付报告（Delivery Gate P1-2）："
+                f"需在 docs/projects/{project}/deliveries/ 下提交引用本方案的交付报告后才能验收拍板。"
+                f"模板 docs/projects/_template/delivery-template.md"
+            )
+        }
+    if delivery_path is not None:
+        logger.info("方案 %s 交付报告存在: %s", rel_path, delivery_path)
+    elif not is_legacy:
+        pass  # 上面已 return
+    else:
+        # 033 阶段 2 M6：交付物声明校验（轻量 WARN，不全量核查——交付报告/CHANGELOG/RELEASE/tag/可复跑）
+        if not re.search(r"交付|CHANGELOG|RELEASE|deliver", current, re.I):
+            logger.warning(
+                "方案 %s 未声明交付物（交付报告/CHANGELOG/RELEASE/Git Tag/可复跑验证），拍板前建议在备注补齐",
+                rel_path,
+            )
 
     today = date.today().isoformat()
     current = re.sub(r"(状态：)([^\s·]+)", r"\1已完成", current, count=1)
@@ -869,6 +886,28 @@ def accept_plan(
     if not ok:
         return {"ok": True, "accepted": True, "partial": True, "warning": err}
     return {"ok": True, "accepted": True}
+
+
+def _find_delivery_for_plan(repo_root: Path, project: str, plan_num: str) -> Path | None:
+    """查 docs/projects/<project>/deliveries/ 下是否有引用该方案的交付报告（Delivery Gate P1-2）。
+
+    匹配规则：交付文件内容含 `方案：{project}-plan-{num}` 或 `{project}-plan-{num}`，
+    或文件名含 `delivery-{num}`。返回第一个命中的路径，无则 None。
+    """
+    deliveries_dir = repo_root / "docs" / "projects" / project / "deliveries"
+    if not deliveries_dir.is_dir():
+        return None
+    plan_ref = f"{project}-plan-{plan_num}"
+    for f in sorted(deliveries_dir.glob("*.md")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if plan_ref in text:
+            return f
+        if f.stem.lower().endswith(f"delivery-{plan_num}"):
+            return f
+    return None
 
 
 def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:

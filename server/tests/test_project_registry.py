@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from server.board import models
 from server.board.registry import (
     card_prefixes,

@@ -36,7 +36,7 @@ from server.engine.store import BoardStore
 from server.engine.task import Work
 
 if TYPE_CHECKING:
-    from server.engine.dispatch import ExecutorRegistry
+    pass
 
 logger = None  # 延迟初始化避免循环导入（main.py 装配时再注 logger）
 

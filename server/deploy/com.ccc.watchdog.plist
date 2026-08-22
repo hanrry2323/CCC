@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    CCC 看门狗 — 服务防死锁自愈（P5 · 2026-08-21 分离服务重启）
+    部署前请替换：/Users/fan/program/CCC → CCC 仓库绝对路径；fan → 运行用户
+
+    看门狗的看门狗（2026-08-22 硬化）：KeepAlive.SuccessfulExit=false——
+      看门狗脚本异常退出（非 0）时 launchd 立即拉起，防止看门狗自身静默死亡；
+      健康退出（0）则等下一轮 StartInterval。ThrottleInterval=30 防抖动。
+  -->
+  <key>Label</key>
+  <string>com.ccc.watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/fan/program/CCC/scripts/watchdog-ccc.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/fan/program/CCC</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/fan/.ccc/logs/watchdog_plist.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/fan/.ccc/logs/watchdog_plist.stderr.log</string>
+
+  <key>UserName</key>
+  <string>fan</string>
+</dict>
+</plist>

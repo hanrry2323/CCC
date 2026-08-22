@@ -636,7 +636,6 @@ def _stream_relay_direct(prompt: str):
     - 6100 端口：走 Anthropic 协议 (请求 /v1/messages，转译 content_block_delta)
     - 6102 / 3080 端口：走 OpenAI 协议 (请求 /v1/chat/completions，支持 DeepSeek R1 reasoning_content 思考流转译)
     """
-    import http.client
 
     base_url = _get_brain_base_url() or "http://127.0.0.1:6100"
     model = _effective_model() or "deepseek-chat"

@@ -1,14 +1,14 @@
 # CCC — Connect–Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.70.0-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.71.0-blue.svg)](VERSION)
 [![Release](https://img.shields.io/github/v/release/hanrry2323/CCC)](https://github.com/hanrry2323/CCC/releases/latest)
 
 > **Loop Engineer：人定意图，系统自动编排与自主执行。**  
 > 任意设备壳经 HTTP 直连 2017 单端服务；对话口接大脑 Agent；编排面（薄驱动 Engine + 文档流转 + 看板/HTTP）远端开发。
 
 **完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)  
-**启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · **版本**：`VERSION`（v0.70.0）· **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0
+**启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · **版本**：`VERSION`（v0.71.0）· **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0
 
 > 2026-08-02 架构重构定稿：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。旧 `scripts/` 已退役归档；旧端口（7777 Hub / 7775 Board / 7788 sidecar / 7778 Cockpit）已退役。详见 [CHANGELOG#v0700](CHANGELOG.md)。
 

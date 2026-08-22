@@ -9,6 +9,7 @@ from server.board.models import base_state
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DISPATCH_DIR = PROJECT_ROOT / "docs" / "dispatch"
+ARCHIVED_T_CARDS = PROJECT_ROOT / "docs" / "archive" / "legacy-t-cards"
 
 SAMPLE = """# 任务卡 T99 · 示例任务（示例执行体）
 
@@ -164,8 +165,8 @@ class TestLoadDispatchCards:
         assert [i.id for i in items] == ["T99"]
 
     def test_real_dispatch_cards(self) -> None:
-        """真实 docs/dispatch 4 张卡全部可解析。"""
-        items = load_dispatch_cards(DISPATCH_DIR)
+        """真实归档 T 卡（legacy-t-cards）全部可解析。"""
+        items = load_dispatch_cards(ARCHIVED_T_CARDS, include_archived=True)
         ids = {item.id for item in items}
         assert {"T1", "T1-R", "T2", "T3"} <= ids
         # T54：T-mapping.md 是说明文档（无卡头标题），不得作为任务卡混入看板
@@ -257,12 +258,23 @@ class TestSubdirScan:
         assert [i.id for i in items2] == ["T99"]
         assert "T99" in load_index_file(tmp_path)
 
-    def test_index_missing_audit_flag_forces_reparse(self, tmp_path: Path) -> None:
+    def _write_ledger_with_pass(self, tmp_path: Path, card_id: str, monkeypatch) -> Path:
+        """写独立 ledger（CCC_AUDIT_LEDGER 覆盖），含该卡 machine_audit_pass 记录。"""
+        import json
+
+        ledger_path = tmp_path / "ledger.jsonl"
+        record = {"ts": "2026-08-16T00:00:00Z", "action": "machine_audit_pass", "object_id": card_id, "source": "engine"}
+        ledger_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+        monkeypatch.setenv("CCC_AUDIT_LEDGER", str(ledger_path))
+        return ledger_path
+
+    def test_index_missing_audit_flag_forces_reparse(self, tmp_path: Path, monkeypatch) -> None:
         """旧索引无 machine_audit_passed 时必须重扫，否则机审通过卡假滞留。"""
         import json
 
         from server.board.loader import get_index_path, load_dispatch_cards, save_index_file
 
+        self._write_ledger_with_pass(tmp_path, "T99", monkeypatch)
         audited = SAMPLE.replace("状态：执行中", "状态：已回写") + "\n## 机审区\n\n机审：通过\n"
         _write(tmp_path, "T99.md", audited)
         items = load_dispatch_cards(tmp_path)
@@ -273,3 +285,29 @@ class TestSubdirScan:
         save_index_file(entries, tmp_path)
         items2 = load_dispatch_cards(tmp_path)
         assert items2[0].machine_audit_passed is True
+
+    def test_machine_audit_flag_requires_ledger_not_card_text(self, tmp_path: Path, monkeypatch) -> None:
+        """P0-3 单源化：卡文自写「机审：通过」不构成真值——账本无记录 → flag=False。
+
+        对应假关闭根因：执行体在卡里写「机审：通过」伪造证据，看板仍信文本。
+        单源化后机审通过必须账本有 machine_audit_pass 记录，卡文仅作提示。
+        """
+        from server.board.loader import load_dispatch_cards
+
+        self._write_ledger_with_pass(tmp_path, "T99", monkeypatch)  # 账本存在（非 pre-era）
+        audited = SAMPLE.replace("状态：执行中", "状态：已回写").replace("T99", "T88") + "\n## 机审区\n\n机审：通过\n"
+        _write(tmp_path, "T88.md", audited)  # T88 卡文写通过，但账本无 T88 记录
+        items = load_dispatch_cards(tmp_path)
+        t88 = [i for i in items if i.id == "T88"][0]
+        assert t88.machine_audit_passed is False, "卡文自写机审通过但账本无记录 → flag 必须 False"
+
+    def test_machine_audit_flag_ledger_has_pass_overrides(self, tmp_path: Path, monkeypatch) -> None:
+        """P0-3 单源化：账本有 machine_audit_pass → flag=True（即使卡文无明确「机审：通过」行）。"""
+        from server.board.loader import load_dispatch_cards
+
+        self._write_ledger_with_pass(tmp_path, "T99", monkeypatch)
+        no_audit_section = SAMPLE.replace("状态：执行中", "状态：已回写")  # 无机审区
+        _write(tmp_path, "T99.md", no_audit_section)
+        items = load_dispatch_cards(tmp_path)
+        t99 = [i for i in items if i.id == "T99"][0]
+        assert t99.machine_audit_passed is True, "账本有 machine_audit_pass 记录 → flag 应为 True"

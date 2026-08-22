@@ -234,11 +234,14 @@ def main():
     for ln in lines:
         s = ln.strip()
         if s.startswith("## 草案池"):
-            cur = "draft"; continue
+            cur = "draft"
+            continue
         if s.startswith("## 里程碑"):
-            cur = None; continue
+            cur = None
+            continue
         if s.startswith("### "):
-            cur = s[4:].strip(); continue
+            cur = s[4:].strip()
+            continue
         if cur == "draft" and ln.strip():
             draft_lines.append(ln)
         if cur and cur.startswith("M1"):

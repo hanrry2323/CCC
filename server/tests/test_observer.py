@@ -261,7 +261,28 @@ def test_gather_mcp_metrics(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(observer, 'Path', lambda *args, **kwargs: tmp_path / args[0] if args and isinstance(args[0], str) and args[0].endswith('.json') else Path(*args, **kwargs))
     metrics = observer.gather_mcp_metrics(log_dir)
     assert metrics['total_calls_observed'] == 3
-    assert metrics['call_success_rate'] == 100.0
+    # F1：成功率无法从日志判定 → None（此前恒 100% 是伪造）
+    assert metrics['call_success_rate'] is None
+
+
+def test_gather_mcp_metrics_strips_ansi_between_glyph_and_tool(tmp_path: Path, monkeypatch) -> None:
+    """真实日志形态：`⚙ \x1b[0m ccc-kb_kb_search`（glyph 与工具名间夹 ANSI 色码复位）。
+
+    实测 2017 日志（2026-08-22）：`⚙ \x1b[0m ccc-kb_kb_search` 等 65 份日志含该形态；
+    若不剥色码则正则匹配不到 → 指标恒 0。回归用例（2026-08-22 数据可信度审计 F1）。
+    """
+    log_dir = tmp_path / 'logs'
+    log_dir.mkdir()
+    (log_dir / 'T1.log').write_text('⚙ \x1b[0m ccc-kb_kb_search\n⚙ \x1b[0m ccc-kb_kb_read\n', encoding='utf-8')
+    (log_dir / 'T2.log').write_text('⚙\x1b[0m hp-kb_knowledge_search\n', encoding='utf-8')
+    opencode_conf = tmp_path / 'opencode.json'
+    opencode_conf.write_text(json.dumps({'mcp': {'ccc-kb': {'enabled': True}}}), encoding='utf-8')
+    claude_conf = tmp_path / 'settings.json'
+    claude_conf.write_text(json.dumps({'mcpServers': {'ccc-kb': {}}}), encoding='utf-8')
+    monkeypatch.setattr(Path, 'is_file', lambda self: True if self.name in ('opencode.json', 'settings.json') else False)
+    monkeypatch.setattr(observer, 'Path', lambda *args, **kwargs: tmp_path / args[0] if args and isinstance(args[0], str) and args[0].endswith('.json') else Path(*args, **kwargs))
+    metrics = observer.gather_mcp_metrics(log_dir)
+    assert metrics['total_calls_observed'] == 3
 
 def test_gather_maintenance_metrics(tmp_path: Path, monkeypatch) -> None:
     mock_files = [tmp_path / 'ccc001-test.md', tmp_path / 'ccc002-test.md']
@@ -284,6 +305,52 @@ def test_gather_lesson_recirculation_metrics(tmp_path: Path, monkeypatch) -> Non
     assert metrics['total_new_cards'] == 2
     assert metrics['recirculated_lessons_cards'] == 1
     assert metrics['lesson_recirculation_rate_pct'] == 50.0
+
+def test_gather_audit_trends_not_count_closed_as_passed(tmp_path: Path, monkeypatch) -> None:
+    """F2：已关闭但无机审通过 ≠ 通过——此前 passed_count 把「关闭率」当「机审通过率」。
+
+    构造 2 张卡：1 张已关闭但无机审区（假关闭模式），1 张已回写 + 机审通过。
+    passed_rate 只算真机审通过；closed_without_audit 红旗必须单列。
+    """
+    mock_files = [tmp_path / 'xy100-test.md', tmp_path / 'xy101-test.md']
+    (tmp_path / 'xy100-test.md').write_text(
+        '# 任务卡 xy100\n> 状态：已关闭\n## 回写区\n**日期**：2026-08-20\n', encoding='utf-8'
+    )
+    (tmp_path / 'xy101-test.md').write_text(
+        '# 任务卡 xy101\n> 状态：已回写\n## 机审区\n\n> 结论：通过\n> 来源：engine 自动落盘\n', encoding='utf-8'
+    )
+    # P0-3 单源化：机审真值 = 账本 machine_audit_pass。xy101 需在独立 ledger 中有记录才 flag=True。
+    ledger = tmp_path / 'ledger.jsonl'
+    ledger.write_text(
+        json.dumps({'ts': '2026-08-16T00:00:00Z', 'action': 'machine_audit_pass', 'object_id': 'xy101', 'source': 'engine'})
+        + '\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CCC_AUDIT_LEDGER', str(ledger))
+    monkeypatch.setattr(observer, 'scan_dispatch_files', lambda d: mock_files)
+    monkeypatch.setattr(observer, 'get_archive_dir', lambda d: tmp_path / 'archive_nonexistent')
+    metrics = observer.gather_audit_trends_metrics(tmp_path)
+    assert metrics['processed_cards_count'] == 2
+    assert metrics['passed_count'] == 1  # 只有 xy101 真机审通过（账本命中）
+    assert metrics['closed_count'] == 1  # xy100 已关闭
+    assert metrics['closed_without_audit'] == 1  # 假关闭红旗
+    assert metrics['passed_rate_pct'] == 50.0  # 而非旧的 100%
+
+
+def test_is_maintenance_complete_accepts_checkbox(tmp_path: Path) -> None:
+    """F3：is_maintenance_complete 对齐 docgate 的 markdown checkbox [x]。
+
+    docgate.verify_maintenance 接受 [x]/[ ]，observer 此前只认 是/否/有/无 → 覆盖率漏计。
+    """
+    text = (
+        '# 任务卡 ccc010\n> 状态：已关闭\n## 维护区\n'
+        '1. **方案同步**：[x]\n   - 说明：已同步方案状态\n'
+        '2. **教训沉淀**：[x]\n   - 说明：已落 lessons\n'
+        '3. **档案/README**：[无]\n   - 说明：无结构变更\n'
+        '4. **线路图**：[无]\n   - 说明：无线路变化\n'
+    )
+    assert observer.is_maintenance_complete(text) is True
+
 
 def test_write_roadmap_draft(tmp_path: Path) -> None:
     """Loop 巡查集成：write_roadmap_draft 写入草案到项目 roadmap.md 并去重。"""

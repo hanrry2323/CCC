@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from server.engine.main import _fail_retry_or_reject, _is_manual_or_remote_executor

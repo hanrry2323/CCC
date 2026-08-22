@@ -19,7 +19,13 @@ from typing import Any
 
 
 def _ledger_path(dispatch_dir: str | Path | None = None) -> Path:
-    """台账路径：data/audit/ledger.jsonl（相对仓库根）。"""
+    """台账路径：data/audit/ledger.jsonl（相对仓库根）。
+
+    CCC_AUDIT_LEDGER 环境变量可覆盖（测试隔离用，避免污染生产 ledger）。
+    """
+    env = os.environ.get("CCC_AUDIT_LEDGER", "").strip()
+    if env:
+        return Path(env)
     if dispatch_dir:
         d = Path(dispatch_dir)
         if (d / "docs" / "dispatch").is_dir():
@@ -291,3 +297,33 @@ def has_action(action: str, object_id: str, source: str = "") -> bool:
             continue
         return True
     return False
+
+
+# ── 机审真值单源化（P0-3 · 2026-08-22）────────────────────────
+# machine_audit_passed 的单一事实源 = 账本 machine_audit_pass 记录（engine 落盘，执行体不可自写）。
+# 按 ledger 文件 mtime+size 缓存 pass-id 集合，写后自动失效（record_action/record_audit/回填均追加或改写）。
+_pass_ids_cache: dict[str, object] = {"key": None, "ids": None}
+
+
+def _machine_audit_pass_ids() -> set[str]:
+    """已有机审通过记录的卡 ID 集合（path+mtime+size 缓存，env 切换路径自动失效）。"""
+    path = _ledger_path()
+    try:
+        st = path.stat()
+    except OSError:
+        return set()
+    key = (str(path.resolve()), st.st_mtime, st.st_size)
+    if _pass_ids_cache["key"] == key and _pass_ids_cache["ids"] is not None:
+        return _pass_ids_cache["ids"]  # type: ignore[return-value]
+    ids: set[str] = set()
+    for r in _read_rows(path):
+        if r.get("action") == "machine_audit_pass" and r.get("object_id"):
+            ids.add(str(r["object_id"]))
+    _pass_ids_cache["key"] = key
+    _pass_ids_cache["ids"] = ids
+    return ids
+
+
+def has_pass(card_id: str) -> bool:
+    """机审通过真值：查账本是否有该卡 machine_audit_pass 记录（单一事实源）。"""
+    return card_id in _machine_audit_pass_ids()

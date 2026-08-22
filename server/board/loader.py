@@ -96,6 +96,21 @@ def _parse_written_at(text: str) -> str:
     return match.group(1) if match else UNKNOWN
 
 
+def _machine_audit_ok(card_id: str, text: str) -> bool:
+    """机审通过单一事实源（P0-3 · 2026-08-22）：真值 = 账本 machine_audit_pass 记录。
+
+    - 账本为空（账本能力前 pre-era）→ 降级卡文机审区（旧卡兼容）。
+    - 账本已有记录 → 机审通过必须账本命中，**卡文「机审：通过」不再自证**（执行体可自写 = 假关闭漏洞）。
+    """
+    from server.board.audit_ledger import _machine_audit_pass_ids, has_pass
+
+    _idm = re.match(r"^([a-z]{2,4}\d{3})", card_id or "")
+    pure_id = _idm.group(1) if _idm else card_id
+    if not _machine_audit_pass_ids():
+        return machine_audit_passed_text(text)
+    return has_pass(pure_id)
+
+
 def parse_card(path: Path | str) -> BoardItem:
     """解析单张任务卡；字段缺失容错标「未知」。"""
     text = Path(path).read_text(encoding="utf-8")
@@ -126,7 +141,7 @@ def parse_card(path: Path | str) -> BoardItem:
         depends_on=_parse_depends(header.depends),
         acceptance=normalize_tool(_strip_parenthetical(header.acceptance)) or UNKNOWN,
         archived=is_archived,
-        machine_audit_passed=machine_audit_passed_text(text),
+        machine_audit_passed=_machine_audit_ok(header.id, text),
         approval=header.approval,
     )
 

@@ -1193,8 +1193,11 @@ def is_maintenance_complete(text: str) -> bool:
         items = re.findall("^(\\d+)\\. \\*\\*([^*]+)\\*\\*：[^\\[]*\\[([^]]*)\\]", seg, re.M)
         if len(items) < 4:
             return False
+        # 对齐 docgate.verify_maintenance：勾选值接受 是/否/有/无 与 markdown checkbox [x]/[X]/[✓]
+        # （否则 Doc-Gate 判完整、observer 判缺失 → 覆盖率漏计，2026-08-22 数据可信度审计 F3）
+        _CHECKED = ("是", "否", "有", "无", "x", "X", "✓", "√")
         for num, name, choice in items:
-            if choice.strip() not in ("是", "否", "有", "无"):
+            if choice.strip() not in _CHECKED:
                 return False
         notes = re.findall("^   - 说明：(.+)$", seg, re.M)
         if len(notes) < 4 or any(n.strip() == "" for n in notes):
@@ -1226,29 +1229,25 @@ def gather_mcp_metrics(log_dir: Path) -> dict[str, Any]:
         except Exception:
             pass
     total_calls = 0
-    failed_calls = 0
     if log_dir.is_dir():
         for path in log_dir.glob("*.log"):
             try:
                 content = path.read_text(encoding="utf-8", errors="replace")
                 # M7: 清洗 ANSI 色码（\x1b[...m），否则正则匹配不到 ⚙ 工具名 → 假数据 0 次
-                content = re.sub(r"\x1b\[[0-9;]*m", "", content)
-                calls = re.findall("⚙\\s*(?:ccc-kb_kb_|kb_)\\w+", content)
+                # 实测日志形态：`⚙ \x1b[0m ccc-kb_kb_search`（glyph 与工具名间夹色码复位）
+                content = re.sub(r"\x1b\[[0-9;]*[A-Za-z]?", "", content)
+                # 兼容两种痕迹形态：`⚙ ccc-kb_kb_search`（工具调用痕迹）与 `⚙️ kb_search`（emoji 变体）
+                calls = re.findall(r"⚙[️️]?\s*(?:ccc-kb_kb_|hp-kb_|kb_)\w+", content)
                 total_calls += len(calls)
             except Exception:
                 pass
-    success_rate = (
-        100.0
-        if total_calls > 0 and failed_calls == 0
-        else 0.0
-        if total_calls == 0
-        else (total_calls - failed_calls) / total_calls * 100.0
-    )
+    # 失败数无法从原始日志判定（failed_calls 无来源）——不再伪造 100% 成功率；
+    # call_success_rate=None 表示「无法从日志判定失败」，由消费端显式标注而非虚报。
     return {
         "opencode_mcp_enabled": opencode_ok,
         "claude_mcp_enabled": claude_ok,
         "total_calls_observed": total_calls,
-        "call_success_rate": success_rate,
+        "call_success_rate": None,
     }
 
 
@@ -1330,15 +1329,29 @@ def gather_audit_trends_metrics(dispatch_dir: Path) -> dict[str, Any]:
         except Exception:
             pass
     total_processed = len(processed_cards)
-    passed_count = sum(1 for item in processed_cards if item.machine_audit_passed or base_state(item.state) == "已关闭")
+    # 通过 ≠ 关闭：通过必须 machine_audit_passed=True（卡文真机审结论），
+    # 已关闭但无机审通过 = 假关闭/门禁绕过，单列红旗计数，不混入「通过率」。
+    # 此前 passed_count = machine_audit_passed OR state==已关闭，把「关闭率」冒充「机审通过率」，
+    # 实测近 30 卡恒 100% 而真实机审通过率仅 52.8%——正是假关闭事故前的假绿指标。
+    passed_count = sum(1 for item in processed_cards if item.machine_audit_passed)
+    closed_count = sum(1 for item in processed_cards if base_state(item.state) == "已关闭")
+    closed_without_audit = sum(
+        1
+        for item in processed_cards
+        if base_state(item.state) == "已关闭" and not item.machine_audit_passed
+    )
     rejected_count = sum(1 for item in processed_cards if base_state(item.state) == "打回" or item.reject_count > 0)
     passed_rate = passed_count / total_processed * 100.0 if total_processed > 0 else 0.0
+    closed_rate = closed_count / total_processed * 100.0 if total_processed > 0 else 0.0
     rejected_rate = rejected_count / total_processed * 100.0 if total_processed > 0 else 0.0
     return {
         "processed_cards_count": total_processed,
         "passed_count": passed_count,
+        "closed_count": closed_count,
+        "closed_without_audit": closed_without_audit,
         "rejected_count": rejected_count,
         "passed_rate_pct": passed_rate,
+        "closed_rate_pct": closed_rate,
         "rejected_rate_pct": rejected_rate,
     }
 
@@ -1429,7 +1442,44 @@ def run_observation(dispatch_dir: Path, log_dir: Path, output_file: Path) -> dic
         evidence_prefix = "优化已部分生效。ccc-kb 配置已启用并开始积累调用；"
     evidence = f"{evidence_prefix}维护区 Doc-Gate 覆盖率达 {maint_pct:.1f}%，教训回流率为 {lesson_pct:.1f}%，近 30 卡验收通过率为 {audit['passed_rate_pct']:.1f}%。"
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    report_content = f"# 2017 Agent Skill/MCP 优化生效观测报告 ({today})\n\n> 报告时间：{today} · 观测执行体：Loop Observer\n\n## 1. 观测结论\n\n- **生效评估**：**{conclusion}生效**\n- **核心证据**：{evidence}\n\n## 2. 4 项观测指标实测值\n\n### 指标 1：执行体 ccc-kb MCP 检索接入\n- **OpenCode 配置状态**：{('已启用 (Active)' if mcp['opencode_mcp_enabled'] else '未启用 (Inactive)')}\n- **Claude Code 配置状态**：{('已启用 (Active)' if mcp['claude_mcp_enabled'] else '未启用 (Inactive)')}\n- **观测到实际调用次数**：{mcp['total_calls_observed']} 次\n- **调用成功率**：{mcp['call_success_rate']:.1f}%\n\n### 指标 2：维护区四问覆盖率 (Doc-Gate)\n- **已回写/已关闭卡总数**：{maint['total_completed_cards']} 张\n- **维护区齐全卡数量**：{maint['complete_maintenance_cards']} 张\n- **覆盖率**：{maint['maintenance_coverage_pct']:.1f}%\n\n### 指标 3：教训回流率\n- **新卡总数**：{lesson['total_new_cards']} 张\n- **已回流教训卡数量**：{lesson['recirculated_lessons_cards']} 张\n- **教训回流率**：{lesson['lesson_recirculation_rate_pct']:.1f}%\n\n### 指标 4：验收通过率/打回率趋势 (近 30 卡)\n- **近 30 卡实测样本数**：{audit['processed_cards_count']} 张\n- **机审通过数 (及已关闭)**：{audit['passed_count']} 张 (占比：{audit['passed_rate_pct']:.1f}%)\n- **打回数 (及曾打回)**：{audit['rejected_count']} 张 (占比：{audit['rejected_rate_pct']:.1f}%)\n\n### 指标 5：机审命中率台账 (机审 v4 · 近 50 已判定)\n- **已判定审计数**：{audit_hit['total']} 条\n- **命中数**：{audit_hit['hits']} 条\n- **未命中数**：{audit_hit['misses']} 条\n- **命中率**：{('%.1f%%' % (audit_hit['hit_rate'] * 100)) if audit_hit['hit_rate'] is not None else '暂无'}\n\n## 3. 功能巡查 (Playwright Web Smoke Test)\n\n- **巡查状态**：{pw['status_str']}\n- **巡查详情**：\n  - `/health` 接口：{pw['health_status']}\n  - `/config` 接口：{pw['config_status']}\n  - 主页加载：{pw['main_status']}\n"
+    # F1：成功率无法从日志判定 → 显式标注「未统计」，不虚报 100%
+    _mcp_success_display = (
+        "未统计（日志无法判定失败）" if mcp["call_success_rate"] is None else f"{mcp['call_success_rate']:.1f}%"
+    )
+    report_content = (
+        f"# 2017 Agent Skill/MCP 优化生效观测报告 ({today})\n\n"
+        f"> 报告时间：{today} · 观测执行体：Loop Observer\n\n"
+        f"## 1. 观测结论\n\n- **生效评估**：**{conclusion}生效**\n- **核心证据**：{evidence}\n\n"
+        f"## 2. 4 项观测指标实测值\n\n### 指标 1：执行体 ccc-kb MCP 检索接入\n"
+        f"- **OpenCode 配置状态**：{('已启用 (Active)' if mcp['opencode_mcp_enabled'] else '未启用 (Inactive)')}\n"
+        f"- **Claude Code 配置状态**：{('已启用 (Active)' if mcp['claude_mcp_enabled'] else '未启用 (Inactive)')}\n"
+        f"- **观测到实际调用次数**：{mcp['total_calls_observed']} 次\n"
+        f"- **调用成功率**：{_mcp_success_display}\n\n"
+        f"### 指标 2：维护区四问覆盖率 (Doc-Gate)\n"
+        f"- **已回写/已关闭卡总数**：{maint['total_completed_cards']} 张\n"
+        f"- **维护区齐全卡数量**：{maint['complete_maintenance_cards']} 张\n"
+        f"- **覆盖率**：{maint['maintenance_coverage_pct']:.1f}%\n\n"
+        f"### 指标 3：教训回流率\n"
+        f"- **新卡总数**：{lesson['total_new_cards']} 张\n"
+        f"- **已回流教训卡数量**：{lesson['recirculated_lessons_cards']} 张\n"
+        f"- **教训回流率**：{lesson['lesson_recirculation_rate_pct']:.1f}%\n\n"
+        f"### 指标 4：验收通过率/打回率趋势 (近 30 卡)\n"
+        f"- **近 30 卡实测样本数**：{audit['processed_cards_count']} 张\n"
+        f"- **机审通过数 (真机审 flag=True)**：{audit['passed_count']} 张 (占比：{audit['passed_rate_pct']:.1f}%)\n"
+        f"- **已关闭数**：{audit['closed_count']} 张 (关闭率：{audit['closed_rate_pct']:.1f}%)\n"
+        f"- **已关闭但无机审通过 (假关闭红旗)**：{audit['closed_without_audit']} 张\n"
+        f"- **打回数 (及曾打回)**：{audit['rejected_count']} 张 (占比：{audit['rejected_rate_pct']:.1f}%)\n\n"
+        f"### 指标 5：机审命中率台账 (机审 v4 · 近 50 已判定)\n"
+        f"- **已判定审计数**：{audit_hit['total']} 条\n"
+        f"- **命中数**：{audit_hit['hits']} 条\n"
+        f"- **未命中数**：{audit_hit['misses']} 条\n"
+        f"- **命中率**：{('%.1f%%' % (audit_hit['hit_rate'] * 100)) if audit_hit['hit_rate'] is not None else '暂无'}\n\n"
+        f"## 3. 功能巡查 (Playwright Web Smoke Test)\n\n"
+        f"- **巡查状态**：{pw['status_str']}\n- **巡查详情**：\n"
+        f"  - `/health` 接口：{pw['health_status']}\n"
+        f"  - `/config` 接口：{pw['config_status']}\n"
+        f"  - 主页加载：{pw['main_status']}\n"
+    )
     try:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text(report_content, encoding="utf-8")

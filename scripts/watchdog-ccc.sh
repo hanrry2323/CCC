@@ -20,10 +20,16 @@ LOG_DIR="${HOME}/.ccc/logs"
 mkdir -p "${LOG_DIR}"
 
 HEARTBEAT_LOG="${LOG_DIR}/engine.stderr.log"
+# 槽位心跳（run_once 每轮写 engine-metrics.jsonl）——真实心跳源，优先于 stderr.log
+SLOT_METRICS="${LOG_DIR}/exec/engine-metrics.jsonl"
 WATCHDOG_LOG="${LOG_DIR}/watchdog.log"
 
 ENGINE_PNAME="server.engine.main"
 WEB_PNAME="server.web.server"
+
+# 心跳宽限（秒）：engine 心跳默认 60s，但 run_once 偶发阻塞（子进程/SSH）可达 10-40min，
+# 固定 120s 会误杀。默认 300s，可经 CCC_WATCHDOG_HEARTBEAT_GRACE 覆盖。
+HEARTBEAT_GRACE="${CCC_WATCHDOG_HEARTBEAT_GRACE:-300}"
 
 log_watchdog() {
   local msg="$1"
@@ -42,24 +48,31 @@ is_web_alive() {
   pgrep -f "${WEB_PNAME}" >/dev/null 2>&1
 }
 
-# 3. 检查 engine 日志心跳 (mtime < 120s)
+# 3. 检查 engine 心跳新鲜度：优先 slot 心跳 engine-metrics.jsonl（run_once 每轮写），
+#    缺失/不可读回退 stderr.log。宽限 HEARTBEAT_GRACE（默认 300s，2026-08-22 硬化）。
 is_engine_heartbeat_healthy() {
-  if [[ ! -f "${HEARTBEAT_LOG}" ]]; then
+  local source=""
+  local last_mod=""
+
+  if [[ -f "${SLOT_METRICS}" ]]; then
+    source="${SLOT_METRICS}"
+  elif [[ -f "${HEARTBEAT_LOG}" ]]; then
+    source="${HEARTBEAT_LOG}"
+  else
     return 1
   fi
 
-  local last_mod
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    last_mod=$(stat -f "%m" "${HEARTBEAT_LOG}")
+    last_mod=$(stat -f "%m" "${source}")
   else
-    last_mod=$(stat -c "%Y" "${HEARTBEAT_LOG}")
+    last_mod=$(stat -c "%Y" "${source}")
   fi
 
   local now
   now=$(date +%s)
   local diff=$((now - last_mod))
 
-  if [[ $diff -lt 120 ]]; then
+  if [[ $diff -lt ${HEARTBEAT_GRACE} ]]; then
     return 0
   else
     return 1
