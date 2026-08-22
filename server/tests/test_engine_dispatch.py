@@ -100,8 +100,8 @@ class TestLoadRegistry:
 
     def test_example_registry_loads(self) -> None:
         reg = load_registry(REGISTRY_PATH)
-        # 开发(OpenCode) + 维护 + 管理 + Claude/OpenCode 双验收席 + DSH 只读 = 6 行
-        assert len(reg.entries) == 6
+        # 2026-08-22 工具收口：开发/维护/验收/审计全 DSH，管理席 CC，无 OpenCode = 5 行
+        assert len(reg.entries) == 5
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
         # S3（2026-08-22）：开发执行体切 DSH（wrapper 自读提示，注入关闭）
@@ -115,11 +115,15 @@ class TestLoadRegistry:
         assert dsh_audit.role == "验收席"
         assert dsh_audit.command == "scripts/dsh-auditor.sh"
         assert dsh_audit.inject_hint is False
-        # 验收席绑定为可后台 CLI（机审：DSH + OpenCode 回退）
+        # 工具收口：中间环节（开发/维护/验收）无 OpenCode/Claude Code，全 DSH
         acc_rows = [e for e in reg.entries if e.role == "验收席"]
-        assert {e.binding for e in acc_rows} == {"DSH（S4 切换 · 2026-08-22）", "OpenCode"}
+        assert {e.binding for e in acc_rows} == {"DSH（S4 切换 · 2026-08-22）"}
         assert all(e.category == "可后台 CLI" for e in acc_rows)
         assert all(e.command for e in acc_rows)
+        # 维护也 DSH；全注册表无 opencode 引用
+        maint = reg.cli_entry_for_role("维护执行体")
+        assert maint is not None and maint.command == "scripts/dsh-executor.sh"
+        assert not any("opencode" in str(e.command).lower() for e in reg.entries)
 
     def test_missing_fields_rejected(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.json"

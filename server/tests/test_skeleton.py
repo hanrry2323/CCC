@@ -173,7 +173,6 @@ class TestExecutorsExample:
         {"角色": "维护执行体", "分类": "可后台 CLI"},
         {"角色": "管理席", "分类": NOT_APPLICABLE_CATEGORY},
         {"角色": "验收席", "分类": "可后台 CLI"},
-        {"角色": "验收席", "分类": "可后台 CLI"},
         {"角色": "只读取证/审计执行体", "分类": "可后台 CLI"},
     ]
     EXECUTOR_ROLES = frozenset({"开发执行体", "维护执行体"})
@@ -246,22 +245,26 @@ class TestExecutorsExample:
         overlap = roles & self.LEGACY_ROLES
         assert not overlap, f"executors 含已废弃角色: {sorted(overlap)}"
 
-    def test_opencode_cli_requires_auto_and_dir_worktree(self, executors_data) -> None:
-        """防回归（ccc003）：当前绑定=OpenCode 的可后台 CLI 行，参数模板必须同时含
-        ``--auto`` 与 ``--dir {worktree}``，缺一即 fail。
+    def test_dsh_executor_contract(self, executors_data) -> None:
+        """2026-08-22 工具收口：中间环节（开发/维护/验收）全部 DSH（dsh-executor.sh/dsh-auditor.sh）。
 
-        值因：卡在生产仓、执行在 worktree，缺任一都会导致「exit 0 假成功」——
-        OpenCode exit 0 却无产物被误判为已回写。锁这两个硬参数作为契约 §7 模板约束。
+        契约：可后台 CLI 行的 DSH wrapper 必须①命令指向 dsh-*.sh②参数模板为位置参数
+        （card_path work_id worktree role）③注入提示=false（wrapper 自读，防污染位置参数）。
+        防回归：OpenCode 已移除，注册表不得再出现 opencode 引用。
         """
-        cli_opencode = [
+        import json
+
+        dsh_rows = [
             e for e in executors_data["executors"]
-            if e.get("分类") == "可后台 CLI" and e.get("当前绑定") == "OpenCode"
+            if e.get("分类") == "可后台 CLI" and "dsh" in str(e.get("命令", "")).lower()
         ]
-        assert cli_opencode, "example 注册表缺少当前绑定=OpenCode 的可后台 CLI 行（ccc003 契约）"
-        for idx, entry in enumerate(cli_opencode):
+        assert dsh_rows, "example 注册表缺少 DSH 可后台 CLI 行（2026-08-22 收口契约）"
+        for entry in dsh_rows:
+            assert "scripts/dsh-" in str(entry.get("命令", "")), f"DSH 行命令须指向 dsh-*.sh: {entry.get('命令')}"
             tpl = entry.get("参数模板", "")
-            missing = [p for p in ("--auto", "--dir {worktree}") if p not in tpl]
-            assert not missing, (
-                f"OpenCode 可后台 CLI 行参数模板缺 {missing}（须同时含 --auto 与 --dir {{worktree}}，"
-                f"否则易 exit 0 假成功）: {tpl}"
-            )
+            for ph in ("{card_path}", "{work_id}", "{worktree}"):
+                assert ph in tpl, f"DSH 行参数模板缺 {ph}"
+            assert entry.get("注入提示", True) is False, "DSH wrapper 须 注入提示=false"
+        # 执行体行（不含 description 历史说明）无 opencode 引用
+        raw = json.dumps(executors_data["executors"], ensure_ascii=False).lower()
+        assert "opencode" not in raw, "执行体行不得再含 opencode（2026-08-22 工具收口）"
