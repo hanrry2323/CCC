@@ -36,9 +36,13 @@ PROMPT="你是 CCC 开发执行体（角色：${ROLE}）。
 8. 完成时报告：改了什么文件、自测结果、commit hash、卡回写结果。若遇原则性障碍（范围外/缺依赖），明确报告无法完成及原因。
 工作目录：$(pwd)"
 
-# 后台执行 + 最长等待（免费模型慢，给足 30 分钟；engine 侧另有全局超时）
+# 后台执行 + 最长等待（免费模型慢；engine 侧另有全局超时）
+# R1 修复（2026-08-22）：DSH 退出码必须传播——engine 收单按退出码判已回写/打回，
+# 不能吞掉失败（否则失败卡也被标已回写）。
 dsh --profile headless "$PROMPT" &
 PID=$!
-wait $PID || true
+wait "$PID"
+DSH_RC=$?
 
-echo "[dsh-executor] work=${WORK_ID} 执行结束"
+echo "[dsh-executor] work=${WORK_ID} 执行结束 rc=${DSH_RC}"
+exit "$DSH_RC"
