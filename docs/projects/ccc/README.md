@@ -8,14 +8,15 @@
 
 | 机 | 路径 | 职责 |
 |----|------|------|
-| M1（中枢） | `/Users/apple/program/CCC` | 中枢出卡/验收/合入/看板 + 轻量开发 |
-| Mac2017（生产与执行） | `/Users/fan/program/CCC` | 执行写码节点（engine worktree） + 生产 :7788 |
+| Mac2017（唯一权威仓 · 生产） | `/Users/fan/program/CCC` | 全部 CCC 开发 / 看板 :7788 / 合入（engine worktree） |
+
+> M1 副本已退役（2026-08-22，见根目录 `RETIRED-2026-08-22.md`）：快照归档 `/Users/apple/archive/ccc-m1-archive-2026-08-22.tar.gz`，M1 不再开发 CCC；对 CCC 唯一残留接触 = HTTP 只读看板（服务在 2017）。
 
 ## 在 CCC 怎么动
 
 - **前缀**：`ccc` → 存量卡在 `docs/dispatch/ccc/`（**不再出新卡**）
 - **taskable**：否（2026-08-10 平台自研红线：禁出卡）
-- **平台自研**：改 `server/engine` / `server/board` / `scripts` 流程逻辑 → **M1 主窗口直接开发 + 直接测试 + 异席机审**，不走 engine 自动派发（`registry.yaml` ccc 已 `forbidden: true` 断根）
+- **平台自研**：改 `server/engine` / `server/board` / `scripts` 流程逻辑 → **2017 本机 Claude Code 会话直接开发 + 直接测试**，不走 engine 自动派发（`registry.yaml` ccc 已 `forbidden: true` 断根）；流程内核 = DSH，最终审核合入 = Claude Code（2026-08-22 重构定稿）
 - **共享库**：`scripts/lib/`（resolve_card 等命令共享函数，勿在脚本内重复 `find | head -1` 猜卡）
 - **出卡前了解**：按 [`../../product/hub-context-sop.md`](../../product/hub-context-sop.md) **本仓本地**读码/图谱/看板即可，**无需 ssh**
 
