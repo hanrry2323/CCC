@@ -708,13 +708,8 @@ except Exception as e:
     pass
 " || true
 
-# P0-3 单源化前置：合入前尝试同步双机机审台账（2017→M1），保证 provenance 最新。
-# 失败仅 WARN 不阻断——硬校验仍按本机 ledger 判定（fail-closed，宁拒勿放）。
-if [ -x scripts/sync-audit-ledger.py ]; then
-  if ! "$PYTHON_BIN" scripts/sync-audit-ledger.py >/dev/null 2>&1; then
-    echo "[WARN] 机审台账同步失败（provenance 可能滞后，硬校验按本机 ledger 判定）" >&2
-  fi
-fi
+# R6（2026-08-22 S1 单机化）：双机台账同步已废弃（CCC 全在 2017，合入读本地 ledger 即权威）。
+# sync-audit-ledger.py 保留仅作历史；不再从 approve-merge 调用。
 
 FAILED=0
 for id in "${IDS[@]}"; do
