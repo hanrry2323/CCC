@@ -2,12 +2,12 @@
 
 > 项目：ccc · 编号：ccc-plan-042 · 状态：已确定 · 作者：ox-alpha/DSH（外脑席·S140@M1）· 工具：DSH
 > 创建：2026-08-22 · 更新：2026-08-22
-> 关联卡：无（平台自研红线适用，M1 主窗口直接开发 + Codex 异席机审，不走 engine 派发）
+> 关联卡：无（平台自研红线适用，M1 主窗口直接开发 + Claude Code 异席机审，不走 engine 派发）
 > 关联方案：ccc-plan-040/041（断点修复前置）、ccc-plan-039（螺旋评审）、ccc-plan-035（机审区格式契约）
 > 依据：2026-08-22 两轮硬化实测核实（cf4f2cac / 22e83b7f）+ 质量基线扫描（232bee30）+ hp049-052 空模板假关闭实锤
 > 里程碑：标准化体系加固
 > 子项目：无（独立方案，非里程碑子项目）
-> 环境准备：radon/mypy 已装 ✅；2017 审计复跑环境（已有 exec 日志与 ledger）✅；Codex 异席通道 ✅
+> 环境准备：radon/mypy 已装 ✅；2017 审计复跑环境（已有 exec 日志与 ledger）✅；Claude Code 异席通道 ✅
 
 ## 目标
 
@@ -26,7 +26,7 @@
 | 机审内容盲区 | P0-3 后 flag 真值来自 ledger，但「机审本身判得准不准」无任何度量 | 谁来审机审？ |
 | 假回滚缺陷（22e83b7f 引入）| approve_one 先 merge（L135 ff-only）后写账本；账本失败仅 checkout 卡文件——代码已在 main 撤不回，索引仍记已关闭 | 新改动的次生洞 |
 | 双机台账滞后窗口 | 机审判定读本机 ledger；engine 落账在 2017、approve-merge 在 M1，仅在合入瞬间同步一次 | 同卡两机判定可能不一致 |
-| 异席机审缺位 | cf4f2cac + 22e83b7f 两轮平台大改未经 Codex 复核直接上生产 2017 | 自审自证复发 |
+| 异席机审缺位 | cf4f2cac + 22e83b7f 两轮平台大改未经 Claude Code 复核直接上生产 2017 | 自审自证复发 |
 
 质量基线已建（`docs/notes/2026-08-22-code-quality-baseline.md`）：server/ 核心 47 文件 2.4 万行——11 个 D/E/F 高复杂度热点（8 个集中在 `_APIHandler` 上帝对象）、mypy 273 错/25 文件、266 组重复块。「增量不可劣化」门禁自此有了参照系。
 
@@ -36,7 +36,7 @@
 
 1. **修真回滚**：`approve_one` 动作顺序改为 `写账本 → merge → close_card → 刷索引`；任一步失败即 `git reset --hard ORIG_HEAD` 撤销 merge + 还原工作树，保证「要么全成、要么全无」。补失败重现用例（mock record_action 抛错 → 断言 main 无 merge 提交）。
 2. **双机台账一致性**：`sync-audit-ledger.py` 从「合入时拉取」升级为双向对齐（M1↔2017 并集互同步），并在 engine 每次 `machine_audit_pass` 落账后异步触发一次同步（失败静默，下次补偿）；看板 API 读账本前若 mtime 距今 >10min 先尝试同步。
-3. **异席机审硬约束**：approve-merge.sh 增加检查——本次待合入 diff 若触及 `server/engine|board|scripts` 平台自研路径，要求 ledger 存在本卡 `cross_review_pass` 记录（Codex 复核后落账），缺失=拒绝。把红线从文档变成机器门禁。
+3. **异席机审硬约束**：approve-merge.sh 增加检查——本次待合入 diff 若触及 `server/engine|board|scripts` 平台自研路径，要求 ledger 存在本卡 `cross_review_pass` 记录（Claude Code 交叉复核后落账），缺失=拒绝。把红线从文档变成机器门禁。
 
 ### M1 · L1 机械指标层：每卡自动出分（2 天）
 
@@ -63,7 +63,7 @@
 - 机审席按固定评分表打分（架构一致性/错误处理/命名/测试有效性四维，各 1-5 分），每分必须附文件:行号证据；总分 <12 自动打回。评分表落 `docs/notes/review-rubric.md`。
 - `_APIHandler` 拆分（8/11 个高复杂度热点所在）体量大，**不在本方案内实施**——单独立项排期，本方案只锁定其增量复杂度不得再涨（M1 门禁覆盖）。
 
-## 功能卡（拆解规划；实际执行按平台自研红线走 M1 主窗口 + Codex 异席，不经 engine）
+## 功能卡（拆解规划；实际执行按平台自研红线走 M1 主窗口 + Claude Code 异席，不经 engine）
 
 ### M0-1 真回滚改造
 
@@ -85,7 +85,7 @@
 
 ### M0-3 异席门禁硬约束
 
-目标：平台自研路径改动强制 Codex 复核留账。
+目标：平台自研路径改动强制 Claude Code 交叉复核留账。
 实现：approve-merge 按路径匹配触发 cross_review_pass 校验。
 验收：构造触及 server/engine 的卡无 cross 记录 → 硬拒绝。
 颗粒度：approve-merge.sh 一段 + 1 测试。
@@ -128,7 +128,7 @@
 - [ ] M2：伪造产物 hash 的卡被独立重放识别并自动打回
 - [ ] M3：rubric 低分样例自动打回且理由含文件:行号
 - [ ] 全程 CI 绿 + ruff 零告警 + 覆盖率 ≥84% 不降
-- [ ] 本方案自身经 Codex 异席机审通过后才开工（吃自己的狗粮）
+- [ ] 本方案自身经 Claude Code 异席机审通过后才开工（吃自己的狗粮）
 
 ## 备注
 
