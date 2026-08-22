@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """双机机审台账同步（P0-3 单源化前置 · 2026-08-22）。
 
+⚠️ **2026-08-22 废弃（S1 单机化）**：CCC 收缩到 2017 单机后，机审与合入都在 2017 同一 ledger，
+双机分裂问题消失，本脚本不再需要（approve-merge 在 2017 跑时读本地 ledger 即权威）。
+保留仅作历史/双机过渡期兜底；S1 完成后从 approve-merge 移除调用。
+
 问题：机审在 2017（engine 执行体）落 2017 ledger，approve-merge 在 M1 读 M1 ledger，
 两机各自 append-only → 分裂（实测 M1 500 条 machine_audit_pass vs 2017 970 条）。
 approve-merge 在 M1 按 M1 ledger 判 provenance，会误拒已在 2017 真机审过的卡。
