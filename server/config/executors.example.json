@@ -5,12 +5,12 @@
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "OpenCode",
-      "命令": "opencode",
-      "参数模板": "run --auto --model loop/code --dir {worktree} \"请严格按任务卡 {card_path} 完成 work {work_id}（角色：{role}）。先 Read 该卡全文，再在当前 worktree 内按白名单改动；若卡含 ## 人工批注（老板最高开发指令），必须先按批注修订目标/步骤，完成后在回写区填 ## 批注落实 说明如何落实；完成后 commit+push 到卡内指定分支（勿直推 main）；若业务仓（registry 指向的仓）有改动，必须 push 到该仓同名 codex 分支（勿直推业务 main，合入批准会跨仓收口）；更新卡头为已回写并填回写区。禁止自置已关闭、禁止写验收区/机审区。\" 业务仓 worktree：{biz_worktree}（若提供，所有业务代码改动必须在其中完成，禁止在主仓目录切换卡分支或直接开发）；",
+      "当前绑定": "DSH（S3 切换 · 2026-08-22）",
+      "命令": "scripts/dsh-executor.sh",
+      "参数模板": "{card_path} {work_id} {worktree} {role}",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "2017 默认开发（6102）。停在已回写；机审由验收席（自验收，同工具）自动拉起。",
+      "备注": "CCC×DSH 整合：开发执行体改 DSH headless（读卡→实现→自测→回写）。前置：2017 配 OPENCODE_GO_API_KEY。过渡态：DSH 不稳时回退 OpenCode。机审由 DSH 审计插件另做（S4）。",
       "worker_id": "W4"
     },
     {
