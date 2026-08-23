@@ -148,6 +148,12 @@
   min-height: 0;
   scrollbar-width: none;              /* 隐藏滚动条，保留滚动 */
   -ms-overflow-style: none;
+  /* 2026-08-24 手势修复（老板反馈：按住正文滑动会带动整列横向漂移）：
+     ① touch-action:pan-y —— 触屏上格内只允许纵向平移，横向手势穿透给
+        外层横轨（保留手机轮播）；② overscroll-behavior:contain —— 纵向到顶/
+        到底不再把滚动链接给横轨。桌面滚轮横向分量在 wallPage.js 内拦截。 */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 #view-wall .cell-body::-webkit-scrollbar { display: none; width: 0; }
 #view-wall .blk { margin-bottom: 10px; }

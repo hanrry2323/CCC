@@ -205,6 +205,14 @@ function buildCell(sid) {
     followBottom.set(sid, dist < 60);
     if (dist < 60) hideJump(el);
   });
+  // 2026-08-24 手势修复（老板反馈）：正文区吃掉滚轮/触控板的横向分量，
+  // 杜绝「按住正文滑动带动整列横漂」；纵向分量照常滚动。
+  // 横轨的横向浏览改由格子间隙/格头区或手机轮播手势承担。
+  body.addEventListener('wheel', (e) => {
+    if (e.deltaX === 0) return;
+    e.preventDefault();
+    if (e.deltaY !== 0) body.scrollTop += e.deltaY;
+  }, { passive: false });
   el.querySelector('.jump-latest').addEventListener('click', () => {
     followBottom.set(el.dataset.sid, true); // 点按钮 = 显式恢复跟随
     body.scrollTop = body.scrollHeight;
