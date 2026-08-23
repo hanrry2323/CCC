@@ -52,6 +52,8 @@
 
 ## 重启 + 回归 Runbook（等老板授权后执行）
 
+> **影响面核查（2026-08-23 续轮）**：`:7788` 主列表非关闭状态卡数 = **0**（web 服务旧 PREFIXES 看不到 tst 卡属预期）。引擎修复重启后唯一会被派发的就是 tst002 自检卡——**零真实业务卡误触发风险**。
+
 ```bash
 # 1) 热重启三大服务（等价 kickstart/deploy 的服务动作）
 launchctl kickstart -k gui/$(id -u)/com.ccc.engine
