@@ -1,6 +1,6 @@
 # 任务卡 tst004 · 管线修复验证·合入竞态防护与部署测试封闭化（DSH 执行）
 
-> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中）·重试中） · 派发：engine · 项目：tst · 日期：2026-08-24
+> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-24
 
 ## 基准文件（先看）
 
@@ -65,30 +65,27 @@
 
 ## 回写区
 
-**实现说明**（2026-08-24 · DSH 执行体 · 机审打回后重试轮）：
+**实现说明**（2026-08-24 · DSH 执行体 · 第 3 轮派发回写）：
 
-白名单两文件实现于上轮提交 `0c1cc2b92`，本轮逐行核验与卡规格一致、保持不变：
+白名单两文件实现于提交 `0c1cc2b92`，本轮逐行核验与卡规格一致、零代码改动：
 
-1. `server/tests/test_server.py`：`test_build_ports_payload_empty`（L784）与 `test_chat_bridge_token_empty`（L930）在既有隔离之上追加 `patch("server.web.server._env_or_config", return_value="")`，切断 config.env 回落；既有断言一字未动。
-2. `scripts/approve-merge.sh`：竞态守卫位于 L663-666——`close_card "$path"`（L620）之后、`git add -- "$path"`（L667）之前；`grep -q "状态：已关闭"` 不成立即输出卡指定 `[ERROR] … 合入竞态……` 文案并 `return 1`（不提交/不推送/不部署）；其余逻辑零改动。
+1. `server/tests/test_server.py`：`test_build_ports_payload_empty`（L774）与 `test_chat_bridge_token_empty`（L922）在既有隔离之上追加 `patch("server.web.server._env_or_config", return_value="")`，切断 config.env 回落；既有断言一字未动。
+2. `scripts/approve-merge.sh`：竞态守卫位于 L663-666——`close_card "$path"`（L620）之后、`git add -- "$path"`（L667）之前；`grep -q "状态：已关闭"` 不成立即输出卡指定 `[ERROR] ${id}: 合入竞态——close_card 后卡头非已关闭……` 文案并 `return 1`（不提交/不推送/不部署）；其余逻辑零改动。
 
-**打回原因核查（重要 · 上轮机审为假阳性）**：
+**前两轮机审打回定性（假阳性，已获平台侧证实并热修）**：
 
-上轮台账「不通过（测试真实失败）」实为证据采集缺陷，被测代码从未真实跑挂：
-- 证据 `/Users/fan/.ccc/logs/exec/tst004.test-evidence.log`：采集到的 cmd 为 `:TestPortNetwork::…`（前缀 `python3 -m pytest server/tests/test_server.py` 被截丢），`exit_code=127` = 命令不存在，非断言失败；
-- 根因：本卡为首张门禁含 pytest node-id `::` 的卡。`scripts/test-evidence.sh` L43 与 `server/engine/main.py` `parse_gate_section` L1759 同源解析缺陷——门禁行内含任意 ASCII 冒号即按第一个 ASCII 冒切键值（应按全角「：」切），恰在 `test_server.py::` 处误切；Python 逐字节复现与证据日志一致；
-- 两处带病文件均在本卡白名单外（平台件），执行体按红线不越权修复。**在采集器修复前，重跑机审将复现同一 127 假阳性**，请平台侧先治本（建议：全角冒号优先切分，或仅识别行首键名后首个冒号）。
+- 第 1/2 轮打回依据 `/Users/fan/.ccc/logs/exec/tst004.test-evidence.log` 的 `exit_code=127`：采集到的 cmd 为 `:TestPortNetwork::…`（`python3 -m pytest server/tests/test_server.py` 前缀被截丢），127=命令不存在，被测代码从未真实跑挂；根因是门禁行按首个 ASCII 冒号切键值，恰在 pytest node-id `test_server.py::` 处腰斩；
+- 平台侧已治本：主仓 main 提交 `e21e974d2`「fix(scripts): test-evidence 门禁解析优先全角冒号」（受老板临时授权热修），落点在本卡最后一次假阳性打回（02:04:07）之后、本轮派发之前；本轮以同源 Python 解析器复验本卡门禁行，已能完整取出 `cd …; python3 -m pytest server/tests/test_server.py::TestPortNetwork::…` 全命令。
 
-**自测结果**（本轮全量重跑 · 分支工作树 /Users/fan/program/CCC-wt/tst004）：
+**自测结果**（本轮全量重跑 · 分支工作树 /Users/fan/program/CCC-wt/tst004 · 全部真实执行）：
 
 - T1 卡门禁原命令：`python3 -m pytest server/tests/test_server.py::TestPortNetwork::test_build_ports_payload_empty server/tests/test_server.py::TestConversationDetailed::test_chat_bridge_token_empty -q` → **2 passed，退出码 0**；
-- T2 加强：注入 `CLUSTER_PORT_NAMES` + `CCC_CHAT_BRIDGE_TOKEN` 双泄漏键后仍 2 passed（封闭化对配置泄漏免疫）；
-- T3 回归面 TestPortNetwork+TestConversationDetailed 全类：8 passed；
-- T4 `bash -n scripts/approve-merge.sh` 通过；
-- T5 守卫语义探针：开卡头 → 输出指定 `[ERROR]` 文案且 rc=1 中止；已关闭头 → rc=0 放行；
-- T6 红基线（main 检出 /Users/fan/program/CCC 只读复跑未封闭化版）：**2 failed**——ports 断言得 registered_stale 条目、token 得 `ccc-chat-bridge-2026`，证实原始缺陷真实、封闭化必要。
+- T2 回归面 TestPortNetwork+TestConversationDetailed 全类：**8 passed，退出码 0**；
+- T3 `bash -n scripts/approve-merge.sh` → 通过（退出码 0）；
+- T4 守卫语义探针（逐字节提取 L663-666 真实守卫块 + 桩环境）：开卡头（状态：已回写）→ 输出卡指定 `[ERROR] tst004: 合入竞态……` 文案且 rc=1 中止；已关闭头 → 无输出 rc=0 放行；
+- T5 红基线（main 检出 /Users/fan/program/CCC 只读复跑未封闭化版，PYTHONDONTWRITEBYTECODE=1 + -p no:cacheprovider）：**2 failed**——ports 断言左值首条目即 `{&#39;port&#39;: 6100, &#39;name&#39;: &#39;relay-anthropic&#39;}`、token 得 `ccc-chat-bridge-2026`，与卡目标§1 描述逐字吻合，证实原始缺陷真实、封闭化必要且测试非空转。
 
-**commit/push 证据**：上轮实现 `0c1cc2b92` + 回写 `4f38c6cd0`（push 前已 rebase origin/main）；本轮重试回写见最新提交（docs 仅触本卡）。分支 `codex/tst004-task` 已推 origin，`git ls-remote` 与本地 HEAD 一致。
+**commit/push 证据**：实现 `0c1cc2b92` + 首轮回写 `4f38c6cd0` + 重试回写 `020ba30d4`；本轮第 3 次回写见最新提交（docs 仅触本卡与教训笔记）。分支 `codex/tst004-task` push 前已 `git fetch origin && git rebase origin/main`（rebase 至含平台热修 `e21e974d2` 的 origin/main），push 后 `git ls-remote origin codex/tst004-task` 与本地 HEAD 一致。
 
 ## 机审区
 
@@ -101,7 +98,7 @@
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
    - 说明：方案 tst-plan-001 关联卡原缺 tst004，已补全（plans/001-pipeline-smoke.md 关联卡追加 tst004）；方案目标（管线冒烟）已于 tst002 达成，状态维持「已确定/100%」不变。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：新增 docs/notes/2026-08-24-tst-lessons.md——gitignored config.env 只在主检出存在，分支 worktree 门禁会假绿；封闭化必须隔离配置读取源并在生产检出复现红基线。
+   - 说明：docs/notes/2026-08-24-tst-lessons.md 现两条——①gitignored config.env 只在主检出存在，分支 worktree 门禁会假绿，封闭化必须隔离配置读取源；②门禁行按首个 ASCII 冒号切键值会在 pytest node-id `::` 处腰斩命令致 exit 127 机审假阳性（tst004 两轮误打回实证，平台热修 e21e974d2）。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：仅测试内部 mock 封闭化与 approve-merge 守卫各一处，无结构/技术栈/路径变化。
 4. **线路图**：项目近况/下一步是否变化？[是]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
