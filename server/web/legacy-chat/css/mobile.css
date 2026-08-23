@@ -1,0 +1,52 @@
+/**
+ * mobile.css — 三端适配决策层（ccc-plan-046 M3）。
+ *
+ * 断点：全站唯一手机族断点 md=768（与 shell.css 导航横滑条同值）。
+ * 决策表（PC → 手机）：
+ *   board   四列栅格        → 横滑轮播（列宽 84vw，snap 对齐）
+ *   plans   六列 grid       → 横向滑动列（84vw，snap 对齐）
+ *   console 纵向卡片区      → auto-fill 网格已自适应，仅收紧留白
+ *   ops/dsh 纵向卡片区      → 摘要/统计行允许换行
+ * 触控目标 ≥44px、滚动条隐藏、iOS 动量滚动统一在此层声明。
+ */
+
+@media (max-width: 767px) {
+  /* ── 看板：四列栅格 → 横滑轮播 ── */
+  .board-flow-cols {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .board-flow-cols::-webkit-scrollbar { display: none; }
+  .board-flow-cols > .board-col,
+  .board-flow-cols > .board-half-col {
+    flex: 0 0 min(84vw, 340px);
+    max-width: min(84vw, 340px);
+    min-width: 0;
+    height: calc(100% - var(--ccc-space-lg));
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  /* ── 计划池：六列 grid → 横向滑动列 ── */
+  .plans-flow {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(262px, 84vw);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: var(--ccc-space-md);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .plans-flow::-webkit-scrollbar { display: none; }
+  .plans-flow .pcol { scroll-snap-align: start; scroll-snap-stop: always; }
+
+  /* ── DSH 巡检：摘要四卡允许换行，不挤压 ── */
+  .dsh-summary-cards { flex-wrap: wrap; }
+  .dsh-sum-card { flex: 1 1 40%; min-width: 40%; }
+}
