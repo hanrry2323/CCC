@@ -33,4 +33,4 @@ MIND="你是 CCC 审核合入 Agent —— 整个 CCC 流程的【最后环节�
 - 本会话可恢复（claude --resume ccc-audit-merge）。每次进入带上文心智。
 "
 
-exec claude --name ccc-audit-merge --append-system-prompt "$MIND"
+exec env ANTHROPIC_BASE_URL=https://opencode.ai/zen/go ANTHROPIC_API_KEY=sk-cFDJDwr91XuvmUFObioeNt8vJJye4anfYZV1wavtGvAcYs63zzanmeQzugCTd6oR ANTHROPIC_MODEL=deepseek-v4-flash claude --name ccc-audit-merge --append-system-prompt "$MIND"
