@@ -467,6 +467,20 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
+  # P0-1a（2026-08-23）：机械范围核验——git diff 实际改动文件 vs 卡 ## 范围 白名单声明。
+  # 不一致 = 硬拒绝（不是警告）。与 engine check_range_gate 同 whitelist 口径；
+  # 证据 = 分支信封 diff（机审证据同源），不回退本地卡。
+  if $has_branch && ! bash scripts/scope-check.sh "$path" "$branch"; then
+    echo "[ERROR] ${id}: 范围核验未通过——分支改动文件超出卡 ## 范围 白名单 → 拒绝合入（P0-1a 硬门禁，--close-only 不放行）" >&2
+    return 1
+  fi
+
+  # P0-1c（2026-08-23）：git 提交真实性核验——被审 pin 在分支上 + author 匹配执行体身份。
+  if $has_branch && ! bash scripts/git-truth-check.sh "$path" "$branch"; then
+    echo "[ERROR] ${id}: git 真实性核验未通过（被审 commit 不在分支 / author 不匹配 / 夹带他人提交）→ 拒绝合入（P0-1c 硬门禁）" >&2
+    return 1
+  fi
+
   # 033 阶段 2 M6：机审 provenance——查 ledger 有 machine_audit_pass 记录（不只信卡文件「机审：通过」文本）
   # 2026-08-19 硬化（断点③）：ledger 能力后的卡必须有机审 provenance，缺失=阻断。
   # 2026-08-22 单源化（P0-3）：日期边界由「卡文日期(可伪造)」改为「账本是否为空(伪造免疫)」。
