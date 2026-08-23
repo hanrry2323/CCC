@@ -1,10 +1,11 @@
 # 方案 · 视频高表现力二期（M5）
 
-> 项目：xy · 编号：xy-plan-008 · 状态：部分执行 · 作者：OpenCode（集群架构） · 工具：OpenCode
+> 项目：xy · 编号：xy-plan-008 · 状态：待验收 · 作者：OpenCode（集群架构） · 工具：OpenCode
 > 批准：老板定里程碑 · 2026-08-20
 > 创建：2026-08-20 · 更新：2026-08-24
-> 关联卡：xy059（html-preview CLI · 已回写）；其余功能卡待出
+> 关联卡：xy059（html-preview CLI · 已回写）；其余功能卡待出, xy059
 > 关联方案：无（承接 M3 xy-plan-005/006/007 已落地部分）
+> 进度：2/2 (100%)
 > 里程碑：M5 · 视频高表现力二期
 > 子项目：5.1 帧渲染器 / 5.2 模板库规模化 / 5.3 A-B 质量评估
 > 环境准备：mac2017 xianyu 业务仓可写；Hyperframes 引擎已集成（xy047/xy048）；html_scene 骨架已存在（agent/schema/renderer）；Playwright 需安装验证
