@@ -85,7 +85,7 @@
 - T4 守卫语义探针（逐字节提取 L663-666 真实守卫块 + 桩环境）：开卡头（状态：已回写）→ 输出卡指定 `[ERROR] tst004: 合入竞态……` 文案且 rc=1 中止；已关闭头 → 无输出 rc=0 放行；
 - T5 红基线（main 检出 /Users/fan/program/CCC 只读复跑未封闭化版，PYTHONDONTWRITEBYTECODE=1 + -p no:cacheprovider）：**2 failed**——ports 断言左值首条目即 `{&#39;port&#39;: 6100, &#39;name&#39;: &#39;relay-anthropic&#39;}`、token 得 `ccc-chat-bridge-2026`，与卡目标§1 描述逐字吻合，证实原始缺陷真实、封闭化必要且测试非空转。
 
-**commit/push 证据**：实现 `0c1cc2b92` + 首轮回写 `4f38c6cd0` + 重试回写 `020ba30d4`；本轮第 3 次回写见最新提交（docs 仅触本卡与教训笔记）。分支 `codex/tst004-task` push 前已 `git fetch origin && git rebase origin/main`（rebase 至含平台热修 `e21e974d2` 的 origin/main），push 后 `git ls-remote origin codex/tst004-task` 与本地 HEAD 一致。
+**commit/push 证据**：实现 `0c1cc2b92` + 首轮回写 `4f38c6cd0` + 重试回写 `020ba30d4`；本轮第 3 次回写提交 `6e5b76445` 已推 origin（`git ls-remote origin codex/tst004-task` = 本地 HEAD = `6e5b76445`）。push 过程说明：按卡步骤执行 `git fetch origin && git rebase origin/main` 后推送被拒（non-fast-forward——rebase 重写哈希与远端既有原哈希线分叉，强推触禁令），遂按红线改走无损路线：重置回远端线 `291569269` 并干净 cherry-pick 本轮回写（无冲突），快进推送完成；代价是分支基点不含 main 最新两平台提交（ffee8f8e5 / e21e974d2）——经核不影响本卡：热修 e21e974d2 的采集器位于主检出 scripts/ 由机审 wrapper 直接调用，不经分支工作树，且白名单实现内容与已验证版本逐字一致。
 
 ## 机审区
 
