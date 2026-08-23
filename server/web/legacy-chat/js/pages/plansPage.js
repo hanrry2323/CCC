@@ -17,6 +17,8 @@ import { apiGet, apiPost } from '../api.js';
 import { esc } from '../ui.js';
 
 const STATUSES = ['已确定', '待排期', '部分执行', '待验收', '已完成', '作废'];
+// 状态色：六态分类标识色板（集中定义；语义近似项已对齐令牌色系，
+// 分类身份色保留字面量——用于列边框/徽章的类别区分，非主题语义）
 const STATUS_COLORS = {
   '已确定': '#7a6cc4',
   '待排期': '#3d9a5f',
@@ -180,7 +182,7 @@ function filteredPlans() {
 // ── render ──
 
 function renderPlanItem(plan) {
-  const color = STATUS_COLORS[plan.status] || '#a39e93';
+  const color = STATUS_COLORS[plan.status] || 'var(--ccc-text-faint)';
   const projColor = projectColor(plan.project);
   const projTint = projColor + '1f';
   const acc = plan.acceptance || {};
@@ -505,21 +507,21 @@ function _parseFuncCards(content) {
 function _funcCardsHTML(content) {
   const cards = _parseFuncCards(content);
   if (!cards.length) return '';
-  return `<div class="pdetail-funcs" style="margin:0 0 16px;border:1px solid #2a354d;border-radius:10px;overflow:hidden">
-    <div style="padding:8px 14px;font-size:13px;color:#8b93a7;border-bottom:1px solid #2a354d">功能卡清单（${cards.length}）· 节点②确认对象</div>
-    ${cards.map((c, i) => `<details style="padding:10px 14px;border-bottom:1px solid #242d42">
-      <summary style="cursor:pointer;font-weight:600;color:#d6dce8;list-style:none;display:flex;align-items:baseline;gap:8px">
+  return `<div class="pdetail-funcs" style="margin:0 0 16px;border:1px solid var(--ccc-border-base);border-radius:10px;overflow:hidden">
+    <div style="padding:8px 14px;font-size:13px;color:var(--ccc-text-muted);border-bottom:1px solid var(--ccc-border-base)">功能卡清单（${cards.length}）· 节点②确认对象</div>
+    ${cards.map((c, i) => `<details style="padding:10px 14px;border-bottom:1px solid var(--ccc-border-subtle)">
+      <summary style="cursor:pointer;font-weight:600;color:var(--ccc-text-base);list-style:none;display:flex;align-items:baseline;gap:8px">
         <span>${i + 1}. ${esc(c.title)}</span>
-        ${c.goal ? `<span style="font-weight:400;color:#77809a;font-size:12px">${esc(c.goal)}</span>` : ''}
-        ${c.impl ? '<span style="color:#5b8ce0;margin-left:auto;font-size:11px">实现 ▾</span>' : ''}
+        ${c.goal ? `<span style="font-weight:400;color:var(--ccc-text-muted);font-size:12px">${esc(c.goal)}</span>` : ''}
+        ${c.impl ? '<span style="color:var(--ccc-info);margin-left:auto;font-size:11px">实现 ▾</span>' : ''}
       </summary>
-      ${c.impl ? `<div style="margin-top:8px;font-size:12px;color:#aab3c5;line-height:1.6">${renderMarkdown(c.impl)}</div>` : ''}
+      ${c.impl ? `<div style="margin-top:8px;font-size:12px;color:var(--ccc-text-secondary);line-height:1.6">${renderMarkdown(c.impl)}</div>` : ''}
     </details>`).join('')}
   </div>`;
 }
 
 function renderDetail(plan) {
-  const color = STATUS_COLORS[plan.status] || '#a39e93';
+  const color = STATUS_COLORS[plan.status] || 'var(--ccc-text-faint)';
   const tint = color + '1f';
   const acc = plan.acceptance || {};
   const cardsText = plan.cards && plan.cards !== '无' ? plan.cards : '';
@@ -686,16 +688,16 @@ function _showConvertOverlay(path, items) {
       </div>
       <div class="plans-convert-list" style="max-height:340px;overflow:auto;margin:12px 0">
         ${items.map((c, i) => `
-          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid #242d42;align-items:flex-start">
+          <div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid var(--ccc-border-subtle);align-items:flex-start">
             <input type="checkbox" class="plans-convert-check" data-title="${esc(c.title)}" checked style="margin-top:3px;flex:none" title="取消勾选=本张后续再转（逐步投入）">
-            <span style="flex:none;width:22px;height:22px;border-radius:50%;background:#2a354d;color:#8b93a7;font-size:11px;display:flex;align-items:center;justify-content:center">${i + 1}</span>
+            <span style="flex:none;width:22px;height:22px;border-radius:50%;background:var(--ccc-bg-hover);color:var(--ccc-text-muted);font-size:11px;display:flex;align-items:center;justify-content:center">${i + 1}</span>
             <div style="min-width:0">
-              <div style="font-weight:600;color:#d6dce8">${esc(c.title)}</div>
-              ${c.goal ? `<div style="font-size:12px;color:#77809a;margin-top:2px">${esc(c.goal)}</div>` : ''}
+              <div style="font-weight:600;color:var(--ccc-text-base)">${esc(c.title)}</div>
+              ${c.goal ? `<div style="font-size:12px;color:var(--ccc-text-muted);margin-top:2px">${esc(c.goal)}</div>` : ''}
             </div>
           </div>`).join('')}
       </div>
-      <div style="font-size:12px;color:#77809a;margin-bottom:12px">默认全选。2026-08-16 子项目层：取消勾选 = 该功能卡本批不转，后续按子项目逐步投入。</div>
+      <div style="font-size:12px;color:var(--ccc-text-muted);margin-bottom:12px">默认全选。2026-08-16 子项目层：取消勾选 = 该功能卡本批不转，后续按子项目逐步投入。</div>
       <div class="plans-form-actions">
         <button type="button" class="ptool-btn-plain" id="plans-convert-cancel2">取消</button>
         <button type="button" class="ptool-new" id="plans-convert-ok">${icon('convert')}确认转卡（${items.length} 张）</button>
