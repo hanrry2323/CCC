@@ -205,8 +205,7 @@ function renderPlanItem(plan) {
   const title = String(plan.title || '').replace('方案 · ', '');
 
   return `
-    <article class="pcard" data-path="${esc(plan.path)}" tabindex="0" role="button" draggable="true" aria-label="查看方案 ${esc(title)}">
-      <span class="pcard-edge" style="background:${color}"></span>
+    <article class="pcard" data-path="${esc(plan.path)}" tabindex="0" role="button" draggable="true" aria-label="查看方案 ${esc(title)}" style="--pcard-accent:${color}">
       <div class="pcard-head">
         <span class="pcard-proj" style="background:${projTint};color:${projColor}">${esc(_projectDisplay[plan.project] || plan.project)}</span>
         <span class="pcard-id">#${esc(plan.num)}</span>

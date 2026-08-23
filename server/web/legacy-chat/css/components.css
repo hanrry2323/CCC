@@ -2341,3 +2341,98 @@
   box-shadow: var(--ccc-shadow-sm);
 }
 .pcard:hover { box-shadow: var(--ccc-shadow-md); }
+
+/* ══ 046-M2 微调二期（2026-08-24 老板实测反馈）══ */
+
+/* ── ① 六页页头精确对齐墙 topbar ──
+ * 墙基准：min-height 32 / padding 4×12 / bg sidebar / 底边 0.5px；
+ * 标题 14·600；右侧统计 11 muted 推右；按钮 = 墙 theme-btn 形制。 */
+#view-plans .plans-toolbar,
+#view-board .board-toolbar,
+#view-roadmap .board-toolbar,
+#view-console .console-bar,
+#view-ops .ops-bar,
+#view-dsh .dsh-bar {
+  gap: 6px;
+  padding: var(--ccc-space-xs) var(--ccc-space-md) !important;
+  min-height: var(--ccc-h-topbar);
+  background: var(--ccc-bg-sidebar);
+  border-bottom: 0.5px solid var(--ccc-border-base);
+}
+#view-board .board-toolbar { padding-bottom: var(--ccc-space-xs) !important; }
+.k-topbar-title {
+  font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
+  color: var(--ccc-text-base); white-space: nowrap;
+}
+.k-topbar-stats {
+  margin-left: auto;
+  font-size: 11px; color: var(--ccc-text-muted); white-space: nowrap;
+}
+/* 页面副标题：贴标题排布，不与统计抢推右位 */
+.console-sub, .ops-sub, .dsh-sub { margin-left: 0; }
+.dsh-last { margin-left: auto; }
+.dsh-bar .k-topbar-stats[class*='dsh-sub'] { margin-left: 0; }
+
+/* 工具栏按钮统一为墙 theme-btn 形制 */
+#view-board .board-toolbar .hub-btn,
+#view-roadmap .board-toolbar .hub-btn,
+#view-console .console-bar .hub-btn,
+#view-ops .ops-bar .hub-btn,
+#view-dsh .dsh-bar .hub-btn,
+#board-ws-btns button {
+  background: transparent; color: var(--ccc-text-muted);
+  border: 1px solid var(--ccc-border-base); border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all var(--ccc-transition-fast);
+  white-space: nowrap;
+}
+#view-board .board-toolbar .hub-btn:hover,
+#view-roadmap .board-toolbar .hub-btn:hover,
+#view-console .console-bar .hub-btn:hover,
+#view-ops .ops-bar .hub-btn:hover,
+#view-dsh .dsh-bar .hub-btn:hover,
+#board-ws-btns button:hover { background: var(--ccc-bg-hover); color: var(--ccc-text-secondary); }
+#view-board #board-search {
+  padding: 3px 10px; font-size: 11px;
+  background: var(--ccc-bg-surface); border-radius: 999px;
+}
+
+/* ── ② 计划卡片重写：对齐运维「项目健康」设计语言 ──
+ * 左 4px 状态色条（border-left 承担）+ surface 底 + 12px 圆角 + 无投影；
+ * 字阶：标题13/650 · 元信息11 · ID/角标10.5 · 流程注释10.5。 */
+.pcard {
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-left-width: 4px;
+  border-left-color: var(--pcard-accent, var(--ccc-border-base));
+  border-radius: 12px;
+  box-shadow: none;
+}
+.pcard:hover {
+  transform: none;
+  box-shadow: var(--ccc-shadow-md);
+  border-color: var(--ccc-border-base);
+}
+.pcard-edge { display: none; } /* 左色条已由 border-left 承担 */
+.pcard-title {
+  font-size: 13px; font-weight: 650; line-height: 1.45;
+  color: var(--ccc-text-base);
+  margin: 0 0 2px; min-height: 0;
+  -webkit-line-clamp: 3;
+}
+.pcard-id { font-family: var(--ccc-font-mono); font-size: 10.5px; color: var(--ccc-text-faint); }
+.pcard-meta { font-size: 11px; color: var(--ccc-text-muted); margin-bottom: 2px; }
+.pcard-open {
+  border-color: var(--ccc-border-base);
+  color: var(--ccc-text-muted);
+  background: transparent;
+  font-size: 10.5px; padding: 2px 8px;
+}
+.pcard-open:hover {
+  border-color: var(--ccc-info); color: var(--ccc-info);
+  background: color-mix(in srgb, var(--ccc-info) 6%, transparent);
+}
+.pcard-tag { font-weight: 600; font-size: 10.5px; }
+.pcard-flow-meta { font-size: 10.5px; color: var(--ccc-text-muted); }
