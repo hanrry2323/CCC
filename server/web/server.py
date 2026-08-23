@@ -114,6 +114,7 @@ from server.engine.cluster import (
 from server.web.brain import call_brain, stream_brain_events
 from server.web import session_store
 from server.web import dsh_reader
+from server.web import wall  # DSH 监控墙引擎（ccc-plan-045 P1，源 dsh-wall v0.3.4）
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
@@ -290,14 +291,18 @@ _STATIC_WEB_ROOT = _PROJECT_ROOT / "server" / "web"
 _STATIC_LEGACY_CHAT_ROOT = _STATIC_WEB_ROOT / "legacy-chat"
 # 路径 → 磁盘文件相对 web 根的映射（显式白名单，禁止目录穿越）
 _STATIC_WHITELIST: dict[str, str] = {
-    "/": "legacy-chat/index.html",
-    "/index.html": "legacy-chat/index.html",
+    # ccc-plan-045 P1：根路径 = DSH 监控墙（对话页职能由墙承接，老板 2026-08-24）
+    "/": "wall/index.html",
     "/js/app.js": "legacy-chat/js/app.js",
     "/data/board.js": "data/board.js",
     "/data/cluster.js": "data/cluster.js",
     # T44：favicon 免鉴权返回（否则浏览器自动请求触发 401 噪音）
     "/favicon.ico": "favicon.svg",
     "/favicon.svg": "favicon.svg",
+    # legacy-chat 整体退居 /app 作回滚位（其内部资源引用均为根绝对路径，不受挂载点影响）
+    "/app": "legacy-chat/index.html",
+    # 墙页另挂 /wall（书签/直链等价入口）
+    "/wall": "wall/index.html",
 }
 
 
@@ -3978,6 +3983,42 @@ class _APIHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
 
+    def _handle_wall_stream(self):
+        """GET /wall/api/stream：DSH 监控墙 SSE（ccc-plan-045 P1）。
+
+        范式与原 dsh-wall :3081 一致：首帧立即推、快照字符串 diff 无变化不推、
+        15s 心跳；Connection: close 遵守 034 SSE 约定（无限流无 Content-Length）。"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        def emit_state() -> None:
+            out = json.dumps({**wall.state_payload(), "ts": time.time()}, ensure_ascii=False)
+            self.wfile.write(f"event: state\ndata: {out}\n\n".encode())
+            self.wfile.flush()
+
+        try:
+            emit_state()
+            last = json.dumps(wall.state_payload(), ensure_ascii=False)  # diff 基准不含 ts
+            last_beat = time.time()
+            while True:
+                cur = wall.wait_state_payload(wall.POLL_INTERVAL)
+                cur_ser = json.dumps(cur, ensure_ascii=False)
+                if cur_ser != last:
+                    out = json.dumps({**cur, "ts": time.time()}, ensure_ascii=False)
+                    self.wfile.write(f"event: state\ndata: {out}\n\n".encode())
+                    self.wfile.flush()
+                    last = cur_ser
+                    last_beat = time.time()
+                elif time.time() - last_beat > wall.HEARTBEAT:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
         raw_path = self.path.split("?")[0]
@@ -4011,6 +4052,15 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/tasks/stream":
             # 执行中/机审卡内实时日志流（SSE：snapshot 最近 3 行 + 增量 log 事件 + 心跳）
             self._handle_tasks_stream()
+            return
+        if path == "/wall/api/active":
+            # DSH 监控墙快照（ccc-plan-045 P1；与 /tasks/stream 同组置于鉴权门前，
+            # 延续墙 LAN 无鉴权现状——EventSource 无法带 Authorization 头）
+            self._send_json(wall.active_payload())
+            return
+        if path == "/wall/api/stream":
+            # DSH 监控墙 SSE（首帧立即推 + diff 变化推 + 15s 心跳）
+            self._handle_wall_stream()
             return
         if path == "/cards":
             self._handle_cards_get()
@@ -4217,6 +4267,27 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_404()
 
     def do_POST(self):
+        # ccc-plan-045 P1：墙回写端点置于鉴权门前（同 /tasks/stream 组，LAN 信任模型）
+        raw_post = self.path.rstrip("/").split("?")[0]
+        if raw_post == "/wall/api/dsh/prompt":
+            body = self._read_body() or {}
+            sid = str(body.get("sessionId", ""))
+            text = str(body.get("text", "")).strip()
+            if not sid or not text:
+                self._send_json({"ok": False, "error": "sessionId and text required"}, 400)
+                return
+            ok, err = wall.dsh_prompt(sid, text[:8000])  # 截断保护
+            self._send_json({"ok": ok, "error": err})
+            return
+        if raw_post == "/wall/api/dsh/archive":
+            body = self._read_body() or {}
+            sid = str(body.get("sessionId", ""))
+            if not sid:
+                self._send_json({"ok": False, "error": "sessionId required"}, 400)
+                return
+            ok, err = wall.dsh_archive(sid)
+            self._send_json({"ok": ok, "error": err})
+            return
         if not self._check_auth():
             return
         path = self.path.rstrip("/").split("?")[0]
@@ -4643,6 +4714,7 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
 def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建并启动 HTTP 服务（阻塞）。"""
     _start_card_watcher()
+    wall.ensure_poll_started()  # ccc-plan-045 P1：DSH 墙快照轮询线程（幂等，daemon）
 
     def _bridge_heartbeat() -> None:
         """M1 对话桥保活心跳：30s 检查，挂了经 ssh 拉起（断链自愈）。"""

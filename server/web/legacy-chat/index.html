@@ -36,7 +36,9 @@
   <a class="hub-nav-link" data-route="ops" href="#/ops">运维</a>
   <a class="hub-nav-link" data-route="dsh" href="#/dsh">巡检</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
-  <a class="hub-nav-link" data-route="chat" href="#/chat">对话</a>
+  <!-- ccc-plan-045：对话页职能由 DSH 信息墙承接（/wall）；旧对话保留 #/chat 直达作回滚 -->
+  <a class="hub-nav-link" href="/wall">信息墙</a>
+  <a class="hub-nav-link" data-route="chat" href="#/chat" title="旧对话（回滚位，将由墙完全替代）">对话·旧</a>
   <div class="hub-nav-spacer"></div>
   <div class="hub-auth" id="auth-status">
     <span class="hub-auth-role" id="auth-role">未登录</span>

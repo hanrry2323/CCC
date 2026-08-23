@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>DSH 监控墙</title>
+<style>
+/* ── CCC 主题变量 · 暗色（默认）── */
+:root {
+  --ccc-bg-deep: #100e0c;
+  --ccc-bg-base: #121009;
+  --ccc-bg-surface: #37332e;
+  --ccc-bg-layer: #1c1a17;
+  --ccc-bg-hover: rgba(220, 210, 195, 0.06);
+  --ccc-bg-active: rgba(220, 210, 195, 0.1);
+  --ccc-bg-accent: #d97a55;
+  --ccc-bg-accent-soft: rgba(217, 122, 85, 0.18);
+  --ccc-bg-user: #2e2b28;
+  --ccc-bg-code: #1c1a17;
+  --ccc-bg-glass: rgba(35, 33, 32, 0.85);
+  --ccc-bg-sidebar: #100e0c;
+  --ccc-text-base: #f5f2eb;
+  --ccc-text-secondary: #d8d3c8;
+  --ccc-text-muted: #9d968a;
+  --ccc-text-faint: #6b655c;
+  --ccc-text-inverse: #1c1a17;
+  --ccc-text-accent: #e08a65;
+  --ccc-border-subtle: rgba(220, 210, 195, 0.1);
+  --ccc-border-base: rgba(220, 210, 195, 0.2);
+  --ccc-border-accent: #d97a55;
+  --ccc-success: #4fa377;
+  --ccc-danger: #d65c4a;
+  --ccc-warn: #d9941a;
+  --ccc-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", sans-serif;
+  --ccc-font-mono: "SF Mono", Menlo, Monaco, monospace;
+  --ccc-font-size-base: 14.5px;
+  --ccc-head-bg: #3f3a34;
+  --ccc-meta-bg: #2b2823;
+  --ccc-shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --ccc-cell-highlight: rgba(255, 255, 255, 0.06);
+}
+/* ── CCC 主题变量 · 亮色 ── */
+:root[data-theme="light"] {
+  --ccc-bg-deep: #e6dfd0;
+  --ccc-bg-base: #ece6d8;
+  --ccc-bg-surface: #fffefb;
+  --ccc-bg-layer: #efeae0;
+  --ccc-bg-hover: rgba(42, 38, 34, 0.05);
+  --ccc-bg-active: rgba(42, 38, 34, 0.08);
+  --ccc-bg-accent: #d97a55;
+  --ccc-bg-accent-soft: rgba(217, 122, 85, 0.14);
+  --ccc-bg-user: #f0eae0;
+  --ccc-bg-code: #efebe2;
+  --ccc-bg-glass: rgba(255, 253, 248, 0.85);
+  --ccc-bg-sidebar: #e6dfd0;
+  --ccc-text-base: #2b2620;
+  --ccc-text-secondary: #4d463c;
+  --ccc-text-muted: #8a8274;
+  --ccc-text-faint: #b3ab9d;
+  --ccc-text-inverse: #fffdf8;
+  --ccc-text-accent: #c96a45;
+  --ccc-border-subtle: rgba(42, 38, 34, 0.09);
+  --ccc-border-base: rgba(42, 38, 34, 0.15);
+  --ccc-border-accent: #d97a55;
+  --ccc-success: #3d8a61;
+  --ccc-danger: #d65c4a;
+  --ccc-warn: #b87f15;
+  --ccc-head-bg: #f0ebdf;
+  --ccc-meta-bg: #f8f4ec;
+  --ccc-shadow-md: 0 3px 10px rgba(84, 70, 50, 0.13), 0 1px 3px rgba(84, 70, 50, 0.08);
+  --ccc-cell-highlight: rgba(255, 255, 255, 0.85);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--ccc-bg-base);
+  color: var(--ccc-text-base);
+  font-family: var(--ccc-font-sans);
+  font-size: var(--ccc-font-size-base);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+/* ── 顶栏（0.3.3 再压：32px）── */
+.topbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; min-height: 32px;
+  background: var(--ccc-bg-sidebar);
+  border-bottom: 0.5px solid var(--ccc-border-base);
+  flex-shrink: 0;
+}
+.topbar h1 { font-size: 14px; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
+.topbar .stats { color: var(--ccc-text-muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.layout-switch { display: flex; gap: 4px; }
+.layout-switch button, .theme-btn {
+  background: transparent; color: var(--ccc-text-muted);
+  border: 1px solid var(--ccc-border-base); border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer;
+  font-family: var(--ccc-font-sans);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.layout-switch button:hover, .theme-btn:hover { background: var(--ccc-bg-hover); color: var(--ccc-text-secondary); }
+.layout-switch button.active {
+  background: var(--ccc-bg-accent-soft);
+  color: var(--ccc-text-accent);
+  border-color: var(--ccc-border-accent);
+}
+/* ── 横轨（0.3.3 弹性：全端横滑，列宽以手机375为基准）── */
+.wall {
+  flex: 1; padding: 12px;
+  display: flex; gap: 10px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none; -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}
+.wall::-webkit-scrollbar { display: none; }
+/* 兼容旧 l6/l8 类名，统一走横轨 */
+.wall.l6, .wall.l8 { grid-template-columns: unset; grid-template-rows: unset; }
+.cell {
+  flex: 0 0 clamp(320px, 28vw, 380px);
+  scroll-snap-align: start; scroll-snap-stop: always;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-base);
+  border-radius: 12px;
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+  transition: border-color 0.3s ease;
+  position: relative;
+  box-shadow: var(--ccc-shadow-md), inset 0 1px 0 var(--ccc-cell-highlight);
+}
+.cell.active {
+  border-color: var(--ccc-border-accent);
+  animation: borderBreath 2.4s ease-in-out infinite;
+}
+.cell.active::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: 12px;
+  pointer-events: none; z-index: 1;
+  animation: glowBreath 2.4s ease-in-out infinite;
+}
+.cell.done { border-color: var(--ccc-border-subtle); opacity: 0.85; }
+.cell.error { border-color: var(--ccc-danger); }
+@keyframes borderBreath {
+  0%, 100% { border-color: var(--ccc-border-accent); }
+  50% { border-color: rgba(217, 122, 85, 0.55); }
+}
+@keyframes glowBreath {
+  0%, 100% { box-shadow: 0 0 3px rgba(217, 122, 85, 0.15); }
+  50% { box-shadow: 0 0 14px rgba(217, 122, 85, 0.45); }
+}
+.cell-idle {
+  border-style: dashed; border-color: var(--ccc-border-subtle);
+  align-items: center; justify-content: center;
+  color: var(--ccc-text-faint); font-size: 13px;
+  background: transparent;
+}
+/* 格子标题栏（0.3.2 融合：单 bar 28px，承载标题+统计） */
+.cell-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 12px; min-height: 28px;
+  background: var(--ccc-head-bg);
+  border-bottom: 0.5px solid var(--ccc-border-base);
+  flex-shrink: 0; flex-wrap: nowrap;
+}
+.cell-title {
+  font-size: 13px; font-weight: 600; color: var(--ccc-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+.cell-head .cell-dur { font-size: 11px; color: var(--ccc-text-muted); flex-shrink: 0; }
+/* 已读钉死在格头最右，不被标题/点阵挤出 */
+.cell-head .mark-read { margin-left: auto; order: 99; }
+.badge {
+  font-size: 11px; padding: 1px 7px; border-radius: 4px;
+  flex-shrink: 0; font-weight: 500;
+}
+.badge.ccc { background: var(--ccc-bg-accent-soft); color: var(--ccc-text-accent); }
+.badge.quant { background: rgba(79, 163, 119, 0.18); color: var(--ccc-success); }
+.badge.manual { background: var(--ccc-bg-hover); color: var(--ccc-text-muted); }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--ccc-success);
+  box-shadow: 0 0 6px rgba(79, 163, 119, 0.5);
+}
+.cell.active .dot { background: var(--ccc-text-accent); box-shadow: 0 0 8px rgba(217, 122, 85, 0.7); animation: pulse 1.2s ease-in-out infinite; }
+.cell.error .dot { background: var(--ccc-danger); box-shadow: 0 0 6px rgba(214, 92, 74, 0.6); }
+.cell.done .dot { background: var(--ccc-success); box-shadow: 0 0 6px rgba(79, 163, 119, 0.5); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.cell-dur { font-size: 11px; color: var(--ccc-text-muted); flex-shrink: 0; }
+/* ── 内容区 ── */
+.cell-body {
+  flex: 1; overflow-y: auto; padding: 14px 14px 18px;
+  font-size: 12.5px; line-height: 1.75;
+  color: var(--ccc-text-secondary);
+  min-height: 0;
+  scrollbar-width: none;              /* 隐藏滚动条，保留滚动 */
+  -ms-overflow-style: none;
+}
+.cell-body::-webkit-scrollbar { display: none; width: 0; }
+.blk { margin-bottom: 10px; }
+.blk:last-child { margin-bottom: 0; }
+.blk h1, .blk h2, .blk h3, .blk h4 { color: var(--ccc-text-base); font-weight: 700; margin: 8px 0 4px; line-height: 1.4; }
+.blk h1 { font-size: 15px; } .blk h2 { font-size: 14px; } .blk h3 { font-size: 13px; } .blk h4 { font-size: 12.5px; }
+.blk p { margin: 4px 0; }
+.blk table { border-collapse: collapse; margin: 6px 0; font-size: 11.5px; width: 100%; }
+.blk th, .blk td { border: 0.5px solid var(--ccc-border-base); padding: 3px 8px; text-align: left; }
+.blk th { background: var(--ccc-bg-layer); color: var(--ccc-text-base); font-weight: 600; }
+.blk blockquote { margin: 6px 0; padding: 2px 10px; border-left: 2px solid var(--ccc-border-accent); color: var(--ccc-text-muted); background: var(--ccc-bg-hover); border-radius: 0 6px 6px 0; }
+.blk hr { border: none; border-top: 0.5px solid var(--ccc-border-subtle); margin: 10px 0; }
+.blk ul, .blk ol { margin: 4px 0; padding-left: 20px; }
+.blk ul.tasks { list-style: none; padding-left: 4px; }
+.blk .task-done::before { content: '☑ '; color: var(--ccc-success); }
+.blk .task-todo::before { content: '☐ '; color: var(--ccc-text-faint); }
+.blk .blk-label {
+  display: block; font-size: 10.5px; letter-spacing: 0.5px;
+  color: var(--ccc-text-faint); margin-bottom: 3px;
+  font-weight: 600; text-transform: uppercase;
+}
+.blk-user {
+  background: var(--ccc-bg-user);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ccc-text-base);
+  font-size: 12.5px;
+}
+.blk-user .blk-label { color: var(--ccc-text-accent); }
+.blk-assistant {
+  color: var(--ccc-text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+/* 推理默认折叠为内联行，点击整行或进度条可展开 */
+.blk-reasoning {
+  color: var(--ccc-text-faint);
+  font-size: 11.5px;
+  border-left: 2px solid var(--ccc-border-subtle);
+  padding: 2px 0 2px 10px;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 22px; overflow: hidden;
+  position: relative; cursor: pointer;
+}
+.blk-reasoning::after {
+  content: ' ⋯ 点击展开'; position: absolute; right: 4px; bottom: 0;
+  background: var(--ccc-bg-surface); padding: 0 4px; font-size: 10px;
+}
+.blk-reasoning.open { max-height: none; cursor: default; }
+.blk-reasoning.open::after { display: none; }
+
+/* 格脚（0.3.4）：次信息与点阵，22px */
+.cell-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 12px; min-height: 22px;
+  background: var(--ccc-meta-bg);
+  border-top: 0.5px solid var(--ccc-border-subtle);
+  font-size: 10px; color: var(--ccc-text-muted);
+  flex-shrink: 0; flex-wrap: nowrap;
+  white-space: nowrap; overflow: hidden;
+}
+.cell-foot b { color: var(--ccc-text-secondary); font-weight: 500; }
+.cell-foot .foot-stats { display: flex; gap: 8px; align-items: center; flex-shrink: 1; min-width: 0; overflow: hidden; }
+.cell-foot .foot-model { flex-shrink: 1; min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.blk-tool {
+  font-family: var(--ccc-font-mono);
+  font-size: 11px; color: var(--ccc-warn);
+  background: var(--ccc-bg-layer);
+  border-radius: 5px;
+  padding: 6px 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.blk-tool .blk-label { color: var(--ccc-warn); }
+.blk-step {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--ccc-text-faint);
+  margin: 14px 0 10px;
+}
+.blk-step::before, .blk-step::after {
+  content: ''; flex: 1; height: 0.5px; background: var(--ccc-border-subtle);
+}
+.blk-fold {
+  color: var(--ccc-text-faint); font-size: 11px; font-style: italic;
+  border-top: 0.5px dashed var(--ccc-border-subtle);
+  padding-top: 4px; margin-bottom: 6px;
+}
+.blk-error {
+  color: var(--ccc-danger);
+  background: rgba(214, 92, 74, 0.08);
+  border: 1px solid rgba(214, 92, 74, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.cell-reason {
+  margin: 2px 10px 10px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid var(--ccc-danger);
+  background: rgba(214, 92, 74, 0.12);
+  color: var(--ccc-danger);
+  border-radius: 6px;
+  font-size: 11.5px; line-height: 1.45;
+  word-break: break-word;
+  flex-shrink: 0;
+  display: flex; align-items: flex-start; gap: 6px;
+}
+.cell-reason::before {
+  content: '⚠'; font-weight: 700; flex-shrink: 0;
+}
+/* 已读按钮（done/error 格子右上角） */
+.mark-read {
+  background: var(--ccc-bg-accent-soft); color: var(--ccc-text-accent);
+  border: 1px solid var(--ccc-border-accent); border-radius: 5px;
+  font-size: 11px; padding: 1px 8px; cursor: pointer;
+  font-family: var(--ccc-font-sans); flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.mark-read:hover { background: var(--ccc-bg-accent); color: var(--ccc-text-inverse); }
+/* Markdown 渲染样式 */
+.blk-assistant h1, .blk-assistant h2, .blk-assistant h3, .blk-assistant h4 {
+  color: var(--ccc-text-base); margin: 8px 0 4px; line-height: 1.4;
+}
+.blk-assistant h1 { font-size: 15px; }
+.blk-assistant h2 { font-size: 14px; }
+.blk-assistant h3 { font-size: 13px; }
+.blk-assistant h4 { font-size: 12.5px; }
+.blk-assistant p { margin: 4px 0; }
+.blk-assistant ul, .blk-assistant ol { padding-left: 18px; margin: 4px 0; }
+.blk-assistant li { margin: 2px 0; }
+.blk-assistant a { color: var(--ccc-text-accent); }
+.blk-assistant code {
+  font-family: var(--ccc-font-mono); font-size: 11.5px;
+  background: var(--ccc-bg-code); padding: 1px 5px; border-radius: 4px;
+}
+.blk-assistant pre {
+  background: var(--ccc-bg-code); border: 1px solid var(--ccc-border-subtle);
+  border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 6px 0;
+}
+.blk-assistant pre code { padding: 0; background: none; font-size: 11.5px; }
+.blk-user h1, .blk-user h2, .blk-user h3, .blk-user h4 { color: var(--ccc-text-base); margin: 6px 0 3px; font-size: 13px; }
+.blk-user p { margin: 3px 0; }
+.blk-user ul, .blk-user ol { padding-left: 18px; margin: 3px 0; }
+.blk-user code { font-family: var(--ccc-font-mono); font-size: 11.5px; background: var(--ccc-bg-deep); padding: 1px 5px; border-radius: 4px; }
+/* ── 来源筛选 chips ── */
+.filter-switch { display: flex; gap: 4px; }
+.filter-switch button {
+  background: transparent; color: var(--ccc-text-muted);
+  border: 1px solid var(--ccc-border-base); border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+  font-family: var(--ccc-font-sans); transition: all 0.15s ease; white-space: nowrap;
+}
+.filter-switch button:hover { background: var(--ccc-bg-hover); color: var(--ccc-text-secondary); }
+.filter-switch button.active { background: var(--ccc-bg-accent-soft); color: var(--ccc-text-accent); border-color: var(--ccc-border-accent); }
+.filter-switch button.chip-err.active { background: rgba(214, 92, 74, 0.15); color: var(--ccc-danger); border-color: var(--ccc-danger); }
+/* ── 回到最新（用户上滚阅读时浮出）── */
+.jump-latest {
+  position: absolute; right: 12px; bottom: 12px; z-index: 5;
+  background: var(--ccc-bg-accent); color: var(--ccc-text-inverse);
+  border: none; border-radius: 14px; padding: 4px 12px;
+  font-size: 11px; cursor: pointer; font-family: var(--ccc-font-sans);
+  box-shadow: var(--ccc-shadow-md); display: none;
+}
+.jump-latest.show { display: block; }
+/* ── 聚焦模式：点击格子标题栏 → 单格放大 ── */
+.cell-head { cursor: pointer; }
+.wall.single { grid-template-columns: 1fr !important; grid-template-rows: 1fr !important; }
+.wall.single .cell:not(.focused) { display: none; }
+.cell.focused { border-color: var(--ccc-border-accent); }
+.notif-btn.on { color: var(--ccc-text-accent); border-color: var(--ccc-border-accent); }
+.stall-badge {
+  background: rgba(217, 148, 26, 0.15); color: var(--ccc-warn);
+  border: 1px solid var(--ccc-warn); border-radius: 5px;
+  font-size: 11px; padding: 2px 8px; cursor: pointer;
+  font-family: var(--ccc-font-sans); flex-shrink: 0;
+}
+.stall-badge:hover { background: var(--ccc-warn); color: var(--ccc-text-inverse); }
+
+/* ── 格内对话输入条（0.3.0）── */
+.cell-input { flex-shrink: 0; }
+/* 输入框展开时隐藏右下角「回到最新」，避免遮挡 */
+.cell-input.open ~ .jump-latest { display: none !important; }
+.ci-toggle {
+  display: block; width: calc(100% - 20px); margin: 6px 10px 8px;
+  padding: 8px 12px; font-size: 12px; text-align: left;
+  background: var(--ccc-bg-code);
+  border: 1px dashed var(--ccc-border-base); border-radius: 8px;
+  color: var(--ccc-text-secondary);
+  cursor: pointer; font-family: var(--ccc-font-sans);
+  transition: border-color 0.15s ease;
+}
+.ci-toggle:hover { border-color: var(--ccc-border-accent); color: var(--ccc-text-accent); }
+.ci-box { display: none; padding: 6px 10px 8px; flex-direction: column; gap: 6px; }
+.cell-input.open .ci-box { display: flex; }
+.cell-input.open .ci-toggle { display: none; }
+.ci-text {
+  width: 100%; resize: none; border: 1px solid var(--ccc-border-base); border-radius: 6px;
+  background: var(--ccc-bg-code); color: var(--ccc-text-base);
+  font-family: var(--ccc-font-sans); font-size: 12.5px; padding: 7px 9px;
+  min-height: 52px; max-height: 140px; box-sizing: border-box;
+}
+.ci-text:focus { outline: none; border-color: var(--ccc-border-accent); }
+.ci-actions { display: flex; align-items: center; gap: 8px; }
+.ci-hint { font-size: 11px; color: var(--ccc-text-muted); flex: 1; min-height: 14px; word-break: break-all; }
+.ci-hint.err { color: var(--ccc-danger); }
+.ci-send {
+  background: var(--ccc-bg-accent); color: var(--ccc-text-inverse);
+  border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px;
+  cursor: pointer; font-family: var(--ccc-font-sans); flex-shrink: 0;
+}
+.ci-send:disabled { opacity: 0.5; cursor: default; }
+
+/* ── 页码指示器（手机轮播用）── */
+#pager { display: none; justify-content: center; align-items: center; gap: 10px; padding: 4px 0 10px; flex-shrink: 0; }
+#pager button {
+  width: 22px; height: 22px; border: none; padding: 0;
+  background: transparent; cursor: pointer; position: relative;
+}
+#pager button::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ccc-border-base); transition: all 0.2s ease;
+}
+#pager button.on::after { background: var(--ccc-bg-accent); transform: translate(-50%, -50%) scale(1.35); }
+
+/* 平板整体字号微升（768–1180）*/
+@media (min-width: 768px) and (max-width: 1180px) {
+  :root { --ccc-font-size-base: 15px; }
+}
+
+/* ── 响应式 · 手机族（窄≤767px，或低高度横屏）共享基础 ── */
+@media (max-width: 767px), (orientation: landscape) and (max-height: 500px) {
+  .topbar { flex-wrap: wrap; row-gap: 4px; padding: 4px 10px; }
+  .topbar h1 { font-size: 14px; }
+
+  .filter-switch { overflow-x: auto; max-width: 100%; scrollbar-width: none; -ms-overflow-style: none; }
+  .filter-switch::-webkit-scrollbar { display: none; }
+  #updTime { display: none; }                    /* 统计精简 */
+  #themeBtn { margin-left: auto; }
+  .wall {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .wall::-webkit-scrollbar { display: none; }
+  .wall .cell-idle { display: none; }            /* 不滑到空屏 */
+  .wall.single { display: flex; }                /* 聚焦模式天然全屏 */
+  #pager { display: flex; }
+  /* iOS：输入字号≥16px 才不会聚焦时强制放大页面 */
+  .ci-text { font-size: 16px; }
+}
+/* 竖屏：单格全屏轮播（横轨自适应，竖屏仍一屏一栏） */
+@media (max-width: 767px) and (orientation: portrait) {
+  .wall { padding: 0; gap: 0; }
+  .wall .cell {
+    flex: 0 0 100%;
+    min-width: 100%;
+    max-width: 100%;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+  }
+}
+/* 手机横屏：三栏横滑（0.3.3 保留，但列宽走 clamp 自适应） */
+@media (orientation: landscape) and (max-height: 500px) {
+  .wall { padding: 10px; }
+}
+
+/* ── 触控目标 ≥44px（粗指针设备）── */
+@media (pointer: coarse) {
+  .mark-read, .jump-latest { padding: 11px 16px; }
+  .layout-switch button, .theme-btn, .notif-btn, .filter-switch button { padding: 10px 14px; }
+  #pager button { width: 30px; height: 30px; }
+}
+
+/* ── 动画降级（系统减弱动态效果）── */
+@media (prefers-reduced-motion: reduce) {
+  .cell.active { animation: none; }
+  .cell.active::after { animation: none; }
+  .cell.active .dot { animation: none !important; }
+  .jump-latest, #pager button::after { transition: none; }
+}
+.offline {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: var(--ccc-danger); color: #fff;
+  text-align: center; font-size: 12px; padding: 3px;
+  display: none; z-index: 99;
+}
+</style>
+</head>
+<body>
+<div class="offline" id="offline">连接中断，正在重连…</div>
+<div class="topbar">
+  <h1>DSH 监控墙</h1>
+  <div class="filter-switch" id="filterSwitch">
+    <button data-f="all" class="active">全部</button>
+    <button data-f="err" class="chip-err">错误</button>
+  </div>
+
+  <button class="theme-btn" id="themeBtn" title="切换亮色/暗色">暗色</button>
+  <button class="theme-btn notif-btn" id="notifBtn" title="任务出错时弹系统通知">🔔 关</button>
+  <!-- 2026-08-24 CCC 并入（ccc-plan-045）：唯一 UI 改动——加控制台回链防导航死胡同 -->
+  <a class="theme-btn" href="/app" title="CCC 控制台（看板/计划/线路图/运维）" style="text-decoration:none">控制台 ↗</a>
+  <div class="stats" id="stats"></div>
+</div>
+<div class="wall" id="wall"></div>
+<div id="pager"></div>
+
+<script>
+const wall = document.getElementById('wall');
+const statsEl = document.getElementById('stats');
+const offlineEl = document.getElementById('offline');
+const themeBtn = document.getElementById('themeBtn');
+let layout = 4;
+let sessions = {};       // id -> snapshot（运行中）
+let lastGone = {};       // id -> {snap} 未读完成/错误会话（持续显示，直到手动已读）
+let readSids = {};       // id -> ts 已读会话（localStorage 持久化）
+let renderedCount = {};  // sid -> 已渲染块数（增量渲染）
+const READ_KEY = 'dsh-wall-read-v1';
+const THEME_KEY = 'dsh-wall-theme-v1';
+const LAYOUT_KEY = 'dsh-wall-layout-v1';
+const FILTER_KEY = 'dsh-wall-filter-v1';
+const NOTIF_KEY = 'dsh-wall-notif-v1';
+const READ_KEEP_MS = 7 * 86400000;
+let filterMode = (() => { try { return localStorage.getItem(FILTER_KEY) || 'all'; } catch (_) { return 'all'; } })();
+let focusedSid = null;    // 聚焦模式：当前放大的会话 id（null = 宫格总览）
+let notifOn = (() => { try { return localStorage.getItem(NOTIF_KEY) === '1'; } catch (_) { return false; } })();
+const notifiedErr = {};   // sid -> true（每个错误周期只弹一次通知）
+const cellHosts = new Map(); // sid -> 格子宿主 DOM（跨槽位稳定存在，借鉴 multiple-chat-panels 的 Portal 思想）
+
+/* ── 主题 ── */
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  themeBtn.textContent = t === 'light' ? '☀' : '☾';
+  themeBtn.title = t === 'light' ? '切到暗色' : '切到亮色';
+  try { localStorage.setItem(THEME_KEY, t); } catch (_) {}
+}
+themeBtn.addEventListener('click', () => {
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+});
+applyTheme((() => { try { return localStorage.getItem(THEME_KEY) || 'light'; } catch (_) { return 'light'; } })());
+
+/* ── 弹性横轨（0.3.3）：布局固定横滑，无 4/6/8 切换 ── */
+function setLayout(n) { layout = n; try { localStorage.setItem(LAYOUT_KEY, n); } catch (_) {} }
+
+/* ── 已读 ── */
+function loadRead() {
+  try { readSids = JSON.parse(localStorage.getItem(READ_KEY) || '{}'); } catch (_) { readSids = {}; }
+  const now = Date.now();
+  for (const k in readSids) if (now - readSids[k] > READ_KEEP_MS) delete readSids[k];
+}
+function markRead(id) {
+  readSids[id] = Date.now();
+  try { localStorage.setItem(READ_KEY, JSON.stringify(readSids)); } catch (_) {}
+  delete lastGone[id];
+  // 已读 = 仅本设备隐藏（localStorage）。不回写 DSH 归档——会话保留在 DSH 侧栏便于继续跟进。
+  // （DSH→墙方向仍生效：在 DSH 里归档的会话照样不上墙）
+  syncWall();
+}
+
+/* ── 工具 ── */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ── 迷你 Markdown 渲染（自包含，不依赖公网）── */
+function mdInline(s) {
+  s = esc(s);
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+function mdTable(lines) {
+  // 简单 pipe 表格：| a | b | 分割行 --- | ---
+  let html = '<table><tbody>';
+  for (let i = 0; i < lines.length; i++) {
+    if (i === 1 && /^\s*\|?[\s:-]+\|[\s:-]+(\|[\s:-]+)*\|?\s*$/.test(lines[i])) continue; // 分隔行
+    const cells = lines[i].replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => mdInline(c.trim()));
+    html += '<tr>' + cells.map(c => (i === 0 ? '<th>' : '<td>') + c + (i === 0 ? '</th>' : '</td>')).join('') + '</tr>';
+  }
+  return html + '</tbody></table>';
+}
+function mdBlock(block) {
+  let html = '';
+  let list = null;
+  let table = null;
+  const lines = block.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw.trim();
+    if (!line) {
+      if (list) { html += list === 'ul' ? '</ul>' : '</ol>'; list = null; }
+      table = null;
+      continue;
+    }
+    if (table) {
+      if (/^\|.*\|$/.test(line)) { table.push(line); continue; }
+      html += mdTable(table); table = null;
+    }
+    if (/^\|.*\|$/.test(line)) {
+      if (list) { html += list === 'ul' ? '</ul>' : '</ol>'; list = null; }
+      table = [line];
+      continue;
+    }
+    if (list) { html += list === 'ul' ? '</ul>' : '</ol>'; list = null; }
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)/))) {
+      html += `<h${m[1].length}>${mdInline(m[2])}</h${m[1].length}>`;
+    } else if ((m = line.match(/^>\s?(.*)/))) {
+      html += `<blockquote>${mdInline(m[1])}</blockquote>`;
+    } else if ((m = line.match(/^[-*]\s+\[([ xX])\]\s+(.*)/))) {
+      html += `<ul class="tasks"><li class="task-${m[1] === 'x' || m[1] === 'X' ? 'done' : 'todo'}">${mdInline(m[2])}</li></ul>`;
+    } else if ((m = line.match(/^[-*]\s+(.*)/))) {
+      html += '<ul><li>' + mdInline(m[1]) + '</li></ul>';
+    } else if ((m = line.match(/^\d+\.\s+(.*)/))) {
+      html += '<ol><li>' + mdInline(m[1]) + '</li></ol>';
+    } else if (/^(-{3,}|\*{3,})$/.test(line)) {
+      html += '<hr>';
+    } else {
+      html += `<p>${mdInline(line)}</p>`;
+    }
+  }
+  if (table) html += mdTable(table);
+  if (list) html += list === 'ul' ? '</ul>' : '</ol>';
+  return html;
+}
+function md(text) {
+  const raw = String(text ?? '');
+  const parts = raw.split(/```/);
+  let out = '';
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 1) {
+      let code = parts[i].replace(/^[a-zA-Z0-9_+-]+\n/, '');
+      out += `<pre><code>${esc(code.trim())}</code></pre>`;
+    } else {
+      out += mdBlock(parts[i]);
+    }
+  }
+  return out;
+}
+
+function fmtTime(sec) {
+  if (sec == null || sec === 0) return '–';
+  if (sec < 60) return Math.round(sec) + 's';
+  if (sec < 3600) return Math.floor(sec/60) + 'm' + Math.round(sec%60) + 's';
+  return Math.floor(sec/3600) + 'h' + Math.floor((sec%3600)/60) + 'm';
+}
+function fmtTokens(t) {
+  if (!t || (t.input + t.output + t.cache) === 0) return '–';
+  return ((t.input + t.output)/1000).toFixed(1) + 'k';
+}
+
+/* ── 块渲染（返回内部 HTML，不包外层 div）── */
+function blkHtml(b) {
+  switch (b.type) {
+    case 'user':      return `<div class="blk blk-user"><span class="blk-label">用户 · ${b.followup ? '追问' : '任务'}</span>${md(b.text)}</div>`;
+    case 'assistant': return `<div class="blk blk-assistant">${md(b.text)}</div>`;
+    case 'reasoning': return `<div class="blk blk-reasoning"><span class="blk-label">推理</span>${esc(b.text)}</div>`;
+    case 'tool':      return `<div class="blk blk-tool"><span class="blk-label">工具</span>${esc(b.text)}</div>`;
+    case 'step':      return `<div class="blk blk-step"><span>步骤 ${esc(b.text)}</span></div>`;
+    case 'fold':      return `<div class="blk blk-fold">${esc(b.text)}</div>`;
+    case 'error':     return `<div class="blk blk-error">${esc(b.text)}</div>`;
+    default:          return `<div class="blk blk-assistant">${md(b.text)}</div>`;
+  }
+}
+
+/* ── 格子骨架 ── */
+function buildCell(sid) {
+  const el = document.createElement('div');
+  el.className = 'cell';
+  el.dataset.sid = sid;
+  el.innerHTML = `
+    <div class="cell-head">
+      <span class="cell-title"></span>
+      <span class="badge"></span>
+      <span class="dot"></span>
+      <span class="cell-dur"></span>
+    </div>
+    <div class="cell-body"></div>
+    <div class="cell-foot">
+      <span class="foot-stats">
+        <span title="轮次">↻ <b class="m-turn"></b></span>
+        <span title="步骤">≡ <b class="m-step"></b></span>
+        <span title="耗时">⏱ <b class="m-dur"></b></span>
+        <span title="Token"><b class="m-tok"></b></span>
+        <span title="模型" class="foot-model"><b class="m-model"></b></span>
+      </span>
+    </div>
+    <div class="cell-input">
+      <button class="ci-toggle">💬 发消息…</button>
+      <div class="ci-box">
+        <textarea class="ci-text" rows="2" placeholder="输入消息，Enter 发送（Shift+Enter 换行）"></textarea>
+        <div class="ci-actions">
+          <span class="ci-hint"></span>
+          <button class="ci-send">发送 ▶</button>
+        </div>
+      </div>
+    </div>
+    <button class="jump-latest">↓ 回到最新</button>`;
+  const body = el.querySelector('.cell-body');
+  // 用户滚回底部附近 → 自动收起按钮
+  body.addEventListener('scroll', () => {
+    if (body.scrollHeight - body.scrollTop - body.clientHeight < 60) hideJump(el);
+  });
+  el.querySelector('.jump-latest').addEventListener('click', () => {
+    body.scrollTop = body.scrollHeight;
+    hideJump(el);
+  });
+  return el;
+}
+
+/* ── 更新已有格子（增量：不重建 DOM，只更新头部/元数据 + 追加新块）── */
+function updateCell(el, s, first) {
+  const sid = el.dataset.sid;
+  el.className = 'cell ' + (s.status === 'error' ? 'error' : s.status === 'done' ? 'done' : 'active');
+  // 标题栏
+  el.querySelector('.cell-title').textContent = s.title || sid.slice(0, 20);
+  el.querySelector('.cell-title').title = s.title || '';
+  const badge = el.querySelector('.badge');
+  if (s.source === 'ccc') { badge.className = 'badge ccc'; badge.textContent = 'CCC'; }
+  else if (s.source === 'quant') { badge.className = 'badge quant'; badge.textContent = '量化'; }
+  else if (s.source === 'manual') { badge.className = 'badge manual'; badge.textContent = '手动'; }
+  else { badge.className = 'badge'; badge.textContent = ''; }
+  el.querySelector('.cell-dur').textContent = fmtTime(s.elapsed);
+  // 元数据（0.3.2 已融合进 cell-head）
+  el.querySelector('.m-turn').textContent = s.turn;
+  el.querySelector('.m-step').textContent = s.step;
+  el.querySelector('.m-dur').textContent = fmtTime(s.elapsed);
+  el.querySelector('.m-tok').textContent = fmtTokens(s.tokens);
+  // 模型名缩写+悬停看全称，避免长名顶开底栏
+  { const raw = s.model || '–'; const short = raw === '–' ? '–' : (raw.split('/').pop().split(':').pop().slice(0, 14) || raw.slice(0, 14)); const mEl = el.querySelector('.m-model'); mEl.textContent = short; mEl.title = raw; mEl.closest('.foot-model').title = raw; }
+  // 停滞提示角标（0.3.1）：点击直达输入框做对话化引导
+  let stall = el.querySelector('.stall-badge');
+  if (s.stalled) {
+    if (!stall) {
+      stall = document.createElement('button');
+      stall.className = 'stall-badge';
+      stall.textContent = '⏸ 可能等待输入';
+      el.querySelector('.cell-head').appendChild(stall);
+    }
+  } else if (stall) {
+    stall.remove();
+  }
+  // 已读按钮（done/error 才有）
+  const head = el.querySelector('.cell-head');
+  let btn = head.querySelector('.mark-read');
+  if (s.status === 'done' || s.status === 'error') {
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.className = 'mark-read';
+      btn.textContent = '已读';
+      btn.onclick = () => markRead(sid);
+      head.appendChild(btn);
+    }
+  } else if (btn) {
+    btn.remove();
+  }
+  // 错误原因行
+  let reasonEl = el.querySelector('.cell-reason');
+  if (s.reason && s.status === 'error') {
+    if (!reasonEl) {
+      reasonEl = document.createElement('div');
+      reasonEl.className = 'cell-reason';
+      el.appendChild(reasonEl);
+    }
+    reasonEl.textContent = s.reason;
+  } else if (reasonEl) {
+    reasonEl.remove();
+  }
+  // 内容块：增量追加（文档片段一次插入，减少布局抖动）
+  const body = el.querySelector('.cell-body');
+  const blocks = s.blocks || [];
+  let from = renderedCount[sid] || 0;
+  // 后端裁剪过（blocks 变短）：清空重建，避免增量错位、永不追加
+  if (blocks.length < from) {
+    body.innerHTML = '';
+    from = 0;
+  }
+  if (from < blocks.length) {
+    // 智能跟随：追加前记录是否贴近底部；用户上滚阅读时不再强拽，改浮「回到最新」
+    const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+    const frag = document.createDocumentFragment();
+    for (let k = from; k < blocks.length; k++) {
+      const div = document.createElement('div');
+      div.innerHTML = blkHtml(blocks[k]);
+      frag.appendChild(div);
+    }
+    body.appendChild(frag);
+    renderedCount[sid] = blocks.length;
+    if (nearBottom || first) {
+      requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; hideJump(el); });
+    } else {
+      showJump(el);
+    }
+  } else {
+    renderedCount[sid] = blocks.length;
+    if (first) requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; });
+  }
+}
+
+
+
+/* ── 回到最新 ── */
+function showJump(el) { const b = el.querySelector('.jump-latest'); if (b) b.classList.add('show'); }
+function hideJump(el) { const b = el.querySelector('.jump-latest'); if (b) b.classList.remove('show'); }
+
+/* ── 来源筛选 ── */
+function matchFilter(sid) {
+  const g = lastGone[sid] && lastGone[sid].snap;
+  const snap = sessions[sid] || g;
+  switch (filterMode) {
+    case 'all':  return true;
+    case 'err':  return !!(g && g.status === 'error');
+    default:     return true; // 兼容旧 localStorage 残留 ccc/quant/manual
+  }
+}
+
+/* ── 格子同步（稳定宿主：DOM 按 sid 持久化，槽位变化只搬运节点不重建）──
+   借鉴 multiple-chat-panels 的 Portal+稳定宿主设计：
+   会话从 3 号格挪到 1 号格时，搬的是整个格子节点 → 内容、滚动位置、渲染游标全保留 */
+function syncWall() {
+  const now = Date.now();
+  for (const k in readSids) if (now - readSids[k] > READ_KEEP_MS) delete readSids[k];
+
+  const activeIds = Object.keys(sessions).filter(matchFilter);
+  const goneIds = Object.keys(lastGone).filter(matchFilter);
+
+  // 聚焦模式下冻结重排，避免正在看的格子被新会话挤走（数据仍在后台更新）
+  if (!focusedSid) {
+    // 运行中按开始时间升序（先开始的先占位）；未读按结束时间降序（最新完成优先展示）
+    activeIds.sort((a, b) => (sessions[a].started_ms || 0) - (sessions[b].started_ms || 0));
+    goneIds.sort((a, b) => (lastGone[b].snap.ended_ms || 0) - (lastGone[a].snap.ended_ms || 0));
+  }
+  const slots = activeIds.concat(goneIds);
+
+  // 清理已消失会话的宿主与渲染游标（修复 renderedCount 泄漏）
+  const live = new Set([...Object.keys(sessions), ...Object.keys(lastGone)]);
+  for (const sid of [...cellHosts.keys()]) {
+    if (!live.has(sid)) {
+      const el = cellHosts.get(sid);
+      if (el) el.remove();
+      cellHosts.delete(sid);
+      delete renderedCount[sid];
+    }
+  }
+
+  // 0.3.3 弹性横轨：列数 = 会话数，不按固定 layout 截断
+  const target = [];
+  for (let i = 0; i < slots.length; i++) {
+    const sid = slots[i];
+    target.push({ sid, snap: sessions[sid] || lastGone[sid].snap });
+  }
+  // 聚焦格若被挤出，钉在末位保证可见
+  if (focusedSid && !target.some(t => t.sid === focusedSid)) {
+    const snap = sessions[focusedSid] || (lastGone[focusedSid] && lastGone[focusedSid].snap);
+    if (snap) target.push({ sid: focusedSid, snap });
+  }
+  // 空态：1 个等待占位
+  const emptyIdle = target.length === 0;
+  const wantCount = emptyIdle ? 1 : target.length;
+
+  for (let i = 0; i < target.length; i++) {
+    const want = target[i];
+    let el = cellHosts.get(want.sid);
+    if (!el) {
+      el = buildCell(want.sid);
+      cellHosts.set(want.sid, el);
+      renderedCount[want.sid] = 0;
+    }
+    updateCell(el, want.snap);
+    const cur = wall.children[i];
+    if (cur !== el) wall.insertBefore(el, cur || null);
+  }
+  if (emptyIdle) {
+    const cur = wall.children[0];
+    if (!cur || !cur.classList.contains('cell-idle')) {
+      const idle = document.createElement('div');
+      idle.className = 'cell cell-idle';
+      idle.textContent = '等待活跃对话…';
+      wall.insertBefore(idle, cur || null);
+    }
+  }
+  while (wall.children.length > wantCount) wall.removeChild(wall.lastChild);
+
+  // 聚焦的会话已消失（被标记已读/剔除）→ 自动退出聚焦
+  if (focusedSid && !cellHosts.has(focusedSid)) focusedSid = null;
+  applyFocusClasses();
+
+  const tnow = new Date();
+  statsEl.innerHTML = `活跃 ${activeIds.length} · 未读 ${goneIds.length}<span id="updTime"> · 更新 ${tnow.toTimeString().slice(0, 8)}</span>`;
+  rebuildPager(target.length);
+}
+
+/* ── 手机轮播页码指示器 ── */
+const pagerEl = document.getElementById('pager');
+let pagerCount = 0;
+function rebuildPager(n) {
+  pagerCount = focusedSid ? 0 : n;          // 聚焦模式隐藏页码
+  if (!pagerCount) { pagerEl.innerHTML = ''; return; }
+  let html = '';
+  for (let i = 0; i < pagerCount; i++) html += `<button data-i="${i}" aria-label="第 ${i + 1} 格"></button>`;
+  pagerEl.innerHTML = html;
+  updatePagerActive();
+}
+function updatePagerActive() {
+  if (!pagerCount || !pagerEl.children.length) return;
+  // 步长 = 实际单格宽 + gap（竖屏=全屏宽，横屏三竖条时自动适配）
+  const firstCell = wall.querySelector('.cell');
+  const step = firstCell ? firstCell.getBoundingClientRect().width + 10 : wall.clientWidth;
+  const idx = Math.min(pagerCount - 1, Math.max(0, Math.round(wall.scrollLeft / step)));
+  for (let k = 0; k < pagerEl.children.length; k++) {
+    pagerEl.children[k].classList.toggle('on', k === idx);
+  }
+}
+wall.addEventListener('scroll', () => {
+  if (wall.scrollWidth > wall.clientWidth + 1) updatePagerActive();
+}, { passive: true });
+pagerEl.addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]');
+  if (!b) return;
+  const firstCell = wall.querySelector('.cell');
+  const step = firstCell ? firstCell.getBoundingClientRect().width + 10 : wall.clientWidth;
+  wall.scrollTo({ left: (+b.dataset.i) * step, behavior: 'smooth' });
+});
+
+/* ── 聚焦模式样式同步 ── */
+function applyFocusClasses() {
+  for (const el of wall.querySelectorAll('.cell')) {
+    el.classList.toggle('focused', !!focusedSid && el.dataset.sid === focusedSid);
+  }
+  wall.classList.toggle('single', !!focusedSid);
+}
+
+/* ── 错误系统通知（借鉴插件「复杂交互降级」哲学：墙只报警，处理仍回 DSH 主界面）── */
+const notifBtn = document.getElementById('notifBtn');
+function applyNotifBtn() {
+  notifBtn.textContent = notifOn ? '🔔 开' : '🔔 关';
+  notifBtn.classList.toggle('on', notifOn);
+}
+notifBtn.addEventListener('click', async () => {
+  if (!notifOn) {
+    if (!('Notification' in window)) { alert('此浏览器不支持系统通知'); return; }
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') return;
+    notifOn = true;
+  } else {
+    notifOn = false;
+  }
+  try { localStorage.setItem(NOTIF_KEY, notifOn ? '1' : '0'); } catch (_) {}
+  applyNotifBtn();
+});
+function maybeNotify(s) {
+  if (!notifOn) return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  if (notifiedErr[s.id]) return;   // 同一错误周期只弹一次
+  notifiedErr[s.id] = true;
+  try {
+    new Notification(`⚠ 任务出错 · ${s.title || s.id.slice(0, 20)}`, {
+      body: s.reason || '任务异常结束',
+      tag: 'dsh-wall-' + s.id,
+    });
+  } catch (_) {}
+}
+
+/* ── 标题栏未读错误闪烁（后台标签页也能感知）── */
+let titleTick = 0;
+setInterval(() => {
+  const n = Object.values(lastGone).filter(g => g.snap.status === 'error' && !readSids[g.snap.id]).length;
+  if (n > 0) {
+    titleTick++;
+    document.title = (titleTick % 2 ? `(${n}) ⚠ ` : '') + 'DSH 监控墙';
+  } else if (document.title !== 'DSH 监控墙') {
+    document.title = 'DSH 监控墙';
+    titleTick = 0;
+  }
+}, 1500);
+
+/* ── SSE ── */
+function applyState(sessList) {
+  sessions = {};
+  for (const s of sessList) {
+    if (s.status === 'done' || s.status === 'error') {
+      if (readSids[s.id]) continue;
+      const prev = lastGone[s.id] && lastGone[s.id].snap;
+      lastGone[s.id] = { snap: s };
+      // 新出错（或错误原因更新）→ 弹一次系统通知
+      if (s.status === 'error' && (!prev || prev.reason !== s.reason)) maybeNotify(s);
+      continue;
+    }
+    sessions[s.id] = s;
+    delete lastGone[s.id];
+  }
+  syncWall();
+}
+
+function connect() {
+  const es = new EventSource('/wall/api/stream');
+  es.addEventListener('state', e => {
+    offlineEl.style.display = 'none';
+    try {
+      const d = JSON.parse(e.data);
+      // DSH 侧归档的会话：本地未读缓存同步剪除（DSH 已处理 → 墙不再显示）
+      if (Array.isArray(d.archived)) {
+        for (const aid of d.archived) { delete sessions[aid]; delete lastGone[aid]; }
+      }
+      applyState(d.sessions || []);
+    } catch (_) {}
+  });
+  es.onerror = () => {
+    offlineEl.style.display = 'block';
+    es.close();
+    setTimeout(connect, 3000);
+  };
+  return es;
+}
+let esConn = null;
+document.addEventListener('visibilitychange', () => {
+  // 标签页从后台切回：断开则立即重连，保证不 miss 更新
+  if (!document.hidden && esConn && esConn.readyState === EventSource.CLOSED) {
+    esConn.close();
+    esConn = connect();
+  }
+});
+/* ── 来源筛选切换 ── */
+const filterSwitch = document.getElementById('filterSwitch');
+filterSwitch.addEventListener('click', e => {
+  const f = e.target.dataset.f;
+  if (!f) return;
+  filterMode = f;
+  try { localStorage.setItem(FILTER_KEY, f); } catch (_) {}
+  filterSwitch.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('active', b.dataset.f === f));
+  syncWall();
+});
+
+/* ── 聚焦模式：点击格子标题栏 → 单格放大；再点/ESC 退出 ── */
+wall.addEventListener('click', e => {
+  // 已读按钮、回到最新按钮不触发聚焦
+  if (e.target.closest('.mark-read') || e.target.closest('.jump-latest')) return;
+  const head = e.target.closest('.cell-head');
+  if (!head) return;
+  const sid = head.parentElement.dataset.sid;
+  if (!sid) return;
+  focusedSid = focusedSid === sid ? null : sid;
+  syncWall();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && focusedSid) { focusedSid = null; syncWall(); }
+});
+
+/* ── 启动 ── */
+applyNotifBtn();
+/* ── 格内对话（0.3.0）：发送走 /api/dsh/prompt → DSH session.prompt(queue)── */
+// 停滞角标 → 对话化引导：展开输入框并附提示语（0.3.1）
+wall.addEventListener('click', e => {
+  const sb = e.target.closest('.stall-badge');
+  if (!sb) return;
+  const wrap = sb.closest('.cell').querySelector('.cell-input');
+  wrap.classList.add('open');
+  const ta = wrap.querySelector('.ci-text');
+  ta.placeholder = 'DSH 可能在等待你的选择/指示，直接一句话回复即可…';
+  const hint = wrap.querySelector('.ci-hint');
+  hint.textContent = '⏸ 会话疑似停滞：直接回复一句话即可继续';
+  hint.classList.remove('err');
+  setTimeout(() => ta.focus(), 30);
+});
+wall.addEventListener('click', e => {
+  const reason = e.target.closest('.blk-reasoning');
+  if (reason && !reason.classList.contains('open')) {
+    reason.classList.add('open');
+    return;
+  }
+  if (reason && reason.classList.contains('open')) {
+    reason.classList.remove('open');
+    return;
+  }
+  const tg = e.target.closest('.ci-toggle');
+  if (tg) {
+    const wrap = tg.closest('.cell-input');
+    wrap.classList.add('open');
+    const ta = wrap.querySelector('.ci-text');
+    setTimeout(() => ta.focus(), 30);
+    return;
+  }
+  if (e.target.closest('.ci-send')) sendPrompt(e.target.closest('.cell-input'));
+});
+// 点击页面其他位置自动收起输入框（标准 click-outside 模式；角标点击除外——它负责展开）
+document.addEventListener('click', e => {
+  if (!e.target.closest('.cell-input') && !e.target.closest('.stall-badge')) {
+    document.querySelectorAll('.cell-input.open').forEach(w => w.classList.remove('open'));
+  }
+});
+wall.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey && e.target.classList && e.target.classList.contains('ci-text')) {
+    e.preventDefault();
+    sendPrompt(e.target.closest('.cell-input'));
+  }
+  // Esc 收起输入框，回到悬浮按钮态
+  if (e.key === 'Escape' && e.target.classList && e.target.classList.contains('ci-text')) {
+    closeInput(e.target.closest('.cell-input'));
+  }
+});
+function closeInput(wrap) {
+  wrap.classList.remove('open');
+  const ta = wrap.querySelector('.ci-text');
+  ta.blur();
+}
+// 软键盘弹出时保证输入框可见
+wall.addEventListener('focusin', e => {
+  if (e.target.classList && e.target.classList.contains('ci-text')) {
+    setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 250);
+  }
+});
+async function sendPrompt(wrap) {
+  const sid = wrap.closest('.cell').dataset.sid;
+  const ta = wrap.querySelector('.ci-text');
+  const hint = wrap.querySelector('.ci-hint');
+  const btn = wrap.querySelector('.ci-send');
+  const text = ta.value.trim();
+  if (!text || btn.disabled) return;
+  btn.disabled = true;
+  hint.classList.remove('err');
+  hint.textContent = '发送中…';
+  try {
+    const r = await fetch('/wall/api/dsh/prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: sid, text }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      hint.textContent = '已排队 ✓';
+      ta.value = '';
+      // 发送成功后自动收回悬浮态（留 1.2s 让用户看到回执）
+      setTimeout(() => closeInput(wrap), 1200);
+    } else {
+      hint.textContent = d.error || '发送失败';
+      hint.classList.add('err');
+    }
+  } catch (_) {
+    hint.textContent = '网络错误，请重试';
+    hint.classList.add('err');
+  }
+  btn.disabled = false;
+}
+
+loadRead();
+setLayout((() => { try { return +localStorage.getItem(LAYOUT_KEY) || 4; } catch (_) { return 4; } })());
+esConn = connect();
+
+/* ── QA 自检探针（仅 ?qa=1 时激活：单次拉取快照，不挂 SSE，供无头浏览器断言）── */
+if (new URLSearchParams(location.search).has('qa')) {
+  esConn && esConn.close();   // 不保持事件流，页面才能在无头模式正常结束
+  const runProbe = () => {
+    const out = { viewport: [innerWidth, innerHeight] };
+    try {
+      const cs = getComputedStyle(wall);
+      out.wall = { display: cs.display, gtc: cs.gridTemplateColumns, gtr: cs.gridTemplateRows };
+      const cell = document.querySelector('.cell:not(.cell-idle)');
+      if (cell) { const r = cell.getBoundingClientRect(); out.cell = { w: Math.round(r.width), h: Math.round(r.height) }; }
+      out.layoutSwitch = getComputedStyle(document.getElementById('layoutSwitch')).display;
+      out.filterSwitch = getComputedStyle(document.getElementById('filterSwitch')).display;
+      out.pager = !!document.getElementById('pager');
+      if (out.pager) out.pagerDisplay = getComputedStyle(document.getElementById('pager')).display;
+      out.realCells = document.querySelectorAll('.cell:not(.cell-idle)').length;
+      out.idleCells = document.querySelectorAll('.cell-idle').length;
+      const mr = document.querySelector('.mark-read');
+      if (mr) out.markReadH = Math.round(mr.getBoundingClientRect().height);
+    } catch (e) { out.error = String(e); }
+    document.title = 'QA';
+    const pre = document.createElement('pre');
+    pre.id = 'qa-out';
+    pre.textContent = 'QA_OUT:' + JSON.stringify(out);
+    document.body.appendChild(pre);
+  };
+  fetch('/wall/api/active')
+    .then(r => r.json())
+    .then(d => { applyState(d.sessions || []); setTimeout(runProbe, 400); })
+    .catch(() => { setTimeout(runProbe, 100); });
+}
+</script>
+</body>
+</html>

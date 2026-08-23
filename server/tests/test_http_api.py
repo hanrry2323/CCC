@@ -987,12 +987,29 @@ class TestStaticHosting:
     """静态白名单路径免鉴权返回磁盘文件；目录穿越 404；非白名单 API 无 token 401。"""
 
     def test_root_returns_legacy_chat_html(self, api_server):
-        """GET / 返回 legacy-chat/index.html（200 + text/html）。"""
+        """GET / 返回 DSH 监控墙页（ccc-plan-045：对话页职能由墙承接）。
+
+        旧断言为 legacy-chat（<title>CCC</title>）；2026-08-24 根路径改服务墙页，
+        legacy-chat 退居 /app 回滚位（见 test_app_returns_legacy_chat_html）。"""
         status, body_text = _get_raw(api_server, "/")
         assert status == 200
         assert "<html" in body_text.lower()
+        assert "DSH 监控墙" in body_text
+        assert "/wall/api/stream" in body_text
+
+    def test_wall_page_served(self, api_server):
+        """GET /wall 与 / 同源等价（墙页书签入口）。"""
+        status_root, root_text = _get_raw(api_server, "/")
+        status_wall, wall_text = _get_raw(api_server, "/wall")
+        assert (status_root, status_wall) == (200, 200)
+        assert wall_text == root_text
+
+    def test_app_returns_legacy_chat_html(self, api_server):
+        """GET /app 返回 legacy-chat/index.html（回滚位完好）。"""
+        status, body_text = _get_raw(api_server, "/app")
+        assert status == 200
         assert "<title>CCC</title>" in body_text
-        assert "legacy-retired" not in body_text
+        assert "信息墙" in body_text  # hub-nav 对话标签已替换为墙入口
 
     def test_index_html(self, api_server):
         """GET /index.html 200。"""
