@@ -4,7 +4,7 @@
 > 创建：2026-08-24 · 更新：2026-08-24
 > 批准：老板逐条批准全部核心条目 · 2026-08-24（会话内 ask-user 多选确认）
 > 关联卡：按批次出卡或直执（直执批次在 state.md 留痕）
-> 进度：批次 1 部署完成（真机取证待老板）；批次 2-4 待推进
+> 进度：批次 1 完成（老板真机确认遮挡解决）；批次 2 部署中；批次 3-4 待推进
 > 工作底稿：medio-0 `.ccc/plans/frontend-refactor-draft.md`
 
 ## 目标
@@ -63,6 +63,14 @@ bundle 主 chunk 328KB → ≤300KB。
 - [ ] 全程：vitest ≥70% 覆盖率门禁不降；clippy/fmt 后端门禁不受影响
 
 ## 验收记录
+
+### 批次 2 · 2026-08-24（部署验证中）
+- [x] ≤768 sidebar 规则链合并（删 200px/180px 两套打架限高与空死规则）
+- [x] RssArticleList 移动端 TabBar 底部补偿（对齐 RssReader 做法，审计 #1）
+- [x] 通知横幅 Notification API 守卫（审计 #2）
+- [x] useMediaQuery 冗余段清理 + 测试断言同步
+- [x] vitest 381 全绿；Playwright 三视口回归符合预期
+- [ ] HP 部署收尾验证
 
 ### 批次 1 · 2026-08-24
 - [x] deploy.sh 全量部署：生产 CSS 指纹 DLJPXQhH → **D3RizBE5**（移动端遮挡修复上线）
