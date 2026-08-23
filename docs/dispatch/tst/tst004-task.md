@@ -1,6 +1,6 @@
 # 任务卡 tst004 · 管线修复验证·合入竞态防护与部署测试封闭化（DSH 执行）
 
-> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：tst · 日期：2026-08-24
+> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-24
 
 ## 基准文件（先看）
 
@@ -65,19 +65,30 @@
 
 ## 回写区
 
-**实现说明**（2026-08-24 · DSH 执行体）：
+**实现说明**（2026-08-24 · DSH 执行体 · 机审打回后重试轮）：
 
-1. `server/tests/test_server.py`：`test_build_ports_payload_empty` 与 `test_chat_bridge_token_empty` 在既有隔离之上追加 `patch("server.web.server._env_or_config", return_value="")`，切断 env 之外的 config.env 回落（生产配置含 `CLUSTER_PORT_NAMES=7788:web-server,6100:relay-anthropic,6102:relay-openai` 与 `CCC_CHAT_BRIDGE_TOKEN=ccc-chat-bridge-2026`）；两用例既有断言一字未动，仅收紧隔离。
-2. `scripts/approve-merge.sh`：在 `close_card "$path"`（L620）之后、`git add -- "$path"`（L667）之前插入竞态防护——`grep -q "状态：已关闭" "$path"` 不成立即输出指定 `[ERROR] ${id}: 合入竞态——…` 并 `return 1`（不提交/不推送/不部署），完整覆盖 close_card→git add 窗口；其余既有逻辑零改动。
+白名单两文件实现于上轮提交 `0c1cc2b92`，本轮逐行核验与卡规格一致、保持不变：
 
-**自测结果**：
+1. `server/tests/test_server.py`：`test_build_ports_payload_empty`（L784）与 `test_chat_bridge_token_empty`（L930）在既有隔离之上追加 `patch("server.web.server._env_or_config", return_value="")`，切断 config.env 回落；既有断言一字未动。
+2. `scripts/approve-merge.sh`：竞态守卫位于 L663-666——`close_card "$path"`（L620）之后、`git add -- "$path"`（L667）之前；`grep -q "状态：已关闭"` 不成立即输出卡指定 `[ERROR] … 合入竞态……` 文案并 `return 1`（不提交/不推送/不部署）；其余逻辑零改动。
 
-- 红基线复现（修复前，生产检出 /Users/fan/program/CCC 只读跑 pytest，PYTHONDONTWRITEBYTECODE=1 + -p no:cacheprovider）：两用例均 FAILED——ports 断言左值含 `{port:6100, name:relay-anthropic,…}` registered_stale 条目、token 断言得 `ccc-chat-bridge-2026`，与卡述事故完全一致。
-- 门禁命令（分支工作树）：`python3 -m pytest server/tests/test_server.py::TestPortNetwork::test_build_ports_payload_empty server/tests/test_server.py::TestConversationDetailed::test_chat_bridge_token_empty -q` → `2 passed`，退出码 0。
-- 加强验证：注入双泄漏键（CLUSTER_PORT_NAMES + CCC_CHAT_BRIDGE_TOKEN）后仍 `2 passed`；回归面 TestPortNetwork+TestConversationDetailed 两类 `8 passed`。
-- `bash -n scripts/approve-merge.sh` 通过；守卫位于 L659-666（close_card 之后、git add 之前）；grep 守卫语义微验证：开卡头→触发中止、已关闭头→正常放行。
+**打回原因核查（重要 · 上轮机审为假阳性）**：
 
-**commit/push 证据**：`0c1cc2b92`（fix(tst004): 部署测试封闭化 + approve-merge 合入竞态防护），push 前已 `git fetch origin && git rebase origin/main`（基于 b6a6427a8），`git ls-remote origin codex/tst004-task` = `0c1cc2b921c72f…` 与本地 HEAD 一致。
+上轮台账「不通过（测试真实失败）」实为证据采集缺陷，被测代码从未真实跑挂：
+- 证据 `/Users/fan/.ccc/logs/exec/tst004.test-evidence.log`：采集到的 cmd 为 `:TestPortNetwork::…`（前缀 `python3 -m pytest server/tests/test_server.py` 被截丢），`exit_code=127` = 命令不存在，非断言失败；
+- 根因：本卡为首张门禁含 pytest node-id `::` 的卡。`scripts/test-evidence.sh` L43 与 `server/engine/main.py` `parse_gate_section` L1759 同源解析缺陷——门禁行内含任意 ASCII 冒号即按第一个 ASCII 冒切键值（应按全角「：」切），恰在 `test_server.py::` 处误切；Python 逐字节复现与证据日志一致；
+- 两处带病文件均在本卡白名单外（平台件），执行体按红线不越权修复。**在采集器修复前，重跑机审将复现同一 127 假阳性**，请平台侧先治本（建议：全角冒号优先切分，或仅识别行首键名后首个冒号）。
+
+**自测结果**（本轮全量重跑 · 分支工作树 /Users/fan/program/CCC-wt/tst004）：
+
+- T1 卡门禁原命令：`python3 -m pytest server/tests/test_server.py::TestPortNetwork::test_build_ports_payload_empty server/tests/test_server.py::TestConversationDetailed::test_chat_bridge_token_empty -q` → **2 passed，退出码 0**；
+- T2 加强：注入 `CLUSTER_PORT_NAMES` + `CCC_CHAT_BRIDGE_TOKEN` 双泄漏键后仍 2 passed（封闭化对配置泄漏免疫）；
+- T3 回归面 TestPortNetwork+TestConversationDetailed 全类：8 passed；
+- T4 `bash -n scripts/approve-merge.sh` 通过；
+- T5 守卫语义探针：开卡头 → 输出指定 `[ERROR]` 文案且 rc=1 中止；已关闭头 → rc=0 放行；
+- T6 红基线（main 检出 /Users/fan/program/CCC 只读复跑未封闭化版）：**2 failed**——ports 断言得 registered_stale 条目、token 得 `ccc-chat-bridge-2026`，证实原始缺陷真实、封闭化必要。
+
+**commit/push 证据**：上轮实现 `0c1cc2b92` + 回写 `4f38c6cd0`（push 前已 rebase origin/main）；本轮重试回写见最新提交（docs 仅触本卡）。分支 `codex/tst004-task` 已推 origin，`git ls-remote` 与本地 HEAD 一致。
 
 ## 机审区
 
