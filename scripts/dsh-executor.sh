@@ -17,6 +17,19 @@ WORK_ID="${2:?缺 work_id}"
 WORKTREE="${3:-}"
 ROLE="${4:-开发执行体}"
 
+# R-2026-08-23 P0-2：launchd 下 Engine PATH 极简（/usr/bin:/bin:/usr/sbin:/sbin），
+# 裸 `dsh` 会 127。兜底补 npm 全局 bin，仍找不到就明确报错（不静默）。
+case ":$PATH:" in
+  *":$HOME/.npm-global/bin:"*) ;;
+  *) export PATH="$HOME/.npm-global/bin:$PATH" ;;
+esac
+command -v dsh >/dev/null 2>&1 || { echo "[dsh-executor] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
+
+# R-2026-08-23 P0-3：worktree 的 git 元数据在主仓 .git（cwd 之外），默认
+# workspace-write 沙箱会拒绝 commit 且 headless 无审批通道 → 执行体无法收口。
+# 与生产 harness 同款语义：danger-full-access + approval never。
+export DSH_PERMISSION_MODE="${DSH_PERMISSION_MODE:-danger-full-access}"
+
 # 若给了 worktree，切进去工作
 if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
   cd "$WORKTREE"
@@ -34,6 +47,7 @@ PROMPT="你是 CCC 开发执行体（角色：${ROLE}）。
 6. 禁止自置已关闭、禁止写验收区/机审区（机审由 DSH 审计插件另做）。
 7. 重要：卡红线「只改 <文件清单>」指**代码文件**；**任务卡自身的状态回写（状态→已回写、填回写区）是流程动作，不属代码改动**——完成后必须回写卡状态（S8 冒烟 2026-08-22 修正）。
 8. 完成时报告：改了什么文件、自测结果、commit hash、卡回写结果。若遇原则性障碍（范围外/缺依赖），明确报告无法完成及原因。
+授权声明：本次任务已显式授权在 worktree 内读写任务相关文件并执行 git add/commit/push（限卡白名单范围）；headless 只读红线不适用于本授权范围内动作。
 工作目录：$(pwd)"
 
 # 后台执行 + 最长等待（免费模型慢；engine 侧另有全局超时）

@@ -35,6 +35,8 @@ from pathlib import Path
 from string import Formatter
 from typing import TYPE_CHECKING
 
+from server.board.roles import normalize_tool
+
 if TYPE_CHECKING:
     from server.engine.task import Work
 
@@ -118,7 +120,12 @@ class ExecutorRegistry:
         return [e for e in role_entries if not e.project]
 
     def rows_for_binding(self, tool_name: str, project: str = "") -> list[ExecutorEntry]:
-        """返回与工具名（卡头「执行体」绑定）匹配的全部注册行（T39）。优先匹配项目。"""
+        """返回与工具名（卡头「执行体」绑定）匹配的全部注册行（T39）。优先匹配项目。
+
+        精确字符串比较（保持 T39 原语义：绑定串含注记时不视为同名，
+        如卡头 `Claude Code` 不应命中 `Claude Code（2026-08-22 工具收口）` 管理席行）。
+        绑定名归一化兜底只在 cli_entry_for_binding / role_for_binding 内做。
+        """
         binding_entries = [e for e in self.entries if e.binding == tool_name]
         if project:
             proj_entries = [e for e in binding_entries if e.project == project]
@@ -151,25 +158,49 @@ class ExecutorRegistry:
                 return e
         return None
 
+    def _normalized_cli_fallback(self, tool_name: str, project: str = "") -> ExecutorEntry | None:
+        """绑定名归一化兜底（R-2026-08-23 P0-4）。
+
+        精确匹配未命中时，按 normalize_tool（去括号注记）比较注册表绑定串，
+        只认「可后台 CLI」行；同名多角色（工具收口后开发/维护/验收均为 DSH）
+        按 开发执行体 > 维护执行体 > 注册表顺序 取优先。非 CLI 行（如管理席
+        `Claude Code（…工具收口）`）不参与兜底——卡头写席位名而注册表该席位
+        不可派发时，语义是「未知绑定」，由调用方回退角色决策。
+        """
+        want = normalize_tool(tool_name)
+        if not want:
+            return None
+        rows = self.rows_for_binding(tool_name, project=project) or []
+        pool = rows if rows else list(self.entries)
+        cli_rows = [e for e in pool if e.category == "可后台 CLI" and normalize_tool(e.binding) == want]
+        if not cli_rows:
+            return None
+        for preferred in ("开发执行体", "维护执行体"):
+            hits = [e for e in cli_rows if e.role == preferred]
+            if hits:
+                return hits[0]
+        return cli_rows[0]
+
     def cli_entry_for_binding(self, tool_name: str, project: str = "") -> ExecutorEntry | None:
         """返回与工具名匹配的首个「可后台 CLI」行；无则 None（T39）。优先匹配项目。
 
         2026-08-10 标签寻址：tool_name 为 Worker ID（如 W4）时优先按 worker_id 匹配。
+        R-2026-08-23 P0-4：精确匹配未命中时走归一化 CLI 兜底（见 _normalized_cli_fallback）。
         """
         if re.fullmatch(r"W\d+", tool_name.strip() or ""):
             wid = self.cli_entry_for_worker_id(tool_name.strip(), project=project)
             if wid is not None:
                 return wid
-        rows = self.rows_for_binding(tool_name, project=project)
-        for e in rows:
+        for e in self.rows_for_binding(tool_name, project=project):
             if e.category == "可后台 CLI":
                 return e
-        return None
+        return self._normalized_cli_fallback(tool_name, project=project)
 
     def role_for_binding(self, tool_name: str, project: str = "") -> str | None:
         """反向查找：工具名 → 角色（优先可后台 CLI 行）。优先匹配项目。
 
         2026-08-10 标签寻址：tool_name 为 Worker ID（如 W4）时按 worker_id 反查角色。
+        R-2026-08-23 P0-4：精确匹配未命中时走归一化 CLI 兜底（store 角色推导不再为空）。
         """
         if re.fullmatch(r"W\d+", tool_name.strip() or ""):
             wid_rows = self.rows_for_worker_id(tool_name.strip(), project=project)
@@ -178,11 +209,13 @@ class ExecutorRegistry:
                     return e.role
             for e in wid_rows:
                 return e.role
-        rows = self.rows_for_binding(tool_name, project=project)
-        for e in rows:
+        for e in self.rows_for_binding(tool_name, project=project):
             if e.category == "可后台 CLI":
                 return e.role
-        for e in rows:
+        fallback = self._normalized_cli_fallback(tool_name, project=project)
+        if fallback is not None:
+            return fallback.role
+        for e in self.rows_for_binding(tool_name, project=project):
             return e.role
         return None
 

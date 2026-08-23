@@ -2927,13 +2927,22 @@ def _clear_running_marker(log_dir: Path, work_id: str) -> None:
 
 
 def _audit_cli_entry(registry: ExecutorRegistry, acceptor: str) -> ExecutorEntry | None:
-    """验收席可后台 CLI 行（机审）；按绑定名匹配。"""
+    """验收席可后台 CLI 行（机审）；按绑定名匹配，未命中回退按角色取行。
+
+    R-2026-08-23 P0-1：2026-08-22 工具收口后验收席绑定改为 DSH（S4），
+    交叉配对名（Claude Code/OpenCode）永不再命中 → 机审被静默跳过。
+    绑定名匹配优先保留（兼容显式指定工具的旧口径），未命中时按「验收席」
+    角色取首个可后台 CLI 行（现行态 = dsh-auditor.sh v4，指令自含）。
+    """
     name = normalize_tool(acceptor)
-    if not name:
-        return None
-    for e in registry.entries:
-        if e.role == "验收席" and e.category == "可后台 CLI" and normalize_tool(e.binding) == name:
-            return e
+    if name:
+        for e in registry.entries:
+            if e.role == "验收席" and e.category == "可后台 CLI" and normalize_tool(e.binding) == name:
+                return e
+        # 回退：绑定名失配 → 按角色取验收席 CLI 行（工具收口后主路径）
+        for e in registry.entries:
+            if e.role == "验收席" and e.category == "可后台 CLI":
+                return e
     return None
 
 

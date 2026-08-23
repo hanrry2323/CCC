@@ -14,6 +14,13 @@ set -euo pipefail
 
 INTENT="${1:?缺老板意图}"
 
+# R-2026-08-23 P0-2：与 dsh-executor.sh 同款——launchd 极简 PATH 下裸 `dsh` 会 127。
+case ":$PATH:" in
+  *":$HOME/.npm-global/bin:"*) ;;
+  *) export PATH="$HOME/.npm-global/bin:$PATH" ;;
+esac
+command -v dsh >/dev/null 2>&1 || { echo "[dsh-card-maker] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
+
 SETTINGS="$HOME/.dsh/settings.yaml"
 PRESET="ccc-card-maker"
 

@@ -18,6 +18,17 @@ CARD_PATH="${1:?缺 card_path}"
 WORK_ID="${2:?缺 work_id}"
 WORKTREE="${3:-}"
 
+# R-2026-08-23 P0-2：launchd 下 Engine PATH 极简，裸 `dsh` 会 127（同 dsh-executor.sh）。
+case ":$PATH:" in
+  *":$HOME/.npm-global/bin:"*) ;;
+  *) export PATH="$HOME/.npm-global/bin:$PATH" ;;
+esac
+command -v dsh >/dev/null 2>&1 || { echo "[dsh-auditor] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
+
+# R-2026-08-23 P0-3：就地修复需在 worktree commit/push，git 元数据在主仓 .git
+# （cwd 之外）→ 默认 workspace-write 沙箱拒绝且 headless 无审批通道。
+export DSH_PERMISSION_MODE="${DSH_PERMISSION_MODE:-danger-full-access}"
+
 if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
   cd "$WORKTREE"
 fi
@@ -44,6 +55,7 @@ PROMPT="你是 2017 机审席（DSH）。任务卡 ${CARD_PATH}（work ${WORK_ID
 
 【通过标准】
 通过 → 把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（${CARD_PATH}）。
+授权声明：本次机审任务已显式授权读写任务卡文件与在 worktree 内就地修复 commit/push；headless 只读红线不适用于本授权范围内动作。
 禁止改动无关文件、禁止 ## 验收区、禁止已关闭。
 工作目录：$(pwd)"
 
