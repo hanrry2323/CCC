@@ -1,7 +1,8 @@
 # 方案 · OPML 导入属性顺序依赖漏洞修复
 
-> 项目：mx · 编号：mx-plan-005 · 状态：待验收 · 作者：Claude Code W1 · 工具：ccc-plan
-> 创建：2026-08-18 · 更新：2026-08-18
+> 项目：mx · 编号：mx-plan-005 · 状态：已完成 · 作者：Claude Code W1 · 工具：ccc-plan
+> 创建：2026-08-18 · 更新：2026-08-24
+> 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：乱序属性端到端测试在位（rss.rs:971 extreme disordered 用例，commit fd039e5）；parse_opml 延迟推导实现与方案一致；cargo test --workspace 578 全绿（2026-08-24 实测）
 > 关联卡：mx052
 > 进度：1/1 (100%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.1）
@@ -38,9 +39,9 @@
 
 ## 验收标准
 
-- [ ] `parse_opml` 函数对 XML 属性的顺序完全解耦，乱序属性解析不再导致订阅显示名称丢失。
-- [ ] 乱序属性 OPML 文件的端到端解析断言单元测试编写完成并 100% 绿灯。
-- [ ] `cargo test -p medio-core` 全绿，无编译错误与 warnings。
+- [x] `parse_opml` 函数对 XML 属性的顺序完全解耦，乱序属性解析不再导致订阅显示名称丢失。
+- [x] 乱序属性 OPML 文件的端到端解析断言单元测试编写完成并 100% 绿灯。（rss.rs:971，fd039e5）
+- [x] `cargo test -p medio-core` 全绿，无编译错误与 warnings。（2026-08-24 实测 578 全绿；clippy -D warnings 绿）
 
 ## 功能卡
 

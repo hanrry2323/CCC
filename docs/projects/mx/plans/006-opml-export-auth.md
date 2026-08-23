@@ -1,8 +1,9 @@
 # 方案 · OPML 导出 Bearer Token 强鉴权适配
 
-> 项目：mx · 编号：mx-plan-006 · 状态：待验收 · 作者：Claude Code W1 · 工具：ccc-plan
+> 项目：mx · 编号：mx-plan-006 · 状态：已完成 · 作者：Claude Code W1 · 工具：ccc-plan
 > 批准：老板确认转卡 · 2026-08-19
-> 创建：2026-08-18 · 更新：2026-08-20
+> 创建：2026-08-18 · 更新：2026-08-24
+> 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：RssSidebar.tsx 已为 fetch+Blob+createObjectURL 虚拟点击且携带 Bearer（:202/:215）；契约单测 RssSidebar.test.tsx 在位（commit 74a4f15）；前端 vitest 381 全绿（2026-08-24 实测）
 > 关联卡：mx054
 > 进度：1/1 (100%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.2）
@@ -49,5 +50,5 @@
 
 ## 验收标准
 
-- [ ] OPML 导出按钮在强鉴权模式下，能携带 Bearer Token 并顺利触发 OPML 文件的本地下载，不弹出 401 或强制重新登录。
-- [ ] 前端打包编译、Lint、以及 `vitest` 前端测试套件全绿。
+- [x] OPML 导出按钮在强鉴权模式下，能携带 Bearer Token 并顺利触发 OPML 文件的本地下载，不弹出 401 或强制重新登录。
+- [x] 前端打包编译、Lint、以及 `vitest` 前端测试套件全绿。（2026-08-24 实测 32 suites / 381 tests）

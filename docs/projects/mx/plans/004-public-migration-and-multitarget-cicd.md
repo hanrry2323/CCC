@@ -2,7 +2,8 @@
 
 > 项目：mx · 编号：mx-plan-004 · 状态：待验收 · 作者：CCC 中枢 · 工具：ccc
 > 批准：老板确认转卡 · 2026-08-17
-> 创建：2026-08-14 · 更新：2026-08-17
+> 创建：2026-08-14 · 更新：2026-08-24
+> 验收（2026-08-24 · DSH 受老板临时授权代行核验）：**不通过，维持待验收**。卡 mx045/046/047 均已合入 main，但两条核心验收准则与远端事实不符——①「历史敏感 commit 已 filter-repo 抹除」不成立：fresh fetch 后 origin/main 可达对象中仍含签名材料 blob 三个（combined.jks 1382B、medio.p7b 2754B/2687B，`git rev-list origin/main --objects | grep p7b|jks` 可复现）；②「公开仓库可访问」未发生（GitHub 匿名 API 404 = private）。Phase 2 敏感清零、LICENSE/README、CI 补齐等项已落地。**需老板单独拍板**：真·filter-repo + 全分支 force push + 签名密钥轮换（破坏性动作，超出本次授权范围）
 > 关联卡：mx045, mx046, mx047
 > 关联方案：mx-plan-003（底座解耦 · 建议先完成 003 再执行本方案）
 > 进度：3/3 (100%)
@@ -45,11 +46,11 @@
 
 ## 验收标准
 
-- [ ] 公开仓库可访问，Actions CI/CD 全绿（后端/前端/HarmonyOS 三端）
-- [ ] 全仓敏感信息扫描清零（密钥/token/内部 IP/本地路径）
-- [ ] LICENSE + README 公开说明补齐
-- [ ] `release.yml` 内部路径清理完成
-- [ ] 历史敏感 commit（含 `medio.p7b.pem`）已 filter-repo 抹除
+- [ ] 公开仓库可访问，Actions CI/CD 全绿（后端/前端/HarmonyOS 三端）<!-- 未满足：仓库仍 private -->
+- [x] 全仓敏感信息扫描清零（密钥/token/内部 IP/本地路径）
+- [x] LICENSE + README 公开说明补齐
+- [x] `release.yml` 内部路径清理完成
+- [ ] 历史敏感 commit（含 `medio.p7b.pem`）已 filter-repo 抹除 <!-- 未满足：签名 blob 仍可从 origin/main 可达（2026-08-24 复现命令见验收行） -->
 
 ## 功能卡
 
