@@ -778,9 +778,13 @@ class TestPortNetwork:
 
         with patch("server.web.server._scan_listening_ports") as mock_scan:
             mock_scan.return_value = []
-            result = _build_ports_payload()
-            assert isinstance(result, dict)
-            assert result.get("ports") == []
+            # 封闭化：_env_or_config 会回落读 server/config/config.env（生产配置含
+            # CLUSTER_PORT_NAMES=…,6100:relay-anthropic,…），未监听分支会补
+            # registered_stale 条目导致 ports 非空。隔离配置源，使端口无任何来源。
+            with patch("server.web.server._env_or_config", return_value=""):
+                result = _build_ports_payload()
+                assert isinstance(result, dict)
+                assert result.get("ports") == []
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -920,8 +924,12 @@ class TestConversationDetailed:
 
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("CCC_CHAT_BRIDGE_TOKEN", None)
-            result = _chat_bridge_token()
-            assert result == ""
+            # 封闭化：env 清空后 _chat_bridge_token 仍会经 _env_or_config 回落读
+            # server/config/config.env（生产配置含 CCC_CHAT_BRIDGE_TOKEN）。
+            # 隔离配置源，保持「无任何来源 → 空串」的断言语义不变。
+            with patch("server.web.server._env_or_config", return_value=""):
+                result = _chat_bridge_token()
+                assert result == ""
 
     def test_get_longpoll_timeout_configured(self):
         """测试longpoll超时配置。"""

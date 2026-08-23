@@ -656,6 +656,14 @@ except Exception:
       echo "[WARN] ${id} 质量分劣化（增量不可劣化门禁，软告警）——见 /tmp/quality-${id}.json" >&2
     fi
   fi
+  # 竞态防护（tst003 事故教训）：close_card 之后、git add 之前存在窗口，并发
+  # server/git_sync.py:_force_align_dispatch 会按「远端 main（本批尚未推送）」强制对齐
+  # docs/dispatch，把刚合入的卡改写回出卡占位版并被当真提交推送（净回退）。
+  # 提交前断言卡头仍为「已关闭」，被并发改写则中止，杜绝静默回退入库。
+  if ! grep -q "状态：已关闭" "$path"; then
+    echo "[ERROR] ${id}: 合入竞态——close_card 后卡头非已关闭（疑似 git_sync 强制对齐并发改写工作树）→ 中止合入（不提交/不推送/不部署），请排除干扰后重跑" >&2
+    return 1
+  fi
   git add -- "$path"
   if ! git diff --cached --quiet; then
     git commit -m "$(cat <<EOF
