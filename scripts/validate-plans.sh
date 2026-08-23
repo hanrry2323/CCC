@@ -18,6 +18,12 @@
 
 set -euo pipefail
 
+# 2026-08-24 部署门禁实证（tst005 前身·本卡）：C/POSIX locale 下 BSD sed 按字节处理，
+# 「已关闭」的「已」第二字节 B7 与分隔符「·」尾字节相同 → c_status 被截成单字节，
+# 已关闭卡误判活跃 → 8.2「全部关闭但未推进」漏判（pytest 子进程 UTF-8 绿、launchd 部署 C 红）。
+# 强制 UTF-8 locale，使 sed 与字符类按完整多字节字符工作。
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLANS_DIR="$REPO_ROOT/docs/projects"
@@ -270,8 +276,12 @@ validate_file() {
                 fi
               fi
             else
-              # If card file is not found, treat as active to be safe
+              # 关联卡文件缺失：与 engine server/board/plans.py sync_plan_progress 同口径——
+              # 不可解析卡不计 closed、落入活跃分母（state 取空 → 非「已关闭/作废」）。
+              # 此处保持计数语义不变，仅补观测告警（幽灵引用应被人审发现）。
               active_count=$((active_count + 1))
+              yellow "  WARN 方案关联卡文件缺失（按活跃计，疑似幽灵引用需人审核对）: $word → $rel"
+              WARNINGS=$((WARNINGS + 1))
             fi
           fi
         done
