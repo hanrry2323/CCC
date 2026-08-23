@@ -40,7 +40,12 @@ for line in lines:
         if s.startswith("## ") or s.startswith("---"):
             break
         if s.startswith("测试") and (":" in s or "：" in s):
-            cmd = s.split(":", 1)[1].strip() if ":" in s else s.split("：", 1)[1].strip()
+            # 2026-08-24 修复：全角"："为声明分隔符时必须优先按全角切；
+            # 否则 pytest 节点 ID 的 "::" 半角冒号会把命令腰斩（tst004 exit 127 假阳性）。
+            if "：" in s:
+                cmd = s.split("：", 1)[1].strip()
+            else:
+                cmd = s.split(":", 1)[1].strip()
             cmd = cmd.strip(chr(96)).strip()  # chr(96) = 反引号，避免 bash $( ) 内反引号解析
             print(cmd)
             break
