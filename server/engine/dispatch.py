@@ -373,8 +373,10 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
 # 机审 v4 重度 fresh：按命令名映射「新会话/零上下文」标志（不写死工具名，空则忽略）。
 # fresh 标志由 _dispatch_and_collect 在 prompt 注入完成后追加（保住 cmd 末位=prompt 不变量，
 # 避免 v4 指令块被拼到 CLI 标志上——2026-08-14 重度复审 P1-A）。
+# 2026-08-23 P2-n：DSH 栈 entry.command 为绝对路径，basename 键永不命中 → 本映射对现行
+# executors 无实效应（DSH headless 每次调用即新会话，无需 fresh 标志）；保留 Claude 键备
+# 未来 basename 命令，删除已移除的 opencode 死键。
 _FRESH_FLAG_BY_CMD: dict[str, str] = {
-    "opencode": "--new-session",
     "claude": "--no-continue",
 }
 
