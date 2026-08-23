@@ -295,6 +295,8 @@ _STATIC_WHITELIST: dict[str, str] = {
     # /wall 书签入口同指 SPA（hash 路由归一到 #/wall）
     "/": "legacy-chat/index.html",
     "/wall": "legacy-chat/index.html",
+    # /app 旧书签入口（2026-08-24 回归修复：深度融合时误删致 /app#/board 404）
+    "/app": "legacy-chat/index.html",
     "/js/app.js": "legacy-chat/js/app.js",
     "/data/board.js": "data/board.js",
     "/data/cluster.js": "data/cluster.js",
