@@ -17,11 +17,13 @@ set -euo pipefail
 INTENT="${1:?缺老板意图}"
 
 # R-2026-08-23 P0-2：与 dsh-executor.sh 同款——launchd 极简 PATH 下裸 `dsh` 会 127。
+# P0-2b 补充：/usr/local/bin（node，dsh 运行时入口）一并兜底。
 case ":$PATH:" in
-  *":$HOME/.npm-global/bin:"*) ;;
-  *) export PATH="$HOME/.npm-global/bin:$PATH" ;;
+  *":$HOME/.npm-global/bin:"*:*":/usr/local/bin:"*) ;;
+  *) export PATH="$HOME/.npm-global/bin:/usr/local/bin:$PATH" ;;
 esac
 command -v dsh >/dev/null 2>&1 || { echo "[dsh-card-maker] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
+command -v node >/dev/null 2>&1 || { echo "[dsh-card-maker] ERROR: node 不在 PATH（DSH 运行时需要，已尝试 /usr/local/bin）" >&2; exit 127; }
 
 PRESET="$HOME/.dsh/.agent-presets/ccc-card-maker/agent.cordis.yml"
 [ -f "$PRESET" ] || { echo "[dsh-card-maker] ERROR: 出卡预设缺失: $PRESET" >&2; exit 3; }

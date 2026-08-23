@@ -19,11 +19,13 @@ WORK_ID="${2:?缺 work_id}"
 WORKTREE="${3:-}"
 
 # R-2026-08-23 P0-2：launchd 下 Engine PATH 极简，裸 `dsh` 会 127（同 dsh-executor.sh）。
+# P0-2b 补充：/usr/local/bin（node，dsh 运行时入口）一并兜底。
 case ":$PATH:" in
-  *":$HOME/.npm-global/bin:"*) ;;
-  *) export PATH="$HOME/.npm-global/bin:$PATH" ;;
+  *":$HOME/.npm-global/bin:"*:*":/usr/local/bin:"*) ;;
+  *) export PATH="$HOME/.npm-global/bin:/usr/local/bin:$PATH" ;;
 esac
 command -v dsh >/dev/null 2>&1 || { echo "[dsh-auditor] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
+command -v node >/dev/null 2>&1 || { echo "[dsh-auditor] ERROR: node 不在 PATH（DSH 运行时需要，已尝试 /usr/local/bin）" >&2; exit 127; }
 
 # R-2026-08-23 P0-3：就地修复需在 worktree commit/push，git 元数据在主仓 .git
 # （cwd 之外）→ 默认 workspace-write 沙箱拒绝且 headless 无审批通道。

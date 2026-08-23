@@ -18,12 +18,14 @@ WORKTREE="${3:-}"
 ROLE="${4:-开发执行体}"
 
 # R-2026-08-23 P0-2：launchd 下 Engine PATH 极简（/usr/bin:/bin:/usr/sbin:/sbin），
-# 裸 `dsh` 会 127。兜底补 npm 全局 bin，仍找不到就明确报错（不静默）。
+# 裸 `dsh` 会 127。兜底补 npm 全局 bin（dsh 本体）+ /usr/local/bin（node，dsh 运行时入口），
+# 仍找不到就明确报错（不静默）。P0-2b 补充：仅补 dsh 目录不够，node 缺失同样 rc=127。
 case ":$PATH:" in
-  *":$HOME/.npm-global/bin:"*) ;;
-  *) export PATH="$HOME/.npm-global/bin:$PATH" ;;
+  *":$HOME/.npm-global/bin:"*:*":/usr/local/bin:"*) ;;
+  *) export PATH="$HOME/.npm-global/bin:/usr/local/bin:$PATH" ;;
 esac
 command -v dsh >/dev/null 2>&1 || { echo "[dsh-executor] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
+command -v node >/dev/null 2>&1 || { echo "[dsh-executor] ERROR: node 不在 PATH（DSH 运行时需要，已尝试 /usr/local/bin）" >&2; exit 127; }
 
 # R-2026-08-23 P0-3：worktree 的 git 元数据在主仓 .git（cwd 之外），默认
 # workspace-write 沙箱会拒绝 commit 且 headless 无审批通道 → 执行体无法收口。
