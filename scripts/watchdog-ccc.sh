@@ -90,6 +90,32 @@ is_web_http_healthy() {
   fi
 }
 
+# ── P0-2a 预设变更监控（2026-08-23）：preset hash 基线校验 ──
+# 基线文件落 LOG_DIR（fan 可写），预设本身 root:444 只读防 DSH 自改。
+# 变更→写告警（watchdog.log + stderr），不重启服务（由人审定是否回滚）。
+check_preset_hash() {
+  local preset_root="${HOME}/.dsh/.agent-presets"
+  local baseline="${LOG_DIR}/preset-hash.baseline"
+  local current
+  current="$(find "${preset_root}" -type f \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort | xargs shasum -a 256 2>/dev/null | shasum -a 256 2>/dev/null | awk '{print $1}')"
+  if [[ -z "$current" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$baseline" ]]; then
+    echo "$current  baseline" > "$baseline" 2>/dev/null || true
+    log_watchdog "preset 基线已登记: ${current:0:12}..."
+    return 0
+  fi
+  local expect
+  expect="$(awk '{print $1}' "$baseline" 2>/dev/null)"
+  if [[ "$current" != "$expect" ]]; then
+    local msg="preset 变更告警：当前 ${current:0:12}... 期望 ${expect:0:12}...（~/.dsh/.agent-presets 已变，需人工核对是否为授权变更）"
+    log_watchdog "ALERT: $msg"
+    echo "[ALERT] $msg" >&2
+  fi
+}
+check_preset_hash || true
+
 # 检查各服务状态
 ENGINE_ISSUES=()
 WEB_ISSUES=()

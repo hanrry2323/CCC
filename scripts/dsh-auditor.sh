@@ -86,6 +86,33 @@ PY
   unset MG_RC
 fi
 
+# P0-1b 测试真实性机械截获（2026-08-23）：在 DSH 之外独立跑卡门禁测试，失败硬打回不跑机审。
+# 日志落 $EXECUTOR_LOG_DIR/<work_id>.test-evidence.log（与 Engine EXECUTOR_LOG_DIR 同源）。
+_TE_EXEC_LOG_DIR="${EXECUTOR_LOG_DIR:-}"
+if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
+  _TE_CFG="${CCC_CONFIG_ENV:-/Users/fan/program/CCC/server/config/config.env}"
+  if [[ -f "$_TE_CFG" ]]; then
+    _TE_EXEC_LOG_DIR="$(grep -E '^\s*EXECUTOR_LOG_DIR\s*=' "$_TE_CFG" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"'"'" | xargs 2>/dev/null || true)"
+  fi
+fi
+if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
+  _TE_EXEC_LOG_DIR="$HOME/.ccc/logs/exec"
+fi
+_TE_EVIDENCE_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}.test-evidence.log"
+_TE_WORKDIR="$(pwd)"
+# 仅当卡文件可读且 workdir 存在时才截获；无测试声明（no_test_declared）视为无可验放行
+if [[ -f "$CARD_PATH" && -d "$_TE_WORKDIR" ]]; then
+  if bash /Users/fan/program/CCC/scripts/test-evidence.sh "$CARD_PATH" "$_TE_WORKDIR" "$_TE_EVIDENCE_LOG"; then
+    : # 测试通过或无声明 → 放行进 DSH 机审
+  else
+    _TE_RC=$?
+    echo "[dsh-auditor] 机械门禁：卡声明测试真实失败（exit=${_TE_RC}，证据 log=${_TE_EVIDENCE_LOG}）→ 机审打回（不跑 DSH）" >&2
+    echo "机审：不通过（测试真实失败：见 ${_TE_EVIDENCE_LOG}）" >&2
+    rm -f "$OVERLAY"
+    exit 2
+  fi
+fi
+
 PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
 按你的机审席心智执行 v4 对抗式审查（范围核对→找茬→severity 三级→分流→维护区核对→写机审区）。
 授权声明：本次运行授权读写任务卡文件、在 worktree $(pwd) 内就地修复并 git add/commit/push。

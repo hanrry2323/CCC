@@ -481,7 +481,85 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
-  # 033 阶段 2 M6：机审 provenance——查 ledger 有 machine_audit_pass 记录（不只信卡文件「机审：通过」文本）
+  # P0-1b（2026-08-23）：测试真实性机械核验——卡声明测试的真实退出码必须为 0（wrapper 截获日志）。
+# 证据日志落 $EXECUTOR_LOG_DIR/<card_id>.test-evidence.log（与 dsh-* wrapper 同源，不信卡/机审区自述）。
+# 无测试声明（no_test_declared）→ 放行；缺日志/真实失败 → 硬拒绝，--close-only 不放行。
+check_test_evidence() {
+  local id="$1"
+  local log_dir="${EXECUTOR_LOG_DIR:-}"
+  if [[ -z "$log_dir" ]]; then
+    local cfg_path="${CCC_CONFIG_ENV:-}"
+    if [[ -z "$cfg_path" ]]; then
+      cfg_path="/Users/fan/program/CCC/server/config/config.env"
+    fi
+    if [[ -f "$cfg_path" ]]; then
+      log_dir="$(grep -E '^\s*EXECUTOR_LOG_DIR\s*=' "$cfg_path" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs 2>/dev/null || true)"
+    fi
+  fi
+  if [[ -z "$log_dir" ]]; then
+    log_dir="$HOME/.ccc/logs/exec"
+  fi
+  # work_id == card_id（store.py），兼容大小写
+  local cand1="${log_dir}/${id}.test-evidence.log"
+  local cand2="${log_dir}/$(echo "$id" | tr '[:upper:]' '[:lower:]').test-evidence.log"
+  local cand3="${log_dir}/$(echo "$id" | tr '[:lower:]' '[:upper:]').test-evidence.log"
+  local evidence=""
+  for cand in "$cand1" "$cand2" "$cand3"; do
+    if [[ -f "$cand" ]]; then evidence="$cand"; break; fi
+  done
+  # 卡是否声明了测试（有则必须有证据）
+  local has_test_declared=false
+  if python3 - "$path" <<'PY' 2>/dev/null | grep -q "has_test"; then
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+in_gate=False
+has=False
+for line in text.splitlines():
+    s=line.strip()
+    if s.startswith("## 门禁"):
+        in_gate=True
+        continue
+    if in_gate:
+        if s.startswith("## ") or s.startswith("---"):
+            break
+        if s.startswith("测试") and (":" in s or "：" in s):
+            cmd=s.split(":",1)[1].strip() if ":" in s else s.split("：",1)[1].strip()
+            cmd=cmd.strip("`").strip().strip("'").strip('"').strip()
+            if cmd:
+                has=True
+                break
+print("has_test" if has else "no_test")
+PY
+    has_test_declared=true
+  fi
+  # 无测试声明 → 不拦（与 test-evidence.sh 无可验语义一致）
+  if [[ "$has_test_declared" != "true" ]]; then
+    return 0
+  fi
+  if [[ -z "$evidence" ]]; then
+    echo "[ERROR] ${id}: 缺测试真实性证据日志（${cand1} 不存在）→ 拒绝合入。卡声明了测试但无 wrapper 截获记录，请让 DSH 重跑机审/执行以生成 evidence log（P0-1b）。" >&2
+    return 1
+  fi
+  if grep -q "no_test_declared" "$evidence" 2>/dev/null; then
+    return 0
+  fi
+  if ! grep -q "exit_code=0" "$evidence" 2>/dev/null; then
+    local rc
+    rc="$(grep -oE 'exit_code=[0-9]+' "$evidence" 2>/dev/null | tail -1 || echo "exit_code=?")"
+    echo "[ERROR] ${id}: 测试真实性核验失败（${rc}，证据 ${evidence}）→ 拒绝合入。卡声明测试真实失败，wrapper 已截获，不信卡回写区自述通过（P0-1b）。" >&2
+    tail -20 "$evidence" 2>/dev/null | sed 's/^/  | /' >&2 || true
+    return 1
+  fi
+  # 辅助标记检查：exit_code=0 但出现明显失败字样时告警但不硬拦（以退出码为准，避免误伤非 pytest 命令）
+  return 0
+}
+if ! check_test_evidence "$id"; then
+  echo "[ERROR] ${id}: 测试真实性核验未通过 → 拒绝合入（P0-1b 硬门禁，--close-only 不放行）" >&2
+  return 1
+fi
+
+  # 033 阶段 2 M6：机审 provenance——查 ledger 有 machine_audit_pass ��录（不只信卡文件「机审：通过」文本）
   # 2026-08-19 硬化（断点③）：ledger 能力后的卡必须有机审 provenance，缺失=阻断。
   # 2026-08-22 单源化（P0-3）：日期边界由「卡文日期(可伪造)」改为「账本是否为空(伪造免疫)」。
   #   - 账本为空 = 账本能力前(pre-era) → 降级卡文机审区（旧卡兼容，可加 --close-only）
@@ -724,6 +802,51 @@ except Exception as e:
 
 # R6（2026-08-22 S1 单机化）：双机台账同步已废弃（CCC 全在 2017，合入读本地 ledger 即权威）。
 # sync-audit-ledger.py 保留仅作历史；不再从 approve-merge 调用。
+
+# P0-1d（2026-08-23）：环节②抽验——每批≥1张 + 每5张抽1张（20% 随机），每次合入时执行。
+# 执行方=环节②（本脚本），不在 DSH 内。抽样种子取批次 ID 哈希，避免被操纵挑卡。
+_SPOT_SAMPLED=()
+if [[ ${#IDS[@]} -gt 0 && -x scripts/spot-check.sh ]]; then
+  _spot_n=${#IDS[@]}
+  _spot_cnt=$(( (_spot_n + 4) / 5 ))
+  if [[ $_spot_cnt -lt 1 ]]; then _spot_cnt=1; fi
+  if [[ $_spot_cnt -gt $_spot_n ]]; then _spot_cnt=$_spot_n; fi
+  _spot_seed="$(printf '%s\n' "${IDS[@]}" | sort | tr -d '\n' | cksum | awk '{print $1}')"
+  _spot_py_out="$(python3 - "${IDS[@]}" -- "${_spot_cnt}" "${_spot_seed}" <<'PY'
+import random, sys
+args = sys.argv[1:]
+try:
+    sep = args.index("--")
+except ValueError:
+    sep = len(args) - 2
+ids = args[:sep]
+cnt = int(args[sep+1]) if sep+1 < len(args) else 0
+seed = int(args[sep+2]) if sep+2 < len(args) else 0
+random.seed(seed)
+k = min(cnt, len(ids))
+print("\n".join(random.sample(ids, k) if k else []))
+PY
+)"
+  _SPOT_SAMPLED=()
+  while IFS= read -r _spot_line; do
+    [[ -n "$_spot_line" ]] && _SPOT_SAMPLED+=("$_spot_line")
+  done <<< "$_spot_py_out"
+  if [[ ${#_SPOT_SAMPLED[@]} -gt 0 ]]; then
+    echo "== 环节②抽验（P0-1d）：本批 ${#IDS[@]} 张中抽 ${#_SPOT_SAMPLED[@]} 张 → ${_SPOT_SAMPLED[*]} =="
+    _SPOT_FAIL=0
+    for _sid in "${_SPOT_SAMPLED[@]}"; do
+      if ! bash scripts/spot-check.sh "$_sid"; then
+        echo "[ERROR] spot-check ${_sid} 未通过 → 本批合入阻断（环节②抽验不通过，打回重做）" >&2
+        _SPOT_FAIL=1
+      fi
+    done
+    if [[ $_SPOT_FAIL -ne 0 ]]; then
+      echo "[ERROR] 环节②抽验失败（${#_SPOT_SAMPLED[@]} 张中至少 1 张不通过）→ 拒绝整批合入" >&2
+      exit 1
+    fi
+    echo "[OK] 环节②抽验全部通过（${#_SPOT_SAMPLED[@]} 张）"
+  fi
+fi
 
 FAILED=0
 for id in "${IDS[@]}"; do

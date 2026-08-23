@@ -78,5 +78,32 @@ DSH_RC=0
 wait "$PID" || DSH_RC=$?
 rm -f "$OVERLAY"
 
+# P0-1b 测试真实性机械截获（2026-08-23）：DSH 之外独立跑卡门禁测试并落证据日志。
+# 日志落 $EXECUTOR_LOG_DIR/<work_id>.test-evidence.log（与 Engine 同源，不经 DSH 加工）。
+_TE_EXEC_LOG_DIR="${EXECUTOR_LOG_DIR:-}"
+if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
+  _TE_CFG="${CCC_CONFIG_ENV:-/Users/fan/program/CCC/server/config/config.env}"
+  if [[ -f "$_TE_CFG" ]]; then
+    _TE_EXEC_LOG_DIR="$(grep -E '^\s*EXECUTOR_LOG_DIR\s*=' "$_TE_CFG" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\"' | tr -d "'" | xargs 2>/dev/null || true)"
+  fi
+fi
+if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
+  _TE_EXEC_LOG_DIR="$HOME/.ccc/logs/exec"
+fi
+_TE_EVIDENCE_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}.test-evidence.log"
+# 证据 workdir：优先 biz_worktree，其次 worktree，其次当前目录（已 cd 过）
+_TE_EVIDENCE_WORKDIR=""
+if [[ -n "${BIZ_WORKTREE:-}" && -d "$BIZ_WORKTREE" ]]; then
+  _TE_EVIDENCE_WORKDIR="$BIZ_WORKTREE"
+elif [[ -n "${WORKTREE:-}" && -d "$WORKTREE" ]]; then
+  _TE_EVIDENCE_WORKDIR="$WORKTREE"
+else
+  _TE_EVIDENCE_WORKDIR="$(pwd)"
+fi
+if [[ -f "$CARD_PATH" && -d "$_TE_EVIDENCE_WORKDIR" ]]; then
+  bash /Users/fan/program/CCC/scripts/test-evidence.sh "$CARD_PATH" "$_TE_EVIDENCE_WORKDIR" "$_TE_EVIDENCE_LOG" || true
+  echo "[dsh-executor] 测试证据已截获 → ${_TE_EVIDENCE_LOG}" >&2
+fi
+
 echo "[dsh-executor] work=${WORK_ID} 执行结束 rc=${DSH_RC}"
 exit "$DSH_RC"
