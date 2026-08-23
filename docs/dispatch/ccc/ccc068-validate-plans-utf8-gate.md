@@ -96,37 +96,45 @@ pytest 目标用例（env -u LANG/LC_ALL LC_CTYPE=C）      → 1 passed ✓
 
 **DSH 机审席 · 2026-08-24 · severity：轻**
 
+> 本块为同日第二轮复审，取代上一轮机审块：被审栈已整体 rebase 换板（实现件 58e4f2ab6@670e84c3a →
+> 5582feb98@fe31a4003，补强 ef4987a9f 与卡回写 68e4f8fa0 随行），换板必须重新独立核验。
+> 两树 `git diff 58e4f2ab6..HEAD -- scripts/validate-plans.sh server/tests/test_plans.py` 实测：
+> 差异仅为 F1 补强块本身，其余内容逐字节一致。
+
 独立核验（全部命令在本 worktree 实跑复现，不引用执行体自述）：
 
-1. 范围核对：分支唯一实现提交 58e4f2ab6 仅触 `scripts/validate-plans.sh`（+11/-1），白名单合规；
-   `git status` 干净；未直推 main、未置已关闭、未触碰验收区。
-2. 门禁双环境实跑：`python3 -m pytest server/tests/test_plans.py -q` 常规与
-   `env -u LANG -u LC_ALL LC_CTYPE=C` 强制 C 均 rc=0 [100%] 全绿。
-3. 三变体沙箱探针（外层 LC_CTYPE=C，独立复刻 pytest 夹具）：A 已关闭卡 rc=1 且输出
-   「FAIL 方案关联卡已全部关闭/作废但状态仍为 '部分执行'」✓；B 缺失卡 rc=0+OK+WARN 幽灵引用 ✓；
-   C 开发中卡 rc=0 ✓。`WARNINGS` 于脚本 :46 预初始化、退出码仅看 ERRORS（:391-394），WARN 不影响 rc ✓。
-4. 引擎同口径核验：`server/board/plans.py::sync_plan_progress` 缺 entry → state 取空、不计 closed、
-   落活跃分母——与本卡缺失卡分支逐句一致 ✓。
+1. 范围核对：`git diff fe31a4003..HEAD --stat` 仅 `scripts/validate-plans.sh`（+22/-1）与卡文件；
+   test_plans.py 属白名单预留、实际零触碰 ✓；`git ls-remote` 远程分支 == 本地 HEAD == 68e4f8fa0 ✓；
+   未直推 main（远程 main 不含分支提交）、卡头仍「已回写」未置已关闭、验收区未触碰 ✓。
+   注：工作区现有两处与本卡无关的未提交残留（docs/projects/mx/roadmap.md 一行 Loop 巡查更新、
+   未跟踪 docs/archive/legacy-t-cards/cards.index.jsonl）——非本卡产物，本审不纳入提交、原样保留并披露；
+   上一轮「git status 干净」系其时点事实，现已不成立。
+2. 门禁实跑三连：目标用例常规环境与 `env -u LANG -u LC_ALL LC_CTYPE=C` 强制 C 双环境均 [100%] rc=0；
+   全量 `python3 -m pytest server/tests -q` [100%] rc=0；`bash -n` 通过——验收标准 1/3 达成。
+3. 对抗探针电池（/tmp 独立复刻 pytest 夹具，外层 LC_CTYPE=C）：变体 A 已关闭卡 rc=1 且输出
+   「FAIL 方案关联卡已全部关闭/作废但状态仍为 '部分执行'」✓；变体 B 缺失卡 rc=0 + WARN 幽灵引用 ✓；
+   变体 C 开发中卡 rc=0 ✓；探针 D（外层显式 LC_ALL=C）rc=1 ✓。同一探针 D 打在补强前脚本原文
+   （git show 5582feb98 提取）rc=0 误放行——上一轮 F1 漏洞独立复现属实，补强实测有效。
+4. 引擎同口径与消费面核验：server/board/plans.py:962-975 缺 entry → state 取空 → 不计 closed/作废、
+   留活跃分母，与脚本缺失卡分支逐句一致 ✓；engine create_plan（plans.py:504-514）仅判 returncode，
+   全仓无按 OK/WARN 文本解析 validate 输出的消费者——新增 WARN 行零破坏 ✓；
+   退出码仅看 ERRORS（脚本 :402），WARNINGS 仅计数（:56 预初始化）✓。
 
 发现与处置：
 
-- **F1（轻 · 已就地补强并随本审提交）**：`${LC_ALL:-en_US.UTF-8}` 的 `:-` 写法在外层**显式**
-  `LC_ALL=C` 时保持 C——对抗探针 D 实测变体A 场景 rc 由 1 变 0，8.2 漏判复活。当前 launchd 部署
-  不设 LC_ALL 故不触发，但任何显式导出 C 的包装层都会静默复发。已就地改为无视继承值强制 UTF-8
-  （`locale -a` bash 正则判定，缺失退 C.UTF-8）；补强后探针 D 复跑 rc=1 ✓，三变体与 pytest 双环境复跑全绿 ✓。
-  补强过程自曝一个坑并已绕开：初版写 `locale -a | grep -q` 在 pipefail 下因 grep -q 提前退出令 locale
-  吃 SIGPIPE（rc=141）恒走 fallback，变体A 一度误放行（rc=0），改为无管道正则后消除——该坑同时证明
-  探针电池必须在每次改动后全量重跑。
-- **F2（时点性说明，非缺陷）**：回写区「实现 commit ed1a863c3 / 基于 origin/main@0289471a4」为回写时点
-  事实（reflog 证实 ed1a863c3 父提交即 0289471a4）；其后 rebase 至当时 main 顶 670e84c3a 生成 58e4f2ab6，
-  `git ls-remote` 实测远程分支 == 本地 HEAD == 58e4f2ab6 ✓。审计期间 origin/main 又前进至 3f6650ac2
-  （046-M2 components.css，与本卡零交集）。教训笔记规则①的 `:-` 写法建议应随之修正为「非 UTF-8 一律改写」，
-  该文件在 main 侧不属本卡白名单，此处留痕不改。
+- **F3（轻 · 记录不改）**：locale 探测 fallback 为 C.UTF-8——若部署环境同时缺失 en_US.UTF-8 与
+  C.UTF-8（极罕见最小镜像），LC_ALL 指向无效 locale 可能退回字节语义、8.2 再漏判。当前 macOS
+  （locale -a 含 en_US.UTF-8）与 glibc≥2.19（内建 C.UTF-8）均覆盖，launchd 实证环境不受影响；
+  若未来部署面收窄到此类镜像，应改为探测失败即显式报错而非静默 fallback。
+- **F4（时点性说明，非缺陷）**：origin/main 复审期间又前进至 28c695fd7（wall/UI 两笔），
+  与 validate-plans.sh、test_plans.py 零交集，不影响本轮结论，合入换板归环节②。
+  教训笔记规则①的 `:-` 写法建议仍未修正（该文件在 main 侧不属本卡白名单），维持上一轮 F2 留痕待后续维护卡。
 
-维护区四问核对：四问均为具体单选（否/有/否/否）非占位，说明句皆实情；引用工件
-`docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 存在且内容属实 ✓。
+维护区四问核对：四问均为具体单选（否/有/否/否）非占位，说明句皆实情；引用工件抽查——
+教训笔记 `docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 存在（28 行）且内容与卡内论证一致 ✓；
+门禁证据日志 `~/.ccc/logs/exec/ccc068.test-evidence.log` 存在且记录 exit_code=0，回写区声明属实 ✓。
 
-机审：通过（被审 58e4f2ab6d38）
+机审：通过
 
 ## 维护区
 
