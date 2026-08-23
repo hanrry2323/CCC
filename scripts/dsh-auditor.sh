@@ -61,6 +61,31 @@ elif [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
   cd "$WORKTREE"
 fi
 
+# R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
+# 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，
+# 杜绝 DSH 对占位维护区误判「通过」。红线：门禁不削弱，仅前置化）。
+if [ -n "$CARD_PATH" ] && [ -f "$CARD_PATH" ]; then
+  MG_PROBLEMS="$(python3 - "$CARD_PATH" "$(pwd)" <<'PY'
+import sys
+sys.path.insert(0, "/Users/fan/program/CCC")
+try:
+    from server.board.docgate import verify_maintenance
+    ok, problems = verify_maintenance(sys.argv[1], sys.argv[2])
+    sys.exit(0 if ok else 2)
+except Exception as exc:  # 机械门禁自身异常：不静默放行，打回由 DSH 兜底
+    print(f"维护区机械校验异常: {exc}")
+    sys.exit(3)
+PY
+)" || MG_RC=$?
+  if [ "${MG_RC:-0}" = "2" ]; then
+    echo "[dsh-auditor] 机械门禁：维护区未完成 → 机审打回（不跑 DSH）" >&2
+    echo "机审：不通过（维护区未完成）" >&2
+    rm -f "$OVERLAY"
+    exit 2
+  fi
+  unset MG_RC
+fi
+
 PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
 按你的机审席心智执行 v4 对抗式审查（范围核对→找茬→severity 三级→分流→维护区核对→写机审区）。
 授权声明：本次运行授权读写任务卡文件、在 worktree $(pwd) 内就地修复并 git add/commit/push。
