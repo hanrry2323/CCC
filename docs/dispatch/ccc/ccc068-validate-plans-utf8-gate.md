@@ -126,7 +126,7 @@ pytest 目标用例（env -u LANG/LC_ALL LC_CTYPE=C）      → 1 passed ✓
 维护区四问核对：四问均为具体单选（否/有/否/否）非占位，说明句皆实情；引用工件
 `docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 存在且内容属实 ✓。
 
-机审：通过
+机审：通过（被审 58e4f2ab6d38）
 
 ## 维护区
 
