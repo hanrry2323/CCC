@@ -564,10 +564,13 @@ _STATIC_VERSION = ""
 
 
 def _compute_static_version() -> str:
-    """静态资源版本号 = 当前 git commit 短号（部署后自动变，浏览器强制拉新）。"""
+    """静态资源版本号 = 当前 git commit 短号（部署后自动变，浏览器强制拉新）。
+
+    2026-08-24 修复：移除全局备忘。原实现把「进程启动后首次请求时的 HEAD」
+    冻结在长驻进程里——此后每次前端部署版本戳都不变，浏览器对同 URL 的
+    immutable 缓存永不失效，表现为「改了样式全站不更新/风格错乱」。
+    单用户局域网流量极小，改为每次 HTML 静态请求实时取 HEAD（亚毫秒级）。"""
     global _STATIC_VERSION
-    if _STATIC_VERSION:
-        return _STATIC_VERSION
     try:
         r = subprocess.run(
             ["git", "-C", str(_PROJECT_ROOT), "rev-parse", "--short", "HEAD"],
@@ -575,10 +578,13 @@ def _compute_static_version() -> str:
             text=True,
             timeout=3,
         )
-        _STATIC_VERSION = r.stdout.strip() or "dev"
+        v = r.stdout.strip()
+        if v:
+            _STATIC_VERSION = v
+            return v
     except Exception:
-        _STATIC_VERSION = "dev"
-    return _STATIC_VERSION
+        pass
+    return _STATIC_VERSION or "dev"
 
 
 def _load_arch_index() -> dict[str, Any]:
