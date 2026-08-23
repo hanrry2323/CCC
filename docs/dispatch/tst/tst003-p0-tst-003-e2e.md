@@ -1,7 +1,6 @@
 # 任务卡 tst003 · 管线冒烟·P0门禁真实链路拉通 tst-003-e2e（DSH 执行）
-> 打回次数：1
 
-> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-23
+> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-23
 
 
 
@@ -17,7 +16,7 @@
 
 ## 实现
 
-白名单仅本卡文件自身；执行体需 Read 本卡全文后在文件末尾追加一行整行 `tst-003-e2e`（grep -cx 校验=1），随后 commit+push 到分支 `codex/tst003-p0-tst-003-e2e` 并回写。零业务仓改动，零真实业务逻辑。
+白名单仅本卡文件自身；执行体需 Read 本卡全文后在文件末尾追加一行整行 `tst-003-e2e`（grep -cx 校验���=1），随后 commit+push 到分支 `codex/tst003-p0-tst-003-e2e` 并回写。零业务仓改动，零真实业务逻辑。
 
 ## 红线（先看）
 
@@ -58,30 +57,20 @@
 
 ## 回写区
 
-**执行体**：DSH · 日期：2026-08-23
-
-**实现说明**：Read 本卡全文后，在本卡文件末尾以独立整行追加标记串 `tst-003-e2e`（整行精确匹配，`grep -cx`=1），并同步将卡头状态置为「已回写」。改动仅落在白名单内的本卡文件自身（`docs/dispatch/tst/tst003-p0-tst-003-e2e.md`），零业务仓改动、零业务逻辑。
-工作区说明：Engine 注入的 biz_worktree `/Users/fan/program/apps/.ccc-wt/tst/tst003` 为 ccc-tst 骨架仓 worktree（仅含 README.md，不含白名单文件）；白名单文件实际位于 CCC 文档仓，故改动在 CCC 文档仓专用卡 worktree `/Users/fan/program/CCC-wt/tst003`（分支 `codex/tst003-p0-tst-003-e2e`）内完成：先 `git fetch origin && git rebase origin/main`（快进至 84e93b7c1），未触碰主仓目录。
-
-**测试结果**：
-- 门禁测试命令 `true` → 通过（exit=0）
-- 自测 `grep -cx "tst-003-e2e" docs/dispatch/tst/tst003-p0-tst-003-e2e.md` → 输出 `1`（回写编辑后复测仍为 1），标记行为文件末行
-- 验收标准 1/2 逐项满足：卡头状态=已回写；本区含 commit hash 与 push 证据；维护区四问逐项真实填写
-
-**push 证据**：实现 commit `9b4faeadd162f10642acbf178794eabb7736da01` 与本回写 commit 一并推送至远端分支 `origin/codex/tst003-p0-tst-003-e2e`（github.com:hanrry2323/CCC.git）；推送后以 `git ls-remote origin refs/heads/codex/tst003-p0-tst-003-e2e` 核验远端 ref 与本地一致（核验输出见执行报告）。
+**执行体**：DSH · 日期：
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：[否]。关联方案 `docs/projects/tst/plans/001-pipeline-smoke.md` 不在本卡白名单内（白名单仅本卡文件自身），执行体未改动；该方案「关联卡：tst002」尚未补记 tst003。建议中枢/机审在合入阶段同步：tst003 为同方案（管线冒烟·P0 门禁真实链路拉通）追加冒烟卡。
-2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：[无]。本卡为单行标记追加冒烟，零业务逻辑，无新技术教训；执行中观察到的派发注入事实（biz_worktree 指向 ccc-tst 骨架仓、而本类 docs 卡的白名单文件实际位于 CCC 文档仓专用 worktree）已如实记录于上方回写区「实现说明」，供中枢参考，不另立 notes 文件（受白名单限制）。
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：[否]。仅在本卡文件末尾追加一行标记并回写状态，项目结构/技术栈/路径零变化，无需更新 `docs/projects/tst/README.md`。
-4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：[否]。项目近况与下一步无变化；本卡本身即 E2E 冒烟验证动作，其结果由机审与台账记录承载，不构成线路图变更。
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：
+2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：
+4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：
 
 ## 批注落实
 
@@ -133,25 +122,3 @@
     打回原因注明缺失项；执行体补维护区后重试。
 
   - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
-
-## 机审区
-
-**DSH 机审席 · 2026-08-24 · severity：轻**
-
-审查对象：worktree 分支副本（`codex/tst003-p0-tst-003-e2e`，被审实现链 `9b4faeadd..db50fca51`），非 main 占位卡。v4 对抗式审查逐项证据：
-
-1. **范围核对（通过）**：分支自基点 `84e93b7c1` 起 7 个独有提交（`9b4faeadd`/`ea003895d`/`8cec2976c`/`9ddc5f824`/`db50fca51` 及 audit 侧 `dff46925b`/`a659d3209`）经 `git diff 84e93b7c1..HEAD --stat` 核验全部只触碰白名单内本卡文件自身；零业务仓改动；工作区无脏文件、无越界文件。
-2. **验收标准 1（通过）**：本席独立复现 `grep -cx "tst-003-e2e"` 输出 `1`；标记行为文件末行且以换行结尾（`tail -c 20 | od -c` 核验为纯 ASCII + `\n`）；卡头状态=已回写。
-3. **验收标准 2（通过）**：回写区实现 commit hash `9b4faeadd162f10642acbf178794eabb7736da01` 在 git log 在案；push 证据独立复核——`git ls-remote origin refs/heads/codex/tst003-p0-tst-003-e2e` 返回值与本地 HEAD 一致（第二轮复验于 `a659d3209` 复核仍一致）。
-4. **维护区四问（P1-b 机械判据 · 通过）**：四问均单选落位问题行（[否]/[无]/[否]/[否]），说明均为一句实情、非空非占位；声明抽查属实——Q1 引用方案工件 `docs/projects/tst/plans/001-pipeline-smoke.md` 真实存在且「关联卡：tst002」与描述一致（补记 tst003 属白名单外动作，留待合入阶段）；Q2「未另立 notes 文件」、Q3/Q4「未改 README/线路图」均与全量 diff 一致。
-5. **历史打回溯源（非本卡缺陷）**：打回次数 1 由引擎信封提交 `9ddc5f824` 落账；main 上 `bdcccf8f6` 已归因为机审脚本误审对象（误用 main 占位卡）并修复。本次审查按正确对象（分支副本）执行。环节②修正提交（qx-observer）将四问由模板占位修正为单选并恢复「已回写」，属环节②就地修复授权范围，非执行体越权；该提交经 amend+rebase 由 `36a8416ea` 重写为 `db50fca51`，本席以 `git diff 36a8416ea db50fca51` 核验树零漂移（仅提交信息差异）。
-
-风险论证（0 缺陷结论依据）：本卡改动面=单文档单行标记+回写/维护区填写，爆炸半径最小；全部关键判据由本席以命令独立复现，不引用执行体自述；实现段编码修复（`8cec2976c`）仅还原损坏字符为「校验=1」，与验收标准语义一致，不构成内容篡改。残余风险：分支落后 origin/main 1 个提交（`bdcccf8f6`，仅动 `scripts/dsh-auditor.sh`，与本卡零交集），合入无冲突风险。
-
-第二轮复验（2026-08-24 · 本席）：上述全部判据在当前 HEAD `a659d3209edd8bb20ed788709e5cca3799c7282f` 独立重跑——`grep -cx`=1、标记行为末行纯 ASCII+`\n`（`od -c`）、远端 ref 与本地 HEAD 一致、全量 diff 仅触白名单文件、维护区四问单选+实情说明逐项在位、Q1 声明工件 `001-pipeline-smoke.md` 存在且「关联卡：tst002」一致；amend+rebase 历史重写经树比对确认零内容漂移（`git diff 48d7b4250 a659d3209` 为空）。审计侧提交不属被审改动，本次仅修正结论行契约形制与悬空哈希引用。
-
-建议（不作为打回原因）：合入阶段由中枢把 tst003 补记进 `001-pipeline-smoke.md` 关联卡；另分支 upstream 指向 origin/main 而非卡分支，合入脚本应按卡内步骤显式 fetch+rebase 后合并，勿依赖 upstream。
-
-机审：通过
-
-tst-003-e2e
