@@ -134,6 +134,26 @@ pytest 目标用例（env -u LANG/LC_ALL LC_CTYPE=C）      → 1 passed ✓
 教训笔记 `docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 存在（28 行）且内容与卡内论证一致 ✓；
 门禁证据日志 `~/.ccc/logs/exec/ccc068.test-evidence.log` 存在且记录 exit_code=0，回写区声明属实 ✓。
 
+第三轮独立复核（同日第三席 · 只增不改前两轮记录 · 全部命令实跑）：
+
+1. 换板零漂移链：脚本 blob `cf9c637efe` 在三代栈逐字节相同——ae8f8731c@670e84c3a、a68d089e2@fe31a4003、
+   2f322d340@28c695fd7 三代 `git rev-parse <tip>:scripts/validate-plans.sh` 同值；卡文本 blob `8ccef540`
+   换板前后同值。本审期间两次在途换板均未触及本卡内容，既有测试证据对现 tip 继续有效。
+2. 独立探针（/tmp 自建夹具，非复制他席脚本，外层 `env -u LANG -u LC_ALL LC_CTYPE=C`）：
+   变体 A 已关闭卡 rc=1 且输出「FAIL 方案关联卡已全部关闭/作废但状态仍为 '部分执行'」✓；
+   变体 B 缺失卡 rc=0 + WARN 幽灵引用 ✓；变体 C 开发中卡 rc=0 ✓；探针 D 外层显式 `LC_ALL=C` rc=1 ✓；
+   同一探针 D 打补强前脚本原文（blob `0001559e5`）rc=0 误放行——F1 漏洞与补强有效性双向实测属实 ✓。
+3. 门禁复跑：`python3 -m pytest server/tests/test_plans.py -q` 常规与强制 C 双环境均 [100%] rc=0；
+   全量 `python3 -m pytest server/tests -q` [100%] rc=0；`bash -n` 通过；退出码仅看 ERRORS（:401-404）、
+   WARNINGS 仅计数（:55-56 预初始化）✓。
+4. 引擎同口径复读：`server/board/plans.py:967` 缺 entry → state 取空、不计 closed、留活跃分母，
+   与脚本缺失卡分支一致 ✓；`ls-remote` 分支 == 本地 HEAD == 2f322d340 ✓；实现提交不在 origin/main ✓；
+   教训笔记 28 行属实 ✓。
+5. 时点披露：第二轮机审块所记「`git diff fe31a4003..HEAD --stat` 仅脚本+卡」系其时点事实；其后换板至
+   28c695fd7 使该 diff 面扩至含新继承的 main UI 提交（2462ce96b/28c695fd7），属换板预期非越权；
+   复核收口时点 origin/main 已前进至 c59b2ddb3，与本卡零交集。工作区仍有两处非本卡未提交残留
+   （mx/roadmap.md 一行、未跟踪 cards.index.jsonl），维持原样不动。
+
 机审：通过
 
 ## 维护区
