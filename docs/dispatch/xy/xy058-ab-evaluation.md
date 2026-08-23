@@ -1,6 +1,6 @@
 # 任务卡 xy058 · A-B 质量评估（M5-3）— 同主题多模板对比 + 人工打分 + 报告（OpenCode 执行）
 
-> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-20
+> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：作废（孤儿卡：父卡 xy057 已作废（依赖已取消），且执行体 OpenCode 无注） · 派发：engine · 项目：xy · 日期：2026-08-20
 > 依赖：xy057
 
 ## 基准文件（先看）
