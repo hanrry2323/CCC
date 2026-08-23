@@ -94,6 +94,40 @@ pytest 目标用例（env -u LANG/LC_ALL LC_CTYPE=C）      → 1 passed ✓
 
 （验收席专用——执行体禁止写入）
 
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+独立核验（全部命令在本 worktree 实跑复现，不引用执行体自述）：
+
+1. 范围核对：分支唯一实现提交 58e4f2ab6 仅触 `scripts/validate-plans.sh`（+11/-1），白名单合规；
+   `git status` 干净；未直推 main、未置已关闭、未触碰验收区。
+2. 门禁双环境实跑：`python3 -m pytest server/tests/test_plans.py -q` 常规与
+   `env -u LANG -u LC_ALL LC_CTYPE=C` 强制 C 均 rc=0 [100%] 全绿。
+3. 三变体沙箱探针（外层 LC_CTYPE=C，独立复刻 pytest 夹具）：A 已关闭卡 rc=1 且输出
+   「FAIL 方案关联卡已全部关闭/作废但状态仍为 '部分执行'」✓；B 缺失卡 rc=0+OK+WARN 幽灵引用 ✓；
+   C 开发中卡 rc=0 ✓。`WARNINGS` 于脚本 :46 预初始化、退出码仅看 ERRORS（:391-394），WARN 不影响 rc ✓。
+4. 引擎同口径核验：`server/board/plans.py::sync_plan_progress` 缺 entry → state 取空、不计 closed、
+   落活跃分母——与本卡缺失卡分支逐句一致 ✓。
+
+发现与处置：
+
+- **F1（轻 · 已就地补强并随本审提交）**：`${LC_ALL:-en_US.UTF-8}` 的 `:-` 写法在外层**显式**
+  `LC_ALL=C` 时保持 C——对抗探针 D 实测变体A 场景 rc 由 1 变 0，8.2 漏判复活。当前 launchd 部署
+  不设 LC_ALL 故不触发，但任何显式导出 C 的包装层都会静默复发。已就地改为无视继承值强制 UTF-8
+  （`locale -a` bash 正则判定，缺失退 C.UTF-8）；补强后探针 D 复跑 rc=1 ✓，三变体与 pytest 双环境复跑全绿 ✓。
+  补强过程自曝一个坑并已绕开：初版写 `locale -a | grep -q` 在 pipefail 下因 grep -q 提前退出令 locale
+  吃 SIGPIPE（rc=141）恒走 fallback，变体A 一度误放行（rc=0），改为无管道正则后消除——该坑同时证明
+  探针电池必须在每次改动后全量重跑。
+- **F2（时点性说明，非缺陷）**：回写区「实现 commit ed1a863c3 / 基于 origin/main@0289471a4」为回写时点
+  事实（reflog 证实 ed1a863c3 父提交即 0289471a4）；其后 rebase 至当时 main 顶 670e84c3a 生成 58e4f2ab6，
+  `git ls-remote` 实测远程分支 == 本地 HEAD == 58e4f2ab6 ✓。审计期间 origin/main 又前进至 3f6650ac2
+  （046-M2 components.css，与本卡零交集）。教训笔记规则①的 `:-` 写法建议应随之修正为「非 UTF-8 一律改写」，
+  该文件在 main 侧不属本卡白名单，此处留痕不改。
+
+维护区四问核对：四问均为具体单选（否/有/否/否）非占位，说明句皆实情；引用工件
+`docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 存在且内容属实 ✓。
+
+机审：通过
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。

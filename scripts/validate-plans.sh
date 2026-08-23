@@ -22,7 +22,17 @@ set -euo pipefail
 # 「已关闭」的「已」第二字节 B7 与分隔符「·」尾字节相同 → c_status 被截成单字节，
 # 已关闭卡误判活跃 → 8.2「全部关闭但未推进」漏判（pytest 子进程 UTF-8 绿、launchd 部署 C 红）。
 # 强制 UTF-8 locale，使 sed 与字符类按完整多字节字符工作。
-export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+# 机审补强（ccc068）：原 `export LC_ALL="${LC_ALL:-en_US.UTF-8}"` 的 :- 写法在外层
+# 显式 LC_ALL=C 时保持 C，8.2 漏判复活（机审探针 D 实测：已关闭卡场景 rc=1→0）。
+# 校验门禁必须确定性解析多字节文案：无视继承值一律强制 UTF-8；
+# en_US.UTF-8 缺失（Linux 最小镜像无 locales）时退回 C.UTF-8。
+# 注意：不得写 `locale -a | grep -q`——pipefail 下 grep -q 提前退出令 locale 吃
+# SIGPIPE（rc=141）→ 恒走 fallback（机审实测踩坑）；故用无管道的 bash 正则判定。
+if [[ "$(locale -a 2>/dev/null || true)" =~ en_US\.[Uu][Tt][Ff]-?8 ]]; then
+  export LC_ALL=en_US.UTF-8
+else
+  export LC_ALL=C.UTF-8
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
