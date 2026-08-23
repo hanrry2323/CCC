@@ -1,11 +1,11 @@
-"""席位与验收规则（2026-08-08 定稿：M1 自验收 / 2017 机审固定交叉）。
+"""席位与验收规则（2026-08-08 定稿：M1 自验收 / 2017 机审固定交叉；2026-08-23 随 DSH 化重构修订）。
 
-产品意图（双轨，老板 2026-08-08 澄清）：
-- **M1 端（出卡/合入验收）**：自验收——谁出卡谁验收。OpenCode 出卡 →
-  OpenCode 可验收合入；Claude Code 同理。卡头「验收」字段即此席。
-- **2017 端（产线机审）**：固定交叉——OpenCode 开发 → Claude Code 机审；
-  Claude Code 开发 → OpenCode 机审。机审工具不读卡头「验收」字段
-  （见 engine/main.py `_run_machine_audit_after_writeback`）。
+产品意图（2026-08-23 修订，随 8-22 工具收口）：
+- **产线执行（2017 端）**：开发/机审执行体 = **DSH**（dsh-executor / dsh-auditor），
+  卡头自验收——执行体=DSH → 验收=DSH。卡头「验收」字段即机审席位。
+- **管理席（Claude Code）**：出卡裁决 + 审核合入（approve-merge）；不代执行。
+  老板合入批准 = 人审最终 diff（任何人/工具都不能绕过老板自行合入）。
+- **OpenCode / Claude Code 开发**：历史遗留，保留兼容旧卡（OpenCode 已退出产线）。
 - **Codex / Cursor**：取消验收资格（Codex 可出卡/裁决；Cursor 仅难度突击写码）。
 
 两条硬规则（不可省）：
@@ -19,7 +19,8 @@
 from __future__ import annotations
 
 # 可参与「开发 / 验收」的工具（归一后名）；自验收合法
-ALLOWED_TOOLS: frozenset[str] = frozenset({"OpenCode", "Claude Code"})
+# DSH=产线执行/机审（8-22 重构后默认）；OpenCode/Claude Code 保留兼容旧卡
+ALLOWED_TOOLS: frozenset[str] = frozenset({"DSH", "OpenCode", "Claude Code"})
 
 # 明确禁止出现在卡头「验收」的席位
 FORBIDDEN_ACCEPTORS: frozenset[str] = frozenset(
@@ -38,13 +39,14 @@ _ALIASES: dict[str, str] = {
     "claudecode": "Claude Code",
     "opencode": "OpenCode",
     "open code": "OpenCode",
+    "dsh": "DSH",
     "codex": "Codex",
     "cursor": "Cursor",
     "trae": "Trae",
 }
 
-DEFAULT_EXECUTOR = "OpenCode"
-DEFAULT_ACCEPTANCE = "OpenCode"  # 自验收：默认与执行体相同
+DEFAULT_EXECUTOR = "DSH"
+DEFAULT_ACCEPTANCE = "DSH"  # 自验收：默认与执行体相同
 
 
 def normalize_tool(name: str) -> str:
@@ -82,12 +84,12 @@ def acceptance_issue(executor: str, acceptance: str) -> str | None:
     if acc in FORBIDDEN_ACCEPTORS:
         return (
             f"验收席禁止绑定 {acc!r}（Codex/Cursor 已取消验收资格；"
-            f"验收须为 OpenCode 或 Claude Code 自验收）"
+            f"验收须为 DSH / OpenCode / Claude Code 自验收）"
         )
     if not exe or exe == "未知":
         return None  # 执行体另检；此处不重复
     if exe not in ALLOWED_TOOLS:
-        return f"执行体 {exe!r} 不可开发（仅 OpenCode / Claude Code 可开发并自验收）"
+        return f"执行体 {exe!r} 不可开发（仅 DSH / OpenCode / Claude Code 可开发并自验收）"
     if acc != exe:
         return (
             f"验收不匹配（自验收）：执行体 {exe} 须由 {exe} 验收，"
@@ -97,5 +99,5 @@ def acceptance_issue(executor: str, acceptance: str) -> str | None:
 
 
 def default_acceptance_for(executor: str) -> str:
-    """出卡默认验收：自验收（与执行体同工具）；未知执行体 → OpenCode。"""
+    """出卡默认验收：自验收（与执行体同工具）；未知执行体 → DSH。"""
     return expected_acceptance(executor) or DEFAULT_ACCEPTANCE

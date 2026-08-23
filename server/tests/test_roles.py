@@ -39,7 +39,9 @@ def test_forbidden_acceptors() -> None:
 
 
 def test_defaults() -> None:
-    assert DEFAULT_EXECUTOR == "OpenCode"
-    assert DEFAULT_ACCEPTANCE == "OpenCode"
-    assert default_acceptance_for("OpenCode") == "OpenCode"
-    assert default_acceptance_for("Claude Code") == "Claude Code"
+    # 2026-08-23 随 DSH 化重构：产线执行/机审默认 DSH（P1-a）
+    assert DEFAULT_EXECUTOR == "DSH"
+    assert DEFAULT_ACCEPTANCE == "DSH"
+    assert default_acceptance_for("DSH") == "DSH"
+    assert default_acceptance_for("OpenCode") == "OpenCode"  # 兼容旧卡
+    assert default_acceptance_for("Claude Code") == "Claude Code"  # 兼容旧卡
