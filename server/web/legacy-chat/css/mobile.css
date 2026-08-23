@@ -31,11 +31,11 @@
     scroll-snap-stop: always;
   }
 
-  /* ── 计划池：六列 grid → 横向滑动列 ── */
+  /* ── 计划池：六列 grid → 横向滑动列（列宽与看板轮播对齐）── */
   .plans-flow {
-    grid-template-columns: none;
+    grid-template-columns: none !important; /* 压过 applyFlowColumns 的内联栅格兜底 */
     grid-auto-flow: column;
-    grid-auto-columns: minmax(262px, 84vw);
+    grid-auto-columns: min(84vw, 340px);
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scroll-padding-left: var(--ccc-space-md);

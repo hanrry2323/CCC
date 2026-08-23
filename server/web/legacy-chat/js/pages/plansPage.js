@@ -343,9 +343,19 @@ function updateListOnly() {
   renderFlow();
 }
 
+// 手机族断点（与 css/mobile.css 的 md=768 同值）：横滑轮播态由 CSS 接管
+const _mqlMobile = window.matchMedia('(max-width: 767px)');
+function _applyFlowColumnsOnBreakpoint() { applyFlowColumns(); }
+
 function applyFlowColumns() {
   const flow = _root?.querySelector('#plans-flow');
   if (!flow) return;
+  if (_mqlMobile.matches) {
+    // ccc-plan-046 M3：手机族 = 横滑轮播。清掉内联栅格，让 mobile.css 的
+    // grid-auto-columns + scroll-snap 生效（内联样式会压过样式表规则）。
+    flow.style.gridTemplateColumns = '';
+    return;
+  }
   const visible = _hideClosed ? STATUSES.length - 2 : STATUSES.length;
   flow.style.gridTemplateColumns = `repeat(${Math.max(1, visible)}, minmax(0, 1fr))`;
 }
@@ -980,6 +990,8 @@ function _applyDeepLink() {
 export function mountPlans(root, ctx = {}) {
   // 2026-08-24：同页重复导航时旧定时器句柄被覆盖泄漏，挂载前先清（与 unmount 等价）
   if (_timer) { clearInterval(_timer); _timer = null; }
+  // 断点跨越（旋转/拉伸窗口）时重应用栅格模式
+  _mqlMobile.addEventListener('change', _applyFlowColumnsOnBreakpoint);
   _root = root;
   _disposed = false;
   _colSigs = {};
@@ -999,6 +1011,7 @@ export function unmountPlans() {
     _timer = null;
   }
   document.removeEventListener('keydown', _globalKeydown);
+  _mqlMobile.removeEventListener('change', _applyFlowColumnsOnBreakpoint);
   _root = null;
   _plans = [];
   _detailPath = null;
