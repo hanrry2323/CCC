@@ -50,6 +50,7 @@
   --ccc-danger: #d65c4a;
   --ccc-warn: #d9941a;
   --ops-amber: #d9941a;
+  --ccc-info: #4a90d9;
 }
 
 /* 系统偏好：未显式设置主题时跟随系统 */
@@ -88,5 +89,6 @@
     --ccc-danger: #d65c4a;
     --ccc-warn: #d9941a;
     --ops-amber: #d9941a;
+    --ccc-info: #4a90d9;
   }
 }

@@ -79,4 +79,17 @@
   --ccc-warn: #b45309;
   /* relay fail-open 降级提示专用琥珀（「橙不是红」规范） */
   --ops-amber: #b45309;
+
+  /* ── ccc-plan-046 M1 设计基座扩展（信息墙设计语言提炼）── */
+  /* 信息色（info 蓝；暗色变体见 themes.css） */
+  --ccc-info: #2f7dd1;
+
+  /* 组件高度刻度：全站页头/卡片头脚/可点控件统一高度来源 */
+  --ccc-h-topbar: 32px;      /* 页头顶栏（同墙 topbar） */
+  --ccc-h-card-head: 28px;   /* 卡片头（同墙格头） */
+  --ccc-h-card-foot: 22px;   /* 卡片脚元数据行（同墙格脚） */
+  --ccc-h-control: 44px;     /* 触控目标最小尺寸（移动端 ≥44px 规范） */
+
+  /* 卡片语义半径（与 radius 对齐的用途别名，组件统一引用） */
+  --ccc-hue-card: var(--ccc-radius-md);   /* 12px 卡片圆角 */
 }

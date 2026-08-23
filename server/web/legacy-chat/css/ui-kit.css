@@ -1,0 +1,182 @@
+/**
+ * ui-kit.css — CCC 统一组件原语层（ccc-plan-046 M1 设计基座）。
+ *
+ * 设计语言来源：信息墙（wall v0.3.4 提炼，详见 docs/projects/ccc/plans/046）。
+ * 规约：
+ * 1. 所有原语类以 .k- 前缀命名，只允许引用 --ccc-* 令牌，禁止硬编码颜色/尺寸；
+ * 2. 本文件是「加法层」：不覆盖任何既有页面样式，各页在 M2 逐页迁移时替换私有类；
+ * 3. 三端规范：断点仅允许 sm640/md768/lg1024/xl1280；触控目标 ≥ var(--ccc-h-control)。
+ *
+ * 原语清单：
+ *   .k-page            页容器
+ *   .k-topbar(+title/stats/actions)  32px 页头三段结构
+ *   .k-card / -head / -body / -foot  卡片四件套（28px 头 / 22px 脚）
+ *   .k-chip            统计芯片
+ *   .k-badge(.success/.warn/.danger/.info/.muted)  语义徽章
+ *   .k-dot(.active/.stalled/.error)   状态点（与墙呼吸灯同语义）
+ *   .k-btn(.primary/.ghost/.danger)   按钮（触控 ≥44px）
+ *   .k-empty / .k-loading             空态/加载态
+ */
+
+/* ── 页容器 ── */
+.k-page {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--ccc-space-md) var(--ccc-space-lg);
+  background: var(--ccc-bg-base);
+  color: var(--ccc-text-base);
+}
+
+/* ── 页头：32px 三段（标题 | 统计 | 动作）── */
+.k-topbar {
+  display: flex; align-items: center; gap: var(--ccc-space-sm);
+  min-height: var(--ccc-h-topbar);
+  padding: var(--ccc-space-2xs) var(--ccc-space-md);
+  background: var(--ccc-bg-sidebar);
+  border-bottom: 0.5px solid var(--ccc-border-base);
+  flex-shrink: 0;
+}
+.k-topbar-title {
+  font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
+  color: var(--ccc-text-base); white-space: nowrap;
+}
+.k-topbar-stats {
+  margin-left: auto;
+  color: var(--ccc-text-muted); font-size: var(--ccc-font-size-xs);
+  white-space: nowrap;
+}
+.k-topbar-actions { display: flex; align-items: center; gap: var(--ccc-space-xs); }
+
+/* ── 卡片四件套 ── */
+.k-card {
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; overflow: hidden;
+  position: relative;
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-base);
+  border-radius: var(--ccc-radius-md);
+  box-shadow: var(--ccc-shadow-md), inset 0 1px 0 var(--ccc-cell-highlight, transparent);
+  transition: border-color var(--ccc-transition-fast);
+}
+.k-card:hover { border-color: var(--ccc-border-accent); }
+/* 可点击卡片 */
+button.k-card, a.k-card { cursor: pointer; text-align: inherit; width: 100%; }
+
+.k-card-head {
+  display: flex; align-items: center; gap: var(--ccc-space-sm);
+  min-height: var(--ccc-h-card-head);
+  padding: var(--ccc-space-2xs) var(--ccc-space-md);
+  background: var(--ccc-head-bg, var(--ccc-bg-layer));
+  border-bottom: 0.5px solid var(--ccc-border-base);
+  flex-shrink: 0; flex-wrap: nowrap;
+}
+.k-card-title {
+  font-size: 13px; font-weight: 600; color: var(--ccc-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+.k-card-body {
+  flex: 1; min-height: 0;
+  padding: var(--ccc-space-md) var(--ccc-space-md) var(--ccc-space-lg);
+  font-size: var(--ccc-font-size-sm); line-height: 1.7;
+  color: var(--ccc-text-secondary);
+  overflow-y: auto;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.k-card-body::-webkit-scrollbar { display: none; }
+.k-card-foot {
+  display: flex; align-items: center; gap: var(--ccc-space-sm);
+  min-height: var(--ccc-h-card-foot);
+  padding: calc(var(--ccc-space-2xs) - 1px) var(--ccc-space-md);
+  background: var(--ccc-meta-bg, var(--ccc-bg-layer));
+  border-top: 0.5px solid var(--ccc-border-subtle);
+  font-size: 10px; color: var(--ccc-text-muted);
+  flex-shrink: 0; flex-wrap: nowrap;
+  white-space: nowrap; overflow: hidden;
+}
+
+/* ── 统计芯片 ── */
+.k-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px;
+  font-size: var(--ccc-font-size-xs);
+  color: var(--ccc-text-secondary);
+  background: var(--ccc-bg-hover);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-full);
+  white-space: nowrap;
+}
+
+/* ── 语义徽章 ── */
+.k-badge {
+  display: inline-flex; align-items: center;
+  font-size: var(--ccc-font-size-xs); font-weight: 500;
+  padding: 1px 7px; border-radius: var(--ccc-radius-xs);
+  flex-shrink: 0;
+  background: var(--ccc-bg-hover); color: var(--ccc-text-muted);
+}
+.k-badge.success { background: rgba(79, 163, 119, 0.18); color: var(--ccc-success); }
+.k-badge.warn    { background: rgba(217, 148, 26, 0.15); color: var(--ccc-warn); }
+.k-badge.danger  { background: rgba(214, 92, 74, 0.15); color: var(--ccc-danger); }
+.k-badge.info    { background: rgba(47, 125, 209, 0.14); color: var(--ccc-info); }
+.k-badge.accent  { background: var(--ccc-bg-accent-soft); color: var(--ccc-text-accent); }
+
+/* ── 状态点（与信息墙呼吸灯同语义）── */
+.k-dot {
+  width: 8px; height: 8px; border-radius: var(--ccc-radius-full);
+  flex-shrink: 0;
+  background: var(--ccc-success);
+  box-shadow: 0 0 6px rgba(79, 163, 119, 0.5);
+}
+.k-dot.active { animation: k-pulse 1.2s ease-in-out infinite; }
+.k-dot.stalled { background: var(--ccc-warn); box-shadow: 0 0 6px rgba(217, 148, 26, 0.55); animation: none; }
+.k-dot.error { background: var(--ccc-danger); box-shadow: 0 0 6px rgba(214, 92, 74, 0.6); }
+@keyframes k-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ── 按钮（触控目标规范见底部 coarse 指针媒体块）── */
+.k-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  min-height: 24px; padding: 3px 12px;
+  font-size: var(--ccc-font-size-xs); font-family: var(--ccc-font-sans);
+  color: var(--ccc-text-secondary);
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-base); border-radius: 6px;
+  cursor: pointer; white-space: nowrap;
+  transition: all var(--ccc-transition-fast);
+}
+.k-btn:hover { border-color: var(--ccc-border-accent); color: var(--ccc-text-accent); }
+.k-btn:disabled { opacity: 0.5; cursor: default; }
+.k-btn.primary {
+  background: var(--ccc-bg-accent); color: var(--ccc-text-inverse);
+  border-color: var(--ccc-bg-accent);
+}
+.k-btn.primary:hover { filter: brightness(1.06); color: var(--ccc-text-inverse); }
+.k-btn.ghost { background: transparent; }
+.k-btn.danger { color: var(--ccc-danger); border-color: var(--ccc-danger); }
+.k-btn.danger:hover { background: var(--ccc-danger); color: var(--ccc-text-inverse); }
+
+/* ── 空态 / 加载态 ── */
+.k-empty {
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--ccc-space-xl) var(--ccc-space-md);
+  color: var(--ccc-text-faint); font-size: var(--ccc-font-size-sm);
+  border: 1px dashed var(--ccc-border-base); border-radius: var(--ccc-radius-sm);
+  text-align: center;
+}
+.k-loading {
+  display: flex; align-items: center; justify-content: center; gap: var(--ccc-space-sm);
+  padding: var(--ccc-space-xl);
+  color: var(--ccc-text-muted); font-size: var(--ccc-font-size-sm);
+}
+
+/* ── 三端规范挂钩（M3 全面铺开，此处先立基线）── */
+/* 粗指针设备：可点目标放大到 ≥44px 触控标准 */
+@media (pointer: coarse) {
+  .k-btn { min-height: var(--ccc-h-control); min-width: var(--ccc-h-control); padding: 8px 16px; }
+  .k-chip { padding: 6px 12px; }
+}
+/* 减弱动态效果 */
+@media (prefers-reduced-motion: reduce) {
+  .k-dot.active { animation: none; }
+  .k-btn, .k-card { transition: none; }
+}
