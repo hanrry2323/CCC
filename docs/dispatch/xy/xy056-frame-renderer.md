@@ -1,6 +1,6 @@
 # 任务卡 xy056 · Playwright 帧渲染器（M5-1）— HTML 场景→帧→视频主链路合拢（OpenCode 执行）
 
-> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-20
+> 关联：xy-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：作废（老板定夺作废：OpenCode 时代卡、机审不通过、关联 xy-plan-008） · 派发：engine · 项目：xy · 日期：2026-08-20
 
 ## 基准文件（先看）
 
