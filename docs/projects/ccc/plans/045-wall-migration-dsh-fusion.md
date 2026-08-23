@@ -75,18 +75,38 @@ HANDOVER §六清单：final tag → README 归档声明 → launchctl unload �
 
 ## 方案内容（本次改动清单）
 
+> **P1.5 深度融合已执行（2026-08-24，老板指令升级：不做跳转页，直接融合 + 拆旧对话栈）**
+
 | 文件 | 动作 |
 |---|---|
 | `server/web/wall.py` | 新增：reader 状态机 + 快照轮询线程 + DSH RPC 转发（自包含） |
-| `server/web/wall/index.html` | 新增：墙页面（源 v0.3.4，仅改 API 前缀 + 控制台链接） |
-| `server/web/server.py` | 挂线：import wall、serve_forever 启轮询线程、4 个路由 + 1 条静态白名单 |
-| `server/web/legacy-chat/index.html` | 「对话」标签 → 「信息墙」指向 /wall |
-| `server/web/legacy-chat/js/bootloader.js` 或 app.js | 缺省落地引导至 /wall（保留 #/chat 可达） |
+| `server/web/wall/index.html` | 已删除：独立墙页被 SPA 视图取代（P1 过渡产物） |
+| `server/web/server.py` | 挂线：import wall、serve_forever 启轮询线程、4 个 `/wall/api/*` 路由；`/` 与 `/wall` 均指统一壳 |
+| `legacy-chat/js/pages/wallPage.js` | 新增：墙视图模块——稳定宿主模型跨路由保留、SSE 生命周期归 mount/unmount、主题跟随壳层 theme.js、格内对话走 /wall/api/dsh/prompt |
+| `legacy-chat/css/wall.css` | 新增：墙样式自 v0.3.4 提取，全部 `#view-wall` 作用域化；主题令牌不重复定义（variables.css 单一来源） |
+| `legacy-chat/index.html` | 重写壳：删除侧栏/composer/titlebar/login-view 等对话 DOM；hub-nav 首项「信息墙」+ ⚙设置入口；view-wall 容器 |
+| `legacy-chat/js/app.js` | 重写瘦身：仅剩路由注册表+主题+toast 注册+设置入口（原 613 行对话装配全删） |
+| `legacy-chat/js/api.js` | 精简：拆除 streamChat/会话历史长轮询/Claude·DSH 会话镜像/token 登录态；保留缓存/abort/超时/看板计划数据面 |
+| `legacy-chat/js/router.js` | 默认路由 wall；chat 路由移除；showHubChatNotice 双壳分支退役 |
+| 删除 24 文件 | message/composer/sidebar/attachments/toolCall/slash/quickPrompts/keyboard/fixedActions/titlebar/dualPane/streamRegistry/chatStatus/chatErrors/relayStats/export/boardPanel/taskDialog/artifacts/dispatchFormat/auth/agentAuth/login-gate/bootloader + dual-pane.css |
+
+**已知边界（诚实声明）**：
+- 服务端 `/conversation`、`/claude/*`、brain bridge 心跳等旧对话后端暂保留（本次拆前端栈；
+  后端下线需先确认 ai-loop-router/Desktop 无外部消费）
+- `auth_required=1` 模式下前端不再有登录 UI（默认 LAN 免登录不受影响）；如需可后续加独立最小登录组件
+- legacy-chat 目录名暂不改（纯命名债，改目录=全量资源路径 churn，择机单独处理）
+
+## P2/P3（更新）
+
+- P2 对话升级：「＋新建对话」（先实证 session 创建 RPC）/ 历史抽屉 / 墙视图聚焦阅读态打磨
+- P3 清库退役：✅ 已执行（2026-08-24 老板批准）——v0.3.4-final tag、launchd 卸载、
+  :3081 下线、仓库存档至 ~/program/archive/dsh-wall；监控连续性验证通过
 
 ## 验收标准
 
-- [ ] 测试端口实例：`/wall/api/active` 返回真实 DSH 会话快照（与 :3081 形状一致）
-- [ ] `/wall/api/stream` SSE 首帧立即推送、15s 心跳、断连不炸线程
-- [ ] `/wall` 页面 200 且格内对话 POST /wall/api/dsh/prompt 通（或明确降级提示）
-- [ ] `/` 返回墙页，`/app` 返回 legacy-chat（回滚位完好），原七视图不受影响
-- [ ] pytest 全量与基线一致；ruff 通过；py_compile 通过
+- [x] 测试端口实例：`/wall/api/active` 返回真实 DSH 会话快照（与 :3081 形状一致）
+- [x] `/wall/api/stream` SSE 首帧立即推送、15s 心跳、断连不炸线程
+- [x] 格内对话 POST /wall/api/dsh/prompt 校验分支正确（真实发送走官方 RPC，老板实测）
+- [x] `/` 返回统一壳且默认渲染信息墙；CDP 真浏览器冒烟：墙挂载/切页回归/零控制台错误/
+      旧对话 DOM 零残留
+- [x] pytest 全量与基线一致；ruff 通过；py_compile 通过

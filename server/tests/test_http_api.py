@@ -987,29 +987,21 @@ class TestStaticHosting:
     """静态白名单路径免鉴权返回磁盘文件；目录穿越 404；非白名单 API 无 token 401。"""
 
     def test_root_returns_legacy_chat_html(self, api_server):
-        """GET / 返回 DSH 监控墙页（ccc-plan-045：对话页职能由墙承接）。
-
-        旧断言为 legacy-chat（<title>CCC</title>）；2026-08-24 根路径改服务墙页，
-        legacy-chat 退居 /app 回滚位（见 test_app_returns_legacy_chat_html）。"""
+        """GET / 返回统一壳页（ccc-plan-045 P1.5：信息墙为默认视图）。"""
         status, body_text = _get_raw(api_server, "/")
         assert status == 200
         assert "<html" in body_text.lower()
-        assert "DSH 监控墙" in body_text
-        assert "/wall/api/stream" in body_text
+        # 深度融合标志：hub-nav 首项为信息墙，墙样式表已挂载
+        assert "信息墙" in body_text
+        assert "view-wall" in body_text
+        assert "/css/wall.css" in body_text
 
-    def test_wall_page_served(self, api_server):
-        """GET /wall 与 / 同源等价（墙页书签入口）。"""
+    def test_wall_bookmark_serves_spa(self, api_server):
+        """GET /wall 书签入口同指统一壳（hash 路由归一到 #/wall）。"""
         status_root, root_text = _get_raw(api_server, "/")
         status_wall, wall_text = _get_raw(api_server, "/wall")
         assert (status_root, status_wall) == (200, 200)
         assert wall_text == root_text
-
-    def test_app_returns_legacy_chat_html(self, api_server):
-        """GET /app 返回 legacy-chat/index.html（回滚位完好）。"""
-        status, body_text = _get_raw(api_server, "/app")
-        assert status == 200
-        assert "<title>CCC</title>" in body_text
-        assert "信息墙" in body_text  # hub-nav 对话标签已替换为墙入口
 
     def test_index_html(self, api_server):
         """GET /index.html 200。"""
@@ -1064,8 +1056,11 @@ class TestStaticHosting:
         assert status == 200
 
     def test_legacy_chat_js_components(self, api_server):
-        """GET /js/components/composer.js 200（组件文件）。"""
-        status, _ = _get_raw(api_server, "/js/components/composer.js")
+        """GET /js/components/toast.js 200（组件文件）。
+
+        ccc-plan-045 P1.5：旧对话组件（composer/message/sidebar 等）已拆除，
+        改断言保留下来的共享组件。"""
+        status, _ = _get_raw(api_server, "/js/components/toast.js")
         assert status == 200
 
     def test_legacy_chat_js_pages(self, api_server):

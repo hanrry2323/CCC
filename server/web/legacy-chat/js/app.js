@@ -1,615 +1,109 @@
-import { state } from './state.js';
-import { generateId, desktopThreadId } from './utils.js';
-import { loadProjects, loadSession, loadHubConfig, loadClaudeMessages, loadClaudeProjects, loadDshWorkspaces, pageScopeAbort, setRouteSwitching } from './api.js';
-import { initChatStatus } from './chatStatus.js';
-import { applyTheme, getThemeScheme } from './theme.js';
-import { initTitlebar, renderTabs } from './components/titlebar.js';
-import { initComposer, setupProjectSelect } from './components/composer.js';
-import {
-  loadMessages,
-  setupCancel,
-  createEmptyState,
-} from './components/message.js';
-import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
-import { initRouter, navigate, currentRoute } from './router.js';
-import {
-  initDualPaneControls,
-  isEnabled as dualPaneEnabled,
-  showTabInFocusedPane,
-  messagesElForTab,
-  paneTabIds,
-  setFocusedPane,
-} from './dualPane.js';
-
-function snapshotActiveTab() {
-  const tabs = state.get('tabs') || [];
-  const activeId = state.get('activeTabId');
-  const tab = tabs.find((t) => t.id === activeId);
-  if (!tab) return;
-  tab.sessionId = state.get('currentSessionId');
-  tab.messages = (state.get('currentMessages') || []).slice();
-  tab.projectId = state.get('currentProject') || tab.projectId || 'ccc';
-  state.set('tabs', tabs);
-}
-
-/** Tabs belonging to the current project (for titlebar). */
-export function tabsForCurrentProject() {
-  const project = state.get('currentProject') || 'ccc';
-  return (state.get('tabs') || []).filter(
-    (t) => (t.projectId || 'ccc') === project
-  );
-}
-
-function renderProjectTabs(activeId) {
-  renderTabs(tabsForCurrentProject(), activeId || state.get('activeTabId'));
-}
-
-function renderTabIntoContainer(tab, container) {
-  if (!container) return;
-  container.innerHTML = '';
-  const msgs = tab.messages || [];
-  if (!msgs.length) {
-    container.appendChild(createEmptyState());
-    return;
-  }
-  // Temporarily point loadMessages at this container via active pane semantics:
-  // loadMessages uses activeMessagesEl(); ensure focus pane matches container.
-  const { left, right } = paneTabIds();
-  if (dualPaneEnabled() && tab.id === right) setFocusedPane('right');
-  else setFocusedPane('left');
-  state.set('currentSessionId', tab.sessionId || tab.id);
-  state.set('currentMessages', msgs);
-  loadMessages({ messages: msgs, title: tab.title });
-}
-
-function showTabContent(tab) {
-  if (dualPaneEnabled()) {
-    showTabInFocusedPane(tab.id);
-    const container = messagesElForTab(tab.id);
-    renderTabIntoContainer(tab, container);
-  } else {
-    const container = document.getElementById('messages');
-    renderTabIntoContainer(tab, container);
-  }
-  import('./streamRegistry.js').then((m) => {
-    m.syncStreamingFlagForActiveTab();
-  });
-  import('./components/message.js').then((m) => m.updateComposerState());
-  // 流式 tab 切回：仍在途且尚无 assistant 内容 → 重挂 typing（恢复「等待中」感知）
-  import('./streamRegistry.js').then((m) => {
-    if (!m.isTabStreaming(tab.id)) return;
-    const hasAssistant = (tab.messages || []).some(
-      (msg) => msg.role === 'assistant' && String(msg.content || '').trim()
-    );
-    if (hasAssistant) return;
-    const container = messagesElForTab(tab.id);
-    if (!container) return;
-    import('./components/message.js').then((msg) => {
-      msg.showTyping(container, tab.id);
-    });
-  });
-}
-
-function renderPaneByTabId(tabId) {
-  const tabs = state.get('tabs') || [];
-  const tab = tabs.find((t) => t.id === tabId);
-  if (!tab) return;
-  const container = messagesElForTab(tabId);
-  if (!container) return;
-  const prevActive = state.get('activeTabId');
-  const prevMsgs = state.get('currentMessages');
-  const prevSid = state.get('currentSessionId');
-  // Render without stealing focus if not focused pane
-  const { left, right } = paneTabIds();
-  const focus = state.get('dualPaneFocus') === 'right' ? 'right' : 'left';
-  const isFocus =
-    (focus === 'right' && tabId === right) || (focus === 'left' && tabId === left);
-  container.innerHTML = '';
-  const msgs = tab.messages || [];
-  if (!msgs.length) {
-    container.appendChild(createEmptyState());
-  } else if (isFocus) {
-    state.set('currentSessionId', tab.sessionId || tab.id);
-    state.set('currentMessages', msgs);
-    loadMessages({ messages: msgs, title: tab.title });
-  } else {
-    // Off-focus pane: paint snapshot without clobbering composer state long-term
-    state.set('currentSessionId', tab.sessionId || tab.id);
-    state.set('currentMessages', msgs);
-    loadMessages({ messages: msgs, title: tab.title });
-    if (prevActive) {
-      state.set('activeTabId', prevActive);
-      state.set('currentMessages', prevMsgs || []);
-      state.set('currentSessionId', prevSid);
-    }
-  }
-}
-
 /**
- * Switch visible chat to a tab for `projectId` without cancelling other projects' streams.
- * Prefers `{pid}::main`, then most recent tab; creates ::main if none.
+ * app.js — CCC 单端壳入口（ccc-plan-045 P1.5 深度融合后）。
+ *
+ * 旧对话栈（消息流/composer/侧栏会话/大脑桥前端/登录门/分屏/流注册表）已整体拆除；
+ * 信息墙成为默认视图（#/wall），与看板/计划/线路图/运维/巡检/控制台同壳路由。
  */
-function switchToProjectTab(projectId) {
-  snapshotActiveTab();
-  const pid = projectId || state.get('currentProject') || 'ccc';
-  let tabs = state.get('tabs') || [];
-  const mainSid = desktopThreadId(pid, 'main');
-  let tab =
-    tabs.find(
-      (t) =>
-        (t.projectId || 'ccc') === pid &&
-        String(t.sessionId || '') === mainSid
-    ) || null;
-  if (!tab) {
-    for (let i = tabs.length - 1; i >= 0; i--) {
-      if ((tabs[i].projectId || 'ccc') === pid) {
-        tab = tabs[i];
-        break;
-      }
-    }
-  }
-  if (!tab) {
-    const id = generateId();
-    tab = {
-      id,
-      title: '对话',
-      sessionId: mainSid,
-      messages: [],
-      projectId: pid,
-    };
-    tabs = tabs.concat([tab]);
-    state.set('tabs', tabs);
-  }
-  state.set('activeTabId', tab.id);
-  state.set('currentSessionId', tab.sessionId || mainSid);
-  renderProjectTabs(tab.id);
-  showTabContent(tab);
-  refreshSidebar();
 
-  import('./streamRegistry.js').then((m) => {
-    const others = m.streamingProjectIds().filter((p) => p && p !== pid);
-    if (others.length) {
-      window.showToast?.(
-        '其他项目仍有生成中的对话（' + others.join(', ') + '）',
-        'info'
-      );
-    }
-    document.dispatchEvent(new CustomEvent('ccc-streams-changed'));
-  });
-}
+import { applyTheme, getThemeScheme } from './theme.js';
+import { initRouter, navigate } from './router.js';
+import { pageScopeAbort, setRouteSwitching } from './api.js';
+
+// 路由→已加载页面注册表。必须是模块级：onHubRoute 的 unmount 循环遍历它来卸载旧页。
+// （2026-08-24 修复史：曾被懒加载改造误改为函数内局部 const，unmount 全部空转、
+//   各页定时器跨路由泄漏累积——回归自 e9f2545ce，勿再降级。）
+const PAGES = {};
+
+const PAGES_LOADERS = {
+  wall: () =>
+    import('./pages/wallPage.js').then((m) => ({
+      mount: m.mountWall,
+      unmount: m.unmountWall,
+    })),
+  board: () =>
+    import('./pages/boardPage.js').then((m) => ({
+      mount: m.mountBoard,
+      unmount: m.unmountBoard,
+    })),
+  plans: () =>
+    import('./pages/plansPage.js').then((m) => ({
+      mount: m.mountPlans,
+      unmount: m.unmountPlans,
+    })),
+  roadmap: () =>
+    import('./pages/roadmapPage.js').then((m) => ({
+      mount: m.mountRoadmap,
+      unmount: m.unmountRoadmap,
+    })),
+  console: () =>
+    import('./pages/consolePage.js').then((m) => ({
+      mount: m.mountConsole,
+      unmount: m.unmountConsole,
+    })),
+  ops: () =>
+    import('./pages/opsPage.js').then((m) => ({
+      mount: m.mountOps,
+      unmount: m.unmountOps,
+    })),
+  dsh: () =>
+    import('./pages/dshPage.js').then((m) => ({
+      mount: m.mountDsh,
+      unmount: m.unmountDsh,
+    })),
+};
 
 let _routeGen = 0;
 
-// 路由→已加载页面注册表。必须是模块级：onHubRoute 的 unmount 循环遍历它来卸载旧页。
-// 2026-08-24 修复：曾被懒加载改造误改为函数内局部 const，导致循环永远遍历空对象、
-// unmountXxx 全部无人调用、各页定时器跨路由泄漏累积（回归自 e9f2545ce）。
-const PAGES = {};
-
 async function onHubRoute(route) {
-  // T46 A1 护栏：路由切换 / 视图 mount-unmount 不得调用 cancelStream/abort。
-  // 流的取消仅允许用户主动点停止（composer cancel-btn → cancelStream），或
-  // 关闭 tab（close-tab 里 cancelStream）。切到 #/board 再回 #/chat，活跃流
-  // 保持接收、DOM 容器不被重建（showTabContent 从 tab.messages 增量重绘）。
-  // 违反此约定的代码 = 切换即中断的回归源。
-  // 2026-08-17 M3：只 abort「页面级 GET」作用域（pageScopeAbort），不动流/写操作。
   const gen = ++_routeGen;
   setRouteSwitching(true);   // api.js：切换窗口内网络错误静默（不弹「网络中断」）
-  pageScopeAbort();          // api.js：中断旧页全部页面级在途 GET（快速连点防洪峰）
+  pageScopeAbort();          // api.js：中断旧页全部页面级在途 GET
   try {
     const TITLES = {
-      chat: 'CCC · 对话', board: 'CCC · 看板', plans: 'CCC · 计划',
+      wall: 'CCC · 信息墙', board: 'CCC · 看板', plans: 'CCC · 计划',
       roadmap: 'CCC · 线路图', console: 'CCC · 控制台', ops: 'CCC · 运维',
       dsh: 'CCC · DSH 巡检',
     };
     document.title = TITLES[route] || 'CCC';
-    // 路由→页面注册表（P1-7 重构 2026-08-15）：加新路由只需补一条 + index.html 空壳，
-    // 不再手写 if/else 逐个 unmount——消灭「漏 unmount 残留定时器」的雷。
-    // 2026-08-20 懒加载：页面模块改为路由命中时动态 import（首屏不再全量拉 6 个页面），
-    // PAGES 仅含已加载页面（unmount 循环天然跳过未访问过的路由）。PAGES 本体在模块级。
-    const PAGES_LOADERS = {
-      board: () =>
-        import('./pages/boardPage.js').then((m) => ({
-          mount: m.mountBoard,
-          unmount: m.unmountBoard,
-        })),
-      plans: () =>
-        import('./pages/plansPage.js').then((m) => ({
-          mount: m.mountPlans,
-          unmount: m.unmountPlans,
-        })),
-      roadmap: () =>
-        import('./pages/roadmapPage.js').then((m) => ({
-          mount: m.mountRoadmap,
-          unmount: m.unmountRoadmap,
-        })),
-      console: () =>
-        import('./pages/consolePage.js').then((m) => ({
-          mount: m.mountConsole,
-          unmount: m.unmountConsole,
-        })),
-      ops: () =>
-        import('./pages/opsPage.js').then((m) => ({
-          mount: m.mountOps,
-          unmount: m.unmountOps,
-        })),
-      dsh: () =>
-        import('./pages/dshPage.js').then((m) => ({
-          mount: m.mountDsh,
-          unmount: m.unmountDsh,
-        })),
-    };
-    if (route === 'chat') {
-      for (const name of Object.keys(PAGES)) PAGES[name].unmount();
-      // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
-      import('./components/boardPanel.js').then((m) => m.maybeAutoOpen());
-      return;
-    }
-    const pageLoader = PAGES_LOADERS[route];
-    if (!pageLoader) {
-      for (const name of Object.keys(PAGES)) PAGES[name].unmount();
-      return;
-    }
     for (const name of Object.keys(PAGES)) {
       if (name !== route) PAGES[name].unmount();
     }
     if (!PAGES[route]) {
-      PAGES[route] = await pageLoader();
+      PAGES[route] = await PAGES_LOADERS[route]();
     }
-    // M3 非阻塞 mount：mount 内部同步渲染骨架、后台拉数据（不 await 网络），
-    // 切换立即返回；数据到达时若令牌已失效（_disposed）则丢弃。
+    // 非阻塞 mount：页面内部同步渲染骨架、后台拉数据；数据到达时令牌失效则丢弃
     PAGES[route].mount(document.getElementById('view-' + route), { gen });
+  } catch (err) {
+    // 动态 import 失败（弱网首进）：给视图区一个可重试的错误态，不留死白屏
+    const view = document.getElementById('view-' + route);
+    if (view) {
+      view.innerHTML =
+        '<div style="padding:48px 24px;text-align:center;color:var(--ccc-text-muted)">' +
+        '页面加载失败：<button type="button" class="hub-btn" onclick="location.reload()">重试</button>' +
+        '</div>';
+    }
+    delete PAGES[route];
   } finally {
     setRouteSwitching(false);
   }
 }
 
-function applyShellMode() {
-  const dialogue =
-    String(location.port || '') === '7788' ||
-    window.__CCC_SHELL__ === 'dialogue';
-  if (dialogue) {
-    window.__CCC_SHELL__ = 'dialogue';
-    document.documentElement.setAttribute('data-shell', 'dialogue');
-    document.body.classList.add('dialogue-mode');
-    document.body.classList.add('hub-mode');
-    document.title = 'CCC';
-  } else {
-    document.documentElement.setAttribute('data-shell', 'hub');
-    document.body.classList.remove('dialogue-mode');
-    document.body.classList.add('hub-mode');
-  }
-}
+// （setRouteSwitching / pageScopeAbort 直接来自 api.js，见顶部 import）
 
 async function init() {
-  applyShellMode();
   applyTheme(getThemeScheme());
-  // 登录门：T40 — 无条件绑定（不再依赖 isDialogueShell 分支）
-  // 2017 单端 :7788 唯一入口；旧 Hub/双壳分支已退役。
-  const agentAuth = await import('./agentAuth.js');
-  // T44：登录成功后直达对话视图（默认路由已固定 #/chat）
-  await agentAuth.initAgentAuth({ onAuthenticated: () => navigate('chat') });
-  const authed = await agentAuth.ensureAgentAuthenticated();
-  if (!authed) await agentAuth.waitForAgentAuth();
   initRouter(onHubRoute);
-  initTitlebar();
-  initDualPaneControls(generateId);
-  import('./components/relayStats.js').then((m) => m.initRelayStats());
-  initComposer();
-  setupCancel();
+
+  // toast 全局注册（window.showToast，各页面零依赖调用）
   await import('./components/toast.js');
-  import('./components/keyboard.js').then((m) => m.initKeyboard());
 
-  document.addEventListener('ccc-render-pane', (e) => {
-    const tabId = e.detail?.tabId;
-    if (tabId) renderPaneByTabId(tabId);
+  // 设置入口（原侧栏按钮随对话栈拆除，收编进 hub-nav）
+  document.getElementById('hub-settings-btn')?.addEventListener('click', () => {
+    import('./components/settings.js').then((m) => m.openSettings());
   });
 
-  const handleTaskStatusEvent = async () => {
-    const { refreshBoardPanel } = await import('./components/boardPanel.js');
-    refreshBoardPanel({ quiet: true });
-  };
-  document.addEventListener('task_status', handleTaskStatusEvent);
-  document.addEventListener('task-status', handleTaskStatusEvent);
-  document.addEventListener('ccc-task-status', handleTaskStatusEvent);
-
-  try {
-    // T40：单端 :7788 唯一入口；旧 Hub/sidecar 分支已退役。
-    window.__CCC_SHELL__ = 'dialogue';
-    window.__CCC_AGENT_BASE__ = window.__CCC_AGENT_BASE__ ?? '';
-    const cfg = await loadHubConfig();
-    if (cfg?.chat_session_max_live) {
-      state.set('maxLiveStreams', cfg.chat_session_max_live);
-    }
-    if (cfg?.desktop_agent_url) {
-      window.__CCC_DESKTOP_AGENT_URL__ = cfg.desktop_agent_url;
-    }
-    if (cfg?.dialogue_url) {
-      window.__CCC_DIALOGUE_URL__ = cfg.dialogue_url;
-    }
-  } catch (_) {
-    /* keep default */
-  }
-
-  try {
-    // DSH 只读镜像优先（2017 生产有 DSH 数据 → 对话侧栏显示 DSH workspace/会话）
-    let dsh = [];
-    try {
-      dsh = await loadDshWorkspaces();
-    } catch (_) {
-      dsh = [];
-    }
-    if (dsh.length) {
-      const dshProjects = dsh.map((w) => ({
-        _dsh: true,
-        id: w.id,
-        name: w.title,
-        title: w.title,
-        path: w.path || '',
-        kind: 'dsh',
-        sessions: w.sessions || [],
-      }));
-      state.set('defaultProject', dshProjects[0].id);
-      initAppSidebar(dshProjects);
-    } else {
-      let folders = [];
-      try {
-        folders = await loadClaudeProjects(); // Claude 工作区文件夹（IDE 风格左栏）
-      } catch (_) {
-        folders = [];
-      }
-      if (folders.length) {
-        initAppSidebar(folders);
-      } else {
-        const projects = await loadProjects();
-        setupProjectSelect(projects);
-        initAppSidebar(projects);
-      }
-    }
-  } catch (e) {
-    window.showToast('项目加载失败: ' + e.message, 'error');
-    initAppSidebar([]);
-  }
-
-  // 感知层：注入断连横幅/模型警告元素 + 启动 30s 健康轮询
-  initChatStatus();
-
-  const project =
-    state.get('currentProject') ||
-    state.get('defaultProject') ||
-    (() => {
-      try {
-        return localStorage.getItem('ccc_hub_last_project');
-      } catch (_) {
-        return null;
-      }
-    })() ||
-    null;
-  if (!state.get('currentProject') && project) state.set('currentProject', project);
-  const tabId = generateId();
-  const bootSid = desktopThreadId(project || 'ccc', 'main');
-  const tabs = [
-    {
-      id: tabId,
-      title: '对话',
-      sessionId: bootSid,
-      messages: [],
-      projectId: project,
-    },
-  ];
-  state.set('tabs', tabs);
-  state.set('activeTabId', tabId);
-  state.set('currentSessionId', bootSid);
-  if (dualPaneEnabled()) {
-    state.set('paneLeftTabId', tabId);
-  }
-  renderProjectTabs(tabId);
-  const bootMsg = messagesElForTab(tabId) || document.getElementById('messages');
-  if (bootMsg) bootMsg.appendChild(createEmptyState());
-
-  refreshSidebar();
-
-  document.addEventListener('new-tab', (e) => {
-    snapshotActiveTab();
-    const id = generateId();
-    const pid =
-      e.detail?.projectId ||
-      state.get('currentProject') ||
-      state.get('defaultProject') ||
-      'ccc';
-    const sid = desktopThreadId(pid, id);
-    const tabsNow = state.get('tabs') || [];
-    tabsNow.push({
-      id,
-      title: '新对话',
-      sessionId: sid,
-      messages: [],
-      projectId: pid,
-    });
-    state.set('tabs', tabsNow);
-    state.set('currentProject', pid);
-    state.set('activeTabId', id);
-    state.set('currentSessionId', sid);
-    state.set('currentMessages', []);
-    if (dualPaneEnabled()) showTabInFocusedPane(id);
-    const container = messagesElForTab(id) || document.getElementById('messages');
-    if (container) {
-      container.innerHTML = '';
-      container.appendChild(createEmptyState());
-    }
-    const composerInput = document.getElementById('composer-input');
-    if (composerInput) composerInput.value = '';
-    const sendBtn = document.getElementById('send-btn');
-    if (sendBtn) sendBtn.disabled = true;
-    renderProjectTabs(id);
-    refreshSidebar();
-  });
-
-  document.addEventListener('switch-tab', (e) => {
-    const { id } = e.detail;
-    if (id === state.get('activeTabId') && !dualPaneEnabled()) {
-      refreshSidebar();
-      return;
-    }
-    snapshotActiveTab();
-    const tabsNow = state.get('tabs') || [];
-    const tab = tabsNow.find((t) => t.id === id);
-    if (!tab) return;
-    state.set('activeTabId', id);
-    if (tab.projectId) state.set('currentProject', tab.projectId);
-    renderProjectTabs(id);
-    showTabContent(tab);
-    refreshSidebar();
-  });
-
-  document.addEventListener('close-tab', (e) => {
-    let tabsNow = state.get('tabs') || [];
-    const { id } = e.detail;
-    const pid = state.get('currentProject') || 'ccc';
-    const projectTabs = tabsNow.filter((t) => (t.projectId || 'ccc') === pid);
-    if (projectTabs.length <= 1) return;
-    snapshotActiveTab();
-    import('./streamRegistry.js').then((m) => m.cancelStream(id));
-    tabsNow = tabsNow.filter((t) => t.id !== id);
-    state.set('tabs', tabsNow);
-    const activeId = state.get('activeTabId');
-    if (activeId === id) {
-      const remaining = tabsNow.filter((t) => (t.projectId || 'ccc') === pid);
-      const newActive = remaining[remaining.length - 1];
-      if (newActive) {
-        state.set('activeTabId', newActive.id);
-        showTabContent(newActive);
-      }
-    }
-    renderProjectTabs(state.get('activeTabId'));
-    refreshSidebar();
-  });
-
-  document.addEventListener('load-session', async (e) => {
-    const { id } = e.detail;
-    window.__claudeSession__ = null; // 普通会话：清 Claude 续接标记
-    try {
-      snapshotActiveTab();
-      const data = await loadSession(id, state.get('currentProject'));
-      state.set('currentSessionId', id);
-      loadMessages(data);
-
-      const tabsNow = state.get('tabs') || [];
-      let tab = tabsNow.find((t) => t.id === state.get('activeTabId'));
-      if (tab) {
-        tab.title = data.title || '对话';
-        tab.sessionId = id;
-        tab.messages = data.messages || [];
-        tab.projectId = state.get('currentProject') || tab.projectId;
-        renderProjectTabs(state.get('activeTabId'));
-      }
-
-      document.querySelectorAll('.sidebar-thread-row').forEach((el) => {
-        el.classList.toggle('selected', el.dataset.sid === id);
-      });
-
-      document.getElementById('sidebar')?.classList.remove('open');
-      document.querySelector('.sidebar-overlay')?.classList.remove('show');
-      refreshSidebar();
-    } catch (err) {
-      window.showToast('加载对话失败', 'error');
-    }
-  });
-
-  document.addEventListener('open-claude-session', async (e) => {
-    const { project, path, file } = e.detail || {};
-    if (!file) return;
-    const cwd = path || project || 'ccc';
-    try {
-      window.__claudeSession__ = file; // 发送时 bridge 用该原生会话续接
-      if (path) window.__claudeProjectPath__ = path;
-      state.set('currentProject', cwd.split('/').pop() || cwd);
-      const msgs = await loadClaudeMessages(cwd, file);
-      loadMessages({ messages: msgs, title: 'Claude 历史' });
-      state.set('currentSessionId', 'claude:' + file);
-      const tabs = state.get('tabs') || [];
-      const tab = tabs.find((t) => t.id === state.get('activeTabId'));
-      if (tab) {
-        tab.title = 'Claude 历史';
-        tab.projectId = cwd;
-      }
-      renderProjectTabs(state.get('activeTabId'));
-      refreshSidebar();
-    } catch (err) {
-      window.showToast('加载 Claude 历史失败', 'error');
-    }
-  });
-
-  document.addEventListener('project-change', () => {
-    switchToProjectTab(state.get('currentProject'));
-  });
-
-  document.addEventListener('ccc-streams-changed', () => {
-    renderProjectTabs(state.get('activeTabId'));
-    refreshSidebar();
-  });
-
-  state.on('currentSessionId', (sid) => {
-    startConversationLongPoll(sid);
-  });
-  // Start initial polling
-  const initialSid = state.get('currentSessionId');
-  if (initialSid) {
-    startConversationLongPoll(initialSid);
-  }
-}
-
-let currentPollAbort = null;
-
-async function startConversationLongPoll(sid) {
-  if (currentPollAbort) {
-    currentPollAbort.abort();
-    currentPollAbort = null;
-  }
-  if (!sid) return;
-  const abort = new AbortController();
-  currentPollAbort = abort;
-
-  const pid = state.get('currentProject') || 'ccc';
-
-  while (!abort.signal.aborted) {
-    // M3：仅在对话路由 + 页面可见时轮询（非 chat 页/后台挂起，省服务器常驻长轮询；
-    // 光标在 api.js._historyCursors 前端态，切回 chat 恢复续拉增量，不丢上下文）
-    if (document.visibilityState !== 'visible' || state.get('activeTabId') === '' || currentRoute() !== 'chat') {
-      await new Promise(r => setTimeout(r, 2000));
-      continue;
-    }
-    try {
-      const { loadSession } = await import('./api.js');
-      const data = await loadSession(sid, pid);
-      if (abort.signal.aborted) break;
-
-      const tabsNow = state.get('tabs') || [];
-      let tab = tabsNow.find((t) => t.sessionId === sid);
-      if (tab) {
-        const msgs = data.messages || [];
-        if (msgs.length > tab.messages.length) {
-          tab.messages = msgs;
-          state.set('tabs', tabsNow);
-          if (state.get('currentSessionId') === sid) {
-            state.set('currentMessages', msgs);
-            const { loadMessages } = await import('./components/message.js');
-            loadMessages({ messages: msgs });
-
-            // Check if last message is system/status notification
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && (lastMsg.type === 'task_status' || lastMsg.role === 'system')) {
-              const { refreshBoardPanel } = await import('./components/boardPanel.js');
-              refreshBoardPanel({ quiet: true });
-            }
-          }
-        }
-      }
-      await new Promise(r => setTimeout(r, 100));
-    } catch (err) {
-      if (abort.signal.aborted) break;
-      await new Promise(r => setTimeout(r, 3000));
-    }
-  }
+  // 健康横幅等感知层保留在 chatStatus？——已随对话栈拆除；
+  // 断连提示由各页自身请求失败路径呈现。
 }
 
 if (document.readyState === 'interactive' || document.readyState === 'complete') {

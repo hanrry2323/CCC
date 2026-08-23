@@ -1,12 +1,7 @@
-function toggleMobileSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
-  if (!sidebar) return;
-  sidebar.classList.toggle('open');
-  if (overlay) overlay.classList.toggle('show');
-  /* Hub 壳始终锁死 body 滚动（iOS 勿放开，否则整页可滑） */
-  document.body.style.overflow = 'hidden';
-}
+/** shell-ui — 壳层全局 UI 助手。
+ * 旧对话栈拆除后仅保留 copyCode：markdown 渲染的代码块复制按钮
+ * （onclick="copyCode(this)" 内联调用，见 markdown.js / plansPage）。
+ */
 
 function copyCode(btn) {
   const pre = btn.closest('.code-block-wrap')?.querySelector('pre');
@@ -38,30 +33,4 @@ function copyCode(btn) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-  const fab = document.getElementById('scroll-fab');
-  const messages = document.getElementById('messages');
-  if (fab && messages) {
-    messages.addEventListener('scroll', function () {
-      const atBottom = messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 200;
-      fab.classList.toggle('show', !atBottom);
-    });
-    fab.addEventListener('click', function () {
-      messages.scrollTop = messages.scrollHeight;
-      fab.classList.remove('show');
-    });
-  }
-
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', toggleMobileSidebar);
-  }
-  const overlay = document.getElementById('sidebar-overlay') || document.querySelector('.sidebar-overlay');
-  if (overlay) {
-    overlay.addEventListener('click', toggleMobileSidebar);
-  }
-});
-
-// markdown.js / message.js 仍通过 onclick 调用全局函数
-window.toggleMobileSidebar = toggleMobileSidebar;
 window.copyCode = copyCode;

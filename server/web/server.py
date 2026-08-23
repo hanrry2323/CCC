@@ -291,18 +291,16 @@ _STATIC_WEB_ROOT = _PROJECT_ROOT / "server" / "web"
 _STATIC_LEGACY_CHAT_ROOT = _STATIC_WEB_ROOT / "legacy-chat"
 # 路径 → 磁盘文件相对 web 根的映射（显式白名单，禁止目录穿越）
 _STATIC_WHITELIST: dict[str, str] = {
-    # ccc-plan-045 P1：根路径 = DSH 监控墙（对话页职能由墙承接，老板 2026-08-24）
-    "/": "wall/index.html",
+    # ccc-plan-045 P1.5 深度融合：信息墙是 SPA 默认视图（#/wall），根路径即主壳；
+    # /wall 书签入口同指 SPA（hash 路由归一到 #/wall）
+    "/": "legacy-chat/index.html",
+    "/wall": "legacy-chat/index.html",
     "/js/app.js": "legacy-chat/js/app.js",
     "/data/board.js": "data/board.js",
     "/data/cluster.js": "data/cluster.js",
     # T44：favicon 免鉴权返回（否则浏览器自动请求触发 401 噪音）
     "/favicon.ico": "favicon.svg",
     "/favicon.svg": "favicon.svg",
-    # legacy-chat 整体退居 /app 作回滚位（其内部资源引用均为根绝对路径，不受挂载点影响）
-    "/app": "legacy-chat/index.html",
-    # 墙页另挂 /wall（书签/直链等价入口）
-    "/wall": "wall/index.html",
 }
 
 

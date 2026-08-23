@@ -138,17 +138,13 @@ export async function openSettings() {
   projSelect.addEventListener('change', () => {
     const name =
       projSelect.options[projSelect.selectedIndex]?.text || projSelect.value;
-    import('./composer.js').then((m) => {
-      if (m.setProjectActive) m.setProjectActive(projSelect.value, name);
-      else {
-        state.set('currentProject', projSelect.value);
-        const hidden = document.getElementById('project-select');
-        if (hidden) hidden.value = projSelect.value;
-        const disp = document.getElementById('project-display');
-        if (disp) disp.textContent = name;
-        document.dispatchEvent(new CustomEvent('project-change'));
-      }
-    });
+    // ccc-plan-045 P1.5：composer 已随对话栈拆除，直接落 state + 隐藏 select
+    state.set('currentProject', projSelect.value);
+    const hidden = document.getElementById('project-select');
+    if (hidden) hidden.value = projSelect.value;
+    const disp = document.getElementById('project-display');
+    if (disp) disp.textContent = name;
+    document.dispatchEvent(new CustomEvent('project-change'));
   });
 
   document.getElementById('settings-ports-save')?.addEventListener('click', () => {
