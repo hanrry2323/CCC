@@ -111,18 +111,21 @@ projects:
 
   - prefix: tst
     id: tst
-    name: 临时测试
-    display: 临时测试
+    name: 管线自检
+    display: 管线自检
     location: mac2017-apps
     paths:
       m1: null
-      mac2017: null
-    taskable: false
+      mac2017: /Users/fan/program/apps/ccc-tst
+    isolation:
+      worktree_root: /Users/fan/program/apps/.ccc-wt/tst
+      max_concurrent: 1
+    taskable: true
     forbidden: false
-    status: placeholder
+    status: active
     dossier: docs/projects/tst/README.md
-    role: 临时/验收占位卡
-    notes: 禁止合入 main；无真实业务仓
+    role: CCC 管线自检专用（冒烟/E2E，无真实业务）
+    notes: 2026-08-23 老板拍板启用（替代隔离目录出卡）：仅用于管线自检/冒烟/E2E，一切管线测试走真实看板+engine 全自动；卡内容最小化可标识；禁止承载真实业务数据/逻辑；origin 为本地裸仓 ccc-tst.git
 
   # ── 硬禁前缀（FORBIDDEN_CARD_PREFIXES）──
   - prefix: qh
