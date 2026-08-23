@@ -724,11 +724,11 @@ class TestPlansPageContract:
         assert "/plans/convert" in text
 
     def test_filter_controls(self) -> None:
-        """验证筛选控件存在（plansPage 重写后契约：项目按钮 ptool-proj + 状态 select + 搜索）。"""
+        """筛选控件契约（046-M2 更新）：项目按钮 + 状态 select 保留；搜索框已移除。"""
         text = self._page()
         assert "ptool-proj" in text
         assert "plans-status-select" in text
-        assert "plans-search" in text
+        assert "plans-search" not in text
 
     def test_convert_button(self) -> None:
         """验证转卡按钮存在且由人触发（027：节点②功能卡清单确认弹层）。"""
@@ -743,17 +743,16 @@ class TestPlansPageContract:
         assert "plans-flow" in text
 
     def test_create_form(self) -> None:
-        """验证新建表单存在。"""
+        """新建方案入口已按老板指令移除（046-M2）；overlay 仅由转卡对话框复用。"""
         text = self._page()
-        assert "plans-btn-new" in text
-        assert "plans-form-overlay" in text
-        assert "plans-form-project" in text
-        assert "plans-form-title" in text
+        assert "plans-btn-new" not in text
+        assert "showCreateForm" not in text
+        assert "plans-form-overlay" in text  # 转卡弹层仍挂载于此容器
 
     def test_author_required(self) -> None:
-        """验证作者必填校验。"""
+        """作者必填校验属旧新建表单，随表单移除（046-M2）。"""
         text = self._page()
-        assert "作者不能为空" in text
+        assert "作者不能为空" not in text
 
     def test_dynamic_projects(self) -> None:
         """验证动态项目加载。"""
@@ -766,8 +765,7 @@ class TestPlansPageContract:
         text = self._page()
         assert "_parseFuncCards" in text
         assert "8 行" not in text
-        assert "plans-form-project" in text
-        assert "plans-form-title" in text
+        assert "plans-convert-check" in text   # 功能卡勾选清单（逐步投入）
 
     def test_status_filter_options(self) -> None:
         """验证状态筛选为四态（草案已移除 · Bug 8）。"""

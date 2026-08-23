@@ -1,0 +1,211 @@
+{
+  "generated": "2026-08-23T21:39:20.552Z",
+  "base": "http://127.0.0.1:7899",
+  "count": 42,
+  "items": [
+    {
+      "file": "tablet-light-board.png",
+      "viewport": "tablet",
+      "theme": "light",
+      "route": "board"
+    },
+    {
+      "file": "tablet-light-plans.png",
+      "viewport": "tablet",
+      "theme": "light",
+      "route": "plans"
+    },
+    {
+      "file": "tablet-light-roadmap.png",
+      "viewport": "tablet",
+      "theme": "light",
+      "route": "roadmap"
+    },
+    {
+      "file": "tablet-light-console.png",
+      "viewport": "tablet",
+      "theme": "light",
+      "route": "console"
+    },
+    {
+      "file": "tablet-light-ops.png",
+      "viewport": "tablet",
+      "theme": "light",
+      "route": "ops"
+    },
+    {
+      "file": "tablet-light-dsh.png",
+      "viewport": "tablet",
+      "theme": "light",
+      "route": "dsh"
+    },
+    {
+      "file": "mobile-light-wall.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "wall"
+    },
+    {
+      "file": "mobile-light-board.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "board"
+    },
+    {
+      "file": "mobile-light-plans.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "plans"
+    },
+    {
+      "file": "mobile-light-roadmap.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "roadmap"
+    },
+    {
+      "file": "mobile-light-console.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "console"
+    },
+    {
+      "file": "mobile-light-ops.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "ops"
+    },
+    {
+      "file": "mobile-light-dsh.png",
+      "viewport": "mobile",
+      "theme": "light",
+      "route": "dsh"
+    },
+    {
+      "file": "pc-dark-wall.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "wall"
+    },
+    {
+      "file": "pc-dark-board.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "board"
+    },
+    {
+      "file": "pc-dark-plans.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "plans"
+    },
+    {
+      "file": "pc-dark-roadmap.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "roadmap"
+    },
+    {
+      "file": "pc-dark-console.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "console"
+    },
+    {
+      "file": "pc-dark-ops.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "ops"
+    },
+    {
+      "file": "pc-dark-dsh.png",
+      "viewport": "pc",
+      "theme": "dark",
+      "route": "dsh"
+    },
+    {
+      "file": "tablet-dark-wall.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "wall"
+    },
+    {
+      "file": "tablet-dark-board.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "board"
+    },
+    {
+      "file": "tablet-dark-plans.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "plans"
+    },
+    {
+      "file": "tablet-dark-roadmap.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "roadmap"
+    },
+    {
+      "file": "tablet-dark-console.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "console"
+    },
+    {
+      "file": "tablet-dark-ops.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "ops"
+    },
+    {
+      "file": "tablet-dark-dsh.png",
+      "viewport": "tablet",
+      "theme": "dark",
+      "route": "dsh"
+    },
+    {
+      "file": "mobile-dark-wall.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "wall"
+    },
+    {
+      "file": "mobile-dark-board.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "board"
+    },
+    {
+      "file": "mobile-dark-plans.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "plans"
+    },
+    {
+      "file": "mobile-dark-roadmap.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "roadmap"
+    },
+    {
+      "file": "mobile-dark-console.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "console"
+    },
+    {
+      "file": "mobile-dark-ops.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "ops"
+    },
+    {
+      "file": "mobile-dark-dsh.png",
+      "viewport": "mobile",
+      "theme": "dark",
+      "route": "dsh"
+    }
+  ]
+}
