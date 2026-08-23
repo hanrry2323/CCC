@@ -64,8 +64,23 @@ fi
 # R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
 # 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，
 # 杜绝 DSH 对占位维护区误判「通过」。红线：门禁不削弱，仅前置化）。
-if [ -n "$CARD_PATH" ] && [ -f "$CARD_PATH" ]; then
-  MG_PROBLEMS="$(python3 - "$CARD_PATH" "$(pwd)" <<'PY'
+# P0-1b-fix（2026-08-24 tst003 误打回归因）：机审对象=被审分支的卡副本，不是主仓 main 版占位卡。
+# docs 类卡 biz_worktree 不含卡文件；回写与引擎信封都落在 WORKTREE 分支副本。
+# 机械门禁 / 测试截获 / DSH 机审 prompt 一律用 AUDIT_CARD（worktree 副本优先，缺失回退 CARD_PATH）。
+AUDIT_CARD="$CARD_PATH"
+if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
+  REL_CARD="${CARD_PATH#/Users/fan/program/CCC/}"
+  if [ "$REL_CARD" != "$CARD_PATH" ] && [ -f "$WORKTREE/$REL_CARD" ]; then
+    AUDIT_CARD="$WORKTREE/$REL_CARD"
+    echo "[dsh-auditor] 审查对象=worktree 分支副本: $AUDIT_CARD" >&2
+  fi
+fi
+
+# R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
+# 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，
+# 杜绝 DSH 对占位维护区误判「通过」。红线：门禁不削弱，仅前置化）。
+if [ -n "$AUDIT_CARD" ] && [ -f "$AUDIT_CARD" ]; then
+  MG_PROBLEMS="$(python3 - "$AUDIT_CARD" "$(pwd)" <<'PY'
 import sys
 sys.path.insert(0, "/Users/fan/program/CCC")
 try:
@@ -101,8 +116,8 @@ fi
 _TE_EVIDENCE_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}.test-evidence.log"
 _TE_WORKDIR="$(pwd)"
 # 仅当卡文件可读且 workdir 存在时才截获；无测试声明（no_test_declared）视为无可验放行
-if [[ -f "$CARD_PATH" && -d "$_TE_WORKDIR" ]]; then
-  if bash /Users/fan/program/CCC/scripts/test-evidence.sh "$CARD_PATH" "$_TE_WORKDIR" "$_TE_EVIDENCE_LOG"; then
+if [[ -f "$AUDIT_CARD" && -d "$_TE_WORKDIR" ]]; then
+  if bash /Users/fan/program/CCC/scripts/test-evidence.sh "$AUDIT_CARD" "$_TE_WORKDIR" "$_TE_EVIDENCE_LOG"; then
     : # 测试通过或无声明 → 放行进 DSH 机审
   else
     _TE_RC=$?
@@ -113,7 +128,8 @@ if [[ -f "$CARD_PATH" && -d "$_TE_WORKDIR" ]]; then
   fi
 fi
 
-PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
+PROMPT="任务卡（被审分支副本）：${AUDIT_CARD}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
+注意：主仓 ${CARD_PATH} 是 main 版占位卡（未含回写），勿据其下结论、勿写入。
 按你的机审席心智执行 v4 对抗式审查（范围核对→找茬→severity 三级→分流→维护区核对→写机审区）。
 授权声明：本次运行授权读写任务卡文件、在 worktree $(pwd) 内就地修复并 git add/commit/push。
 工作目录：$(pwd)"
