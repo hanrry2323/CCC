@@ -3827,3 +3827,28 @@ body.ro-viewer [data-write] {
   max-height: 400px;
   overflow-y: auto;
 }
+
+/* ── ccc-plan-046 M3：三端适配 · 壳层导航（手机族）──
+ * 模式与信息墙 topbar 一致：横向滑动条 + 隐藏滚动条 + 触控目标不压缩。
+ * 断点走全站标准 md=768。 */
+@media (max-width: 767px) {
+  #hub-nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    gap: 2px;
+    padding-left: var(--ccc-space-sm);
+    padding-right: var(--ccc-space-sm);
+  }
+  #hub-nav::-webkit-scrollbar { display: none; }
+  #hub-nav .hub-brand { font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+  #hub-nav .hub-brand .build-stamp { display: none; }
+  #hub-nav .hub-nav-link,
+  #hub-nav .hub-auth-logout {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 8px 11px;   /* 触控目标 ≥40px 高（含行高） */
+  }
+}
