@@ -27,6 +27,8 @@ let focusedSid = null;    // 聚焦模式：当前放大的会话 id（null = �
 let notifOn = (() => { try { return localStorage.getItem(NOTIF_KEY) === '1'; } catch (_) { return false; } })();
 const notifiedErr = {};   // sid -> true（每个错误周期只弹一次通知）
 const cellHosts = new Map(); // sid -> 格子宿主 DOM（稳定宿主，跨 mount 存活）
+const followBottom = new Map(); // sid -> bool：粘底跟随（缺省 true）。用户上滚即解除，
+                                // 滚回底部自动恢复——新内容只在粘底时才自动滚动，无竞态
 
 // ── 视图内实例（每次 mount 重建）───────────────────────────────
 let _root = null;
@@ -197,9 +199,14 @@ function buildCell(sid) {
     <button class="jump-latest">↓ 回到最新</button>`;
   const body = el.querySelector('.cell-body');
   body.addEventListener('scroll', () => {
-    if (body.scrollHeight - body.scrollTop - body.clientHeight < 60) hideJump(el);
+    const sid = el.dataset.sid;
+    const dist = body.scrollHeight - body.scrollTop - body.clientHeight;
+    // 用户每次滚动都同步粘底状态：贴近底部=跟随；上滚=立即解除跟随
+    followBottom.set(sid, dist < 60);
+    if (dist < 60) hideJump(el);
   });
   el.querySelector('.jump-latest').addEventListener('click', () => {
+    followBottom.set(el.dataset.sid, true); // 点按钮 = 显式恢复跟随
     body.scrollTop = body.scrollHeight;
     hideJump(el);
   });
@@ -209,7 +216,10 @@ function buildCell(sid) {
 // ── 更新已有格子（增量追加，不重建）──
 function updateCell(el, s, first) {
   const sid = el.dataset.sid;
-  el.className = 'cell ' + (s.status === 'error' ? 'error' : s.status === 'done' ? 'done' : 'active');
+  // 状态类名三态：绿脉冲=active / 红闪=error / 橙静止=active+stalled（待人工介入）
+  el.className = 'cell ' + (s.status === 'error' ? 'error'
+    : s.stalled ? 'active stalled'
+    : s.status === 'done' ? 'done' : 'active');
   el.querySelector('.cell-title').textContent = s.title || sid.slice(0, 20);
   el.querySelector('.cell-title').title = s.title || '';
   const badge = el.querySelector('.badge');
@@ -264,9 +274,13 @@ function updateCell(el, s, first) {
   if (blocks.length < from) {
     body.innerHTML = '';
     from = 0;
+    followBottom.set(sid, true); // 整格重建 = 内容上下文重置，恢复跟随
   }
   if (from < blocks.length) {
-    const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+    // 粘底跟随（2026-08-24 语义升级）：缺省始终滚到底部；仅当用户上滚离开底部
+    // （followBottom=false，由滚动事件实时维护）才不打扰阅读、浮出「回到最新」。
+    // 用户滚回底部或点按钮即恢复跟随——无定时器、无竞态窗口。
+    const pinned = followBottom.get(sid) !== false;
     const frag = document.createDocumentFragment();
     for (let k = from; k < blocks.length; k++) {
       const div = document.createElement('div');
@@ -275,7 +289,7 @@ function updateCell(el, s, first) {
     }
     body.appendChild(frag);
     renderedCount[sid] = blocks.length;
-    if (nearBottom || first) {
+    if (pinned || first) {
       requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; hideJump(el); });
     } else {
       showJump(el);

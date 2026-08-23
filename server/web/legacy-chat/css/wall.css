@@ -56,25 +56,47 @@
   position: relative;
   box-shadow: var(--ccc-shadow-md), inset 0 1px 0 var(--ccc-cell-highlight);
 }
+/* ── 状态呼吸灯分级（2026-08-24 老板指令）────────────────
+ * 绿色脉冲 = 正常开发中（加强：双层光晕 + 边框呼吸更亮）
+ * 红色闪烁 = 报错/异常终止
+ * 橙色静止 = 疑似等待人工介入（stalled，不闪，与脉冲形成动/静对比）
+ * done     = 维持弱化灰边（无动画）
+ */
 #view-wall .cell.active {
-  border-color: var(--ccc-border-accent);
-  animation: borderBreath 2.4s ease-in-out infinite;
+  border-color: var(--ccc-success);
+  animation: borderBreath 2s ease-in-out infinite;
 }
 #view-wall .cell.active::after {
   content: '';
   position: absolute; inset: 0; border-radius: 12px;
   pointer-events: none; z-index: 1;
-  animation: glowBreath 2.4s ease-in-out infinite;
+  animation: glowBreath 2s ease-in-out infinite;
 }
-#view-wall .cell.done { border-color: var(--ccc-border-subtle); opacity: 0.85; }
-#view-wall .cell.error { border-color: var(--ccc-danger); }
 @keyframes borderBreath {
-  0%, 100% { border-color: var(--ccc-border-accent); }
-  50% { border-color: rgba(217, 122, 85, 0.55); }
+  0%, 100% { border-color: var(--ccc-success); }
+  50% { border-color: rgba(79, 163, 119, 0.45); }
 }
 @keyframes glowBreath {
-  0%, 100% { box-shadow: 0 0 3px rgba(217, 122, 85, 0.15); }
-  50% { box-shadow: 0 0 14px rgba(217, 122, 85, 0.45); }
+  0%, 100% { box-shadow: 0 0 6px rgba(79, 163, 119, 0.25); }
+  50% { box-shadow: 0 0 22px rgba(79, 163, 119, 0.65), 0 0 8px rgba(79, 163, 119, 0.4); }
+}
+/* 待人工介入（stalled）：橙框静止——只在 active 基础上覆盖为静态 */
+#view-wall .cell.stalled,
+#view-wall .cell.active.stalled {
+  border-color: var(--ccc-warn);
+  animation: none;
+  box-shadow: 0 0 10px rgba(217, 148, 26, 0.35), inset 0 1px 0 var(--ccc-cell-highlight);
+}
+#view-wall .cell.stalled::after { animation: none; content: none; }
+#view-wall .cell.done { border-color: var(--ccc-border-subtle); opacity: 0.85; }
+/* 异常终止：红色闪烁 */
+#view-wall .cell.error {
+  border-color: var(--ccc-danger);
+  animation: errorBlink 1.2s ease-in-out infinite;
+}
+@keyframes errorBlink {
+  0%, 100% { border-color: var(--ccc-danger); box-shadow: 0 0 14px rgba(214, 92, 74, 0.55); }
+  50% { border-color: rgba(214, 92, 74, 0.35); box-shadow: 0 0 3px rgba(214, 92, 74, 0.15); }
 }
 #view-wall .cell-idle {
   border-style: dashed; border-color: var(--ccc-border-subtle);
@@ -110,7 +132,10 @@
   background: var(--ccc-success);
   box-shadow: 0 0 6px rgba(79, 163, 119, 0.5);
 }
-#view-wall .cell.active .dot { background: var(--ccc-text-accent); box-shadow: 0 0 8px rgba(217, 122, 85, 0.7); animation: pulse 1.2s ease-in-out infinite; }
+/* 状态点与边框同语义：绿=运行中脉冲 / 橙=待人工静止 / 红=异常 */
+#view-wall .cell.active .dot { background: var(--ccc-success); box-shadow: 0 0 8px rgba(79, 163, 119, 0.7); animation: pulse 1.2s ease-in-out infinite; }
+#view-wall .cell.stalled .dot,
+#view-wall .cell.active.stalled .dot { background: var(--ccc-warn); box-shadow: 0 0 6px rgba(217, 148, 26, 0.55); animation: none; }
 #view-wall .cell.error .dot { background: var(--ccc-danger); box-shadow: 0 0 6px rgba(214, 92, 74, 0.6); }
 #view-wall .cell.done .dot { background: var(--ccc-success); box-shadow: 0 0 6px rgba(79, 163, 119, 0.5); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
@@ -418,10 +443,11 @@
 /* ── 动画降级（系统减弱动态效果）── */
 @media (prefers-reduced-motion: reduce) {
 #view-wall .cell.active { animation: none; }
+#view-wall .cell.error { animation: none; }
 #view-wall .cell.active::after { animation: none; }
 #view-wall .cell.active .dot { animation: none !important; }
 #view-wall .jump-latest,
-#view-wall #pager button::after { transition: none; }
+#view-wall #wall-pager button::after { transition: none; }
 }
 #view-wall .offline {
   position: fixed; top: 0; left: 0; right: 0;
