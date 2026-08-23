@@ -53,12 +53,11 @@ let _plans = [];
 let _cardStates = {};   // card_id → 实时状态（关联卡徽标）
 let _planCardStates = {}; // plan_path → {total, cols}（流程条，/plans/card-states）
 let _filterProject = '';
-let _searchQ = '';
 let _projects = [];
 let _projectDisplay = {}; // prefix → 展示名
 let _detailPath = null;  // 当前打开的详情路径，null=列表视图
 let _formOpen = false;   // 新建表单是否打开
-let _hideClosed = true;  // 默认只看未完成（隐藏已完成/作废列，给活跃列腾宽度）
+// 2026-08-24：显示已完成开关与搜索框按老板指令移除——六列恒全展示
 let _colSigs = {};       // status → 列渲染签名（M4：数据没变不重建列 DOM）
 
 // ── 工具 ──
@@ -168,15 +167,7 @@ async function loadPlans() {
 // ── 筛选（客户端，列即状态） ──
 
 function filteredPlans() {
-  const q = _searchQ.trim().toLowerCase();
-  return _plans.filter(p => {
-    if (_filterProject && p.project !== _filterProject) return false;
-    if (!q) return true;
-    return (p.title || '').toLowerCase().includes(q)
-      || (p.author || '').toLowerCase().includes(q)
-      || String(p.num || '').includes(q)
-      || (p.project || '').toLowerCase().includes(q);
-  });
+  return _plans.filter(p => !_filterProject || p.project === _filterProject);
 }
 
 // ── render ──
@@ -245,16 +236,11 @@ function renderToolbar() {
     return `<button type="button" class="ptool-proj ${_filterProject === prefix ? 'on' : ''}" data-proj="${esc(prefix)}">${esc(label)}</button>`;
   }).join('');
   return `
-    <div class="plans-toolbar">
-      <h2 class="plans-title">计划<span class="plans-total">${filteredPlans().length}</span></h2>
+    <div class="plans-toolbar k-topbar">
+      <span class="k-topbar-title">计划</span>
       <div class="ptool-projects" role="group" aria-label="按项目筛选">${projBtns}</div>
       <div class="ptool-spacer"></div>
-      <label class="ptool-search">
-        ${icon('search')}
-        <input type="search" id="plans-search" placeholder="搜索标题 / 作者 / 编号…" value="${esc(_searchQ)}" aria-label="搜索方案">
-      </label>
-      <button type="button" class="ptool-toggle" id="plans-toggle-closed" title="只看未完成列">${_hideClosed ? '显示已完成' : '只看未完成'}</button>
-      <button type="button" class="ptool-new" id="plans-btn-new">${icon('plus')}新建方案</button>
+      <div class="k-topbar-stats"><span class="plans-total">${filteredPlans().length}</span> 个方案</div>
     </div>`;
 }
 
@@ -305,10 +291,6 @@ function renderFlow() {
   for (const status of STATUSES) {
     const section = flowEl.querySelector(`.pcol[data-status="${esc(status)}"]`);
     if (!section) continue;
-    if (_hideClosed && (status === '已完成' || status === '作废')) {
-      if (section.style.display !== 'none') section.style.display = 'none';
-      continue;
-    }
     section.style.display = '';
     const sig = columnSig(list, status);
     if (_colSigs[status] === sig) continue;
@@ -356,8 +338,7 @@ function applyFlowColumns() {
     flow.style.gridTemplateColumns = '';
     return;
   }
-  const visible = _hideClosed ? STATUSES.length - 2 : STATUSES.length;
-  flow.style.gridTemplateColumns = `repeat(${Math.max(1, visible)}, minmax(0, 1fr))`;
+  flow.style.gridTemplateColumns = `repeat(${STATUSES.length}, minmax(0, 1fr))`;
 }
 
 // ── events ──
@@ -381,22 +362,8 @@ function bindEvents() {
     });
   });
 
-  const search = root.querySelector('#plans-search');
-  search?.addEventListener('input', debounce(() => {
-    _searchQ = search.value.trim();
-    _colSigs = {};
-    if (_detailPath || _formOpen) updateListOnly(); else renderFlow();
-  }, 250));
-
-  root.querySelector('#plans-btn-new')?.addEventListener('click', showCreateForm);
   root.querySelector('#plans-empty-clear')?.addEventListener('click', () => {
     _filterProject = '';
-    _searchQ = '';
-    _colSigs = {};
-    renderFlow();
-  });
-  root.querySelector('#plans-toggle-closed')?.addEventListener('click', () => {
-    _hideClosed = !_hideClosed;
     _colSigs = {};
     renderFlow();
   });
@@ -752,117 +719,7 @@ function _showConvertOverlay(path, items) {
 
 // ── create form ──
 
-function showCreateForm() {
-  _formOpen = true;
-  const overlay = _root?.querySelector('#plans-form-overlay');
-  if (!overlay) return;
-
-  overlay.style.display = 'flex';
-  overlay.innerHTML = `
-    <div class="plans-form" role="dialog" aria-modal="true" aria-label="新建方案">
-      <div class="plans-form-head">
-        <h3>新建方案</h3>
-        <button type="button" class="ptool-btn-plain plans-form-x" id="plans-form-cancel">${icon('close')}<span class="visually-hidden">关闭</span></button>
-      </div>
-      <div class="plans-form-field">
-        <label for="plans-form-project">项目</label>
-        <select id="plans-form-project" class="plans-status-select">
-          ${_projects.map(p => `<option value="${esc(p.prefix)}">${esc(_projectDisplay[p.prefix] || p.prefix)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="plans-form-field">
-        <label for="plans-form-milestone">里程碑</label>
-        <select id="plans-form-milestone" class="plans-status-select"><option value="">无（可选）</option></select>
-      </div>
-      <div class="plans-form-field">
-        <label for="plans-form-title">标题</label>
-        <input type="text" id="plans-form-title" class="plans-form-input" placeholder="方案标题">
-      </div>
-      <div class="plans-form-row">
-        <div class="plans-form-field">
-          <label for="plans-form-author">作者</label>
-          <input type="text" id="plans-form-author" class="plans-form-input" placeholder="作者名" required>
-        </div>
-        <div class="plans-form-field">
-          <label for="plans-form-tool">工具</label>
-          <input type="text" id="plans-form-tool" class="plans-form-input" placeholder="如 Claude Code" value="Claude Code">
-        </div>
-      </div>
-      <div class="plans-form-field">
-        <label for="plans-form-content">内容（Markdown，从「## 目标」开始）</label>
-        <textarea id="plans-form-content" class="plans-form-input plans-form-textarea" rows="14" placeholder="## 目标&#10;&#10;...&#10;&#10;## 背景&#10;&#10;...&#10;&#10;## 方案内容&#10;&#10;...&#10;&#10;## 功能卡&#10;&#10;### 功能卡标题（一个功能一张卡）&#10;目标：2-3句人话，一看就懂这一步做什么&#10;实现：详细实现（可选）&#10;验收：验收点（可选）&#10;&#10;## 验收标准&#10;&#10;- [ ] ...&#10;&#10;## 备注&#10;&#10;..."></textarea>
-      </div>
-      <div class="plans-form-actions">
-        <button type="button" class="ptool-btn-plain" id="plans-form-submit-cancel">取消</button>
-        <button type="button" class="ptool-new" id="plans-form-submit">${icon('plus')}创建</button>
-      </div>
-    </div>`;
-
-  overlay.querySelector('#plans-form-cancel')?.addEventListener('click', () => {
-    _formOpen = false;
-    overlay.style.display = 'none';
-  });
-  overlay.querySelector('#plans-form-submit-cancel')?.addEventListener('click', () => {
-    _formOpen = false;
-    overlay.style.display = 'none';
-  });
-  overlay.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      _formOpen = false;
-      overlay.style.display = 'none';
-    }
-  });
-  document.addEventListener('keydown', _globalKeydown);
-
-  // 里程碑下拉：按项目加载该项目的里程碑列表（/roadmap/<project>）
-  overlay.querySelector('#plans-form-project')?.addEventListener('change', async (e) => {
-    const sel = overlay.querySelector('#plans-form-milestone');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">无（可选）</option>';
-    const proj = e.target.value;
-    if (!proj) return;
-    try {
-      const data = await apiGet('/roadmap/' + encodeURIComponent(proj));
-      (data.milestones || []).forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.title || '';
-        opt.textContent = (m.title || '') + (m.status ? ' · ' + m.status : '');
-        sel.appendChild(opt);
-      });
-    } catch (err) { /* 里程碑加载失败不阻塞 */ }
-  });
-
-  overlay.querySelector('#plans-form-submit')?.addEventListener('click', async () => {
-    const project = overlay.querySelector('#plans-form-project')?.value;
-    const title = overlay.querySelector('#plans-form-title')?.value.trim();
-    const author = overlay.querySelector('#plans-form-author')?.value.trim();
-    const tool = overlay.querySelector('#plans-form-tool')?.value.trim();
-    const milestone = overlay.querySelector('#plans-form-milestone')?.value || '';
-    const content = overlay.querySelector('#plans-form-content')?.value.trim();
-
-    if (!title || !content) {
-      alert('标题和内容不能为空');
-      return;
-    }
-    if (!author) {
-      alert('作者不能为空');
-      return;
-    }
-
-    try {
-      const result = await apiPost('/plans/create', { project, title, content, author, tool, milestone });
-      if (result.ok) {
-        _formOpen = false;
-        overlay.style.display = 'none';
-        loadPlans();
-      } else {
-        alert('创建失败: ' + (result.error || '未知错误'));
-      }
-    } catch (e) {
-      alert('创建失败: ' + e.message);
-    }
-  });
-}
+// 新建方案表单已按老板指令移除（2026-08-24）；方案创建入口收敛到线路图子项目激活/转卡流程。
 
 // ── markdown（块级解析，分组列表/表格/代码块） ──
 

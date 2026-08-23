@@ -41,9 +41,9 @@ function pill(ok, label) {
 function html() {
   return `
 <div class="console-page hub-page">
-  <div class="console-bar">
-    <h2>控制台</h2>
-    <span class="console-sub">系统健康 · 配置中心</span>
+  <div class="console-bar k-topbar">
+    <span class="k-topbar-title">控制台</span>
+    <span class="console-sub k-topbar-stats">系统健康 · 配置中心</span>
     <span style="flex:1"></span>
     <button type="button" class="hub-btn" id="console-refresh">刷新</button>
   </div>

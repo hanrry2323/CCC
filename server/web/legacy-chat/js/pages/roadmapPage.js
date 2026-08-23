@@ -22,13 +22,13 @@ let _openProjectSeq = 0;    // 2026-08-24：openProject 竞态守卫序号
 function html() {
   return `
 <div class="roadmap-page hub-page">
-  <div class="board-toolbar">
-    <h2>线路图</h2>
+  <div class="board-toolbar k-topbar">
+    <span class="k-topbar-title">线路图</span>
     <div class="board-toolbar-actions">
       <button type="button" class="hub-btn" id="roadmap-refresh" title="刷新">刷新</button>
       <button type="button" class="hub-btn" id="roadmap-back" style="display:none" title="返回项目列表">← 返回</button>
     </div>
-    <span class="st" id="roadmap-st">·</span>
+    <span class="st k-topbar-stats" id="roadmap-st">·</span>
   </div>
   <div class="rm-filters" id="rm-filters">
     <button type="button" class="rm-filter ${_rmFilter === 'all' ? 'on' : ''}" data-filter="all">全部</button>

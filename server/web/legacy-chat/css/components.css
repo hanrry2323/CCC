@@ -4528,3 +4528,69 @@
   padding-top: 16px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
+
+/* ══ ccc-plan-046 M2·五点微调（2026-08-24 老板指令）══
+ * ① 计划池与看板视觉对齐：列头/卡片同构同 token；
+ * ② 巡检/控制台区块风格对齐运维：分区头/条目行/空态共用一套度量。
+ * 全部走令牌；本段为覆盖层，M4 清理时与上方旧规则合并。 */
+
+/* ── 运维基准（自身令牌化）── */
+.ops-subgroup { margin-bottom: 10px; }
+.ops-subgroup h5 {
+  margin: 8px 0 6px;
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  font-weight: 650;
+}
+.ops-review-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--ccc-border-subtle);
+  background: var(--ccc-bg-surface);
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+.ops-review-id { font-weight: 700; color: var(--ccc-info); flex: none; }
+.ops-review-title { flex: 1; min-width: 0; color: var(--ccc-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-review-proj { font-size: 11px; color: var(--ccc-text-muted); flex: none; }
+.ops-proj-head span { color: var(--ccc-text-muted); }
+
+/* ── 巡检对齐运维 ── */
+.dsh-subgroup { margin-bottom: 10px; }
+.dsh-proj-head {
+  margin: 8px 0 6px;
+  padding: 0;
+  border-left: none;
+  background: none;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ccc-text-muted);
+}
+
+/* ── 控制台对齐运维：区块标题同度量 ── */
+.console-card-title {
+  display: flex; align-items: center; gap: var(--ccc-space-sm);
+  margin: 0 0 var(--ccc-space-sm);
+  font-size: 12px; font-weight: 650;
+  color: var(--ccc-text-muted);
+}
+
+/* ── 计划池 ↔ 看板视觉对齐 ── */
+.pcol {
+  background: var(--ccc-bg-layer);
+  border-color: var(--ccc-border-subtle);
+}
+.pcol-h {
+  min-height: var(--ccc-h-card-head);
+  padding: 0 var(--ccc-space-md);
+  background: var(--ccc-bg-surface);
+  gap: 6px;
+}
+.pcol-name { font-size: 12px; font-weight: 600; color: var(--ccc-text-secondary); }
+.pcard {
+  border-radius: var(--ccc-radius-sm);
+  box-shadow: var(--ccc-shadow-sm);
+}
+.pcard:hover { box-shadow: var(--ccc-shadow-md); }

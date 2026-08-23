@@ -30,9 +30,9 @@ function agoText(ts) {
 function html() {
   return `
 <div class="ops-page hub-page">
-  <div class="ops-bar">
-    <h2>运维</h2>
-    <span class="ops-sub">项目工程化运维 · diff 审查 · 螺旋循环 · 代码健康</span>
+  <div class="ops-bar k-topbar">
+    <span class="k-topbar-title">运维</span>
+    <span class="ops-sub k-topbar-stats">项目工程化运维 · diff 审查 · 螺旋循环 · 代码健康</span>
     <span style="flex:1"></span>
     <button type="button" class="hub-btn" id="ops-refresh">刷新</button>
   </div>

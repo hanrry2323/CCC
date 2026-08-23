@@ -38,10 +38,10 @@ const ACTION_CLS = { '改': 'act-fix', '删': 'act-del', '留': 'act-keep' };
 function html() {
   return `
 <div class="dsh-page hub-page">
-  <div class="dsh-bar">
-    <h2>DSH 巡检</h2>
-    <span class="dsh-sub">DeepSeek Harness 巡回审查 · 只读取证 · 深度巡检</span>
-    <span class="dsh-last" id="dsh-last"></span>
+  <div class="dsh-bar k-topbar">
+    <span class="k-topbar-title">DSH 巡检</span>
+    <span class="dsh-sub k-topbar-stats">DeepSeek Harness 巡回审查 · 只读 · 实时</span>
+    <span class="dsh-last k-topbar-stats" id="dsh-last"></span>
     <span style="flex:1"></span>
     <button type="button" class="hub-btn" id="dsh-refresh">刷新</button>
   </div>

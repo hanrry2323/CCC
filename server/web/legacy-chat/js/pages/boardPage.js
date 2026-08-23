@@ -94,15 +94,15 @@ function preferredWorkspace() {
 function html() {
   return `
 <div class="board-page hub-page" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-  <div class="board-toolbar" style="flex-shrink: 0; padding-bottom: 5px;">
-    <h2>看板</h2>
+  <div class="board-toolbar k-topbar" style="flex-shrink: 0;">
+    <span class="k-topbar-title">看板</span>
     <div class="board-toolbar-actions">
       <button type="button" class="hub-btn" id="board-refresh" title="刷新">刷新</button>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
     <input type="search" id="board-search" placeholder="搜索卡…" style="padding:5px 10px;border:1px solid var(--ccc-border-subtle);border-radius:999px;background:#fff;font-size:12px;width:150px;outline:none;">
     <button type="button" class="hub-btn" id="board-density" title="切换卡片密度">${_dense ? '舒适' : '紧凑'}</button>
-    <span class="st" id="board-st">·</span>
+    <span class="st k-topbar-stats" id="board-st">·</span>
   </div>
 
   <div id="board-backlog-alert-banner" style="display:none; flex-shrink: 0; margin: 0 10px 10px 10px; padding: 10px; background: var(--ccc-bg-layer); border: 1px solid #ffccc7; border-radius: var(--ccc-radius-sm); color: #ff4d4f; font-size: 12px; font-weight: 500; align-items: center; justify-content: space-between; animation: board-live-pulse 1.6s ease-in-out infinite;">
