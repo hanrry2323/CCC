@@ -108,7 +108,7 @@ v4 对抗式独立审查，证据均在 worktree `/Users/fan/program/CCC-wt/tst0
 
 **维护区四问核对**：四问均单选落位问题行方括号（[否]/[有]/[否]/[是]），说明均为一句实情非占位；抽查引用工件全部存在且内容吻合——`docs/projects/tst/plans/001-pipeline-smoke.md:3` 关联卡含 tst004、`docs/notes/2026-08-24-tst-lessons.md` 恰两条教训与说明一致、`docs/projects/tst/README.md:34` 近况行在位。核对通过。
 
-机审：通过
+机审：通过（被审 c45794f5fc31）
 
 ## 维护区
 
