@@ -1,84 +1,167 @@
-# 任务卡 xy059 · xianyu html-preview CLI——HTML 场景本地预览命令（DSH 执行）
+# 任务卡 xy052 · 内容库 API（M6-1）— 视频/图文产出只读元数据接口（OpenCode 执行）
+> 批准：老板合入批准 · 2026-08-20
 
-> 关联：xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-08-24
+> 关联：xy-plan-009 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-20
 
 ## 基准文件（先看）
 
-- 业务仓导航：`/Users/fan/program/apps/xianyu/AGENTS.md`（uv 工作流：`uv run pytest tests/ -q`）
-- 方案出处：`docs/projects/xy/plans/008-high-expression-v2.md` 方案内容块 2「模板库规模化 + html-preview」
-- 现有场景渲染器：`src/xianyu/html_scene/renderer.py`（输入即 HTML 场景文件）
+- 项目基准（README·权威索引）：`docs/projects/xy/README.md`
+- 方案池：`docs/projects/xy/plans/`（关联方案见卡头「关联」，本卡 = xy-plan-009 功能卡 6.1 内容库 API）
 
 ## 目标
 
-新增 CLI 子命令 `xianyu html-preview <task_id>`：定位该任务的 HTML 场景产物并在本地起临时 HTTP 服务供浏览器预览，补齐 xy-plan-008 块 2 的预览入口。只读操作，不触碰生产管线与产出文件。
+为 M6 前端展示台提供**内容库只读 API**：扫描生产产出目录，返回视频/图文产出的元数据列表（标题/日期/时长/大小/类型/路径），每日新产出自动收录，供前端列表页展示。
 
 ## 实现
 
-白名单仅下列两文件：
+①`admin/api/server.py` 新增只读端点 `GET /api/v1/library`（沿用现有 sqlite/只读适配模式，不动生产核心代码）：扫描 `video-pipeline/output/` 下各任务目录（视频产物 `final.mp4` + 图文产物），组装 `{task_id, title, date, duration, size, type: video|article, path}` 列表，按日期倒序返回。
 
-1. `src/xianyu/cli.py`（追加子命令，风格对齐现有 `thumbnail` 命令）：
-   - `html-preview(task_id: str, port: int = 8765, open_browser: bool = False)`；
-   - 模块级纯函数 `_find_scene_html(task_id: str) -> Path | None`：在 `video-pipeline/output/<task_id>/` 下按文件名排序 glob 首个 `*.html`；目录或文件不存在 → 返回 None；
-   - 找到 → 以场景所在目录为根起 `http.server` 线程（ThreadingHTTPServer，绑定 127.0.0.1），打印可点 URL `http://127.0.0.1:<port>/<html文件名>`；`--open` 时 `webbrowser.open`；Ctrl-C 优雅退出码 0；
-   - 未找到 → rich console 明确报错（含已尝试路径）并以 `typer.Exit(code=1)` 退出。
-2. `tests/test_cli.py`（追加，遵循文件内既有 CliRunner 用例风格）：
-   - `test_html_preview_find_scene_html_tmpdir`：tmp_path 构造 `output/t1/a.html`，monkeypatch cwd 或注入根路径，断言命中；
-   - `test_html_preview_missing_task_exits_nonzero`：CliRunner 调用不存在任务，断言 exit_code != 0 且输出含「未找到」类提示；
-   - `test_html_preview_serves_url`：mock 服务线程（不真绑端口），断言打印的 URL 形如 `http://127.0.0.1:<port>/a.html`。
-   - 新用例命名一律以 `test_html_preview_` 开头（门禁按 `-k html_preview` 收集）。
+②封面/元数据优先从任务 `script.json`（已有）读取标题与时间；无 script.json 的任务以降级字段（目录名/文件时间）兜底，不报错。
 
-注：业务仓 worktree 若缺虚拟环境，先执行 `uv sync` 再跑测试（README 标准 uv 工作流）。
+③补测试：构造临时产出目录 fixtures（视频任务 + 图文任务 + 无 script.json 任务），验证扫描组装与降级路径。
 
 ## 红线（先看）
 
-1. 白名单外零触碰；禁直推 main；只读预览，禁止改写 output/ 任何产出。
-2. 禁写机审区/验收区/置已关闭。
-3. 不引入新第三方依赖（仅标准库 http.server/webbrowser + 既有 typer/rich）。
+1. 只读：禁止修改任何生产核心代码（`src/xianyu/`、`video-pipeline/pipeline.py` 等）；本卡仅动 admin 适配层与测试
+2. 禁止把扫描逻辑做成后台常驻任务——API 每次请求实时扫描（产出规模小，无需缓存）
+3. 不新增数据库表——本卡只读目录元数据
 
 ## 范围
 
-- `src/xianyu/cli.py`
-- `tests/test_cli.py`
+- `admin/api/server.py`（新增端点 + 辅助扫描函数）
+- 测试文件（admin 或 tests/ 下新增，放 `tests/admin/` 或对应位置）
 
 ## 步骤
 
-1. Read 本卡全文 + `src/xianyu/cli.py`（thumbnail 命令段）+ `tests/test_cli.py`（既有风格）+ `src/xianyu/html_scene/renderer.py`（理解场景文件语义）。
-2. 实现 `_find_scene_html` + `html-preview` 子命令 + 三条测试；自测：
-   - `uv run pytest tests/test_cli.py -k html_preview -q` 全绿；
-   - `uv run ruff check src/xianyu/cli.py tests/test_cli.py` 无新增告警；
-   - 手工冒烟：对任一含 HTML 的真实任务目录起服务，curl URL 200。
-3. commit+push 到分支 `codex/xy059-html-preview-cli`（勿直推 main）；push 前 fetch+rebase origin/main。
-4. 卡头改「已回写」并填回写区（实现说明/测试结果/commit hash 与 push 证据）；维护区四问逐项填写——勾选符必须落在问题行的方括号内（如 [是]/[否]），说明行写一句实情（docgate 机械校验该格式）。
-5. 停手，等机审与环节② 合入。
+1. 读方案 xy-plan-009 功能卡「内容库 API」+ `admin/api/server.py` 现有端点模式（仿写）
+2. 实现目录扫描 + 元数据组装（含 script.json 读取与降级）
+3. 实现 `GET /api/v1/library` 端点
+4. 补测试（fixtures：视频/图文/降级三类任务目录）
+5. 门禁全绿：pytest / ruff / mypy
+6. commit+push 到卡内分支 `codex/xy052-library-api`（勿直推 main）；合入前 `git fetch origin && git rebase origin/main`；卡头改为「已回写」
+7. **停手**：禁止写 `## 机审区` / `## 验收区` / 置「已关闭」。等 2017 机审 → 老板「合入批准」。
 
 ## 验收标准
 
-1. 门禁测试命令真实退出码=0（wrapper 截获证据日志为准）。
-2. `xianyu html-preview 不存在的任务` 退出码非零且报错含尝试路径；存在场景时打印可访问 URL（手工冒烟 curl 200）。
-3. 分支相对 main 的 diff 仅触白名单两文件；无新依赖。
-4. 卡头=已回写；维护区四问勾选落位问题行方括号、说明非占位。
+- `GET /api/v1/library` 对含产出任务的目录返回完整元数据列表（含视频与图文两类）
+- 字段完整：task_id/title/date/duration/size/type/path 均有值；按日期倒序
+- 新增产出目录自动出现在列表（无需重启服务）
+- 无 script.json 的任务正常返回（降级字段），不报 500
+- pytest 新增测试通过，ruff/mypy 无新增告警
 
 ## 门禁
 
-测试：cd /Users/fan/program/apps/.ccc-wt/xy/xy059 2>/dev/null || cd /Users/fan/program/apps/xianyu; uv run pytest tests/test_cli.py -k html_preview -q
+> 可选机械门禁（2026-08-16 起测试/编译失败 = 硬打回）。转卡时由中枢按卡声明注入命令；声明了命令但失败 → 卡打回。
+测试：`pytest tests/ -q`
+编译：`python3 -m compileall admin/ src/`
+lint：`ruff check admin/ src/`
+类型：`mypy admin/ src/`（以仓库实际 mypy 配置为准，无新增错误）
+范围：false
+
+## 回写要求
+
+卡头状态更新为「已回写」；回写区填：实现说明、测试结果、push 证据（commit hash）。  
+**回写同时必须完成 维护区 四问**（完成钩子，未填=机审打回+合入拒绝）。  
+机审由卡头「验收」方自动写 机审区；人审 diff 后听「合入批准」写 +已关闭。
+
+## 人工批注
+
+（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
 
 ## 回写区
 
-（执行体回写）
+**执行体**：OpenCode · 日期：（回写时填）
 
-## 机审区
+### 实现说明
 
-（验收席专用——执行体禁止写入）
+（回写时填：改动点与文件）
+
+### 测试结果
+
+（回写时填：门禁命令逐条结果）
+
+### push 证据
+
+（回写时填：commit hash + 分支名）
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[ ]
    - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+2. **教训沉淀**：本卡是否产出可复用教训？[ ]
    - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[ ]
    - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+4. **线路图**：项目近况/下一步是否变化？[ ]
    - 说明：
+
+## 机审区
+
+（机审方填写）
+
+## 执行提示
+
+- 项目：xy（Mac2017 上的 xianyu 独立业务仓；Python 视频/图文生产管线，经 CCC 出卡驱动开发。）
+
+- 项目仓（只读参考）：/Users/fan/program/apps/xianyu（Mac2017）——禁止在主仓目录切换卡分支或直接开发
+
+- 代码工作区：由 CCC Engine 派发时注入独立 worktree（见派发提示中的具体路径），所有代码改动必须在注入的 worktree 内完成；禁止回退到主仓目录
+
+- 关联方案摘要（xy-plan-009 M6 前端展示台·功能卡 6.1 内容库 API）：只读 JSON 接口，返回视频/图文产出目录的元数据列表。验收：`GET /api/v1/library` 返回当日产出列表，字段完整，扫描含新任务自动收录。依赖：无。
+
+- 项目线路/近况：
+  - 50 张卡（xy001-051）全部关闭；M1 视频里程碑 / M2 生产就绪 / M3 高表现力全部完成
+  - **2026-08-20 新里程碑**：M5 高表现力二期 / M6 前端展示台（本卡所在）/ M7 发布闭环（等 Cookie）
+  - admin 现有 7 页前端（topics/tasks/publish/platforms/contents/logs/failures）+ `admin/api/server.py` 只读适配（sqlite3 + JSON），本卡按现有模式扩展
+
+- 开发技能与命令：
+  - 运行测试：`pytest tests/ -q`（repo 根）；单模块：`pytest tests/admin/ -q`
+  - 代码检查：`ruff check admin/ src/`；类型：`mypy admin/ src/`
+  - 启动 admin 服务：`.venv/bin/python admin/api/server.py`（只读适配层）
+
+- 历史教训（避免踩坑）：
+  - 4. WebSub 断链（2026-08 · mx025 审计） - **根因**：路径重构后 附近 WebSub 联动被注释禁用 - **适用场景**：RSS 模块路径或依赖变更
+  - 只读红线：admin 适配层职责是「包装数据成 JSON」，禁止写生产核心；历史审计多次强调路径重构后联动被注释禁用，改扫描路径时先确认产出目录结构现状
+
+- 禁区：- 前缀是 `xy`；卡文件名必须 `xyNNN-…`
+- 禁止在 CCC 建业务深文档目录
+
+- 执行要求：先 Read 任务卡全文，在工作区内按白名单范围改动；完成后 commit+push 到卡内分支
+
+- 禁止：直推 main、写机审区/验收区、置已关闭
+
+## 机审提示
+
+- 审查项目：xy（Mac2017 上的 xianyu 独立业务仓；Python 视频/图文生产管线，经 CCC 出卡驱动开发。）
+
+- 审查清单：
+  - 只读适配层原则：admin/api/server.py 不得修改生产核心代码
+  - 产出目录结构：video-pipeline/output/<task_id>/{final.mp4, script.json, ...}，图文产物形态以实测为准
+
+- 历史教训（审查时重点关注）：
+  - 4. WebSub 断链（2026-08 · mx025 审计） - **根因**：路径重构后 附近 WebSub 联动被注释禁用 - **适用场景**：RSS 模块路径或依赖变更
+
+- 架构约束/红线：- 前缀是 `xy`；卡文件名必须 `xyNNN-…`
+- 禁止在 CCC 建业务深文档目录
+
+- 处理原则：
+
+  - 可修问题（命名/注释/小重构/补充测试）→ 在 worktree 就地修复并 commit+push，修完直接通过
+
+  - 原则性红线问题（范围系统性越界/核心业务意图违背/安全漏洞）→ 输出「机审：不通过（具体原因）」并以非零退出
+
+  - 禁止因「pytest 没绿/编译失败/范围越界」等机械问题打回——这些已由机械门禁裁决
+
+  - 主观标准（美观/体验/设计品味）不判——记录建议即可，不得作为打回原因
+
+  - **打回原因必须可执行**：格式「问题 → 文件:行号 + 唯一最佳动作」；禁止「体验不好/不规范」等不可执行表述（防死循环）
+
+- 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
+
+- **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。
+
+  - 维护区缺失或仍为占位说明（如「说明：」空白/复制模板）→ 输出「机审：不通过（维护区未完成）」并以非零退出，打回原因注明缺失项；执行体补维护区后重试。
+
+  - 核对 [是]/[有] 声明引用工件真实存在且与卡改动一致。若存在声明不实，输出「机审：不通过（维护区声明不实）」并以非零退出。
