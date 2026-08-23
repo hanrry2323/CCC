@@ -1,6 +1,6 @@
 # 任务卡 tst004 · 管线修复验证·合入竞态防护与部署测试封闭化（DSH 执行）
 
-> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-24
+> 关联：tst-plan-001 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-24
 
 ## 基准文件（先看）
 
@@ -65,7 +65,19 @@
 
 ## 回写区
 
-（执行体回写）
+**实现说明**（2026-08-24 · DSH 执行体）：
+
+1. `server/tests/test_server.py`：`test_build_ports_payload_empty` 与 `test_chat_bridge_token_empty` 在既有隔离之上追加 `patch("server.web.server._env_or_config", return_value="")`，切断 env 之外的 config.env 回落（生产配置含 `CLUSTER_PORT_NAMES=7788:web-server,6100:relay-anthropic,6102:relay-openai` 与 `CCC_CHAT_BRIDGE_TOKEN=ccc-chat-bridge-2026`）；两用例既有断言一字未动，仅收紧隔离。
+2. `scripts/approve-merge.sh`：在 `close_card "$path"`（L620）之后、`git add -- "$path"`（L667）之前插入竞态防护——`grep -q "状态：已关闭" "$path"` 不成立即输出指定 `[ERROR] ${id}: 合入竞态——…` 并 `return 1`（不提交/不推送/不部署），完整覆盖 close_card→git add 窗口；其余既有逻辑零改动。
+
+**自测结果**：
+
+- 红基线复现（修复前，生产检出 /Users/fan/program/CCC 只读跑 pytest，PYTHONDONTWRITEBYTECODE=1 + -p no:cacheprovider）：两用例均 FAILED——ports 断言左值含 `{port:6100, name:relay-anthropic,…}` registered_stale 条目、token 断言得 `ccc-chat-bridge-2026`，与卡述事故完全一致。
+- 门禁命令（分支工作树）：`python3 -m pytest server/tests/test_server.py::TestPortNetwork::test_build_ports_payload_empty server/tests/test_server.py::TestConversationDetailed::test_chat_bridge_token_empty -q` → `2 passed`，退出码 0。
+- 加强验证：注入双泄漏键（CLUSTER_PORT_NAMES + CCC_CHAT_BRIDGE_TOKEN）后仍 `2 passed`；回归面 TestPortNetwork+TestConversationDetailed 两类 `8 passed`。
+- `bash -n scripts/approve-merge.sh` 通过；守卫位于 L659-666（close_card 之后、git add 之前）；grep 守卫语义微验证：开卡头→触发中止、已关闭头→正常放行。
+
+**commit/push 证据**：`0c1cc2b92`（fix(tst004): 部署测试封闭化 + approve-merge 合入竞态防护），push 前已 `git fetch origin && git rebase origin/main`（基于 b6a6427a8），`git ls-remote origin codex/tst004-task` = `0c1cc2b921c72f…` 与本地 HEAD 一致。
 
 ## 机审区
 
@@ -75,11 +87,11 @@
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：方案 tst-plan-001 关联卡原缺 tst004，已补全（plans/001-pipeline-smoke.md 关联卡追加 tst004）；方案目标（管线冒烟）已于 tst002 达成，状态维持「已确定/100%」不变。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：新增 docs/notes/2026-08-24-tst-lessons.md——gitignored config.env 只在主检出存在，分支 worktree 门禁会假绿；封闭化必须隔离配置读取源并在生产检出复现红基线。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅测试内部 mock 封闭化与 approve-merge 守卫各一处，无结构/技术栈/路径变化。
+4. **线路图**：项目近况/下一步是否变化？[是]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：docs/projects/tst/README.md「线路/近况」已补 2026-08-24 一行（tst003 合入竞态事故 → tst004 治本修复）。
