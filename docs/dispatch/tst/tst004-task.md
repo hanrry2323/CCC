@@ -85,11 +85,30 @@
 - T4 守卫语义探针（逐字节提取 L663-666 真实守卫块 + 桩环境）：开卡头（状态：已回写）→ 输出卡指定 `[ERROR] tst004: 合入竞态……` 文案且 rc=1 中止；已关闭头 → 无输出 rc=0 放行；
 - T5 红基线（main 检出 /Users/fan/program/CCC 只读复跑未封闭化版，PYTHONDONTWRITEBYTECODE=1 + -p no:cacheprovider）：**2 failed**——ports 断言左值首条目即 `{&#39;port&#39;: 6100, &#39;name&#39;: &#39;relay-anthropic&#39;}`、token 得 `ccc-chat-bridge-2026`，与卡目标§1 描述逐字吻合，证实原始缺陷真实、封闭化必要且测试非空转。
 
-**commit/push 证据**：实现 `0c1cc2b92` + 首轮回写 `4f38c6cd0` + 重试回写 `020ba30d4`；本轮第 3 次回写提交 `6e5b76445` 已推 origin（`git ls-remote origin codex/tst004-task` = 本地 HEAD = `6e5b76445`）。push 过程说明：按卡步骤执行 `git fetch origin && git rebase origin/main` 后推送被拒（non-fast-forward——rebase 重写哈希与远端既有原哈希线分叉，强推触禁令），遂按红线改走无损路线：重置回远端线 `291569269` 并干净 cherry-pick 本轮回写（无冲突），快进推送完成；代价是分支基点不含 main 最新两平台提交（ffee8f8e5 / e21e974d2）——经核不影响本卡：热修 e21e974d2 的采集器位于主检出 scripts/ 由机审 wrapper 直接调用，不经分支工作树，且白名单实现内容与已验证版本逐字一致。
+**commit/push 证据**：实现 `0c1cc2b92` + 首轮回写 `4f38c6cd0` + 重试回写 `020ba30d4`；本轮第 3 次回写提交 `6e5b76445` 已推 origin（`git ls-remote origin codex/tst004-task` = 本地 HEAD = `6e5b76445`；其后证据段修订提交 `c45794f5f` 亦已快进推送，机审时点 ls-remote = 本地 HEAD = `c45794f5f`——机审席 2026-08-24 核验补正）。push 过程说明：按卡步骤执行 `git fetch origin && git rebase origin/main` 后推送被拒（non-fast-forward——rebase 重写哈希与远端既有原哈希线分叉，强推触禁令），遂按红线改走无损路线：重置回远端线 `291569269` 并干净 cherry-pick 本轮回写（无冲突），快进推送完成；代价是分支基点不含 main 最新两平台提交（ffee8f8e5 / e21e974d2）——经核不影响本卡：热修 e21e974d2 的采集器位于主检出 scripts/ 由机审 wrapper 直接调用，不经分支工作树，且白名单实现内容与已验证版本逐字一致。
 
 ## 机审区
 
 （验收席专用——执行体禁止写入）
+
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+v4 对抗式独立审查，证据均在 worktree `/Users/fan/program/CCC-wt/tst004` 可复现，未引用执行体自述作判据。
+
+**范围核对**：分支 `codex/tst004-task` 相对 merge-base `b6a6427a8` 改动 6 文件 = 白名单 2 + 本卡回写 + Doc-Gate 强制文档 3。实现提交 `0c1cc2b92` 恰触白名单两文件（`git show --stat 0c1cc2b92`），且 `git diff 0c1cc2b92..HEAD -- server/tests/test_server.py scripts/approve-merge.sh` 为空——rebase 遭拒改走重置+cherry-pick 路线后实现零漂移属实。卡规格节（目标/实现/红线/范围/门禁/验收标准）相对出卡版零改动，无篡改。main 独有提交 `ffee8f8e5`/`e21e974d2` 触达文件与白名单 comm 求交为空，后续合入无冲突面。
+
+**实现核验**：①测试封闭化——两用例既有断言逐字保留（diff 中 `assert result.get("ports") == []` / `assert result == ""` 原样在位），仅新增 `with patch("server.web.server._env_or_config", return_value="")` 隔离；patch 目标真实存在（`server/web/server.py:785 def _env_or_config`），符合红线3「仅封闭化」。②竞态守卫——`scripts/approve-merge.sh` 实测顺序 L620 `close_card "$path"` → L663-666 守卫（`if ! grep -q "状态：已关闭"` 不成立即输出卡指定 `[ERROR] ${id}: 合入竞态——…` 文案并 `return 1`）→ L667 `git add -- "$path"`，位置与文案逐字合卡；`${id}` 同函数既有使用（L627/L654）、`return 1` 与既有 L617 同范式；`close_card` L306 确以 `状态：已关闭` 回写卡头，happy-path 不误伤，守卫语义 fail-closed。③push 证据——`git ls-remote origin codex/tst004-task` = 本地 HEAD = `c45794f5f`；引用哈希 `0c1cc2b92`/`4f38c6cd0`/`020ba30d4`/`6e5b76445`/`291569269`/`e21e974d2`/`ffee8f8e5` 经 `git cat-file -t` 全部存在；平台热修 `e21e974d2` 在 main 属实（`scripts/test-evidence.sh` +6/-1，主题与回写区陈述一致）。
+
+**观察项（均不计违规）**：
+1. 验收标准#3「分支相对 main 的 diff 仅触白名单两文件」与同卡 Doc-Gate（维护区答「有/是」必须同步 plans/notes/README，否则打回）字面相抵。本席按意图判定：代码严守白名单、文档同步系流程强制产物（tst003 先例同判）。建议制卡侧后续将#3 措辞收窄为「代码 diff 仅触白名单」。
+2. 回写区 push 证据原括注停留在第 3 轮快照「本地 HEAD = `6e5b76445`」，其后证据段修订提交 `c45794f5f` 才为最终推送 HEAD；不变式「远端=本地」始终为真，非声明不实——已由本席就地补正并注明。
+3. 守卫通过后至 `git add` 之间残留毫秒级理论窗口，系卡规格收敛设计的固有边界；fail-closed 且并发改写会在下次合入再被拦截，可接受。
+
+**severity 评分**：影响面 1（发现均为文档精度层面，不触及代码行为与合入安全）+ 改动深度 1（仅卡内一处括注补正，无代码改动）+ 红线邻近 1（无越界、无断言削弱、无私写机审/验收区、未直推 main）= 3 → 轻。
+
+**维护区四问核对**：四问均单选落位问题行方括号（[否]/[有]/[否]/[是]），说明均为一句实情非占位；抽查引用工件全部存在且内容吻合——`docs/projects/tst/plans/001-pipeline-smoke.md:3` 关联卡含 tst004、`docs/notes/2026-08-24-tst-lessons.md` 恰两条教训与说明一致、`docs/projects/tst/README.md:34` 近况行在位。核对通过。
+
+机审：通过
 
 ## 维护区
 
