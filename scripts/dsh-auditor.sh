@@ -41,7 +41,8 @@ PRESET="$HOME/.dsh/.agent-presets/dsh-auditor/agent.cordis.yml"
 [ -f "$PRESET" ] || { echo "[dsh-auditor] ERROR: 机审席预设缺失: $PRESET" >&2; exit 3; }
 
 # 从预设提取 persona → 生成 headless system-prompt 槽位 overlay（--patch 槽位语义，见 executor）
-OVERLAY="$(mktemp /tmp/dsh-auditor-overlay-XXXXXX.yml)"
+OVL_DIR="$(mktemp -d)"
+OVERLAY="$OVL_DIR/overlay.yml"
 python3 - "$PRESET" "$OVERLAY" <<'PY'
 import sys, yaml
 rows = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))

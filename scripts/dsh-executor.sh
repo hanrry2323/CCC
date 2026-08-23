@@ -42,7 +42,8 @@ PRESET="$HOME/.dsh/.agent-presets/dsh-executor/agent.cordis.yml"
 
 # 从预设提取 persona → 生成 headless system-prompt 槽位 overlay
 # （--patch 的 id 是组合树槽位；预设文件本身是插件行列表，需派生而非直挂）
-OVERLAY="$(mktemp /tmp/dsh-executor-overlay-XXXXXX.yml)"
+OVL_DIR="$(mktemp -d)"
+OVERLAY="$OVL_DIR/overlay.yml"
 python3 - "$PRESET" "$OVERLAY" <<'PY'
 import sys, yaml
 rows = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
