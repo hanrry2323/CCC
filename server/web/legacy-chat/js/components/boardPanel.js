@@ -227,9 +227,12 @@ export async function refreshBoardPanel(opts = {}) {
     ).join('');
 
     // Update body structure if it's the first render or workspace changed
+    // 2026-08-24 修复面板冻结：异常路径把 cardListInstance 置 null 但 wrapper DOM 残留，
+    // 之后每次成功刷新都在 setItems(null) 上抛错被吞 → 面板永久冻结。
+    // 创建条件补上「实例缺失」，wrapper 与实例一起重建，自愈恢复。
     const wrapperId = 'board-card-list-wrapper';
     let listWrapper = document.getElementById(wrapperId);
-    if (!listWrapper) {
+    if (!listWrapper || !cardListInstance) {
       body.innerHTML = `
         <div class="board-ws">工作区: <strong>${escapeHtml(ws)}</strong></div>
         ${trackLine}

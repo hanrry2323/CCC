@@ -12,6 +12,103 @@ const SYNTAX_COLORS = {
   punctuation: '#dee2e6',
 };
 
+// ── 占位符保护管线（2026-08-24 重构）─────────────────────────
+// 旧实现对「已注入 <span style="…"> 的中间结果」继续跑后续正则，
+// 字符串规则会吞掉自身 style 属性的引号 → 带语言代码块确定性花屏。
+// 新约定：每趟命中立刻转义、包 span、存入 store 并替换为占位符；
+// 后续趟只处理未保护的原文，互不污染；最后统一还原。
+function _wrap(cls, raw, store) {
+  store.push('<span style="color:' + SYNTAX_COLORS[cls] + '">' + escapeHtml(raw) + '</span>');
+  return '\x00HP' + (store.length - 1) + '\x00';
+}
+function _restore(s, store) {
+  return s.replace(/\x00HP(\d+)\x00/g, (_, i) => store[+i] || '');
+}
+
+function highlightJS(code) {
+  const store = [];
+  let h = code
+    .replace(/(\/\/[^\n]*)/g, (m) => _wrap('comment', m, store))
+    .replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, (m) => _wrap('string', m, store))
+    .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|async|await|new|class|extends|typeof|instanceof|this|switch|case|break|continue|try|catch|finally|throw|in|of|yield|default)\b/g, (m) => _wrap('keyword', m, store))
+    .replace(/\b(function|class)\b(\s*)(\w+)/g, (_, kw, sp, name) =>
+      _wrap('keyword', kw, store) + escapeHtml(sp) + _wrap('function', name, store))
+    .replace(/\b(\d+(?:\.\d+)?)\b/g, (m) => _wrap('number', m, store));
+  return _restore(h, store);
+}
+
+function highlightPython(code) {
+  const store = [];
+  let h = code
+    .replace(/(#[^\n]*)/g, (m) => _wrap('comment', m, store))
+    .replace(/("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/g, (m) => _wrap('string', m, store))
+    .replace(/\b(def|class|import|from|return|if|elif|else|for|while|try|except|finally|with|as|pass|break|continue|async|await|yield|lambda|self|None|True|False|raise|in|not|and|or|is|del|print)\b/g, (m) => _wrap('keyword', m, store))
+    .replace(/\b(def|class)\b(\s*)(\w+)/g, (_, kw, sp, name) =>
+      _wrap('keyword', kw, store) + escapeHtml(sp) + _wrap('function', name, store))
+    .replace(/\b(\d+(?:\.\d+)?)\b/g, (m) => _wrap('number', m, store));
+  return _restore(h, store);
+}
+
+function highlightHTML(code) {
+  // HTML/XML 只能在实体化之后的文本上识别标签结构
+  const store = [];
+  let h = escapeHtml(code)
+    .replace(/(&lt;!--[\s\S]*?--&gt;)/g, (m) => { store.push('<span style="color:' + SYNTAX_COLORS.comment + '">' + m + '</span>'); return '\x00HP' + (store.length - 1) + '\x00'; })
+    .replace(/(&lt;\/?)(\w+)/g, (_, lt, name) =>
+      // lt 是已实体化的 &lt;/&lt;/（勿再转义），仅标签名需要包 span
+      lt + (() => { store.push('<span style="color:' + SYNTAX_COLORS.tag + '">' + name + '</span>'); return '\x00HP' + (store.length - 1) + '\x00'; })())
+    .replace(/([\w-]+)(=)(&quot;[\s\S]*?&quot;)/g, (_, attr, eq, val) => {
+      const parts = [];
+      parts.push(_storeHtml('<span style="color:' + SYNTAX_COLORS.attr + '">' + attr + '</span>', store));
+      parts.push(eq);
+      parts.push(_storeHtml('<span style="color:' + SYNTAX_COLORS.string + '">' + val + '</span>', store));
+      return parts.join('');
+    });
+  return _restore(h, store);
+}
+function _storeHtml(html, store) { store.push(html); return '\x00HP' + (store.length - 1) + '\x00'; }
+
+function highlightCSS(code) {
+  const store = [];
+  let h = code
+    .replace(/(\/\*[\s\S]*?\*\/)/g, (m) => _wrap('comment', m, store))
+    .replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/g, (m) => _wrap('string', m, store))
+    .replace(/(#[0-9a-fA-F]{3,8}\b|\b[a-z-]+(?=\s*:))/g, (m) => _wrap('attr', m, store));
+  return _restore(h, store);
+}
+
+function highlightJSON(code) {
+  const store = [];
+  let h = code
+    .replace(/("(?:[^"\\]|\\.)*")(\s*:)?/g, (m, str, colon) => {
+      // 键与值同色即可；冒号留在原文
+      const out = _wrap('string', str, store);
+      return colon ? out + colon : out;
+    })
+    .replace(/\b(true|false|null)\b/g, (m) => _wrap('keyword', m, store))
+    .replace(/\b(\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, (m) => _wrap('number', m, store));
+  return _restore(h, store);
+}
+
+function highlightBash(code) {
+  const store = [];
+  let h = code
+    .replace(/(#.*$)/gm, (m) => _wrap('comment', m, store))
+    .replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/g, (m) => _wrap('string', m, store))
+    .replace(/\b(echo|export|cd|ls|rm|cp|mv|mkdir|touch|cat|source|sudo|chmod|chown|grep|find|sed|awk|pip|npm|yarn|node|python|curl|wget|git|docker|make|cmake)\b/g, (m) => _wrap('keyword', m, store));
+  return _restore(h, store);
+}
+
+function highlightC(code) {
+  const store = [];
+  let h = code
+    .replace(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g, (m) => _wrap('comment', m, store))
+    .replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/g, (m) => _wrap('string', m, store))
+    .replace(/\b(int|float|double|char|void|bool|string|auto|const|static|struct|class|enum|if|else|for|while|do|switch|case|break|continue|return|try|catch|throw|new|delete|public|private|protected|namespace|using|template|typename|virtual|override|final|import|export|fn|let|mut|impl|trait|pub|async|await|match|move|ref|dyn|where|as|use|mod|super|crate|Self)\b/g, (m) => _wrap('keyword', m, store))
+    .replace(/\b(\d+(?:\.\d+)?[fFlLuU]?)\b/g, (m) => _wrap('number', m, store));
+  return _restore(h, store);
+}
+
 function highlightSyntax(code, lang) {
   lang = lang.toLowerCase();
   if (['js', 'javascript', 'ts', 'typescript', 'jsx', 'tsx'].includes(lang)) {
@@ -24,67 +121,6 @@ function highlightSyntax(code, lang) {
   if (['bash', 'sh', 'zsh', 'shell'].includes(lang)) return highlightBash(code);
   if (['c', 'cpp', 'c++', 'java', 'cs', 'go', 'rust'].includes(lang)) return highlightC(code);
   return escapeHtml(code);
-}
-
-function highlightJS(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|async|await|new|class|extends|typeof|instanceof|this|switch|case|break|continue|try|catch|finally|throw|in|of|yield|default|import\.meta)\b/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span>')
-    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span style="color:' + SYNTAX_COLORS.string + '">$1</span>')
-    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span style="color:' + SYNTAX_COLORS.number + '">$1</span>')
-    .replace(/(\/\/[^\n]*)/g, '<span style="color:' + SYNTAX_COLORS.comment + '">$1</span>')
-    .replace(/\b(function|class)\b\s+(\w+)/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span> <span style="color:' + SYNTAX_COLORS.function + '">$2</span>');
-}
-
-function highlightPython(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/\b(def|class|import|from|return|if|elif|else|for|while|try|except|finally|with|as|pass|break|continue|async|await|yield|lambda|self|None|True|False|raise|in|not|and|or|is|del|print)\b/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span>')
-    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|"""(?:[^"]*(?:"""))?|'''(?:[^']*(?:'''))?)/g, '<span style="color:' + SYNTAX_COLORS.string + '">$1</span>')
-    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span style="color:' + SYNTAX_COLORS.number + '">$1</span>')
-    .replace(/(#[^\n]*)/g, '<span style="color:' + SYNTAX_COLORS.comment + '">$1</span>')
-    .replace(/\b(def|class)\b\s+(\w+)/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span> <span style="color:' + SYNTAX_COLORS.function + '">$2</span>');
-}
-
-function highlightHTML(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/(&lt;\/?)(\w+)/g, '$1<span style="color:' + SYNTAX_COLORS.tag + '">$2</span>')
-    .replace(/(\w+)(=)("(?:[^"\\]|\\.)*")/g, '<span style="color:' + SYNTAX_COLORS.attr + '">$1</span>=$2<span style="color:' + SYNTAX_COLORS.string + '">$3</span>')
-    .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span style="color:' + SYNTAX_COLORS.comment + '">$1</span>');
-}
-
-function highlightCSS(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/(\/\*[\s\S]*?\*\/)/g, '<span style="color:' + SYNTAX_COLORS.comment + '">$1</span>')
-    .replace(/(#[0-9a-fA-F]{3,8}|\b(rgb|rgba|hsl|hsla)\([^)]+\)|\b[a-z-]+(?=\s*:))/g, '<span style="color:' + SYNTAX_COLORS.attr + '">$1</span>')
-    .replace(/(&quot;[^&]*&quot;)/g, '<span style="color:' + SYNTAX_COLORS.string + '">$1</span>');
-}
-
-function highlightJSON(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/("(?:[^"\\]|\\.)*")/g, '<span style="color:' + SYNTAX_COLORS.string + '">$1</span>')
-    .replace(/\b(true|false|null)\b/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span>')
-    .replace(/\b(\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/g, '<span style="color:' + SYNTAX_COLORS.number + '">$1</span>');
-}
-
-function highlightBash(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/(#.*$)/gm, '<span style="color:' + SYNTAX_COLORS.comment + '">$1</span>')
-    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span style="color:' + SYNTAX_COLORS.string + '">$1</span>')
-    .replace(/\b(echo|export|cd|ls|rm|cp|mv|mkdir|touch|cat|source|sudo|chmod|chown|grep|find|sed|awk|pip|npm|yarn|node|python|curl|wget|git|docker|make|cmake)\b/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span>');
-}
-
-function highlightC(code) {
-  const escaped = escapeHtml(code);
-  return escaped
-    .replace(/\b(int|float|double|char|void|bool|string|auto|const|static|struct|class|enum|if|else|for|while|do|switch|case|break|continue|return|try|catch|throw|new|delete|public|private|protected|namespace|using|template|typename|virtual|override|final|import|export|fn|let|mut|impl|trait|pub|async|await|let|match|move|ref|dyn|where|as|use|mod|super|crate|Self)\b/g, '<span style="color:' + SYNTAX_COLORS.keyword + '">$1</span>')
-    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span style="color:' + SYNTAX_COLORS.string + '">$1</span>')
-    .replace(/\b(\d+(?:\.\d+)?[fFlLuU]?)\b/g, '<span style="color:' + SYNTAX_COLORS.number + '">$1</span>')
-    .replace(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g, '<span style="color:' + SYNTAX_COLORS.comment + '">$1</span>');
 }
 
 export function renderMarkdown(text) {
@@ -111,13 +147,13 @@ export function renderMarkdown(text) {
     return '\x00TC' + i + '\x00';
   });
 
-  // Guard code blocks
+  // Guard code blocks（2026-08-24 修复双重转义：先在原文上截获围栏原始代码，
+  // 高亮器内部各自 escapeHtml 一次；占位符 \x00CBn\x00 不受后续全文转义影响）
   const codeBlocks = [];
-  let h = escapeHtml(text);
-  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+  text = text.replace(/```(\w*)[ \t]*\r?\n([\s\S]*?)```/g, (_, lang, code) => {
     const i = codeBlocks.length;
     const langLabel = lang ? '<span class="code-lang-label">' + lang + '</span>' : '';
-    const highlighted = lang ? highlightSyntax(code, lang) : code;
+    const highlighted = lang ? highlightSyntax(code, lang) : escapeHtml(code);
     codeBlocks.push(
       '<div class="code-block-wrap">' +
       langLabel +
@@ -127,6 +163,8 @@ export function renderMarkdown(text) {
     );
     return '\x00CB' + i + '\x00';
   });
+
+  let h = escapeHtml(text);
 
   // Guard inline code
   const inlineCodes = [];
@@ -244,9 +282,25 @@ export function renderMarkdown(text) {
   h = h.replace(/^(?!<[a-z/]|$)(.+)$/gm, '<p>$1</p>');
   h = h.replace(/<\/p>\s*<p><\/p>/g, '</p><p>');
 
-  // Inline transforms — links, images, bold, italic, strikethrough
-  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;margin:10px 0;border-radius:var(--ccc-radius-md)">');
+  // Inline transforms — images（先于 links，否则 ![alt](url) 被链接规则吃掉）、
+  // links（2026-08-24 安全修复：href 协议白名单，堵 javascript:/data:/vbscript: 注入）、
+  // bold, italic, strikethrough
+  const _safeUrl = (u) => {
+    const clean = String(u).replace(/[\s\x00-\x1f]/g, '');
+    return /^(https?:\/\/|mailto:|#|\/|\.\.?\/)/i.test(clean);
+  };
+  const _safeImg = (u) => {
+    const clean = String(u).replace(/[\s\x00-\x1f]/g, '');
+    return /^(https?:\/\/|data:image\/(png|jpeg|gif|webp);)/i.test(clean);
+  };
+  h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, src) =>
+    _safeImg(src)
+      ? '<img src="' + src + '" alt="' + alt + '" style="max-width:100%;margin:10px 0;border-radius:var(--ccc-radius-md)">'
+      : alt); // alt/src 均取自已转义文本，回退分支无注入面
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, txt, url) =>
+    _safeUrl(url)
+      ? '<a href="' + url + '" target="_blank" rel="noopener">' + txt + '</a>'
+      : txt + '（' + url + '）');
   h = h.replace(/~~([^~]+)~~/g, '<del>$1</del>');
   h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   h = h.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');

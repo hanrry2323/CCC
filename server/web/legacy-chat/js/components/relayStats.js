@@ -5,6 +5,7 @@
  */
 
 import { apiGet } from '../api.js';
+import { escapeHtml } from '../utils.js';
 
 const RELAY_POLL_MS = 10000;
 let _timer = null;
@@ -43,7 +44,7 @@ function render(data) {
       )
       .join('') +
     (unhealthy
-      ? `<span class="relay-alert-tag" title="${String(d.alert || '中转站异常')}">⚠</span>`
+      ? `<span class="relay-alert-tag" title="${escapeHtml(String(d.alert || '中转站异常'))}">⚠</span>`
       : '');
   el.title = unhealthy
     ? String(d.alert || '中转站异常')
@@ -65,6 +66,12 @@ export function initRelayStats() {
   if (_timer) return;
   refreshRelayStats();
   _timer = setInterval(refreshRelayStats, RELAY_POLL_MS);
+  // M3 注释承诺的「回来立即拉一次」此前并不存在，这里补上
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshRelayStats();
+    });
+  }
 }
 
 export function stopRelayStats() {

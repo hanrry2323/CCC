@@ -1,4 +1,8 @@
 import { STATE_TONES } from '../ui.js';
+// 2026-08-24 安全修复：本地旧 escapeHtml 用 textContent→innerHTML 实现，
+// 不转义引号，被属性插值（title/data-id 等）引用时可逃出属性注入事件处理器。
+// 统一改用 utils 版（转义 & < > " '）。
+import { escapeHtml } from '../utils.js';
 
 export const STATE_TONE = {
   '待分派': 'pending',
@@ -28,12 +32,7 @@ export const STATE_COLORS = {
   'returned': STATE_TONES['打回']
 };
 
-export function escapeHtml(s) {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
+export { escapeHtml };
 
 /** 格式化已运行秒数 → 12s / 3m20s / 1h05m */
 function fmtElapsed(sec) {
@@ -116,7 +115,13 @@ export function renderTaskCard(t, opts = {}) {
       </div>`
     : '';
 
-  const auditStatus = t.audit_status ? `<span class="board-card-badge badge-audit badge-audit-${t.audit_status}" title="机审状态：${t.audit_status}">${t.audit_status}</span>` : '';
+  const auditStatus = t.audit_status ? (() => {
+    // class 段只允许安全字符，title/文本段转义（2026-08-24：原三处完全裸插）
+    const raw = String(t.audit_status);
+    const cls = raw.replace(/[^a-zA-Z0-9_-]/g, '') || 'unknown';
+    const esc2 = escapeHtml(raw);
+    return `<span class="board-card-badge badge-audit badge-audit-${cls}" title="机审状态：${esc2}">${esc2}</span>`;
+  })() : '';
 
   const reject = Number(t.reject_count || 0);
   const rejectHtml = reject > 0

@@ -16,7 +16,8 @@ function _headers(json = true) {
  * T44：仅当曾带 token 且被拒（token 失效）时派发 ccc-auth-required（且每页只弹一次）；
  * 未登录态（无 token）的 401 静默降级，不刷错误、不刷登录门。
  */
-let _loginPrompted = false;
+let _lastAuthPromptAt = 0;
+const AUTH_PROMPT_THROTTLE_MS = 60000;
 
 let _activeStreamController = null;
 let _activePollController = null;
@@ -71,6 +72,7 @@ function _pageScopeSignal() {
 const _cache = new Map();    // key -> { t, data }
 const _inflight = new Map(); // key -> Promise（同 key 在途合并，防重复请求）
 const CACHE_TTL_MS = 10000;
+let _cacheGen = 0;           // 缓存代次：invalidate 时递增；在途请求回填前校验，防写后旧数据回填
 // 可缓存前缀（状态类/实时类接口绝不缓存：/cards、/tasks、/board/ready_for_merge、
 // /conversation、/health、SSE）
 const CACHEABLE_PREFIXES = [
@@ -91,13 +93,17 @@ function _cacheKey(method, path) {
 function _cacheGet(key) {
   const e = _cache.get(key);
   if (e && e.t > Date.now()) return e.data;
+  if (e) _cache.delete(key); // 过期条目即删，防长驻会话慢性增长
   return undefined;
 }
 function _cacheSet(key, data) {
   _cache.set(key, { t: Date.now() + CACHE_TTL_MS, data });
 }
-/** 写操作成功后调用：清缓存（全清最简，低频人审动作零漏清）。 */
+/** 写操作成功后调用：清缓存（全清最简，低频人审动作零漏清）。
+ * 同时递增缓存代次：让「写之前发起、写之后才返回」的在途 GET 回填时被丢弃，
+ * 否则旧快照会覆盖刚清空的缓存，出现「操作成功但界面 10s 内仍是旧状态」。 */
 export function invalidateCache(prefix) {
+  _cacheGen++;
   if (!prefix) {
     _cache.clear();
     return;
@@ -112,14 +118,15 @@ const GET_TIMEOUT_MS = 15000;
 function _cacheDisabled() {
   return !!(typeof window !== 'undefined' && window.__CCC_CACHE_DISABLED__);
 }
-/** 导航/路由切换中止判定：切换中、页面隐藏都视为「主动中止」，不弹网络错误。 */
+/** 导航/路由切换中止判定：仅认「切换中」这一主动中止窗口。
+ * 2026-08-24 修复：原先把 document.hidden 也当主动中止，后台标签里真实的
+ * 网络断流会被 settleDone 静默截断成「完整回复」。页面隐藏时的失败应如实上报。 */
 let _routeSwitching = false;
 export function setRouteSwitching(v) {
   _routeSwitching = !!v;
 }
 function _isNavAbort() {
-  if (typeof document === 'undefined') return false;
-  return _routeSwitching || document.visibilityState === 'hidden' || document.hidden;
+  return _routeSwitching;
 }
 function _mergedSignal({ signal, pageScoped, noTimeout } = {}) {
   if (noTimeout && !pageScoped && !signal) return undefined;
@@ -133,9 +140,17 @@ function _mergedSignal({ signal, pageScoped, noTimeout } = {}) {
   if (pageScoped) parts.push(_pageScopeSignal());
   if (!parts.length) return undefined;
   if (parts.length === 1) return parts[0];
-  return typeof AbortSignal !== 'undefined' && AbortSignal.any
-    ? AbortSignal.any(parts)
-    : parts[parts.length - 1];
+  if (typeof AbortSignal !== 'undefined' && AbortSignal.any) {
+    return AbortSignal.any(parts);
+  }
+  // 老环境无 AbortSignal.any：手工合并——任一源中止即中止合成信号（保留超时护栏）
+  const merged = new AbortController();
+  const _onAbort = () => merged.abort();
+  for (const p of parts) {
+    if (p.aborted) { _onAbort(); break; }
+    p.addEventListener('abort', _onAbort, { once: true });
+  }
+  return merged.signal;
 }
 
 async function _fetchWithAuth(path, options = {}, json = true) {
@@ -155,8 +170,10 @@ async function _fetchWithAuth(path, options = {}, json = true) {
     signal,
   });
   if (resp.status === 401) {
-    if (tok && !_loginPrompted) {
-      _loginPrompted = true;
+    // 时间窗节流替代一次性闩锁：token 二次过期仍能清 token + 弹登录门
+    //（旧 _loginPrompted 闩锁永不复位，第二次会话过期后界面停在假登录态）
+    if (tok && Date.now() - _lastAuthPromptAt > AUTH_PROMPT_THROTTLE_MS) {
+      _lastAuthPromptAt = Date.now();
       clearToken();
       window.dispatchEvent(new CustomEvent('ccc-auth-required'));
     }
@@ -201,9 +218,11 @@ export async function apiGet(path, options = {}) {
   const cached = _cacheGet(key);
   if (cached !== undefined) return cached;
   if (_inflight.has(key)) return _inflight.get(key); // 同 key 在途合并
+  const genAtStart = _cacheGen;
   const p = _doGet(path, options)
     .then((data) => {
-      _cacheSet(key, data);
+      // 写后清缓存发生在本请求在途期间 → 本次响应是写前旧快照，丢弃不回填
+      if (genAtStart === _cacheGen) _cacheSet(key, data);
       return data;
     })
     .finally(() => {
@@ -434,7 +453,12 @@ export async function loadHubConfig() {
     if (data && data.chat_bridge_url) {
       window.__CCC_CHAT_BRIDGE_URL__ = data.chat_bridge_url;
     }
-    return { chat_session_max_live: 4, dialogue_url: '/' };
+    // 2026-08-24：透传服务端字段（原先恒返回硬编码，app.js 的配置消费段成死代码）
+    return {
+      ...(data || {}),
+      chat_session_max_live: (data && data.chat_session_max_live) || 4,
+      dialogue_url: (data && data.dialogue_url) || '/',
+    };
   } catch (e) {
     return { chat_session_max_live: 4, dialogue_url: '/' };
   }

@@ -180,6 +180,11 @@ function switchToProjectTab(projectId) {
 
 let _routeGen = 0;
 
+// 路由→已加载页面注册表。必须是模块级：onHubRoute 的 unmount 循环遍历它来卸载旧页。
+// 2026-08-24 修复：曾被懒加载改造误改为函数内局部 const，导致循环永远遍历空对象、
+// unmountXxx 全部无人调用、各页定时器跨路由泄漏累积（回归自 e9f2545ce）。
+const PAGES = {};
+
 async function onHubRoute(route) {
   // T46 A1 护栏：路由切换 / 视图 mount-unmount 不得调用 cancelStream/abort。
   // 流的取消仅允许用户主动点停止（composer cancel-btn → cancelStream），或
@@ -200,7 +205,7 @@ async function onHubRoute(route) {
     // 路由→页面注册表（P1-7 重构 2026-08-15）：加新路由只需补一条 + index.html 空壳，
     // 不再手写 if/else 逐个 unmount——消灭「漏 unmount 残留定时器」的雷。
     // 2026-08-20 懒加载：页面模块改为路由命中时动态 import（首屏不再全量拉 6 个页面），
-    // PAGES 仅含已加载页面（unmount 循环天然跳过未访问过的路由）。
+    // PAGES 仅含已加载页面（unmount 循环天然跳过未访问过的路由）。PAGES 本体在模块级。
     const PAGES_LOADERS = {
       board: () =>
         import('./pages/boardPage.js').then((m) => ({
@@ -233,7 +238,6 @@ async function onHubRoute(route) {
           unmount: m.unmountDsh,
         })),
     };
-    const PAGES = {};
     if (route === 'chat') {
       for (const name of Object.keys(PAGES)) PAGES[name].unmount();
       // T40 三栏：进入对话视图时自动打开右栏任务卡流（用户曾手动关闭则不强制）
@@ -432,8 +436,10 @@ async function init() {
       container.innerHTML = '';
       container.appendChild(createEmptyState());
     }
-    document.getElementById('composer-input').value = '';
-    document.getElementById('send-btn').disabled = true;
+    const composerInput = document.getElementById('composer-input');
+    if (composerInput) composerInput.value = '';
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) sendBtn.disabled = true;
     renderProjectTabs(id);
     refreshSidebar();
   });

@@ -98,11 +98,13 @@ export async function probeAgentSession() {
     const resp = await fetch('/board/states', {
       headers: agentHeaders(),
     });
-    if (!resp.ok) {
+    // 2026-08-24 修复：原先任何非 200 都清 token——服务端瞬时 5xx 会把有效
+    // 会话强制登出。只有明确的 401/403（鉴权拒绝）才清 token。
+    if (resp.status === 401 || resp.status === 403) {
       clearAgentToken();
       return false;
     }
-    return true;
+    return resp.ok;
   } catch (_) {
     return false;
   }

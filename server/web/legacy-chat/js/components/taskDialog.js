@@ -112,18 +112,22 @@ export async function openTaskDialog(prefill = {}) {
       '【标题】' + title + '\n' +
       '【关联项目】' + workspace + '\n' +
       '【目标】\n' + (description || '（请补全为可执行的目标、范围与验收标准）');
-    close();
+    // 2026-08-24 修复：原先 close() 在校验/发送之前——流式中或发送抛错时用户填的
+    // 标题/描述已随对话框销毁。改为全部通过后再关窗。
     try {
       const { isCurrentTabStreaming } = await import('../streamRegistry.js');
       if (isCurrentTabStreaming()) {
         window.showToast?.('当前对话仍在生成，请等待完成后再下达', 'error');
+        if (btn) btn.disabled = false;
         return;
       }
       const { sendMessage } = await import('./message.js');
       sendMessage(prompt);
+      close();
       window.showToast?.('任务已交给大脑写卡，完成后自动出现在看板', 'success');
     } catch (err) {
       window.showToast?.(err.message || '下达失败', 'error');
+      if (btn) btn.disabled = false;
     }
   }
 

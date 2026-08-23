@@ -61,6 +61,7 @@ export async function openSettings() {
     '<span class="settings-label">主题</span>' +
     '<select class="settings-select" id="settings-theme">' +
     '<option value="light">浅色</option>' +
+    '<option value="dark">深色</option>' +
     '<option value="system">跟随系统</option>' +
     '</select>' +
     '</div>' +
@@ -110,11 +111,15 @@ export async function openSettings() {
     '</div>' +
     '</div>';
 
+  // 2026-08-24 修复：异步续跑前校验对话框仍在（快速关开后 getElementById 返回
+  // null 会抛未捕获 TypeError；重开则旧闭包向新对话框重复绑监听）
   const themeSelect = document.getElementById('settings-theme');
-  themeSelect.value = getThemeScheme();
-  themeSelect.addEventListener('change', () => {
-    setThemeScheme(themeSelect.value);
-  });
+  if (themeSelect) {
+    themeSelect.value = getThemeScheme();
+    themeSelect.addEventListener('change', () => {
+      setThemeScheme(themeSelect.value);
+    });
+  }
 
   const projSelect = document.getElementById('settings-project');
   for (const p of projects) {
@@ -170,9 +175,18 @@ export async function openSettings() {
       if (hint) hint.textContent = 'map JSON 无效: ' + e.message;
       return;
     }
+    // 2026-08-24 修复：连接地址零校验 + 空值无法清除。现在：
+    // ① URL 构造校验（防 htp:/ 打错字母后全站请求跟着坏）；② 显式清空=恢复同源。
     if (hubVal) {
+      if (!/^https?:\/\//i.test(hubVal) || (() => { try { new URL(hubVal); return false; } catch (_) { return true; } })()) {
+        if (hint) hint.textContent = '连接地址无效（须 http(s):// 完整 URL）';
+        return;
+      }
       localStorage.setItem('ccc_hub_base', hubVal.replace(/\/$/, ''));
       window.__CCC_HUB_BASE__ = hubVal.replace(/\/$/, '');
+    } else {
+      localStorage.removeItem('ccc_hub_base');
+      delete window.__CCC_HUB_BASE__;
     }
     if (agentVal) {
       localStorage.setItem('ccc_agent_base', agentVal.replace(/\/$/, ''));

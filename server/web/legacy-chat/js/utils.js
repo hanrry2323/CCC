@@ -1,6 +1,7 @@
 export function escapeHtml(text) {
-  const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-  return String(text).replace(/[&<>"]/g, c => map[c]);
+  // 2026-08-24 补单引号：防任何单引号属性插值点逃逸（成本一行）
+  const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return String(text).replace(/[&<>"']/g, c => map[c]);
 }
 
 export function ts() {

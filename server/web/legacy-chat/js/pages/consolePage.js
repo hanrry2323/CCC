@@ -18,6 +18,17 @@
 import { apiGet, apiPost } from '../api.js';
 import { esc, STATE_TONES } from '../ui.js';
 
+/** 幂等 innerHTML：内容没变就不动 DOM（2026-08-24 接入 M4 渲染根治，
+ * 消 15s/8s 轮询下全量重建导致的点击被吞/焦点丢失）。返回是否真的重建。 */
+function _setHtmlStable(el, html) {
+  if (!el) return false;
+  if (el.__lastHtml === html) return false;
+  el.__lastHtml = html;
+  el.innerHTML = html;
+  return true;
+}
+
+
 let _root = null;
 let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _timer = null;    // 系统/工程 15s
@@ -110,7 +121,7 @@ function renderOverview(summary, relay) {
   const services = ov.services || [];
   const svcRunning = services.filter((s) => s.running).length;
   const relayOk = !relay || relay.healthy !== false;
-  el.innerHTML = `
+  _setHtmlStable(el, `
     <div class="console-overview-row">
       <span class="console-sev ${sevCls}"><span class="console-dot"></span>${esc(severity === 'green' ? '系统健康' : severity === 'red' ? '系统异常' : '有注意项')}</span>
       <span class="console-overview-line">${esc((summary && summary.human_line) || '—')}</span>
@@ -119,7 +130,7 @@ function renderOverview(summary, relay) {
         <span class="ops-chip">服务 ${svcRunning}/${services.length}</span>
         ${relay ? `<span class="ops-chip ${relayOk ? '' : 'alert'}">中转站 ${relayOk ? '正常' : '异常'}</span>` : ''}
       </span>
-    </div>`;
+    </div>`);
 }
 
 /* ── ② 集群节点 ─────────────────────────────── */
@@ -150,7 +161,7 @@ function renderNodes(summary, hp, pg) {
       <div class="console-node-meta">${esc(pg.host || '')}:${esc(String(pg.port || ''))} · ${pg.latency_ms != null ? `${pg.latency_ms}ms` : ''}</div>
     </div>`);
   }
-  el.innerHTML = cards.length ? cards.join('') : '<div class="console-empty">未配置集群节点</div>';
+  _setHtmlStable(el, cards.length ? cards.join('') : '<div class="console-empty">未配置集群节点</div>');
 }
 
 /* ── 服务网址（端口探索三态） ────────────────── */
@@ -177,12 +188,12 @@ function renderPorts(portsData) {
   const goneHTML = gone.length
     ? `<div class="console-port-group"><div class="console-port-group-h"><span class="console-dot gone"></span>历史端口（今日已消失）<span class="badge">${gone.length}</span></div>
         <div class="console-gone-list">${gone.map((p) => `<span>${p}</span>`).join('')}</div></div>` : '';
-  el.innerHTML = ports.length
+  _setHtmlStable(el, ports.length
     ? groupHTML(groups.active_known, '活跃服务', 'ok')
       + groupHTML(groups.active_unknown, '监听未识别（待确认）', 'warn')
       + groupHTML(groups.registered_stale, '登记未运行', 'gone')
       + goneHTML
-    : '<div class="console-empty">无端口数据</div>';
+    : '<div class="console-empty">无端口数据</div>');
 }
 
 /* ── 中转站 ─────────────────────────────────── */
@@ -191,12 +202,12 @@ function renderRelay(relay) {
   const el = _root.querySelector('#console-relay');
   if (!el) return;
   if (!relay) {
-    el.innerHTML = '<div class="console-empty">中转站数据不可用</div>';
+    _setHtmlStable(el, '<div class="console-empty">中转站数据不可用</div>');
     return;
   }
   const t = relay.today || {};
   const d = relay.delta_10s || {};
-  el.innerHTML = `
+  _setHtmlStable(el, `
     <div class="console-relay-row">
       ${pill(relay.healthy !== false, relay.healthy !== false ? '正常' : '异常')}
       ${relay.alert ? `<span class="console-relay-alert">${esc(relay.alert)}</span>` : ''}
@@ -207,7 +218,7 @@ function renderRelay(relay) {
       <span class="console-relay-stat"><b>${t.code || 0}</b>code</span>
       <span class="console-relay-stat"><b>${t.flash || 0}</b>flash</span>
       <span class="console-relay-stat"><b>${t.pro || 0}</b>Pro</span>
-    </div>`;
+    </div>`);
 }
 
 /* ── 知识库健康（P4）────────────────────── */
@@ -216,7 +227,7 @@ function renderKb(kb) {
   const el = _root.querySelector('#console-kb-list');
   if (!el) return;
   if (!kb || (!kb.ccc_kb && !kb.hp_kb)) {
-    el.innerHTML = '<div class="console-empty">无数据</div>';
+    _setHtmlStable(el, '<div class="console-empty">无数据</div>');
     return;
   }
   const c = kb.ccc_kb || {};
@@ -225,7 +236,10 @@ function renderKb(kb) {
   const hOk = h.configured ? !!h.reachable : false;
   const hLabel = !h.configured ? '未配置' : (hOk ? '在线' : '不可达');
 
-  let hpMeta = h.configured ? `${h.host}:${h.port} · ${h.latency_ms}ms` : '—';
+  // 2026-08-24：字段缺省不再渲染字面 "undefined"，且统一走 esc（与 renderNodes 口径一致）
+  let hpMeta = h.configured
+    ? `${esc(String(h.host ?? '—'))}:${esc(String(h.port ?? '—'))} · ${h.latency_ms != null ? `${esc(String(h.latency_ms))}ms` : '—'}`
+    : '—';
   if (hOk && h.documents != null) hpMeta += ` · ${h.documents} 文档`;
   let sync = '';
   if (hOk && h.ccc_sync) {
@@ -236,7 +250,7 @@ function renderKb(kb) {
     if (parts.length) sync = `<div class="console-node-meta" style="padding-left:8px">同步 ${parts.join(' · ')}</div>`;
   }
 
-  el.innerHTML = `
+  _setHtmlStable(el, `
     <div class="console-node ${cOk ? 'up' : 'down'}">
       <div class="console-node-name">ccc-kb <span class="console-pill ${cOk ? 'ok' : 'bad'}">${cOk ? '就绪' : '异常'}</span></div>
       <div class="console-node-meta">本地 BM25 · ${c.documents ?? '—'} 文档${c.lag_days != null ? ` · 滞后 ${c.lag_days} 天` : ''}</div>
@@ -244,7 +258,7 @@ function renderKb(kb) {
     <div class="console-node ${hOk ? 'up' : 'down'}">
       <div class="console-node-name">hp-kb <span class="console-pill ${hOk ? 'ok' : 'bad'}">${hLabel}</span></div>
       <div class="console-node-meta">${hpMeta}</div>${sync}
-    </div>`;
+    </div>`);
 }
 
 function pgPill(status) {
@@ -270,7 +284,7 @@ function renderPg(pg) {
   const el = _root.querySelector('#console-pg-container');
   if (!el) return;
   if (!pg || !pg.configured) {
-    el.innerHTML = '';
+    _setHtmlStable(el, '');
     return;
   }
   const pgOk = pg.status === 'ok';
@@ -284,11 +298,11 @@ function renderPg(pg) {
     meta += ` · 连续失败: ${pg.consecutive_fail} 次`;
   }
 
-  el.innerHTML = `
+  _setHtmlStable(el, `
     <div class="console-node ${pgOk ? 'up' : 'down'}">
       <div class="console-node-name">hp-pg (PostgreSQL) ${pgPill(pg.status)}</div>
       <div class="console-node-meta">${meta}</div>
-    </div>`;
+    </div>`);
 }
 
 /* ── 工程入口 ───────────────────────────────── */
@@ -305,7 +319,7 @@ function renderKPI(states) {
   const items = order.map((s) => `<a class="console-kpi-item" href="#/board" title="去看板 ${s}">
     <b style="color:${tones[s]}">${counts(s)}</b><span>${s}</span>
   </a>`).join('');
-  el.innerHTML = items || '<div class="console-empty">无卡数据</div>';
+  _setHtmlStable(el, items || '<div class="console-empty">无卡数据</div>');
 }
 
 function renderReady(merge) {
@@ -313,9 +327,9 @@ function renderReady(merge) {
   if (!el) return;
   const count = (merge && merge.count) || 0;
   const returned = 0;
-  el.innerHTML = count
+  _setHtmlStable(el, count
     ? `<a class="console-ready" href="#/board" title="待合入卡"><span>待合入</span><b>${count}</b> 去合入 →</a>`
-    : '';
+    : '');
 }
 
 /* ── 后台任务进程（T53 契约保留） ────────────── */
@@ -328,10 +342,10 @@ function renderRunning(tasks, concurrency) {
     ? `<div class="console-running-head">执行槽 ${slots.exec_max} · 机审槽 ${slots.audit_max}</div>` : '';
   const list = (tasks && tasks.tasks) || [];
   if (!list.length) {
-    el.innerHTML = head + '<div class="console-empty">当前无后台任务</div>';
+    _setHtmlStable(el, head + '<div class="console-empty">当前无后台任务</div>');
     return;
   }
-  el.innerHTML = head + list.slice(0, 10).map((t) => {
+  _setHtmlStable(el, head + list.slice(0, 10).map((t) => {
     // P1 修复：/tasks/running 字段为 work_id/board_column/metrics_live（此前读 id/phase/indeterminate 全空）
     const id = t.work_id || t.id || '';
     const kind = t.board_column || '';
@@ -347,7 +361,7 @@ function renderRunning(tasks, concurrency) {
       <div class="console-task-tail" title="日志尾">${esc(logTail.slice(-160))}</div>
       ${running ? '<div class="console-task-progress indeterminate"></div>' : ''}
     </div>`;
-  }).join('');
+  }).join(''));
 }
 
 /* ── 设置（只读） ───────────────────────────── */
@@ -370,9 +384,9 @@ function renderSettings(config, concurrency) {
     ]],
     ['版本', config && config.version ? [['平台', config.version]] : []],
   ];
-  el.innerHTML = groups.map(([title, rows]) => rows.length
+  _setHtmlStable(el, groups.map(([title, rows]) => rows.length
     ? `<div class="console-settings-group"><h5>${esc(title)}</h5>${rows.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>`
-    : '').join('') || '<div class="console-empty">配置不可用</div>';
+    : '').join('') || '<div class="console-empty">配置不可用</div>');
 }
 
 /* ── ②b 服务开关（一键开关 · 模块 A） ───────── */
@@ -382,12 +396,12 @@ function renderServices(services) {
   const cnt = _root.querySelector('#console-svc-n');
   if (!el) return;
   if (!services || !services.length) {
-    el.innerHTML = '<div class="console-empty">无服务数据</div>';
+    _setHtmlStable(el, '<div class="console-empty">无服务数据</div>');
     if (cnt) cnt.textContent = '0';
     return;
   }
   if (cnt) cnt.textContent = String(services.length);
-  el.innerHTML = `<div class="console-svc-grid">${services.map((s) => `
+  const svcHtml = `<div class="console-svc-grid">${services.map((s) => `
     <div class="console-svc-item ${s.running ? 'on' : 'off'}">
       <span class="console-dot ${s.running ? 'green' : 'red'}"></span>
       <b>${esc(s.name)}</b>
@@ -400,28 +414,31 @@ function renderServices(services) {
         <button type="button" class="hub-btn console-svc-btn danger" data-svc="${esc(s.label)}" data-action="stop" ${s.running ? '' : 'disabled'}>停止</button>
       </div>
     </div>`).join('')}</div>`;
-  el.querySelectorAll('button.console-svc-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const svc = btn.getAttribute('data-svc') || '';
-      const action = btn.getAttribute('data-action') || '';
-      const actionLabel = { start: '启动', stop: '停止', restart: '重启' }[action] || action;
-      if (!window.confirm(`确定${actionLabel}服务 ${svc}？`)) return;
-      btn.disabled = true;
-      try {
-        const r = await apiPost(`/ops/service/${action}`, { service: svc, confirm: true });
-        if (r && r.ok) {
-          // 稍后刷新状态
-          setTimeout(() => pollSystem(), 2500);
-        } else {
-          alert(`操作失败：${(r && r.detail) || (r && r.error) || '未知'}`);
+  // 仅在真正重建后重绑按钮监听器；内容未变跳过时旧监听器仍在，重绑会叠加
+  if (_setHtmlStable(el, svcHtml)) {
+    el.querySelectorAll('button.console-svc-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const svc = btn.getAttribute('data-svc') || '';
+        const action = btn.getAttribute('data-action') || '';
+        const actionLabel = { start: '启动', stop: '停止', restart: '重启' }[action] || action;
+        if (!window.confirm(`确定${actionLabel}服务 ${svc}？`)) return;
+        btn.disabled = true;
+        try {
+          const r = await apiPost(`/ops/service/${action}`, { service: svc, confirm: true });
+          if (r && r.ok) {
+            // 稍后刷新状态
+            setTimeout(() => pollSystem(), 2500);
+          } else {
+            alert(`操作失败：${(r && r.detail) || (r && r.error) || '未知'}`);
+            btn.disabled = false;
+          }
+        } catch (e) {
+          alert(`请求失败：${e.message}`);
           btn.disabled = false;
         }
-      } catch (e) {
-        alert(`请求失败：${e.message}`);
-        btn.disabled = false;
-      }
+      });
     });
-  });
+  }
 }
 
 /* ── ②c 已开发成果（端口/网址汇总 · 模块 C） ─── */
@@ -431,19 +448,19 @@ function renderPortals(portals) {
   const cnt = _root.querySelector('#console-portal-n');
   if (!el) return;
   if (!portals || !portals.length) {
-    el.innerHTML = '<div class="console-empty">无已开发成果数据</div>';
+    _setHtmlStable(el, '<div class="console-empty">无已开发成果数据</div>');
     if (cnt) cnt.textContent = '0';
     return;
   }
   if (cnt) cnt.textContent = String(portals.length);
-  el.innerHTML = `<div class="console-portal-grid">${portals.map((p) => `
+  _setHtmlStable(el, `<div class="console-portal-grid">${portals.map((p) => `
     <div class="console-portal-item">
       <span class="console-dot ${p.alive ? 'green' : p.known ? 'red' : 'amber'}"></span>
       <b>${esc(p.name)}</b>
       <span class="console-portal-meta">${esc(p.machine)}${p.port ? ` :${p.port}` : ''}</span>
       ${p.url ? `<a class="console-portal-link" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url)}</a>` : ''}
       <span class="console-portal-status">${p.alive ? '在线' : p.known ? '离线' : '未配置'}</span>
-    </div>`).join('')}</div>`;
+    </div>`).join('')}</div>`);
 }
 
 /* ── 轮询 ───────────────────────────────────── */
@@ -498,6 +515,9 @@ async function pollRunning() {
 }
 
 export function mountConsole(el, ctx = {}) {
+  // 2026-08-24：同页重复导航时旧双定时器句柄被覆盖泄漏，挂载前先清（与 unmount 等价）
+  if (_timer) { clearInterval(_timer); _timer = null; }
+  if (_rtimer) { clearInterval(_rtimer); _rtimer = null; }
   _root = el;
   _disposed = false;
   el.innerHTML = html();

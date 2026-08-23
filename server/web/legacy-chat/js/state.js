@@ -33,9 +33,16 @@ class State {
 
   on(event, fn) {
     (this.listeners[event] = this.listeners[event] || []).push(fn);
+    // 2026-08-24：返回退订函数（此前无 off 途径）
+    return () => {
+      this.listeners[event] = (this.listeners[event] || []).filter(f => f !== fn);
+    };
   }
   emit(event, data) {
-    (this.listeners[event] || []).forEach(fn => fn(data));
+    // 2026-08-24：逐个隔离异常——一个监听器抛错不再中断后续监听器
+    (this.listeners[event] || []).forEach(fn => {
+      try { fn(data); } catch (e) { console.error('state listener error:', event, e); }
+    });
   }
 }
 

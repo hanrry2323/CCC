@@ -100,7 +100,7 @@ function renderSummary(findings, report) {
   }
   const topFaces = Object.entries(byFace).sort((a, b) => b[1] - a[1]).slice(0, 3);
   const stamp = report.mtime ? agoText(report.mtime) : '';
-  el.innerHTML = `
+  _setHtmlStable(el, `
     <div class="dsh-summary-cards">
       <div class="dsh-sum-card">
         <b class="dsh-sum-red">${bySev['红旗']}</b><span>红旗</span>
@@ -125,7 +125,13 @@ function renderSummary(findings, report) {
       <span class="dsh-act-sum keep">留 ×${byAction['留'] || 0}</span>
     </div>
     <div class="dsh-sum-meta">最新报告 <code>${esc(report.name || '')}</code> · ${findings.length} 条发现（${adoptedCount} 已处理） · ${stamp}</div>
-  `;
+  `);
+}
+function _setHtmlStable(el, out) {
+  if (!el || el.__lastHtml === out) return false;
+  el.__lastHtml = out;
+  el.innerHTML = out;
+  return true;
 }
 
 /** ② 渲染发现清单：按严重度降序，低置信度折叠，证据默认折叠。 */
@@ -135,7 +141,7 @@ function renderFindings(findings, report) {
   if (!el) return;
   if (cnt) cnt.textContent = String(findings.length);
   if (!findings.length) {
-    el.innerHTML = '<div class="dsh-empty">无发现 —— DSH 巡检干净</div>';
+    _setHtmlStable(el, '<div class="dsh-empty">无发现 —— DSH 巡检干净</div>');
     return;
   }
   const adopted = _loadAdopted();
@@ -168,7 +174,9 @@ function renderFindings(findings, report) {
       ? `<details class="dsh-evidence"><summary>证据</summary><pre>${esc(f.evidence)}</pre></details>`
       : '';
     const cmd = (f.action === '改' || f.action === '删')
-      ? `scripts/new-card.sh --title "修复：${f.location}" --related "dsh: ${reportName}"`
+      ? // 2026-08-24 修复：location/reportName 来自报告扫描结果，可能含引号或
+        // shell 元字符，单引号包裹并转义单引号，防「复制到终端回车」注入
+        `scripts/new-card.sh --title '修复：${String(f.location).replace(/'/g, `'\\''`)}' --related 'dsh: ${String(reportName).replace(/'/g, `'\\''`)}'`
       : '';
     return `
       <div class="dsh-review-item${doneCls}">
@@ -212,8 +220,10 @@ function renderFindings(findings, report) {
         ${items.map(findingHtml).join('')}
       </div>`).join('')}</details>`;
   }
-  el.innerHTML = htmlOut || '<div class="dsh-empty">无高/中置信度发现</div>';
-  bindButtons(el);
+  // 2026-08-24：数据没变则跳过重建，用户展开的证据折叠态不再被 30s 轮询拍灭
+  if (_setHtmlStable(el, htmlOut || '<div class="dsh-empty">无高/中置信度发现</div>')) {
+    bindButtons(el); // 仅在真正重建时重绑，节点复用时旧监听器仍有效
+  }
 }
 
 function bindButtons(el) {
@@ -265,18 +275,32 @@ async function poll() {
       : '';
     renderSummary(findings, latest);
     renderFindings(findings, latest);
-    const rawEl = _root.querySelector('#dsh-raw-content');
-    if (rawEl) {
-      const text = await (await fetch(latest.path || '')).text().catch(() => '');
-      rawEl.textContent = text || '（无原文）';
+    // 原文抓取（2026-08-24 修复四连）：空 path 不再 fetch('') 自抓 SPA 页；
+    // 检查 resp.ok 防错误响应体当报告展示；独立 try/catch 防 raw 失败冲掉
+    // 已正常渲染的 findings；await 后补 disposed 守卫。
+    const rawEl = _root && _root.querySelector('#dsh-raw-content');
+    if (rawEl && latest.path) {
+      try {
+        const resp = await fetch(latest.path);
+        const text = resp.ok ? await resp.text() : '';
+        if (!_disposed && rawEl.isConnected) {
+          rawEl.textContent = text || '（无原文）';
+        }
+      } catch (_) {
+        if (!_disposed && rawEl.isConnected) rawEl.textContent = '（原文拉取失败）';
+      }
     }
   } catch (e) {
+    if (_disposed || !_root) return; // 卸载后 AbortError 进 catch 时 _root 已为 null
     const el = _root.querySelector('#dsh-summary');
     if (el) el.innerHTML = '<div class="dsh-empty">加载失败：' + esc(String(e)) + '</div>';
   }
 }
 
 export function mountDsh(el, ctx = {}) {
+  // 2026-08-24：同页重复导航时旧定时器句柄会被覆盖泄漏（unmount 不保证成对调用），
+  // 挂载前先清——与 unmountDsh 等价的清理。
+  if (_timer) { clearInterval(_timer); _timer = null; }
   _root = el;
   _disposed = false;
   _root.innerHTML = html();

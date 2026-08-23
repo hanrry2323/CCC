@@ -13,7 +13,13 @@ const DEFAULT_ROUTE = 'chat';
 export function currentRoute() {
   const raw = (location.hash || '#/' + DEFAULT_ROUTE).replace(/^#\/?/, '');
   const name = (raw.split(/[/?#]/)[0] || DEFAULT_ROUTE).toLowerCase();
-  return ROUTES.includes(name) ? name : DEFAULT_ROUTE;
+  if (!ROUTES.includes(name)) {
+    // 2026-08-24 修复：未知路由折叠为默认视图时同步归一 hash——否则地址栏停在
+    // #/foo，之后任何 navigate('chat') 都因同路由判定直接 return，hash 永不纠正
+    try { history.replaceState(null, '', location.pathname + location.search + '#/' + DEFAULT_ROUTE); } catch (_) {}
+    return DEFAULT_ROUTE;
+  }
+  return name;
 }
 
 export function navigate(route) {

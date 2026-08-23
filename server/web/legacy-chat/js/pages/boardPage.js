@@ -44,6 +44,8 @@ let _streamCache = {};                   // work_id → 最近中文行（卡片
 // T58 state（2026-08 视图收拢：只保留看板）
 let _colLists = {};
 let _kanbanPageSizes = {};
+let _loadSeq = 0;         // loadBoard 竞态守卫序号（2026-08-24）
+let _searchDeb = null;    // 搜索防抖句柄（unmount 清理，2026-08-24）
 
 async function copyTextToClipboard(text) {
   const payload = String(text || '');
@@ -544,6 +546,7 @@ function mergeDirtyFromRunning(cards, runningTasks) {
 
 async function loadBoard() {
   if (_disposed || !_root) return;
+  const seq = ++_loadSeq; // 页内竞态守卫：慢的旧响应不得覆盖新工作区的数据
   try {
     const project = _ws === 'all' ? '' : _ws;
     const [r, running, ready] = await Promise.all([
@@ -552,6 +555,7 @@ async function loadBoard() {
       apiGet('/board/ready_for_merge').catch(() => ({ count: 0 })),
     ]);
     if (_disposed || !_root) return; // 卸载后回来不再写 DOM
+    if (seq !== _loadSeq) return;    // 已有更新的加载（换工作区/手动刷新）→ 丢弃旧响应
     _allCards = mergeDirtyFromRunning(r.cards || [], running.tasks || []);
     _readyForMergeInfo = ready;
 
@@ -568,6 +572,7 @@ async function loadBoard() {
 async function showDetail(id) {
   try {
     const r = await apiGet('/tasks/' + encodeURIComponent(id));
+    if (_disposed || !_root) return; // 2026-08-24：await 后补卸载守卫，防切页后 null 解引用
     _root.querySelector('#board-dti').textContent = '任务: ' + (r.id || id);
     _root.querySelector('#board-did').textContent = r.id || id;
     _root.querySelector('#board-dtt').textContent = r.title || '(无标题)';
@@ -627,10 +632,9 @@ async function showDetail(id) {
 function bind() {
   const searchEl = _root.querySelector('#board-search');
   if (searchEl) {
-    let deb = null;
     searchEl.addEventListener('input', () => {
-      clearTimeout(deb);
-      deb = setTimeout(() => {
+      clearTimeout(_searchDeb);
+      _searchDeb = setTimeout(() => {
         _searchQ = searchEl.value;
         renderBoard();
       }, 250);
@@ -786,7 +790,7 @@ export function mountBoard(el, ctx = {}) {
   el.innerHTML = html();
   bind();
   // M3 非阻塞：loadConfig + loadBoard 后台拉（不 await 阻塞切换）
-  loadConfig();
+  loadConfig().catch(() => {}); // 2026-08-24：裸调用失败成 unhandled rejection
   loadBoard();
   // M4 降频 5s→10s + 可见性门控（SSE /task_status 已覆盖实时，10s 只是兜底）
   _timer = setInterval(() => {
@@ -800,6 +804,10 @@ export function unmountBoard() {
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
+  }
+  if (_searchDeb) {          // 2026-08-24：防抖定时器卸载清理（原回调触发时 _root 已 null）
+    clearTimeout(_searchDeb);
+    _searchDeb = null;
   }
   if (_es) {
     _es.close();

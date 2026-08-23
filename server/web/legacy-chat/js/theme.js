@@ -19,13 +19,19 @@ const SYSTEM_DARK_MEDIA =
     : null;
 
 export function getThemeScheme() {
-  const legacy = LEGACY_KEY && localStorage.getItem(LEGACY_KEY);
-  const current = localStorage.getItem(THEME_KEY);
-  if (!current && legacy) {
-    localStorage.setItem(THEME_KEY, legacy);
-    return legacy;
+  // localStorage 在受限隐私环境会抛 SecurityError；init() 最早一步就调本函数，
+  // 不兜底 = 白屏死站（theme-init.js 同一读取有 try/catch，此处补齐）
+  try {
+    const legacy = LEGACY_KEY && localStorage.getItem(LEGACY_KEY);
+    const current = localStorage.getItem(THEME_KEY);
+    if (!current && legacy) {
+      localStorage.setItem(THEME_KEY, legacy);
+      return legacy;
+    }
+    return current || 'system';
+  } catch (_) {
+    return 'system';
   }
-  return current || 'system';
 }
 
 function _resolveSystem() {

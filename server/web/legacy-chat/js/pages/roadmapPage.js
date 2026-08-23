@@ -17,6 +17,7 @@ let _timer = null;
 let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
 let _rmFilter = 'all';
 let _currentProject = null; // 二级页当前项目（闪退修复：loadRoadmap/定时器尊重当前视图，不再跳回一级）
+let _openProjectSeq = 0;    // 2026-08-24：openProject 竞态守卫序号
 
 function html() {
   return `
@@ -354,9 +355,14 @@ function _setupRailNavigation(host, detail, project, initialIdx = 0) {
   host._rmObserver = null;
 }
 
-/* 绑定右栏 panel 内交互（激活 + 编辑）；master-detail 重渲染后复用 */
+/* 绑定右栏 panel 内交互（激活 + 编辑）；master-detail 重渲染后复用。
+ * 2026-08-24 修复双重绑定：_setupRailNavigation._render 已对初始面板绑过一次，
+ * openProject 又对整个 body 再绑一遍 → 「激活」双 confirm、可能双 POST。
+ * 用 data-bound 标记按钮级去重。 */
 function _bindPanelEvents(container, project) {
-  container.querySelectorAll('.rm2-mile-edit').forEach((btn) => {
+  if (!container) return;
+  container.querySelectorAll('.rm2-mile-edit:not([data-bound])').forEach((btn) => {
+    btn.dataset.bound = '1';
     btn.addEventListener('click', () => {
       _showMilestoneForm(project, {
         title: btn.dataset.title || '',
@@ -366,7 +372,8 @@ function _bindPanelEvents(container, project) {
       });
     });
   });
-  container.querySelectorAll('.rm2-sp-activate').forEach((btn) => {
+  container.querySelectorAll('.rm2-sp-activate:not([data-bound])').forEach((btn) => {
+    btn.dataset.bound = '1';
     btn.addEventListener('click', async () => {
       const proj = btn.dataset.project;
       const milestone = btn.dataset.milestone;
@@ -395,6 +402,9 @@ function _bindPanelEvents(container, project) {
 
 async function openProject(project) {
   if (_disposed || !_root) return;
+  // 2026-08-24 修复竞态：快速连点 A、B 时慢的旧响应会渲染出 A 的线路图，
+  // 而页面状态（返回按钮/30s 刷新目标）已指向 B → 校验不匹配即丢弃响应
+  const seq = ++_openProjectSeq;
   _currentProject = project;
   const back = _root.querySelector('#roadmap-back');
   const body = _root.querySelector('#roadmap-body');
@@ -403,6 +413,7 @@ async function openProject(project) {
   try {
     const detail = await apiGet(`/roadmap/${encodeURIComponent(project)}`);
     if (_disposed || !_root) return; // 卸载后回来不再写 DOM（空指针守卫）
+    if (seq !== _openProjectSeq || _currentProject !== project) return;
     body.innerHTML = `
       <div class="rm2">
         ${_overviewHTML(detail)}
@@ -642,7 +653,7 @@ export function mountRoadmap(el, ctx = {}) {
   loadRoadmap();
   // 2026-08-16 bug 修复：二级页不被自动刷新冲刷（openProject 重渲染会闪/丢交互状态），
   // 一级页仍自动刷新，二级页刷新走手动「刷新」按钮。
-  _timer = setInterval(() => { if (!_disposed && !_currentProject) loadRoadmap().catch(() => {}); }, 30000);
+  _timer = setInterval(() => { if (!_disposed && document.visibilityState === 'visible' && !_currentProject) loadRoadmap().catch(() => {}); }, 30000); // 2026-08-24 补可见性门控
 }
 
 export function unmountRoadmap() {

@@ -45,9 +45,13 @@ export class TaskCardList {
   setItems(items) {
     this.loading = false;
     // 增量：关键字段未变则不重建 DOM（消 5s 刷新闪烁）
+    // 2026-08-24 修复签名漏字段：approval/written_at/title/reject_count/executor
+    // 变化时卡不重渲（未换列被 early-return 挡住），「✓ 批准」徽标/改标题永不出现
     const sig = items.map((i) => [
       i.id, i.board_column || i.state || i.status,
       i.tool_calls, i.audit_runs, i.audit_status || '', i.state,
+      i.approval || '', i.written_at || '', i.title || '',
+      String(i.reject_count || ''), i.executor || '',
     ].join(':')).join('|');
     this.items = items;
     this.visibleItems = items;

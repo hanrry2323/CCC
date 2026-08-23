@@ -18,10 +18,13 @@ export function showToast(message, type = 'info', duration = 3000) {
 
   const icons = { info: 'ℹ', success: '✓', error: '✗', warning: '⚠' };
 
+  // 2026-08-24 修复：message 常含服务端返回的 detail/error 原文，直插 innerHTML
+  // 构成注入面；图标是内部常量可保留 innerHTML，正文改 textContent。
   el.innerHTML =
     '<span class="toast-icon">' + (icons[type] || icons.info) + '</span>' +
-    '<span class="toast-msg">' + message + '</span>' +
+    '<span class="toast-msg"></span>' +
     '<div class="toast-progress" style="width:100%"></div>';
+  el.querySelector('.toast-msg').textContent = String(message ?? '');
 
   c.appendChild(el);
 

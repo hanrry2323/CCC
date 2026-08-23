@@ -143,15 +143,23 @@ async function loadPlans() {
   } catch (e) {
     // M3：切页 pageScopeAbort 主动中止是预期行为，不打 error 噪音
     if (!(e && e.name === 'AbortError')) console.error('plans: load failed', e);
-    _plans = [];
-    _planCardStates = {};
+    // 2026-08-24 修复：瞬时失败不再清空已有方案池（原实现把完好数据清成
+    // 「暂无方案」空看板直到下一轮成功）；首载尚无数据时才落空态
+    if (!_plans.length) _planCardStates = {};
   }
   if (_disposed) return;
   if (_detailPath || _formOpen) {
     updateListOnly();
     return;
   }
-  render();
+  // 2026-08-24 修复：30s 轮询不再整页重建。壳（含搜索框/工具栏）只在首次构建；
+  // 壳已存在时只刷列表列，防搜索输入焦点丢失、滚动跳顶、拖拽中断。
+  if (_root.querySelector('#plans-flow')) {
+    renderFlow();
+    applyFlowColumns();
+  } else {
+    render();
+  }
   _applyDeepLink(); // 数据到达后应用深链（M3 非阻塞：首帧 _plans 已就绪）
 }
 
@@ -262,14 +270,18 @@ function shellHTML() {
 }
 
 /** 列渲染签名：数据没变 → 复用列 DOM，不重建（根治整页 innerHTML 全量重建）。 */
-function columnSig(status) {
-  const items = filteredPlans().filter((p) => p.status === status);
+function columnSig(list, status) {
+  // 2026-08-24 修复回归：接收调用方已算好的 list（原先每列各自 filteredPlans()
+  // 全表重算，一次 render 6~8 次）；并补 title/author/tool/milestone/approval，
+  // 防「编辑标题/批准徽标变了但列签名不变 → 界面陈旧」
+  const items = list.filter((p) => p.status === status);
   const sig = items
     .map((p) => {
       const acc = p.acceptance || {};
       const cs = _planCardStates[p.path] || { total: 0, cols: {} };
       return [
         p.path, p.status,
+        p.title || '', p.author || '', p.tool || '', p.milestone || '', p.approval || '',
         acc.done + '/' + acc.total,
         (cs.total || 0) + ':' + Object.entries(cs.cols || {}).sort().map(([c, n]) => c + n).join(''),
         _cardStates[String(p.id || p.num || '').toLowerCase()] || '',
@@ -296,7 +308,7 @@ function renderFlow() {
       continue;
     }
     section.style.display = '';
-    const sig = columnSig(status);
+    const sig = columnSig(list, status);
     if (_colSigs[status] === sig) continue;
     _colSigs[status] = sig;
     const items = list.filter((p) => p.status === status);
@@ -455,16 +467,22 @@ async function showDetail(path) {
   const flowEl = _root?.querySelector('#plans-flow');
   if (!detailEl || !flowEl) return;
 
+  // 2026-08-24 修复竞态：快速连点 A、B 时慢的旧响应会覆盖新面板并绑错操作目标；
+  // 响应回来时校验仍是当前指向且页面未卸载，否则丢弃
+  const seq = ++_detailSeq;
   try {
     const data = await apiGet('/plans/detail?path=' + encodeURIComponent(path));
+    if (_disposed || seq !== _detailSeq || _detailPath !== path) return;
     flowEl.style.display = 'none';
     detailEl.style.display = 'block';
     detailEl.innerHTML = renderDetail(data);
     bindDetailEvents(path);
   } catch (e) {
+    if (_disposed || seq !== _detailSeq) return; // 卸载/被更新的请求取代：静默
     alert('加载方案详情失败: ' + e.message);
   }
 }
+let _detailSeq = 0;
 
 function _parseFuncCards(content) {
   const cards = [];
@@ -940,18 +958,26 @@ function renderMarkdown(md) {
 
 // ── mount / unmount ──
 
-/** 2026-08-16 下钻深链：#/plans?plan=<plan-id> → 打开对应方案详情（从线路图子项目下钻） */
+/** 2026-08-16 下钻深链：#/plans?plan=<plan-id> → 打开对应方案详情（从线路图子项目下钻）。
+ * 2026-08-24 修复：深链参数用后即抹（history.replaceState），否则用户点「返回方案池」后
+ * hash 里的 plan= 仍在，30s 轮询每轮 _applyDeepLink 都会把详情重新拽开。 */
 function _applyDeepLink() {
   const m = (location.hash || '').match(/[?&]plan=([^&]+)/);
   if (!m) return;
   const planId = decodeURIComponent(m[1]);
   const target = _plans.find((p) => p.id === planId);
   if (target && target.path && target.path !== _detailPath) {
+    try {
+      const base = (location.hash || '').replace(new RegExp('[?&]plan=' + m[1]), '');
+      history.replaceState(null, '', location.pathname + location.search + (base || '#/plans'));
+    } catch (_) { /* 尽力而为：抹不掉也不阻塞打开 */ }
     showDetail(target.path);
   }
 }
 
 export function mountPlans(root, ctx = {}) {
+  // 2026-08-24：同页重复导航时旧定时器句柄被覆盖泄漏，挂载前先清（与 unmount 等价）
+  if (_timer) { clearInterval(_timer); _timer = null; }
   _root = root;
   _disposed = false;
   _colSigs = {};

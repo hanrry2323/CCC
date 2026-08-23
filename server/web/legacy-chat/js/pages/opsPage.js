@@ -287,7 +287,11 @@ function renderReview(mergeData, cards) {
   htmlParts.push(`<div class="ops-subgroup"><h5>打回待处理（${returned.length}）</h5>${returned.length ? returned.slice(0, 12).map(returnedItem).join('') : '<div class="ops-empty">无打回卡</div>'}</div>`);
   const auditWait = (c) => {
     if (!c.written_at || c.written_at === '未知') return '';
-    const d = Math.floor((Date.now() / 1000 - new Date(c.written_at).getTime() / 1000) / 86400);
+    // 2026-08-24：非 ISO 格式（如空格分隔）在 Safari 得 Invalid Date → NaN，
+    // 显式判空返回空串，不再渲染「NaN 天」
+    const t = new Date(c.written_at).getTime();
+    if (Number.isNaN(t)) return '';
+    const d = Math.floor((Date.now() / 1000 - t / 1000) / 86400);
     return `· 最老等待 ${d < 1 ? '1 天内' : `${d} 天`}`;
   };
   const oldestAudit = auditing.length
@@ -457,7 +461,20 @@ function renderLoopProgress(loopData, cards, mergeData) {
 
 /* ── poll ────────────────────────────────────── */
 
+let _pollInflight = false;
+
 async function poll() {
+  if (_disposed || !_root) return;
+  if (_pollInflight) return; // 2026-08-24：手动刷新与 30s 定时器重入→跳过，防双跑交错渲染
+  _pollInflight = true;
+  try {
+    return await _pollInner();
+  } finally {
+    _pollInflight = false;
+  }
+}
+
+async function _pollInner() {
   if (_disposed || !_root) return;
   const [roadmapsData, loop, merge, cardsData, plansConfirmed, failuresData] = await Promise.all([
     apiGet('/board/roadmap').catch(() => null),
@@ -473,7 +490,8 @@ async function poll() {
   const details = {};
   if (roadmaps.length) {
     // P1#15：详情改用 /roadmap/{proj}（per-project 新模型），与 roadmapPage 同真值；
-    // M2 缓存：/roadmap/{proj} TTL 20s（见 api.js CACHEABLE_PREFIXES），消 N+1 重复拉
+    // M2 缓存消 N+1——注意 api.js CACHE_TTL_MS 实为 10s < 本页 30s 轮询间隔，
+    // 主节奏上缓存基本已过期（2026-08-24 注释纠偏；如需真消 N+1 应提 TTL）
     const dets = await Promise.all(roadmaps.map((rm) =>
       apiGet(`/roadmap/${encodeURIComponent(rm.project)}`).catch(() => null)));
     if (_disposed || !_root) return;
@@ -498,6 +516,8 @@ async function poll() {
 }
 
 export function mountOps(el, ctx = {}) {
+  // 2026-08-24：同页重复导航时旧定时器句柄被覆盖泄漏，挂载前先清（与 unmount 等价）
+  if (_timer) { clearInterval(_timer); _timer = null; }
   _root = el;
   _disposed = false;
   el.innerHTML = html();
