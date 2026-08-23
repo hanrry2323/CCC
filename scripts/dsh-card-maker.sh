@@ -1,12 +1,14 @@
 #!/bin/bash
 # ── scripts/dsh-card-maker.sh ──
-# CCC 出卡 Agent 入口（2026-08-22）：老板给意图 → DSH ccc-card-maker agent 出方案+拆卡。
+# CCC 出卡 Agent 入口（2026-08-22 建；2026-08-23 指令A 入编改造）
+# 老板给意图 → DSH ccc-card-maker 预设出方案+拆卡。
+# 心智来自预设 ~/.dsh/.agent-presets/ccc-card-maker（--patch 直挂 headless）。
+# 2026-08-23 修正：原「临时切 settings.yaml agent-presets.default」对 headless 无效
+# （headless profile 设计上不挂 presets，行为全部来自内联 prompt）——改为 --patch 直挂。
 #
 # 用法：
 #   scripts/dsh-card-maker.sh "<老板意图>"
-#   例： scripts/dsh-card-maker.sh "给 xy 项目做一个视频模板质量评估功能"
 #
-# 流程：临时切 agent-presets.default=ccc-card-maker → dsh --profile headless 跑出卡 → 还原。
 # 前置：本机 ~/.dsh/.agent-presets/ccc-card-maker/agent.cordis.yml 存在；OPENCODE_GO_API_KEY 已配。
 # 产出：方案 + 卡落在 CCC docs/，validate-plans 校验。
 
@@ -21,34 +23,26 @@ case ":$PATH:" in
 esac
 command -v dsh >/dev/null 2>&1 || { echo "[dsh-card-maker] ERROR: dsh 不在 PATH（已尝试 \$HOME/.npm-global/bin）" >&2; exit 127; }
 
-SETTINGS="$HOME/.dsh/settings.yaml"
-PRESET="ccc-card-maker"
+PRESET="$HOME/.dsh/.agent-presets/ccc-card-maker/agent.cordis.yml"
+[ -f "$PRESET" ] || { echo "[dsh-card-maker] ERROR: 出卡预设缺失: $PRESET" >&2; exit 3; }
 
-# 备份 settings.yaml 的 agent-presets.default，跑完还原（防干扰默认 agent）
-_bak="$(mktemp)"
-cp "$SETTINGS" "$_bak"
-restore() {
-  mv "$_bak" "$SETTINGS"
-  echo "[dsh-card-maker] settings.yaml 已还原（agent-presets.default 恢复默认）"
-}
-trap restore EXIT
-
-# 切到 ccc-card-maker（python 改 yaml 保结构）
-python3 - "$SETTINGS" "$PRESET" <<'PY'
-import sys
-import yaml
-path, preset = sys.argv[1], sys.argv[2]
-d = yaml.safe_load(open(path, encoding="utf-8")) or {}
-d.setdefault("agent-presets", {})["default"] = preset
-yaml.safe_dump(d, open(path, "w", encoding="utf-8"), allow_unicode=True)
+# 从预设提取 persona → 生成 headless system-prompt 槽位 overlay（--patch 槽位语义，见 executor）
+OVERLAY="$(mktemp /tmp/dsh-card-maker-overlay-XXXXXX.yml)"
+python3 - "$PRESET" "$OVERLAY" <<'PY'
+import sys, yaml
+rows = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+persona = next(r["config"]["text"] for r in rows if r.get("id") == "persona")
+yaml.safe_dump(
+    [{"id": "system-prompt", "config": {"persona": persona}}],
+    open(sys.argv[2], "w", encoding="utf-8"),
+    allow_unicode=True,
+)
 PY
 
-echo "[dsh-card-maker] 切到 agent=${PRESET}，开始出卡…"
-dsh --profile headless "你是 CCC 出卡 Agent（ccc-card-maker）。请根据以下老板意图，完成 出方案+拆卡 流程：${INTENT}
+echo "[dsh-card-maker] 挂载预设 $(basename "$(dirname "$PRESET")")，开始出卡…"
+dsh --profile headless --patch "$OVERLAY" "老板意图：${INTENT}
 
-严格按你的心智执行：
-1. 先 read 现有方案/卡/registry，确认前缀、避免撞号。
-2. 写方案（docs/projects/<prefix>/plans/<NNN>-<slug>.md）。
-3. 拆卡（docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md），卡头 状态=待分派、执行体=DSH、验收=DSH、关联=对应方案。
-4. 跑 bash scripts/validate-plans.sh 校验，绿才算完成。
-5. 报告：方案路径 + 卡清单（卡号/标题）+ validate 结果。"
+按你的出卡心智执行完整流程（查号→写方案→拆卡→validate-plans→报告）。"
+rc=$?
+rm -f "$OVERLAY"
+exit $rc
