@@ -67,10 +67,10 @@
 .relay-delta {
   font-family: var(--ccc-font-mono);
   font-size: 10px;
-  color: #3d9a5f;
+  color: var(--ccc-success);
 }
 .relay-item.relay-live .relay-num {
-  color: #3d9a5f;
+  color: var(--ccc-success);
 }
 #relay-stats.relay-alert .relay-num,
 #relay-stats.relay-alert .relay-delta {
@@ -115,7 +115,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #3d9a5f;
+  background: var(--ccc-success);
   box-shadow: 0 0 6px rgba(61, 154, 95, 0.8);
   flex-shrink: 0;
   animation: agent-pulse 1s ease-in-out infinite;
@@ -927,10 +927,10 @@
   animation: spin 0.8s linear infinite;
 }
 .tool-card-status.completed {
-  color: #30d158;
+  color: var(--ccc-success);
 }
 .tool-card-status.error {
-  color: #ff453a;
+  color: var(--ccc-danger);
 }
 .tool-card-name {
   font-size: var(--ccc-font-size-sm);
@@ -1799,13 +1799,13 @@
   transition: width 0.1s linear;
 }
 .toast-item.toast-success .toast-progress {
-  background: #30d158;
+  background: var(--ccc-success);
 }
 .toast-item.toast-error .toast-progress {
-  background: #ff453a;
+  background: var(--ccc-danger);
 }
 .toast-item.toast-warning .toast-progress {
-  background: #ff9f0a;
+  background: var(--ccc-warn);
 }
 .toast-item.toast-exit {
   opacity: 0;
@@ -2471,15 +2471,15 @@
 }
 
 /* 五态色调（pending/running/written/closed/returned） */
-.state-pending { --state-fg: #6b675f; --state-bg: #ebe8e2; --state-bar: #b1ac9e; }
-.state-running { --state-fg: #3d6b45; --state-bg: #e8f0e4; --state-bar: #5a9a6e; }
-.state-written { --state-fg: #4a6a5a; --state-bg: #e4ebe8; --state-bar: #6a8a7a; }
-.state-closed { --state-fg: #4a5058; --state-bg: #e2e5e9; --state-bar: #8a9099; }
-.state-returned { --state-fg: #a33a2c; --state-bg: #f3ddd8; --state-bar: #c45c4a; }
+.state-pending { --state-fg: var(--ccc-text-muted); --state-bg: var(--ccc-bg-hover); --state-bar: var(--ccc-border-base); }
+.state-running { --state-fg: var(--ccc-success); --state-bg: color-mix(in srgb, var(--ccc-success) 10%, transparent); --state-bar: var(--ccc-success); }
+.state-written { --state-fg: var(--ccc-success); --state-bg: color-mix(in srgb, var(--ccc-success) 7%, transparent); --state-bar: color-mix(in srgb, var(--ccc-success) 55%, transparent); }
+.state-closed { --state-fg: var(--ccc-text-muted); --state-bg: var(--ccc-bg-active); --state-bar: var(--ccc-text-faint); }
+.state-returned { --state-fg: var(--ccc-danger); --state-bg: color-mix(in srgb, var(--ccc-danger) 10%, transparent); --state-bar: var(--ccc-danger); }
 
-.board-stat-chip.state-running .board-stat-n { color: #3d6b45; }
-.board-stat-chip.state-returned .board-stat-n { color: #a33a2c; }
-.board-stat-chip.state-running { border-color: color-mix(in srgb, #3d6b45 35%, transparent); }
+.board-stat-chip.state-running .board-stat-n { color: var(--ccc-success); }
+.board-stat-chip.state-returned .board-stat-n { color: var(--ccc-danger); }
+.board-stat-chip.state-running { border-color: color-mix(in srgb, var(--ccc-success) 35%, transparent); }
 
 .board-recent-title {
   font-size: var(--ccc-font-size-xs);
@@ -2612,14 +2612,14 @@
   color: var(--ccc-text-secondary);
 }
 .board-card-badge.badge-approval {
-  color: #1e7a3a;
-  border-color: color-mix(in srgb, #1e7a3a 35%, transparent);
-  background: color-mix(in srgb, #1e7a3a 8%, transparent);
+  color: var(--ccc-success);
+  border-color: color-mix(in srgb, var(--ccc-success) 35%, transparent);
+  background: color-mix(in srgb, var(--ccc-success) 8%, transparent);
 }
 .board-card-badge.badge-reject {
-  color: #a33a2c;
-  border-color: color-mix(in srgb, #a33a2c 35%, transparent);
-  background: color-mix(in srgb, #a33a2c 8%, transparent);
+  color: var(--ccc-danger);
+  border-color: color-mix(in srgb, var(--ccc-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--ccc-danger) 8%, transparent);
 }
 .board-card-badge.badge-audit {
   font-size: 9px;
@@ -2627,8 +2627,8 @@
   border-radius: 999px;
 }
 .badge-audit-审核中 {
-  color: #c47a2c;
-  background: color-mix(in srgb, #c47a2c 14%, transparent);
+  color: var(--ccc-warn);
+  background: color-mix(in srgb, var(--ccc-warn) 14%, transparent);
 }
 .badge-audit-审核中::before {
   content: '';
@@ -2637,7 +2637,7 @@
   height: 4px;
   border-radius: 50%;
   margin-right: 3px;
-  background: #c47a2c;
+  background: var(--ccc-warn);
   vertical-align: baseline;
   animation: audit-blink 1.6s ease-in-out infinite;
 }
@@ -2647,11 +2647,11 @@
 }
 .badge-audit-冷却中 {
   color: var(--ccc-text-muted);
-  background: color-mix(in srgb, #9aa0a6 12%, transparent);
+  background: color-mix(in srgb, var(--ccc-text-muted) 12%, transparent);
 }
 .badge-audit-修复中 {
-  color: #3d9a5f;
-  background: color-mix(in srgb, #3d9a5f 12%, transparent);
+  color: var(--ccc-success);
+  background: color-mix(in srgb, var(--ccc-success) 12%, transparent);
 }
 .badge-audit-待审 {
   color: var(--ccc-text-muted);
@@ -2659,9 +2659,9 @@
   border: 1px solid var(--ccc-border-subtle);
 }
 .board-card-badge.badge-dirty {
-  color: #c47a2c;
-  border-color: color-mix(in srgb, #c47a2c 40%, transparent);
-  background: color-mix(in srgb, #c47a2c 10%, transparent);
+  color: var(--ccc-warn);
+  border-color: color-mix(in srgb, var(--ccc-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--ccc-warn) 10%, transparent);
   font-variant-numeric: tabular-nums;
   font-family: var(--ccc-font-mono);
   letter-spacing: -0.02em;
@@ -2675,10 +2675,10 @@
   background: color-mix(in srgb, var(--ccc-bg-layer) 80%, transparent);
 }
 .board-card-badge.badge-lines .lines-ins {
-  color: #2f8f5b;
+  color: var(--ccc-success);
 }
 .board-card-badge.badge-lines .lines-del {
-  color: #b54a3a;
+  color: var(--ccc-danger);
 }
 .board-card-badge.badge-elapsed {
   font-variant-numeric: tabular-nums;
@@ -2688,16 +2688,16 @@
 .board-card-badge.badge-calls {
   font-variant-numeric: tabular-nums;
   font-family: var(--ccc-font-mono);
-  color: #5a6a8a;
-  border-color: color-mix(in srgb, #5a6a8a 35%, transparent);
-  background: color-mix(in srgb, #5a6a8a 8%, transparent);
+  color: var(--ccc-info);
+  border-color: color-mix(in srgb, var(--ccc-info) 35%, transparent);
+  background: color-mix(in srgb, var(--ccc-info) 8%, transparent);
 }
 .board-card-badge.badge-live {
   font-variant-numeric: tabular-nums;
   font-family: var(--ccc-font-mono);
-  color: #2f7dd1;
-  border-color: color-mix(in srgb, #2f7dd1 40%, transparent);
-  background: color-mix(in srgb, #2f7dd1 10%, transparent);
+  color: var(--ccc-info);
+  border-color: color-mix(in srgb, var(--ccc-info) 40%, transparent);
+  background: color-mix(in srgb, var(--ccc-info) 10%, transparent);
   animation: board-live-pulse 1.6s ease-in-out infinite;
 }
 @keyframes board-live-pulse {
@@ -2760,7 +2760,7 @@
   padding: 8px;
 }
 .board-detail-error {
-  color: #a33a2c;
+  color: var(--ccc-danger);
   font-size: 11px;
 }
 .board-detail-section {
@@ -2800,9 +2800,9 @@
   background: var(--ccc-bg-layer);
   color: var(--ccc-text-muted);
 }
-.phase-status.st-done { color: #3d6b45; background: #e8f0e4; }
-.phase-status.st-doing { color: #4a6a5a; background: #e4ebe8; }
-.phase-status.st-blocked { color: #a33a2c; background: #f3ddd8; }
+.phase-status.st-done { color: var(--ccc-success); background: color-mix(in srgb, var(--ccc-success) 10%, transparent); }
+.phase-status.st-doing { color: var(--ccc-info); background: color-mix(in srgb, var(--ccc-info) 10%, transparent); }
+.phase-status.st-blocked { color: var(--ccc-danger); background: color-mix(in srgb, var(--ccc-danger) 10%, transparent); }
 .phase-commit {
   font-family: var(--ccc-font-mono);
   font-size: 10px;
@@ -2986,18 +2986,18 @@
   display: none !important;
 }
 .git-dirty-icon {
-  color: #c47a2c;
+  color: var(--ccc-warn);
   font-weight: 700;
 }
 .git-dirty-text b {
   font-variant-numeric: tabular-nums;
-  color: #c47a2c;
+  color: var(--ccc-warn);
 }
 .git-dirty-hint {
   margin-left: auto;
   font-size: 11px;
   font-weight: 600;
-  color: #c47a2c;
+  color: var(--ccc-warn);
   white-space: nowrap;
 }
 .chat-fail-strip {
@@ -3046,11 +3046,11 @@
   flex-shrink: 0;
 }
 .engine-led.on {
-  background: #3d9a5f;
+  background: var(--ccc-success);
   box-shadow: 0 0 6px rgba(61, 154, 95, 0.75);
 }
 .engine-led.off {
-  background: #c45c4a;
+  background: var(--ccc-danger);
   box-shadow: 0 0 6px rgba(196, 92, 74, 0.55);
 }
 .engine-label {
@@ -3108,7 +3108,7 @@
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset;
 }
 .dispatch-card--warn {
-  border-color: color-mix(in srgb, #c96442 40%, var(--ccc-border-base));
+  border-color: color-mix(in srgb, var(--ccc-bg-accent) 40%, var(--ccc-border-base));
 }
 .dispatch-card-head {
   display: flex;
@@ -3122,7 +3122,7 @@
   letter-spacing: 0.04em;
   padding: 2px 8px;
   border-radius: 6px;
-  background: color-mix(in srgb, #c96442 18%, transparent);
+  background: color-mix(in srgb, var(--ccc-bg-accent) 18%, transparent);
   color: var(--ccc-text-base);
 }
 .dispatch-card-meta {
@@ -3261,7 +3261,7 @@
   color: var(--ccc-text-base);
 }
 .msg-error .retry-btn {
-  color: #b45309;
+  color: var(--ccc-warn);
   font-weight: 600;
 }
 
@@ -4131,8 +4131,8 @@
   line-height: 1.6;
 }
 .pcard-state-chip i { font-style: normal; opacity: 0.75; }
-.pcard-state-chip.ok { background: rgba(61, 154, 95, 0.14); color: #2e7a4c; }
-.pcard-state-chip.warn { background: rgba(196, 122, 44, 0.15); color: #a35f18; }
+.pcard-state-chip.ok { background: color-mix(in srgb, var(--ccc-success) 14%, transparent); color: var(--ccc-success); }
+.pcard-state-chip.warn { background: color-mix(in srgb, var(--ccc-warn) 15%, transparent); color: var(--ccc-warn); }
 .pcard-state-chip.muted { background: rgba(120, 120, 120, 0.12); color: #666; }
 
 /* ══ 计划页重构 v2（2026-08-12 老板验收重做）══ */
@@ -4177,7 +4177,7 @@
   transition: all 0.15s;
 }
 .ptool-proj:hover { border-color: #aaa; color: #333; }
-.ptool-proj.on { background: #0c4a6e; border-color: #0c4a6e; color: #fff; }
+.ptool-proj.on { background: var(--ccc-bg-accent); border-color: var(--ccc-bg-accent); color: var(--ccc-text-inverse); }
 .ptool-search {
   display: inline-flex;
   align-items: center;
@@ -4198,7 +4198,7 @@
   cursor: pointer;
   transition: all 0.15s;
 }
-.ptool-toggle:hover { border-color: #0c4a6e; color: #0c4a6e; }
+.ptool-toggle:hover { border-color: var(--ccc-text-accent); color: var(--ccc-text-accent); }
 .ptool-new {
   display: inline-flex;
   align-items: center;
@@ -4206,14 +4206,14 @@
   padding: 7px 16px;
   border-radius: 999px;
   border: none;
-  background: #0c4a6e;
+  background: var(--ccc-bg-accent);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
 }
-.ptool-new:hover { background: #0a3d5a; transform: translateY(-1px); }
+.ptool-new:hover { filter: brightness(0.92); transform: translateY(-1px); }
 .plans-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -4309,7 +4309,7 @@
   transform: translateY(-2px);
   border-color: rgba(0, 0, 0, 0.12);
 }
-.pcard:focus-visible { outline: 2px solid #0c4a6e; outline-offset: 2px; }
+.pcard:focus-visible { outline: 2px solid var(--ccc-border-accent); outline-offset: 2px; }
 .pcard-edge {
   position: absolute;
   left: 0;
@@ -4351,14 +4351,14 @@
 }
 .pcard-open:hover {
   border-color: rgba(12, 74, 110, 0.4);
-  color: #0c4a6e;
+  color: var(--ccc-info);
   background: rgba(12, 74, 110, 0.05);
 }
 .pcard-open svg { width: 11px; height: 11px; }
 .pcard-title {
   font-size: 13.5px;
   font-weight: 650;
-  color: #1c1c1e;
+  color: var(--ccc-text-base);
   line-height: 1.45;
   margin: 0 0 6px;
   flex: none;
@@ -4384,9 +4384,9 @@
   font-size: 11px;
   font-weight: 650;
 }
-.pcard-tag.plan { background: rgba(58, 123, 213, 0.13); color: #2d63a8; }
-.pcard-tag.approved { background: rgba(30, 122, 58, 0.12); color: #1e7a3a; }
-.pcard-tag.gap { background: rgba(217, 130, 43, 0.14); color: #a35f18; }
+.pcard-tag.plan { background: color-mix(in srgb, var(--ccc-info) 13%, transparent); color: var(--ccc-info); }
+.pcard-tag.approved { background: rgba(30, 122, 58, 0.12); color: var(--ccc-success); }
+.pcard-tag.gap { background: color-mix(in srgb, var(--ccc-warn) 14%, transparent); color: var(--ccc-warn); }
 .pcard-tag.warn { background: rgba(204, 68, 68, 0.12); color: #a33; }
 .pcard-flow {
   display: flex;
@@ -4407,10 +4407,11 @@
 }
 .pcard-flow-bar.empty { background: rgba(120, 120, 120, 0.06); }
 .pcard-flow-bar i { display: block; height: 100%; }
+/* 流程条五色 = 看板列身份色板（与 ui.js STATE_TONES 同源常量），白名单保留 */
 .pcard-flow-bar i.flow-待分派 { background: #a39e93; }
-.pcard-flow-bar i.flow-执行中 { background: #c47a2c; }
+.pcard-flow-bar i.flow-执行中 { background: var(--ccc-warn); }
 .pcard-flow-bar i.flow-机审 { background: #8b6cc1; }
-.pcard-flow-bar i.flow-已回写 { background: #3d9a5f; }
+.pcard-flow-bar i.flow-已回写 { background: var(--ccc-success); }
 .pcard-flow-bar i.flow-打回 { background: #c44; }
 .pcard-flow-bar i.flow-已关闭 { background: #5a7a9a; }
 .pcard-flow-none { font-size: 11px; color: var(--ccc-text-faint, #aaa); }
@@ -4455,7 +4456,7 @@
   align-items: center;
   gap: 3px;
   font-size: 12px;
-  color: #0c4a6e;
+  color: var(--ccc-info);
   font-weight: 600;
   flex: none;
 }
