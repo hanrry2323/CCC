@@ -35,7 +35,7 @@
   flex: 1; padding: 12px;
   display: flex; gap: 10px;
   overflow-x: auto; overflow-y: hidden;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   scrollbar-width: none; -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   min-height: 0;
@@ -154,6 +154,7 @@
         到底不再把滚动链接给横轨。桌面滚轮横向分量在 wallPage.js 内拦截。 */
   touch-action: pan-y;
   overscroll-behavior: contain;
+  overflow-x: hidden;
 }
 #view-wall .cell-body::-webkit-scrollbar { display: none; width: 0; }
 #view-wall .blk { margin-bottom: 10px; }
@@ -301,6 +302,7 @@
   background: var(--ccc-bg-code); padding: 1px 5px; border-radius: 4px;
 }
 #view-wall .blk-assistant pre {
+  white-space: pre-wrap; word-break: break-word;
   background: var(--ccc-bg-code); border: 1px solid var(--ccc-border-subtle);
   border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 6px 0;
 }
