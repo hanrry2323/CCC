@@ -18,7 +18,7 @@
 # 选项：
 #   --title "标题"            卡标题（必填；slug 由标题 ASCII 词派生，空则用 --slug）
 #   --project <前缀>          项目前缀 = 子目录名 = 卡头「项目」（默认 ccc；见 T-mapping.md）
-#   --executor "OpenCode"     卡头「执行体」（默认 $CCC_CARD_EXECUTOR 或 OpenCode）
+#   --executor "DSH"          卡头「执行体」（默认 $CCC_CARD_EXECUTOR 或 DSH）
 #   --acceptance "Claude Code" 卡头「验收」（默认自验收：与执行体同工具）
 #   --related "关联文本"       卡头「关联」字段（默认 "阶段 3 P1"）
 #   --depends "卡ID列表"       卡头「依赖」字段（逗号分隔卡 ID，如 "ccc042,ccc043"；空则无依赖）
@@ -42,7 +42,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── 默认值（可用环境变量覆盖） ──
 DISPATCH_DIR="${CCC_DISPATCH_DIR:-docs/dispatch}"
 PROJECT_PREFIX="${CCC_CARD_PROJECT:-ccc}"
-EXECUTOR="${CCC_CARD_EXECUTOR:-OpenCode}"
+EXECUTOR="${CCC_CARD_EXECUTOR:-DSH}"
 ACCEPTANCE_EXPLICIT=false
 ACCEPTANCE="${CCC_CARD_ACCEPTANCE:-}"
 RELATED="${CCC_CARD_RELATED:-阶段 3 P1}"

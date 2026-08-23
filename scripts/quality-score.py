@@ -7,7 +7,8 @@
 1. 圈复杂度 delta（radon avg of changed files）
 2. mypy 类型错误 delta（changed .py 文件，--follow-imports=skip）
 3. 测试断言密度（changed test 文件的 assert/test 比）
-4. 重复代码信号（6 行指纹块，changed 文件内）
+
+（第 4 维「重复代码信号」为早期规划，未实现——2026-08-23 P2-j 文档修正，勿按 4 维断言。）
 
 基线（2026-08-22 全 server 扫描）：复杂度 A(4.96)、mypy 273/47文件、断言/测试 2.3。
 门禁：增量不可劣化——复杂度/mypy 不劣于基线，断言密度不低于基线。
