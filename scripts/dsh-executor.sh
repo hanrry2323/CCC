@@ -5,7 +5,10 @@
 # 本 wrapper 只传「卡指针 + 运行参数 + 授权声明」——预设管心智，卡管任务。
 #
 # 用法：
-#   scripts/dsh-executor.sh <card_path> <work_id> <worktree> [role]
+#   scripts/dsh-executor.sh <card_path> <work_id> <worktree> [role] [biz_worktree]
+#
+# biz_worktree（P1-b 2026-08-23）：业务仓型任务每卡独立 worktree；非业务仓任务传空，
+# 此时忽略。业务仓型任务 cwd 切 biz_worktree（业务仓内改动），card_path 仍为绝对路径。
 #
 # 退出码：0=DSH 完成（含自报成功/打回）；非0=执行失败。engine 按退出码+输出判定。
 # 前置：2017 已配 OPENCODE_GO_API_KEY（com.ccc.engine.plist env）+ DSH 0.1.1-rc.2。
@@ -16,6 +19,7 @@ CARD_PATH="${1:?缺 card_path}"
 WORK_ID="${2:?缺 work_id}"
 WORKTREE="${3:-}"
 ROLE="${4:-开发执行体}"
+BIZ_WORKTREE="${5:-}"
 
 # R-2026-08-23 P0-2：launchd 下 Engine PATH 极简（/usr/bin:/bin:/usr/sbin:/sbin），
 # 裸 `dsh` 会 127。兜底补 npm 全局 bin（dsh 本体）+ /usr/local/bin（node，dsh 运行时入口），
@@ -50,14 +54,21 @@ yaml.safe_dump(
 )
 PY
 
-# 若给了 worktree，切进去工作
-if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
+# 切工作目录：业务仓型任务优先 biz_worktree（业务仓内改动），否则 worktree（含卡副本）
+# P1-b 2026-08-23：biz_worktree 存在时业务仓为唯一工作区，cwd 必须落在其中。
+if [ -n "$BIZ_WORKTREE" ] && [ -d "$BIZ_WORKTREE" ]; then
+  cd "$BIZ_WORKTREE"
+  WORKDIR_LABEL="biz_worktree"
+elif [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
   cd "$WORKTREE"
+  WORKDIR_LABEL="worktree"
+else
+  WORKDIR_LABEL="cwd"
 fi
 
 PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，角色：${ROLE}）。
 按你的开发执行体心智执行本卡全流程（读卡→白名单实现→自测→commit+push→回写已回写与维护区四问→停手）。
-授权声明：本次运行授权在 worktree $(pwd) 内读写卡白名单文件并执行 git add/commit/push（限卡白名单范围）。
+授权声明：本次运行授权在 ${WORKDIR_LABEL} $(pwd) 内读写卡白名单文件并执行 git add/commit/push（限卡白名单范围）。
 工作目录：$(pwd)"
 
 # 后台执行 + wait 传播退出码（R1）；engine 侧另有全局超时

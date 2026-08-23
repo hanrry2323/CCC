@@ -107,7 +107,7 @@ class TestLoadRegistry:
         # S3（2026-08-22）：开发执行体切 DSH（wrapper 自读提示，注入关闭）
         assert cli.binding == "DSH（S3 切换 · 2026-08-22）"
         assert cli.command == "scripts/dsh-executor.sh"
-        assert cli.args_template == "{card_path} {work_id} {worktree} {role}"
+        assert cli.args_template == "{card_path} {work_id} {worktree} {role} {biz_worktree}"
         assert cli.inject_hint is False
         # S4（2026-08-22）：机审验收席切 DSH（dsh-auditor.sh）；Claude Code 不再绑定
         dsh_audit = reg.cli_entry_for_binding("DSH（S4 切换 · 2026-08-22）")

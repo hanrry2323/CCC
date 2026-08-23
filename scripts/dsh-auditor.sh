@@ -5,7 +5,10 @@
 # 本 wrapper 只传「卡指针 + 运行参数 + 授权声明」。
 #
 # 用法：
-#   scripts/dsh-auditor.sh <card_path> <work_id> <worktree> [role]
+#   scripts/dsh-auditor.sh <card_path> <work_id> <worktree> [role] [biz_worktree]
+#
+# biz_worktree（P1-b 2026-08-23）：业务仓型任务每卡独立 worktree；机审复用开发产物，
+# 优先切 biz_worktree 核验（卡文件 + 业务改动都在其中）；非业务仓任务传空，忽略。
 #
 # 输出契约（engine 机审收集用）：
 #   通过 → 写「## 机审区」+「机审：通过」到 worktree 卡文件，退出 0
@@ -17,6 +20,8 @@ set -euo pipefail
 CARD_PATH="${1:?缺 card_path}"
 WORK_ID="${2:?缺 work_id}"
 WORKTREE="${3:-}"
+ROLE="${4:-验收席}"
+BIZ_WORKTREE="${5:-}"
 
 # R-2026-08-23 P0-2：launchd 下 Engine PATH 极简，裸 `dsh` 会 127（同 dsh-executor.sh）。
 # P0-2b 补充：/usr/local/bin（node，dsh 运行时入口）一并兜底。
@@ -48,11 +53,15 @@ yaml.safe_dump(
 )
 PY
 
-if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
+# 切工作目录：业务仓型任务优先 biz_worktree（复用开发产物），否则 worktree（含卡副本）
+# P1-b 2026-08-23：机审在开发产物所在仓核验，cwd 必须落在其中。
+if [ -n "$BIZ_WORKTREE" ] && [ -d "$BIZ_WORKTREE" ]; then
+  cd "$BIZ_WORKTREE"
+elif [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
   cd "$WORKTREE"
 fi
 
-PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，验收席角色：${4:-验收席}）已回写，待机审。
+PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
 按你的机审席心智执行 v4 对抗式审查（范围核对→找茬→severity 三级→分流→维护区核对→写机审区）。
 授权声明：本次运行授权读写任务卡文件、在 worktree $(pwd) 内就地修复并 git add/commit/push。
 工作目录：$(pwd)"
