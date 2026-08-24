@@ -6,7 +6,7 @@
 #   ./scripts/deploy-ccc.sh
 #
 # 机制：
-#   原子流：git pull --ff-only -> pytest 自动化测试校验 -> kickstart-ccc.sh 热重启
+#   原子流：git fetch --no-write-fetch-head + merge --ff-only -> pytest 自动化测试校验 -> kickstart-ccc.sh 热重启
 #   如果任何一步失败，打印明确错误与恢复指引，不挂起，不 unload plist，保证服务常驻。
 
 set -euo pipefail
@@ -39,9 +39,12 @@ print_recovery_hint() {
   echo "======================================================================" >&2
 }
 
-echo "[1/3] 正在拉取远端最新基线代码 (git pull --ff-only)..."
-if ! git pull --ff-only origin main 2>&1; then
-  print_recovery_hint "Git-Pull" "git pull origin main 非快进失败，主干可能存在冲突。"
+# fetch 加 --no-write-fetch-head：不写 .git/FETCH_HEAD，避免与 server/git_sync.py
+# 周期性 fetch 并发无锁写同一文件导致「Cannot fast-forward to multiple branches」；
+# merge --ff-only origin/main 保持与原 git pull --ff-only 相同的成功语义。
+echo "[1/3] 正在拉取远端最新基线代码 (fetch --no-write-fetch-head + merge --ff-only)..."
+if ! { git fetch --no-write-fetch-head origin main && git merge --ff-only origin/main; } 2>&1; then
+  print_recovery_hint "Git-Pull" "git fetch + merge --ff-only 非快进失败，主干可能存在冲突。"
   exit 1
 fi
 

@@ -3,7 +3,7 @@
 人只 push 卡到 GitHub；2017 侧自行 fetch/ff-only，避免「卡已推但 Engine 看不见」。
 
 策略（零硬编码远程名时可配）：
-1. ``git fetch <remote> <branch>``
+1. ``git fetch --no-write-fetch-head <remote> <branch>``
 2. 尝试 ``git merge --ff-only <remote>/<branch>``
 3. 若工作树有本地改动导致 ff 失败：对 ``docs/dispatch`` 下**本地未改**的路径
    从 ``<remote>/<branch>`` checkout 更新（含新卡）；已脏路径（Engine 正在回写的卡）跳过。
@@ -84,7 +84,9 @@ def sync_origin_main(
         return summary
 
     try:
-        fetched = _run(repo, ["fetch", remote, branch], timeout=120.0)
+        # --no-write-fetch-head：不写 .git/FETCH_HEAD，避免与 deploy-ccc.sh 的
+        # 拉取段并发无锁写同一文件导致「Cannot fast-forward to multiple branches」。
+        fetched = _run(repo, ["fetch", "--no-write-fetch-head", remote, branch], timeout=120.0)
     except (OSError, subprocess.TimeoutExpired) as exc:
         summary["detail"] = f"fetch failed: {exc}"
         logger.warning("git sync fetch failed: %s", exc)
