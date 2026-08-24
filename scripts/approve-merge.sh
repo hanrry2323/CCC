@@ -17,6 +17,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下 loader 回落写
+# <repo>/data/cards/cards.index.jsonl（陈旧副本），与生产看板（~/.ccc/data）双写分裂。
+# 统一注入后本脚本全链（刷索引/close_card/sync_plan_cards/spot-check）与看板同源。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
 # 跨机执行支持（默认保留 2017 生产）：SSH 目标主机（user@ip）与 2017 生产仓路径均可覆盖
 CCC_SSH_HOST="${CCC_SSH_HOST:-fan@192.168.3.116}"

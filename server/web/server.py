@@ -1305,9 +1305,16 @@ def _board_cache_key() -> str:
     目录 mtime 频繁变化 → 缓存每次重建 ~1s → 看板打开变慢）。索引反映卡增减、
     派发；cards.jsonl 反映执行状态。卡内容回写/机审状态漂移由 TTL（30s）兜底，
     看板语义本就是 30s 级缓存，可接受。
+
+    ccc088：索引键改读 get_index_path()（loader 权威路径，CCC_DATA_DIR 下）。
+    原先盯 `docs/dispatch/cards.index.jsonl` 是陈旧双写残留——生产写手
+    （board-scheduler/engine/工具链）经 loader 全部落权威路径，该文件仅剩
+    pytest 污染偶发更新；对齐后缓存键恢复「索引变更即失效」语义。
     """
     parts: list[str] = []
-    for p in (_DISPATCH_DIR / "cards.index.jsonl",):
+    from server.board.loader import get_index_path
+
+    for p in (get_index_path(),):
         try:
             parts.append(str(p.stat().st_mtime_ns))
         except OSError:

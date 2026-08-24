@@ -39,6 +39,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下出卡后的索引刷新
+# （load_dispatch_cards）会回落写 <repo>/data/cards/cards.index.jsonl 陈旧副本；
+# 注入后与生产看板/loader 权威路径（~/.ccc/data）同源。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
+
 # ── 默认值（可用环境变量覆盖） ──
 DISPATCH_DIR="${CCC_DISPATCH_DIR:-docs/dispatch}"
 PROJECT_PREFIX="${CCC_CARD_PROJECT:-ccc}"
