@@ -7,6 +7,9 @@
 2. 尝试 ``git merge --ff-only <remote>/<branch>``
 3. 若工作树有本地改动导致 ff 失败：对 ``docs/dispatch`` 下**本地未改**的路径
    从 ``<remote>/<branch>`` checkout 更新（含新卡）；已脏路径（Engine 正在回写的卡）跳过。
+   未跟踪的 .md 新卡若 mtime 距今 < 宽限窗（默认 300s，env
+   ``CCC_ALIGN_GRACE_SECONDS`` 可调）则不清除，仅告警一次（同文件去重）——
+   纵深防御：即使出卡方忘记提交，卡也不会无声死亡；超宽限仍存在才按原逻辑移除。
 
 不 force、不 reset --hard、不动 ignored 配置。
 """
@@ -16,10 +19,29 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("ccc.git_sync")
+
+# 已告警过「疑似出卡未提交」的未跟踪文件绝对路径（同文件去重，进程生命周期内有效）
+_GRACE_WARNED: set[str] = set()
+
+# 未跟踪新卡对齐宽限窗默认秒数（env CCC_ALIGN_GRACE_SECONDS 可调）
+_DEFAULT_GRACE_SECONDS = 300.0
+
+
+def _align_grace_seconds() -> float:
+    """宽限窗秒数：env ``CCC_ALIGN_GRACE_SECONDS``，缺省 300s；非法值回退缺省，负值按 0。"""
+    raw = (os.environ.get("CCC_ALIGN_GRACE_SECONDS") or "").strip()
+    if not raw:
+        return _DEFAULT_GRACE_SECONDS
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        logger.warning("CCC_ALIGN_GRACE_SECONDS=%r 非法，回退 %ss", raw, _DEFAULT_GRACE_SECONDS)
+        return _DEFAULT_GRACE_SECONDS
 
 
 def _run(repo: Path, args: list[str], timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
@@ -120,7 +142,9 @@ def sync_origin_main(
         logger.warning("git sync blocked: %s", summary["detail"])
         return summary
 
-    removed_untracked = _force_align_dispatch(repo, ref, dispatch_subdir)
+    align = _force_align_dispatch(repo, ref, dispatch_subdir)
+    removed_untracked = align["removed"]
+    grace_kept = align["grace_kept"]
     updated = diff.stdout.splitlines()
     updated = [rel.strip() for rel in updated if rel.strip()]
 
@@ -130,21 +154,26 @@ def sync_origin_main(
     summary["method"] = "dispatch-checkout"
     summary["updated"] = updated
     summary["removed_untracked"] = removed_untracked
+    summary["grace_kept"] = grace_kept
     summary["detail"] = (
         f"ff-only blocked; force-checked out {len(updated)} dispatch path(s), "
-        f"removed {removed_untracked} untracked; retry ff rc={merged_retry.returncode}"
+        f"removed {removed_untracked} untracked (grace-kept {grace_kept}); "
+        f"retry ff rc={merged_retry.returncode}"
     ).strip()[:300]
     logger.warning("git sync dispatch force-sync: %s", summary["detail"])
     return summary
 
 
-def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> int:
+def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> dict[str, int]:
     """强制让 dispatch 目录与 ref 完全一致（主树只做 main 镜像）。
 
     树已干净（无 tracked/untracked 变化）→ 零触碰直接返回（避免文件 mtime 抖动
     导致看板缓存键每轮失效、/cards 反复全量重建吃 CPU）。
     否则清 staged 条目 → force checkout 全部 dispatch 路径 → 移除未跟踪文件。
-    返回移除的未跟踪文件数。
+    宽限窗纵深防御：未跟踪 .md 新卡 mtime 距今 < ``CCC_ALIGN_GRACE_SECONDS``
+    （默认 300s）不清除，仅 warning 一次（同文件去重，含「疑似出卡未提交」提示）；
+    超宽限仍存在才按原逻辑移除——即使出卡方忘记提交，卡也不会无声死亡。
+    返回 ``{"removed": 移除数, "grace_kept": 宽限窗内保留数}``。
     """
     dirty = _run(
         repo,
@@ -152,7 +181,7 @@ def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> int:
         timeout=30.0,
     )
     if dirty.returncode == 0 and not dirty.stdout.strip():
-        return 0
+        return {"removed": 0, "grace_kept": 0}
     _run(repo, ["reset", "-q", "--", dispatch_subdir], timeout=30.0)
     _run(repo, ["checkout", "-f", ref, "--", dispatch_subdir], timeout=60.0)
     untracked = _run(
@@ -160,17 +189,39 @@ def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> int:
         ["ls-files", "--others", "--exclude-standard", "--", dispatch_subdir],
         timeout=30.0,
     )
+    grace = _align_grace_seconds()
+    now = time.time()
     removed = 0
+    grace_kept = 0
     for rel in untracked.stdout.splitlines():
         rel = rel.strip()
         if not rel:
             continue
+        path = repo / rel
+        age: float | None
         try:
-            (repo / rel).unlink(missing_ok=True)
+            age = now - path.stat().st_mtime
+        except OSError:
+            age = None  # 文件已消失等：按原逻辑走移除尝试
+        if age is not None and rel.endswith(".md") and age < grace:
+            key = str(path)
+            if key not in _GRACE_WARNED:
+                _GRACE_WARNED.add(key)
+                logger.warning(
+                    "git sync 对齐跳过宽限窗内未跟踪新卡 %s（mtime 距今 %.0fs < %.0fs）"
+                    "——疑似出卡未提交，暂不清除",
+                    rel,
+                    max(age, 0.0),
+                    grace,
+                )
+            grace_kept += 1
+            continue
+        try:
+            path.unlink(missing_ok=True)
             removed += 1
         except OSError:
             logger.warning("git sync 清理未跟踪卡失败: %s", rel)
-    return removed
+    return {"removed": removed, "grace_kept": grace_kept}
 
 
 def auto_pull_enabled(cfg: dict[str, Any] | None = None) -> bool:
