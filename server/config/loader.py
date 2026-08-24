@@ -61,7 +61,9 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CCC_BRAIN_MAX_CONCURRENCY": "2",
     # 机审槽上限（独立于执行槽）
     "EXECUTOR_MAX_AUDIT_CONCURRENT": "2",
-    "EXECUTOR_PROBE_URL": "http://127.0.0.1:6100/",
+    # 执行体探针门禁：中转站 2026-08-24 退役拆除，默认空=不探测任何 relay；
+    # 如需启用，显式在 config.env 配置 EXECUTOR_PROBE_URL
+    "EXECUTOR_PROBE_URL": "",
     "EXECUTOR_RETRY_ONCE": "true",
     # 失败回待分派自动重试上限；用尽才打回。RETRY_ONCE=false 时视为 0
     "EXECUTOR_MAX_RETRIES": "3",

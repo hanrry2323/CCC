@@ -49,7 +49,7 @@ API:
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
       长轮询超时默认值: CCC_WEB_LONGPOLL_TIMEOUT（秒，见 server/config/config.example.env）。
 
-对话大脑（T29）: /conversation 调用本机 Claude Code CLI（走 6100 Anthropic 出口），
+对话大脑（T29）: /conversation 调用本机 Claude Code CLI（2026-08-24 起直连出口，中转站已退役），
       携带 CCC 大脑人格 + 历史上下文，返回真实 Agent 输出。配置见 server/web/brain.py：
       CCC_BRAIN_MODEL / CCC_BRAIN_BASE_URL / CCC_BRAIN_AUTH_TOKEN / CCC_BRAIN_TIMEOUT；
       缺配置返回 503，忙返回 503，超时返回 504，失败返回 502（均不落历史）。
@@ -435,7 +435,6 @@ _PUBLIC_CONFIG_KEYS: tuple[str, ...] = (
     "WEB_PORT",
     "BOARD_PORT",
     "ENGINE_PORT",
-    "RELAY_PORT",
 )
 
 
@@ -450,7 +449,6 @@ def _build_public_config() -> dict[str, Any]:
             "web": os.environ.get("WEB_PORT", ""),
             "board": os.environ.get("BOARD_PORT", ""),
             "engine": os.environ.get("ENGINE_PORT", ""),
-            "relay": os.environ.get("RELAY_PORT", ""),
         },
         # workspace_map 留空：业务仓路径由用户在设置页填，服务端不臆造
         "workspace_map": {},
@@ -723,7 +721,7 @@ def _collect_ops_nodes() -> list[dict[str, Any]]:
     targets = parse_cluster_targets(cfg)
     if not targets:
         return []
-    # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server,6100:relay-anthropic），
+    # 端口名走 env 映射（CLUSTER_PORT_NAMES=7788:web-server；6100/6102 中转站已退役），
     # 无配置则用通用名 port-{port}，避免硬编码端口到名称的映射
     port_names_env = os.environ.get("CLUSTER_PORT_NAMES", "")
     port_names: dict[int, str] = {}
@@ -1358,131 +1356,24 @@ _ENRICHED_TTL_S = 30.0
 _ENRICHED_REBUILD_LOCK = threading.Lock()
 
 
-_RELAY_USAGE_FILE_DEFAULT = Path("/Users/fan/program/apps/ai-loop-router-ccc/logs/usage.json")
-_RELAY_USAGE_API_DEFAULT = "http://127.0.0.1:6100/admin/usage"
 _RELAY_STATS_CACHE: tuple[float, str, dict] | None = None
 _RELAY_STATS_TTL_S = 2.0
-_RELAY_LAST_SNAPSHOT: tuple[float, dict[str, int]] | None = None
-
-
-def _relay_usage_file() -> Path:
-    raw = os.environ.get("CCC_RELAY_USAGE_FILE", "").strip()
-    return Path(raw).expanduser() if raw else _RELAY_USAGE_FILE_DEFAULT
-
-
-def _relay_usage_api() -> str:
-    raw = os.environ.get("CCC_RELAY_USAGE_API")
-    if raw is None:
-        return _RELAY_USAGE_API_DEFAULT
-    return raw.strip()  # 显式设空 = 跳过 API，走用量文件
-
-
-def _relay_counts_from_api(d: dict) -> dict[str, int]:
-    """中转站 /admin/usage 实时响应 → pro/flash/code/total 分桶。
-
-    by_tier 的 ``unknown`` = 未标 tier 的 Premium/Claude 模型 → 归 Pro；
-    显式 ``pro`` tier 也归 Pro。
-    """
-    bt = d.get("by_tier") or {}
-    return {
-        "total": int(d.get("total") or 0),
-        "pro": int((bt.get("unknown") or {}).get("n") or 0) + int((bt.get("pro") or {}).get("n") or 0),
-        "flash": int((bt.get("flash") or {}).get("n") or 0),
-        "code": int((bt.get("code") or {}).get("n") or 0),
-    }
-
-
-def _relay_bucket(model: str) -> str | None:
-    """用量记录 model → 分桶（pro / flash / code）；未知模型只计入 total。"""
-    m = (model or "").strip().lower()
-    if not m:
-        return None
-    if "flash" in m:
-        return "flash"
-    if m == "code":
-        return "code"
-    if "pro" in m or "opus" in m or "sonnet" in m or m.startswith("claude"):
-        return "pro"
-    return None
-
-
-def _relay_counts_from_records(records: list, now_ms: int, today_start_ms: int) -> dict[str, int]:
-    counts = {"total": 0, "pro": 0, "flash": 0, "code": 0}
-    for r in records:
-        ts = r.get("timestamp")
-        if not isinstance(ts, (int, float)) or ts <= 0:
-            continue
-        if int(ts) < today_start_ms:
-            continue
-        counts["total"] += 1
-        b = _relay_bucket(r.get("model"))
-        if b:
-            counts[b] += 1
-    return counts
 
 
 def _compute_relay_stats() -> dict:
-    """中转站今日请求 + 近 10s 增量 + 健康（实时 API 优先，文件兜底）。"""
-    global _RELAY_STATS_CACHE, _RELAY_LAST_SNAPSHOT
-    now = time.time()
-    if _RELAY_STATS_CACHE is not None and now - _RELAY_STATS_CACHE[0] < _RELAY_STATS_TTL_S:
-        return _RELAY_STATS_CACHE[1]
+    """中转站已退役（2026-08-24 拆除，受老板临时授权）：恒返回退役态。
 
-    now_ms = int(now * 1000)
-    healthy = True
-    alert = ""
-    counts: dict[str, int] | None = None
-    error = ""
-
-    api = _relay_usage_api()
-    if api:
-        try:
-            import urllib.error
-            import urllib.request
-
-            with urllib.request.urlopen(urllib.request.Request(api, method="GET"), timeout=3) as resp:
-                d = json.loads(resp.read().decode("utf-8", errors="replace"))
-            counts = _relay_counts_from_api(d)
-        except Exception as exc:
-            error = f"{exc}"
-
-    if counts is None:
-        # 兜底：用量文件（记录级，60s 落盘；仅 API 不可用时用）
-        try:
-            from datetime import datetime as _dt
-
-            today_start_ms = int(_dt.combine(_dt.now().date(), _dt.min.time()).timestamp() * 1000)
-            data = json.loads(_relay_usage_file().read_text(encoding="utf-8", errors="replace"))
-            records = data if isinstance(data, list) else []
-            counts = _relay_counts_from_records(records, now_ms, today_start_ms)
-        except Exception as exc:
-            healthy = False
-            alert = f"中转站用量获取失败: {exc}"
-
-    if counts is None:
-        counts = {"total": 0, "pro": 0, "flash": 0, "code": 0}
-        if _RELAY_LAST_SNAPSHOT is not None:
-            counts = dict(_RELAY_LAST_SNAPSHOT[1])  # 保留上次数字
-    elif error:
-        healthy = False
-        alert = f"中转站实时接口不可达: {error}"
-
-    deltas = {"total": 0, "pro": 0, "flash": 0, "code": 0}
-    if healthy and _RELAY_LAST_SNAPSHOT is not None and now - _RELAY_LAST_SNAPSHOT[0] <= 30:
-        for k in counts:
-            deltas[k] = max(0, int(counts[k]) - int(_RELAY_LAST_SNAPSHOT[1].get(k) or 0))
-    if healthy:
-        _RELAY_LAST_SNAPSHOT = (now, dict(counts))
-
-    out = {
-        "today": counts,
-        "delta_10s": deltas,
-        "healthy": healthy,
-        "alert": alert or None,
-        "ts": now,
+    原 ai-loop-router(:6100/:6102) 用量抓取与文件兜底逻辑整体移除；
+    保留同形响应体，前端用量面板自然显示「中转站已退役」，不再探测任何 relay。
+    """
+    return {
+        "today": {"total": 0, "pro": 0, "flash": 0, "code": 0},
+        "delta_10s": {"total": 0, "pro": 0, "flash": 0, "code": 0},
+        "healthy": False,
+        "alert": "中转站已退役",
+        "retired": True,
+        "ts": time.time(),
     }
-    _RELAY_STATS_CACHE = (now, out)
-    return out
 
 
 def _log_activity_key(log_dir) -> str:
@@ -3693,7 +3584,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
             "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
             "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
-            "com.ccc.ai-loop-router": {"name": "AI Loop Router", "port": 6100, "url": "http://192.168.3.116:6100"},
             "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
             "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
             "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
@@ -3750,7 +3640,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
             "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
             "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
-            "com.ccc.ai-loop-router": {"name": "AI Loop Router", "port": 6100, "url": "http://192.168.3.116:6100"},
             "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
             "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
             "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
@@ -3803,8 +3692,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             # 2017（本机）
             {"name": "CCC 控制台", "machine": "Mac2017", "port": 7788, "url": "http://192.168.3.116:7788"},
             {"name": "DSH Web", "machine": "Mac2017", "port": 3080, "url": "http://192.168.3.116:3080"},
-            {"name": "中转站 Anthropic", "machine": "Mac2017", "port": 6100, "url": "http://192.168.3.116:6100"},
-            {"name": "中转站 OpenAI", "machine": "Mac2017", "port": 6102, "url": "http://192.168.3.116:6102/v1"},
             {"name": "xy Admin", "machine": "Mac2017", "port": 8765, "url": "http://192.168.3.116:8765"},
             {"name": "QB Data Engine", "machine": "Mac2017", "port": 8091, "url": "http://127.0.0.1:8091"},
             # HP

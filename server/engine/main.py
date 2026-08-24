@@ -2082,6 +2082,11 @@ def _dispatch_and_collect(
     Returns:
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
     """
+    # F2 熔断（2026-08-24 直修）：近24h被强制击杀达阈值的卡，停止一切自动派发
+    if _dispatch_blocked_by_ledger(work.id):
+        logger.error("派发被熔断跳过（近24h强拆≥%d，需人工核查告警文件）: work=%s", _FORCE_KILL_LEDGER_LIMIT, work.id)
+        return False, [f"自动派发熔断：{work.id} 近24h多次被强制击杀，需人工介入（见 alerts/auto-dispatch-blocked-{work.id}.txt）"]
+
     entry = entry_override
     if entry is None and work.executor:
         entry = registry.cli_entry_for_binding(work.executor, project=work.project)
@@ -2672,6 +2677,93 @@ def _parse_running_marker_pid(raw: str) -> int | None:
     return pids[0] if pids else None
 
 
+def _kill_marker_pids(raw: str, reason: str, work_id: str = "") -> list[int]:
+    """强制击杀标记记录的整棵进程树（F1 根修 2026-08-24 · 受老板临时授权直修）。
+
+    派发侧 ``start_new_session=True`` 使每个子 CLI 自成进程组：即使组领导已死，
+    幸存孙进程仍持有同 pgid，``killpg`` 可整体收割——这正是此前「只删标记不杀
+    进程」导致机审会话孤儿越积越多的漏洞。逐个 killpg；ProcessLookupError 视为
+    已清空；PermissionError 回退单 pid SIGKILL。
+    返回实际发出信号的 pid 列表（仅日志/台账用）。
+    """
+    me = os.getpid()
+    my_group = os.getpgrp()
+    signaled: list[int] = []
+    for p in _parse_running_marker_pids(raw):
+        if p == me or p == my_group:
+            continue  # 绝不自伤：旧标记里的 engine_pid 可能恰是本进程
+        try:
+            os.killpg(p, signal.SIGKILL)
+            signaled.append(p)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            try:
+                os.kill(p, signal.SIGKILL)
+                signaled.append(p)
+            except OSError:
+                pass
+        except OSError:
+            pass
+    if signaled:
+        logger.warning("强制击杀进程组: work=%s reason=%s pids=%s", work_id, reason, signaled)
+    return signaled
+
+
+# ── F2 熔断：同卡反复被强拆 → 停止自动派发，转人工（2026-08-24 直修） ──
+_FORCE_KILL_LEDGER_LIMIT = 3  # 24h 内同卡被强拆次数上限
+_FORCE_KILL_LEDGER_WINDOW_S = 86400
+
+
+def _force_kill_ledger_path() -> Path:
+    base = os.environ.get("DATA_DIR") or str(Path.home() / ".ccc" / "data")
+    return Path(base).expanduser() / "force_kill_ledger.json"
+
+
+def _record_force_kill(work_id: str) -> None:
+    """记录一次强制击杀；24h 内超限则写告警文件并打 CRITICAL（熔断依据）。"""
+    now = time.time()
+    path = _force_kill_ledger_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except Exception:
+        data = {}
+    ts_list = [t for t in (data.get(work_id) or []) if now - float(t) < _FORCE_KILL_LEDGER_WINDOW_S]
+    ts_list.append(now)
+    data[work_id] = ts_list
+    data = {k: v for k, v in data.items() if any(now - float(t) < _FORCE_KILL_LEDGER_WINDOW_S for t in v)}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        logger.exception("强拆台账写入失败: work=%s", work_id)
+    if len(ts_list) >= _FORCE_KILL_LEDGER_LIMIT:
+        log_base = Path(os.environ.get("LOG_DIR") or (path.parent.parent / "logs"))
+        try:
+            alert_dir = log_base / "alerts"
+            alert_dir.mkdir(parents=True, exist_ok=True)
+            (alert_dir / f"auto-dispatch-blocked-{work_id}.txt").write_text(
+                f"{work_id} 近24h被强制击杀 {len(ts_list)} 次（阈值 {_FORCE_KILL_LEDGER_LIMIT}），"
+                "自动派发已熔断；人工核查后删除本文件即可恢复自动派发。\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        logger.critical("自动派发熔断: work=%s 近24h强拆 %d 次", work_id, len(ts_list))
+
+
+def _dispatch_blocked_by_ledger(work_id: str) -> bool:
+    """该卡是否已被熔断（近24h强拆次数达阈值）。"""
+    path = _force_kill_ledger_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except Exception:
+        return False
+    now = time.time()
+    recent = [t for t in (data.get(work_id) or []) if now - float(t) < _FORCE_KILL_LEDGER_WINDOW_S]
+    return len(recent) >= _FORCE_KILL_LEDGER_LIMIT
+
+
 def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     """回收带 ``{work_id}.running`` 标记的「执行中」残留（AUTO 崩溃未收单）。
 
@@ -2725,11 +2817,9 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
                 MAX_MARKER_AGE_SECONDS,
                 w.id,
             )
-            for p in alive:
-                try:
-                    os.kill(p, signal.SIGKILL)
-                except OSError:
-                    pass
+            # F1 根修：killpg 收割整棵进程树（含幸存孙进程），并记强拆台账
+            _kill_marker_pids(raw, reason="执行中超时强制中止", work_id=w.id)
+            _record_force_kill(w.id)
             alive = []
 
         if alive:
@@ -2789,13 +2879,28 @@ def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None) -> 
             raw = ""
             mtime = 0.0
         pids = _parse_running_marker_pids(raw)
-        if any(_pid_alive(p) for p in pids):
+        # F3 根修：机审标记的强拆上限收紧为 2×机审超时（默认配置下 30min），
+        # 不再统一等 2h——机审会话挂起时尽早收割，防孤儿堆积。
+        max_age = MAX_MARKER_AGE_SECONDS
+        if marker.name.endswith("-audit.running"):
+            try:
+                audit_to = max(60, int(os.environ.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS") or 1800))
+            except ValueError:
+                audit_to = 1800
+            max_age = min(max_age, 2 * audit_to)
+        alive_any = any(_pid_alive(p) for p in pids)
+        if alive_any:
             # 存活的 PID + 未超时 → 保留；超时 → 兜底强制回收
-            if mtime > 0 and (now_ts - mtime) < MAX_MARKER_AGE_SECONDS:
+            if mtime > 0 and (now_ts - mtime) < max_age:
                 continue
             logger.warning(
-                "标记超时强制回收（age=%ds，max=%ds）: %s", int(now_ts - mtime), MAX_MARKER_AGE_SECONDS, marker.name
+                "标记超时强制回收（age=%ds，max=%ds）: %s", int(now_ts - mtime), max_age, marker.name
             )
+        # F1 根修：无论记录的 PID 死活，先按进程组收割幸存者——组可能比领导活得久，
+        # 只删标记会让真实子进程变成无人认领的孤儿（ccc078 雪崩根因）。
+        killed = _kill_marker_pids(raw, reason="清理死标记", work_id=work_id)
+        if killed or (alive_any and pids):
+            _record_force_kill(work_id)
         try:
             marker.unlink(missing_ok=True)
             n += 1
@@ -2881,7 +2986,20 @@ def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = 
 
     同时记录 ``dispatch_tip``：派发时刻 origin/main 的 commit（V2 产物门禁基准），
     防「派发后他人合入 → 执行体未写码也被误判有产物」。
+
+    F1 根修（2026-08-24）：覆写前若存在旧标记，先按进程组收割旧会话——
+    否则旧子进程被新标记抹去记账，成为无人认领的孤儿（ccc078 雪崩帮凶）。
     """
+    try:
+        old = log_dir / f"{work_id}.running"
+        if old.is_file():
+            old_raw = old.read_text(encoding="utf-8")
+            if _parse_running_marker_pids(old_raw):
+                killed = _kill_marker_pids(old_raw, reason="重复派发前清理旧标记", work_id=work_id)
+                if killed:
+                    _record_force_kill(work_id)
+    except OSError:
+        pass
     tip = ""
     if main_repo is not None:
         try:
@@ -3761,7 +3879,9 @@ def run_once(
     max_concurrent, max_audit_concurrent = _slot_limits(cfg, config_path)
     probe_url = cfg.get("EXECUTOR_PROBE_URL")
     if probe_url is None:
-        probe_url = os.environ.get("EXECUTOR_PROBE_URL", "http://127.0.0.1:6100/")
+        # 中转站已退役（2026-08-24 拆除，受老板临时授权）：默认不再探测任何 relay，
+        # 仅当显式配置 EXECUTOR_PROBE_URL 时才启用探针门禁。
+        probe_url = os.environ.get("EXECUTOR_PROBE_URL", "")
 
     pool = get_dispatch_pool()
     audit_pool = get_audit_pool()

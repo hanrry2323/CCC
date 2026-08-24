@@ -578,7 +578,9 @@ def _stream_claude(prompt: str, timeout: int | None = None):
             preexec_fn=os.setsid,
         )
     except (OSError, FileNotFoundError) as exc:
-        # Fallback：当本地不具备 claude CLI 时（例如在 2017 单端服务器上），直连中继 (6100/6102/DSH) 获取大模型大脑流
+        # Fallback：本地无 claude CLI 时原直连中继获取大脑流；
+        # 中转站已于 2026-08-24 退役拆除——未显式配置 CCC_BRAIN_BASE_URL 时
+        # _stream_relay_direct 会立即 RuntimeError，不再探测已退役端口。
         yield from _stream_relay_direct(prompt)
         return
 
@@ -630,14 +632,16 @@ def _stream_claude(prompt: str, timeout: int | None = None):
 
 
 def _stream_relay_direct(prompt: str):
-    """2017 本地直连中继 (6100/6102/DSH) 流式大模型生成器。
+    """中转站直连流式生成器——已退役（2026-08-24 拆除，受老板临时授权）。
 
-    支持双核转译（Anthropic / OpenAI），消除了冷启动子进程的全部环境要求：
-    - 6100 端口：走 Anthropic 协议 (请求 /v1/messages，转译 content_block_delta)
-    - 6102 / 3080 端口：走 OpenAI 协议 (请求 /v1/chat/completions，支持 DeepSeek R1 reasoning_content 思考流转译)
+    原 6100(Anthropic)/6102(OpenAI) 本机中转已整体退役；本函数仅保留
+    显式配置 ``CCC_BRAIN_BASE_URL`` 时仍可用的兜底能力，未配置则立即
+    报错返回，绝不再默认探测任何已退役端口。
     """
 
-    base_url = _get_brain_base_url() or "http://127.0.0.1:6100"
+    base_url = _get_brain_base_url()
+    if not base_url:
+        raise RuntimeError("中转站已退役（6100/6102 已拆除）；如需直连上游请显式配置 CCC_BRAIN_BASE_URL")
     model = _effective_model() or "deepseek-chat"
     auth_token = _get_brain_auth_token()
 
@@ -645,7 +649,7 @@ def _stream_relay_direct(prompt: str):
     if m:
         host, port = m.group(1), int(m.group(2))
     else:
-        host, port = "127.0.0.1", 6100
+        raise RuntimeError(f"CCC_BRAIN_BASE_URL 格式非法: {base_url!r}")
 
     is_anthropic = (port == 6100) or ("6100" in base_url)
 

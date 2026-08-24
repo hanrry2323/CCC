@@ -351,6 +351,64 @@ def _default_registry() -> TaskRegistry:
         )
     )
 
+    def _log_janitor(cfg):
+        """F4 日志轮转（2026-08-24 直修，受老板临时授权）：exec 会话日志 >30 天 gzip 归档。
+
+        只处理 exec/ 下已结束会话的 ``*.log``（派发侧每会话独立落盘、写完即闭），
+        归档后删原文件。launchd 持有 fd 的 ``*.stderr.log`` 不在此轮转（截断会产生
+        稀疏洞），如需轮转应走 newsyslog 配置。
+        """
+        import gzip as _gzip
+        import os as _os
+        import time as _time
+        from pathlib import Path as _P
+
+        log_dir = _P(cfg.get("LOG_DIR") or (_P.home() / ".ccc" / "logs"))
+        exec_dir = log_dir / "exec"
+        cutoff = _time.time() - 30 * 86400
+        archived = 0
+        errors = 0
+        try:
+            if exec_dir.is_dir():
+                for f in sorted(exec_dir.iterdir()):
+                    try:
+                        name = f.name
+                        if not name.endswith(".log") or name.endswith(".audit.log"):
+                            continue  # 机审证据日志保留原文，不归档
+                        st = f.stat()
+                        if st.st_mtime > cutoff:
+                            continue
+                        with open(f, "rb") as src, _gzip.open(str(f) + ".gz", "wb", compresslevel=6) as g:
+                            while True:
+                                chunk = src.read(1 << 20)
+                                if not chunk:
+                                    break
+                                g.write(chunk)
+                        f.unlink()
+                        archived += 1
+                    except OSError:
+                        errors += 1
+                        continue
+                # 同名 .gz 超 90 天直接删除（归档二阶生命周期）
+                gz_cutoff = _time.time() - 90 * 86400
+                for g in exec_dir.glob("*.log.gz"):
+                    try:
+                        if g.stat().st_mtime < gz_cutoff:
+                            g.unlink()
+                    except OSError:
+                        errors += 1
+            return (True, {"archived": archived, "errors": errors, "cutoff_days": 30})
+        except Exception as e:  # noqa: BLE001
+            return (False, {"error": str(e)})
+
+    registry.register(
+        ScheduledTask(
+            name="log-janitor",
+            task_type=TASK_TYPE_READONLY,
+            run=_log_janitor,
+        )
+    )
+
     return registry
 
 
