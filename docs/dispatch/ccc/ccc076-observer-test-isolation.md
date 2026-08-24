@@ -109,6 +109,17 @@ severity 计分：影响面 1（白名单单测试文件+卡文、无生产变�
 
 机审：通过
 
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+> 第3席终局记录（worktree ccc076 · 审计对象=全谱系 54de3ce0..44b555275 · 谱系追加、不取代前列各席记录；结论全部命令可复现）。
+
+1. **范围核对**：全谱系 diff 仅卡文与白名单内 server/tests/test_observer.py（65+/6- 至 adfdbf70a，+6/-1 至 44b555275）；observer.py/roadmap.py 生产代码零改动；工作树仅余执行体披露过的 untracked docs/archive/legacy-t-cards/cards.index.jsonl。origin/main 推进（c07560f10/a54cf2621@15:07）晚于执行体 push（14:43），「基点=当时 origin/main tip」属实。
+2. **动态复现（本席独有前后对照）**：门禁 `python3 -m pytest server/tests/test_observer.py -q` 本席亲跑两轮 → 26 passed、exit=0；mx/ccc 两处 roadmap.md md5（17c81c92…/fa7dd131…）与 docs/notes 巡查报告 mtime（14:33:57）全程零漂移。F3 归因实验：修复前 `-k test_write_roadmap_draft` 单用例隔离跑连续两次令真实仓 docs/projects/ccc/.roadmap.lock mtime 跳动（15:12:18→1787555539、15:12:19→1787555540）；修复后同一实验连续两次零跳动——「每跑必触」坐实且就地修复生效，clw/test 同族锁残留与前席定性一致归后续治理卡（白名单外本席不触碰）。
+3. **收编链确认**：44b555275 所收编的正是本席工作区就地的 F3 修复（`test_write_roadmap_draft` 补 `patch("server.board.roadmap._repo_root", return_value=tmp_path)`，+6/-1），`git diff HEAD -- server/tests/test_observer.py` 为空逐字节一致，本席认可该收编；后到席补注对修复的独立复核与本席结论吻合。
+4. **维护区核对**：`docgate.verify_maintenance` 本席亲跑 ok=True；四问单选 [否]/[无]/[否]/[否] 且说明行皆含实情句。severity 计分：影响面 1（白名单内测试文件+卡文、无生产变更、检出内容零污染）+ 改动深度 1（一处 root 注入+前后对照实验）+ 红线邻近 2（多实例竞写流程风险在案；F3 曾处隐形触碰面判据边界，现已闭环）= 4 → 轻（无高维度，不触发强制重）。结论通过，退出码 0。
+
+机审：通过
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
