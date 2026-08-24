@@ -2366,3 +2366,13 @@ M1 无对外文件共享需求，该服务保持停用。
 - 观测面固化：装载(board-load)/合成(board-compose)两层 INFO 逐项目计数日志，未来任意丢项可凭两层数值对比直接定位丢失层。
 
 **如何应用**：再遇「看板少项目」按序查：① API `total` 字段 vs 期望全集；② 带 `page_size` 大值翻页取全集统计 project 分布（勿只看第一屏）；③ 仍缺才查 loader/合成层，用 board-load/board-compose 日志对比。另记两条既有测试隔离缺陷（基线复现、与业务改动无关）：全量 pytest 会经 roadmap 巡查逻辑写真实 `docs/projects/mx/roadmap.md`；http_api conversation 族硬编码 `CCC_BRAIN_BASE_URL=http://127.0.0.1:6100` 依赖本机常驻 relay 实时负载，失败数随服务状态漂移（同代码两轮 2↔14 个失败），CI 化前须 mock 化。
+
+## Lesson 58：跨进程互斥面若全锚定同一可配置目录，多实例各配各的目录即全线失效（ccc082）
+
+**问题**：防双审防线的全部共享面——`DATA_DIR/engine.lock` 单实例锁、`{EXECUTOR_LOG_DIR}/{id}-audit.running` 在途标记、进程内 `audit_pool.alive_ids()`——都锚定单个 DATA_DIR（或进程私有）。同机两个 engine 各用不同 DATA_DIR 时三者互不可见，对同一卡并发机审（ccc078 33 实例风暴的等价小模型，tmp 双目录实验实锤：cross-log_dir alive=False → 双 claim 复现）。
+
+**根因**：互斥/在途面的锚点选在了可配置目录上。DATA_DIR 本是为隔离测试/多环境设计的配置项，把「必须全局互见」的防线锚进它，等于让正确性依赖一个无约束的自由度；配错/故意分开即静默穿透，且无任何告警。
+
+**修复（2026-08-25 ccc082）**：新增用户级全局机审注册表 `_audit_inflight_registry_dir()`（env `CCC_AUDIT_REGISTRY_DIR` 优先，默认 `~/.ccc/data/audit-inflight`）：机审标记写入时原子镜像进注册表，判定路径本地未命中或判死后追加查注册表（单一判活源复用 PID+宽限语义），收尾双清，死条目顺手回收。单 DATA_DIR 行为逐字不变（本地命中即短路），向后兼容。
+
+**如何应用**：设计任何跨进程互斥面（锁/在途登记/租约）时，至少一个共享面必须锚定「同机同用户必然互见」的固定点（用户 home 下固定路径或系统级位置），其余锚点才允许随配置走；评审时先问一句「这个锁的两个持有方若配了不同 DATA_DIR/工作目录还互相看得见吗」。测试探针：`server/tests/test_engine_audit_cross_datadir.py`。

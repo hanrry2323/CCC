@@ -1074,13 +1074,53 @@ def _audit_marker_alive(
     - 存在存活子进程 → 在途；
     - 无存活子进程 → 仅刚写入（宽限期内）算在途（子进程拉起前的防双审窗）；
       超宽限期 = 残留死标记 → 可重审。
+
+    ccc082 加固（2026-08-24）：本地 log_dir 未命中「或判死」后，追加查用户级
+    全局机审注册表（``_audit_inflight_registry_dir``）——原防线只锚定单个
+    DATA_DIR（engine.lock 与 running 标记都在 DATA_DIR 内），双 engine 各用
+    不同 DATA_DIR 时互不可见 → 并发双审穿透（tmp 双目录实验实锤：
+    cross-log_dir alive=False）。现任一共享面判在途即在途。
     """
     marker = log_dir / f"{work_id}-audit.running"
     try:
         raw = marker.read_text(encoding="utf-8")
         mtime = marker.stat().st_mtime
     except OSError:
-        return False
+        # 本地无标记 ≠ 无机审在途：其他 DATA_DIR 的 engine 可能在审同一卡
+        return _registry_audit_inflight_alive(work_id, grace_seconds)
+    if _marker_raw_alive(raw, mtime, grace_seconds):
+        return True
+    # 本地标记已死（残留/超宽限）≠ 全线可重审：另一 DATA_DIR 可能正在审
+    return _registry_audit_inflight_alive(work_id, grace_seconds)
+
+
+def _audit_inflight_registry_dir() -> Path:
+    """跨 DATA_DIR 全局机审在途注册表目录（ccc082 加固）。
+
+    防双审共享面原本只有两处，均锚定单个 DATA_DIR：
+    - ``DATA_DIR/engine.lock`` 单实例锁：不同 DATA_DIR 各持各锁，互不排斥；
+    - ``{EXECUTOR_LOG_DIR}/{id}-audit.running`` 标记：log_dir 不同则互不可见。
+    双 engine 各用不同 DATA_DIR 时两者同时失效 → 并发机审风暴（ccc078 多实例
+    场景的等价小模型，pytest 双目录实验复现）。
+
+    注册表锚定到用户级固定点：环境变量 ``CCC_AUDIT_REGISTRY_DIR`` 优先
+    （测试隔离用），默认 ``~/.ccc/data/audit-inflight`` —— 生产所有 engine
+    同用户同机，即使各自配错 DATA_DIR 也必然互见。条目格式与 running 标记
+    完全一致（engine_pid=/pid=/child_pid=），判活复用同一套 PID+宽限语义，
+    死条目由 ``_registry_audit_inflight_alive`` 判死时顺手回收，零额外清扫器。
+    """
+    override = os.environ.get("CCC_AUDIT_REGISTRY_DIR", "").strip()
+    base = Path(override) if override else Path.home() / ".ccc" / "data"
+    return base / "audit-inflight"
+
+
+def _marker_raw_alive(raw: str, mtime: float, grace_seconds: int) -> bool:
+    """按标记内容判「机审在途」（本地标记与全局注册表共用的单一判定源）。
+
+    - 排除 engine 自身 PID（常驻永活，不作数）；
+    - 任一工作者 PID（pid=/child_pid=）存活 → 在途；
+    - 否则仅当写入时刻在宽限期内 → 在途（子进程拉起前的防双审窗）。
+    """
     engine_pid = os.getpid()
     pids: list[int] = []
     for line in (raw or "").splitlines():
@@ -1094,6 +1134,23 @@ def _audit_marker_alive(
     if any(_pid_alive(p) for p in pids if p != engine_pid):
         return True
     return (time.time() - mtime) < grace_seconds
+
+
+def _registry_audit_inflight_alive(work_id: str, grace_seconds: int) -> bool:
+    """查全局注册表条目（跨 DATA_DIR 防第二道面）；死条目顺手回收防堆积。"""
+    entry = _audit_inflight_registry_dir() / f"{work_id}-audit.running"
+    try:
+        raw = entry.read_text(encoding="utf-8")
+        mtime = entry.stat().st_mtime
+    except OSError:
+        return False
+    if _marker_raw_alive(raw, mtime, grace_seconds):
+        return True
+    try:
+        entry.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return False
 
 
 def _cleanup_closed_worktrees(
@@ -3008,6 +3065,11 @@ def _write_running_marker(
 
     原子写（tmp → rename）：``reclaim_orphaned_running`` 每轮心跳读取标记，
     非原子写入的半截文件会被误判为无存活 PID → 把仍在执行的卡假孤儿回收。
+
+    ccc082 加固（2026-08-24）：机审标记（``work_id`` 以 ``-audit`` 结尾）同步
+    原子镜像进用户级全局注册表（``_audit_inflight_registry_dir``），使不同
+    DATA_DIR 的 engine 对同一卡机审互见在途；认领（_claim_running_marker）与
+    子进程刷新（_refresh_running_marker_child）两路都经此函数，自动覆盖。
     """
     log_dir.mkdir(parents=True, exist_ok=True)
     marker = log_dir / f"{work_id}.running"
@@ -3017,10 +3079,30 @@ def _write_running_marker(
         lines.append(f"dispatch_tip={dispatch_tip}\n")
     if child_pid is not None:
         lines.append(f"child_pid={child_pid}\n")
+    text = "".join(lines)
     tmp = marker.with_suffix(marker.suffix + f".tmp.{time.time_ns()}")
-    tmp.write_text("".join(lines), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, marker)
+    if work_id.endswith("-audit"):
+        _mirror_audit_registry(work_id, text)
     return marker
+
+
+def _mirror_audit_registry(work_id: str, text: str) -> None:
+    """把机审在途登记镜像进全局注册表（ccc082 跨 DATA_DIR 防线写入面）。
+
+    best-effort：镜像失败仅告警不打断派发——单机同用户下与本地标记同级可靠，
+    打断主流程会让 engine 派发瘫痪，风险远大于防线降级；warning 可观测。
+    """
+    try:
+        reg_dir = _audit_inflight_registry_dir()
+        reg_dir.mkdir(parents=True, exist_ok=True)
+        entry = reg_dir / f"{work_id}.running"
+        tmp = entry.with_suffix(entry.suffix + f".tmp.{time.time_ns()}")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, entry)
+    except OSError:
+        logger.warning("全局机审注册表写入失败（跨 DATA_DIR 防线降级）: %s", work_id)
 
 
 def _clear_claim_marker(card_path: Path, card_id: str) -> None:
@@ -3137,6 +3219,12 @@ def _clear_running_marker(log_dir: Path, work_id: str) -> None:
         (log_dir / f"{work_id}.running").unlink(missing_ok=True)
     except OSError:
         pass
+    if work_id.endswith("-audit"):
+        # ccc082：机审收尾同步清全局注册表条目，防跨 DATA_DIR 假在途
+        try:
+            (_audit_inflight_registry_dir() / f"{work_id}.running").unlink(missing_ok=True)
+        except OSError:
+            logger.warning("全局机审注册表清理失败: %s", work_id)
 
 
 def _audit_cli_entry(registry: ExecutorRegistry, acceptor: str) -> ExecutorEntry | None:
