@@ -35,7 +35,7 @@ launchd (PPID=1, label=com.ccc.scheduler, KeepAlive=1, RunAtLoad=1)
 
 pytest 以 checkout 为 rootdir，`import server.*` 解析到**该 checkout 的副本**，而路径基准全部基于 `__file__`：
 
-- `server/board/roadmap.py:26-28`：`_repo_root() = Path(__file__).resolve().parents[2]`
+- `server/board/roadmap.py:28-30`：`_repo_root() = Path(__file__).resolve().parents[2]`
 - `server/engine/observer.py:40`：`PROJECT_ROOT = Path(__file__).resolve().parents[2]`
 
 因此测试进程内的写入必然落在**运行 pytest 的那个 checkout**（worktree 或主仓），与 cwd 无关。
@@ -59,9 +59,9 @@ run_observer                        server/engine/observer.py:715
 ├─ write_roadmap_draft(...)         observer.py:757-764（调用点 :762）          ← PRIME-DIRECTIVE §6.3 注释：发现自动回草案池
 │  └─ title="[治理债][Loop巡查] {description}"  observer.py:1598
 │     └─ create_draft(project, title)           observer.py:1609（未传 source）
-│        ├─ 去重：exact-title 相等              server/board/roadmap.py:614-616
-│        └─ _write_roadmap(...)                 server/board/roadmap.py:618-624
-│           └─ 整文件重序列化 + 头部日期 date.today()  roadmap.py:307-315      ← 「更新：2026-08-19→08-24」来源
+│        ├─ 去重：exact-title 相等              server/board/roadmap.py:615-618
+│        └─ _write_roadmap(...)                 server/board/roadmap.py:625
+│           └─ 整文件重序列化 + 头部日期 date.today()  roadmap.py:307-320（date.today 于 :320）  ← 「更新：2026-08-19→08-24」来源
 └─ _auto_fix_deterministic(findings, PROJECT_ROOT) observer.py:777             ← 同类越权面：subprocess auto-fix-plan-progress.py(:694-703) 重算里程碑进度
 ```
 
