@@ -1,6 +1,7 @@
 # 任务卡 ccc087 · pytest 单实例锁夹具去共享——消 test_once_smoke 偶发失败（DSH 执行）
+> 批准：老板合入批准 · 2026-08-25
 
-> 关联：环节②交接(2026-08-25)问题3 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-25
+> 关联：环节②交接(2026-08-25)问题3 · 执行体：DSH · 验收：DSH · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-25
 
 ## 目标
 
@@ -139,3 +140,9 @@ FAILED server/tests/test_http_api.py::TestConversation::test_conversation_stream
 ### 6 结论
 
 机审：通过（被审 f411c6ccd7ff）
+
+## 验收区
+
+**合入批准** · 日期：2026-08-25
+- 判定：通过
+- ✅ 人审 diff 后合入批准（北星 W2）
