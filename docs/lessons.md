@@ -2354,3 +2354,15 @@ M1 无对外文件共享需求，该服务保持停用。
 - 事故卡禁止删除：恢复为「已关闭（事故·作废）」保留复盘证据。
 
 **如何应用**：业务仓型任务（mx/xy/hp/qb/clw）出现并发卡先确认是否走了 worktree 隔离（`~/.ccc/logs/exec/<卡>.log` 的 worktree 路径 / `.ccc-wt/` 目录）；主仓目录出现卡分支 checkout 痕迹 = 隔离失效立即停卡。事故卡一律标注作废保留，不删除。
+
+## Lesson 57：看板「项目消失」先查分页首屏假象，再谈数据 bug（ccc079）
+
+**问题**：故障报告称 /cards 只返回 cd/cla/clw/hp 四项目 50 张，「直调 loader 返回 207 张全项目」被解读为 web 进程数据源/合成层丢项，排查方向直指环境耦合。
+
+**根因**：两层叠加——① /cards 默认 `page_size=50` 且按 id 排序，字典序最靠前的 cd(4)+cla(14)+clw(25)+hp(45) 恰好占满第一页，xy/mx/qb/tst 在第 2~5 页并未丢失；② ccc 是唯一真缺失项，被 loader items 层 platform 前缀过滤剔除（ccc-plan-048 已去豁免入板）。无逐项目观测面导致只能靠翻页人工核对，误判成进程级 bug。
+
+**修复（2026-08-24 ccc079）**：
+- 平台卡入板：移除 items 层 platform 过滤，CCC 卡正式上板。
+- 观测面固化：装载(board-load)/合成(board-compose)两层 INFO 逐项目计数日志，未来任意丢项可凭两层数值对比直接定位丢失层。
+
+**如何应用**：再遇「看板少项目」按序查：① API `total` 字段 vs 期望全集；② 带 `page_size` 大值翻页取全集统计 project 分布（勿只看第一屏）；③ 仍缺才查 loader/合成层，用 board-load/board-compose 日志对比。另记两条既有测试隔离缺陷（基线复现、与业务改动无关）：全量 pytest 会经 roadmap 巡查逻辑写真实 `docs/projects/mx/roadmap.md`；http_api conversation 族硬编码 `CCC_BRAIN_BASE_URL=http://127.0.0.1:6100` 依赖本机常驻 relay 实时负载，失败数随服务状态漂移（同代码两轮 2↔14 个失败），CI 化前须 mock 化。
