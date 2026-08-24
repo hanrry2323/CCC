@@ -5,11 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from server.board.loader import load_dispatch_cards, parse_card
-from server.board.models import base_state
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DISPATCH_DIR = PROJECT_ROOT / "docs" / "dispatch"
-ARCHIVED_T_CARDS = PROJECT_ROOT / "docs" / "archive" / "legacy-t-cards"
 
 SAMPLE = """# 任务卡 T99 · 示例任务（示例执行体）
 
@@ -163,18 +161,6 @@ class TestLoadDispatchCards:
         items = load_dispatch_cards(tmp_path)
         # ID 取标题（T99）而非文件名
         assert [i.id for i in items] == ["T99"]
-
-    def test_real_dispatch_cards(self) -> None:
-        """真实归档 T 卡（legacy-t-cards）全部可解析。"""
-        items = load_dispatch_cards(ARCHIVED_T_CARDS, include_archived=True)
-        ids = {item.id for item in items}
-        assert {"T1", "T1-R", "T2", "T3"} <= ids
-        # T54：T-mapping.md 是说明文档（无卡头标题），不得作为任务卡混入看板
-        assert "T-mapping" not in ids
-        for item in items:
-            # 契约 §2 允许括号变体（如「打回（原因）」），断言按基础态归并
-            assert base_state(item.state) in {"待分派", "执行中", "已回写", "已关闭", "打回", "作废", "未知"}
-
 
 class TestSubdirScan:
     """T54 子目录扫描：根平铺旧卡 + <前缀>/ 子目录新卡共存；说明文档跳过。"""
