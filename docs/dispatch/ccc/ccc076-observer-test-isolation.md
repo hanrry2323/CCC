@@ -105,6 +105,8 @@ mock → 任何检出跑全量 pytest 都会向所在仓 docs/projects/mx/roadma
 
 severity 计分：影响面 1（白名单单测试文件+卡文、无生产变更）+ 改动深度 1（测试 mock/断言加固+一处派生链修正）+ 红线邻近 2（P1-b 维护区判据曾擦边已闭环、并发竞写流程事件已入档）= 4 → 轻（无高维度，不触发强制重）。
 
+后到席补注（732166915 作者 · 终局收口）：① **F5 破案**：15:03:10 的 mx/roadmap.md mtime 触碰即本席的守护断言负控实验——人为追加标记行 → 单跑用例见红（FAILED … M docs/projects/mx/roadmap.md）→ git checkout 还原；sha 复原 d24ed5d9…、仅 mtime 漂移，时点吻合，悬案关闭。② **F3 就地闭环核验**：前席工作区遗留的 test_write_roadmap_draft 注根 tmp 改动经本席复核成立（_acquire_roadmap_lock(roadmap.py:394) 经未 patch 的 _repo_root 在真实仓落 .roadmap.lock，本席 ls+check-ignore(.gitignore:183 *.lock) 实证；注根后锁与草案全落 tmp），随本谱系提交入库；另查 clw/test 项目下亦有同类锁残留（同族触碰面，归后续治理卡）。③ 本席对上列全部关键主张独立复现（范围/注入链/门禁/指纹/负控/维护区/push 谱系），与前席结论一致、无新增否决项。审计谱系：c4110a15a → 732166915 → ebf4c8bc4 → 本提交，双席交叉确认收口。
+
 机审：通过
 
 ## 维护区
