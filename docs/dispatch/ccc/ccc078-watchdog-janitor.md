@@ -46,6 +46,22 @@
 
 （执行体回写）
 
+- **实现说明**（2026-08-24）：scripts/watchdog-ccc.sh 新增 janitor_* 清道夫段（+199 行，纯增量）。
+  ①可回收 worktree：遍历主仓与 registry.yaml 受管仓的 `git worktree list`，卡头终态（已关闭/作废/
+  历史标记）→ 列「可回收」；worktree_root 下 git 未注册孤儿目录一并列入。②可删分支：本地分支已
+  合入 origin/main(master)、豁免 main/master/develop/HEAD，被 worktree 占用时建议先移除再删；
+  基于本地引用保守判定，不做 fetch。③遗留服务：7898/7899 监听逐 pid 上报；/tmp/ccc-* 按
+  mtime≥24h 计残留，报总数+样例防刷屏。④同类告警 24h 去重（状态文件 ~/.ccc/logs/janitor/<key>，
+  可经 CCC_JANITOR_REPEAT_SEC / CCC_JANITOR_TMP_MIN_AGE_SEC 覆盖）。挂载点仅两条退出路径前
+  `janitor_sweep || true`：健康检查函数、判定逻辑、自愈动作、退出码零变化（红线2）。只上报零删除。
+- **自测结果**：门禁 `bash -n … && bash scripts/watchdog-ccc.sh >/dev/null 2>&1; echo watchdog-exit=$?`
+  → `watchdog-exit=0`。实跑明细（~/.ccc/logs/watchdog.log）：feat-047 孤儿目录上报 ✓；
+  codex/ccc076·078「已合入被占用」上报、codex/ccc077 因 main 前进正确不报 ✓；7899 pid=76724 与
+  /tmp 残留 103 项上报 ✓；连续两轮第二轮 JANITOR 日志零新增（去重生效）✓；终态判定函数对
+  ccc027(已关闭)/ccc075(作废)=TERMINAL、ccc078(活跃)=ACTIVE ✓；健康输出仍为「健康」+exit 0 ✓。
+- **push 证据**：分支 codex/ccc078-watchdog-janitor，实现 commit fcb3c5982，rebase origin/main
+  up-to-date 后推送成功（`* [new branch]`）；回写 commit 见本文件随后的第二次 push。
+
 ## 机审区
 
 （验收席专用——执行体禁止写入）
@@ -55,10 +71,11 @@
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
 
 1. **方案同步**：[否]
-   - 说明：[否]。地基加固直派卡无关联方案。
+   - 说明：[否]。地基加固直派卡无关联方案，无方案需同步。
 2. **教训沉淀**：[无]
-   - 说明：[无]。机制教训随卡记录即可。
+   - 说明：[无]。教训已随卡记录——自测暴露两处实现缺陷（脚本在 worktree 运行时 REPO_ROOT 漂移、
+     去重分隔串笔误致同仓重扫）均已修复并复测；机制级教训随本卡即可，无需另沉淀 KB。
 3. **档案/README**：[否]
-   - 说明：[否]。
+   - 说明：[否]。纯脚本内增量巡检段，配置经环境变量覆盖，未改任何对外行为与文档口径。
 4. **线路图**：[否]
-   - 说明：[否]。
+   - 说明：[否]。单点卫生债常态化盯防，不构成新里程。
