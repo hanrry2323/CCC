@@ -1,5 +1,4 @@
 # 任务卡 xy059 · xianyu html-preview CLI——HTML 场景本地预览命令（DSH 执行）
-> 批准：老板合入批准 · 2026-08-24
 
 > 关联：xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-24
 
