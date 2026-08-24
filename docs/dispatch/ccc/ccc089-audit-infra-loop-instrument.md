@@ -84,7 +84,7 @@ audit.log 全程不被触碰（静态）、无任何子进程启动痕迹，但�
 2. `_run_machine_audit_after_writeback` → `_dispatch_and_collect`（L2162）在 `subprocess.Popen`
    **之前**的任一早退点返回 `(False, problems)`：熔断 L2188 / worktree 失败 L2274·L2314·L2322 /
    build_command L2362 —— 会话从未拉起，`{id}.audit.log` 不被创建或保持旧内容（静态）。
-3. L3419 读到空/旧 audit_text → 无业务结论特征 → L3427 `not ok and not pass特征` 成立 →
+3. L3407-3408 读到空/旧 audit_text → 无业务结论特征 → L3427 `not ok and not pass特征` 成立 →
    L3429-3437 `_ledger_record(kind="infra")` **追加台账行**。
 4. 回 worker：reasons 含「基础设施」→ `is_retryable_failure`=True → L3795-3830 infra 分支 →
    `_hold_infra_failure`（L529）写 sidecar `infra_cooldown_until`（默认基数 60s，指数退避 2^n）。
@@ -119,8 +119,11 @@ log_dir / 多 DATA_DIR 并存）或观测窗口短于退避展开期——此点
 @@
      if not ok and not _audit_output_indicates_pass(audit_text):
 +        # ccc089 候选修复：本轮 audit.log 未被任何真实会话写入（Popen 前早退）
-+        # → 不按 infra 记账进冷却续审（否则以固定节奏重复刷 infra 行，ccc081 现象），
-+        # 改为返回未审（audited=False），由调用方按既有「未审」口径挂起待人工跟进。
++        # → 不按 infra 记账，防固定节奏重复刷 infra 行（ccc081 现象）。
++        # 注意（机审席核正 2026-08-25）：第三返回值 audited=False 仅被 --audit CLI
++        # 路径消费（main.py L4575-4578「skipped」口径）；引擎 worker 主链
++        # （_run_audit_worker L3696）弃用该值——本候选在引擎路径只消除台账刷行，
++        # 冷却空转仍持续至 strikes 熔断（详见 diff 后核正说明）。
 +        audit_log_fresh = (
 +            (log_dir / f"{work.id}.audit.log").is_file()
 +            and (log_dir / f"{work.id}.audit.log").stat().st_mtime >= t_start - 1
@@ -139,7 +142,15 @@ log_dir / 多 DATA_DIR 并存）或观测窗口短于退避展开期——此点
 备选方案（语义更显式）：`_dispatch_and_collect` 各拉起前早退 reasons 统一加 `pre-launch:` 前缀标签，
 worker 对该标签走「转待分派人工跟进」而非无限冷却。改动点多一处常量，侵入面略大。
 
-两案均不改重试/熔断预算语义本身，仅消除「未拉起也记账+冷却」的空转路径；落地须另行开卡。
+机审席核正（2026-08-25 · 轻级就地修正）：本节原称「两案均…仅消除『未拉起也记账+冷却』的
+空转路径」，与实证不符——引擎主链 `_run_audit_worker`（L3696）将 `_run_machine_audit_after_writeback`
+第三返回值弃为 `_audited`（无消费方）；案 A 在引擎路径的实效 = 停止 infra 台账刷行并**消除 ledger
+观测信号**，而 problems（含「基础设施」特征）仍经 `is_retryable_failure`→`_hold_infra_failure`
+按冷却续跑，直至 strikes 熔断转待分派（若生产 strikes 不累积则空转依旧，只是不再留痕）。
+「未审挂起待人工跟进」口径仅存在于 `--audit` CLI 路径（L4575-4578 消费 `audited`）。
+欲终结空转本体，须采案 B（pre-launch 标签 → 转待分派人工跟进）或在引擎 worker 路径补
+`audited=False` 消费分支。两案均不改重试/熔断预算语义本身；落地须另行开卡并由环节②按上述
+边界裁量。
 
 ## 维护区
 
@@ -153,3 +164,56 @@ worker 对该标签走「转待分派人工跟进」而非无限冷却。改动�
    - 说明：仅 main.py 加纯日志插桩与新增一个测试文件，无结构/技术栈/路径变化。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：ccc081 生产修复属后续卡裁量事项，不改变线路图方向。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+### 独立核验证据（不引用执行体自述，全部命令复现）
+
+- 范围核对：`git log main..HEAD` 分支独有提交仅 2 个——bd51c4083（main.py +21 插桩 /
+  新增 test_ccc089_audit_infra_loop.py +215）与 ae32bf995（仅卡回写）。相对 main 的
+  diffstat 中 approve-merge.sh / ccc090-093 卡等差异经 `git log HEAD..main` 实证为
+  main 前移（d26c00eb2、c5d927686）的反向差，非本分支改动。白名单严守 ✓
+- 零行为变更实证：`git show bd51c4083 -- server/engine/main.py` 逐行核对，7 处插桩全为
+  `[ccc089-trace]` logger.info；_ledger_record 出口链块 try/except 自包裹、无分支/返回值变更 ✓
+- 测试独立复跑：`pytest server/tests/test_ccc089_audit_infra_loop.py -q` → 4 passed；
+  六个回归文件合计 155 passed（=新增4+回归151，与回写声称一致）；ruff All checks passed ✓
+- 根因链条逐行走读核实：L2162/L2188/L2274/L2314/L2322/L2362 早退点、L3271-3285 记账出口链、
+  L3407-3408 audit_text 读取、L3427 判定、L3429-3437 kind="infra" 记账、L3675/L3696 worker 链、
+  L600 冷却门禁、L3719+L3790-3830 infra 分支与 strikes 熔断、L529 _hold_infra_failure、
+  L4558 起 --audit CLI——机制本体（候选 b）成立：Popen 前早退 → audit.log 静态仍按
+  infra 记账进冷却续审，到期即复发 ✓
+- 测试夹具真实性：真实 git worktree add 失败路径（worktree_base 指向普通文件之下）、
+  无 mock dispatch/记账/冷却；CCC_AUDIT_LEDGER 覆盖、冷却配置键名均与生产消费点对上 ✓
+- Push 证据：`git ls-remote origin codex/ccc089-audit-infra-loop-instrument` = ae32bf995
+  = 本地 HEAD（含回写提交均已推送）✓
+- 机械门禁：`PYTHONPATH=. python3 server/board/docgate.py <卡>` exit=0 ✓；
+  维护区四问逐项单选已填、说明非空实情；抽查属实（卡头无方案编号；diffstat 无结构/路径/
+  技术栈变化；教训落于本卡论证与测试 docstring）✓
+
+### 发现与处置（severity 三级评分 · 影响面/改动深度/红线邻近）
+
+1. 【影响面2 · 改动深度1 · 红线邻近1 = 4分】**候选推荐 diff 行为声明不实（已就地修正）**：
+   原 diff 注释称「由调用方按既有『未审』口径挂起待人工跟进」，实证引擎主链 L3696 将第三
+   返回值弃为 `_audited`，「未审」口径仅 `--audit` CLI 路径（L4575-4578）消费。该候选在
+   引擎路径实效 = 只消除台账刷行并削弱观测信号，problems 含「基础设施」仍进冷却续跑至
+   strikes 熔断——并未终结 ccc081 空转本体（终结需案 B 或补引擎侧 audited=False 分支）。
+   属交付文本缺陷而非生产行为缺陷（卡明确「供环节②裁量·落地另开卡」），已在回写区
+   原位核正并在 diff 注释内标注。
+2. 【影响面1 · 改动深度1 · 红线邻近1 = 3分】**行号引用偏差（已就地修正）**：根因论证第 3 步
+   「L3419 读到空/旧 audit_text」实际读取在 L3407-3408；L3419 落在业务打回记账分支
+   （kind="audit"）内、语义相反。机制结论不受影响。
+3. 【记录不计分】节奏解释「60s 冷却 + 扫描延迟 ≈ 76s」的 16s 差值构成无独立证据；
+   卡内已自标「待生产侧核实、不下定论」，诚实降级可接受。
+
+合计 8 分中取各维最高合成：两发现均为交付文本层轻量缺陷，生产代码零行为变更、根因诊断
+与复现测试经独立复现全部成立，任一维度未达高。综合 severity＝轻。
+
+### 结论
+
+两项轻级发现已按分流规则就地修复（修正回写区候选 diff 注释与收尾说明、更正行号引用）
+并随本次提交推送，不构成打回事由。根因定位（函数+行号）、加速形态循环复现测试、
+候选 diff 文本三项验收标准均达成且证据可复现。
+
+机审：通过
