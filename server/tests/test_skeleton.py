@@ -24,7 +24,7 @@ SERVER_DIR = PROJECT_ROOT / "server"
 
 def _server_subdirs() -> list[str]:
     """返回 server/ 下应有的一级子目录名。"""
-    return ["engine", "board", "web", "relay", "config", "deploy", "tests"]
+    return ["engine", "board", "web", "config", "deploy", "tests"]
 
 
 def _write_env(lines: list[str]) -> str:
@@ -71,10 +71,8 @@ class TestConfigLoader:
         "ENGINE_PORT=8001",
         "BOARD_PORT=8002",
         "WEB_PORT=8003",
-        "RELAY_PORT=8004",
         "DATA_DIR=/tmp/ccc/data",
         "LOG_DIR=/tmp/ccc/logs",
-        "RELAY_UPSTREAM_URL=http://example.com/v1",
         "EXECUTOR_REGISTRY_PATH=/tmp/ccc/executors.json",
     ]
 
@@ -96,10 +94,8 @@ class TestConfigLoader:
             assert cfg["ENGINE_PORT"] == "8001"
             assert cfg["BOARD_PORT"] == "8002"
             assert cfg["WEB_PORT"] == "8003"
-            assert cfg["RELAY_PORT"] == "8004"
             assert cfg["DATA_DIR"] == "/tmp/ccc/data"
             assert cfg["LOG_DIR"] == "/tmp/ccc/logs"
-            assert cfg["RELAY_UPSTREAM_URL"] == "http://example.com/v1"
             assert cfg["EXECUTOR_REGISTRY_PATH"] == "/tmp/ccc/executors.json"
             assert cfg["RELAY_UPSTREAM_KEY"] == "sk-test"
             assert cfg["PYTHON_BIN"] == "/opt/bin/python3"

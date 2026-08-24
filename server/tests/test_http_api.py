@@ -1830,115 +1830,6 @@ class TestOpsConcurrency:
         assert "error" in data
 
 
-class TestOpsRelayStats:
-    """GET /ops/relay-stats：今日请求（总/Pro/flash/code）+ 近10s增量 + 健康。"""
-
-    def test_returns_today_and_deltas(self, api_server, monkeypatch, tmp_path):
-        import json
-        import time
-        from datetime import datetime
-        from server.web import server as srv
-
-        # Clear cache to avoid state leakage from other tests
-        srv._RELAY_STATS_CACHE = None
-        srv._RELAY_LAST_SNAPSHOT = None
-
-        now_ms = int(time.time() * 1000)
-        today_start_ms = int(datetime.combine(datetime.now().date(), datetime.min.time()).timestamp() * 1000)
-        usage = [
-            {"timestamp": now_ms - 5000, "model": "flash"},
-            {"timestamp": now_ms - 5000, "model": "code"},
-            {"timestamp": now_ms - 5000, "model": "claude-sonnet-5"},
-            {"timestamp": now_ms - 60000, "model": "flash"},
-            {"timestamp": today_start_ms + 1000, "model": "flash"},
-        ]
-        f = tmp_path / "usage.json"
-        f.write_text(json.dumps(usage), encoding="utf-8")
-        monkeypatch.setenv("CCC_RELAY_USAGE_API", "")  # 显式空 = 跳过实时接口，走文件兜底
-        monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(f))
-
-        token = _get_token(api_server)
-        status, data = _get(api_server, "/ops/relay-stats", token=token)
-        assert status == 200
-        assert data["today"]["total"] == 5
-        assert data["today"]["flash"] == 3
-        assert data["today"]["code"] == 1
-        assert data["today"]["pro"] == 1
-        assert data["healthy"] is True
-
-    def test_delta_after_snapshot_change(self, monkeypatch, tmp_path):
-        """增量 = 服务端上次读数差值（文件新增记录 → 下次 delta 反映）。"""
-        import json
-        import time
-
-        from server.web import server as srv
-
-        now_ms = int(time.time() * 1000)
-        f = tmp_path / "usage.json"
-        f.write_text(
-            json.dumps([{"timestamp": now_ms - 5000, "model": "flash"}]),
-            encoding="utf-8",
-        )
-        monkeypatch.setenv("CCC_RELAY_USAGE_API", "")
-        monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(f))
-        monkeypatch.setattr(srv, "_RELAY_STATS_TTL_S", 0)
-        srv._RELAY_STATS_CACHE = None
-        srv._RELAY_LAST_SNAPSHOT = None
-
-        first = srv._compute_relay_stats()
-        assert first["delta_10s"]["total"] == 0
-
-        f.write_text(
-            json.dumps(
-                [
-                    {"timestamp": now_ms - 5000, "model": "flash"},
-                    {"timestamp": now_ms - 3000, "model": "code"},
-                    {"timestamp": now_ms - 2000, "model": "code"},
-                ]
-            ),
-            encoding="utf-8",
-        )
-        second = srv._compute_relay_stats()
-        assert second["delta_10s"]["total"] == 2
-        assert second["delta_10s"]["code"] == 2
-
-    def test_api_by_tier_bucketing(self):
-        from server.web.server import _relay_counts_from_api
-
-        d = {
-            "total": 100,
-            "by_tier": {
-                "flash": {"n": 30},
-                "code": {"n": 40},
-                "unknown": {"n": 25},
-                "pro": {"n": 5},
-            },
-        }
-        assert _relay_counts_from_api(d) == {
-            "total": 100,
-            "pro": 30,
-            "flash": 30,
-            "code": 40,
-        }
-
-    def test_missing_file_unhealthy(self, api_server, monkeypatch, tmp_path):
-        from server.web import server as srv
-
-        srv._RELAY_STATS_CACHE = None
-        monkeypatch.setenv("CCC_RELAY_USAGE_API", "")
-        monkeypatch.setenv("CCC_RELAY_USAGE_FILE", str(tmp_path / "nope.json"))
-        token = _get_token(api_server)
-        status, data = _get(api_server, "/ops/relay-stats", token=token)
-        assert status == 200
-        assert data["healthy"] is False
-        assert data["alert"]
-
-    def test_no_auth_401(self, api_server):
-        status, data = _get(api_server, "/ops/relay-stats")
-        assert status == 401
-        assert "error" in data
-
-
 class TestAuditStatusTag:
     """机审列状态标签辅助函数。"""
 
@@ -2061,12 +1952,12 @@ class TestConfigEndpoint:
         assert status == 200
 
     def test_returns_ports_shape(self, api_server):
-        """返回 ports 子结构（web/board/engine/relay）。"""
+        """返回 ports 子结构（web/board/engine；中转站退役后无 relay）。"""
         status, data = _get(api_server, "/config")
         assert status == 200
         assert "ports" in data
         ports = data["ports"]
-        for key in ("web", "board", "engine", "relay"):
+        for key in ("web", "board", "engine"):
             assert key in ports
 
     def test_returns_workspace_map_empty(self, api_server):

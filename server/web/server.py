@@ -1356,10 +1356,6 @@ _ENRICHED_TTL_S = 30.0
 _ENRICHED_REBUILD_LOCK = threading.Lock()
 
 
-_RELAY_STATS_CACHE: tuple[float, str, dict] | None = None
-_RELAY_STATS_TTL_S = 2.0
-
-
 def _compute_relay_stats() -> dict:
     """中转站已退役（2026-08-24 拆除，受老板临时授权）：恒返回退役态。
 

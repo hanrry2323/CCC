@@ -20,15 +20,14 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "ENGINE_PORT",
         "BOARD_PORT",
         "WEB_PORT",
-        "RELAY_PORT",
         "DATA_DIR",
         "LOG_DIR",
-        "RELAY_UPSTREAM_URL",
         "EXECUTOR_REGISTRY_PATH",
     }
 )
 
 # 可选键（有默认值）
+# RELAY_PORT / RELAY_UPSTREAM_URL 原为必填，2026-08-24 中转站退役后从必需移除（生产不再提供）
 OPTIONAL_KEYS: dict[str, str] = {
     "RELAY_UPSTREAM_KEY": "",
     "PYTHON_BIN": "",
