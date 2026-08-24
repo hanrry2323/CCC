@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from server.board.loader import load_dispatch_cards, parse_card
+from server.board.loader import load_dispatch_cards, parse_card, scan_dispatch_files
+from server.board.models import base_state
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DISPATCH_DIR = PROJECT_ROOT / "docs" / "dispatch"
@@ -180,8 +181,8 @@ class TestSubdirScan:
         assert "T99" in ids
         assert "xy100" in ids
 
-    def test_scan_skips_platform_prefix_subdir(self, tmp_path: Path) -> None:
-        """平台自研项目（category==platform，如 ccc）的子目录卡不参与看板扫描。"""
+    def test_platform_prefix_subdir_card_loaded(self, tmp_path: Path) -> None:
+        """平台子目录卡入板（ccc-plan-048 设计变更）：items 层不再按 platform 前缀过滤。"""
         _write(tmp_path, "T99-old.md", SAMPLE)
         (tmp_path / "ccc").mkdir()
         new_card = (
@@ -193,7 +194,25 @@ class TestSubdirScan:
         items = load_dispatch_cards(tmp_path)
         ids = {item.id for item in items}
         assert "T99" in ids
-        assert "ccc100" not in ids
+        # ccc079 机审席就地修复（2026-08-24）：原断言「ccc100 not in ids」锁定的是
+        # 本设计变更废弃的旧行为；平台卡正式入板后应出现在装载结果中。
+        assert "ccc100" in ids
+
+    def test_scan_default_skips_platform_subdir(self, tmp_path: Path) -> None:
+        """scan_dispatch_files 默认豁免保留：platform 子目录卡默认不扫，include_platform=True 才纳入。"""
+        (tmp_path / "ccc").mkdir()
+        new_card = (
+            "# 任务卡 ccc100 · 平台子目录卡\n"
+            "> 关联：CCC · 执行体：X · 验收：Codex · 状态：待分派 · 日期：2026-08-04\n"
+            "\n## 目标\n测试\n"
+        )
+        _write(tmp_path / "ccc", "ccc100-subdir.md", new_card)
+        default_paths = {str(p) for p in scan_dispatch_files(tmp_path)}
+        assert all("ccc100" not in p for p in default_paths), (
+            f"scan 默认应豁免 platform 子目录，实际扫到: {sorted(default_paths)}"
+        )
+        inclusive_paths = {str(p) for p in scan_dispatch_files(tmp_path, include_platform=True)}
+        assert any("ccc100" in p for p in inclusive_paths)
 
     def test_scan_skips_non_card_doc(self, tmp_path: Path) -> None:
         """T-mapping.md 等说明文档（无 `# 任务卡` 卡头）不参与扫描。"""

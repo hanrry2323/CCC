@@ -1267,6 +1267,7 @@ def _load_board_items(include_archived: bool = False):
         if _BOARD_CACHE is not None and now - _BOARD_CACHE[0] < _BOARD_CACHE_TTL_S and _BOARD_CACHE[1] == key:
             return _BOARD_CACHE[2]
         items = load_dispatch_cards(_DISPATCH_DIR, include_archived=include_archived)
+        _log_project_counts("board-load", items)
         try:
             composed = _compose_board_items(items)
             _BOARD_CACHE = (now, key, composed)
@@ -1279,6 +1280,22 @@ def _load_board_items(include_archived: bool = False):
 _BOARD_CACHE_TTL_S = 20.0
 _BOARD_CACHE: tuple[float, str, list] | None = None
 _BOARD_REBUILD_LOCK = threading.Lock()
+
+
+def _log_project_counts(stage: str, items) -> None:
+    """装载/合成后逐项目计数 INFO 日志（ccc-plan-048 P1）。
+
+    部署后凭两层日志（board-load=loader 层 / board-compose=合成层）对比定位
+    「某项目在看板消失」发生在数据源还是合成层，杜绝只看首屏分页的误判。
+    """
+    try:
+        from collections import Counter
+
+        counts = Counter(getattr(i, "project", "?") for i in items)
+        breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        logger.info("看板[%s] 逐项目计数: total=%d %s", stage, len(items), breakdown)
+    except Exception:
+        logger.exception("逐项目计数日志失败（不影响看板数据）")
 
 
 def _board_cache_key() -> str:
@@ -1505,6 +1522,7 @@ def _compose_board_items(items):
                 reason=rt.get("reason", ""),
             )
         )
+    _log_project_counts("board-compose", out)
     return out
 
 
@@ -4619,8 +4637,29 @@ def create_server(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer
     return _CCCThreadingHTTPServer((host, port), _APIHandler)
 
 
+def _ensure_board_log_visibility() -> None:
+    """看板装载/合成逐项目计数日志可见化（ccc-plan-048 P1）。
+
+    web 进程默认无 logging 配置，root=WARNING 会吞掉 INFO——定位日志必须真实
+    落 stderr 才有定位能力。只对看板相关两个 logger 配 INFO（幂等），不放大
+    全进程日志级别。
+    """
+    fmt = logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
+    for name in ("ccc.web.server", "ccc.board.loader"):
+        lg = logging.getLogger(name)
+        lg.setLevel(logging.INFO)
+        if not any(
+            getattr(h, "level", logging.NOTSET) <= logging.INFO for h in lg.handlers
+        ):
+            h = logging.StreamHandler(sys.stderr)
+            h.setLevel(logging.INFO)
+            h.setFormatter(fmt)
+            lg.addHandler(h)
+
+
 def serve_forever(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     """创建并启动 HTTP 服务（阻塞）。"""
+    _ensure_board_log_visibility()
     _start_card_watcher()
     wall.ensure_poll_started()  # ccc-plan-045 P1：DSH 墙快照轮询线程（幂等，daemon）
 

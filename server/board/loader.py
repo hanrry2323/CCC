@@ -170,9 +170,9 @@ def scan_dispatch_files(directory: Path | str, include_platform: bool = False) -
 
     T54 规则：旧卡（根 `T*.md`）与 `<prefix>/` 子目录新卡共存；只认含 `# 任务卡`
     卡头标题的 .md，T-mapping.md 等说明文档不参与。目录不存在返回空。
-    平台自研项目（registry category==platform）的卡目录默认跳过（不出现在看板）。
-    include_platform=True 时纳入（索引层需要 ccc 卡供 sync_plan_progress 读状态，
-    看板展示由 load_dispatch_cards 在 items 层过滤——人审统一化 2026-08-14）。
+    平台自研项目（registry category==platform）的卡目录默认跳过；
+    include_platform=True 时纳入（ccc-plan-048 起 _load_dispatch_cards_incremental
+    固定传 True：平台卡正式入板；_platform_prefixes 函数保留供默认豁免调用方）。
     """
     d = Path(directory)
     if not d.is_dir():
@@ -367,7 +367,8 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
         if "path" in entry:
             index_by_path[entry["path"]] = entry
 
-    # 人审统一化：索引层纳入 platform（ccc）卡（供 sync_plan_progress），看板展示在下方 items 过滤
+    # ccc-plan-048 设计变更（2026-08-24）：平台卡正式入板——索引层纳入全部项目卡，
+    # items 层不再按 platform 前缀过滤（此前人审统一化只入索引不展示）。
     disk_files = scan_dispatch_files(dispatch_dir, include_platform=True)
     archive_dir = get_archive_dir(dispatch_dir)
     archive_files = scan_archive_files(archive_dir)
@@ -456,12 +457,11 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
         # 外层已在 load_dispatch_cards_incremental 持锁，这里直接无锁写，避免嵌套 flock 死锁
         _write_index_entries(updated_entries, get_index_path(dispatch_dir))
 
-    # 人审统一化：platform（ccc）子目录卡进索引（供 sync_plan_progress），看板展示过滤。
-    # 按「路径父目录」过滤而非项目字段——legacy 根目录 T 卡（无 项目 字段→未分类）不受影响。
-    platform = _platform_prefixes()
-    if platform:
-        items = [i for i, p in zip(items, all_files) if p.parent.name not in platform]
-
+    # ccc-plan-048 设计变更（2026-08-24）：平台卡（registry category==platform，如 ccc）
+    # 正式入板展示。原 items 层 platform 前缀过滤已移除；_platform_prefixes 保留供
+    # scan_dispatch_files 默认豁免（include_platform=False 调用方）继续使用。
+    # 注意：不再做 items/all_files 配对过滤——此前 zip 配对在 stat 失败/解析失败
+    # continue 时会错位，属隐患，随过滤块一并消除。
     if not include_archived:
         items = [i for i in items if not i.archived]
 
