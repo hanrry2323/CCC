@@ -49,6 +49,11 @@ if ! { git fetch --no-write-fetch-head origin main && git merge --ff-only origin
 fi
 
 echo "[2/3] 正在运行测试套件，执行预校验门禁 (pytest)..."
+# G4（2026-08-25 加固）：测试环境消毒——外层若导出 CCC_AUDIT_LEDGER="" 空串，conftest 的
+# setdefault 不覆盖、audit_ledger.get("").strip() 判空后回落生产账本 → 测试直写生产 ledger
+# （DSH R3-lane3 实锤）。部署前一律 unset，交由 conftest 隔离到临时测试路径；
+# EXECUTOR_PROBE_URL 同消毒（conftest 虽直赋值覆盖，防未来加载顺序变动泄漏外层值）。
+unset CCC_AUDIT_LEDGER EXECUTOR_PROBE_URL 2>/dev/null || true
 # 容许 t53 存量 3 个失败，其余测试必须全红绿通过
 # 如果 pytest 正常（除去 t53 后全过），则退出码为 0 或因 t53 退出码非 0。
 # 我们可以运行 pytest 并在失败时过滤掉由于 t53 引起的错误，或在测试断言中精确校验
@@ -61,10 +66,25 @@ if ! "${PYTHON_BIN}" -m pytest --ignore=server/tests/test_t53_console_roadmap.py
 fi
 
 echo "[3/3] 测试全部通过。正在执行热重启自愈收口 (kickstart)..."
+# G5（2026-08-25 加固）：draining 握手——重启前扫描在途 exec 会话（孤儿化风险知情，
+# ccc083 审计员被 04:11 重启孤儿化 40min 的事故教训），置位 deploy-draining.flag 通知
+# engine 暂停新派发（engine 侧尊重该 flag），重启完成后清除。存在在途会话时仅告警不阻断。
+_EXEC_LOG_DIR="${EXECUTOR_LOG_DIR:-$HOME/.ccc/logs/exec}"
+_INFLIGHT=0
+if [ -d "$_EXEC_LOG_DIR" ]; then
+  _INFLIGHT=$(find "$_EXEC_LOG_DIR" -name '*.running' 2>/dev/null | wc -l | tr -d ' ' || true)
+fi
+if [[ "${_INFLIGHT:-0}" -gt 0 ]]; then
+  echo "[WARN] 检测到 ${_INFLIGHT} 个在途 exec 会话（${_EXEC_LOG_DIR}/*.running）→ 热重启可能孤儿化在途工作；请确认无关键在途任务" >&2
+fi
+mkdir -p "$HOME/.ccc/data"
+touch "$HOME/.ccc/data/deploy-draining.flag"
 if ! "${SCRIPT_DIR}/kickstart-ccc.sh"; then
+  rm -f "$HOME/.ccc/data/deploy-draining.flag"
   print_recovery_hint "Kickstart" "服务重启失败，常驻进程状态异常。"
   exit 3
 fi
+rm -f "$HOME/.ccc/data/deploy-draining.flag"
 
 echo "[OK] CCC 服务原子热部署完成！"
 exit 0

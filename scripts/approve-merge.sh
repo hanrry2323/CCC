@@ -94,9 +94,12 @@ for b in out.splitlines():
         m = re.match(r"^([a-z]{2,4}\d{3})-", Path(f).stem)
         if m and machine_audit_passed_text(card):
             # P0 硬化（2026-08-22）：ready 入队须账本有机审记录（卡文自写不算，防假关闭污染批次）
-            from server.board.audit_ledger import has_pass
+            # 末行裁决加固（2026-08-25·ccc088 教训）：has_pass 只查「存在 pass 行」，打回后
+            # stale pass 会让已打回卡漏入队列；改 has_pass_verdict——pass 之后有 kind∈{audit,infra}
+            # 的「不通过」行即判不通过（如 ccc088 4615 manual 打回），杜绝漏放行。
+            from server.board.audit_ledger import has_pass_verdict
 
-            if has_pass(m.group(1)):
+            if has_pass_verdict(m.group(1)):
                 ready.append(m.group(1))
             break
 print("\n".join(sorted(set(ready))))
@@ -1075,17 +1078,28 @@ if [[ "$BATCH_MERGE" == true ]]; then
     if ! batch_finalize_card "$id"; then
       echo "[ERROR] ${id}: 批次收尾失败" >&2
       _BATCH_FAIL=1
+      continue
+    fi
+    # G2（2026-08-25）：每卡独立 close commit，单卡可独立 revert（对账时 1-3/3-3 摩擦点）
+    if ! git diff --cached --quiet; then
+      if ! git commit -m "close: 批准并关闭 ${id}"; then
+        echo "[ERROR] ${id}: 独立关卡 commit 失败" >&2
+        _BATCH_FAIL=1
+      fi
+    else
+      echo "[WARN] ${id}: 关卡后无暂存改动（疑似并发改写/空变更）→ 跳过 commit" >&2
     fi
   done
   if [[ $_BATCH_FAIL -ne 0 ]]; then
     echo "[ERROR] 批次收尾有失败 → 已合入但关卡/账本未全完成，需人工核验后补关" >&2
     exit 1
   fi
+  # 残余暂存兜底（sidecar/索引等非卡文件）
   if ! git diff --cached --quiet; then
-    git commit -m "batch: 关闭并批准 ${_BATCH_READY[*]}"
+    git commit -m "batch: 关闭并批准 ${_BATCH_READY[*]}（残余暂存）"
   fi
   git push origin main
-  echo "[OK] 批量合入批准完成：${_BATCH_READY[*]}（octopus 单 commit + 批次关卡单 commit）"
+  echo "[OK] 批量合入批准完成：${_BATCH_READY[*]}（octopus 单 commit + 每卡独立关卡 commit）"
 else
   FAILED=0
   for id in "${IDS[@]}"; do
