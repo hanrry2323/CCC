@@ -82,7 +82,23 @@ mock → 任何检出跑全量 pytest 都会向所在仓 docs/projects/mx/roadma
 
 ## 机审区
 
-（验收席专用——执行体禁止写入）
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+独立审查记录（worktree ccc076 @ 84bb98765 · 结论全部命令可复现）：
+
+1. **范围核对**：分支 codex/ccc076-observer-test-isolation，merge-base(HEAD,origin/main)=54de3ce0=origin/main tip（基点最新）；ls-remote origin 分支=本地 HEAD=84bb98765（push 核验属实）。全分支 diff（54de3ce0..HEAD）仅卡文件+白名单内 server/tests/test_observer.py，白名单外零触碰；代码提交 efd02cc5e numstat=62+/6- 与回写声明逐字一致，6 行删除全部为移入 patch 上下文的断言（零断言损失）；observer.py/roadmap.py 生产代码零改动。
+2. **动态复现（本席亲跑坐实核心声明）**：门禁 `python3 -m pytest server/tests/test_observer.py -q` → 26 passed、退出码 0；门禁前后 docs/projects/mx/roadmap.md（sha256 d24ed5d9…）与 docs/notes/2026-08-24-ccc-patrol.md（e648911d…）mtime+hash 零漂移；全量回归 server/tests 跑毕后两指纹仍零漂移、porcelain 除已知 untracked cards.index.jsonl 外零新增——「全量 pytest 不再污染检出」成立。注入面核对：run_observer 主链（dispatch_dir/list_plans/scan_findings/_auto_fix_deterministic/notes_dir 尾段）全部吃 observer.PROJECT_ROOT 模块全局，patch 生效路径完整；roadmap 写路径统一经 `_repo_root()`→已 patch 至 tmp。
+3. **存量失败与本卡无关**：brain_kb/brain_stream/http_api 会话流失败集与回写区披露一致；本席抽 test_brain_stream::test_success_flow 单测隔离跑仍失败（期望桩文案 vs 真实模型答复，502≠503 中继环境问题），模块与本案不相交，pre-existing 成立。
+4. **找茬记录**：
+   - F1（轻·已就地修复）：维护区 Q3/Q4「说明」原为选择符回声「[否]。」，不满足 P1-b「说明须一句实情」——系 ccc074 机审 F4 同项建议后的重复发生；本席补写实情句随审计提交落盘。
+   - F2（观察·不要求改码）：test_run_observer_output 替身内写目标由 tmp 构造后再断言 is_relative_to(tmp)，属构造性恒真；真实保障来自 board.roadmap._repo_root 补丁+实现节③守护断言（污染回归即红），不构成缺陷。
+   - F3（核实非问题）：同文件 test_write_roadmap_draft 直接调 write_roadmap_draft，但 _roadmap_path 已 patch 直落 tmp，非第三污染点。
+   - F4（观察·白名单外·另卡治理）：untracked docs/archive/legacy-t-cards/cards.index.jsonl 为历史全量跑副产物（执行体如实披露、本席复核属实），不影响合入。
+5. **维护区核对**：四问均合法单选（否/无/否/否）、docgate 机械判据通过；Q1/Q2 说明含实情句，Q3/Q4 经 F1 就地补实情；抽查声明真实性全部吻合（push ls-remote 一致、62+/6-、patrol 报告 mtime 14:33:57 第二污染点实证、.gitignore 巡查报告沉默路径、cards.index.jsonl 未跟踪状态）。
+
+severity 计分：影响面 1（白名单单测试文件+卡文、无生产变更）+ 改动深度 1（mock/断言加固）+ 红线邻近 2（P1-b 维护区说明判据边界、重复发生）= 4 → 轻（无高维度，不触发强制重）。
+
+机审：通过
 
 ## 维护区
 
@@ -93,6 +109,6 @@ mock → 任何检出跑全量 pytest 都会向所在仓 docs/projects/mx/roadma
 2. **教训沉淀**：[无]
    - 说明：[无]。机制教训随卡记录即可。
 3. **档案/README**：[否]
-   - 说明：[否]。
+   - 说明：[否]。本卡仅改 server/tests/test_observer.py 与卡文，未触 registry 与项目档案。
 4. **线路图**：[否]
-   - 说明：[否]。
+   - 说明：[否]。测试隔离修复无线路变化；mx 线路图全程指纹不变。
