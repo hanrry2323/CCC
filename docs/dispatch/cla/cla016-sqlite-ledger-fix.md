@@ -1,5 +1,4 @@
 # 任务卡 cla016 · SQLite 持久化队列落地与闪退恢复验证（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-18
 
 > 关联：cla-plan-002 (M1 补卡) · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：cla · 日期：2026-08-17
 

@@ -1,5 +1,4 @@
 # 任务卡 cla018 · LLM 双轨 Provider：本地 Ollama 与在线 API 配置层（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-18
 
 > 关联：cla-plan-009 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：cla · 日期：2026-08-18
 

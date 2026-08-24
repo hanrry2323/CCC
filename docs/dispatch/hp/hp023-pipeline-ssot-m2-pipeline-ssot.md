@@ -1,5 +1,4 @@
 # 任务卡 hp023 · pipeline 源码回灌 SSOT（M2） — 实施「pipeline 源码回灌 SSOT」（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-16
 
 > 关联：hp-plan-008 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-16
 

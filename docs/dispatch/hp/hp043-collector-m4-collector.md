@@ -1,5 +1,4 @@
 # 任务卡 hp043 · collector 加固（M4） — 实施「collector 加固」（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-17
 
 > 关联：hp-plan-020 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-17
 

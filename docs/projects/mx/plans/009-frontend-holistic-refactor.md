@@ -64,6 +64,15 @@ bundle 主 chunk 328KB → ≤300KB。
 
 ## 验收记录
 
+### 批次 4 · 2026-08-24（两轮，均已上线 HP）
+- [x] 第一轮：9 个未定义令牌补齐（RssStatsPage 浅粉 fallback 真 bug 修复）；
+      @theme/:root 冲突对齐；--brand-glow 去重；字号刻度 --fs-* 落地 + 样例迁移
+- [x] 第二轮：内联 fontSize 迁移刻度令牌 ×123 处；三页标题统一 .page-title；
+      弹层/浮层 z-index 接入 --z-*（修正 9999 倒挂 toast 层）
+- [x] 两轮均 tsc 净 / vitest 381 全绿 / Playwright 回归正常 / 已部署 HP
+      （CSS K6FAhRXt / JS Cu9doEhm）
+- 余第三轮：Radix 弹层整迁（MetadataEditDialog/TokenPromptDialog/SearchOverlay）、徽章 6 类收敛
+
 ### 批次 3 · 2026-08-24
 - [x] index.css 两族弹窗死样式 ~287 行 + 零散死类 13 项删除
 - [x] PlayerPage.css 旧桌面布局 19 规则删除（904→767 行）

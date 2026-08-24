@@ -1,5 +1,4 @@
 # 任务卡 hp041 · 悬空 cron 清理（M3） — 实施「悬空 cron 清理」（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-17
 
 > 关联：hp-plan-018 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-17
 

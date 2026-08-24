@@ -72,6 +72,15 @@ PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，角色：${ROLE}）。
 授权声明：本次运行授权在 ${WORKDIR_LABEL} $(pwd) 内读写卡白名单文件并执行 git add/commit/push（限卡白名单范围）。
 工作目录：$(pwd)"
 
+# ccc073（2026-08-24）：业务仓型任务 cwd 落在 biz_worktree，卡文件不在眼前——
+# xy059 首轮实证执行体普遍漏做文档仓侧卡回写。BIZ_WORKTREE 非空时 PROMPT 追加
+# 双仓语义提示；WORKTREE 缺失时文案引用空路径会产生误导，故同样不加。
+# 仅增补提示文案，其余零逻辑变化。
+if [ -n "$BIZ_WORKTREE" ] && [ -n "$WORKTREE" ]; then
+  PROMPT+="
+双仓提示：本卡文件位于文档仓分支副本 ${WORKTREE}/ 下（相对路径 ${CARD_PATH#/Users/fan/program/CCC/}）。业务改动在当前目录实施；卡文件的状态回写、回写区与维护区四问必须在文档仓 worktree 的卡副本上完成并 commit+push 到同一分支；主仓 ${CARD_PATH} 只读勿动。"
+fi
+
 # 后台执行 + wait 传播退出码（R1）；engine 侧另有全局超时
 dsh --profile headless --patch "$OVERLAY" "$PROMPT" &
 PID=$!

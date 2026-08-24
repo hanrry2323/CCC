@@ -1,5 +1,4 @@
 # 任务卡 xy037 · 断裂点修复（M2-2.2） — openclaw-plugin 路径修正（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-17
 
 > 关联：xy-plan-003 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：xy · 日期：2026-08-17
 

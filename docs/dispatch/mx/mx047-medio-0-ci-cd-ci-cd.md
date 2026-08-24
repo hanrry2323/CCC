@@ -1,5 +1,4 @@
 # 任务卡 mx047 · medio-0 公开化搬迁与多端 CI/CD — 公开化与多端 CI/CD（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-17
 
 > 关联：mx-plan-004 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-17
 > 依赖：mx046
