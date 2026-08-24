@@ -44,7 +44,41 @@ mock → 任何检出跑全量 pytest 都会向所在仓 docs/projects/mx/roadma
 
 ## 回写区
 
-（执行体回写）
+**回写时间**：2026-08-24 · 执行体：DSH（ox-alpha）
+
+**实现说明**：
+- 白名单内仅 `server/tests/test_observer.py`（62+/6-），生产代码零改动。
+- 卡实现节三点全落地：① `test_run_observer_output` 为 `write_roadmap_draft` 补 tmp 绑定替身
+ （外层 patch `server.board.roadmap._repo_root`→tmp，替身内断言每次调用写目标
+  `is_relative_to(tmp_path)`）；② `observer.PROJECT_ROOT/REPO_ROOT` 注入 tmp 根，
+  `scan_findings(cfg, PROJECT_ROOT)`/`_auto_fix_deterministic`/docs-notes 落点全部随迁，
+  并加隔离断言 `summary['findings'] == []`；③ 用例末新增守护断言：
+  `git status --porcelain -- docs/projects/mx/roadmap.md` 为空（在仓内运行时生效，非 git 环境自动跳过）。
+- **自测中发现同文件第二污染点并一并加固**：`test_run_observer_writes_draft_for_consistency`
+  已 mock write_roadmap_draft 但未注根，run_observer 尾段 `notes_dir = PROJECT_ROOT/'docs'/'notes'`
+  把巡查报告写进真实仓（实证：报告 mtime 2026-08-24 14:33:57 变更、内容即该测试两个 mock findings；
+  该路径被 `.gitignore:178` 覆盖、porcelain 沉默，属隐形污染）→ 同样注入 tmp 根后指纹不再变化。
+
+**自测结果**：
+- 门禁：`python3 -m pytest server/tests/test_observer.py -q` → **26 passed，退出码 0**（多次复跑一致）。
+- 全量回归（历史污染触发场景）：`python3 -m pytest server/tests -q` → 1175 条跑毕后指纹对照：
+  `docs/projects/mx/roadmap.md` mtime 不变、该路径 porcelain 0 行；
+  `docs/notes/2026-08-24-ccc-patrol.md` mtime 不变（第二污染点修复实证）；
+  全仓 porcelain 除本测试文件改动外零新增。
+- 套件存量失败与本案无关：test_brain_kb/test_brain_stream/test_http_api 会话流测试失败，
+  stash 掉本次改动后复跑同样失败（502≠503，中继环境问题）——pre-existing，非本卡引入。
+
+**push 证据**：
+- 分支 `codex/ccc076-observer-test-isolation`（基点=origin/main@54de3ce0，push 前 fetch 复核无需 rebase）。
+- commit：`efd02cc5e` test(ccc076): observer 测试隔离修复——run_observer 全链路注入 tmp 根。
+- push 后核验：`git ls-remote origin refs/heads/codex/ccc076-observer-test-isolation`
+  → `efd02cc5e191fce93f5674febf2d83e2c303d4b3` 与本地 HEAD 一致。
+
+**白名单外附带发现（未触碰，供后续卡参考）**：
+全量 pytest 会生成未跟踪文件 `docs/archive/legacy-t-cards/cards.index.jsonl`
+（pytest 下 `get_index_path(dispatch_dir)` 返回 `<dir>/cards.index.jsonl`，
+刷新者指向 test_board_loader.py 等针对真实归档目录跑 loader 的用例）。
+本卡测试不触它（单文件门禁前后 mtime 对照不变）；该文件在 HEAD 与主仓均未跟踪。建议另开卡治理。
 
 ## 机审区
 
