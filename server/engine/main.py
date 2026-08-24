@@ -597,6 +597,56 @@ def _audit_timeout_seconds(cfg: dict[str, Any]) -> int:
         return 1800
 
 
+# ccc093 审计预算自适应：diff 增删行 ≤ FREE 用 base（小 diff 不上浮）；≥ CAP 封顶 2×base；
+# [FREE, CAP] 区间线性上浮。复杂大 diff 必然超时（ccc081 四连 900s 击杀）的根修参数面。
+AUDIT_BUDGET_DIFF_FREE_LINES = 200
+AUDIT_BUDGET_DIFF_CAP_LINES = 2000
+AUDIT_BUDGET_SCALE_MAX = 2.0
+
+
+def _audit_diff_changed_lines(worktree_path: str | None) -> int | None:
+    """被审 diff 规模：worktree 相对 origin/main...HEAD 的增删行总数。
+
+    取不到（无 worktree / 无 origin/main / git 命令失败）→ None，调用方回退 base 预算。
+    """
+    if not worktree_path:
+        return None
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(worktree_path), "diff", "--numstat", "origin/main...HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode != 0:
+        return None
+    total = 0
+    for line in res.stdout.splitlines():
+        parts = line.split("\t")
+        # 二进制文件 numstat 输出 "-	-	path"，非数字 → 跳过
+        if len(parts) >= 3 and parts[0].isdigit() and parts[1].isdigit():
+            total += int(parts[0]) + int(parts[1])
+    return total
+
+
+def _audit_adaptive_timeout_seconds(cfg: dict[str, Any], worktree_path: str | None) -> int:
+    """审计超时预算按被审 diff 规模自适应（ccc093 目标①）。
+
+    base = EXECUTOR_AUDIT_TIMEOUT_SECONDS；diff 增删行在 [FREE, CAP] 内线性上浮，
+    上限 2×base 封顶；规模取不到或小 diff → 原 base 预算（不放宽也不收紧）。
+    """
+    base = _audit_timeout_seconds(cfg)
+    lines = _audit_diff_changed_lines(worktree_path)
+    if lines is None or lines <= AUDIT_BUDGET_DIFF_FREE_LINES:
+        return base
+    span = AUDIT_BUDGET_DIFF_CAP_LINES - AUDIT_BUDGET_DIFF_FREE_LINES
+    scale = min(AUDIT_BUDGET_SCALE_MAX, 1.0 + (lines - AUDIT_BUDGET_DIFF_FREE_LINES) / span)
+    return max(base, int(round(base * scale)))
+
+
 def _infra_cooldown_active(
     runtime: dict,
     card_id: str,
@@ -994,6 +1044,57 @@ def _audit_evidence_passed(work: Work, worktree_hint: str, main_repo: Path | Non
     return _card_machine_audit_passed(work.card_path)
 
 
+def _remote_branch_audit_evidence(worktree_path: str, card_rel: str, branch: str) -> bool:
+    """push 空转疑云的远端事实双重校验（ccc093 目标② · ccc088「空转」假 infra 行根修）。
+
+    以 origin 分支事实为准核实「机审证据已达远端」，两关全过才算核实：
+      1) ``git ls-remote origin <branch>`` 非空 —— 远端分支事实存在；
+      2) fetch 后远端跟踪分支上的卡文含 ``## 机审区`` 通过结论。
+    任一环节失败 → False：调用方仍走原 infra 续审路径（不放宽）。
+    """
+    try:
+        ls = subprocess.run(
+            ["git", "-C", worktree_path, "ls-remote", "origin", branch],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if ls.returncode != 0 or not ls.stdout.strip():
+            return False
+        fetch = subprocess.run(
+            [
+                "git",
+                "-C",
+                worktree_path,
+                "fetch",
+                "-q",
+                "origin",
+                f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if fetch.returncode != 0:
+            return False
+        show = subprocess.run(
+            ["git", "-C", worktree_path, "show", f"origin/{branch}:{card_rel}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if show.returncode != 0:
+            return False
+        from server.board.models import machine_audit_passed_text
+
+        return machine_audit_passed_text(show.stdout)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _commit_and_push_worktree_card(
     worktree_path: str,
     card_path: str,
@@ -1005,8 +1106,11 @@ def _commit_and_push_worktree_card(
         logger.warning("worktree 卡不存在，无法提交机审证据: work=%s", work_id)
         return False
     try:
-        rel = wt_card.relative_to(Path(worktree_path).expanduser().resolve()).as_posix()
-    except ValueError:
+        # ccc093：双侧 resolve。worktree 路径常经符号链接（如 macOS /tmp → /private/tmp），
+        # 单侧 resolve 会让 relative_to 必败而退化成裸文件名 → add/show 全走错路径，
+        # 把「实际已成功」的 commit/push 误判成空转（ccc088 假 infra 行机制之一）。
+        rel = wt_card.resolve().relative_to(Path(worktree_path).expanduser().resolve()).as_posix()
+    except (ValueError, OSError):
         rel = wt_card.name
     try:
         subprocess.run(
@@ -1033,6 +1137,15 @@ def _commit_and_push_worktree_card(
             check=False,
         )
         if push.returncode != 0:
+            # ccc093：push 报错 ≠ 未达远端（helper 噪声可致假失败）——以 origin 分支事实复核，
+            # 远端已含证据则记 pass 覆盖；校验不过仍走原失败路径（不放宽）。
+            branch = f"codex/{Path(card_path).stem.lower()}"
+            if _remote_branch_audit_evidence(worktree_path, rel, branch):
+                logger.info(
+                    "机审证据 push 报错但远端分支已含证据（ls-remote+卡文双重校验通过）: work=%s → 记 pass",
+                    work_id,
+                )
+                return True
             logger.warning("机审证据 push 失败: work=%s (%s)", work_id, push.stderr.strip())
             return False
         # 验证证据确实进了分支（commit 失败被吞 → 机审区只留工作区的死结洞）
@@ -1044,6 +1157,16 @@ def _commit_and_push_worktree_card(
             check=False,
         )
         if check.returncode != 0 or "机审：通过" not in check.stdout:
+            # ccc093：本地 HEAD 复核空转 ≠ 证据未达远端（ccc088 假 infra 行）——
+            # 以 origin 分支事实双重校验（ls-remote + 分支卡文含机审区），核实已达
+            # 远端则记 pass 覆盖；校验失败仍走原 infra 续审路径（不放宽）。
+            branch = f"codex/{Path(card_path).stem.lower()}"
+            if _remote_branch_audit_evidence(worktree_path, rel, branch):
+                logger.info(
+                    "机审证据本地校验空转但远端分支已含证据（ls-remote+卡文双重校验通过）: work=%s → 记 pass",
+                    work_id,
+                )
+                return True
             logger.warning(
                 "机审证据未进分支（commit/push 空转，只留工作区）: work=%s → 走 infra 续审",
                 work_id,
@@ -3667,11 +3790,13 @@ def _run_audit_worker(
     """
     outcome = {"collected": 0, "failed": 0, "infra": 0}
     try:
-        if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
+        evidence_hint = _worktree_hint_for(work, registry)
+        if _audit_evidence_passed(work, evidence_hint):
             logger.info("机审证据已存在（分支/生产卡），跳过: work=%s", work.id)
             outcome["collected"] = 1
             return outcome
-        audit_timeout = _audit_timeout_seconds(cfg)
+        # ccc093 目标①：审计超时预算按被审 diff 规模自适应上浮（≤2×base），复杂大 diff 不再必然超时
+        audit_timeout = _audit_adaptive_timeout_seconds(cfg, evidence_hint)
         ok, problems, _audited = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, audit_timeout)
         if ok:
             # sidecar 契约（ccc-plan-021）：机审通过出口 clear sidecar，无在途残留
