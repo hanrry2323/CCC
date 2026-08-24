@@ -70,21 +70,25 @@ xy 项目 24 张 OpenCode 时代历史卡卡头含 DOC-PROTOCOL §2.3 违禁自�
 
 **DSH 机审席 · 2026-08-24 · severity：轻**
 
-审查方式：v4 对抗式独立审查，全部结论经命令独立复现，不采信执行体自述。
+审查方式：v4 对抗式独立审查（重审轮），全部结论经命令独立复现，不采信执行体自述与既往机审文本。
 
-1. 范围核对：`git diff --name-only 28fcd9d00^..e471df00f` 共 25 文件 = 白名单 24 张 xy 卡 + 本卡自身（回写授权内）。实现 commit 28fcd9d00 仅触 24 张白名单文件，回写 commit e471df00f 仅触本卡。白名单外零触碰 ✓
-2. 实现正确性：逐文件 `git diff -U0` 全部为 ADD=0 / DEL=1，被删行均为「> 批准：老板合入批准 · <日期>」；python 逐字节重建断言（父版本 blob − 该批准行 ≟ 当前工作区内容）24/24 PASS，除该行外零字节变动。行位直方图 {第2行:23, 第4行:1} 与删除日期统计（08-17×18、08-18×1、08-20×2、08-21×2、08-24×1）均与回写区自述吻合（xy054 在第 4 行属实）。
+1. 范围核对：实现 commit 28fcd9d00 恰触白名单 24 张 xy 卡（各 1 删 0 增）；回写 commit e471df00f 仅触本卡（状态待分派→已回写 + 回写区三行，未触机审区/验收区）；`git diff --name-only 28fcd9d00^..e471df00f` 共 25 文件 = 白名单 24 + 本卡（回写授权内）。白名单外零触碰 ✓
+2. 实现正确性：python 逐字节重建断言（28fcd9d00^ 版 blob 以 splitlines(keepends=True) 去掉唯一命中行 ≟ 当前工作区字节）24/24 PASS——除该行外零字节变动；被删行均为「> 批准：老板合入批准 · <日期>」形态（抽样核验）；行位直方图 {第2行:23, 第4行:1}、日期直方图 {08-17:18, 08-18:1, 08-20:2, 08-21:2, 08-24:1} 与回写区自述逐项吻合（xy054 在第 4 行属实）。
 3. 门禁复跑：卡内门禁命令原样执行，输出 `[]`，退出码=0。
-4. 残留扫描：`grep -rnE '^\s*>\s*批准' docs/dispatch/xy/` 全目录零命中——含白名单外在内已无任何「> 批准」字段行，「白名单外无残留」声明独立复核成立。
-5. 业务意图依据：docs/DOC-PROTOCOL.md:80 明文「禁止加 批准/审批/review 等自造字段」，本卡即清偿该违禁债务；批准真值权威承载属实（server/board/card_header.py:139 approval 字段、server/board/loader.py:145 BoardItem.approval）。语义修复归 ccc072，本卡未越界做语义改动。
-6. 红线核验：分支 codex/ccc070-xy-legacy-header-cleanup 未直推 main；`git ls-remote` 远端 hash e471df00f 与本地 HEAD 一致；机审区未被执行体触碰；状态=已回写、未置已关闭。
-7. 维护区四问（P1-b 机械判据）：四问均为合规单选（[否]/[无]），说明非空非占位；`server.board.docgate.verify_maintenance` 对本卡实跑 OK=True、PROBLEMS=[]。Q2「机制性教训已在同期 notes 记录」抽查属实——docs/notes/2026-08-24-ccc-locale-sed-byteslice.md 存在且确为机制性教训条目。
+4. 残留扫描（严于门禁 · 全文件不限头12行）：docs/dispatch/xy 全目录零「>批准」残留，「白名单外无残留」声明成立；docs/dispatch 非 xy 前缀尚存约 63 条同类历史残留，属 b31f7e2ef 预告的另一治理卡范围，不在本卡白名单，不计入本卡发现。
+5. 业务意图依据：docs/DOC-PROTOCOL.md:80 明文「禁止加 批准/审批/review 等自造字段」，本卡即清偿该违禁债务；批准真值权威承载属实（server/board/card_header.py:139 approval 字段、server/board/loader.py:145 BoardItem.approval 回填）。语义修复归 ccc072，本卡未越界做任何语义改动。
+6. 红线核验：分支 codex/ccc070-xy-legacy-header-cleanup 远端 hash 1f58ac822 与本地 HEAD 一致（git ls-remote 复核）；`git merge-base --is-ancestor HEAD origin/main` 为否——未直推 main；工作区 clean；状态=已回写、未置已关闭；无验收区写入。
+7. 维护区四问（P1-b 机械判据）：四问均为合规单选（[否]/[无]），说明非空非占位、与勾选自洽；`server.board.docgate.verify_maintenance('docs/dispatch/ccc/ccc070-xy-legacy-header-cleanup.md','.')` 实跑 OK=True、PROBLEMS=[]。Q2 抽查属实——docs/notes/2026-08-24-ccc-locale-sed-byteslice.md 存在且确为机制性教训条目。
 
-风险论证（本次 0 发现项）：批量删行类操作最大风险是误伤非目标行或编码损坏，已由逐字节重建断言排除（24/24）；漏改风险由全目录残留扫描排除（零残留）；门禁假绿风险以比门禁更严的全文件扫描交叉验证排除。
+风险论证（本次 0 发现）：批量删行类操作最大风险=误伤非目标行或编码损坏，已由逐字节重建断言排除（24/24）；漏改风险由全目录全文件残留扫描排除（xy 零残留）；门禁假绿风险以比门禁更严的全文件扫描交叉验证排除。
 
-观察（不计 severity、不构成打回）：维护区 Q3/Q4 说明仅写「[否]。」，极简但符合 P1-b 字面标准（单选合规、说明非空非占位、与勾选自洽）。
+severity 三级：影响面 1（纯文档卡头删行，无代码路径）+ 改动深度 1（机械删行+逐字节断言闭环）+ 红线邻近 2（批量改写历史卡文件，失手破坏面大，但已双重复核兜底）= 4 → 轻。
 
-机审：通过（被审 e471df00f166）
+观察（不计 severity、不构成打回）：① 维护区 Q3/Q4 说明仅写「[否]。」，极简但符合 P1-b 字面标准；② 非 xy 约 63 条同类违禁残留依赖后续治理卡收口，若未派发则违禁字段长期存续——建议盯板时确认其排期。
+
+被审对象：实现 28fcd9d00 + 回写 e471df00f（本轮独立重审复核至 HEAD 1f58ac822）。
+
+机审：通过
 
 ## 维护区
 
