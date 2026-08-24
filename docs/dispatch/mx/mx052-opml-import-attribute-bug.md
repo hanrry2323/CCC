@@ -1,5 +1,4 @@
 # 任务卡 mx052 · 修复 OPML 导入属性顺序依赖漏洞（OpenCode 执行）
-> 批准：老板合入批准 · 2026-08-18
 
 > 关联：mx-plan-005 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-18
 
