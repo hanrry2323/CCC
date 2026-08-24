@@ -56,21 +56,22 @@ OK        （gate-exit=0）
 
 **DSH 机审席 · 2026-08-24 · severity：轻**
 
-独立复核记录（worktree ccc074 @ c10af19e6，结论全部命令可复现）：
+独立复核记录（worktree ccc074 @ 2271ebcae · 本席记录取代前席记录（93cbe4fbd/9789ae841），历史提交保留于谱系；结论全部命令可复现）：
 
-1. **范围核对**：`git log --name-status origin/main..HEAD` 仅 2 提交——f5922a1be（新增白名单报告）、c10af19e6（卡回写），触面=卡文件+白名单报告，白名单外零触碰；`git ls-remote origin refs/heads/codex/ccc074-mx-roadmap-writer-investigation` = c10af19e6 = 本地 tip，push 属实；未直推 main；无 `git add -A` 痕迹（两提交各只含单文件）。门禁命令本席重跑 exit=0。
-2. **核心因果断言独立复现坐实**（本席亲跑）：自建一次性 detached worktree @HEAD（起步干净）→ 单跑 `pytest server/tests/test_observer.py::test_run_observer_output -q`（1 passed）→ 所在 checkout 的 `docs/projects/mx/roadmap.md` 即脏（+3/-2）；diff 与 `/tmp/ccc068-stray-mx-roadmap.patch`、`.patch2`、`.patch3` 全部字节级一致（cmp IDENTICAL）；前后 blob hash-object = a1abcb5a4..d9462a1bc 与报告断言精确一致；复现现场已还原清理，主仓既有脏文件（+3/-2，mtime 08-24 06:09:27）确认未被触碰。
-3. **引用抽查 15 处全真、零虚构**：test_observer.py:94-115（仅 mock 三 loader、OBSERVER_FORCE=true 于 :99）；observer.py:40 / :91-92 / :715 / :756 / :762 / :694-703 / :777 / :1598 / :1609；roadmap.py:604 / :307（fcntl 锁 docstring :308）；scheduler.py:31 / :267-273（loop-observer 注册 TASK_TYPE_READONLY 属实）；web/server.py:2814 / :3652-3666；mx/roadmap.md:64-66 M8「进行中」且 mx-plan-005~008 头部状态全「已完成」（根因数据条件属实）；launchd plist RunAtLoad/KeepAlive 属实；生产进程 PID 31668 本席复核时仍在运行、命令行与报告一致。
+1. **范围核对**：`git log --name-status origin/main..HEAD` 触面仅卡文件+白名单报告；merge 2271ebcae 第二父=origin/main(9e009d4c7)，`git diff 2271ebcae^2 2271ebcae --name-status` 恰为该两文件、无夹带；远端分支 tip=本地 HEAD=2271ebcae（ls-remote 属实）；main 未被直推（仍 9e009d4c7）；各提交均显式单/双文件 add，无 add -A 痕迹；worktree 干净。门禁命令本席重跑 exit=0。
+2. **核心因果断言本席亲跑坐实**：一次性 detached worktree @2271ebcae（起步干净）→ 单跑 `pytest server/tests/test_observer.py::test_run_observer_output -q`（1 passed）→ 该 checkout 的 docs/projects/mx/roadmap.md 即脏；blob 对 a1abcb5a4c..d9462a1bcc，diff 与 /tmp/ccc068-stray-mx-roadmap.patch{,2,3} cmp 全 IDENTICAL；现场已还原、临时 worktree 已移除，主仓既有脏文件未被触碰。
+3. **引用全链抽查（约 30 处逐行核对，零虚构零漂移）**：test_observer.py:94-99（仅 mock 三 loader、OBSERVER_FORCE=true 于 :99；「唯此一处失守」亦核实——test_write_roadmap_draft(:355) 以 patch `_roadmap_path` 到 tmp_path 隔离，其余 scan 测试走 tmp_path/mock_repo_root）；observer.py:40/:91-92/:106-124/:694-703/:715/:756-762/:777/:1598/:1609；roadmap.py:28-30/:307-308(fcntl 锁)/:320(date.today)/:604/:615-618/:625；scheduler.py:31(DEFAULT_INTERVAL_SECONDS=60)/:209-212(循环 sleep)/:267-273(loop-observer 注册 TASK_TYPE_READONLY)；web/server.py:2814/:3652-3666；mx/roadmap.md:64-66 M8「进行中」且 plans/005~008 头部状态全「已完成」（根因数据条件属实）；plist RunAtLoad/KeepAlive=true；PID 31668 PPID=1 起于 08-22 11:40:12、命令行逐字吻合；patch 三连 1283B@04:29/05:01/05:27 + patch4 空@06:01 全属实。
 
 **发现与处置**：
 
-- F1（轻·已就地修复）：报告行号漂移 4 处（内容零虚构）——roadmap.py「26-28」实为 :28-30；去重「614-616」实为 :615-618；_write_roadmap 调用「618-624」实为 :625；头部日期 date.today() 实位于 :320。已修正报告并随本区提交（机审席轻量就地修复授权）；卡回写区「roadmap.py:26」同一漂移以本条勘误为准，不回改执行体历史记录。
-- F2（红线邻近·论证未越线）：「只读取证」vs 动态复现——写入仅发生于执行体自建的一次性 detached worktree 内、事后还原清理、零持久副作用，报告与回写区双处如实披露，判定为受控取证手段而非越线。
-- F3（观察项）：维护区四问逐项单选+说明齐备、引用工件真实存在；Q3/Q4 说明仅「[否]。」，过机械门禁但信息量退化，后续卡建议各写一句实情；Q2 判「无」与白名单约束自洽（lessons 新文件在白名单外，另立即越界）。
+- F1（观察·活体新证·非缺陷）：主仓脏文件 mtime 已由报告快照 06:09:27 漂移至 13:47:58——本席审计期间生产写入者再次动手（main 仓 13:44:07 落 ccc073 merge → cards.index.jsonl 变更触发 loop-observer 实跑，scheduler 日志可见同一 M8 finding 重报于 13:53 轮）；当前 diff 与三份留档 patch 仍字节级一致、blob 对不变。「清了又脏」循环被实时坐实，报告结论强化而非削弱；报告内 mtime 为写作时点事实，不构成失实，无需改报告。
+- F2（复核确认）：前席就地修正的报告 4 处行号漂移（roadmap.py :28-30/:615-618/:625/:320）经本席逐行复核全部吻合，现行引用零漂移。
+- F3（红线邻近·论证不越线）：「只读取证」vs 动态复现——写入仅发生于一次性 detached worktree 内、事后还原清理、零持久副作用，报告与回写区双处如实披露；本席以同手段独立复现并同样清理，判定为受控取证手段而非越线。
+- F4（观察项）：维护区 Q3/Q4 说明仅「[否]。」，过机械门禁但信息量退化，后续卡建议各写一句实情；另 scheduler 日志无时间戳致逐轮写入归因精度受限（报告未定项已如实声明），支持其治理建议中写权限闸+任务标注修正的方向。
 
-severity 计分：影响面 1 + 改动深度 1 + 红线邻近 2 = 4 → 轻（无高维度，不触发强制重）。
+severity 计分：影响面 1（纯调查文档卡，触面 2 文件、无代码变更）+ 改动深度 1（+131 行文档）+ 红线邻近 2（只读取证 vs 受控动态复现）= 4 → 轻（无高维度，不触发强制重）。
 
-机审：通过（被审 c10af19e6639）
+机审：通过
 
 ## 维护区
 
