@@ -446,9 +446,11 @@ def _build_public_config() -> dict[str, Any]:
     """
     return {
         "ports": {
-            "web": os.environ.get("WEB_PORT", ""),
-            "board": os.environ.get("BOARD_PORT", ""),
-            "engine": os.environ.get("ENGINE_PORT", ""),
+            # 经 _env_or_config：launchd 注入的 env 优先，回退 config.env
+            # （修复：BOARD_PORT/ENGINE_PORT 仅存在于 config.env，裸 os.environ 读到空）
+            "web": _env_or_config("WEB_PORT"),
+            "board": _env_or_config("BOARD_PORT"),
+            "engine": _env_or_config("ENGINE_PORT"),
         },
         # workspace_map 留空：业务仓路径由用户在设置页填，服务端不臆造
         "workspace_map": {},

@@ -11,6 +11,6 @@
 | 角色 | 机器 | 职责 |
 |------|------|------|
 | 中枢 | M1 `192.168.3.140` | 出卡/验收/合入/看板 + 轻量开发；不出生产服务 |
-| 生产与执行 | 2017 `192.168.3.116` | 执行写码（engine worktree） + 生产 :7788（web / engine / board-scheduler / relay） |
+| 生产与执行 | 2017 `192.168.3.116` | 执行写码（engine worktree） + 生产 :7788（web / engine / board-scheduler；watchdog 巡检。中转站 2026-08-24 退役拆除，执行体直连各自 CLI） |
 
 Desktop 壳暂缓。历史双机/Hub 正文见 `docs/archive/`。
