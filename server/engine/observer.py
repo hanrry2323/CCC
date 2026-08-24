@@ -754,14 +754,6 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         state = str(p.get("status", "未知"))
         plans_states[state] = plans_states.get(state, 0) + 1
     findings = scan_findings(cfg, PROJECT_ROOT)
-    # PRIME-DIRECTIVE §6.3：一致性/技术债发现自动回线路图草案池（治理债/技术债）
-    for f in findings:
-        if f.get("type") in ("consistency", "tech") and f.get("project"):
-            draft_type = "技术债" if f.get("type") == "tech" else "治理债"
-            try:
-                write_roadmap_draft(f["project"], f["title"], draft_type=draft_type)
-            except Exception as e:
-                logger.error("草案池回写失败（%s）: %s", f.get("id"), e)
     rules = DEFAULT_SCORING_RULES.copy()
     if cfg.get("OBSERVER_SCORING_RULES"):
         try:
@@ -794,6 +786,28 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     if not data_dir:
         data_dir = os.environ.get("CCC_DATA_DIR") or os.environ.get("DATA_DIR") or "data"
     observer_dir = Path(data_dir).resolve() / "observer"
+
+    # PRIME-DIRECTIVE §6.3：一致性/技术债发现自动回草案池（治理债/技术债）。
+    # ccc077 治理（2026-08-24）：CCC_LOOP_OBSERVER_DRAFTS 默认 off → 整轮跳过草稿写入
+    # （每轮只记一次 DEBUG 日志）；on 时经 write_roadmap_draft 落
+    # <DATA_DIR>/drafts/roadmap/<project>-draft.md，docs/projects 正文对自动链路只读，
+    # 人工写路径不受影响。
+    if _loop_drafts_enabled():
+        for f in findings:
+            if f.get("type") in ("consistency", "tech") and f.get("project"):
+                draft_type = "技术债" if f.get("type") == "tech" else "治理债"
+                try:
+                    write_roadmap_draft(f["project"], f["title"], draft_type=draft_type, base_dir=data_dir)
+                except Exception as e:
+                    logger.error("草案池回写失败（%s）: %s", f.get("id"), e)
+    else:
+        _skipped_drafts = sum(
+            1 for f in findings if f.get("type") in ("consistency", "tech") and f.get("project")
+        )
+        logger.debug(
+            "CCC_LOOP_OBSERVER_DRAFTS 未开启，本轮跳过 %d 条巡查草稿写入（docs/projects 正文只读化）",
+            _skipped_drafts,
+        )
     dt_obj = datetime.datetime.fromtimestamp(current_state["timestamp"])
     date_str = dt_obj.strftime("%Y-%m-%d")
     report_name = f"{date_str}-ccc-patrol"
@@ -1571,42 +1585,101 @@ def main():
         print("[Observer] 框架巡查完成")
 
 
+def _loop_drafts_enabled() -> bool:
+    """ccc077 治理：Loop 自动草稿写入开关（CCC_LOOP_OBSERVER_DRAFTS）。
+
+    默认 off（生产行为保守化）：off 时 observer 不产生任何草稿文件写入，
+    docs/projects/<p>/roadmap.md 正文对自动链路只读。
+    接受 1/true/yes/on（大小写不敏感），其余一律视为 off。
+    """
+    return os.environ.get("CCC_LOOP_OBSERVER_DRAFTS", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _loop_drafts_dir(base_dir: str | os.PathLike[str] | None = None) -> Path:
+    """ccc077 治理：巡查草稿专用目录 <data>/drafts/roadmap/。
+
+    base_dir 显式传入时优先（run_observer 传 cfg 解析后的 DATA_DIR）；
+    否则依次回退 CCC_DATA_DIR / DATA_DIR / PROJECT_ROOT/data（绝对路径兜底，
+    避免相对 CWD 的 "data" 在调度器工作目录漂移时写错位置）。
+    """
+    if base_dir is not None:
+        base = Path(base_dir)
+    else:
+        base = os.environ.get("CCC_DATA_DIR") or os.environ.get("DATA_DIR") or (PROJECT_ROOT / "data")
+        base = Path(base)
+    return base.resolve() / "drafts" / "roadmap"
+
+
 def write_roadmap_draft(
     project: str,
     description: str,
     *,
     draft_type: str = "问题",
     source: str = "Loop巡查",
+    base_dir: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
-    """Loop 巡查集成：自动将发现的问题写入对应项目 roadmap.md 草案池。
+    """Loop 巡查集成：将发现的问题写入巡查草稿池（ccc077 治理版）。
 
-    当 Loop 发现新问题（治理漂移、缺失项、技术债）时调用此函数，
-    自动在对应项目的 roadmap.md 草案池中追加一条草案条目。
+    ccc077（2026-08-24 地基加固）：自动链路与项目 roadmap 正文解耦——
+    - 开关 CCC_LOOP_OBSERVER_DRAFTS 默认 off：直接跳过，零文件写入；
+    - on 时追加式写入 <data>/drafts/roadmap/<project>-draft.md（每行一条草案），
+      不再调用 server.board.roadmap.create_draft，不再触碰 docs/projects 正文
+      （正文对自动链路只读化；人工流程对 roadmap 的写路径完全不变）。
 
     Args:
         project: 项目前缀（如 ccc, clw, hp 等）
         description: 巡查发现的问题描述
         draft_type: 草案类型，默认 "问题"
         source: 来源标识，默认 "Loop巡查"
+        base_dir: 数据根目录（可选；run_observer 传 cfg 的 DATA_DIR）
 
     Returns:
-        dict: {"ok": True, "draft": title} 或 {"error": "..."}
+        dict: {"ok": True, "draft": title, "path": ...}；
+              off 时 {"ok": True, "skipped": True, "reason": "loop_observer_drafts_disabled"}；
+              重复描述 {"ok": True, "skipped": True, "reason": "duplicate"}
     """
-    from server.board.roadmap import create_draft as _create_draft, list_drafts
-
-    # 构造标题：包含类型、来源和描述
     title = f"[{draft_type}][{source}] {description}"
 
-    # 去重检查：已有相同描述的草案则跳过
-    try:
-        existing = list_drafts(project)
-        for d in existing:
-            if description in d.title:
-                return {"ok": True, "draft": d.title, "skipped": True, "reason": "duplicate"}
-    except Exception:
-        pass
+    # ccc077：默认 off → 直接跳过（不 import 写接口、不触碰任何文件）
+    if not _loop_drafts_enabled():
+        logger.debug("CCC_LOOP_OBSERVER_DRAFTS=off，跳过巡查草稿写入：%s", title)
+        return {"ok": True, "skipped": True, "reason": "loop_observer_drafts_disabled"}
 
-    return _create_draft(project, title)
+    from datetime import date
+
+    drafts_dir = _loop_drafts_dir(base_dir)
+    try:
+        drafts_dir.mkdir(parents=True, exist_ok=True)
+        draft_file = drafts_dir / f"{project}-draft.md"
+
+        # 去重检查：文件中已有相同描述的草案行则跳过（保持原去重语义）
+        existing_lines: list[str] = []
+        if draft_file.is_file():
+            existing_lines = [
+                line for line in draft_file.read_text(encoding="utf-8").splitlines() if line.strip()
+            ]
+            for line in existing_lines:
+                if description in line:
+                    return {
+                        "ok": True,
+                        "draft": line.strip(),
+                        "skipped": True,
+                        "reason": "duplicate",
+                        "path": str(draft_file),
+                    }
+
+        line = f"- [{draft_type}][{source}] {description} · 日期：{date.today().isoformat()}"
+        if not existing_lines and not draft_file.exists():
+            header = f"# {project} 巡查草稿池（loop-observer 自动写入 · ccc077 治理）\n\n"
+            draft_file.write_text(header + line + "\n", encoding="utf-8")
+        else:
+            with open(draft_file, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        logger.info("巡查草稿已落 %s：%s", draft_file, title)
+        return {"ok": True, "draft": title, "path": str(draft_file)}
+    except Exception as e:
+        logger.error("巡查草稿写入失败（%s/%s）: %s", project, description[:40], e)
+        return {"error": str(e)}
 
 
 def trigger_scheduled_ops(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
