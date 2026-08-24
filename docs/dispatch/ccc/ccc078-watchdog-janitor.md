@@ -69,6 +69,34 @@
 
 （验收席专用——执行体禁止写入）
 
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+**范围核对**：分支 codex/ccc078-watchdog-janitor 与远端零偏差（`git rev-list --left-right --count origin/codex/ccc078-watchdog-janitor...HEAD` = `0 0`，本席复跑）；vs origin/main 仅触 `scripts/watchdog-ccc.sh`（白名单内）+ 本卡回写（步骤3-4授权）；实现提交 ad60cf1d6 = +199/-1（唯一删除行为注释行替换），健康检查/自愈/退出码逻辑未触碰；父提交经证在 origin/main 上（rebase 属实）。
+
+**红线核验（对抗式 · 全数通过）**：
+1. 只上报零删除：清道夫段（L119-338）grep 全部 rm/rmdir/kill/git branch -d/git worktree remove|prune 匹配均为建议字符串字面量，零执行路径；本席实跑后 CCC-wt 五目录、103 项 /tmp 残留、7899 监听进程全部原样存活。
+2. 行为零变化：两处挂载点均 `janitor_sweep || true`，set -e 下函数体被 || 短路保护，失败不影响健康结论与退出码。
+3. 卡头=已回写；机审区/验收区执行体未触碰。
+
+**证据复现（不引用执行体自述，本席亲跑）**：
+- 门禁：`bash -n … && bash scripts/watchdog-ccc.sh >/dev/null 2>&1` → `watchdog-exit=0` ✓
+- 实跑汇总与 ~/.ccc/logs/watchdog.log 15:20 段逐项吻合：可回收worktree=1（feat-047 孤儿目录，ls 实存）、可删分支=1、遗留服务=2（7899 pid=76724 lsof 实存 + /tmp/ccc-* 共 103 项 wc -l 实测）✓
+- 终态判定独立复现：ccc027/ccc075=TERMINAL(状态)、ccc078=ACTIVE ✓
+- 去重生效：本席复跑一轮，JANITOR 日志零新增（状态文件 janitor/* mtime 未变）✓
+- push 证据：patch-id(fcb3c5982) == patch-id(ad60cf1d6) == `54624c77a443…`，rebase 同一改动属实 ✓
+
+**观察项（不影响结论）**：
+- O1 未分化活跃分支会被标「可删分支」（15:10 段曾报 codex/ccc079）：字面符合卡规格「已合入即无独有提交」，有「正被 worktree 占用」警示兜底，误删亦无数据损失；后续若要降噪可加 ahead>0 过滤，属增强非缺陷。
+- O2 类级去重窗口内新出现的同类项延迟至 24h 后才报——卡规格原文即「同类告警24h内不重复」，设计取舍一致。
+- O3 awk 解析 registry.yaml 依赖缩进格式——registry 为受控唯一事实源，格式稳定，风险可接受。
+- O4 自测期间中间缺陷版曾在生产日志留下同仓重复上报（14:37 段），最终提交已修复且回写区如实披露，非隐瞒。
+
+**severity 三级评分**：影响面 1（纯只读上报段，健康链路零触碰）/ 改动深度 1（纯增量、防御完整）/ 红线邻近 1（零删除实证、白名单遵守）→ 合计 3 分 = 轻。
+
+**维护区四问核对（机械判据 P1-b）**：四问均为单选 [否]/[无]，无模板占位；说明行各为一句实情。抽查属实：Q2 所述两处自测缺陷与日志证据吻合（REPO_ROOT 锚定代码在 L125-129、重复上报历史在 watchdog.log 14:37 段）；Q3/Q4「无文档/线路图变更」与 diff 一致。
+
+机审：通过
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
