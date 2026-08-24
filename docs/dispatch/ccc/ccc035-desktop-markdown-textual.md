@@ -1,6 +1,7 @@
 # 任务卡 ccc035 · MarkdownText 改用 Textual 渲染（聊天/方案卡 Markdown）（OpenCode 执行）
 
 > 关联：ccc-plan-012 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 ## 基准文件（先看）
 

@@ -1,6 +1,7 @@
 # 任务卡 mx004 · service health probe integration（OpenCode 执行）
 
 > 关联：mx-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：mx · 日期：2026-08-07
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 ## 目标
 

@@ -1,6 +1,7 @@
 # 任务卡 hp001 · 首次摸底：recon baseline 与业务线路图梳理（OpenCode 执行）
 
 > 关联：hp-plan-001 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：hp · 日期：2026-08-07
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 ## 目标
 

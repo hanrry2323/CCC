@@ -1,6 +1,7 @@
 # 任务卡 clw027 · clwarp AGENTS.md 技术栈表述纠偏（GPU 原生渲染 → xterm.js 前端渲染）（OpenCode 执行）
 
 > 关联：clw-plan-006 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：clw · 日期：2026-08-15
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 
 

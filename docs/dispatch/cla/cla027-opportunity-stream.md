@@ -1,6 +1,7 @@
 # 任务卡 cla027 · Opportunity Stream 实时机会流（OpenCode 执行）
 
 > 关联：cla-plan-013 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：cla · 日期：2026-08-18
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 > 依赖：无
 
 

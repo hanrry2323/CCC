@@ -1,6 +1,7 @@
 # 任务卡 hp009 · 双仓 git 归一 M2.2（OpenCode 执行）
 
 > 关联：hp-plan-009 · 执行体：OpenCode · 验收：Claude Code · 状态：作废（任务本身高风险（双仓无共同祖先的 git history rewrite + 远） · 派发：engine · 项目：hp · 日期：2026-08-16
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 
 

@@ -1,6 +1,7 @@
 # 任务卡 ccc002 · E2E smoke: OpenCode channel + worktree（OpenCode 执行）
 
 > 关联：ccc-plan-007 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 > 变更记录：2026-08-06 Cursor 独立取证验收通过；分支 `codex/ccc002-e2e-smoke-opencode`（`c47a2c2`）已 ff 合入 `main`。
 
 ## 目标

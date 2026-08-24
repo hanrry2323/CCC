@@ -1,6 +1,7 @@
 # 任务卡 ccc003 · E2E 派发收单防假成功与技术债收口（Claude Code 执行）
 
 > 关联：ccc-plan-007 · 执行体：Claude Code · 验收：OpenCode · 状态：已关闭 · 派发：engine · 项目：ccc · 日期：2026-08-06
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 > 变更记录：2026-08-06 Cursor 独立取证验收通过；分支 `codex/ccc003-engine-anti-fake-success-and-template-align`（`7cf9cf91`/`833122a`）已 ff 合入 `main`。
 
 ## 目标

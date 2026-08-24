@@ -1,6 +1,7 @@
 # 任务卡 clw007 · resume 携带工作目录 + git 路径解码修复 + kill 非阻塞（OpenCode 执行）
 
 > 关联：clw-plan-001 · 执行体：OpenCode · 验收：OpenCode · 状态：已关闭· 派发：engine · 项目：clw · 日期：2026-08-09
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 ## 目标
 

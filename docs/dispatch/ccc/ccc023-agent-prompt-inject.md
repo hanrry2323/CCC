@@ -1,6 +1,7 @@
 # 任务卡 ccc023 · 执行Agent心智注入：prompt_inject加方案摘要与线路近况（OpenCode 执行）
 
 > 关联：ccc-plan-011 卡1 · 执行体：OpenCode · 验收：Claude Code · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-09
+> 历史卡 · 2026-08-24 基线封存（流程纪律重置前合入/作废）
 
 ## 基准文件（先看）
 
