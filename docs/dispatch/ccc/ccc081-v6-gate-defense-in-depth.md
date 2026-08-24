@@ -79,45 +79,51 @@
 
 ## 机审区
 
-**DSH 机审席 · 2026-08-25 · severity：中**
+> 并审合并说明（2026-08-25）：本卡同日由两个独立机审实例先后完成审查——实例A（commit 414b0b91，severity=中·不通过）与本席（实例B，独立从零复现）。两实例对 P1-F1 结论一致；实例B 将 A 列为「理论残余面」的伪信封基线前推做了端到端实证（可复现放行），并据双 P1 并存将 severity 上调为重。以下为合并后的唯一权威机审节：A 的关键证据均经本席亲跑复核属实，补充复现以 B 为准。若后续另有机审轮次，请以本节为基准追加，勿并行双写。
 
-### 范围核对
+**DSH 机审席 · 2026-08-25 · severity：重**
 
-提交 ca94bae9a 仅触 scripts/approve-merge.sh、scripts/validate-plans.sh 及本卡回写，均在白名单内，无越界。server/board/models.py 真值函数零改动（`git diff ca94bae9a^ ca94bae9a -- server/board/models.py` 为空）。validate-plans.sh 仅注释改动（-2/+3 行），注释勘误的字节事实独立实证吻合：（ EF BC 88 尾字节 0x88；分 E5 88 86 含 0x88 续字节；派 E6 B4 BE、关 E5 85 B3 不含。
+### 范围核对（通过）
 
-### 认可面（逐项复核）
+提交 ca94bae9a 仅触 scripts/approve-merge.sh、scripts/validate-plans.sh 与本卡回写，白名单内无越界；server/board/models.py 真值函数零 diff（机审真值语义确未动）；validate-plans.sh 仅注释改动（-2/+3），勘误字节事实经本席 python3 实测吻合：（=EF BC 88 尾字节 0x88，分=E5 88 86 含 0x88 续字节，派/关不含 0x88。
 
-- ① 归一化管线方向正确：A/B 探针亲手复现旧 grep 对粗体信封行不命中、新管线（UTF-8 locale 下）命中变体。
-- ② 信封纯度校验逻辑成立：逐信封提交核对文件集，混合提交拒绝；批建卡等历史提交因不含结论行不入 env_commits、不受累。
-- ③ fail-closed 安全网真实生效：C locale 下 T1-T6 场景全部显式阻断而非静默跳过（见下）。
-- ④ 多轮审计语义不变：env_commits[0] 取最新信封，与旧 break-first 等价；调用点 :533 传参正确；函数内无残留散装逻辑；bash -n 双过（本席亲跑）。
-- ⑤ ledger 兜底链完整：machine_audit_pass 门禁（approve-merge.sh:641-655）位于 gate 之后，卡文自写不算真值。
+### 认可面（逐项复核成立）
 
-### P1 发现（本卡引入 · 已复现）
+- 归一化管线方向正确：UTF-8 locale 下粗体与 engine 引用式变体信封均被识别（两实例探针各自独立复现一致）；其后代码改动判漂移硬拒（合成仓实测 rc=1 且指向正确信封 sha）。
+- 信封纯度校验成立：同 commit 结论行+夹带 scripts/bar.sh → 显式拒绝（T3 复现）；多轮审计语义不变（env_commits[0] 取最新，等价旧 break-first）。
+- bash -n 双过、test-card-resolve V7 全过、validate-plans 全量 rc=0（本席亲跑）。
+- 维护区四问均单选已填、说明实情且抽查属实（方案同步[否]/教训沉淀[无]/档案[否]/线路图[否]，引用工件存在性已核实）。
 
-**F1 信封定位的 grep 多字节括号 `[：:]`（approve-merge.sh:406）locale 敏感**：LC_ALL=C 下 BSD grep 的多字节括号表达式不匹配全角冒号，规范字形「机审：通过」「> 结论：通过」（全部在用卡的结论行主字形）漏认 → env_commits 空 → fail-closed 网 → 该环境下合入被全量阻断。
+### P1-F1（本卡新引入回归 · 两实例结论一致 · 已复现）
 
-证据（全部可复现）：
-- 本沙箱默认 LC_ALL=C：`bash /tmp/v6gate-test.sh` → **PASS=2 FAIL=5**，其中 T5（规范信封+被审钉+卡回写放行的回归场景）被误拦；
-- `LC_ALL=en_US.UTF-8 bash /tmp/v6gate-test.sh` → PASS=7 FAIL=0——回写声明的七场景全过仅在 UTF-8 locale 成立；
-- 仓内先例：validate-plans.sh:25-34 因同类字节/locale 问题已硬钉 LC_ALL=en_US.UTF-8（ccc068，8.2 漏判复活事故），本卡未沿用该既定模式，脚本亦未钉 locale；
-- 回归性质：旧代码字面量匹配 `^\+[[:space:]]*机审：通过` 在 C locale 下反而工作——本卡在其宣称加严的「识别口径」维度引入了环境敏感回归。
+信封定位最终 grep 用多字节括号表达式匹配全角冒号：LC_ALL=C 下本机 BSD grep 永不命中，连纯文本规范字形都漏认；而旧模式（ASCII 类+字面量）同环境正常——识别口径在其宣称加严的维度发生环境敏感回归。
+证据（全部本席亲跑）：
+- `bash /tmp/v6gate-test.sh` 默认 C locale → **PASS=2 FAIL=5**：T1/T2/T3/T5/T6 被「无法定位任何信封提交」误拦，含 T5（规范信封放行的回归场景）；`LC_ALL=en_US.UTF-8` → PASS=7 FAIL=0——回写声明的七场景全过仅在 UTF-8 locale 成立；
+- 最小复现：`printf '机审：通过\n' | LC_ALL=C grep -Ec '^(机审|结论)[：:]通过'` → 0；交替写法 `'^(机审|结论)(：|:)通过'` → 1；
+- 仓内先例：validate-plans.sh:25-34 因同类字节/locale 事故已硬钉 LC_ALL（ccc068，8.2 漏判复活），本卡未沿用该既定模式且 approve-merge.sh 未钉 locale；
+- 自动化路径真实存在（server/config/merge-executor-instruction.md），launchd 环境 LANG 为空——任何未导出 locale 的运行即触发整条合入链路不可用（fail-closed 方向安全，但属门禁整体可用性事故）。
+修复方向：括号类改字节字面量交替（两种 locale 语义一致），或按 ccc068 先例在脚本头钉 LC_ALL（en_US.UTF-8 缺失退 C.UTF-8）。
 
-影响评估：失败方向为 fail-closed（不产生错误放行，红线安全）；但触发即整条合入链路不可用，且 merge-executor 自动化路径（server/config/merge-executor-instruction.md）的运行环境 locale 不保证 UTF-8。修复建议（供重试轮执行体参考，本席不代改）：括号类改字节字面量交替 `(：|:)`（两种 locale 下语义一致），或按 ccc068 先例在脚本头部钉 LC_ALL。
+### P1-F2（目标②未闭合 · 实例A 列理论面、实例B 升级为实证绕过）
 
-### 轻微项（不单独计分）
+信封识别仅行首锚定、无行尾锚定：纯卡提交中行首为结论类字样紧贴冒号加通过字样的散文行即可充当伪信封、前推漂移基线。
+实证（合成仓三连提交，UTF-8 locale）：E=纯卡规范信封 → D=白名单内代码漂移 → F=纯卡散文伪信封（反例句式置于行首）→ 当前实现返回 0 放行、诊断 baseline=F，D 完全逃过漂移 diff；对照版改行尾锚定后返回 1、正确抓 E 后漂移。危害边界：scope-check 限缩至白名单文件，而门禁加固卡的白名单恰是 gate 脚本自身（最有价值攻击面）；ledger 按 id 记录不钉 commit（A 实例核实 provenance 门禁位于 :641-655），无法覆盖审计后的时序漂移。备注：机审前缀散文的同类弱点在旧实现已存在，但本卡目标②明言堵「基线推到自身」，故按目标完成度缺口计入。
+修复方向：归一化后全行锚定（看板契约规定结论行为整行裸字形，与契约一致）；未命中者落入既有 fail-closed 安全网而非静默放行。
 
-- 回写区引用行号 :385-479/:531 与实际 389-481/:533 有 ±2 偏差；函数名唯一，不影响定位复现。
-- 自测摘要缺 locale 前提：「PASS=7 FAIL=0」「新管线全命中」均为 UTF-8 locale 下结果，证据完整性存瑕疵（非造假，UTF-8 下可复现）。
-- 理论残余面（非本卡引入，既有设计边界）：卡文伪造结论行可将漂移基线前推越过其前的纯代码提交；ledger 按 id 记录不钉 commit。建议后续加固卡考虑 ledger 钉 commit。
-- rename 边缘：`git show --name-only` 对重命名显示 `{old => new}` 格式可能误拒（fail-closed 方向，罕见）。
+### 轻微项 / F3（记录不单独计分）
+
+- rename 边缘：`git show --name-only` 对重命名显示 old-to-new 花括号格式可能误拒（fail-closed 方向，罕见）；merge commit combined-diff 盲区同理一并记录。
+- 回写区引用行号 :385-479/:531 与实际 389-481/:533 有 ±2 偏差（函数名唯一，不影响定位复现）。
+- 自测摘要缺 locale 前提标注：「PASS=7 FAIL=0」等仅在 UTF-8 成立，证据完整性存瑕疵（非造假，UTF-8 下可复现）。
 
 ### severity 判定
 
-影响面 2（合入必经门禁；缺陷触发条件环境相关、方向 fail-closed）＋ 改动深度 2（核心门禁段函数化重构，净新增判定逻辑约 30 行）＋ 红线邻近 2（机审真值邻域，真值语义零改动有实证）＝ 6 → 中；无任一维度 3 分。
+影响面 3（F1 使非 UTF-8 运行环境合入链路全量阻断 + F2 为 V6 威胁模型内可复现的静默绕过，二者均作用于每张卡的唯一合入门禁）＋ 改动深度 2（核心门禁段函数化重构）＋ 红线邻近 2（真值语义邻域，零改动有实证）＝ 7 分，且影响面维度高，按规则强制重。
 
 ### 维护区四问核对
 
-四问均单选已填、说明非占位且抽查属实：方案同步[否]（卡头关联字段确无 prefix-plan-NNN）；教训沉淀[无]；档案/README[否]（对外用法未变属实）；线路图[否]。引用工件抽查：/tmp/v6gate-test.sh 存在（2026-08-25 00:12）、scripts/tests/test-card-resolve.sh 存在、models.py 零改动属实、字节事实属实；唯自测输出摘要缺 locale 前提标注（见轻微项）。
+四问均单选已填、说明非占位且抽查属实；唯自测输出缺 locale 前提标注（见轻微项）。
 
-机审：不通过（P1-F1：v6_drift_gate 信封定位 [：:] 多字节括号在 LC_ALL=C 下漏认规范字形「机审：通过」，fail-closed 网致该环境合入全量阻断，T5 回归场景实测 FAIL；自测 PASS=7 证据仅在 UTF-8 locale 成立且仓内已有 ccc068 钉 locale 先例未沿用。修复后重新机审）
+处置：重级打回引擎——按 F1/F2 各一处单行修复，harness 补两类负例（C-locale 运行用例、伪信封基线前推用例）后重新回写送审。本席不代改门禁语义。
+
+机审：不通过（severity=重：P1-F1 多字节括号在 C locale 漏认规范信封字形致合入链路全量阻断——PASS=2 FAIL=5 实证、ccc068 钉 locale 先例未沿用；P1-F2 无右锚伪信封前推漂移基线实证绕过目标②——RC=0 可复现；修复后重新机审）
