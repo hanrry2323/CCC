@@ -113,6 +113,23 @@ severity 计分：影响面 2（合入后全量套件红一例、门禁噪音，
 
 机审：通过
 
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+第二轮独立复核记录（并发第二席 · worktree ccc079 · 分支 codex/ccc079-board-visibility-unification · 全部结论本席亲跑命令可复现；与上条记录相互独立作出、结论一致）：
+
+1. **范围核对**：origin/main..HEAD 恰两提交；以出卡点 a54cf2621 为基线逐提交核对——25f83e901 恰触白名单三文件（loader.py/server.py/test_board_visibility.py），c9ca1c06e 触卡文件回写+docs/lessons.md（diff 相对出卡点多出的 plan 文档属 main 侧出卡提交 0af437610，非执行体越界）。lessons.md「白名单外」质疑不成立：docgate.py Q2 规则强制要求勾[有]时说明须引用且真实存在 lessons/docs/notes 文件，如实沉淀必须写它，不写反而声明不实。
+2. **关键断言独立复现（全数吻合）**：① 门禁命令重跑 **84 passed exit=0**；② 根因复现：load_dispatch_cards 直调 total=278、九项目计数 {ccc:71, cd:4, cla:14, clw:25, hp:45, mx:50, qb:8, tst:3, xy:58} 与回写区逐数一致；模拟修复前（剔除 ccc 项目）=207 张，按 id 排序前 50 张的项目集合恰为 {cd,cla,clw,hp}——「分页首屏假象 + 平台卡真缺失」根因本席坐实；③ zip 错位隐患读码坐实（装载循环 stat OSError 与解析失败且无旧索引两处 continue 均 append 失败而 all_files 不变，按位 zip 必错位，随过滤块消除）；④ 红线 2 精确核实：server/ 代码 diff 中 FORBIDDEN_HEADER_KEYS 零命中、/cards 响应字段结构零改动（注：全量 diff 计 1 命中系上条机审记录自指行文，非代码改动）。
+3. **F1 复核**：git show c9ca1c06e 证实回写时点 test_scan_skips_platform_prefix_subdir 确断言旧行为（`assert "ccc100" not in ids`），披露主句属实；就地修复 commit d9be14023 方向正确（翻转为平台子目录卡入板契约 + 新增 test_scan_default_skips_platform_subdir 补 scan 层默认豁免双向直接覆盖），本席重跑 test_board_loader.py + test_board_visibility.py 全绿 exit=0。其认定披露次句「scan 默认豁免仍有其他用例覆盖」失实亦经本席 grep 证实（tests 目录无 scan_dispatch_files 直接覆盖）。
+
+**发现与处置**：
+
+- O2（流程观察 · 不立项 · 建议派发层整改）：双机审席并发同一 worktree 有实证——本会话只读阶段内 reflog 连落 d9be14023（17:39:43）/9a9f4dab2（17:40:29）两提交、卡文件 mtime 17:40:16、远端 tip 于审计中途 c9ca1c06e→9a9f4dab2、另有非本席发起的全量 pytest 进程（17:40 起）。本次两席结论一致无损害，但「一卡并发两验收席」存在互踩风险（与 Lesson 56 同族），建议派发层对同卡验收席串行化。
+- O3（测试隔离缺陷 · 既有问题 · 不阻塞合入）：docs/archive/legacy-t-cards/cards.index.jsonl 在全量 pytest 窗口内（mtime 17:44）被写入真实仓且未被 gitignore（归档索引路径 loader.py 归档分支；对照 docs/dispatch/cards.index.jsonl 已忽略 @.gitignore L169）——与回写区已披露的「pytest 写真实 mx/roadmap.md」同族。该文件未入库、不在分支 diff 内，建议随 048 P2/P3 或后续卫生卡治理（补 .gitignore 或 tmp-path 隔离）。
+
+severity 计分：影响面 2（F1 合入红面已由 d9be14023 就地闭环；残留仅流程并发异常与既有测试隔离缺陷，均不阻塞）+ 改动深度 1 + 红线邻近 1（无红线违反）= 4 → 轻（无高维度，不触发强制重）。
+
+机审：通过
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
