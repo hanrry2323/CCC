@@ -1,6 +1,6 @@
 # 任务卡 ccc088 · 陈旧双索引 docs/dispatch/cards.index.jsonl 清理（DSH 执行）
 
-> 关联：环节②交接(2026-08-25)问题4 · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：ccc · 日期：2026-08-25
+> 关联：环节②交接(2026-08-25)问题4 · 执行体：DSH · 验收：DSH · 状态：已回写（第2轮收口） · 派发：engine · 项目：ccc · 日期：2026-08-25
 
 ## 目标
 
@@ -87,6 +87,52 @@ _board_cache_key() 首段 == get_index_path().stat().st_mtime_ns  # True
 
 测试夹具污染真实仓已是第三次出现（ccc076 observer 归档版 → ccc079 披露 legacy-t-cards 版 → 本次 docs/dispatch 主版）。根因共性：loader `PYTEST_CURRENT_TEST` 分支让「传真实目录的测试」产生真实写副作用。本卡用夹具重定向收口了 board 域三个文件；若未来再现新族，建议按本卡 http_api 变体模式处理，或立项评估 conftest 全局隔离方案。
 
+### 6. 第 2 轮开发收口（机审打回后重做 · 2026-08-25 05:06）
+
+针对第 4 轮机审 F1/F2 收口清单逐项落实；FT1（引擎侧落盘通道）见本节末披露。
+
+#### 6.1 裸跑回落写路径封口矩阵（F1+F2）
+
+| # | 入口 | 写路径（码内坐实） | 封口 |
+|---|---|---|---|
+| 1 | `scripts/plan-to-cards.sh:15` | Phase2 裸 `validate_cards` → validate.py:479-481 副本缺失即 `load_dispatch_cards(d)` 回落写 | 头部补 `export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"` |
+| 2 | `scripts/archive-cards.sh:20` | archive.py:180 初载 + :276 归档后**无条件**重建（最高频复发源） | 同款 export |
+| 3 | `scripts/auto-fix-all-plans.sh:18` | → auto-fix-plan-progress.py → sync_plan_progress；plans.py:743-748 作废级联 `load_dispatch_cards(repo_root/docs/dispatch)` 写索引 | 同款 export |
+| 4 | `scripts/auto-fix-plan-progress.py:22` | observer.py:694 以 subprocess 直调，环境继承不可控——独立裸跑入口 | py 内 `os.environ.setdefault("CCC_DATA_DIR", …)` 兜底（覆盖一切调起方式） |
+
+- **F2 收口**：四处注释均注明「仅认 CCC_DATA_DIR 口径（loader 另支持 DATA_DIR，此处不启用）」，与生产看板同源。
+- **排除项留证**：`sync-runtime-state.py:32` 仅调 `load_index_file`（loader.py:269-272：缺文件返回 `{}`，纯只读），无写路径，不注入。
+- 至此六个工具链入口全部注入：approve-merge.sh:23 / new-card.sh:45 / spot-check.sh:24（第 1 轮）+ 上表四处（本轮），`grep -n 'export CCC_DATA_DIR' scripts/*.sh` 六行齐。
+- 码内补充发现（如实记录）：validate.py:472 存在 error 级 issue 时提前 return、跳过索引对账块——含 issue 的检出（如实测 worktree 150 条）不会触达回落写；干净树（如主仓）会触达。注入对两种情形均覆盖。
+
+#### 6.2 主仓双副本删除前后对比（机审收口清单第 3 条）
+
+| 文件 | 删前（05:04 实测） | 删后探针 |
+|---|---|---|
+| `/Users/fan/program/CCC/docs/dispatch/cards.index.jsonl` | 163076B · mtime 04:10 · md5 `cfe31ef4d3495d618c4982fccdeea721` | 不存在 |
+| `/Users/fan/program/CCC/data/cards/cards.index.jsonl` | 163010B · mtime 03:58 · md5 `8002d2fdb006fb3d525cc345c85f5de3` | 不存在 |
+
+删后复查命令与输出：`cd /Users/fan/program/CCC && ls docs/dispatch/cards.index.jsonl data/*/cards.index.jsonl` → 两行 `No such file or directory`，exit=1（均不存在）✓；权威索引 `~/.ccc/data/cards/cards.index.jsonl` 287 行完好 ✓。两副本均 .gitignore 忽略、不入库。24h 不复生承诺同第 1 轮：根治以本卡合入部署为准（未合入检出的 pytest 跑动仍可复生 docs 版，见 §2 披露条款）；合入部署后由环节②按验收标准复核。
+
+#### 6.3 自测结果（命令可复现）
+
+```
+bash -n scripts/{plan-to-cards,archive-cards,auto-fix-all-plans}.sh        # 三者通过
+python3 -m py_compile scripts/auto-fix-plan-progress.py                     # 通过
+# 机制复现（实验残留已清）：worktree 内
+env -u CCC_DATA_DIR -u DATA_DIR python3 -c \
+  "from server.board.loader import load_dispatch_cards; load_dispatch_cards('docs/dispatch')"
+  # → <worktree>/data/cards/cards.index.jsonl 162805B 即刻生成（bug 机制坐实）
+# 注入微测：bare env 下四文件各自解析 export/setdefault → 均 /Users/fan/.ccc/data
+# 回归：
+pytest server/tests/test_board_scheduler.py server/tests/test_board_visibility.py -q
+  # → 11 passed；测试后 worktree docs/dispatch 无索引文件（零污染）；权威索引 287 行未受扰
+```
+
+#### 6.4 FT1 披露（执行体白名单外，不在本卡修复）
+
+机审 FT1 指向的引擎侧「engine-audit 自动落盘」对机审区的写入通道属引擎基础设施，超出本卡白名单（卡步骤 1-3 与读取方矩阵），执行体依红线不做越界改动。随合入说明提请环节②/引擎侧按机审收口清单第 1 条处理；本卡翻转史以机审区 §〇 记录为准。
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
@@ -94,9 +140,9 @@ _board_cache_key() 首段 == get_index_path().stat().st_mtime_ns  # True
 1. **方案同步**：[否]
    - 说明：[否]。环节②交接直派卡，无关联方案文件。
 2. **教训沉淀**：[无]
-   - 说明：[无]。机制教训随卡记录于回写区 §5（pytest call 阶段重设 PYTEST_CURRENT_TEST、夹具污染真实仓第三族），未单独开 notes。
+   - 说明：[无]。机制教训随卡记录于回写区 §5/§6.1（pytest call 阶段重设 PYTEST_CURRENT_TEST、夹具污染真实仓第三族、validate error 级 issue 提前 return 门控回落写），未单独开 notes。
 3. **档案/README**：[否]
-   - 说明：[否]。仅改三测试文件/三工具链脚本/web 缓存键与卡文，未触 registry 与项目档案。
+   - 说明：[否]。仅改三测试文件、七个工具链入口（approve-merge/new-card/spot-check 第 1 轮 + plan-to-cards/archive-cards/auto-fix-all-plans/auto-fix-plan-progress 本轮）、web 缓存键与卡文，未触 registry 与项目档案。
 4. **线路图**：[否]
    - 说明：[否]。索引卫生修复无线路变化。
 

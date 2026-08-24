@@ -15,8 +15,15 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+# ccc088：索引口径兜底——本脚本被 observer 子进程（observer.py:694）或裸 shell 直接调起时，
+# 若环境无 CCC_DATA_DIR，sync_plan_progress 级联触发的 load_dispatch_cards 会经 loader
+# 回落写 <repo>/data/cards/cards.index.jsonl 陈旧副本。此处 setdefault 与生产看板同源；
+# 仅认 CCC_DATA_DIR 口径（loader 另支持 DATA_DIR，此处不启用）。
+os.environ.setdefault("CCC_DATA_DIR", str(Path.home() / ".ccc" / "data"))
 
 
 def main() -> int:
