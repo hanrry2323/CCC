@@ -1,6 +1,6 @@
 # 任务卡 ccc082 · 并发机审风暴防线跨 DATA_DIR 验证与加固（DSH 执行）
 
-> 关联：环节②交接指令(S116-01)卡1 · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：ccc · 日期：2026-08-24
+> 关联：环节②交接指令(S116-01)卡1 · 执行体：DSH · 验收：DSH · 状态：已回写（机审打回修复·第2轮回写） · 派发：engine · 项目：ccc · 日期：2026-08-24
 
 ## 目标
 
@@ -80,6 +80,35 @@ markersA=['w1-audit.running'] / markersB=absent
 
 分支 `codex/ccc082-audit-storm-cross-datarir`，实现提交 `de08ca4bc`，push 后 `git rev-list --left-right --count origin/codex/ccc082-audit-storm-cross-datarir...HEAD = 0 0`（远端零偏差）；工作区干净（git status 空）。
 
+### 第2轮回写（2026-08-25 · 机审打回后修复）
+
+**打回原因（实锤取证）**：第1轮机审未进入实质审查即被机械门禁拦下——`~/.ccc/logs/exec/ccc082.audit.log`：`[dsh-auditor] 机械门禁：维护区未完成 → 机审打回（不跑 DSH）／机审：不通过（维护区未完成）`；对应引擎自动落分支信封提交 `08bf7ea2f`（状态→待分派·重试中）。本地用 docgate 复现同因：
+
+```
+python3 -c "from server.board.docgate import verify_maintenance; print(verify_maintenance('docs/dispatch/ccc/ccc082-audit-storm-cross-datarir.md', '.'))"
+→ (False, ['Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件'])
+```
+
+根因：第1轮 Q2 勾 [有] 但说明只称「落 docstring 与回写区」，未引用任何 lessons 文件路径，违反 docgate.py:329-341 契约。
+
+**修复内容（本轮全部改动，代码零变更）**：
+
+- `docs/lessons.md`：追加 Lesson 58「跨进程互斥面若全锚定同一可配置目录，多实例各配各的目录即全线失效（ccc082）」，四段式（问题/根因/修复/如何应用）——把第1轮已声明的教训沉淀做成事实。
+- 本卡维护区 Q2 说明行改为引用 `docs/lessons.md` Lesson 58；状态行→已回写（第2轮）；回写区补本节。`server/engine/main.py` 与 `server/tests/` 相对第1轮实现提交 `de08ca4bc` 零改动。
+
+**docgate 复测**：同命令 → `(True, [])` PASS（修复前 FAIL 证据见上）。
+
+### 第2轮自测结果（实现未变，全量复跑）
+
+- `python3 -m pytest server/tests/test_engine_audit_cross_datadir.py -q` → exit=0，6 passed in 0.58s。
+- `python3 -m pytest server/tests/test_engine_audit_marker.py server/tests/test_engine_{main,dispatch,scheduler,audit_backfill,v2v3_gate,runtime_contract}.py server/tests/test_infra_resilience.py -q` → exit=0，213 passed in 38.79s。
+- `python3 -m ruff check server/engine/main.py server/tests/test_engine_audit_cross_datadir.py server/tests/conftest.py` → All checks passed。
+- 生产零触碰复核：测试全程前后 `ls ~/.ccc/data/audit-inflight` → No such file or directory（conftest 将 `CCC_AUDIT_REGISTRY_DIR` setdefault 到临时目录生效）。
+
+### 第2轮 push 证据
+
+分支 `codex/ccc082-audit-storm-cross-datarir`，本轮提交为 HEAD（docs: lessons+卡回写），push 后核验 `git rev-list --left-right --count origin/codex/ccc082-audit-storm-cross-datarir...HEAD` 应为 `0 0`；工作区干净。
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
@@ -87,7 +116,7 @@ markersA=['w1-audit.running'] / markersB=absent
 1. **方案同步**：[否]
    - 说明：[否]。环节②交接指令(S116-01)直派核验加固卡，无关联方案页面需同步。
 2. **教训沉淀**：[有]
-   - 说明：[有]。机制级教训已随卡固化——「单实例锁与在途标记若都锚定同一可配置目录，多实例配错 DATA_DIR 即全线失效；跨进程互斥面须至少一处锚定用户级固定点」。已落 `_audit_inflight_registry_dir` docstring 与本卡回写区，未另开 KB 条目。
+   - 说明：[有]。机制级教训「跨进程互斥面若全锚定同一可配置目录，多实例各配各的目录即全线失效；至少一处须锚定用户级固定点」已沉淀至 docs/lessons.md Lesson 58（问题/根因/修复/如何应用四段式，2026-08-25 追加），代码侧同步落 `_audit_inflight_registry_dir` docstring 与本卡回写区。
 3. **档案/README**：[否]
    - 说明：[否]。纯 engine 内部 marker 机制加固，配置经环境变量覆盖，不改任何对外文档口径。
 4. **线路图**：[否]
