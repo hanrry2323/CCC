@@ -1,6 +1,6 @@
 # 任务卡 ccc072 · 卡头校验器语义修复——已关闭卡豁免「批准」章（DSH 执行）
 
-> 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-24
+> 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-24
 
 ## 目标
 
@@ -38,7 +38,16 @@
 
 ## 回写区
 
-（执行体回写）
+**实现说明**（执行体：DSH · 2026-08-24）：
+1. `server/board/validate.py`：FORBIDDEN_HEADER_KEYS 循环前新增 `approval_exempt = base_state(meta.get("状态", "")) == "已关闭"`；「批准」键仅在已关闭卡豁免，`审批/review/approval` 全态报错、未关闭卡仍严格报错；注释引用人审节点③设计（`scripts/approve-merge.sh close_card`）与本卡 ccc072。豁免条件未超出实现节范围。
+2. 新增 `server/tests/test_validator_closed_card_approval.py`：两张 tmp 卡夹具（clw 子目录新规则卡 clw905/clw906，内容同构、唯一差异=状态 已关闭 vs 待分派，均含 `> … · 批准：老板合入批准` 行）——断言已关闭卡零 issue、待分派卡恰一条「批准」违禁字段 error；另加守卫用例锁定已关闭卡的 `审批/review` 仍报错（防扩大豁免）。
+
+**自测结果**：
+- 门禁命令：`cd /Users/fan/program/CCC-wt/ccc072 2>/dev/null || cd /Users/fan/program/CCC; python3 -m pytest server/tests/test_validator_closed_card_approval.py -q` → 输出 `.. [100%]`，真实退出码=0。
+- 回归面：`python3 -m pytest server/tests/test_board_validate.py server/tests/test_docgate_q1.py server/tests/test_card_dispatch_gate.py server/tests/test_card_header.py -q` → 35 passed，退出码=0。
+- 全仓唯一违禁键校验门即 validate.py FORBIDDEN_HEADER_KEYS（grep 证实 card_header/plans 中「批准」均为读写方非校验方），无第二处需同步修改。
+
+**push 证据**：分支 `codex/ccc072-validator-closed-card-approval-exempt`；代码 commit `741ca5b1d`（fetch+rebase origin/main 后 up to date，push 成功新建远端分支，PUSH_EXIT=0）；回写 commit 见本分支下一条。
 
 ## 机审区
 
@@ -51,7 +60,7 @@
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
    - 说明：[否]。债务清偿直派卡无关联方案。
 2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：[无]。机制性教训已在同期 notes 记录。
+   - 说明：[无]。机制与设计依据已固化于 validate.py 注释与本卡目标节；卡白名单未含 docs/notes，未新增笔记文件（实测同期 notes 记的是 tst004 worktree 与 ccc068 sed 教训，非本机制）。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：[否]。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
