@@ -39,12 +39,16 @@ REGISTRY_PATH = PROJECT_ROOT / "server" / "config" / "executors.example.json"
 
 def _write_env(tmp_path: Path, registry_path: Path | str, **overrides: str) -> str:
     """写一份可用的 config.env（测试夹具；字面值仅属测试数据）。"""
+    # ccc087：DATA_DIR/LOG_DIR 默认落 tmp_path 唯一目录——默认值曾指向 /tmp/ccc2/{data,logs}
+    # 共享路径，与本机真实 engine 跨进程争 DATA_DIR/engine.lock 单实例锁，
+    # 造成 test_once_smoke 偶发 BlockingIOError/SystemExit(2)。锁竞争专项测试
+    # 仍可经 overrides 显式传同一路径。
     lines = [
         "ENGINE_PORT=8101",
         "BOARD_PORT=8102",
         "WEB_PORT=8103",
-        f"DATA_DIR={overrides.get('DATA_DIR', '/tmp/ccc2/data')}",
-        f"LOG_DIR={overrides.get('LOG_DIR', '/tmp/ccc2/logs')}",
+        f"DATA_DIR={overrides.get('DATA_DIR', str(tmp_path / 'data'))}",
+        f"LOG_DIR={overrides.get('LOG_DIR', str(tmp_path / 'logs'))}",
         f"EXECUTOR_REGISTRY_PATH={registry_path}",
         f"EXECUTOR_TIMEOUT_SECONDS={overrides.get('EXECUTOR_TIMEOUT_SECONDS', '300')}",
         f"EXECUTOR_LOG_DIR={overrides.get('EXECUTOR_LOG_DIR', str(tmp_path / 'exec-logs'))}",
