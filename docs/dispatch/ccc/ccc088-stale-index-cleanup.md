@@ -150,51 +150,39 @@ pytest server/tests/test_board_scheduler.py server/tests/test_board_visibility.p
 
 ## 机审区
 
-**DSH 机审席 · 2026-08-25 · severity：重**
+**DSH 机审席 · 2026-08-25 · severity：轻**
 
-> 本区为第 4 轮独立复核（04:52 落盘），覆盖此前全部机审记录；历史轮次关键断言经本轮逐条命令复现后收编于此。单头行、单结论行，供看板解析。
+> 本区为第 5 轮独立复核（05:16 落盘），覆盖此前全部机审记录；针对回写区 §6 第 2 轮开发收口逐项命令复现，历史轮次关键断言经本轮重放后收编于此。单头行、单结论行，供看板解析。
 
-### 〇、审计史与前轮事态（逐笔取证）
+### 一、范围与红线核对（本席独立复现）
 
-1. `a134fef5b`（03:47:34）：第 1 轮机审合规落盘——severity=中 · 不通过（发现写手B根治不完整，附补救清单）。
-2. `b12594e2b`（03:48:01，仅隔 27 秒，两笔间零代码改动）：以「engine 自动落盘（engine-audit）」名义删除上项全部内容并替换为违规残片，已推送 origin。残片缺陷本轮逐一实证：无 `**DSH 机审席 · <日期> · severity：…**` 头行；结论为引用块「> 结论：通过」（看板解析器只认独立行，不可解析）；正文残留「致不通过发现 F1」文字与「通过」自相矛盾；文件句中截断止于 EOF（`tail` 实证止于「归档无条件重建索引」）。
-3. `a52282332`：第 3 轮机审依职权重写（severity=重 · 不通过）。本轮实测本地 HEAD = 远端 = `a52282332`（`git ls-remote origin codex/ccc088-stale-index-cleanup` 吻合）。
-4. 定性（维持）：违反硬红线「除机审席写机审区外禁触机审区」+ 无修复支撑的结论翻转 + 变体结论行 → 致不通过发现 FT1。
+- 推送态：本地 HEAD = 远端 = `d9ed4a000`（`git ls-remote origin codex/ccc088-stale-index-cleanup` 吻合），工作树干净。
+- 改动面：自基点 `738cac95e` 全量改名单恰为三测试文件 + 七工具链入口（approve-merge/new-card/spot-check 第 1 轮 + plan-to-cards/archive-cards/auto-fix-all-plans/auto-fix-plan-progress 本轮）+ `server/web/server.py` + 卡文；registry 与 docs/projects 零触及——与两笔 commit stat（`4df841c36`=7 文件 +97/-1、`4c71975b9`=5 文件 +73/-3）合计吻合，零越界。
+- 红线遵守：`git diff 738cac95e..HEAD -- server/board/loader.py` 输出 0 行，`get_index_path` 判定逻辑（loader.py:218-228）逐行未动 ✓；执行体后续提交未触机审区（现行机审区与 `fc47938f0` 版逐字节一致，diff 实证）✓。
+- F1 封口矩阵核验：`grep -n 'export CCC_DATA_DIR' scripts/*.sh` 恰六行（approve-merge.sh:23/new-card.sh:45/spot-check.sh:24/plan-to-cards.sh:15/archive-cards.sh:20/auto-fix-all-plans.sh:18），注入行先于全部写调用（new-card 45<437、approve-merge 23<647,821、plan-to-cards 15<195、spot-check 24<36）；`auto-fix-plan-progress.py:26` setdefault 兜底覆盖 observer.py:694 子进程直调通道。三条码内写路径逐一坐实：validate.py:479-481（副本缺失回落重建）、archive.py:180+:276（初载+归档后重建）、plans.py:743-748（作废级联）。排除项属实：sync-runtime-state.py:32 仅调 `load_index_file`（缺文件返回 `{}` 纯只读）。
+- 写手A 隔离核验：三测试 autouse 夹具 monkeypatch `loader.get_index_path` 重定向 tmp；全仓无模块级 `from …loader import get_index_path` 绑定、validate/plans 均函数内局部 import（调用时取属性）→ monkeypatch 拦截面完备 ✓；test_watch_smoke Popen 显式剔除 `PYTEST_CURRENT_TEST`（码+注一致）✓。
+- 读侧核验：`_board_cache_key` 改读 `get_index_path()` 且索引缺失显式记 `"missing"` 防「缺失键==旧缓存键」永不重建（server/web/server.py:1309-1327）✓。
+- 双副本删除复核（05:11 本席实测）：主仓 `docs/dispatch/cards.index.jsonl` 与 `data/cards/cards.index.jsonl` ls 均 `No such file or directory`（exit=1）；其间 board-scheduler（`--watch --interval 60`，删后 ≥5 个导出周期）持续运行零复生；权威索引 `~/.ccc/data/cards/cards.index.jsonl` 存在、288 行、mtime 05:12 仍在活跃更新 ✓。
+- 生产环境实证：`ps -E` 对 web-server（PID 58057）与 board-scheduler（PID 58060）两进程均见 `CCC_DATA_DIR=/Users/fan/.ccc/data`——运行面读写同源权威路径，回落无从触发。
 
-### 一、范围与红线核对（本轮独立复现）
+### 二、维护区四问机械判据
 
-- 修复本体 `4df841c36`：`git show --stat` = 7 文件 +97/-1（三测试 / 三工具链脚本 / `server/web/server.py`），全落卡步骤 1-3 与回写区读取方矩阵内，零越界。
-- 红线遵守：`git diff 738cac95e..HEAD -- server/board/loader.py` 输出 0 行——`get_index_path` 判定逻辑（loader.py:218-228）逐行未动 ✓。
-- 写手A 隔离在案：三测试文件 autouse 夹具 monkeypatch `get_index_path` 重定向 tmp（test_board_scheduler.py:30/39、test_board_visibility.py:24、test_http_api.py:48）；`--watch` 子进程 Popen 剔除 `PYTEST_CURRENT_TEST`（test_board_scheduler.py:46-58 注释与实现一致）✓。
-- 写手B 部分封口在案：approve-merge.sh:23 / new-card.sh:45 / spot-check.sh:24 均 `export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"` ✓。
-- 读侧对齐在案：`_board_cache_key` 改读 `get_index_path()` 且索引缺失显式记 `"missing"`（server/web/server.py:1310-1322，防「缺失键==旧缓存键」导致永不重建）✓；全仓 grep `cards.index.jsonl` 消费点与回写区矩阵一致。
-- 维护区四问机械判据：四项均单选 `[否]`/`[无]` 且说明为一句实情、非占位符 ✓；抽查第 3 问声明 ↔ `git show 4df841c36 --stat` 恰为 7 文件，声明属实 ✓。
-- 权威索引 `~/.ccc/data/cards/cards.index.jsonl` 存在且 287 行 ✓（wc -l 实测）。
+四问均单选 `[否]`/`[无]`、说明各为一句实情非占位符 ✓。抽查：第 3 问声明 ↔ 全量改名单吻合（七工具链入口+三测试+web 缓存键+卡文，无 registry/档案）属实 ✓；第 1 问「无关联方案」↔ `docs/projects/ccc/plans/` 无 index/stale 相关方案文件属实 ✓。
 
-### 二、致不通过发现（本轮复核后维持）
+### 三、验收标准逐条裁定
 
-**FT1（重 · 8 分 = 影响面 3 + 深度 2 + 红线 3）机审区遭非授权覆盖翻转并已推送，「engine-audit 自动落盘」通道未封**：见 §〇。2。影响面 3＝机审门禁公信力受损，且该通道属跨卡系统性隐患——本席本轮落盘同样暴露于再覆盖风险；深度 2＝纠正点在引擎侧自动落盘行为，非本卡白名单可修；红线 3＝直接命中「机审区唯机审席可写」并产出伪造结论变体。红线维度高 → 强制重。
+1. 写/读依赖结论明确：本席独立盘点全仓 `load_dispatch_cards`/`cards.index.jsonl` 消费点，与回写区矩阵一致，六个裸跑入口全部封口 ✓。
+2. 文件移除后看板显示与权威索引一致：缓存键对齐权威路径、生产双进程环境同源、权威索引活跃更新 ✓。
+3. 不复生：即时复核由本席实测通过（05:11）；合入部署后 24h 复核按卡文承诺归环节②执行。
 
-**F1（中 · 5 分 = 影响面 2 + 深度 2 + 红线邻近 1）写手B「根治」不完整：HEAD 仍存三条同族裸跑回落写路径，主仓双副本至今未清**（本轮逐点码内坐实）：
+### 四、残余风险与上呈事项（外部项 · 不计入本卡 severity）
 
-| # | 入口 | 写路径 | 本轮实证 |
-|---|---|---|---|
-| 1 | `scripts/plan-to-cards.sh:186` 裸 `python -c` 跑 `validate_cards` | `server/board/validate.py:479-481`：`get_index_path(d)` 副本缺失即 `load_dispatch_cards(d)` 回落写副本 | 码内坐实 |
-| 2 | `scripts/archive-cards.sh` 头部无任何 CCC_DATA_DIR/DATA_DIR 注入（1-15 行 grep 为空；`scripts/*.sh` 仅 approve-merge/new-card/spot-check 三者有） | `server/board/archive.py:180` 初载 + `archive.py:276` 归档后无条件重建 | 码内坐实（无条件，最高频复发源） |
-| 3 | `server/board/plans.py:743-748` 方案作废级联刷新索引 | 经 `auto-fix-all-plans.sh`→`auto-fix-plan-progress.py` 等裸跑入口可达 | 码内坐实 |
+- **FT1（引擎侧 · 维持上呈）**：`server/engine/main.py:1962` `_append_machine_audit_pass` 在引擎自动机审通过时以「> 结论：通过」引用块**替换**既有机审区并代 commit+push（`b12594e2b` 即该通道产物；evidence 取 `audit_text[-800:]`，解释前轮残句截断现象），其内置格式校验 `validate_audit_section` 放行该看板解析器不可读变体。属引擎基础设施、超出本卡白名单，执行体拒绝越权修复正确（§6.4 披露合规）；随合入说明提请环节②处置「机审区只准机审席落盘」。本席本轮落盘仍暴露于再覆盖风险，git 史可归因。
+- **O1（模板漂移 · 观察）**：仓内 deploy 模板 `com.ccc.web-server.plist`/`com.ccc.board-scheduler.plist` 无 CCC_DATA_DIR 键，而生产实机 `~/Library/LaunchAgents` 单元已注入（本席 ps -E 实证）；若未来从模板重装单元漏注该键，`data/cards` 回落将复生。建议另立卫生卡对齐模板，不在本卡处理。
+- 合入前窗口期：未合入检出的 pytest 跑动仍可复生 docs/dispatch 版（卡文 §2 披露条款在案），根治以本卡合入部署为准。
 
-- 运行面现状（04:52 `ls -la` 实测）：主仓 `docs/dispatch/cards.index.jsonl` 已复生（mtime **04:10**，符合回写区预披露条款）；`/Users/fan/program/CCC/data/cards/cards.index.jsonl` mtime **03:58** 至今未删。回写区自设探针 `ls docs/dispatch/cards.index.jsonl data/*/cards.index.jsonl` 即证伪其「两个写手均已根治 / 24h 不复生」表述。
-- 后果：validate 裸跑对账在副本存在时跳过重建（validate.py:480 `if not index_path.is_file()`），可能读到陈旧副本诱发假性对账错误。缓解面：读侧消费点已全量对齐权威路径、副本受 .gitignore 忽略、看板正确性不受影响；主目标写手A（pytest 污染族）确已根治。
+### 五、结论与分流
 
-**F2（轻 · 记录）脚本兜底口径与 loader 分叉**：三脚本兜底仅认 `CCC_DATA_DIR`，未兼容 loader 同样支持的 `DATA_DIR` 口径（loader.py:222 先读 CCC_DATA_DIR 后读 DATA_DIR）；生产用 CCC_DATA_DIR，实际风险低，随 F1 补丁注明即可。
+severity=轻（影响面 1 + 深度 1 + 红线邻近 2 = 4 分：卡内目标、红线、验收标准全部达标，残余项均为外部已上呈事项）。按 v4 分流：就地收口=本席机审区落盘并推送，无需打回；FT1/O1 随合入说明上呈环节②处置；24h 复核由环节②按卡验收标准执行。
 
-### 三、结论与分流
-
-severity=重（FT1 红线维度直接命中，强制重）→ 按 v4 分流打回，本席不做就地修复（FT1 根因在引擎侧落盘机制，超出本卡白名单；F1 属执行体收口项，由下一轮开发落实）。自 `a52282332` 以来无任何新提交，补救清单零进展，本轮维持原判。下一轮收口清单（须逐项留证）：
-
-1. 引擎侧停用/纠正「engine-audit 自动落盘」对机审区的写入通道——机审区只准机审席落盘；本卡翻转史随合入说明披露。
-2. `scripts/plan-to-cards.sh`、`scripts/archive-cards.sh` 头部补同款 `export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"`（plans.py 级联路径经上述入口封口后自然覆盖；如另有独立裸跑入口一并注入），并注明「仅认 CCC_DATA_DIR 口径」（F2 收口）。
-3. 删除主仓现存 `/Users/fan/program/CCC/docs/dispatch/cards.index.jsonl` 与 `/Users/fan/program/CCC/data/cards/cards.index.jsonl` 两份陈旧副本后，重跑复查命令 `ls docs/dispatch/cards.index.jsonl data/*/cards.index.jsonl` 留证。
-4. 合入部署后按卡验收标准完成 24h 不复生复核。
-
-机审：不通过（机审区遭engine自动落盘覆盖翻转已推送且通道未封FT1+写手B三条裸跑回落写路径未封、主仓docs版04:10/data版03:58双副本未清F1）
+机审：通过
