@@ -418,7 +418,12 @@ def test_write_roadmap_draft(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("server.board.roadmap._roadmap_path", return_value=roadmap_path):
+    # 机审 ccc076 就地修复：write_roadmap_draft→create_draft→_write_roadmap 会经
+    # 未 patch 的 _repo_root() 在真实仓 docs/projects/ccc/ 下 mkdir+写 .roadmap.lock
+    # （该路径被 .gitignore *.lock 覆盖、porcelain 沉默，属文件系统面隐形触碰）。
+    # _repo_root 一并绑定 tmp 后，锁与草案全部落在 tmp 内，本用例对真实仓零写入。
+    with patch("server.board.roadmap._roadmap_path", return_value=roadmap_path), \
+            patch("server.board.roadmap._repo_root", return_value=tmp_path):
         # 第一次写入
         result = write_roadmap_draft("ccc", "状态漂移检测异常")
         assert result.get("ok") is True
