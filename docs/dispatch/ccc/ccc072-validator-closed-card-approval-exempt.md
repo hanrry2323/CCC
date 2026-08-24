@@ -55,32 +55,33 @@
 
 **DSH 机审席 · 2026-08-24 · severity：轻**
 
-审查方式：v4 对抗式独立复现，不采信执行体自述；以下每条均附可复现命令/位置。
+审查方式：v4 对抗式独立复现，不采信执行体自述；结论仅基于本席亲跑命令与实测数字。
 
-### 范围核对
-- 分支 `codex/ccc072-validator-closed-card-approval-exempt`，工作树干净、与远端同步。代码 commit `741ca5b1d` 仅触 `server/board/validate.py`（+8/-2）与新增 `server/tests/test_validator_closed_card_approval.py`（+73）；回写 commit `57548df1a` 仅触本卡文件（+12/-3）。`git show --numstat` 实测白名单外零触碰。
-- 未写验收区、未置已关闭（回写 commit diff 逐行核过）。
+### 范围核对（白名单外零触碰）
+- 代码提交（rebase 后 `536dc04ca`）`git show --numstat` 实测仅触白名单两文件：`server/board/validate.py`（+8/-2）+ 新增 `server/tests/test_validator_closed_card_approval.py`（+73）；回写提交 `41b2f5a81` 仅触本卡文件（+12/-3）。
+- 未写验收区、未置已关闭；工作树干净。
 
-### 独立复现
-1. 门禁：`python3 -m pytest server/tests/test_validator_closed_card_approval.py -q` → `.. [100%]`，退出码 0。
-2. 回归：四套件 `test_board_validate/test_docgate_q1/test_card_dispatch_gate/test_card_header` → 35 passed，退出码 0。
-3. 设计前提核实：`scripts/approve-merge.sh` L309-315 确在 close 时盖「> 批准：老板合入批准」章——「平台有意设计」属实。
-4. 「全仓唯一校验门」声明核实：拒绝逻辑仅 validate.py L350 FORBIDDEN_HEADER_KEYS 一处；`card_header.py` L31 为 schema 登记表、`plans.py` 为方案侧读写方，均非任务卡校验方。声明属实。
-5. 端到端实效（本席加测）：对 `docs/dispatch` 全量跑 `validate_cards`，与 origin/main 对照——main 上「批准」违禁错误 **87 个**（tst004/ccc068/xy059 毒化实证），本分支归 **0**；其余 error 类别逐类对照（ccc 前缀历史错 67↔66、缺回写区 1↔1、状态值非法 1↔1）零增零减，证明豁免精确、无过度豁免亦无新副作用。
+### 独立复现（全部本席亲跑）
+1. 门禁：`python3 -m pytest server/tests/test_validator_closed_card_approval.py -q` → `.. [100%]`，退出码=0。
+2. 回归：`pytest test_board_validate/test_docgate_q1/test_card_dispatch_gate/test_card_header -q` → 35 passed，退出码=0。
+3. 业务前提：`scripts/approve-merge.sh` close_card（L296-315）确在关闭时给卡头盖「> 批准：老板合入批准」章——「平台有意设计」属实，豁免方向正确。
+4. 「全仓唯一校验门」声明核实：`FORBIDDEN_HEADER_KEYS` 全仓仅 validate.py L350 一处（grep 证实）；`card_header.py` L31 为读写方 schema 登记非校验方。出卡链路 new-card.sh L442 / plan-to-cards.sh L189 / validate.py CLI L577 均走同一 `validate_cards`，豁免全链路一致生效。
+5. 端到端实效（方法学要点：各树用各自的校验器跑各自的卡树，经 `git archive origin/main` 导出完整旧树实测）：main=87 个「批准」违禁 error（88 张盖章卡）→ 本分支=**0**；其余类别逐一零增零减（ccc 前缀历史错 67↔67、缺回写区 1↔1、状态值非法 1↔1、warn 四类 1/2/2/63 不变）；总 issue 数 224→137，差值恰=87。豁免精确命中，无过度豁免、无新副作用。
 
 ### 对抗式检查（未发现 P0/P1）
-- 豁免边界：经 `base_state` 归一，含括号变体（`已关闭（x）`→`已关闭`）；空状态/未知态不豁免；`审批/review/approval` 全态报错且有守卫用例锁定防扩大。
-- 自盖章风险：豁免信任卡头「状态」自述，理论可自标已关闭骗豁免——但关闭动作仅人审 approve-merge 在 main 发生，且批准真值权威在账本（approve_merge ledger · 033 M6）非卡头行，出卡校验通道非安全边界；判为设计内可接受风险，非缺陷。
-- 测试夹具为合成卡（clw905-907）而非真实中毒卡——已由上节第 5 条端到端扫描补证真实实效。
+- 边界安全：豁免经 `base_state` 归一（models.py L52-63），`已关闭（x）` 括号变体命中；空/未知状态→`未知`≠已关闭→默认严格不豁免；`审批/review/approval` 全态报错且有守卫用例锁定（测试第二用例），无扩大豁免路径。
+- 自盖章风险论证：豁免信任卡头「状态」自述，理论可自标已关闭骗豁免——但置已关闭仅人审 approve-merge 在 main 发生，批准真值权威在 approve_merge 账本（033 M6）而非卡头行，出卡校验通道非安全边界；判设计内可接受风险，非缺陷。
+- 测试夹具为合成 tmp 卡（clw905-907）非真实中毒卡——由上第 5 条端到端对照补证真实实效。
+- 非阻断小项：守卫用例未覆盖 `approval` 键变体（逻辑同为集合成员判断，风险≈0）；维护区 Q3/Q4 说明偏简（见下）。
 
 ### severity 判定
-影响面 1（单函数语义收窄+测试覆盖）/ 改动深度 1（约 10 行+新测试）/ 红线邻近 1（触校验门组件但不涉安全面/运行面/main，白名单严守）；合计 3 → 轻，无高危维度。
+影响面 1（单校验门语义收窄+测试覆盖）/ 改动深度 1（约 10 行改动+新增测试）/ 红线邻近 1（触校验门组件但白名单严守、门禁双绿、不涉安全面/运行面/main 直推）；合计 3 → 轻，无高危维度。
 
-### 维护区核对
-四问均单选实填（[否]/[无]×4，无模板占位），说明行均为一句实情；Q2 抽查属实：`docs/notes/2026-08-24-tst-lessons.md` 与 `docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 存在且内容确为 tst004 worktree / ccc068 sed 教训、非本机制。卡头=已回写。
+### 维护区核对（P1-b 机械判据）
+四问均单选实填（[否]/[无]，无 `[是/否]` 类模板占位），说明行非空非占位且抽查属实：Q1 无关联方案与卡头「关联：无方案」一致；Q2 引用工件 `docs/notes/2026-08-24-tst-lessons.md` 与 `docs/notes/2026-08-24-ccc-locale-sed-byteslice.md` 实测存在且内容确非本机制；Q3/Q4 说明仅一句「[否]。」偏简但属实（numstat 证实未动项目结构/roadmap），非阻断。卡头=已回写 ✓。
 
-### 备注
-审查期间 origin/main 前移至 `1e22a443e`（ccc075 投递），本分支基于较早 main——正常流水节奏，合入时由管理席按流程处理，不影响本卡结论。
+### 流程事件记录（不影响本卡代码结论 · 报引擎/管理席核查）
+本席审查窗口内出现并发提交 `84b8a3f9`（12:50:22）：以机审格式写入一份「通过」记录并推送，随后（12:53:55）将本分支 rebase 至前移的 origin/main=`1e22a443e`（ccc075 投递）并推平（现本地=远端 tip=`3d8f0da5c`）。作者为共享 bot 身份无法归因；其记录全部可核主张经本席独立复现为真（含 87→0 对照），但文中「ccc 前缀错 67↔66」与本席实测 **67↔67** 不符（疑对旧 main 快照测得）。处置：按「机审区唯验收席权威」原则以本节取代该并发记录，保留此备注溯源；建议引擎排查同卡双派发竞态。origin/main 前移属正常流水节奏，合入由管理席按流程处理。
 
 机审：通过
 
