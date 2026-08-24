@@ -59,8 +59,11 @@
   codex/ccc076·078「已合入被占用」上报、codex/ccc077 因 main 前进正确不报 ✓；7899 pid=76724 与
   /tmp 残留 103 项上报 ✓；连续两轮第二轮 JANITOR 日志零新增（去重生效）✓；终态判定函数对
   ccc027(已关闭)/ccc075(作废)=TERMINAL、ccc078(活跃)=ACTIVE ✓；健康输出仍为「健康」+exit 0 ✓。
-- **push 证据**：分支 codex/ccc078-watchdog-janitor，实现 commit fcb3c5982，rebase origin/main
-  up-to-date 后推送成功（`* [new branch]`）；回写 commit 见本文件随后的第二次 push。
+- **push 证据**：分支 codex/ccc078-watchdog-janitor，实现提交已推送（rebase origin/main 前哈希
+  fcb3c5982，rebase 后分支终态哈希 ad60cf1d6，两者 patch-id 同一改动）。2026-08-24 复核补记：
+  `git rev-list --left-right --count origin/codex/ccc078-watchdog-janitor...HEAD` = `0 0`（远端零
+  偏差）；门禁复跑 `watchdog-exit=0`；实跑汇总「可回收worktree=1 可删分支=1 遗留服务=2」，明细见
+  ~/.ccc/logs/watchdog.log 15:20 段。卡回写为随后第二次 push（本行所在提交）。
 
 ## 机审区
 
