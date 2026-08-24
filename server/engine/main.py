@@ -2083,7 +2083,7 @@ def _dispatch_and_collect(
         (ok, problems)：ok=True → 已回写；ok=False → 打回（附问题清单）。
     """
     # F2 熔断（2026-08-24 直修）：近24h被强制击杀达阈值的卡，停止一切自动派发
-    if _dispatch_blocked_by_ledger(work.id):
+    if _dispatch_blocked_by_ledger(work.id, data_dir=cfg.get("DATA_DIR")):
         logger.error("派发被熔断跳过（近24h强拆≥%d，需人工核查告警文件）: work=%s", _FORCE_KILL_LEDGER_LIMIT, work.id)
         return False, [f"自动派发熔断：{work.id} 近24h多次被强制击杀，需人工介入（见 alerts/auto-dispatch-blocked-{work.id}.txt）"]
 
@@ -2715,15 +2715,21 @@ _FORCE_KILL_LEDGER_LIMIT = 3  # 24h 内同卡被强拆次数上限
 _FORCE_KILL_LEDGER_WINDOW_S = 86400
 
 
-def _force_kill_ledger_path() -> Path:
-    base = os.environ.get("DATA_DIR") or str(Path.home() / ".ccc" / "data")
+def _force_kill_ledger_path(data_dir: str | None = None) -> Path:
+    """强拆台账路径：优先用调用方透传的 cfg DATA_DIR（生产/测试一致）。
+
+    2026-08-24 直修补：原只读环境变量 DATA_DIR，测试进程不设该环境变量时
+    会回退写真实生产台账 ~/.ccc/data/force_kill_ledger.json，污染生产并被
+    测试内累积触发熔断（test_concurrency_cap 红）。改为显式透传。
+    """
+    base = data_dir or os.environ.get("DATA_DIR") or str(Path.home() / ".ccc" / "data")
     return Path(base).expanduser() / "force_kill_ledger.json"
 
 
-def _record_force_kill(work_id: str) -> None:
+def _record_force_kill(work_id: str, data_dir: str | None = None) -> None:
     """记录一次强制击杀；24h 内超限则写告警文件并打 CRITICAL（熔断依据）。"""
     now = time.time()
-    path = _force_kill_ledger_path()
+    path = _force_kill_ledger_path(data_dir)
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     except Exception:
@@ -2752,9 +2758,9 @@ def _record_force_kill(work_id: str) -> None:
         logger.critical("自动派发熔断: work=%s 近24h强拆 %d 次", work_id, len(ts_list))
 
 
-def _dispatch_blocked_by_ledger(work_id: str) -> bool:
+def _dispatch_blocked_by_ledger(work_id: str, data_dir: str | None = None) -> bool:
     """该卡是否已被熔断（近24h强拆次数达阈值）。"""
-    path = _force_kill_ledger_path()
+    path = _force_kill_ledger_path(data_dir)
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     except Exception:
@@ -2764,7 +2770,7 @@ def _dispatch_blocked_by_ledger(work_id: str) -> bool:
     return len(recent) >= _FORCE_KILL_LEDGER_LIMIT
 
 
-def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
+def reclaim_orphaned_running(store: BoardStore, log_dir: Path, data_dir: str | None = None) -> int:
     """回收带 ``{work_id}.running`` 标记的「执行中」残留（AUTO 崩溃未收单）。
 
     manual 挂起等人不会写标记，故不被误回收。
@@ -2819,7 +2825,7 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
             )
             # F1 根修：killpg 收割整棵进程树（含幸存孙进程），并记强拆台账
             _kill_marker_pids(raw, reason="执行中超时强制中止", work_id=w.id)
-            _record_force_kill(w.id)
+            _record_force_kill(w.id, data_dir=data_dir)
             alive = []
 
         if alive:
@@ -2848,7 +2854,7 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path) -> int:
     return n
 
 
-def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None) -> int:
+def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None, data_dir: str | None = None) -> int:
     """清扫任意卡状态下的死标记（``*.running``，含 ``*-audit.running``）。
 
     引擎崩溃/部署后，非「执行中」卡（已关闭/待分派/打回）上的残留标记不会被
@@ -2900,7 +2906,7 @@ def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None) -> 
         # 只删标记会让真实子进程变成无人认领的孤儿（ccc078 雪崩根因）。
         killed = _kill_marker_pids(raw, reason="清理死标记", work_id=work_id)
         if killed or (alive_any and pids):
-            _record_force_kill(work_id)
+            _record_force_kill(work_id, data_dir=data_dir)
         try:
             marker.unlink(missing_ok=True)
             n += 1
@@ -2981,7 +2987,7 @@ def _clear_claim_marker(card_path: Path, card_id: str) -> None:
         logger.warning("清理认领标记失败（写）: %s", card_id)
 
 
-def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = None) -> Path:
+def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = None, data_dir: str | None = None) -> Path:
     """AUTO 派发起写运行标记（先记 Engine PID；子进程拉起后 refresh）。
 
     同时记录 ``dispatch_tip``：派发时刻 origin/main 的 commit（V2 产物门禁基准），
@@ -2997,7 +3003,7 @@ def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = 
             if _parse_running_marker_pids(old_raw):
                 killed = _kill_marker_pids(old_raw, reason="重复派发前清理旧标记", work_id=work_id)
                 if killed:
-                    _record_force_kill(work_id)
+                    _record_force_kill(work_id, data_dir=data_dir)
     except OSError:
         pass
     tip = ""
@@ -3184,7 +3190,7 @@ def _run_machine_audit_after_writeback(
         audited_tip = _worktree_branch_tip(worktree_hint, branch)
     # 机审 v4 重度：severity=重 → fresh 独立 agent 零上下文（build_command 新会话 + prompt 强化）
     fresh = severity == "重"
-    _claim_running_marker(log_dir, f"{work.id}-audit")
+    _claim_running_marker(log_dir, f"{work.id}-audit", data_dir=cfg.get("DATA_DIR"))
     try:
         ok, problems = _dispatch_and_collect(
             work,
@@ -3819,7 +3825,7 @@ def _build_dispatch_gates() -> GateRegistry:
             dispatch_main_repo = resolve_repo_root(ctx.cfg.get("DISPATCH_DIR") or "docs/dispatch")
         except Exception:
             dispatch_main_repo = Path(__file__).resolve().parents[2]
-        _claim_running_marker(ctx.log_dir, ctx.work.id, main_repo=dispatch_main_repo)
+        _claim_running_marker(ctx.log_dir, ctx.work.id, main_repo=dispatch_main_repo, data_dir=ctx.cfg.get("DATA_DIR"))
 
         def _make_fn(w: Work = ctx.work) -> Any:
             def _fn() -> dict[str, int]:
@@ -3885,9 +3891,10 @@ def run_once(
 
     pool = get_dispatch_pool()
     audit_pool = get_audit_pool()
-    reclaimed = reclaim_orphaned_running(store, log_dir)
+    data_dir = cfg.get("DATA_DIR")
+    reclaimed = reclaim_orphaned_running(store, log_dir, data_dir=data_dir)
     running_ids = {w.id for w in store.list_work(state=State.RUNNING)}
-    dead_markers_cleaned = cleanup_dead_markers(log_dir, running_ids=running_ids)
+    dead_markers_cleaned = cleanup_dead_markers(log_dir, running_ids=running_ids, data_dir=data_dir)
 
     # sidecar 契约（ccc-plan-021）：收敛器入 run_once——孤儿/终态残留 sidecar 自动清除，
     # 去掉人工 sync-runtime-state 依赖。终态（已回写/打回/已关闭）由磁盘卡唯一权威。
