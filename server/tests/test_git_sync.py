@@ -170,6 +170,20 @@ class TestForceAlignGraceWindow:
         assert result["removed"] == 1
         assert not fresh.exists()
 
+    def test_future_mtime_card_removed_when_grace_disabled(self, tmp_path: Path, monkeypatch) -> None:
+        """未来 mtime（时钟偏斜）钳制为 0：宽限窗关闭时仍立即移除（机审席 F1 修复）。"""
+        monkeypatch.setattr(git_sync, "_GRACE_WARNED", set())
+        monkeypatch.setenv("CCC_ALIGN_GRACE_SECONDS", "0")
+        repo = self._repo(tmp_path)
+        future_card = repo / "docs" / "dispatch" / "ccc096-future.md"
+        future_card.write_text("# future mtime\n", encoding="utf-8")
+        future_ts = time.time() + 3600.0  # 1 小时后的未来 mtime
+        os.utime(future_card, (future_ts, future_ts))
+
+        result = _force_align_dispatch(repo, "main", "docs/dispatch")
+        assert result == {"removed": 1, "grace_kept": 0}
+        assert not future_card.exists()
+
     def test_grace_seconds_env_parsing(self, monkeypatch) -> None:
         """env 解析：缺省 300s；非法值回退缺省；负值按 0。"""
         monkeypatch.delenv("CCC_ALIGN_GRACE_SECONDS", raising=False)

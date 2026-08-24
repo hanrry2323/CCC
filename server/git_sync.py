@@ -200,7 +200,9 @@ def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> dict[st
         path = repo / rel
         age: float | None
         try:
-            age = now - path.stat().st_mtime
+            # 钳制负值：未来 mtime（时钟偏斜/回拨）按刚落盘处理，
+            # 保证 grace=0（关闭宽限）时仍走原立即清除语义。
+            age = max(0.0, now - path.stat().st_mtime)
         except OSError:
             age = None  # 文件已消失等：按原逻辑走移除尝试
         if age is not None and rel.endswith(".md") and age < grace:
@@ -211,7 +213,7 @@ def _force_align_dispatch(repo: Path, ref: str, dispatch_subdir: str) -> dict[st
                     "git sync 对齐跳过宽限窗内未跟踪新卡 %s（mtime 距今 %.0fs < %.0fs）"
                     "——疑似出卡未提交，暂不清除",
                     rel,
-                    max(age, 0.0),
+                    age,
                     grace,
                 )
             grace_kept += 1
