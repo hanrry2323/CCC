@@ -44,7 +44,31 @@ WORKTREE 缺失场景不加误导提示。文案外零逻辑变化。
 
 ## 机审区
 
-（验收席专用——执行体禁止写入）
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+### 范围核对（git 取证）
+
+- `f54dd6741` 仅触 `scripts/dsh-executor.sh`（+9 行，白名单精确命中）；`c19982fc1` 仅触本卡（回写流程性改动）。两 commit 外零触碰，working tree clean。
+- 远端分支 `codex/ccc073-executor-dual-repo-writeback-hint` = 本地 HEAD `c19982fc1`（`git ls-remote` 实证），push 属实；分支基点为当时 main 尖 `3db973f2f`，main 于 push 后 2 分钟另进无关 plan 提交（`de81895de`），属合入期正常分叉，非执行体缺陷。
+- 回写 diff 未触碰目标/实现/红线/验收/门禁；机审区占位行完好；状态=已回写未置已关闭。
+
+### 独立复现证据（不采信执行体自述）
+
+1. 门禁命令逐字复跑（worktree 内）：退出码=0；wrapper 独立截获日志 `/Users/fan/.ccc/logs/exec/ccc073.test-evidence.log` 尾部 `=== exit_code=0 ===`（ts=2026-08-24T04:43:56Z），双源一致。
+2. 本席自建 stub dsh 三场景实测 worktree 副本真实 PROMPT：A（BIZ+WT 非空）=HAS-HINT 且三处展开正确（`${WORKTREE}`=/Users/fan/program/CCC-wt/ccc073/、剥前缀相对路径=docs/dispatch/ccc/…md、主仓绝对路径）；B（BIZ 空）=NO-HINT；C（BIZ 非空+WT 空）=NO-HINT。与卡「实现」节及回写区自测完全一致。
+3. 插入位置正确（PROMPT 构造后、`dsh` 调用前）；变量 L20/L22 先于 L79 定义，`set -euo pipefail` 下无 unset 风险；`PROMPT+=` 经实机运行验证可用。
+
+### 对抗式发现（观察项，均不构成本卡缺陷）
+
+- O1 `${CARD_PATH#/Users/fan/program/CCC/}` 硬编码规范检出根：非规范根下静默剥前缀失败，「相对路径」退化为绝对路径（良性降级）。此文案系卡「实现」节原文钦定，执行体无裁量权；且同脚本 L95/L114 已有同类既有硬编码。建议后续窄卡统一 CCC 根变量化。
+- O2 边缘态 BIZ_WORKTREE 非空但目录不存在时 cd 落 WORKTREE，提示语「业务改动在当前目录实施」在该态下失真——需引擎误配才触发，且 fall-through 语义系既有行为。
+- O3 部署依赖（非缺陷）：引擎实际拉起主仓副本（ccc073.log `cmd=/Users/fan/program/CCC/scripts/dsh-executor.sh`，本席误用主仓副本复现得 NO-HINT 反向印证），故本修复须待合入 main 并产线 pull 后方生效。
+
+### 维护区核对（P1-b 机械判据）
+
+四问勾选符均单选落于问题行方括号（[否]/[无]/[否]/[否]），说明非占位；Q2 声明经 `grep -rn '漏回写\|双仓' docs/notes/` 抽查属实（无可归档教训，唯一命中的「双仓合并」系 hp-plan-009 无关行）；回写区引用工件（f54dd6741、test-evidence 日志、远端分支）逐一存在。执行体将无据预填说明改为可证实实情，回写诚实度加分。
+
+机审：通过
 
 ## 维护区
 
