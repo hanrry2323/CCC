@@ -1,13 +1,13 @@
 """server/web/brain.py — 大脑 Agent 对话模块（T29）。
 
-`/conversation` 不再裸转发 6102，改为调用 2017 本机 Claude Code CLI
-（走 `127.0.0.1:6100` Anthropic 出口），携带 CCC 大脑人格 + 历史上下文，
+`/conversation` 调用 2017 本机 Claude Code CLI（2026-08-24 起直连，
+中转站 6100/6102 已退役），携带 CCC 大脑人格 + 历史上下文，
 返回真实 Agent 输出（有心智/工具/知识库）。
 
 调用方式::
 
     subprocess.run([claude, "-p", prompt, "--output-format", "text"],
-                   env={...6100...}, timeout=CCC_BRAIN_TIMEOUT)
+                   env={...ANTHROPIC_* 出口变量（直连模式，无中转）...}, timeout=CCC_BRAIN_TIMEOUT)
 
 流式（T41）：`--output-format stream-json --verbose` 逐事件读取，经
 `stream_brain_events()` 归一化为 (meta / thinking / tool_use / text /
@@ -21,7 +21,7 @@ tool_result / done / error) 事件序列，供 HTTP SSE 转发。
 
     CCC_BRAIN_CLAUDE_BIN    Claude Code CLI 路径（默认 `claude`）
     CCC_BRAIN_MODEL         模型逻辑名（flash / Pro / code）
-    CCC_BRAIN_BASE_URL      出口 base URL（如 http://127.0.0.1:6100）
+    CCC_BRAIN_BASE_URL      出口 base URL（直连模式留空，不配置中转）
     CCC_BRAIN_AUTH_TOKEN    出口 Bearer token
     CCC_BRAIN_TIMEOUT       调用超时秒（默认 120；知识题需读文档+推理，
                             实测 ~74s，60s 过紧故默认上调）
@@ -184,7 +184,7 @@ def _get_brain_model() -> str:
 
 
 def _get_brain_base_url() -> str:
-    """Claude Code 出口 base URL（如 http://127.0.0.1:6100）。"""
+    """Claude Code 出口 base URL（直连模式留空，不配置中转）。"""
     return _brain_cfg("CCC_BRAIN_BASE_URL", "").strip()
 
 
@@ -328,7 +328,7 @@ def _run_claude(prompt: str, timeout: int) -> tuple[bool, str, str | None]:
     - 超时 → ``(False, "brain timeout", "timeout")``
     - 其他失败 → ``(False, "brain failed: <detail>", "failed")``
 
-    env 在当前进程环境基础上覆盖三个 Anthropic 出口变量，指向 6100；
+    env 在当前进程环境基础上覆盖三个 Anthropic 出口变量（直连模式 base_url 留空）；
     Claude Code 全局配置（``~/.claude/settings.json``）保持不动。
     """
     bin_path = _get_brain_claude_bin()
@@ -546,7 +546,7 @@ def _terminate_proc(proc: subprocess.Popen) -> None:
 def _stream_claude(prompt: str, timeout: int | None = None):
     """以 stream-json 调用 Claude Code CLI，逐事件 yield 归一化 ``(event, payload)``。
 
-    与 ``_run_claude`` 共用环境变量注入（6100 出口）。stdout 由守护线程逐行读取，
+    与 ``_run_claude`` 共用环境变量注入（直连，无中转）。stdout 由守护线程逐行读取，
     主循环按剩余超时等待：超时 → kill 并 yield ``error(504)``；
     spawn 失败 → ``error(502)``；正常结束 → 末尾 ``done`` 事件（result 行）。
     """
