@@ -1,106 +1,97 @@
-# 方案 · 前端统一二期：组件结构复刻与数据刷新机制归一
+# 方案 · 前端统一二期：全站实时事件流与组件结构复刻
 
 > 项目：ccc · 编号：ccc-plan-047 · 状态：已确定 · 作者：DSH（ox-alpha）· 工具：DSH
-> 创建：2026-08-24 · 更新：2026-08-24
-> 关联方案：046（一期：令牌/ui-kit/色板/页头/移动层 —— 已完成）
-> 前置教训：046-M4 自动清理失败复盘（CSS 清理禁批量自动判定，改人工白名单制）
+> 创建：2026-08-24 · 更新：2026-08-24（v2 按老板指令重写：传输层全站实时化，轮询清零）
+> 关联方案：046（一期皮层已完成）；取代本文件 v1 的「调度器+轮询兜底」折中案
+> 前置教训：046-M4 复盘（CSS 禁批量自动删除）
 
 ## 目标
 
-在 046 一期（颜色与页头皮层）之上完成两件深层统一：
-1. **组件结构复刻**：六页主体从「私有类 + 私有渲染」迁移到共享组件体系，
-   视觉、结构、交互度量全面对齐信息墙设计语言；
-2. **数据刷新机制归一**：消灭七页四种并存模式（SSE/双轮询/三种周期轮询），
-   统一为一套调度内核 + 明确的事件/轮询策略。
+**全站单一实时事件流，前端零轮询。**
+任何页面看到的任何数据，都是服务端变更后主动推送到浏览器的最新快照；
+六页各自的 setInterval 全部退役；组件结构收编为信息墙设计语言的共享体系。
 
-## 一、现状审计（2026-08-24 实测）
+## 一、架构定稿
 
-### 1.1 刷新机制七页对照（问题核心）
+### 1.1 服务端：单一聚合事件流 `/hub/stream`
 
-| 页面 | 机制 | 周期 | 可见性门控 | 单飞行防重入 |
-|---|---|---|---|---|
-| wall | SSE `/wall/api/stream`（diff 推送+15s 心跳） | 事件驱动 | ✓ 断线重连+回前台补拉 | ✓ settled 单次终结 |
-| board | **SSE `/tasks/stream` + 10s 轮询兜底**（双通道） | 10s | ✓ | 部分 |
-| **plans** | **30s 轮询（与 board 数据同源却慢 30 秒）** | 30s | ✓ | ✗（本轮已加 poll 重入门） |
-| roadmap | 30s 轮询（仅一级页） | 30s | ✓ | ✗ |
-| console | **双轮询 15s + 8s**（两条独立循环） | 15s/8s | ✓ | ✗ |
-| ops | 30s 轮询 | 30s | ✓ | ✓（本轮加） |
-| dsh | 30s 轮询 | 30s | ✓ | ✗ |
+把信息墙已实证的「采样 → diff → SSE 推送」引擎泛化为多通道广播器
+（新增 `server/web/hub_stream.py`，复用 wall.py 的 Condition/diff 骨架）：
 
-老板点名的问题即在此：**plans 的数据源与 board 相同（卡状态），却因 30s 轮询
-比 board 的 SSE 慢最多 30 秒**，表现为「显示逻辑不一样」。
+| 通道 | 数据源（全部复用现有加载函数） | 服务端采样策略 |
+|---|---|---|
+| `board` | `_enriched_cards()`（已有 20s mtime 键控缓存） | mtime 变化才重算 |
+| `plans` | 方案目录 rglob mtime 快检 → 变化才重建 list | 文件级，成本极低 |
+| `roadmap` | roadmap 聚合加载函数 | 同上 |
+| `ops` | ops summary/failures 加载函数 | 15s 低频采样 |
+| `console` | services/ports/concurrency/running | 10s 低频采样 |
+| `dsh` | dsh-findings 加载函数 | 15s 低频采样 |
 
-### 1.2 组件结构差异
+推送语义（与墙一致）：每通道独立字符串 diff，变化才发
+`event: <通道名>` + 全量快照；无变化不发包；全局心跳保活。
+**写后即时性**：所有 apiPost/apiPut 类 handler 成功后调用
+`hub.bump(channel)` 强制下轮立即重算该通道——写操作 → 全端即时可见。
 
-六页主体均为「私有类 + 私有 innerHTML 渲染」：`pcard/rm-card/console-card/
-ops-card/dsh-sum-card` 五套卡片实现并存；空态/加载态/分区头各自手写；
-签名增量渲染只有 plans/board 有，其余整块重建。
-
-## 二、目标架构
-
-### 2.1 刷新内核 `js/lib/refresher.js`（新增，~120 行）
+### 1.2 前端：单一连接 + 频道订阅总线 `js/lib/hubClient.js`（新增，~100 行）
 
 ```js
-createPageRefresher({
-  tasks: [ { name, fn, ms, immediate } ],   // 声明式任务表
-  sse:    { url, onEvent } | null,          // 可选：页面级 SSE
-})
-// 返回 { start(), stop(), pause() }
+hub.subscribe('board', snapshot => renderBoard(snapshot));
 ```
 
-统一职责（六页样板代码全部收敛于此）：
-mount 启动 / unmount 停止 / `visibilitychange` 后台暂停回前补跑 /
-错误退避（连续失败 ×2 间隔，上限 5 分钟）/ 单飞行防重入 /
-路由切换走既有 pageScopeAbort 作用域。
+- 应用生命周期内**仅一条** EventSource（`/hub/stream`），与页面路由解耦：
+  页面 mount/unmount 只增删订阅者，连接常驻（含断线指数退避重连、回前台补拉）
+- 订阅即得当前缓存快照（首帧渲染零等待）；此后每次推送触发页面增量渲染
+- 断线降级：连接失败期间自动切换一次性 GET 拉取（复用现有端点），
+  恢复后回到推送态——弱网可用性不倒退
 
-### 2.2 数据事件策略（两步走，诚实边界）
+### 1.3 轮询清零
 
-- **P1（本次）**：plans 复用 board 已有的 `/tasks/stream` 事件作为触发器——
-  收到任意卡状态事件 → 若正处 plans 视图则节流刷新计划池（≤2s 一次）；
-  30s 轮询降级为兜底。效果：卡状态变化到计划页可见从 ≤30s → 即时。
-- **P2（远期可选）**：服务端聚合流 `/hub/stream`（墙状态+任务事件+方案文件
-  mtime 合一）。需服务端改造，本期不做，只留接口位。
+六页全部 setInterval 删除；wall 自有 `/wall/api/stream` 二期并入同一客户端
+（本期保留，避免同时动两头）。写操作后的定向刷新由 hub.bump 承担，
+前端不再有任何「成功后手动 loadXxx」补丁。
 
-### 2.3 结构复刻（组件级，标准 = 信息墙）
+## 二、组件结构复刻（与 1. 并行的结构线）
 
-| 共享原语 | 取代 |
+| 共享件 | 取代 |
 |---|---|
-| `.k-section` + `.k-section-title` | ops-section/console 卡组/dsh-section 三种分区头 |
-| `.k-card` 四件套 | dsh-sum-card / console-card / rm-card / ops-proj-card / pcard 五套收编 |
-| `.k-empty` / `.k-loading` | 各页私有空态加载态 |
-| setHtmlStable 原语（提为 lib） | console/dsh 手写的 __lastHtml 模式 |
+| `.k-section/.k-section-title` | 三种分区头实现收敛 |
+| `.k-card` 四件套 + 修饰类 | 五套卡片实现收编（pcard/rm-card/console-card/ops-proj-card/dsh-sum-card）|
+| `.k-empty/.k-loading/.k-chip/.k-badge/.k-dot` | 各页私有状态原语 |
+| setHtmlStable 提为 `js/lib/render.js` 统一导出 | 手写 __lastHtml 模式 |
 
-## 三、分期计划（每期独立 commit，逐期验收；CSS 零批量删除）
+迁移顺序（高危殿后）：dsh → console → ops → roadmap → plans → board。
 
-### P1 刷新归一（纯行为层，视觉零变化）
-refresher.js + 七页接入（wall 保留自有 SSE 仅对齐生命周期钩子）；
-plans 接入 tasks/stream 触发。
-验收：① 切页往返定时器零泄漏（CDP 计数断言）② 后台标签网络静默
-③ plans 卡状态变更可见延迟 ≤3s ④ 功能回归清单。
+## 三、分期计划（每期独立 commit 可单独回滚）
 
-### P2 结构复刻·运维面板族（dsh → console → ops）
-三页同为「分区+条目行」形态，工作量最小先行。每页一个 commit；
-迁移完该页即人工列出废弃类清单待 P4。验收：三端截图子集 + 回归清单。
+### P1 实时内核 + 两通道试点（解决老板点名问题）
+hub_stream.py（board/plans 双通道）+ hubClient.js + board/plans 接入 +
+六页 setInterval 不动（下一期拆）。验收：卡状态/方案文件变更 ≤3s 全端可见；
+双开浏览器一致性；断线恢复自动续推。
 
-### P3 结构复刻·数据面板族（roadmap → plans → board）
-roadmap 最轻；plans 中等（拖拽保留，仅壳换 k-card）；**board 最后**
-（虚拟滚动+拖拽+SSE 最高危），P3-board 单独分支预演通过后再合入。
+### P2 全通道 + 轮询清零
+ops/console/dsh/roadmap 四通道接入；六页 setInterval 全部删除；
+写操作 bump 链路接通。验收：全站 `grep setInterval js/pages` 归零；
+后台标签流量审计（Network 面板）仅一条 SSE 心跳。
 
-### P4 存量清理重做（人工白名单制）+ 三端查缺 + 终验矩阵刷新入库
+### P3 结构复刻（顺序 dsh→console→ops→roadmap→plans→board）
+每页一个 commit：卡片/分区/空态换 k 族原语；行为回归清单逐页点验。
+board 单独分支预演虚拟滚动+拖拽后才合入。
+
+### P4 清理重做（人工白名单制）+ 墙并入 hubClient + 终验矩阵刷新入库
 
 ## 四、总体验收
 
-- [ ] 七页刷新机制归一：定时器声明式管理，无裸 setInterval
-- [ ] plans 卡状态可见延迟 ≤3s（与其他页一致）
-- [ ] 五套卡片实现收敛为 k-card 族 + 页面修饰类
-- [ ] 全站空态/加载态/分区头同一原语
-- [ ] 废弃 CSS 清理全程人工白名单，删后必跑像素矩阵子集
-- [ ] 42 张矩阵全量刷新入库；pytest 全量绿；每期独立可回滚 commit
+- [ ] `grep -r "setInterval" js/pages/` 归零；全站运行期网络连接 = 1 条 SSE
+- [ ] 任一通道数据变更 → 所有打开该视图的端点 ≤3s 可见（双浏览器实测）
+- [ ] 写操作（转卡/审核/改状态）→ 本端即时反馈 + 他端 ≤3s 跟进
+- [ ] 五套卡片收编完成，七视图截图矩阵（42 张）刷新入库
+- [ ] pytest 全量绿；每页功能回归清单通过
 
-## 五、风险
+## 五、风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
-| board 虚拟滚动/拖拽回归 | 放 P3 最后，单独分支预演，不达标不合入 |
-| refresher 抽象过度 | 只收敛已验证的六页模式，不做通用框架 |
-| SSE 事件风暴导致 plans 频繁刷新 | 节流 ≤2s + 仅活跃视图响应 |
+| ops/console 采样打爆系统命令 | 低频(10–15s)+复用现有缓存；实测 CPU 基线对比 |
+| SSE 连接数随标签页增长 | 每标签 1 条是仪表盘常态；服务端 ThreadingHTTP 已验证承载 |
+| board 虚拟滚动/拖拽回归 | P3 压轴 + 分支预演；不达标不合入 |
+| 大快照重复推送带宽 | diff 后仍大的通道（board 200 卡）改增量 patch（P2 视实测决定）|
