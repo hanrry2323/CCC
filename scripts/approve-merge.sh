@@ -382,6 +382,104 @@ else:
 PY
 }
 
+# ── V6 门禁（ccc081 · 2026-08-24 纵深防御加严）：信封定位/钉完整性/信封纯度/漂移检查 ──
+# 用法：v6_drift_gate <id> <卡路径> <分支名> <has_branch:true|false>；返回非 0 = 拒绝合入。
+# 红线自洽：只加严漂移检查触发条件与信封纯度校验；机审真值判定语义
+# （server/board/models.py machine_audit_passed_text 的通过/不通过识别）不动。
+v6_drift_gate() {
+  local id="$1" path="$2" branch="$3" has_branch="$4"
+  local -a env_commits=()
+  local _c _norm_hits
+
+  # ① 信封定位：收集分支上所有「新增机审通过结论行」的信封提交（新→旧，[0]=最后审计信封）。
+  #    字形口径对齐真值判定：剥 diff '+' 前缀与行首 markdown 装饰（空格/#/标题/> 引用/- 列表/* 加粗），
+  #    再删行内空白/*/#/>（对齐 machine_audit_passed_text 的 strip('**') 与 \s* 口径），
+  #    按行首锚定匹配——粗体「**机审：通过**」「机审: 通过」、engine「> 结论：通过」等变体不再漏认。
+  #    漏认后果 = 漂移基线缺失 = 整段漂移检查被静默跳过（fail-open），故识别必须先于判定。
+  if [[ "$has_branch" == true ]]; then
+    while IFS= read -r _c; do
+      [[ -z "$_c" ]] && continue
+      _norm_hits="$(git show "$_c" -- "$path" 2>/dev/null \
+        | grep -E '^\+[^+]' | cut -c2- \
+        | sed -E 's/^[[:space:]#*>-]+//' \
+        | tr -d ' \t*#>' \
+        | grep -E '^(机审|结论)[：:]通过' || true)"
+      if [[ -n "$_norm_hits" ]]; then
+        env_commits+=("$_c")
+      fi
+    done < <(git log --format='%H' "origin/${branch}" -- "$path" 2>/dev/null)
+  fi
+
+  local last_env_commit=""
+  if [[ "${#env_commits[@]}" -gt 0 ]]; then
+    last_env_commit="${env_commits[0]}"
+  elif [[ "$has_branch" == true ]]; then
+    # 分支 tip 已有通过文本（上方机审门禁已过）却定位不到任何信封提交：
+    # 字形未识别或分支历史异常 → 漂移基准缺失，显式阻断（fail-closed，不再静默跳过）。
+    echo "[ERROR] ${id}: 分支信封含机审通过文本但无法定位任何信封提交（V6 加严：字形未识别或分支历史异常）→ 漂移基准缺失，拒绝合入；请重新机审生成规范信封" >&2
+    return 1
+  fi
+
+  # ② 信封纯度（防信封+代码混合提交）：信封提交若夹带非卡文件改动，这部分代码因基线推后
+  #    会逃过漂移 diff。每个信封提交的改动文件集必须仅含卡文件本身，否则拒绝并提示拆分。
+  if [[ "${#env_commits[@]}" -gt 0 ]]; then
+    local _ec _f
+    for _ec in "${env_commits[@]}"; do
+      while IFS= read -r _f; do
+        [[ -z "$_f" ]] && continue
+        if [[ "$_f" != "$path" ]]; then
+          echo "[ERROR] ${id}: 信封纯度校验失败——机审信封提交 ${_ec:0:12} 夹带非卡文件改动「${_f}」（信封+代码混合提交会把漂移基准推到自身）→ 拒绝合入；请把代码改动从信封提交拆出为独立提交并重新机审" >&2
+          return 1
+        fi
+      done < <(git show --name-only --pretty=format: "$_ec" 2>/dev/null)
+    done
+  fi
+
+  # ③ 钉完整性加固：最后一枚「被审」钉必须可解析且不晚于最后审计信封提交（防分支改写/信钉倒挂）。
+  local pinned
+  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | tail -1 || true)"
+  if [[ -n "$pinned" ]]; then
+    local pin_sha
+    pin_sha="${pinned#被审 }"
+    if ! git rev-parse --verify "${pin_sha}^{commit}" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
+      return 1
+    fi
+    if [[ -z "$last_env_commit" ]]; then
+      # V6 加严（ccc081）：pinned 非空而信封基线为空 = 字形漏认/历史异常 → 显式 ERROR 阻断
+      # （原逻辑此处不校验，漂移检查整段静默跳过）。
+      echo "[ERROR] ${id}: 卡文含被审钉 ${pin_sha} 但未定位到「机审：通过」信封提交 → 漂移基准缺失，拒绝合入；请重新机审生成规范信封" >&2
+      return 1
+    fi
+    if [[ "$pin_sha" != "$last_env_commit" ]] \
+      && ! git merge-base --is-ancestor "$pin_sha" "$last_env_commit" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 被审钉 ${pin_sha} 不在最后审计信封提交 ${last_env_commit} 祖先链上 → 信封可信度异常" >&2
+      return 1
+    fi
+  fi
+
+  # ④ 漂移检查：最后审计信封之后出现非卡改动 = 漂移 → 一律硬拒绝。
+  # 支持多轮审计（审计就地修复 → 二次机审复核）：二次复核信封在首轮钉之后，取信封提交
+  # 作基准而非首枚钉，避免「已复核修复」被误判为未复审漂移。
+  # 审计真实性由 approve_one 后续 ledger machine_audit_pass 门禁兜底（卡文自写不算）。
+  if [[ -n "$last_env_commit" ]]; then
+    local drift_rc=0
+    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+      git diff --quiet "${last_env_commit}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
+      drift_rc=$?
+    else
+      echo "[WARN] ${id}: 本地无 ${branch} 分支，跳过本仓漂移检查（业务仓卡片由业务 ff-only 门禁守护）" >&2
+      drift_rc=0
+    fi
+    if [[ "$drift_rc" -ne 0 ]]; then
+      # 2026-08-22 P0 硬化：机审后漂移一律硬拒绝，--close-only 不再放行（防未复审代码合入）
+      echo "[ERROR] ${id}: 机审后漂移——最后审计信封 ${last_env_commit} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
 approve_one() {
   local id="$1"
   local path stem branch
@@ -429,47 +527,11 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
-  # V6：机审钉 commit——以分支上最后一个写入「机审：通过」信封的审计提交为漂移基准。
-  # 支持多轮审计（审计就地修复 → 二次机审复核）：二次复核信封在首轮钉之后，取信封提交
-  # 作基准而非首枚钉，避免「已复核修复」被误判为未复审漂移。基准之后出现非卡改动 = 漂移 → 拒绝。
-  # 审计真实性由下方 ledger machine_audit_pass 门禁兜底（卡文自写不算），V6 只管「审计后是否漂移」。
-  local last_env_commit="" _c
-  for _c in $(git log --format='%H' "origin/${branch}" -- "$path" 2>/dev/null); do
-    if git show "$_c" -- "$path" 2>/dev/null | grep -qE '^\+[[:space:]]*机审：通过'; then
-      last_env_commit="$_c"
-      break
-    fi
-  done
-  # 钉完整性加固：最后一枚「被审」钉必须可解析且不晚于最后审计信封提交（防分支改写/信钉倒挂）。
-  local pinned
-  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | tail -1 || true)"
-  if [[ -n "$pinned" ]]; then
-    local pin_sha
-    pin_sha="${pinned#被审 }"
-    if ! git rev-parse --verify "${pin_sha}^{commit}" >/dev/null 2>&1; then
-      echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
-      return 1
-    fi
-    if [[ -n "$last_env_commit" && "$pin_sha" != "$last_env_commit" ]] \
-      && ! git merge-base --is-ancestor "$pin_sha" "$last_env_commit" >/dev/null 2>&1; then
-      echo "[ERROR] ${id}: 被审钉 ${pin_sha} 不在最后审计信封提交 ${last_env_commit} 祖先链上 → 信封可信度异常" >&2
-      return 1
-    fi
-  fi
-  if [[ -n "$last_env_commit" ]]; then
-    local drift_rc=0
-    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
-      git diff --quiet "${last_env_commit}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
-      drift_rc=$?
-    else
-      echo "[WARN] ${id}: 本地无 ${branch} 分支，跳过本仓漂移检查（业务仓卡片由业务 ff-only 门禁守护）" >&2
-      drift_rc=0
-    fi
-    if [[ "$drift_rc" -ne 0 ]]; then
-      # 2026-08-22 P0 硬化：机审后漂移一律硬拒绝，--close-only 不再放行（防未复审代码合入）
-      echo "[ERROR] ${id}: 机审后漂移——最后审计信封 ${last_env_commit} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
-      return 1
-    fi
+  # V6 门禁（ccc081 函数化 · 2026-08-24 纵深防御加严）：
+  # 信封定位（字形对齐真值判定）/信封纯度（混合提交拒绝）/钉完整性/漂移检查。
+  # 返回非 0 = 拒绝合入，详见 v6_drift_gate 内注释。机审真值判定语义不动。
+  if ! v6_drift_gate "$id" "$path" "$branch" "$has_branch"; then
+    return 1
   fi
 
   # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
