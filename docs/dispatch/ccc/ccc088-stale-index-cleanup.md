@@ -89,6 +89,8 @@ _board_cache_key() 首段 == get_index_path().stat().st_mtime_ns  # True
 
 ### 6. 第 2 轮开发收口（机审打回后重做 · 2026-08-25 05:06）
 
+**收口 commit `4c71975b9`（5 文件 +73/-3：四工具链入口注入 + 卡文）· push 核验：`git ls-remote origin codex/ccc088-stale-index-cleanup` = `4c71975b954d46f55ce7c08c4b737795f6bab594` = 本地 HEAD。**
+
 针对第 4 轮机审 F1/F2 收口清单逐项落实；FT1（引擎侧落盘通道）见本节末披露。
 
 #### 6.1 裸跑回落写路径封口矩阵（F1+F2）
