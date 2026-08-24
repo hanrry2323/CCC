@@ -61,7 +61,21 @@ docs/projects/<p>/roadmap.md（辅链实证：pid 31668 命中与留档 patch �
 
 ## 机审区
 
-（验收席专用——执行体禁止写入）
+**DSH 机审席 · 2026-08-24 · severity：轻**
+机审：通过
+独立核验（v4 对抗式，未采信执行体自述，全部证据本地可复现）：
+
+- **范围**：`git log --oneline origin/main..HEAD` = 81a42200e（代码）+ 450edd46e（回写），两提交作者均 CCC Dev 无身份篡改，HEAD==origin 同名分支（push 已同步）；`git diff origin/main...HEAD --stat` 仅 3 文件：本卡 + server/engine/observer.py（+119/-14）+ server/tests/test_observer.py（+239 行内改写/新增），`server/board/roadmap.py` 零 diff——「人工写路径零变化」直接实证。工作树干净。
+- **默认 off（红线2）**：observer.py `_loop_drafts_enabled()` 空值/未知值一律 off，仅 1/true/yes/on（大小写不敏感）为 on；测试覆盖 "0/false/no/off/空串/random" 全部判 off。off 时 `write_roadmap_draft` 于任何文件操作前直接 return `{ok, skipped, reason: loop_observer_drafts_disabled}`（observer.py:1644-1646），零写入；`run_observer` off 分支每轮恰记一条 DEBUG（端到端用例断言 skip_logs==1 且 mock_write_draft.assert_not_called）。
+- **on 落点（实现2）**：经 `_loop_drafts_dir(base_dir)` 落 `<DATA_DIR>/drafts/roadmap/<project>-draft.md`（base_dir 取 cfg 解析后的 DATA_DIR，避免 CWD 漂移），追加式+同描述去重+首写带 header；全仓 grep 无 create_draft/list_drafts 残留 import，docs/projects 正文对自动链路只读由端到端用例断言（mtime/st_size/read_text 三重前后一致）。
+- **调用面**：`write_roadmap_draft` 唯一真实调用方为 run_observer 自身（web/server.py:3652 仅注释复用模式），返回形状变更无外部消费者；新草稿目录无其他读取耦合。
+- **测试非弱化**：旧 `test_write_roadmap_draft`（断言直写正文）按新契约拆为 off/on 两用例且断言更强（mtime+size+全文比对、草稿目录不建、恰好两条草案行）；旧 `test_run_observer_writes_draft_for_consistency` 保留并补 env=on 与 base_dir 断言；另新增 env 解析、目录解析、run_observer off/on 端到端共 4 组回归——符合卡实现第 4 点「附回归测试」，属加强非删减。
+- **白名单张力（备查，非违规）**：test_observer.py 在字面白名单外，但卡实现第 4 点强制回归测试且门禁命令钉死该文件，执行体已在回写区范围备注显式披露理由，判定为卡内隐含授权，非系统性越界。
+- **门禁**：wrapper 证据日志 /tmp/ccc077-gate-final.log 存在（33 passed 输出）；机械门禁由引擎裁决，本席未重跑。
+- **维护区四问（P1-b 机械判据）**：四问均单选实选（[否]/[无]/[否]/[否]）非占位，各说明行一句实情；抽查真实性——「关联：无方案」「无档案变更」「无新线路」分别与卡头、diff stat、实现内容一致，声明属实。
+
+severity 记分：影响面 1（单文件单链路、唯一调用方同步更新、默认 off 使生产行为更保守）+ 改动深度 2（核心函数重写但无架构/接口破坏）+ 红线邻近 1（默认 off/人工路径零变化/禁删数据全部实证，白名单张力已被卡内要求消解并披露）＝ 4 → 轻。
+零 P0/P1 发现。备查两项（不阻塞、不需修复）：① 去重池切换——旧草案池在正文草案池内、新落点不读旧池，置 on 首轮可能对历史已去重发现重复落一条，属卡目标内预期解耦后果，如需迁移去重另立卡；② draft 文件存在但为空时 append 分支不补 header，仅观感差异。
 
 ## 维护区
 
