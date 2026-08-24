@@ -429,10 +429,20 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
-  # V6：机审钉 commit——信封「机审：通过（被审 <sha>）」存在时，校验分支无漂移：
-  # 被审 sha..tip 之间只允许卡文件改动（机审区 pin 提交）；出现非卡改动 = 机审后漂移 → 拒绝。
+  # V6：机审钉 commit——以分支上最后一个写入「机审：通过」信封的审计提交为漂移基准。
+  # 支持多轮审计（审计就地修复 → 二次机审复核）：二次复核信封在首轮钉之后，取信封提交
+  # 作基准而非首枚钉，避免「已复核修复」被误判为未复审漂移。基准之后出现非卡改动 = 漂移 → 拒绝。
+  # 审计真实性由下方 ledger machine_audit_pass 门禁兜底（卡文自写不算），V6 只管「审计后是否漂移」。
+  local last_env_commit="" _c
+  for _c in $(git log --format='%H' "origin/${branch}" -- "$path" 2>/dev/null); do
+    if git show "$_c" -- "$path" 2>/dev/null | grep -qE '^\+[[:space:]]*机审：通过'; then
+      last_env_commit="$_c"
+      break
+    fi
+  done
+  # 钉完整性加固：最后一枚「被审」钉必须可解析且不晚于最后审计信封提交（防分支改写/信钉倒挂）。
   local pinned
-  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | head -1 || true)"
+  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | tail -1 || true)"
   if [[ -n "$pinned" ]]; then
     local pin_sha
     pin_sha="${pinned#被审 }"
@@ -440,9 +450,16 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
       echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
       return 1
     fi
+    if [[ -n "$last_env_commit" && "$pin_sha" != "$last_env_commit" ]] \
+      && ! git merge-base --is-ancestor "$pin_sha" "$last_env_commit" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 被审钉 ${pin_sha} 不在最后审计信封提交 ${last_env_commit} 祖先链上 → 信封可信度异常" >&2
+      return 1
+    fi
+  fi
+  if [[ -n "$last_env_commit" ]]; then
     local drift_rc=0
     if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
-      git diff --quiet "${pin_sha}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
+      git diff --quiet "${last_env_commit}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
       drift_rc=$?
     else
       echo "[WARN] ${id}: 本地无 ${branch} 分支，跳过本仓漂移检查（业务仓卡片由业务 ff-only 门禁守护）" >&2
@@ -450,7 +467,7 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     fi
     if [[ "$drift_rc" -ne 0 ]]; then
       # 2026-08-22 P0 硬化：机审后漂移一律硬拒绝，--close-only 不再放行（防未复审代码合入）
-      echo "[ERROR] ${id}: 机审后漂移——被审 ${pin_sha} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
+      echo "[ERROR] ${id}: 机审后漂移——最后审计信封 ${last_env_commit} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
       return 1
     fi
   fi
