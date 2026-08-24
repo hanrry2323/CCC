@@ -1669,6 +1669,134 @@ def _worktree_card_candidate(worktree_path: str, card_path: str) -> Path | None:
     return flat_cand if flat_cand.is_file() else None
 
 
+# ── ccc092 worktree 播种一致性：缺卡副本 → ①本地 main 有卡则自愈；②否则硬失败 ──
+# 背景（R3/R4 种子盲区两种死法）：worktree 存在但无对应卡副本时，原「派发防护」只
+# WARNING+打回，卡永远无法被正常执行 → 无限 WARNING 循环；或执行体拿到空 worktree
+# 空跑后被判「空回写」假打回。本组函数把该场景收敛为两个确定性出口。
+
+_SEED_HARDFAIL_MARKER = "种子盲区硬失败"
+
+
+def _card_rel_path_in_worktree(card_path: str) -> str | None:
+    """生产卡路径 → 主仓内相对路径（docs/ 起的尾段），即卡副本在 worktree 内的落位。"""
+    parts = Path(card_path).parts
+    if "docs" not in parts:
+        return None
+    return Path(*parts[parts.index("docs") :]).as_posix()
+
+
+def _local_main_has_card(main_repo: Path, card_rel: str) -> bool | None:
+    """本地 main 树是否已含该卡文件（= 该卡 commit 已进本地 main）。
+
+    Returns True/False；main ref 本身不可解析等探测异常返回 None（无法安全判定）。
+    """
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(main_repo), "cat-file", "-e", f"main:{card_rel}"],
+            capture_output=True,
+            check=False,
+            timeout=_GIT_DEFAULT_TIMEOUT,
+        )
+    except Exception:
+        return None
+    if res.returncode == 0:
+        return True
+    try:
+        chk = subprocess.run(
+            ["git", "-C", str(main_repo), "rev-parse", "--verify", "main^{commit}"],
+            capture_output=True,
+            check=False,
+            timeout=_GIT_DEFAULT_TIMEOUT,
+        )
+    except Exception:
+        return None
+    return False if chk.returncode == 0 else None
+
+
+def _self_heal_worktree_card(main_repo: Path, worktree_path: str, card_rel: str) -> tuple[bool, str]:
+    """ccc092 自愈：从本地 main 读卡内容 copy 进 worktree（untracked，随执行体回写一并提交）。
+
+    只恢复卡副本这一个文件，绝不触碰业务代码文件（红线）。
+    """
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(main_repo), "show", f"main:{card_rel}"],
+            capture_output=True,
+            check=False,
+            timeout=_GIT_DEFAULT_TIMEOUT,
+        )
+    except Exception as exc:
+        return False, f"读取本地 main 卡内容异常: {exc}"
+    if res.returncode != 0:
+        return False, f"读取本地 main 卡内容失败: {res.stderr.decode(errors='replace').strip()[:200]}"
+    target = Path(worktree_path) / card_rel
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(res.stdout)
+    except OSError as exc:
+        return False, f"写入 worktree 卡副本失败: {exc}"
+    return True, ""
+
+
+def _seed_hardfail_alert(work: Work, log_dir: Path, cfg: dict[str, Any] | None, reason: str) -> None:
+    """ccc092 硬失败告警：写 alerts 告警文件（一次性，人工核查删除后恢复自动派发）。"""
+    env_log = os.environ.get("LOG_DIR") or ((cfg or {}).get("LOG_DIR") or "")
+    log_base = Path(env_log) if env_log else Path(log_dir)
+    try:
+        alert_dir = log_base / "alerts"
+        alert_dir.mkdir(parents=True, exist_ok=True)
+        (alert_dir / f"missing-card-seed-{work.id}.txt").write_text(
+            f"work={work.id}\n"
+            f"时间={time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"{reason}\n"
+            "处理：确认该卡出卡 commit 已 push 且合入本地 main 后，删除本文件并人工恢复卡片待分派。\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.error("种子盲区告警文件写入失败: work=%s (%s)", work.id, exc)
+
+
+def _ensure_worktree_card_seed(
+    work: Work,
+    worktree_path: str,
+    main_repo: Path,
+    log_dir: Path,
+    cfg: dict[str, Any] | None = None,
+) -> list[str] | None:
+    """ccc092 种子一致性：worktree 存在但缺对应卡副本时的两分支处理。
+
+    分支①自愈：该卡 commit 已存在于本地 main → 卡副本 copy 进 worktree 后放行；
+    分支②硬失败：卡 commit 未进本地 main（未 push/未合入）或播种探测异常 →
+    ERROR 日志 + alerts 告警文件 + 返回硬失败原因（worker 直达打回），取代原 WARNING 循环；
+    硬失败不进任何重试/冷却循环，一次性人工介入（红线）。
+
+    Returns:
+        None → 卡副本就绪（原本就有或自愈成功），派发放行；
+        list[str] → 硬失败原因清单（含 ``种子盲区硬失败`` 标记）。
+    """
+    if _worktree_card_candidate(worktree_path, work.card_path) is not None:
+        return None
+    card_rel = _card_rel_path_in_worktree(work.card_path)
+    has_local: bool | None = None if card_rel is None else _local_main_has_card(main_repo, card_rel)
+    detail = ""
+    if card_rel is None:
+        detail = f"无法从卡路径推导主仓相对路径: {work.card_path}"
+    elif has_local:
+        healed, heal_err = _self_heal_worktree_card(main_repo, worktree_path, card_rel)
+        if healed and _worktree_card_candidate(worktree_path, work.card_path) is not None:
+            logger.info("种子自愈: work=%s 卡副本已从本地 main 恢复到 worktree %s", work.id, worktree_path)
+            return None
+        detail = heal_err or "自愈后仍找不到卡副本"
+    elif has_local is False:
+        detail = f"卡 {work.card_path} 的 commit 未进本地 main（未 push 或未合入）"
+    else:
+        detail = f"本地 main 可达性探测异常，无法安全播种卡 {work.card_path}"
+    reason = f"{_SEED_HARDFAIL_MARKER}：{detail}；已停止自动派发并打回，需人工介入"
+    logger.error("%s: work=%s %s", _SEED_HARDFAIL_MARKER, work.id, detail)
+    _seed_hardfail_alert(work, log_dir, cfg, reason)
+    return [reason]
+
+
 def _audit_output_body(text: str) -> str:
     """截取机审 agent 真实输出区（判定区），排除引擎启动行与注入的 prompt。
 
@@ -2339,9 +2467,11 @@ def _dispatch_and_collect(
 
     is_pytest = "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
     if not is_pytest and worktree_path and work.card_path and "docs/dispatch" in work.card_path:
-        if _worktree_card_candidate(worktree_path, work.card_path) is None:
-            logger.warning("派发防护：worktree 存在但缺少卡文件副本: work=%s, card=%s", work.id, work.card_path)
-            return False, [f"派发防护：worktree {worktree_path} 存在但缺少卡文件副本 {work.card_path}"]
+        # ccc092 种子一致性：worktree 在但卡副本缺 → 本地 main 有卡则自愈放行；
+        # 卡 commit 未进本地 main（未 push）→ 硬失败（ERROR+alerts+打回），取代原 WARNING 循环。
+        hardfail_reasons = _ensure_worktree_card_seed(work, worktree_path, main_repo, log_dir, cfg)
+        if hardfail_reasons:
+            return False, hardfail_reasons
 
     try:
         cmd = build_command(
@@ -3575,9 +3705,20 @@ def _run_auto_worker(
             clear_card_state(log_dir, work.id)
             outcome["collected"] = 1
         else:
+            reasons = list(problems) if problems else ["执行失败"]
+            # ccc092 种子盲区硬失败：一次性打回（RUNNING→REJECTED 合法），禁入重试/冷却循环
+            if any(_SEED_HARDFAIL_MARKER in p for p in reasons):
+                logger.error("%s 打回: work=%s reason=%s", _SEED_HARDFAIL_MARKER, work.id, reasons[0])
+                work.transition(State.REJECTED, problems=reasons)
+                store.save_work(work)
+                # sidecar 契约：打回出口 clear sidecar，磁盘终态权威
+                from server.engine.runtime_state import clear_card_state
+
+                clear_card_state(log_dir, work.id)
+                outcome["failed"] = 1
+                return outcome
             # 补一句可读原因（超时/网络特征优先）
             retryable, hint = is_retryable_failure(work.id, problems, log_dir, phase="run")
-            reasons = list(problems) if problems else ["执行失败"]
             if hint and hint not in reasons[0]:
                 reasons = [hint, *reasons]
 
@@ -3681,6 +3822,16 @@ def _run_audit_worker(
             outcome["collected"] = 1
         else:
             reasons = list(problems) if problems else ["机审：不通过"]
+            # ccc092 种子盲区硬失败：一次性打回（DONE→REJECTED 合法），禁入冷却循环
+            if any(_SEED_HARDFAIL_MARKER in p for p in reasons):
+                logger.error("%s 打回(机审): work=%s reason=%s", _SEED_HARDFAIL_MARKER, work.id, reasons[0])
+                work.transition(State.REJECTED, problems=reasons)
+                store.save_work(work)
+                from server.engine.runtime_state import clear_card_state
+
+                clear_card_state(log_dir, work.id)
+                outcome["failed"] = 1
+                return outcome
             audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
             # F2（2026-08-10）：audit 明确「机审：不通过」→ 业务打回，不受 is_mech 压过。
             # is_mech 的「范围越界/超出范围」等关键词本意是识别无业务结论时的机械失败特征，
