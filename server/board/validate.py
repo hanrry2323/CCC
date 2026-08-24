@@ -340,10 +340,16 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             issues.append(CardIssue(card_id, str(path), "缺少卡头元数据行（> 且含 key：value）"))
             continue
 
-        # 禁止自造卡头字段（如 "批准"）——卡头字段定死，见 DOC-PROTOCOL §2.3
+        # 禁止自造卡头字段（如 "批准"）——卡头字段定死，见 DOC-PROTOCOL §2.3。
+        # 豁免（ccc072）：approve-merge 人审节点③（scripts/approve-merge.sh close_card）
+        # 在每张卡关闭时会于卡头有意盖「> 批准：老板合入批准」章，属平台设计而非自造
+        # 字段；故 base_state=「已关闭」的卡豁免「批准」键检查，否则每张新合并卡瞬间
+        # 毒化所属项目出卡校验通道（tst004/ccc068/xy059 实证）。未关闭卡的「批准」键
+        # 仍严格报错；「审批/review/approval」无 close_card 盖章设计，仍全态报错。
+        approval_exempt = base_state(meta.get("状态", "")) == "已关闭"
         FORBIDDEN_HEADER_KEYS = {"批准", "审批", "review", "approval"}
         for forbidden in FORBIDDEN_HEADER_KEYS:
-            if forbidden in meta:
+            if forbidden in meta and not (forbidden == "批准" and approval_exempt):
                 issues.append(
                     CardIssue(card_id, str(path), f"卡头禁止自造字段「{forbidden}」——卡头字段定死（DOC-PROTOCOL §2.3），「合入批准」是人审动作不是卡头字段")
                 )
