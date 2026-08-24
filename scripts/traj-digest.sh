@@ -468,7 +468,7 @@ def digest_card(card, explicit_path=None):
                      f"（peak_audit={metrics['peak_audit'][0]} @{fmt_ts(iso_to_epoch(metrics['peak_audit'][1]))}）")
     if a1_ev:
         by_id["A1"] = [{"id": "A1", "src": "sessions/metrics", "ts": None, "hit": x} for x in a1_ev]
-    # B1 判定：runN 文件数 ≥3 或 空转会话（tools≤8 且 edits==0 且 events≤60 的 executor 会话 ≥2）
+    # B1 判定：exec runN 文件数 ≥3，或零编辑 executor 会话聚集（tools≤20 且 edits==0 且 role=executor，≥3 个）
     b1_ev = []
     if inv["run_files"] >= 3:
         b1_ev.append(f"exec/{card}.run1..{inv['run_files']}.log 共 {inv['run_files']} 个运行文件 → 反复重派")

@@ -87,8 +87,27 @@
 1. **方案同步**：[否]
    - 说明：本卡关联环节②交接指令(S116-01)卡3，非 prefix-plan-NNN 方案转卡，无方案文需同步。
 2. **教训沉淀**：[无]
-   - 说明：本卡本身即教训固化载体（五类坑检测器入库）；跑批新观察——worker-events.jsonl 对 ccc076-078 零覆盖、ccc076-078 exec 日志已归档 tgz，属运行面数据留存缺口，已在回写区披露待后续卡认领，未沉淀 lessons.md。
+   - 说明：本卡本身即教训固化载体（五类坑检测器入库）；跑批新观察——worker-events.jsonl 四卡合计仅 5 行（机审复核实测 ccc076=1 行、ccc077=1 行、ccc078=0 行，近零覆盖）、ccc076-078 exec 日志已归档 tgz，属运行面数据留存缺口，已在回写区披露待后续卡认领，未沉淀 lessons.md。（机审席 2026-08-25 更正：原记「对 ccc076-078 零覆盖」与实测不符，已按复现值修正。）
 3. **档案/README**：[否]
    - 说明：新增 scripts/traj-digest.sh 用法与数据源契约已写在脚本头注释与本卡回写区，无项目档案/README 结构变更。
 4. **线路图**：[否]
    - 说明：无新增线路意向；工具后续扩展（如 watchdog 日志接入补 B3 取证）留待实际需要时另出卡。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+**范围核对**：`git diff 3e93a861d..HEAD --name-status` 仅 `A scripts/traj-digest.sh` + `M docs/dispatch/ccc/ccc084-traj-digest-tool.md`，均在白名单内；基点 origin/main@3e93a861d 与 `git merge-base` 一致；`git ls-remote origin codex/ccc084-traj-digest-tool`=6ad8c685c=本地 HEAD。执行体未触机审区/验收区、未置已关闭。
+
+**机械复现**（全部独立重跑）：① `bash -n scripts/traj-digest.sh` 通过；② 归档展开视图（`tar -xzf ~/.ccc/logs/archive-20260824/exec-sessions.tgz -C /tmp` + `TRAJ_DIGEST_LOG_DIR=<展开目录>`）四卡批量 exit 0，会话数 7/3/46/8、机审副本 4/1/33/5、runN ×2/×1/×12/×2、命中类别 A1…E3 与回写表**逐格一致**；③ 连续两次运行 `diff -q` 零差异=幂等；④ `--json | python3 json.load` 可解析；⑤ ccc999 退出码 2 符合 usage 契约；⑥ 数据源只读核验（zstd -dc / open(r) / glob，无任何写回路径）。
+
+**对齐抽查**（逐条对到原始证据）：C1=session-c0313075#ev406 sha256sum ✓；C2=ccc077.run1.log:19 `/var→/private/var` ✓；C3=session-5b4185e4#ev920 OSError errno48 Address already in use ✓；D1=ccc079.run1.log:27 test_board_loader 断言披露 ✓；B2=c9383a6f ×5 + a965373d ×3 ✓；B1=ccc078 run1..12 + 11 个零编辑会话（14:47:18→15:38:53，52min）✓；A1=ccc078 33 同指纹审计副本会话 ✓；E1/E3 三卡命中与「各踩一次」叙述相符。A3/B3 数据源外如实声明不造证据 ✓。
+
+**发现与就地修复（轻级分流）**：
+- F1 维护区 Q2 原记「worker-events.jsonl 对 ccc076-078 零覆盖」与实测不符（复现命令：归档 worker-events.jsonl 按 work_id 计数 → ccc076=1 行、ccc077=1 行、ccc078=0 行，合计 5 行，与回写区数据面披露一致）。已按复现值更正 Q2 表述并在该行标注；留存缺口结论不受影响。
+- F2 scripts/traj-digest.sh L471 B1 注释为陈旧稿（tools≤8/events≤60/≥2），实现为 tools≤20/无 events 上限/≥3 会话；已将注释对齐实现（纯注释改动，修复后重跑四卡批量输出与修复前零差异）。
+- 观察不阻塞（建议后续卡认领，本轮不动以保持已验证输出基线）：O1 会话时间戳按数值毫秒假设，若数据源改为 ISO 字符串则 B1 时间窗计算会 TypeError；O2 worker-events a1_lite「双审计间隔<60min」在正常重审流程也会命中（ccc079 的 16min 双审即例），C1 正则 `command not found` 分支与 C4 冗余分支使命中面宽于检测器名义语义——输出均带原文与 hedge 措辞不构成误导，精度问题非伪造问题。
+
+**severity 三级**：影响面 2（工具+卡叙述准确性，无产线影响）· 改动深度 1 · 红线邻近 1 → 合计 4 = 轻。无 P0/P1；无业务意图违背、无越界、无安全漏洞。维护区四问机械合规（单选齐全、说明非占位），经抽查除 F1 一处表述精度外声明属实且已更正。
+
+机审：通过
