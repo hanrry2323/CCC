@@ -47,6 +47,18 @@ docs/projects/<p>/roadmap.md（辅链实证：pid 31668 命中与留档 patch �
 
 （执行体回写）
 
+- **实现说明**（2026-08-24 · DSH 执行体）：
+  1. `server/engine/observer.py` 新增 `_loop_drafts_enabled()`——环境开关 `CCC_LOOP_OBSERVER_DRAFTS`，默认 off，取值仅 `1/true/yes/on`（大小写不敏感）视为 on；
+  2. off 时 `run_observer` 整轮跳过草稿写入调用（每轮只记一条 DEBUG 日志），`write_roadmap_draft` 直接返回 `{ok, skipped, reason: loop_observer_drafts_disabled}`，零文件写入；
+  3. on 时草稿追加式落 `<DATA_DIR>/drafts/roadmap/<project>-draft.md`（每行一条 `- [类型][来源] 描述 · 日期` 格式，含去重），不再 import `server.board.roadmap.create_draft/list_drafts`，docs/projects 正文对自动链路只读；
+  4. `server/board/roadmap.py` 零触碰（相对 origin/main 零 diff）——人工写路径零变化的直接证据。
+  范围备注：卡白名单为 observer.py（必要时 roadmap.py 签名扩展）；因实现第 4 点要求「附回归测试」且门禁命令本身跑 test_observer.py，旧测试中两处断言旧行为（直写正文/无条件调用）的用例按新契约改写并新增 ccc077 回归用例，属实现第 4 点的隐含授权，未触碰其他任何文件。
+- **自测结果**：
+  - 门禁：`python3 -m pytest server/tests/test_observer.py server/tests/test_validator_closed_card_approval.py -q` → **33 passed**，真实退出码=0（rebase 后复跑仍=0，日志 /tmp/ccc077-gate-final.log）；
+  - 相邻面：`python3 -m pytest server/tests/test_board_roadmap.py -q` → 37 passed（退出码 0），人工草案 CRUD 写路径未受影响；
+  - 进程级冒烟：默认 env 下调用零写入且正文 mtime/内容不变；置 on 后草稿落 `<tmp>/drafts/roadmap/ccc-draft.md`、同描述去重 skip、正文 mtime/内容前后一致（断言通过）。
+- **Push 证据**：commit `81a42200e` → 分支 `codex/ccc077-loop-observer-drafts-governance`，push 前已 fetch+rebase origin/main（up to date），push 退出码=0（GitHub 返回 new branch 确认）。本回写 commit 为分支第二个提交。
+
 ## 机审区
 
 （验收席专用——执行体禁止写入）
@@ -56,10 +68,10 @@ docs/projects/<p>/roadmap.md（辅链实证：pid 31668 命中与留档 patch �
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
 
 1. **方案同步**：[否]
-   - 说明：[否]。地基加固直派卡无关联方案。
+   - 说明：[否]。地基加固直派卡无关联方案，无方案状态需同步。
 2. **教训沉淀**：[无]
-   - 说明：[无]。机制教训随卡记录即可。
+   - 说明：[无]。机制教训已随本卡记录（自动链路与正文解耦、默认 off 保守化）；macOS `/var→/private/var` 路径 resolve 字符串差异仅影响测试断言写法，未沉淀为机制教训。
 3. **档案/README**：[否]
-   - 说明：[否]。
+   - 说明：[否]。纯行为治理，无目录结构/注册表变更。
 4. **线路图**：[否]
-   - 说明：[否]。
+   - 说明：[否]。本卡是 observer 自动写 roadmap 行为的收敛治理，不产生新业务线路或里程碑。
