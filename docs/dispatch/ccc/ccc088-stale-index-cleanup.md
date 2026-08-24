@@ -99,3 +99,40 @@ _board_cache_key() 首段 == get_index_path().stat().st_mtime_ns  # True
    - 说明：[否]。仅改三测试文件/三工具链脚本/web 缓存键与卡文，未触 registry 与项目档案。
 4. **线路图**：[否]
    - 说明：[否]。索引卫生修复无线路变化。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：中**
+
+### 范围与红线核对（独立复现）
+
+- 提交链：`git log` 本分支 HEAD=`7df3bb04d`（卡文回写）← `4df841c36`（修复本体，7 文件 +97/-1）；`git ls-remote origin codex/ccc088-stale-index-cleanup` = `7df3bb04d…` = 本地 HEAD，已推。改动 7 文件全部落在卡步骤 1-3 与回写区读取方矩阵内，零越界。
+- 红线遵守：`git show 4df841c36 --stat` 不含 loader.py；`get_index_path` 判定逻辑（loader.py:218-228）逐行未动 ✓。
+- 维护区四问机械判据：四项均为单选 `[否]`/`[无]` 且说明为实情句，无占位符 ✓；抽查「仅改三测试/三脚本/web 键与卡文」↔ diff 文件清单恰好 7 个，属实 ✓。
+- 回写区运行面证据抽查全数复核成立：权威索引 `~/.ccc/data/cards/cards.index.jsonl` 存在且 287 行 ✓；主仓 `docs/dispatch/cards.index.jsonl` 已删不存在 ✓；ccc082(00:10)/ccc083(00:53)/ccc087(02:27) 三 worktree 同款污染文件在案 ✓；主仓 reflog `merge ccc078 @2026-08-25 01:52:11` 与写手B mtime 秒级吻合 ✓；.gitignore L169 忽略规则在案 ✓。03:29 双写事件发生在修复提交（03:34:10）之前、属未合入检出活动窗，卡内披露条款已涵盖，不计缺陷。
+
+### 发现 F1（中 · 致不通过）：写手B「根治」不完整，HEAD 仍存 ≥3 条裸跑回落写路径
+
+回写区断言「两个写手均已根治」「data/cards 不复生」，但同族写路径未封（复现：`grep -l CCC_DATA_DIR scripts/*.sh` 仅命中已修三个；逐点核实调用链）：
+
+| # | 入口 | 写路径 | 触发条件 |
+|---|---|---|---|
+| 1 | `scripts/plan-to-cards.sh:189` → `validate_cards` | `server/board/validate.py:479-481`：`index_path=get_index_path(d)` 缺失即 `load_dispatch_cards(d)` 增量写回落副本 | 出卡批次裸跑且 `<repo>/data/cards/` 副本缺失时必写 |
+| 2 | `scripts/archive-cards.sh:57` → `python -m server.board.archive` | `archive.py:180` + `archive.py:276` 归档后无条件重建索引 | 裸跑归档即写（无条件，最高频复发源） |
+| 3 | `server/board/plans.py:746-748` 方案作废级联刷新 | 经 `approve-merge.sh` 作废动作 / `auto-fix-all-plans.sh`→`auto-fix-plan-progress.py:31-34` 可达 | 裸跑级联即写 |
+
+实证旁证：主仓 `<repo>/data/cards/cards.index.jsonl` 现存 mtime **03:29:06**（晚于卡内写手B实证的 01:52:11），证明该家族在本卡排查窗口内仍在活动；且执行体删除动作只清了 docs/dispatch 版，此副本未清。后果：① 执行体自设的 24h 复查命令 `ls docs/dispatch/cards.index.jsonl data/*/cards.index.jsonl` 大概率抓到复生，「根治」承诺被自家探针证伪；② validate 裸跑对账读的是这份可能陈旧的本地副本（`index_path.is_file()` 为真即跳过重建），陈旧副本会诱发假性对账错误——正是本卡所治之病的残留病灶。缓解面：读侧消费点已全部对齐权威路径，看板正确性不受影响；副本受 .gitignore 忽略；主目标（docs/dispatch 版、写手A pytest 族）确已根治。评分：影响面 2 + 改动深度 2 + 红线邻近 1 = 5 → 中。
+
+### 发现 F2（轻 · 记录）：脚本兜底口径与 loader 分叉
+
+三脚本 `export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"` 无条件覆盖了 loader 同样支持的 `DATA_DIR` 口径（loader.py:222 先读 `CCC_DATA_DIR` 后读 `DATA_DIR`）：环境仅设 `DATA_DIR` 时，脚本强制落 `~/.ccc/data` 而 loader 直跑走 `DATA_DIR`，同机双口径。生产用 `CCC_DATA_DIR`，实际风险低，随 F1 补丁一并注明即可。
+
+### 结论与分流
+
+写手A（docs/dispatch 版真凶）定位扎实、修复正确、证据可复现；不合格点集中在写手B 家族的完整性收口。severity=中 → 按 v4 分流不作就地修复、不打回重做，现状交引擎安排下一轮收口， remediation 清单：
+
+1. `scripts/plan-to-cards.sh`、`scripts/archive-cards.sh` 头部补同款 `export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"`（plans.py 级联路径经上述两入口封口后自然覆盖；如仍有独立裸跑入口一并注入）。
+2. 删除主仓现存 `/Users/fan/program/CCC/data/cards/cards.index.jsonl` 陈旧副本（03:29:06 版）后重跑复查命令留证。
+3. （可选）脚本注释注明「仅认 CCC_DATA_DIR 口径」或在 F2 上对齐 DATA_DIR。
+
+机审：不通过（写手B根治不完整：plan-to-cards/archive-cards/plans级联三条裸跑回落写路径未封，主仓 data/cards 副本 03:29:06 已复生在案）
