@@ -122,7 +122,10 @@ def test_run_observer_output(mock_list_plans, mock_load_dispatch_cards, mock_loa
         """write_roadmap_draft 替身：外层已把 board.roadmap._repo_root 绑到 tmp，
         真实草案逻辑照常执行但只可能落在 tmp 内；记录调用并断言写目标。"""
         result = real_write_roadmap_draft(project, description, draft_type=draft_type, source=source)
-        target = (tmp_path / 'docs' / 'projects' / str(project) / 'roadmap.md').resolve()
+        # 机审 ccc076 就地修复：写目标必须取自 board.roadmap 的真实派生链（_roadmap_path
+        # 动态调 _repo_root），patch 失效即越出 tmp 必红——原写法用 tmp_path 自构造 target
+        # 再断言 is_relative_to(tmp_path) 属同义反复，永不失败。
+        target = board_roadmap._roadmap_path(str(project)).resolve()
         assert target.is_relative_to(tmp_path.resolve()), f'草案写目标越出 tmp 根: {target}'
         draft_calls.append({'project': project, 'description': description, 'target': target, 'result': result})
         return result
