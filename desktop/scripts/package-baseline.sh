@@ -46,7 +46,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>CCC Desktop 需要访问局域网中的 Hub（编排）与模型中转站，以加载项目、转任务并显示调用次数。</string>
+  <string>CCC Desktop 需要访问局域网中的 Hub（编排），以加载项目并转任务。</string>
   <key>NSBonjourServices</key>
   <array>
     <string>_http._tcp</string>

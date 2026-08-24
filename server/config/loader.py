@@ -44,11 +44,6 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CLUSTER_PG_SSH_USER": "hp",
     "CCC_CHAT_BRIDGE_URL": "",
     "CCC_CHAT_BRIDGE_TOKEN": "",
-    # 中转站部署模板占位（T4，部署前手动替换，可选）
-    "CCC_RELAY_PROJECT_ROOT": "",
-    "LOOP_ANTHROPIC_PORT": "",
-    "LOOP_OPENAI_PORT": "",
-    "NODE_BIN": "",
     # 执行体派发运行参数（T32 真实派发闭环）
     "EXECUTOR_TIMEOUT_SECONDS": "300",
     "EXECUTOR_LOG_DIR": "",
