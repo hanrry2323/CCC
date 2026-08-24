@@ -62,3 +62,23 @@
    - 说明：仅两处命令形态与注释变更，无目录结构/注册表/路径变化。
 4. **线路图**：[否]
    - 说明：缺陷修复卡，不产生新业务线路或里程碑。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+- 范围核对：分支基于 origin/main=738cac95e，仅 2 提交——38abb9f8a 代码修复（scripts/deploy-ccc.sh + server/git_sync.py，+11/-6，均在白名单内）、07017557b 回写（仅卡文件）；工作树干净，无越界改动。
+- 独立复现（机审自建沙箱 /tmp/ccc085-audit-selftest2，bare origin+seed+work 复刻生产拓扑；驱动留档 /tmp/ccc085-audit-driver2.py、输出 /tmp/ccc085-audit-run2.log）：
+  - 门禁：`bash -n scripts/deploy-ccc.sh` OK；`py_compile server/git_sync.py` OK；本机 git 2.39.2 实测 `--no-write-fetch-head` rc=0。
+  - 语义：落后一提交时仅跑新形态 fetch 段 → refs/remotes/origin/main 机会性更新到位且 FETCH_HEAD md5 不变；merge --ff-only origin/main 一次 Fast-forward 成功、HEAD==origin/main。
+  - 并发 B′：12 轮 ×(4×真实 sync_origin_main + 1×新形态部署拉取) 同毫秒并发：**0 次 Cannot fast-forward to multiple branches**，24+ 次并发 fetch/merge 全程 FETCH_HEAD 未被双侧触碰。
+  - 对照 E：同拓扑旧形态 `git pull --ff-only` 6 轮 5 败（见下条）；机制 D：污染 FETCH_HEAD 双分歧候选后旧形态 merge FETCH_HEAD rc=128（Not possible to fast-forward, aborting.），新形态 rc=0 正常 ff 且 FETCH_HEAD 未动——目标竞态对被结构性消除，卡述机理逐字复现。
+  - 单测：`pytest server/tests/test_git_sync.py -q` → 7 passed。执行体留档抽查：/tmp/ccc085-selftest/sync.1..12.log 存在且内容与卡述一致。
+- 发现与风险论证（0 P0/P1）：
+  1. 【遗留·范围外】B′ 中 10/12 轮部署段 fetch 报 `cannot lock ref 'refs/remotes/origin/main': … expected …`（机会性远端跟踪引用更新的 CAS 竞态）→ fetch rc≠0。对照 E 实证同拓扑旧形态同样中招（6 轮 5 败，败因相同），系**预存在**、与本卡无关、暴露面不变，非回归；生产节奏下需毫秒级重叠，sync 侧下一周期自愈、deploy 侧重跑即恢复。超出本卡白名单不就地修，建议后续单独立卡（fetch 失败重试或进程级串行化）。
+  2. 【范围外观察】approve-merge.sh:603、scripts/worker-claim.sh:35-37 仍为旧形态 pull（FETCH_HEAD 写读方）：deploy 与 git_sync 双侧退出后，原报障竞态对已消除；残余为人工侧脚本互并发的预存在小概率场景，不在本卡范围。
+- 维护区核对（P1-b 机械判据）：四问均为单选实名填写（[否]/[无]/[否]/[否]），说明行各一句实情、非占位；抽查属实——Q1 卡头确为交接直派项非 plan 编号，Q2 机制结论确在本卡回写区，Q3 diff 无结构/注册表变化，Q4 属实。
+
+结论：双侧对称最小改动，成功语义保持有回归实证，目标竞态结构性消除有 B′/D 实证，白名单零越界，维护区四问真实填写。
+
+机审：通过
