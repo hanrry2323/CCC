@@ -5,6 +5,7 @@
 #   scripts/approve-merge.sh <card-id> [<card-id>...]
 #   scripts/approve-merge.sh --ready              # 批处理 2017 ready_for_merge 队列
 #   scripts/approve-merge.sh --close-only <id>    # 分支已在 main 历史/无分支时仅关卡（ready 必需）
+#   scripts/approve-merge.sh --batch-merge <ids>  # 批处理（2026-08-25）：逐卡全部门禁 → octopus 一次性合入分叉批次
 #
 # 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
 # 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡，--close-only 也不放行分叉）；
@@ -25,6 +26,8 @@ CCC_PROD_REPO="${CCC_PROD_REPO:-/Users/fan/program/CCC}"
 source "$SCRIPT_DIR/lib/card-resolve.sh"
 USE_READY=false
 CLOSE_ONLY=false
+BATCH_MERGE=false
+_BATCH_BRANCHES=()
 IDS=()
 
 usage() {
@@ -35,6 +38,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --ready) USE_READY=true; shift ;;
     --close-only) CLOSE_ONLY=true; shift ;;
+    --batch-merge) BATCH_MERGE=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) IDS+=("$1"); shift ;;
   esac
@@ -612,6 +616,19 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
     return 1
   fi
 
+  # --batch-merge（2026-08-25）：分叉不逐卡阻断——逐卡门禁（架构漂移/信封机审/V6/维护区/密钥/范围/
+  # git真实性/测试证据/P0-3 账本）已全跑，合并延后到批次统一 octopus 一次性合入（免逐卡 rebase）。
+  # 返回 2 = 门禁通过、合并延后（本函数不关卡/不提交/不推送）。
+  if [[ "$BATCH_MERGE" == true ]]; then
+    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+      _BATCH_BRANCHES+=("origin/${branch}")
+      echo "[batch] ${id}: 门禁全过，分支 ${branch} 记入批次（最终 octopus 一次性合入）"
+      return 2
+    fi
+    echo "[ERROR] ${id}: --batch-merge 需要 origin/${branch} 分支存在（当前缺失）→ 整批中止" >&2
+    return 1
+  fi
+
   # 合入策略：ff / 已在 main 仅关卡 / 无分支或分叉时须 --close-only
   if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
     if [[ "$CLOSE_ONLY" == true ]]; then
@@ -725,6 +742,86 @@ PY
 
   git push origin main
   echo "[OK] 合入批准完成：${id} → 批次全部收口后将自动触发 2017 部署检查"
+}
+
+# ── 批次收尾（--batch-merge 专用，2026-08-25）：octopus 已合入后逐卡关卡——复用 approve_one 尾部收口语义 ──
+batch_finalize_card() {
+  local id="$1"
+  local path stem branch
+  path="$(resolve_card "$id")" || return 1
+  stem="$(basename "$path" .md)"
+  branch="codex/${stem}"
+
+  echo "== 批次收尾 ${id} (${branch}) =="
+  close_card "$path"
+  # 刷新 cards.index.jsonl（同 approve_one 范式：close_card 改卡 .md 后索引未同步，sync 会读旧索引算 closed=0）
+  "$PYTHON_BIN" -c "
+import sys; sys.path.insert(0, '.')
+from server.board.loader import load_dispatch_cards
+load_dispatch_cards('docs/dispatch')
+" 2>/dev/null || echo "[WARN] ${id}: 索引刷新失败（不阻断合入，sync 可能滞后）" >&2
+  # 033 阶段 2 M6：approve_merge 真值账本（写失败 = 回滚本卡关卡）
+  if ! "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.audit_ledger import record_action
+record_action('approve_merge', '${id}', source='approve-merge', detail='${branch}')
+" 2>/dev/null; then
+    echo "[ERROR] ${id}: approve_merge 账本写入失败 → 已 git checkout 还原本卡关卡" >&2
+    git checkout -- "$path" 2>/dev/null || true
+    return 1
+  fi
+  sync_plan_cards "$path"
+  # 机审命中率台账（v4）
+  "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+try:
+    from server.board.audit_ledger import mark_card_pass_hit
+    mark_card_pass_hit(sys.argv[1])
+except Exception:
+    pass
+" "$id" || true
+  # S5 质量分（增量不可劣化，软告警）
+  if [ -f scripts/quality-score.py ]; then
+    if "$PYTHON_BIN" scripts/quality-score.py . "${branch}" --record >/tmp/quality-${id}.json 2>&1; then
+      echo "[OK] ${id} 质量分达标（见 /tmp/quality-${id}.json）"
+    else
+      echo "[WARN] ${id} 质量分劣化（增量不可劣化门禁，软告警）——见 /tmp/quality-${id}.json" >&2
+    fi
+  fi
+  # 竞态防护（tst003 教训）：close_card 后断言卡头仍为已关闭（防 git_sync 强制对齐并发改写）
+  if ! grep -q "状态：已关闭" "$path"; then
+    echo "[ERROR] ${id}: 批次收尾竞态——close_card 后卡头非已关闭（疑似 git_sync 强制对齐并发改写工作树）→ 中止本卡（不提交）" >&2
+    return 1
+  fi
+  git add -- "$path"
+  # sidecar 同步
+  "$PYTHON_BIN" - "$id" <<'PY'
+import sys
+sys.path.insert(0, ".")
+from server.web.server import _executor_log_dir
+from server.engine.runtime_state import clear_card_state
+log_dir = _executor_log_dir()
+if log_dir:
+    clear_card_state(log_dir, sys.argv[1])
+    print(f"[OK] sidecar 已同步：已清除卡 {sys.argv[1]} 的 sidecar 流程态")
+else:
+    print("[WARN] 未配置 EXECUTOR_LOG_DIR，跳过 sidecar 清除")
+PY
+  # 分支清理：octopus 已合入 → 分支已是本地 HEAD 祖先，删除（用 HEAD 而非 stale origin/main）
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    if git merge-base --is-ancestor "origin/${branch}" HEAD >/dev/null 2>&1; then
+      git branch -D "${branch}" >/dev/null 2>&1 || true
+      if git push origin --delete "${branch}" >/dev/null 2>&1; then
+        echo "[OK] 已删除已合入分支: ${branch}"
+      else
+        echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
+      fi
+    fi
+  fi
+  echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
+  return 0
 }
 
 deploy_check_2017() {
@@ -873,18 +970,59 @@ PY
   fi
 fi
 
-FAILED=0
-for id in "${IDS[@]}"; do
-  if ! approve_one "$id"; then
-    FAILED=$((FAILED + 1))
+if [[ "$BATCH_MERGE" == true ]]; then
+  echo "== 批量合入模式：${#IDS[@]} 卡（逐卡全部门禁 → octopus 一次性合入） =="
+  _BATCH_READY=()
+  for id in "${IDS[@]}"; do
+    _rc=0
+    approve_one "$id" || _rc=$?
+    if [[ $_rc -eq 2 ]]; then
+      _BATCH_READY+=("$id")
+    elif [[ $_rc -ne 0 ]]; then
+      echo "[ERROR] ${id}: 门禁未通过 → 整批中止（未合并/未关卡/未推送）" >&2
+      exit 1
+    fi
+  done
+  if [[ ${#_BATCH_READY[@]} -eq 0 ]]; then
+    echo "[ERROR] 批次内无卡片通过门禁，中止" >&2
+    exit 1
   fi
-done
+  echo "== 批次 octopus 合入：${_BATCH_READY[*]}（分支：${_BATCH_BRANCHES[*]}） =="
+  if ! git merge --no-ff -m "merge: 批量合入批准 ${_BATCH_READY[*]}" "${_BATCH_BRANCHES[@]}"; then
+    echo "[ERROR] 批量合入失败（octopus 冲突）→ 整批中止，未关卡/未推送（git merge --abort 已尝试还原）" >&2
+    git merge --abort 2>/dev/null || true
+    exit 1
+  fi
+  _BATCH_FAIL=0
+  for id in "${_BATCH_READY[@]}"; do
+    if ! batch_finalize_card "$id"; then
+      echo "[ERROR] ${id}: 批次收尾失败" >&2
+      _BATCH_FAIL=1
+    fi
+  done
+  if [[ $_BATCH_FAIL -ne 0 ]]; then
+    echo "[ERROR] 批次收尾有失败 → 已合入但关卡/账本未全完成，需人工核验后补关" >&2
+    exit 1
+  fi
+  if ! git diff --cached --quiet; then
+    git commit -m "batch: 关闭并批准 ${_BATCH_READY[*]}"
+  fi
+  git push origin main
+  echo "[OK] 批量合入批准完成：${_BATCH_READY[*]}（octopus 单 commit + 批次关卡单 commit）"
+else
+  FAILED=0
+  for id in "${IDS[@]}"; do
+    if ! approve_one "$id"; then
+      FAILED=$((FAILED + 1))
+    fi
+  done
 
-if [[ "$FAILED" -gt 0 ]]; then
-  echo "[ERROR] ${FAILED} 张卡合入失败" >&2
-  exit 1
+  if [[ "$FAILED" -gt 0 ]]; then
+    echo "[ERROR] ${FAILED} 张卡合入失败" >&2
+    exit 1
+  fi
+  echo "[OK] 全部合入批准完成（${#IDS[@]}）"
 fi
-echo "[OK] 全部合入批准完成（${#IDS[@]}）"
 
 # ── 业务仓部署端健康检查（2026-08-20 加 · 覆盖所有已注册项目）──
 # 部署端表与 qx-map AGENTS.md「项目部署端一览」一致：开发机≠部署机。
