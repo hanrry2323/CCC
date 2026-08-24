@@ -49,12 +49,12 @@ WORKTREE 缺失场景不加误导提示。文案外零逻辑变化。
 ### 范围核对（git 取证）
 
 - `f54dd6741` 仅触 `scripts/dsh-executor.sh`（+9 行，白名单精确命中）；`c19982fc1` 仅触本卡（回写流程性改动）。两 commit 外零触碰，working tree clean。
-- 远端分支 `codex/ccc073-executor-dual-repo-writeback-hint` = 本地 HEAD `c19982fc1`（`git ls-remote` 实证），push 属实；分支基点为当时 main 尖 `3db973f2f`，main 于 push 后 2 分钟另进无关 plan 提交（`de81895de`），属合入期正常分叉，非执行体缺陷。
+- 远端分支 `codex/ccc073-executor-dual-repo-writeback-hint` = 本地 HEAD `c19982fc1`（`git ls-remote` 实证），push 属实；分支基点为当时 main 尖 `3db973f2f`，main 于 push 后 2 分钟另进无关 plan 提交（`de81895de`），属合入期正常分叉，非执行体缺陷。【复核注 2026-08-24】本席审计提交推送后远端分支尖已随之前移（写作时点快照，以 `git ls-remote` 现值为准）。
 - 回写 diff 未触碰目标/实现/红线/验收/门禁；机审区占位行完好；状态=已回写未置已关闭。
 
 ### 独立复现证据（不采信执行体自述）
 
-1. 门禁命令逐字复跑（worktree 内）：退出码=0；wrapper 独立截获日志 `/Users/fan/.ccc/logs/exec/ccc073.test-evidence.log` 尾部 `=== exit_code=0 ===`（ts=2026-08-24T04:43:56Z），双源一致。
+1. 门禁命令逐字复跑（worktree 内）：退出码=0；wrapper 独立截获日志 `/Users/fan/.ccc/logs/exec/ccc073.test-evidence.log` 尾部 `=== exit_code=0 ===`，双源一致。【复核更正 2026-08-24】test-evidence.sh 头行为覆盖写语义（`>` 重写整文件），执行体时段条目 ts=2026-08-24T04:43:56Z 已被机审复跑条目 ts=04:49:25Z 覆盖，原引用 04:43:56Z 系写作时点快照、现已不可观察；现存单条目（ts=04:49:25Z · exit_code=0）即机审独立复跑证据。
 2. 本席自建 stub dsh 三场景实测 worktree 副本真实 PROMPT：A（BIZ+WT 非空）=HAS-HINT 且三处展开正确（`${WORKTREE}`=/Users/fan/program/CCC-wt/ccc073/、剥前缀相对路径=docs/dispatch/ccc/…md、主仓绝对路径）；B（BIZ 空）=NO-HINT；C（BIZ 非空+WT 空）=NO-HINT。与卡「实现」节及回写区自测完全一致。
 3. 插入位置正确（PROMPT 构造后、`dsh` 调用前）；变量 L20/L22 先于 L79 定义，`set -euo pipefail` 下无 unset 风险；`PROMPT+=` 经实机运行验证可用。
 
