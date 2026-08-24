@@ -71,3 +71,28 @@
    - 说明：仅改 server/engine/main.py 内部逻辑与新增一个测试文件，未动目录结构/技术栈/路径。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：教训固化批次（ccc090-093）既定事项之一落地完成，不改变线路图方向与下一步安排。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：中**
+
+**范围核对**：分支相对 merge-base `d26c00eb2` 仅触白名单两文件+本卡回写（`git diff d26c00eb2..HEAD --stat` = 卡文件 / server/engine/main.py / server/tests/test_engine_card_seed.py 共 3 文件）；`git ls-remote origin codex/ccc092-seed-consistency-hardfail` = `024993906` = 本地 HEAD，回写已推。无越界。
+
+**独立复核**：
+
+1. 状态机合法性：`server/engine/task.py` L44-52 RUNNING→REJECTED / DONE→REJECTED 均为合法迁移且必附 problems；实现已附（main.py L3712、L3828）。
+2. 「硬失败不进重试/冷却循环」结构成立：marker 直达分支位于 `is_retryable_failure`（L3721）与空回写判定（L3734）之前并提前 return；调度器只取 `list_work(state=TODO)`（L4275），REJECTED→TODO 仅人工（task.py L49），未发现任何自动重派 REJECTED 的路径，「一次性告警+打回」语义成立。
+3. audit 双阶段生效属实：`_run_machine_audit_after_writeback` 经 `_dispatch_and_collect(log_phase="audit")`（L3502-3510）过同一前置校验，机审阶段无门禁链遮挡。
+4. 调用点绑定安全：`worktree_path` 仅在 `if worktree_base:` 块内赋值，块首必绑 `main_repo`（L2336-2344），唯一调用点 L2472 无 NameError 路径；自愈仅写 `<worktree>/<card_rel>` 一个文件（L1726-1745），符合「不触业务代码」红线。
+5. 证据真实性抽查：test_engine_card_seed.py 静态计数 12 个 test 函数与宣称一致；回写区 T5 探针「1395 字节」与 `git show d26c00eb2:<本卡>` 实测字节数吻合；维护区引用工件 c5d927686 / d551b7a04 均存在。
+6. 维护区四问：四问均为单选 [否]/[无] 形态 + 一句实情说明，非占位，抽查声明属实，Doc-Gate 合格。
+
+**对抗式发现**：
+
+- **F1（计分：影响面 2 + 改动深度 2 + 红线邻近 1 = 5 → 中）run 阶段稳态缺卡场景新逻辑不可达，「循环斩断」声明在该路径不成立。** 门禁链存在第二个更前置的校验点 `worktree_card_copy`（order=20，main.py L4006-4020）：worktree 目录存在且缺卡副本时直接 `GateResult(passed=False)` 跳过派发、卡保持待分派。该门与 `_dispatch_and_collect` 内部同源推导 worktree 路径（均取 `entry.worktree_base`，L876-887 vs L2336-2344），故凡新逻辑可见的场景该门必先拦——worktree 已存在且缺卡的稳态下，每轮调度重复 WARNING+跳过，`_ensure_worktree_card_seed` 唯一调用点（L2472）永不执行：既不自愈、也无 alerts 硬失败信号。即 D1 的拦截仅在 audit 阶段（无门禁链）与首次创建竞态（D2 场景）成立；存量受损 worktree 在 run 阶段仍会永久静默搁浅。定性：覆盖缺口而非回归（该门自 16c3104f7 即存在，本卡前后该路径行为相同），交付代码在其声明范围内无缺陷。建议窄卡跟进：将两分支逻辑上移至该门禁内，或令门禁调用 `_ensure_worktree_card_seed` 后放行/硬失败。
+- **F2（轻微 · 不计分）**：回写区「新增 `server/tests/test_engine_card_seed.py` 365 行」数字张冠李戴——实测该文件 210 行，365 为两文件合计插入数（`git show d551b7a04 --stat`）。
+- **F3（轻微 · 不计分）**：自愈源固定为本地 main——已回写后若 audit 阶段卡副本再丢失，自愈恢复的是出卡版而非执行体回写版（分支信封更新版），机审可能读陈旧证据；低频且旧行为更差（直接失败循环）。建议后续自愈源优先 worktree 分支 tip（`origin/codex/<slug>:<rel>`）。
+
+**分流**：severity=中；交付物实现正确、单测真实、范围干净、无红线违背，三种已文档化死法在各自描述机制下确被新逻辑拦截；F1 属相邻存量路径的覆盖缺口，按 v4 分流不打回、不代修，如实记录并留窄卡收口。
+
+机审：通过
