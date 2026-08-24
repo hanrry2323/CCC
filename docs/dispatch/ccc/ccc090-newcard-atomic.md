@@ -147,3 +147,43 @@ F1 伤害链 = (卡已 commit) ∧ (rc≠0) ∧ (调用方纯 unlink/rm 工作�
 - 维护区四问机械判据：四问均单选+一句实情，抽查属实（Q2 头注释固化实证于 diff；Q3 分支 stat 零结构变化实证）。
 
 机审：不通过（中severity：白名单内实现、验收标准与维护区全过，唯 F1 非零退出语义令 plans.py/plan-to-cards.sh 失败回滚退化为删已提交卡且无法在本卡白名单内就地修复，转引擎按上述建议现状处理后续审）
+
+---
+
+### 第 2 轮机审（复核终审 · 不采信前轮与执行体自述，全部证据本轮重取）
+
+**DSH 机审席 · 2026-08-25 · severity：中**
+
+#### 范围核对（通过）
+
+- 分支 `codex/ccc090-newcard-atomic` 自基点 c5d927686 共 6 提交至 412576c04，逐 commit numstat 核验触碰面：`scripts/new-card.sh` +47（白名单内唯一代码改动）、演练卡 tst005 +121（卡面步骤 2 要求的自测产物）、本卡文件三轮回写/机审编辑、`docs/notes/2026-08-25-ccc-lessons.md` +6（Doc-Gate Q2 强制落点）、引擎打回信封 2817a8c2c 仅触本卡 1 行。无越界、无 `git add -A`。
+- 第 2 轮「零代码改动」声明实证：`git diff 3573c193e..HEAD -- scripts/new-card.sh` 输出为空。
+- 远端同步：`git ls-remote origin codex/ccc090-newcard-atomic` = `412576c04` = 本地 HEAD。
+- 上游基线声明实证：origin/main 新提交 `d26c00eb2` 仅触 `scripts/approve-merge.sh`（18+/4-）、`scripts/deploy-ccc.sh`（+20）、`server/board/audit_ledger.py`（+33），三个涉事文件均未被上游修改，F1 论证基线仍有效。
+
+#### 验收标准独立复跑（3/3 通过）
+
+1. `bash -n scripts/new-card.sh` → PASS（本席复跑）。
+2. tmp 模式独立复现：`--dispatch-dir $(mktemp -d)` 出 tst001 演练卡 → rc=0、卡落 tmp 目录、「dispatch-dir 在仓外（测试形态），跳过原子提交（零 git 副作用）」日志、HEAD 前后一致、`git status --short` 无输出。
+3. 真实演练链证据核验：d18e40fbc 提交消息与原子段模板 `docs(card): <卡ID> <标题>` 逐字吻合（即原子段自动产物），且为已推送 tip 412576c04 的线性祖先。
+- 另：`pytest server/tests/test_card_dispatch_gate.py server/tests/test_plans.py` 本席复跑退出码 0、`--collect-only` 计 2+82=84 项全绿（汇总行被 pyproject addopts 抑制，以进度 100%+退出码+收集数为准），执行体「84 项全过」声明属实。
+
+#### F1 终局复核（成立 · 维持中）
+
+- 逐条重取源码证据：`server/board/plans.py:1061-1067` `_rollback_created()` 纯 `p.unlink(missing_ok=True)`；`convert_plan` 对**任意 returncode≠0** 一律回滚（plans.py:1274-1276，较上轮所引 rc∈{5,6,7} 更宽，本轮复核声明属实）；`scripts/plan-to-cards.sh:132-133` 与 `:200-201` 两处纯 `rm -f` 回滚。伤害窗=exit 7（push 失败或 detached HEAD）时卡已 commit → 孤儿 docs(card) 提交 + 工作区 deleted + 重试同号卡重复历史；无数据丢失，单卡直出主路径不受累。
+- 本席新增对抗点并证伪：批量转卡的 goal/依赖/批准行注入虽发生在原子提交之后，但 `convert_plan` 尾部存在收口批提交（git add 卡+方案 → commit → push，plans.py:1355 起），注入内容最终同批入 git，**不留新的吃单窗**；代价仅每卡一条中间模板 docs(card) 提交噪音（回写区已如实披露，非缺陷）。
+- 白名单内不可修复论证成立：脚本侧任何缓解要么违反卡面「任一步失败即非零退出」目标字面，要么无法阻止调用方对工作区卡文件的纯删除——断链只能发生在调用方（plans.py / plan-to-cards.sh），均在卡白名单之外。
+- 威胁模型复核：`server/git_sync.py:141` `_force_align_dispatch` 确对 dispatch 未跟踪文件 force-checkout+清除，本卡业务意图（消灭吃单窗）正当且已达成。
+
+#### 分流裁定
+
+- F1 定级：影响面 2（两个调用方批量路径受累，触发窄且可恢复）+ 改动深度 2（「rc≠0⇒无卡」隐含契约破坏由本卡引入）+ 红线邻近 1（无红线触碰）= 5 → 中。
+- 轻档「就地修复」不可用：修复须动 plans.py / plan-to-cards.sh，白名单之外，机审席就地修同受白名单约束。
+- 中档「现状重试」经两轮实证不可收敛：第 2 轮本身即引擎打回信封（2817a8c2c，防死循环机制已触发一次）驱动的复核轮，执行体在白名单内唯一合法动作=零改动+升级处置请求；再次现状重试只制造无信息量循环。
+- 故本席终审：本卡白名单内实现、三项验收标准、维护区全部通过；F1 转记**已知限制**，处置三选项（A 扩卡/新卡修调用方回滚契约〔推荐〕/ B 老板定夺 push 失败降级语义〔须先修订卡面目标字面〕/ C 维持现状合入）随卡完整披露。**本结论非合入授权**：合入与否及 A/B/C 取舍归环节②人审定夺；建议合入前置条件=A 之扩卡/新卡立项。
+
+#### 维护区核对（机械判据通过）
+
+四问均单选勾选+一句实情说明：Q1[否] 无方案关联（卡头关联=R1-R4 直派属实）；Q2[有] 教训双落点抽查属实（`scripts/new-card.sh` 头注释已文档化原子段语义与退出码 5/6/7；`docs/notes/2026-08-25-ccc-lessons.md` 存在且内容与本轮源码事实一致）；Q3[否] 结构/技术栈/路径零变化（numstat 实证）；Q4[否] 线路不变属实。「批注落实」节声明与卡面「（留空）」一致。
+
+机审：通过
