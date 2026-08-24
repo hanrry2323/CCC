@@ -36,7 +36,7 @@
 
 ### 实现说明
 
-改动文件：`server/engine/main.py`（+133/-4）、`server/tests/test_engine_main.py`（+207），均在卡白名单内。
+改动文件：`server/engine/main.py`（+129/-4）、`server/tests/test_engine_main.py`（+207），均在卡白名单内。（注：原写 +133/-4 系把 stat 条含删行的总变更数 133 误作纯增行数，机審席按 `git show 8d0615122 --numstat` 更正为 +129/-4。）
 
 **目标① 审计预算自适应（ccc081 根修）**
 - 新增 `_audit_diff_changed_lines(worktree_path)`：以 `git diff --numstat origin/main...HEAD` 统计被审 diff 增删行总数（二进制行自动跳过；取不到 → None）。
@@ -85,3 +85,33 @@
    - 说明：纯 engine 行为修复 + 测试补充，未动项目结构、技术栈与路径；新增常量与函数均在既有模块内。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：两起事故的点状根修，无新增线路或近况变化；建议环节② 关注 brain 流式模块 11 个 pre-existing 失败（与本卡无关，疑似环境配置缺失 CCC_BRAIN_BASE_URL）。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+### 范围核对
+
+- 实现 commit `8d0615122` 仅动 `server/engine/main.py`、`server/tests/test_engine_main.py`（白名单内）；回写 commit `b0c114f21` 仅动本卡文件；排除法核验 `git diff d26c00eb2..b0c114f21` 两路径之外为空，零越界。
+- 本地 HEAD 与远端 tip 一致（`git ls-remote origin codex/ccc093-audit-budget-pushdetect` → `b0c114f214216…`；ahead/behind = 0/0），push 证据属实。
+- 红线核对：ledger 结构与末行裁决制未触碰；「ls-remote 校验失败仍走原 infra 路径」由代码三处失败出口（main.py:1149-1150、1170-1174）与端到端真 git 测试（`test_remote_missing_branch_stays_infra`、`test_remote_branch_without_pass_verdict_stays_infra`）双向锁定。
+
+### 对抗式审查发现（0 实质缺陷 · 2 轻微项不计分 · 已就地修复 1 项）
+
+1. 【轻微·已就地修复】回写区原写 main.py「+133/-4」，`git show 8d0615122 --numstat` 实为 +129/-4（133 为 stat 条含删行的总变更数）。已在回写区更正并注明缘由。
+2. 【轻微·记录备重构】`branch = f"codex/{Path(card_path).stem.lower()}"` 在两个互斥分支内重复计算（main.py:1142、1163），可上提一次。行为无影响；为不使引擎已裁决门禁与白名单产物失配，本次不改产线码。
+3. 【风险论证·非缺陷】pass 覆盖理论上可能采信历史轮遗留通过区，但 worker 入口 `_audit_evidence_passed` 前置检查保证到达该路径时远端尚无通过证据（否则早已跳过重审），场景被结构性排除；谓词 `machine_audit_passed_text`（server/board/models.py:70）为节内末行裁决且不通过结论优先，远端含否定结论不会被误判——有专测覆盖。
+
+### 关键机制独立复核
+
+- 目标①：`_audit_timeout_seconds` 现仅作自适应函数 base 来源，唯一消费点 main.py:3799 已切 `_audit_adaptive_timeout_seconds`；ccc081 回放数学复核（base=900、diff≈3000 行 → scale=min(2.0, 1+2800/1800)=2.0 → 1800s）与回写一致。
+- 目标②：双重校验 = ls-remote 非空 + fetch 后远端跟踪分支卡文过谓词；rel 双侧 resolve 修复有全链路无 mock 的符号链接回归锁（`test_symlinked_worktree_keeps_full_rel`）。
+- 测试为合成 bare origin 仓真实行为级测试（monkeypatch 仅注入单点故障模拟），10 用例清单与回写声明逐条对上；机械门禁（129 绿/全量零新增失败/ruff）由引擎裁决，本席未重跑。
+
+### 维护区核对
+
+四问均为单选落括号（[否]/[有]/[否]/[否]），说明均一句实情非占位；抽查：`docs/lessons.md` 存在 ✓、「无关联方案」与卡头关联字段一致 ✓、push 证据 commit 存在 ✓——无不实声明。
+
+### 结论
+
+机审：通过
