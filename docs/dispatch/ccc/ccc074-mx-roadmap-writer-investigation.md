@@ -1,6 +1,6 @@
 # 任务卡 ccc074 · mx/roadmap 周期写入者定位调查（DSH 执行）
 
-> 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-24
+> 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-24
 
 ## 目标
 
@@ -39,7 +39,18 @@
 
 ## 回写区
 
-（执行体回写）
+（执行体回写 · 2026-08-24 DSH）
+
+**实现说明**：只读取证 + 一次性动态复现，未实施任何修复。写入者定位为同一代码路径的双触发面：(A) 测试链——`server/tests/test_observer.py:94-115 test_run_observer_output` 隔离缺口（`OBSERVER_FORCE=true` 强制实跑，`scan_findings(cfg, PROJECT_ROOT)` 吃真实仓库根、`write_roadmap_draft` 未 mock），任何 checkout 跑全量 pytest 即对所在 checkout 的 `docs/projects/mx/roadmap.md` 追加 Loop 巡查草案行（路径基准 `server/board/roadmap.py:26 _repo_root` 与 `observer.py:40 PROJECT_ROOT` 均基于 `__file__`）——此为 worktree 污染元凶，与 ccc068 多轮全量 pytest 节奏吻合；(B) 生产链——launchd `com.ccc.scheduler` 常驻进程（PID 31668，PPID=1，cwd=主仓，60s 轮询，12:32:46 实跑日志命中与 patch 逐字相同的 mx/M8 发现）经 `run_observer→write_roadmap_draft(:762)→create_draft(roadmap.py:604)→_write_roadmap(roadmap.py:307)` 写主仓。反复复现根因：M8 声明「进行中」而 4 关联方案实际全部已完成的数据条件未消除。治理建议三选一取「改道」：测试补 mock 治本 + 写权限环境闸收口 + M8 数据收口；不选停止（拆治理闭环）、不选加锁（已有 fcntl 锁，锁不解越权写入面）。详见报告：docs/notes/2026-08-24-ccc-mx-roadmap-writer-findings.md。
+
+**自测结果**：门禁命令真实退出码=0——
+```
+$ test -s docs/notes/2026-08-24-ccc-mx-roadmap-writer-findings.md && grep -qE "写入者|结论" docs/notes/2026-08-24-ccc-mx-roadmap-writer-findings.md && echo OK
+OK        （gate-exit=0）
+```
+附加动态复现自测：一次性 detached worktree 内单跑 `pytest server/tests/test_observer.py::test_run_observer_output -q`（1 passed）后该 checkout 的 `docs/projects/mx/roadmap.md` 立即变脏（+3/-2），diff blob 对 `a1abcb5a4..d9462a1bc` 与 /tmp/ccc068-stray-mx-roadmap.patch* 字节级一致；复现现场已还原并移除临时 worktree。主仓现存脏文件为既有证据，按红线未触碰。
+
+**push 证据**：分支 `codex/ccc074-mx-roadmap-writer-investigation`，实现 commit `f5922a1be`（fetch+rebase origin/main 后显式 add 单文件提交，非 fast-forward 风险已消），已 push 至 origin 新建远端分支成功；卡回写 commit 随后追加同分支。
 
 ## 机审区
 
@@ -52,7 +63,7 @@
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
    - 说明：[否]。债务清偿直派卡无关联方案。
 2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：[无]。机制性教训已在同期 notes 记录。
+   - 说明：[无]。机制性教训（测试吃真实仓库根=隐式写仓器）已完整落在本卡白名单产物 docs/notes/2026-08-24-ccc-mx-roadmap-writer-findings.md，不另立 lessons 文件。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：[否]。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
