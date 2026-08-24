@@ -2185,6 +2185,7 @@ def _dispatch_and_collect(
     # F2 熔断（2026-08-24 直修）：近24h被强制击杀达阈值的卡，停止一切自动派发
     if _dispatch_blocked_by_ledger(work.id, data_dir=cfg.get("DATA_DIR")):
         logger.error("派发被熔断跳过（近24h强拆≥%d，需人工核查告警文件）: work=%s", _FORCE_KILL_LEDGER_LIMIT, work.id)
+        logger.info("[ccc089-trace] dispatch 拉起前早退（熔断）: work=%s phase=%s", work.id, log_phase)
         return False, [f"自动派发熔断：{work.id} 近24h多次被强制击杀，需人工介入（见 alerts/auto-dispatch-blocked-{work.id}.txt）"]
 
     entry = entry_override
@@ -2269,6 +2270,7 @@ def _dispatch_and_collect(
                             logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                         else:
                             _bump_worktree_failures()
+                            logger.info("[ccc089-trace] dispatch 拉起前早退（worktree 重建+关联均失败）: work=%s phase=%s", work.id, log_phase)
                             return False, [
                                 "基础设施：worktree 重建与关联均失败（隔离强制，不回退默认目录）: "
                                 + (res_existing.stderr or res_add.stderr or "").strip()
@@ -2308,6 +2310,7 @@ def _dispatch_and_collect(
                         logger.info("Worktree 关联已有分支成功: %s", worktree_path)
                     else:
                         _bump_worktree_failures()
+                        logger.info("[ccc089-trace] dispatch 拉起前早退（worktree 创建+关联均失败）: work=%s phase=%s", work.id, log_phase)
                         return False, [
                             "基础设施：worktree 创建与关联均失败（隔离强制，不回退默认目录）: "
                             + (res_existing.stderr or res.stderr or "").strip()
@@ -2315,6 +2318,7 @@ def _dispatch_and_collect(
         except Exception as exc:
             # 2026-08-12 隔离升级：异常也不再静默回退
             _bump_worktree_failures()
+            logger.info("[ccc089-trace] dispatch 拉起前早退（worktree 过程异常）: work=%s phase=%s err=%s", work.id, log_phase, exc)
             return False, [f"基础设施：worktree 创建过程异常（隔离强制，不回退默认目录）: {exc}"]
 
     # ── 业务仓隔离（2026-08-12 事故修复）：业务仓型任务必须建每卡 worktree ──
@@ -2354,6 +2358,7 @@ def _dispatch_and_collect(
             biz_worktree=biz_worktree_path,
         )
     except ValueError as exc:
+        logger.info("[ccc089-trace] dispatch 拉起前早退（build_command 失败）: work=%s phase=%s err=%s", work.id, log_phase, exc)
         return False, [f"命令构造失败: {exc}"]
 
     # ── 中枢 Prompt 注入：读取卡内提示段，追加到执行体/验收体 prompt ──
@@ -3263,6 +3268,21 @@ def _ledger_record(
     - kind="infra"（机审执行失败）不参与命中判定。
     失败不阻断主流程（台账是观测面）。
     """
+    if kind == "infra":
+        # ccc089 插桩（纯日志·零行为变更）：定位每条 infra 台账行的精确产生出口。
+        try:
+            import traceback as _tb
+
+            _chain = " <- ".join(f"{f.name}:{f.lineno}" for f in reversed(_tb.extract_stack()[-4:-1]))
+            logger.info(
+                "[ccc089-trace] infra 记账: work=%s source=%s reason0=%s 出口链=%s",
+                getattr(work, "id", ""),
+                source,
+                (reasons or [""])[0][:80],
+                _chain,
+            )
+        except Exception:
+            logger.debug("[ccc089-trace] 插桩失败（不阻断）", exc_info=True)
     try:
         from server.board.audit_ledger import backfill_card_hits, record_audit
 
@@ -3346,6 +3366,7 @@ def _run_machine_audit_after_writeback(
                 _record_machine_audit_pass(work)
                 return True, [], True
             logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
+            logger.info("[ccc089-trace] 补提交支路失败转重审（本支路自身不记账）: work=%s", work.id)
     # 2017 机审固定交叉配对（老板 2026-08-08 定稿，恢复 08-06 原规则）：
     # OpenCode 开发 → Claude Code 机审（2026-08-15 起开发仅 OpenCode，Claude Code 不接触开发职能）。
     # 卡头「验收」字段只决定 M1 端合入验收席（自验收），不决定 2017 机审工具。
