@@ -1,6 +1,6 @@
 # 任务卡 ccc090 · new-card.sh 出卡原子化——落盘即提交即推送（DSH 执行）
 
-> 关联：R1-R4 出卡吃单窗三次实锤 · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：ccc · 日期：2026-08-25
+> 关联：R1-R4 出卡吃单窗三次实锤 · 执行体：DSH · 验收：DSH · 状态：已回写（第 2 轮·机审打回复核） · 派发：engine · 项目：ccc · 日期：2026-08-25
 
 ## 目标
 
@@ -63,18 +63,51 @@
 - 演练卡自动 commit：`d18e40fbc`（docs(card): tst005 …）
 - 远端核验：`git ls-remote origin codex/ccc090-newcard-atomic` = `d18e40fbcd7593d950b986d31e54724aa43de527` = 本地 HEAD，两 commit 均已在 origin。
 
+### 第 2 轮回写（机审打回复核轮 · DSH · 2026-08-25）
+
+**范围声明**：本轮 `scripts/new-card.sh` **零改动**（依据见下）；本节为机审 F1 的独立复核记录、白名单内不可修复论证与处置请求。执行体不越权定夺语义、不越白名单改文件。
+
+#### F1 独立复核（不采信上轮结论，逐条重取证据）
+
+1. `server/board/plans.py`：`_rollback_created()` 仍为纯 `p.unlink(missing_ok=True)`；`convert_plan` 对 new-card.sh **任意 returncode≠0** 一律 `_rollback_created(created_files)`（比上轮机审所引 rc∈{5,6,7} 精确匹配更宽）。F1 成立。
+2. `scripts/plan-to-cards.sh`：失败回滚两处纯删卡——`:132`（出卡后 CARD_PATH 空/缺失时 `for c in "${CREATED[@]}"; do rm -f "$c"`）与 `:200`（Phase 2 校验失败同构）。F1 成立（行号较上轮机审所引 :137-138 有漂移，机制一致）。
+3. 上游基线核验：behind 1 的 origin/main 新提交 `d26c00eb2` 仅触 `scripts/approve-merge.sh`/`scripts/deploy-ccc.sh`/`server/board/audit_ledger.py`，三个涉事文件均未被上游修改，上轮机审基线仍有效。
+4. 远端现状：`git ls-remote origin codex/ccc090-newcard-atomic` = `2817a8c2c` = 本地 HEAD（引擎打回信封已推达）。
+
+#### 白名单内不可修复论证（停止实现依据）
+
+F1 伤害链 = (卡已 commit) ∧ (rc≠0) ∧ (调用方纯 unlink/rm 工作区卡)。new-card.sh 白名单内唯一可断链手段 = 对 push 失败/detached HEAD 降级 rc0+警告——直接违反卡面目标「任一步失败即非零退出」字面，且上轮机审明示该语义取舍「需老板定夺」。exit 5/6 场景卡未 commit、纯删除回滚无害，无 F1 风险，无需改动。故按红线停止实现、如实报告。
+
+#### 本轮自测复验（附命令）
+
+1. `bash -n scripts/new-card.sh` → PASS。
+2. tmp 模式零 git 副作用：`--dispatch-dir $(mktemp -d)` 出 tst001-ccc090-retry-tmp → rc=0、卡落 tmp、日志「dispatch-dir 在仓外（测试形态），跳过原子提交（零 git 副作用）」、HEAD 保持 `2817a8c2c` 不变、`git status --short` 无输出。PASS。
+3. `python3 -m pytest server/tests/test_card_dispatch_gate.py server/tests/test_plans.py -q` → 84 项全过（进度 100%，退出码 0）。
+4. 真实出卡全链验收引用第 1 轮证据（代码零改动，行为不可能变化）：演练卡 tst005-ccc090-atomic-drill，自动 commit `d18e40fbc` 已在 origin（上轮回写区与机审区双重复核）。
+
+#### 请环节①/② 处置（需授权，执行体不停等期间维持停手）
+
+- A（推荐）：扩卡/新卡把 `server/board/plans.py` + `scripts/plan-to-cards.sh` 纳入白名单，按上轮机审建议改回滚（识别原子段产物走 git 层回退或保留已提交卡分支）；
+- B：老板定夺将纯 push 失败降级 rc0+警告（须先修订本卡目标字面「任一步失败即非零退出」）；
+- C：维持现状合入，接受为已知限制（单卡直出主路径不受 F1 影响；风险仅限批量转卡叠加网络抖动窗口，且无数据丢失，孤儿提交可手工清理）。
+- 教训已沉淀：`docs/notes/2026-08-25-ccc-lessons.md`（工具新增非零退出语义必须同步审计调用方回滚契约）。
+
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：本卡关联为 R1-R4 吃单窗实锤直派，无 prefix-plan-NNN 方案编号，无方案文件需同步。
-2. **教训沉淀**：本卡是否产出可复用教训？[无]
-   - 说明：「出卡必须原子提交防 _force_align_dispatch 清 untracked」已直接固化为 scripts/new-card.sh 工具行为与头注释，不另立 notes 条目。
+   - 说明：本卡关联为 R1-R4 吃单窗实锤直派，无 prefix-plan-NNN 方案编号，无方案文件需同步；第 2 轮复核确认无新增方案关联。
+2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：第 1 轮教训（原子提交防清 untracked）已固化进 scripts/new-card.sh 头注释；第 2 轮新增教训「工具新增非零退出语义必须同步审计调用方回滚契约」已落 docs/notes/2026-08-25-ccc-lessons.md。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
-   - 说明：仅改变 scripts/new-card.sh 的行为（新增原子提交段），目录结构/技术栈/路径零变化。
+   - 说明：仅改变 scripts/new-card.sh 的行为（新增原子提交段），目录结构/技术栈/路径零变化；第 2 轮零代码改动，仅新增一条 notes 文档。
 4. **线路图**：项目近况/下一步是否变化？[否]
-   - 说明：吃单窗消除属 R 系列既定收口项落地，近况与下一步不变。
+   - 说明：吃单窗消除属 R 系列既定收口项落地，近况与下一步不变；F1 处置三选项已在本卡回写区挂账待上层定夺，属流程推进非线路变化。
+
+## 批注落实
+
+本卡 `## 人工批注` 栏为「（留空）」占位，两轮执行（第 1 轮实现+回写、第 2 轮机审打回复核）均无老板实批注需落实；validate 因状态=已回写且占位文本非模板句而要求本节，特此如实声明。
 
 ## 机审区
 
