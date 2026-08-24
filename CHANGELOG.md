@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+
+## [Unreleased] · 2026-08-24 安全加固直修
+
+### Added
+- 看板写端点 Bearer 鉴权模式 `CCC_WEB_WRITE_AUTH`（默认开；读端点保持局域网直连）
+- 引擎单实例锁、强拆台账+熔断、内嵌 scheduler 巡检载体（log-janitor/cluster-collect/merge-dsh-trigger）
+
+### Changed
+- 中转站(:6100/:6102)整体退役拆除，模型出口各 CLI 直连
+- 机审孤儿根修：标记命名分流、判活剔 engine_pid、强拆时距 1.5×执行超时、回收口 killpg 全覆盖
+- 弱口令 ccc/ccc 轮换；真实 API key 出仓（服务商侧吊销待办）
+
+### Fixed
+- 「已作废」状态词归一；机审台账 pytest 污染清洗；chat_bridge 收敛本机绑定
+
 ## [v0.71.0] — 2026-08-08
 
 ### Added — 线路图升级为集群全景架构图（ARCH 体系 v1.0）

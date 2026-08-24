@@ -1,3 +1,4 @@
+> ⚠️ 2026-08-24 中转站(ai-loop-router :4100/:4102/:6100/:6102)已整体退役拆除；本文涉及 router 的段落为历史架构描述，现行模型出口由各 CLI 直连——权威拓扑见 `deploy/topology.md`。
 # CCC Desktop 客户端（SwiftUI）
 
 > **主产品入口**。网页 Hub 为运维/兼容。服务端见 [`topology.md`](topology.md)。  

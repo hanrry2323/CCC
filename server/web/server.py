@@ -4173,7 +4173,11 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_404()
 
     def do_POST(self):
-        # ccc-plan-045 P1：墙回写端点置于鉴权门前（同 /tasks/stream 组，LAN 信任模型）
+        # R2-P0 修复（2026-08-24 直修）：墙回写端点移入鉴权门——原 ccc-plan-045「LAN 信任」
+        # 前置豁免构成匿名 prompt 注入链（sessionId 可经 /wall/api/active 匿名枚举），
+        # 与 CCC_WEB_WRITE_AUTH 门禁语义正面冲突。前端 wallPage.js 已同步携带 Bearer。
+        if not self._check_auth():
+            return
         raw_post = self.path.rstrip("/").split("?")[0]
         if raw_post == "/wall/api/dsh/prompt":
             body = self._read_body() or {}
@@ -4193,8 +4197,6 @@ class _APIHandler(BaseHTTPRequestHandler):
                 return
             ok, err = wall.dsh_archive(sid)
             self._send_json({"ok": ok, "error": err})
-            return
-        if not self._check_auth():
             return
         path = self.path.rstrip("/").split("?")[0]
         if path == "/session":

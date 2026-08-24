@@ -1,3 +1,4 @@
+> ⚠️ 2026-08-24 中转站已退役拆除；文中 ai-loop-router 相关「现行」表述作废——权威拓扑见 `deploy/topology.md`。
 # Mac2017 服务端目录规范
 
 > SSOT：Server 机 `~/program` 布局。禁止随意新建顶层业务目录。  

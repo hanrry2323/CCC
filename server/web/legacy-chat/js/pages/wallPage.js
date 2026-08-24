@@ -515,11 +515,33 @@ async function sendPrompt(wrap) {
   hint.classList.remove('err');
   hint.textContent = '发送中…';
   try {
+    // R2-P0 配套（2026-08-24）：服务端写门禁生效后，墙写需携带 Bearer；
+    // 首次无 token 时现场向 /session 换取并缓存于 localStorage。
+    let tok = localStorage.getItem('ccc_token');
+    if (!tok) {
+      const pw = prompt('墙写操作需要看板口令（账号 ccc；口令见服务器 ~/.ccc/web-auth.txt）');
+      if (!pw) { btn.disabled = false; hint.textContent = '已取消'; return; }
+      const lr = await fetch('/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'ccc', password: pw }),
+      });
+      if (!lr.ok) { hint.textContent = '口令校验失败'; hint.classList.add('err'); btn.disabled = false; return; }
+      tok = (await lr.json()).token;
+      localStorage.setItem('ccc_token', tok);
+    }
     const r = await fetch('/wall/api/dsh/prompt', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
       body: JSON.stringify({ sessionId: sid, text }),
     });
+    if (r.status === 401) {
+      localStorage.removeItem('ccc_token');
+      hint.textContent = '登录态过期，请重发';
+      hint.classList.add('err');
+      btn.disabled = false;
+      return;
+    }
     const d = await r.json();
     if (d.ok) {
       hint.textContent = '已排队 ✓';

@@ -87,7 +87,7 @@ class TestConfigLoader:
         """正常加载：写入所有必填项 + 可选键显式值，应返回完整字典。"""
         load_config, _ = loader
         env_path = _write_env(
-            self.REQUIRED_FIXTURE + ["RELAY_UPSTREAM_KEY=sk-test", "PYTHON_BIN=/opt/bin/python3"]
+            self.REQUIRED_FIXTURE + ["CCC_WORKTREE_BASE=/tmp/ccc/wt", "PYTHON_BIN=/opt/bin/python3"]
         )
         try:
             cfg = load_config(env_path)
@@ -97,7 +97,7 @@ class TestConfigLoader:
             assert cfg["DATA_DIR"] == "/tmp/ccc/data"
             assert cfg["LOG_DIR"] == "/tmp/ccc/logs"
             assert cfg["EXECUTOR_REGISTRY_PATH"] == "/tmp/ccc/executors.json"
-            assert cfg["RELAY_UPSTREAM_KEY"] == "sk-test"
+            assert cfg["CCC_WORKTREE_BASE"] == "/tmp/ccc/wt"
             assert cfg["PYTHON_BIN"] == "/opt/bin/python3"
         finally:
             Path(env_path).unlink(missing_ok=True)
@@ -123,12 +123,12 @@ class TestConfigLoader:
             Path(env_path).unlink(missing_ok=True)
 
     def test_load_optional_default(self, loader) -> None:
-        """可选键缺省：RELAY_UPSTREAM_KEY / PYTHON_BIN / SCHEDULER_* / CLUSTER_TARGETS 缺省。"""
+        """可选键缺省：PYTHON_BIN / SCHEDULER_* / CLUSTER_TARGETS 缺省（RELAY_* 已随中转站退役移除）。"""
         load_config, _ = loader
         env_path = _write_env(self.REQUIRED_FIXTURE)  # 不含可选键
         try:
             cfg = load_config(env_path)
-            assert cfg["RELAY_UPSTREAM_KEY"] == ""
+            assert cfg["CCC_WORKTREE_BASE"] == ""
             assert cfg["PYTHON_BIN"] == ""
             assert cfg["SCHEDULER_INTERVAL"] == "60"
             assert cfg["SCHEDULER_DISPATCH_DIR"] == ""

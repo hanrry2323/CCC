@@ -109,3 +109,5 @@ audit 阶段熔断阈值（:1544 写死 `>= 2`）改为读 `EXECUTOR_INFRA_MAX_S
 5. 三个脚本交付且语法通过、幂等、deploy 不悬挂
 6. 单测全绿（t53 除外）；push 后 origin/main 含改动；工作区干净
 7. 不碰已验收逻辑/2017 运行面/卡文件
+
+> **2026-08-24 更新**：本文 EXECUTOR_INFRA_MAX_STRIKES 等旧熔断口径已被直修更新（强拆时距 1.5×EXECUTOR_TIMEOUT、台账+告警熔断），现行以 `docs/product/machine-audit-flow.md` 为准。

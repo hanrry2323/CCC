@@ -454,7 +454,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def create_server(port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer(("0.0.0.0", port), _Handler)
+    # R2 收敛（2026-08-24）：仅本机监听——消费方在同机或经 ssh 隧道；
+    # 原 0.0.0.0 叠加"空 token 不鉴权"构成 LAN 裸面。
+    return ThreadingHTTPServer(("127.0.0.1", port), _Handler)
 
 
 def serve_forever(port: int = DEFAULT_PORT) -> None:

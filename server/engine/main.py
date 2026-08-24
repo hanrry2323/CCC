@@ -2940,8 +2940,8 @@ def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None, dat
     对死卡做全套富化。此处按 PID 存活判定：标记内所有 PID 已死（或无 PID）→
     删除；任一 PID 存活（可能刚写完、子进程刚拉起）→ 保留，绝不误删在途任务。
 
-    此外，标记超过 ``MAX_MARKER_AGE_SECONDS``（2h）同样强制删除——即使 PID 存
-    活也不能让僵尸进程永久占用槽位（兜底回收）。
+    此外，标记超过强拆时距（_effective_max_marker_age()=1.5×执行超时；机审标记再收紧到
+    2×机审超时）同样强制删除——即使 PID 存活也不能让僵尸进程永久占用槽位。
     """
     n = 0
     now_ts = time.time()
@@ -2962,7 +2962,6 @@ def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None, dat
         except OSError:
             raw = ""
             mtime = 0.0
-        pids_all = _parse_running_marker_pids(raw)
         # 1-2 口径修正（2026-08-24）：存活判定只认工作者 PID（pid=/child_pid=），
         # 剔除恒活的旧 engine_pid——见 _parse_running_marker_worker_pids。
         pids = _parse_running_marker_worker_pids(raw)

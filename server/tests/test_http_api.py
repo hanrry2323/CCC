@@ -1984,8 +1984,8 @@ class TestConfigEndpoint:
     def test_does_not_leak_sensitive_keys(self, api_server, monkeypatch):
         """敏感字段（密钥/密码/上游地址/路径）不出现在响应中。"""
         monkeypatch.setenv("CCC_WEB_PASSWORD_HASH", "sensitive_hash_value")
-        monkeypatch.setenv("RELAY_UPSTREAM_KEY", "sk-sensitive-key-1234567890")
-        monkeypatch.setenv("RELAY_UPSTREAM_URL", "http://secret-upstream.example.com/v1")
+        monkeypatch.setenv("OPENCODE_GO_API_KEY", "sk-sensitive-key-1234567890")
+        monkeypatch.setenv("CCC_WORKTREE_BASE", "/secret/worktree/base")
         monkeypatch.setenv("DATA_DIR", "/secret/data/path")
         monkeypatch.setenv("EXECUTOR_REGISTRY_PATH", "/secret/registry.json")
         status, data = _get(api_server, "/config")

@@ -54,3 +54,12 @@
    - 终验取证：`git fetch origin codex/<stem>` → `git diff origin/main...origin/codex/<stem>`（见 [`accept-board-sop.md`](accept-board-sop.md) §0）。  
 2. **五态 ≠ 看板列**：`/board/states` 顶层「已回写」= 卡头基础态计数（含仍在「机审」列的卡）；真正可终验看 `columns.已回写` 或 snapshot「已回写」列。  
 3. **机审只属 2017 Engine**：M1 听到「验收*」走终验 SOP，**禁止**代写 `## 机审区`。机审通过后正文须在**将要终验的那份卡**（生产路径 / 已同步内容）可见。
+
+## 实现要点（2026-08-24 直修增补 · 防踩坑）
+
+- **标记命名分流**：机审阶段 refresh 按 phase 写 `{id}-audit.running`，与认领/finally 清理同名；plain `{id}.running` 仅执行阶段使用。
+- **判活口径**：只认工作者 PID（`pid=`/`child_pid=`），恒活 `engine_pid=` 不计入（`_parse_running_marker_worker_pids`）；web/exec_metrics 同源语义。
+- **强拆时距**：`_effective_max_marker_age()`=1.5×EXECUTOR_TIMEOUT（机审标记再收紧至 2×机审超时）；超时/-9/-15 失败归 infra 特征，不烧业务重试预算。
+- **熔断台账**：所有强制击杀路径统一 `_record_force_kill(data_dir=cfg)` 入 `DATA_DIR/force_kill_ledger.json`；同卡 24h≥3 次 → 停自动派发并落 alerts 告警文件（人工删除恢复）。台账必须透传 data_dir——缺省回退曾致测试污染生产（w4/ret1/ret2 事故）。
+- **单实例锁**：engine 启动取 `DATA_DIR/engine.lock` fcntl 排他锁，双开退出码 2。
+- **回收口 killpg 全覆盖**：reclaim 强拆支路/常规回收支路/cleanup 兜底/claim 覆写前四处均先按进程组收割幸存者。

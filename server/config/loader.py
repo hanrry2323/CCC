@@ -29,7 +29,6 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
 # 可选键（有默认值）
 # RELAY_PORT / RELAY_UPSTREAM_URL 原为必填，2026-08-24 中转站退役后从必需移除（生产不再提供）
 OPTIONAL_KEYS: dict[str, str] = {
-    "RELAY_UPSTREAM_KEY": "",
     "PYTHON_BIN": "",
     # 定时任务框架
     "SCHEDULER_INTERVAL": "60",
@@ -42,8 +41,6 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CLUSTER_HP_TARGET": "",
     "CLUSTER_PG_TARGET": "",
     "CLUSTER_PG_SSH_USER": "hp",
-    "CCC_CHAT_BRIDGE_URL": "",
-    "CCC_CHAT_BRIDGE_TOKEN": "",
     # 执行体派发运行参数（T32 真实派发闭环）
     "EXECUTOR_TIMEOUT_SECONDS": "300",
     "EXECUTOR_LOG_DIR": "",
@@ -73,6 +70,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CCC_AUTO_PULL": "1",
     "CCC_AUTO_PULL_REMOTE": "origin",
     "CCC_AUTO_PULL_BRANCH": "main",
+    # 业务 worktree 基址回落（worktree_dirty 文档承诺经 load_config 回落；R2 补链）
+    "CCC_WORKTREE_BASE": "",
     # 大脑知识库检索（T37：/conversation 回答前检索 CCC 自建知识库）
     "CCC_BRAIN_KB": "0",
     "CCC_KB_INDEX_DIR": "",
