@@ -95,7 +95,23 @@
 
 ## 机审区
 
-（验收席专用——执行体禁止写入）
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+独立复核记录（worktree ccc079 · 分支 codex/ccc079-board-visibility-unification @ c9ca1c06e · 全部结论命令可复现，本席亲跑）：
+
+1. **范围与红线核对**：分支全量 diff（origin/main...HEAD）= 恰 5 文件——白名单三文件 + 卡文件回写 + docs/lessons.md。lessons.md 定性为回写仪式面而非越界：docgate 完成钩子规定 Q2 勾[有]则说明必须引用 lessons.md/docs/notes（server/board/docgate.py L333），如实沉淀新教训必须写它，不写反而构成声明不实；卡头/验收区/已关闭零触碰，无 add -A 痕迹。红线 2 核实：FORBIDDEN_HEADER_KEYS 在 diff 中零命中、/cards 响应字段结构零改动（仅可见集合扩充）。
+2. **关键断言抽查（全部坐实）**：① zip 错位隐患说法属实——loader.py 装载循环 stat OSError 与解析失败两处 continue 均不 append items 而 all_files 不变（L391-393/L438-457），旧过滤块按位 zip(items, all_files) 必错位，随过滤块消除属正向收益；② 日志可见化接线核实——logger 名 ccc.web.server（L84）与 _ensure_board_log_visibility 配置对象一致；handler 幂等检查逻辑无重复添加风险；_compose_board_items 单一 return 路径被覆盖；server.py 唯一启动入口 serve_forever()（L4758，含 _warmup 的块在其函数体内）已配置，chat_bridge.py 为独立 _Handler 不服务看板 API、无需覆盖；③ push 证据核实：ls-remote origin 分支 tip == 本地 HEAD == c9ca1c06e（回写 commit 亦已推送）；④ 方案 048 状态=部分执行+关联卡 ccc079 属实（docs/projects/ccc/plans/048-board-wall-role-split.md L5/L78）。
+3. **维护区核对**：四问格式机械合规——[是]/[有]/[否]/[否] 单选落问题行方括号、说明均为实情句无占位。Q1 抽查属实（见上）；Q2 docs/lessons.md Lesson 57 存在于 commit c9ca1c06e（+12 行）；Q3/Q4=[否] 与 diff 无档案/线路图改动一致。
+
+**发现与处置**：
+
+- F1（轻·影响 2+深度 1+红线邻近 1=4）：遗留红测试 test_board_loader.py::TestSubdirScan::test_scan_skips_platform_prefix_subdir——本席复跑确认变红（`assert 'ccc100' not in {'T99','ccc100'}` 失败），系设计变更废弃旧行为的必然代价，执行体披露红面属实且受白名单约束不动、请机审裁决，流程处置正确。但披露中「scan 函数默认豁免行为仍有其他用例覆盖」一句**失实**：tests 目录对 scan_dispatch_files 无任何直接覆盖（仅 test_observer.py 三处 monkeypatch），记入记录。
+- F1 已由本席就地修复（SOP 轻→就地修复不打回）：commit d9be14023——旧 items 层断言翻转为新契约（平台子目录卡经 load_dispatch_cards 入板）+ 新增 test_scan_default_skips_platform_subdir 补 scan 层默认豁免双向直接覆盖（默认不扫/include_platform=True 纳入）。修复后 pytest test_board_loader.py + 门禁双文件全绿 exit=0（本席重跑）。
+- 观察项 O1（不立项）：/cards 默认 page_size=50 首屏假象的响应面缓解归 048 P2/P3（已在计划挂账），本卡 P1 范围内处置恰当；observer 巡查现可见 ccc 卡使 card_status 交叉验证数据更全，方向符合「全量上板」意图，无回归证据。
+
+severity 计分：影响面 2（合入后全量套件红一例、门禁噪音，但已披露且单点）+ 改动深度 1（单用例翻转+补覆盖）+ 红线邻近 1（无红线违反，白名单缝隙由本席闭环）= 4 → 轻（无高维度，不触发强制重）。
+
+机审：通过
 
 ## 维护区
 
