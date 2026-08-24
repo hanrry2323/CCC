@@ -30,7 +30,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +44,12 @@ from server.engine.dispatch import (
     load_registry,
 )
 from server.engine.gates import DispatchGate, GateContext, GateRegistry, GateResult
-from server.engine.metrics import ProcessSampler, record_slot_snapshot, record_worker_event
+from server.engine.metrics import (
+    WORKER_EVENTS_FILE,
+    ProcessSampler,
+    record_slot_snapshot,
+    record_worker_event,
+)
 from server.engine.pool import get_audit_pool, get_dispatch_pool
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
@@ -359,6 +364,18 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path, phase
             return True, f"基础设施特征: {problem[:80]}"
         if "worktree" in pl and ("失败" in problem or "创建" in problem or "异常" in problem):
             return True, f"基础设施特征: {problem[:80]}"
+
+    # ccc083（2026-08-25）：击杀语义退出码 → 基础设施故障，不烧业务重试预算。
+    # 137=128+9、143=128+15 是 shell 包装层上报形态；-9/-15/-137/-143 是负信号数形态。
+    # 外力击杀（超时清扫/看门狗 kickstart 连带/防旋熔断）属基建语义；按业务失败处理会
+    # 立即重派，放大「杀→重派→再杀」风暴（2026-08-24 ccc078 机审连环 kickstart 实证：
+    # ccc079 audit exit 137 被记为业务失败 retry=1/3 回待分派）。
+    _kill_exit = re.compile(r"退出码非 0: ((?:137|143)|-(?:9|15|137|143))(?![0-9])")
+    for problem in problems:
+        m = _kill_exit.search(problem)
+        if m:
+            return True, f"击杀语义退出码（按基础设施冷却处理）: exit={m.group(1)}"
+
     keywords = [
         "connection error",
         "network error",
@@ -615,6 +632,243 @@ def _infra_cooldown_active(
         return False
 
 
+# ── ccc083 防旋（2026-08-25）：短命会话计数熔断 + 业务重试指数退避 ──
+# 背景：2026-08-24 14:49–15:46 产生 46 个短命执行体会话（4–16 步无编辑即断），
+# 与 watchdog 连环 kickstart 秒级对齐；引擎对失败会话立即原样重派是放大器。
+# 本段两个机制：
+#   1) 短命熔断：窗口内 ≥M 个「失败且短命」worker 事件 → 暂停一切自动派发 + 告警文件；
+#   2) 业务重试退避：回待分派重试不再下一轮立即重派，按 retry_count 指数退避（进程内）。
+
+
+def _short_session_seconds(cfg: dict[str, Any]) -> int:
+    """会话寿命低于该秒数记「短命」。默认 300s。"""
+    try:
+        return max(30, int(cfg.get("EXECUTOR_SHORT_SESSION_SECONDS") or 300))
+    except (TypeError, ValueError):
+        return 300
+
+
+def _short_session_window_seconds(cfg: dict[str, Any]) -> int:
+    """短命计数统计窗口。默认 600s。"""
+    try:
+        return max(60, int(cfg.get("EXECUTOR_SHORT_SESSION_WINDOW_SECONDS") or 600))
+    except (TypeError, ValueError):
+        return 600
+
+
+def _short_session_max_count(cfg: dict[str, Any]) -> int:
+    """窗口内短命失败事件达到该数即熔断。默认 5。"""
+    try:
+        return max(2, int(cfg.get("EXECUTOR_SHORT_SESSION_MAX_COUNT") or 5))
+    except (TypeError, ValueError):
+        return 5
+
+
+def count_recent_short_sessions(
+    events_path: str | Path,
+    now_ts: float | None = None,
+    *,
+    window_s: int = 600,
+    short_s: int = 300,
+) -> int:
+    """统计 worker-events.jsonl 窗口内「失败且寿命 ≤ short_s」的 worker 事件数。
+
+    只读解析；文件缺失/坏行容错（返回已解析计数）。``kind != "worker"`` 行
+    （如 ccc083 会话探针 kind=session）不参与计数。
+    """
+    path = Path(events_path)
+    if not path.is_file():
+        return 0
+    now = time.time() if now_ts is None else now_ts
+    count = 0
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(rec, dict) or rec.get("kind") != "worker":
+                    continue
+                if rec.get("ok"):
+                    continue
+                dur = rec.get("duration_s")
+                if not isinstance(dur, (int, float)) or dur < 0:
+                    continue
+                if dur > short_s:
+                    continue
+                ts = rec.get("ts")
+                if isinstance(ts, str):
+                    try:
+                        from datetime import datetime, timezone
+
+                        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        event_ts = parsed.timestamp()
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                if now - event_ts <= window_s:
+                    count += 1
+    except OSError:
+        return count
+    return count
+
+
+def short_session_breaker_status(
+    log_dir: str | Path,
+    cfg: dict[str, Any],
+    now_ts: float | None = None,
+) -> tuple[bool, str]:
+    """短命会话熔断判定：窗口内短命失败事件 ≥ 阈值 → (True, 描述)。"""
+    window = _short_session_window_seconds(cfg)
+    short_s = _short_session_seconds(cfg)
+    max_count = _short_session_max_count(cfg)
+    events = Path(log_dir) / "worker-events.jsonl"
+    hits = count_recent_short_sessions(events, now_ts, window_s=window, short_s=short_s)
+    if hits >= max_count:
+        return (
+            True,
+            f"近 {window}s 内短命失败会话 {hits} 个 ≥ 阈值 {max_count}（寿命≤{short_s}s），暂停派发防旋",
+        )
+    return False, ""
+
+
+def _write_short_session_alert(log_dir: str | Path, detail: str, now_ts: float | None = None) -> None:
+    """熔断告警落盘（同窗口内覆盖写，人工删除即恢复观察）。"""
+    alerts_dir = Path(log_dir) / "alerts"
+    try:
+        alerts_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.fromtimestamp(
+            now_ts if now_ts is not None else time.time(), tz=timezone.utc
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        (alerts_dir / "short-session-breaker.txt").write_text(
+            f"[{stamp}] 短命会话熔断触发，自动派发暂停一个统计窗口：{detail}\n"
+            "恢复条件：该告警随下一个非熔断轮次自动解除；人工核查后可删除本文件。\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        logger.warning("短命熔断告警写入失败（不影响熔断判定）: %s", alerts_dir)
+
+
+_RETRY_BACKOFF_UNTIL: dict[str, float] = {}
+
+
+def retry_backoff_seconds(cfg: dict[str, Any], retry_count: int) -> int:
+    """业务重试指数退避秒数：base × 2^(retry_count-1)，封顶 max。
+
+    retry_count=1 → base；默认 base=60s、max=900s。
+    """
+    try:
+        base = max(0, int(cfg.get("EXECUTOR_RETRY_BACKOFF_SECONDS") or 60))
+    except (TypeError, ValueError):
+        base = 60
+    try:
+        max_s = max(base, int(cfg.get("EXECUTOR_RETRY_BACKOFF_MAX_SECONDS") or 900))
+    except (TypeError, ValueError):
+        max_s = 900
+    power = max(0, int(retry_count) - 1)
+    return min(max_s, base * (2**power)) if base else 0
+
+
+def set_retry_backoff(work_id: str, seconds: float, now_ts: float | None = None) -> None:
+    """记录某卡下一次允许派发的最早时刻（进程内；引擎重启即失效，由熔断兜底）。"""
+    if seconds <= 0:
+        return
+    _RETRY_BACKOFF_UNTIL[work_id] = (time.time() if now_ts is None else now_ts) + seconds
+
+
+def clear_retry_backoff(work_id: str) -> None:
+    """收单成功/终态清除退避标记。"""
+    _RETRY_BACKOFF_UNTIL.pop(work_id, None)
+
+
+def retry_backoff_active(work_id: str, now_ts: float | None = None) -> bool:
+    """该卡是否仍在业务重试退避期内。"""
+    until = _RETRY_BACKOFF_UNTIL.get(work_id)
+    if until is None:
+        return False
+    now = time.time() if now_ts is None else now_ts
+    if now >= until:
+        _RETRY_BACKOFF_UNTIL.pop(work_id, None)
+        return False
+    return True
+
+
+def _append_session_probe(
+    log_dir: str | Path,
+    *,
+    work_id: str,
+    phase: str,
+    lifetime_s: float,
+    short_threshold_s: int,
+    worktree_path: str | Path | None,
+    marker_id: str | None = None,
+) -> None:
+    """向 worker-events.jsonl 追加一行 kind=session 会话探针（ccc083）。
+
+    字段：
+    - ``session_lifetime_s``：会话墙钟寿命（秒）；
+    - ``short_session``：寿命是否 ≤ short_threshold_s（短命会话标记）；
+    - ``edit_hit``：编辑命中——worktree 相对派发基点（dispatch_tip）有新提交，
+      或存在未提交改动；无法判定时为 null（降级，不伪造）。
+    埋点失败只记日志（调用方兜底），绝不抛进收单热路径。
+    """
+    edit_hit: bool | None = None
+    dirty = False
+    head: str | None = None
+    tip = _marker_dispatch_tip(log_dir, marker_id) if marker_id else None
+    if worktree_path and os.path.isdir(str(worktree_path)):
+        try:
+            res_status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(worktree_path),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if res_status.returncode == 0:
+                dirty = bool(res_status.stdout.strip())
+        except (OSError, subprocess.SubprocessError):
+            dirty = False
+        try:
+            res_head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(worktree_path),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if res_head.returncode == 0:
+                head = res_head.stdout.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            head = None
+    if dirty or (tip and head and head != tip):
+        edit_hit = True
+    elif tip and head and head == tip:
+        edit_hit = False
+    record = {
+        "ts": (
+            datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        ),
+        "kind": "session",
+        "work_id": work_id,
+        "phase": phase,
+        "session_lifetime_s": round(max(0.0, float(lifetime_s)), 3),
+        "short_session": bool(lifetime_s <= short_threshold_s),
+        "edit_hit": edit_hit,
+    }
+    path = Path(log_dir) / WORKER_EVENTS_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def _business_repo_has_new_commit(work: Work, worktree_path: str) -> bool:
     """业务仓型任务（registry 指向外部仓）产物检查。
 
@@ -780,6 +1034,9 @@ def _fail_retry_or_reject(
         work.retry_count += 1
         work.transition(State.TODO, problems=reasons)
         store.save_work(work)
+        # ccc083：回待分派重试不再下一轮立即重派——按 retry_count 指数退避（防旋）
+        backoff_s = retry_backoff_seconds(cfg, work.retry_count)
+        set_retry_backoff(work.id, backoff_s)
         if log_dir:
             from server.engine.runtime_state import write_card_state, clear_card_state
 
@@ -787,10 +1044,11 @@ def _fail_retry_or_reject(
             write_card_state(log_dir, work.id, retry_count=work.retry_count)
             clear_card_state(log_dir, work.id)
         logger.info(
-            "失败回待分派重试: work=%s retry=%d/%d problems=%s",
+            "失败回待分派重试: work=%s retry=%d/%d 退避=%ds problems=%s",
             work.id,
             work.retry_count,
             max_r,
+            backoff_s,
             reasons[:2],
         )
         return True
@@ -2383,6 +2641,7 @@ def _dispatch_and_collect(
         exit_kind: str,
         problems: list[str] | None = None,
     ) -> None:
+        lifetime_s = time.monotonic() - _t_start
         try:
             record_worker_event(
                 log_dir,
@@ -2390,7 +2649,7 @@ def _dispatch_and_collect(
                 phase=phase,
                 ok=ok,
                 returncode=returncode,
-                duration_s=time.monotonic() - _t_start,
+                duration_s=lifetime_s,
                 exit_kind=exit_kind,
                 peak_rss_mb=sampler.peak_rss_mb if sampler else None,
                 peak_cpu_pct=sampler.peak_cpu_pct if sampler else None,
@@ -2398,6 +2657,21 @@ def _dispatch_and_collect(
             )
         except Exception:
             logger.exception("worker 事件埋点失败（不影响流程）: work=%s", work.id)
+        # ccc083 会话探针：worker-events.jsonl 追加 kind=session 行（会话寿命/短命标记/编辑命中）。
+        # 与 kind=worker 行并存；消费方按 kind 过滤互不干扰（web/server.py 只取 kind==worker）。
+        try:
+            _marker_id = f"{work.id}-audit" if phase == "audit" else work.id
+            _append_session_probe(
+                log_dir,
+                work_id=work.id,
+                phase=phase,
+                lifetime_s=lifetime_s,
+                short_threshold_s=_short_session_seconds(cfg),
+                worktree_path=worktree_path,
+                marker_id=_marker_id,
+            )
+        except Exception:
+            logger.exception("会话探针埋点失败（不影响流程）: work=%s", work.id)
 
     if phase == "audit":
         log_path = log_dir / f"{work.id}.audit.log"
@@ -3480,6 +3754,7 @@ def _run_auto_worker(
         if ok:
             work.transition(State.DONE)
             store.save_work(work)
+            clear_retry_backoff(work.id)  # ccc083：收单成功清业务重试退避
             logger.info("收单成功: work=%s → 已回写", work.id)
             # sidecar 契约（ccc-plan-021）：成功出口 clear sidecar，无在途残留
             from server.engine.runtime_state import clear_card_state
@@ -3586,6 +3861,7 @@ def _run_audit_worker(
         audit_timeout = _audit_timeout_seconds(cfg)
         ok, problems, _audited = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, audit_timeout)
         if ok:
+            clear_retry_backoff(work.id)  # ccc083：机审通过清业务重试退避
             # sidecar 契约（ccc-plan-021）：机审通过出口 clear sidecar，无在途残留
             from server.engine.runtime_state import clear_card_state
 
@@ -3745,9 +4021,9 @@ def _build_dispatch_gates() -> GateRegistry:
     （含日志/计数/副作用），保证行为不回归。
 
     门禁链：
-        infra_cooldown → worktree_card_copy → accepted_card → parent_closed
-        → depends_closed → dependency_cycle → decision
-        → slot_available → biz_isolation → relay_probe → submit
+        infra_cooldown → retry_backoff → short_session_breaker → worktree_card_copy
+        → accepted_card → parent_closed → depends_closed → dependency_cycle
+        → decision → slot_available → biz_isolation → relay_probe → submit
 
     submit gate 为原子占槽（transition RUNNING + marker + pool.submit + 回滚），
     绝不拆分——拆开会产生「假 RUNNING + marker 泄漏」，破坏 reclaim 不变量。
@@ -3761,6 +4037,27 @@ def _build_dispatch_gates() -> GateRegistry:
         return GateResult(passed=True)
 
     reg.register(DispatchGate(name="infra_cooldown", order=10, check=_infra_cooldown))
+
+    def _retry_backoff(ctx: GateContext) -> GateResult:
+        # ccc083：业务重试退避期内不重派（指数退避，防「失败→立即重派」空转）
+        if retry_backoff_active(ctx.work.id, ctx.now_ts):
+            logger.info("业务重试退避中，跳过派发: work=%s", ctx.work.id)
+            return GateResult(passed=False, reason="retry_backoff")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="retry_backoff", order=12, check=_retry_backoff))
+
+    def _short_session_breaker(ctx: GateContext) -> GateResult:
+        # ccc083：短命会话计数熔断——窗口内 ≥M 个短命失败会话即全局暂停派发并告警
+        tripped, detail = short_session_breaker_status(ctx.log_dir, ctx.cfg, ctx.now_ts)
+        if tripped:
+            ctx.counters["breaker_skips"] = ctx.counters.get("breaker_skips", 0) + 1
+            logger.error("短命会话熔断，暂停派发: work=%s (%s)", ctx.work.id, detail)
+            _write_short_session_alert(ctx.log_dir, detail, ctx.now_ts)
+            return GateResult(passed=False, reason="short_session_breaker")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="short_session_breaker", order=15, check=_short_session_breaker))
 
     def _worktree_card_copy(ctx: GateContext) -> GateResult:
         # 2026-08-18 清理 is_pytest 嗅探：wt_hint 为空（无 worktree_base 的注册行/测试夹具）时
@@ -4182,11 +4479,20 @@ def run_once(
         a_slots = max(0, int(max_audit_concurrent) - occupied)
 
         candidates: list[Work] = []
+        # ccc083：短命会话熔断为全局闸——触发时机审队列整轮不再补充新候选（在飞不打断）
+        breaker_tripped, breaker_detail = short_session_breaker_status(log_dir, cfg, now_ts)
+        if breaker_tripped:
+            logger.error("短命会话熔断，机审本轮暂停补位: %s", breaker_detail)
+            _write_short_session_alert(log_dir, breaker_detail, now_ts)
         for work in store.list_work(state=State.DONE):
             if work.id in audit_alive or _audit_marker_alive(log_dir, work.id):
                 continue
             if _infra_cooldown_active(runtime, work.id, now_ts):
                 continue  # 基础设施故障冷却中
+            if retry_backoff_active(work.id, now_ts):
+                continue  # ccc083：业务重试退避中
+            if breaker_tripped:
+                continue  # ccc083：全局防旋，暂停补充机审候选
             if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
                 continue
             candidates.append(work)

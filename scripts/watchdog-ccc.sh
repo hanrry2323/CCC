@@ -24,12 +24,93 @@ HEARTBEAT_LOG="${LOG_DIR}/engine.stderr.log"
 SLOT_METRICS="${LOG_DIR}/exec/engine-metrics.jsonl"
 WATCHDOG_LOG="${LOG_DIR}/watchdog.log"
 
-ENGINE_PNAME="server.engine.main"
-WEB_PNAME="server.web.server"
+ENGINE_PNAME="${CCC_WATCHDOG_ENGINE_PNAME:-server.engine.main}"
+WEB_PNAME="${CCC_WATCHDOG_WEB_PNAME:-server.web.server}"
 
 # 心跳宽限（秒）：engine 心跳默认 60s，但 run_once 偶发阻塞（子进程/SSH）可达 10-40min，
 # 固定 120s 会误杀。默认 300s，可经 CCC_WATCHDOG_HEARTBEAT_GRACE 覆盖。
 HEARTBEAT_GRACE="${CCC_WATCHDOG_HEARTBEAT_GRACE:-300}"
+
+# ── ccc083 防旋自愈（2026-08-25）：连续观测确认 + kickstart 冷却 + 风暴升级告警 ──
+# 背景（取证结论）：2026-08-24 14:49–15:46 机审/开发会话把本脚本当「门禁实跑」反复执行，
+# 单次观测即触发 kickstart --engine-only；重启窗口内 pgrep 竞态又判「进程不存在」，
+# 形成 47 次连环重启 → 在飞执行体被杀(exit 137) → 引擎回待分派重派 → 新会话再实跑本脚本的
+# 自持风暴。修复四件套：
+#   1) 连续确认：故障需连续 MIN_FAULT_STREAK 轮观测（默认 2）才动手；孤立单次观测只记录；
+#   2) 冷却：同服务两次 kickstart 最小间隔 KICK_COOLDOWN 秒（默认 300），冷却期内只观测不动手；
+#   3) 升级告警：连续 FLAP_ALERT_STREAK 轮仍故障 → 写 alerts 文件转人工（每小时至多一次）；
+#   4) DRY-RUN：CCC_WATCHDOG_DRY_RUN=1 只记录意图不执行 kickstart（测试/演练）。
+WATCHDOG_STATE_DIR="${CCC_WATCHDOG_STATE_DIR:-${LOG_DIR}/watchdog-state}"
+MIN_FAULT_STREAK="${CCC_WATCHDOG_MIN_FAULT_STREAK:-2}"
+KICK_COOLDOWN="${CCC_WATCHDOG_KICKSTART_COOLDOWN:-300}"
+FLAP_ALERT_STREAK="${CCC_WATCHDOG_FLAP_ALERT_STREAK:-10}"
+ALERT_REPEAT_SEC="${CCC_WATCHDOG_ALERT_REPEAT_SEC:-3600}"
+DRY_RUN="${CCC_WATCHDOG_DRY_RUN:-0}"
+
+# 读单服务状态（bash 3.2 兼容：经全局变量返回）
+WD_STREAK=0; WD_LAST_KICK=0; WD_LAST_ALERT=0
+wd_load_state() {
+  local svc="$1" f k v
+  WD_STREAK=0; WD_LAST_KICK=0; WD_LAST_ALERT=0
+  f="${WATCHDOG_STATE_DIR}/${svc}.state"
+  [[ -f "$f" ]] || return 0
+  while IFS='=' read -r k v; do
+    case "$k" in
+      streak)     WD_STREAK="$(printf '%s' "$v" | tr -cd '0-9')"; WD_STREAK="${WD_STREAK:-0}";;
+      last_kick)  WD_LAST_KICK="$(printf '%s' "$v" | tr -cd '0-9')"; WD_LAST_KICK="${WD_LAST_KICK:-0}";;
+      last_alert) WD_LAST_ALERT="$(printf '%s' "$v" | tr -cd '0-9')"; WD_LAST_ALERT="${WD_LAST_ALERT:-0}";;
+    esac
+  done < "$f"
+}
+
+wd_save_state() {
+  local svc="$1" f
+  mkdir -p "${WATCHDOG_STATE_DIR}" 2>/dev/null || true
+  f="${WATCHDOG_STATE_DIR}/${svc}.state"
+  { printf 'streak=%s\nlast_kick=%s\nlast_alert=%s\n' "${WD_STREAK}" "${WD_LAST_KICK}" "${WD_LAST_ALERT}" \
+      > "$f" 2>/dev/null; } || true
+}
+
+# 故障观测记账 + 自愈判定。返回 0=应当触发 kickstart；1=观察/冷却跳过。
+wd_fault_observed() {
+  local svc="$1" label="$2" now alert_file
+  now="$(date +%s)"
+  wd_load_state "$svc"
+  WD_STREAK=$((WD_STREAK + 1))
+  wd_save_state "$svc"
+  if (( WD_STREAK >= FLAP_ALERT_STREAK )) && (( now - WD_LAST_ALERT >= ALERT_REPEAT_SEC )); then
+    mkdir -p "${LOG_DIR}/alerts" 2>/dev/null || true
+    alert_file="${LOG_DIR}/alerts/watchdog-flap-${svc}.alert"
+    printf '[%s] %s 连续 %d 轮观测到故障且自愈无效——疑似环境级故障或自愈配置过紧，需人工介入\n' \
+      "$(date '+%Y-%m-%d %H:%M:%S')" "$label" "$WD_STREAK" > "$alert_file" 2>/dev/null || true
+    WD_LAST_ALERT="$now"
+    wd_save_state "$svc"
+    log_watchdog "ALERT: 自愈风暴升级告警（${svc} streak=${WD_STREAK}）→ ${alert_file}"
+    echo "[ALERT] watchdog flap escalation: ${svc} streak=${WD_STREAK}" >&2
+  fi
+  if (( now - WD_LAST_KICK < KICK_COOLDOWN )); then
+    log_watchdog "自愈冷却中（${svc}：距上次 kickstart $((now - WD_LAST_KICK))s < ${KICK_COOLDOWN}s），本轮只观测不动手（streak=${WD_STREAK}）"
+    return 1
+  fi
+  if (( WD_STREAK < MIN_FAULT_STREAK )); then
+    log_watchdog "故障首次/未连任观测（${svc} streak=${WD_STREAK}/${MIN_FAULT_STREAK}），观察一轮不动手"
+    return 1
+  fi
+  WD_LAST_KICK="$now"
+  WD_STREAK=0
+  wd_save_state "$svc"
+  return 0
+}
+
+# 健康回见：清零该服务故障连击（保留 kick/alert 时间戳）
+wd_healthy_observed() {
+  local svc="$1"
+  wd_load_state "$svc"
+  (( WD_STREAK == 0 )) && return 0
+  WD_STREAK=0
+  wd_save_state "$svc"
+}
+
 
 log_watchdog() {
   local msg="$1"
@@ -329,43 +410,64 @@ elif ! is_web_http_healthy; then
   WEB_ISSUES+=("HTTP 健康检查失败")
 fi
 
-# 如果都没问题，跑清道夫巡检（只上报）后照常退出
-if [[ ${#ENGINE_ISSUES[@]} -eq 0 ]] && [[ ${#WEB_ISSUES[@]} -eq 0 ]]; then
+_janitor_sweep_maybe() {
+  if [[ "${CCC_JANITOR_OFF:-0}" == "1" ]]; then
+    return 0
+  fi
   janitor_sweep || true   # ccc078：巡检失败不影响「健康」结论与退出码
+}
+
+# 如果都没问题：清零故障连击（ccc083 防旋），跑清道夫巡检后照常退出
+if [[ ${#ENGINE_ISSUES[@]} -eq 0 ]] && [[ ${#WEB_ISSUES[@]} -eq 0 ]]; then
+  wd_healthy_observed "engine"
+  wd_healthy_observed "web"
+  _janitor_sweep_maybe
   echo "健康"
   exit 0
 fi
 
-# 只重启有问题的服务，不连带重启
+# 只重启有问题的服务，不连带重启；触发前过 ccc083 防旋闸（连续确认 + 冷却）
 FAILED=0
 
 if [[ ${#ENGINE_ISSUES[@]} -gt 0 ]]; then
   REASON="Engine: ${ENGINE_ISSUES[*]}"
-  log_watchdog "发现故障 [${REASON}] -> 正在触发 kickstart --engine-only"
-  echo "[WARN] 发现故障: ${REASON}，启动针对性自愈..." >&2
-  
-  if "${SCRIPT_DIR}/kickstart-ccc.sh" --engine-only >/dev/null 2>&1; then
-    log_watchdog "自愈成功：engine 重启完毕"
-    echo "Engine 已拉起"
+  log_watchdog "发现故障 [${REASON}]"
+  echo "[WARN] 发现故障: ${REASON}" >&2
+  if ! wd_fault_observed "engine" "Engine"; then
+    log_watchdog "防旋闸拦截：本轮不对 Engine 执行自愈（只观测）"
+  elif [[ "$DRY_RUN" == "1" ]]; then
+    log_watchdog "[DRY-RUN] 将触发 kickstart --engine-only（未执行）"
+    echo "[DRY-RUN] watchdog: 将自愈 Engine（未执行）"
   else
-    log_watchdog "ERROR：engine 自愈失败"
-    echo "Engine 重启失败"
-    FAILED=$((FAILED + 1))
+    if "${SCRIPT_DIR}/kickstart-ccc.sh" --engine-only >/dev/null 2>&1; then
+      log_watchdog "自愈成功：engine 重启完毕"
+      echo "Engine 已拉起"
+    else
+      log_watchdog "ERROR：engine 自愈失败"
+      echo "Engine 重启失败"
+      FAILED=$((FAILED + 1))
+    fi
   fi
 fi
 
 if [[ ${#WEB_ISSUES[@]} -gt 0 ]]; then
   REASON="Web Server: ${WEB_ISSUES[*]}"
-  log_watchdog "发现故障 [${REASON}] -> 正在触发 kickstart --web-only"
-  echo "[WARN] 发现故障: ${REASON}，启动针对性自愈..." >&2
-  
-  if "${SCRIPT_DIR}/kickstart-ccc.sh" --web-only >/dev/null 2>&1; then
-    log_watchdog "自愈成功：web-server 重启完毕"
-    echo "Web Server 已拉起"
+  log_watchdog "发现故障 [${REASON}]"
+  echo "[WARN] 发现故障: ${REASON}" >&2
+  if ! wd_fault_observed "web" "Web Server"; then
+    log_watchdog "防旋闸拦截：本轮不对 Web Server 执行自愈（只观测）"
+  elif [[ "$DRY_RUN" == "1" ]]; then
+    log_watchdog "[DRY-RUN] 将触发 kickstart --web-only（未执行）"
+    echo "[DRY-RUN] watchdog: 将自愈 Web Server（未执行）"
   else
-    log_watchdog "ERROR：web-server 自愈失败"
-    echo "Web Server 重启失败"
-    FAILED=$((FAILED + 1))
+    if "${SCRIPT_DIR}/kickstart-ccc.sh" --web-only >/dev/null 2>&1; then
+      log_watchdog "自愈成功：web-server 重启完毕"
+      echo "Web Server 已拉起"
+    else
+      log_watchdog "ERROR：web-server 自愈失败"
+      echo "Web Server 重启失败"
+      FAILED=$((FAILED + 1))
+    fi
   fi
 fi
 
@@ -373,6 +475,6 @@ if [[ $FAILED -gt 0 ]]; then
   exit 1
 fi
 
-janitor_sweep || true   # ccc078：自愈成功路径同样巡检；失败不影响退出码
+_janitor_sweep_maybe   # ccc078/ccc083：自愈成功路径同样巡检；失败不影响退出码
 
 exit 0

@@ -1439,11 +1439,13 @@ class TestParallelAndRelayGuard:
         reset_dispatch_pool()
 
         # 2. 边界：当任务数刚好等于上限 (3 == 3) -> 派发 3，排队为 0
+        # ccc083 注：卡 ID 每子用例独立——上一子用例被回收击杀的卡现在按基础设施
+        # 冷却处理（防旋语义），复用同 ID 会被冷却拦截而污染边界断言。
         store = InMemoryBoardStore()
         store.seed(
-            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
-            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
-            Work(id="q3", role="开发执行体", card_path=str(tmp_path / "q3.md")),
+            Work(id="q4", role="开发执行体", card_path=str(tmp_path / "q4.md")),
+            Work(id="q5", role="开发执行体", card_path=str(tmp_path / "q5.md")),
+            Work(id="q6", role="开发执行体", card_path=str(tmp_path / "q6.md")),
         )
         summary = run_once(reg, store, cfg, wait=False)
         assert summary["dispatched"] == 3
@@ -1455,10 +1457,10 @@ class TestParallelAndRelayGuard:
         # 3. 边界：当任务数超过上限 (4 > 3) -> 派发 3，排队 1
         store = InMemoryBoardStore()
         store.seed(
-            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
-            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
-            Work(id="q3", role="开发执行体", card_path=str(tmp_path / "q3.md")),
-            Work(id="q4", role="开发执行体", card_path=str(tmp_path / "q4.md")),
+            Work(id="q7", role="开发执行体", card_path=str(tmp_path / "q7.md")),
+            Work(id="q8", role="开发执行体", card_path=str(tmp_path / "q8.md")),
+            Work(id="q9", role="开发执行体", card_path=str(tmp_path / "q9.md")),
+            Work(id="q10", role="开发执行体", card_path=str(tmp_path / "q10.md")),
         )
         summary = run_once(reg, store, cfg, wait=False)
         assert summary["dispatched"] == 3
