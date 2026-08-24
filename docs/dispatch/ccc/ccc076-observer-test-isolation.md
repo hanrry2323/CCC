@@ -84,19 +84,21 @@ mock → 任何检出跑全量 pytest 都会向所在仓 docs/projects/mx/roadma
 
 **DSH 机审席 · 2026-08-24 · severity：轻**
 
-独立审查记录（worktree ccc076 @ 84bb98765 · 结论全部命令可复现）：
+独立审查记录（worktree ccc076 · 审计基线 @ c4110a15a，谱系延展独立复核至 732166915 · 结论全部命令可复现）：
 
 1. **范围核对**：分支 codex/ccc076-observer-test-isolation，merge-base(HEAD,origin/main)=54de3ce0=origin/main tip（基点最新）；ls-remote origin 分支=本地 HEAD=84bb98765（push 核验属实）。全分支 diff（54de3ce0..HEAD）仅卡文件+白名单内 server/tests/test_observer.py，白名单外零触碰；代码提交 efd02cc5e numstat=62+/6- 与回写声明逐字一致，6 行删除全部为移入 patch 上下文的断言（零断言损失）；observer.py/roadmap.py 生产代码零改动。
 2. **动态复现（本席亲跑坐实核心声明）**：门禁 `python3 -m pytest server/tests/test_observer.py -q` → 26 passed、退出码 0；门禁前后 docs/projects/mx/roadmap.md（sha256 d24ed5d9…）与 docs/notes/2026-08-24-ccc-patrol.md（e648911d…）mtime+hash 零漂移；全量回归 server/tests 跑毕后两指纹仍零漂移、porcelain 除已知 untracked cards.index.jsonl 外零新增——「全量 pytest 不再污染检出」成立。注入面核对：run_observer 主链（dispatch_dir/list_plans/scan_findings/_auto_fix_deterministic/notes_dir 尾段）全部吃 observer.PROJECT_ROOT 模块全局，patch 生效路径完整；roadmap 写路径统一经 `_repo_root()`→已 patch 至 tmp。
 3. **存量失败与本卡无关**：brain_kb/brain_stream/http_api 会话流失败集与回写区披露一致；本席抽 test_brain_stream::test_success_flow 单测隔离跑仍失败（期望桩文案 vs 真实模型答复，502≠503 中继环境问题），模块与本案不相交，pre-existing 成立。
 4. **找茬记录**：
    - F1（轻·已就地修复）：维护区 Q3/Q4「说明」原为选择符回声「[否]。」，不满足 P1-b「说明须一句实情」——系 ccc074 机审 F4 同项建议后的重复发生；本席补写实情句随审计提交落盘。
-   - F2（观察·不要求改码）：test_run_observer_output 替身内写目标由 tmp 构造后再断言 is_relative_to(tmp)，属构造性恒真；真实保障来自 board.roadmap._repo_root 补丁+实现节③守护断言（污染回归即红），不构成缺陷。
+   - F2（轻·已落实并经本席独立复验）：test_run_observer_output 替身内写目标原由 tmp_path 自构造再断言 is_relative_to(tmp)，属构造性恒真；并行机审实例以 732166915 将其改为取自 `board.roadmap._roadmap_path()` 真实派生链（_repo_root 补丁失效即越出 tmp 必红），本席逐行复核该提交并重跑门禁 26 passed exit=0、指纹零漂移后予以认可。
    - F3（核实非问题）：同文件 test_write_roadmap_draft 直接调 write_roadmap_draft，但 _roadmap_path 已 patch 直落 tmp，非第三污染点。
    - F4（观察·白名单外·另卡治理）：untracked docs/archive/legacy-t-cards/cards.index.jsonl 为历史全量跑副产物（执行体如实披露、本席复核属实），不影响合入。
+   - F5（流程事件·如实入档）：本席审计推送 c4110a15a 后，发现同 worktree 存在 3 个并行 DSH 机审实例（同指令同授权）竞跑；兄弟实例于 15:05:47 落 732166915（F2 就地加固、白名单内 +4/-1）。本席不盲信不盲弃：独立复核内容+门禁+指纹全部通过后认可并纳入审计谱系。教训：同卡同 worktree 并行审计存在竞写风险，建议调度层保证一卡一 worktree 单实例。
+   - F6（观察·元数据事件）：审计窗口内 docs/projects/mx/roadmap.md mtime 于 ~15:03:10 被触碰一次；经查 sha256=d24ed5d9… 与基线逐字节一致、porcelain 干净、对 origin/main 零 diff——纯元数据漂移无内容变化，并发实例下写入者不可归因，记录在案。
 5. **维护区核对**：四问均合法单选（否/无/否/否）、docgate 机械判据通过；Q1/Q2 说明含实情句，Q3/Q4 经 F1 就地补实情；抽查声明真实性全部吻合（push ls-remote 一致、62+/6-、patrol 报告 mtime 14:33:57 第二污染点实证、.gitignore 巡查报告沉默路径、cards.index.jsonl 未跟踪状态）。
 
-severity 计分：影响面 1（白名单单测试文件+卡文、无生产变更）+ 改动深度 1（mock/断言加固）+ 红线邻近 2（P1-b 维护区说明判据边界、重复发生）= 4 → 轻（无高维度，不触发强制重）。
+severity 计分：影响面 1（白名单单测试文件+卡文、无生产变更）+ 改动深度 1（mock/断言加固）+ 红线邻近 2（P1-b 维护区说明判据边界、重复发生）= 4 → 轻（无高维度，不触发强制重）；谱系延展复核项（F2 落实/F5 并发审计事件/F6 元数据触碰）经独立核验均不抬升 severity。
 
 机审：通过
 
