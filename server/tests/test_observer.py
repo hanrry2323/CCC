@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import json
+import subprocess
 import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -95,16 +96,51 @@ def test_should_run_scenarios(tmp_path):
 @patch('server.engine.observer.load_dispatch_cards')
 @patch('server.engine.observer.list_plans')
 def test_run_observer_output(mock_list_plans, mock_load_dispatch_cards, mock_load_projects, tmp_path):
-    """测试 run_observer 在决定运行时，是否能正常输出 snapshot 和 last-run。"""
+    """测试 run_observer 在决定运行时，是否能正常输出 snapshot 和 last-run。
+
+    隔离修复（ccc076）：run_observer 内部 scan_findings(cfg, PROJECT_ROOT) 吃真实仓库根、
+    write_roadmap_draft 未被 mock → 任何检出跑全量 pytest 都会向所在仓
+    docs/projects/mx/roadmap.md 追加巡查行（ccc068 三次污染实证）。本用例三层隔离：
+      1) observer.PROJECT_ROOT/REPO_ROOT 注入 tmp 根（scan_findings/_auto_fix_deterministic/
+         docs-notes 报告落点全部随迁）；
+      2) write_roadmap_draft 换成 tmp 绑定替身，并断言每次调用写目标落在 tmp 内；
+      3) 守护断言：用例结束后 git status --porcelain docs/projects/mx/roadmap.md 为空
+         （在仓内运行时），污染回归即红。
+    """
+    from server.board import roadmap as board_roadmap
+
     cfg = {'DATA_DIR': str(tmp_path), 'OBSERVER_FORCE': 'true'}
     mock_load_projects.return_value = []
     mock_load_dispatch_cards.return_value = []
     mock_list_plans.return_value = []
-    ok, summary = run_observer(cfg)
-    assert ok is True
-    assert 'projects_count' in summary
-    assert 'cards_count' in summary
-    assert 'plans_count' in summary
+
+    real_repo_root = Path(__file__).resolve().parents[2]
+    real_write_roadmap_draft = observer.write_roadmap_draft
+    draft_calls: list[dict] = []
+
+    def _isolated_write_roadmap_draft(project, description, *, draft_type='问题', source='Loop巡查'):
+        """write_roadmap_draft 替身：外层已把 board.roadmap._repo_root 绑到 tmp，
+        真实草案逻辑照常执行但只可能落在 tmp 内；记录调用并断言写目标。"""
+        result = real_write_roadmap_draft(project, description, draft_type=draft_type, source=source)
+        target = (tmp_path / 'docs' / 'projects' / str(project) / 'roadmap.md').resolve()
+        assert target.is_relative_to(tmp_path.resolve()), f'草案写目标越出 tmp 根: {target}'
+        draft_calls.append({'project': project, 'description': description, 'target': target, 'result': result})
+        return result
+
+    with patch.object(observer, 'PROJECT_ROOT', tmp_path), \
+         patch.object(observer, 'REPO_ROOT', tmp_path), \
+         patch.object(board_roadmap, '_repo_root', return_value=tmp_path), \
+         patch.object(observer, 'write_roadmap_draft', side_effect=_isolated_write_roadmap_draft):
+        ok, summary = run_observer(cfg)
+        assert ok is True
+        assert 'projects_count' in summary
+        assert 'cards_count' in summary
+        assert 'plans_count' in summary
+        # 隔离证据：tmp 根 + 空 loader 下不允许再产出任何真实仓派生的发现
+        assert summary.get('findings') == [], summary.get('findings')
+        # 草案池接线：凡被调用的写入，参数与落点都必须在 tmp 内
+        for call in draft_calls:
+            assert call['target'].is_relative_to(tmp_path.resolve())
     observer_dir = tmp_path / 'observer'
     assert (observer_dir / 'last-run.json').exists()
     assert (observer_dir / 'snapshot.json').exists()
@@ -113,6 +149,20 @@ def test_run_observer_output(mock_list_plans, mock_load_dispatch_cards, mock_loa
         assert snapshot['projects_count'] == 0
         assert snapshot['cards_count'] == 0
         assert snapshot['plans_count'] == 0
+
+    # 守护断言（ccc076 实现节 3）：用例结束后真实仓 mx 线路图必须零改动。
+    # 仅在仓内运行时生效；非 git 环境跳过（returncode != 0）。
+    guard = subprocess.run(
+        ['git', 'status', '--porcelain', '--', 'docs/projects/mx/roadmap.md'],
+        cwd=real_repo_root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if guard.returncode == 0:
+        assert guard.stdout.strip() == '', (
+            'observer 测试污染了真实仓 docs/projects/mx/roadmap.md:\n' + guard.stdout
+        )
 
 
 @patch('server.engine.observer.load_dispatch_cards')
@@ -572,10 +622,16 @@ def test_run_observer_writes_draft_for_consistency(
     ]
     from server.engine.observer import run_observer
 
+    # ccc076：run_observer 尾段 notes_dir = PROJECT_ROOT/'docs'/'notes' 吃模块全局真实根，
+    # 会把巡查报告写进所在仓 docs/notes（该路径被 .gitignore 覆盖、porcelain 沉默）→ 一并注入 tmp 根。
     with patch("server.engine.observer.load_projects", return_value=[]), patch(
         "server.engine.observer.load_dispatch_cards", return_value=[]
     ), patch("server.engine.observer.list_plans", return_value=[]), patch(
         "server.engine.observer.should_run", return_value=(True, "test")
+    ), patch.object(
+        observer, "PROJECT_ROOT", tmp_path
+    ), patch.object(
+        observer, "REPO_ROOT", tmp_path
     ):
         ok, _ = run_observer({"SCHEDULER_DISPATCH_DIR": "", "DATA_DIR": str(tmp_path)})
         assert ok is True
