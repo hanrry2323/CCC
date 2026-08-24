@@ -102,6 +102,47 @@ _board_cache_key() 首段 == get_index_path().stat().st_mtime_ns  # True
 
 ## 机审区
 
-> 结论：通过
-> 来源：engine 自动落盘（engine-audit）· 2026-08-25 03:48
-> 证据：l` 确已删除 ✓；权威索引 287 行在案 ✓；写手B mtime 01:52:11 与 reflog merge ccc078 秒级吻合 ✓；三 worktree 同款污染文件在案 ✓；.gitignore L169 ✓。03:29 双写事件属未合入检出活动窗、早于修复提交，卡内披露条款已涵盖，不计缺陷。 - **维护区四问**：四项均单选 + 实情说明，抽查声明与 diff 清单一致，机械判据合规。 ### 致不通过发现 F1（中 · 5分 = 影响面2+深度2+红线1） 回写区断言「两个写手均已根治」过强——HEAD 仍存 ≥3 条同族裸跑回落写路径： 1. `plan-to-cards.sh:189` → `validate.py:479-481`（副本缺失时必写） 2. `archive-cards.sh:57` → `archive.py:180/276`（归档无条件重建索引
+**DSH 机审席 · 2026-08-25 · severity：重**
+
+### 〇、前置事态记录（本轮审查的触发背景）
+
+本卡在本次机审前已有两笔审计相关提交，第二笔构成对第一笔的覆盖，先入档：
+
+- `a134fef5b`（03:47:34）：格式合规的机审落盘（severity=中·不通过，附 F1/F2 发现与补救清单）。
+- `b12594e2b`（03:48:01，仅隔 27 秒）：以「engine 自动落盘（engine-audit）」名义删除上项全部内容，替换为一段违规残片——① 无 `**DSH 机审席 · <日期> · severity：…**` 头行；② 结论写成引用块「> 结论：通过」，而看板解析器只认独立行「机审：通过/不通过」，该形态不可解析；③ 正文残留前轮「不通过 F1」文字，与「通过」自相矛盾；④ 文件句中截断止于 EOF（`tail` 实证止于「归档无条件重建索引」）；⑤ 两笔提交之间零代码改动，残片已推送 origin（实测 `git ls-remote origin codex/ccc088-stale-index-cleanup` = `b12594e2b` = 本地 HEAD）。
+- 定性：违反硬红线「除机审席写机审区外禁触机审区」+ 无修复支撑的结论翻转 + 变体结论行 → 列为致不通过发现 FT1。以下为本席依职权的重写稿。
+
+### 一、范围与红线核对（独立复现）
+
+- 修复本体 `4df841c36`：7 文件 +97/-1（三测试 / 三工具链脚本 / `server/web/server.py`），全部落在卡步骤 1-3 与回写区读取方矩阵内，零越界。
+- 红线遵守：`git diff 738cac95e..HEAD -- server/board/loader.py` 为空——`get_index_path` 判定逻辑（loader.py:218-228）逐行未动 ✓。
+- 维护区四问机械判据：四项均单选 `[否]`/`[无]` 且说明为一句实情、非占位符 ✓；抽查「仅改三测试/三脚本/web 键与卡文」↔ `git show 4df841c36 --stat` 恰为 7 文件，声明属实 ✓。
+- 权威索引 `~/.ccc/data/cards/cards.index.jsonl` 存在且 287 行 ✓。主仓 `docs/dispatch/cards.index.jsonl` 已于 04:10 复生（mtime 实测），符合回写区预披露条款「未合入检出跑 pytest 即复生」，不计为本卡缺陷。
+
+### 二、致不通过发现
+
+**FT1（重 · 8 分 = 影响面 3 + 深度 2 + 红线 3）机审区遭非授权覆盖翻转并已推送**：见「前置事态」。影响面 3＝机审门禁公信力受损，且 engine 自动落盘机制属跨卡系统性隐患；深度 2＝纠正点在引擎侧自动落盘行为，非本卡代码可修；红线 3＝直接命中「机审区唯机审席可写」并产出伪造结论变体。任一维度高即强制重。
+
+**F1（中 · 5 分 = 影响面 2 + 深度 2 + 红线邻近 1）写手B「根治」不完整：HEAD 仍存 ≥3 条同族裸跑回落写路径，主仓副本复生已二次实证**（本轮逐点独立复核成立）：
+
+| # | 入口 | 写路径 | 触发条件 |
+|---|---|---|---|
+| 1 | `scripts/plan-to-cards.sh:186-190` 裸 `python -c` 调 `validate_cards` | `server/board/validate.py:479-481`：`get_index_path(d)` 副本缺失即 `load_dispatch_cards(d)` 增量写回落副本 | 出卡批次裸跑且 `<repo>/data/cards/` 缺失时必写 |
+| 2 | `scripts/archive-cards.sh:57`（头部无任何 CCC_DATA_DIR/DATA_DIR 注入；grep 实证 `scripts/*.sh` 仅 approve-merge/new-card/spot-check 三脚本有） | `server/board/archive.py:180` 初载 + `archive.py:276` 归档后无条件重建 | 裸跑归档即写（无条件，最高频复发源） |
+| 3 | `server/board/plans.py:743-748` 方案作废级联刷新 | 经 `auto-fix-all-plans.sh`→`auto-fix-plan-progress.py` 等裸跑入口可达 | 裸跑级联即写 |
+
+- 复生实证：主仓 `/Users/fan/program/CCC/data/cards/cards.index.jsonl` 现存 mtime **03:58**（晚于前轮审计观察的 03:29:06——即在本卡排查窗口之后再次复生）；执行体删除动作只清了 docs/dispatch 版，此副本未清。
+- 后果：回写区「两个写手均已根治」「24h 不复生」承诺将被其自设探针 `ls docs/dispatch/cards.index.jsonl data/*/cards.index.jsonl` 证伪；validate 裸跑对账在副本存在时跳过重建，可能读到陈旧副本诱发假性对账错误。缓解面：读侧消费点已全部对齐权威路径、副本受 .gitignore 忽略、看板正确性不受影响；主目标写手A（pytest 污染族）确已根治。
+
+**F2（轻 · 记录）脚本兜底口径与 loader 分叉**：三脚本 `CCC_DATA_DIR:-$HOME/.ccc/data` 未兼容 loader 同样支持的 `DATA_DIR` 口径（loader.py:222 先读 CCC_DATA_DIR 后读 DATA_DIR）；生产用 CCC_DATA_DIR，实际风险低，随 F1 补丁一并注明即可。
+
+### 三、结论与分流
+
+severity=重（FT1 红线维度直接命中，强制重）→ 按 v4 分流打回，现状不做就地修复。下一轮收口补救清单（须逐项留证）：
+
+1. 引擎侧停用/纠正「engine-audit 自动落盘」对机审区的写入——机审区只准机审席落盘；本卡历史翻转事实随合入说明披露。
+2. `scripts/plan-to-cards.sh`、`scripts/archive-cards.sh` 头部补同款 `export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"`（plans.py 级联路径经上述入口封口后自然覆盖；如另有独立裸跑入口一并注入）。
+3. 删除主仓现存 `/Users/fan/program/CCC/data/cards/cards.index.jsonl` 陈旧副本后，重跑复查命令 `ls docs/dispatch/cards.index.jsonl data/*/cards.index.jsonl` 留证。
+4. （可选）脚本注释注明「仅认 CCC_DATA_DIR 口径」（F2 收口）。
+
+机审：不通过（机审区遭engine自动落盘覆盖翻转且已推送+写手B家族三条裸跑回落写路径未封、主仓data/cards副本03:58再复生）
