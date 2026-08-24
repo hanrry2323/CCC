@@ -670,7 +670,18 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
     echo "[ERROR] 请在 main 上执行合入批准（当前：${current}）" >&2
     return 1
   fi
-  git pull --ff-only origin main
+  # 2026-08-25（ccc085 同源竞态）：git pull 走 FETCH_HEAD，与 git_sync 守护并发无锁写同一文件 →
+  # 偶发「Cannot fast-forward to multiple branches」（批处理实证 081/082 命中）。改读 origin/main ref
+  # （fetch --no-write-fetch-head），且显式错误处理：函数在 if/|| 上下文调用时 set -e 被抑制，
+  # 不能依赖 set -e 中止（非 batch 模式同源隐患一并修复）。
+  if ! git fetch origin main --no-write-fetch-head >/dev/null 2>&1; then
+    echo "[ERROR] ${id}: 拉取 origin/main 失败（fetch 异常）→ 中止本卡" >&2
+    return 1
+  fi
+  if ! git merge --ff-only origin/main; then
+    echo "[ERROR] ${id}: 拉取 origin/main 失败（无法 ff，本地落后于远端）→ 中止本卡" >&2
+    return 1
+  fi
 
   # 跨仓收口：业务仓分支先合业务 main + 删（分叉阻断整卡，杜绝「卡关闭≠代码落地」）
   # 2026-08-19 回退 b072a72a：--close-only 不再放行业务仓分叉——分叉=代码没合入main，
