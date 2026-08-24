@@ -34,4 +34,8 @@ MIND="你是 CCC 审核合入 Agent —— 整个 CCC 流程的【最后环节�
 "
 
 PROMPT="${*:-进入审核合入：按 SOP 收卡→核门禁→汇报 ready_for_merge 清单，等待老板指令「审核合入/部署」。}"
-exec env ANTHROPIC_BASE_URL=https://opencode.ai/zen/go ANTHROPIC_API_KEY=sk-cFDJDwr91XuvmUFObioeNt8vJJye4anfYZV1wavtGvAcYs63zzanmeQzugCTd6oR ANTHROPIC_MODEL=deepseek-v4-flash claude --name ccc-audit-merge --append-system-prompt "$MIND" "$PROMPT"
+# 密钥零落盘：从环境读取（来源见 ~/Library/LaunchAgents/com.ccc.engine.plist 的
+# OPENCODE_GO_API_KEY，或用户 shell 导出）。2026-08-24 直修：此前真实 key 硬编码于此并已推远端，
+# 该 key 必须在服务商侧吊销轮换（移交项）。
+: "${OPENCODE_GO_API_KEY:?需要环境变量 OPENCODE_GO_API_KEY（可 source 自 engine plist）}"
+exec env ANTHROPIC_BASE_URL=https://opencode.ai/zen/go ANTHROPIC_API_KEY="$OPENCODE_GO_API_KEY" ANTHROPIC_MODEL=deepseek-v4-flash claude --name ccc-audit-merge --append-system-prompt "$MIND" "$PROMPT"

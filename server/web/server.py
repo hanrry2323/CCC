@@ -1955,10 +1955,25 @@ class _APIHandler(BaseHTTPRequestHandler):
     def _check_auth(self) -> bool:
         """鉴权中间件。返回 True 通过，False 已发送 401。
 
-        T45 免登录模式（``CCC_WEB_AUTH_REQUIRED=0`` 默认）：全部端点放行（仅局域网）。
+        T45 免登录模式（``CCC_WEB_AUTH_REQUIRED=0`` 默认）：读端点放行（仅局域网）。
+        P0-2 加固（2026-08-24 直修）：新增写端点鉴权 ``CCC_WEB_WRITE_AUTH``（默认 1）——
+        免登录模式下 GET/HEAD/OPTIONS 仍直连即用；变更类请求必须持 Bearer token
+        （POST /session 获取），堵住局域网内匿名写看板/方案/对话的攻击面。
         """
         if not _auth_required():
-            return True
+            if self.command in ("GET", "HEAD", "OPTIONS"):
+                return True
+            path = self.path.rstrip("/").split("?")[0]
+            if path in _NO_AUTH_PATHS:
+                return True
+            write_auth = os.environ.get("CCC_WEB_WRITE_AUTH", "1").strip().lower()
+            if write_auth not in ("1", "true", "yes", "on"):
+                return True
+            auth = self.headers.get("Authorization", "")
+            if auth.startswith("Bearer ") and _validate_token(auth[len("Bearer "):]) is not None:
+                return True
+            self._send_401("write endpoints require Bearer token (POST /session)")
+            return False
         path = self.path.rstrip("/").split("?")[0]
         if path in _NO_AUTH_PATHS:
             return True

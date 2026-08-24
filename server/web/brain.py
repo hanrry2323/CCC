@@ -222,9 +222,17 @@ def _get_brain_direct() -> bool:
 def _is_brain_configured() -> bool:
     """大脑代理配置是否齐全。
 
-    `CCC_BRAIN_CLAUDE_BIN` 默认 `claude` 可用，故只校验 model / base_url / token。
+    2-1 收口（2026-08-24 直修）：中转站退役后走直连——只要模型名与 Claude CLI
+    可用即视为 configured；BASE_URL/AUTH_TOKEN 降级为可选（显式直连自建上游时才填）。
+    原实现强求 base_url 非空：清掉退役 relay 配置后对话口会误报 not configured。
     """
-    return bool(_get_brain_model() and _get_brain_base_url() and _get_brain_auth_token())
+    if not _get_brain_model():
+        return False
+    if _get_brain_base_url() or _get_brain_auth_token():
+        return True  # 显式自定义上游
+    from shutil import which
+
+    return bool(which(_get_brain_claude_bin()))
 
 
 # ── 知识库检索配置（T37） ──
@@ -333,8 +341,14 @@ def _run_claude(prompt: str, timeout: int) -> tuple[bool, str, str | None]:
     """
     bin_path = _get_brain_claude_bin()
     env = os.environ.copy()
-    env["ANTHROPIC_BASE_URL"] = _get_brain_base_url()
-    env["ANTHROPIC_AUTH_TOKEN"] = _get_brain_auth_token()
+    # 2-1 收口（2026-08-24 直修）：中转站退役后 base_url/token 为可选直连配置，
+    # 未配置时不得向 CLI 注入空字符串覆盖其全局设置。
+    _direct_base = _get_brain_base_url()
+    _direct_token = _get_brain_auth_token()
+    if _direct_base:
+        env["ANTHROPIC_BASE_URL"] = _direct_base
+    if _direct_token:
+        env["ANTHROPIC_AUTH_TOKEN"] = _direct_token
     env["ANTHROPIC_MODEL"] = _get_brain_model()
     try:
         proc = subprocess.run(

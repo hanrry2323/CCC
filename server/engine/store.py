@@ -47,6 +47,9 @@ _STR_TO_STATE: dict[str, State] = {
     "已关闭": State.CLOSED,
     "打回": State.REJECTED,
     "作废": State.VOIDED,
+    # 1-6 词形归一（2026-08-24 直修）：「已作废」系手写非法词，别名映射到 VOIDED，
+    # 消除每轮「跳过未知状态卡」告警风暴与看板未知列（ccc075/tst003 实证）。
+    "已作废": State.VOIDED,
 }
 
 

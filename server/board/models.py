@@ -60,6 +60,10 @@ def base_state(state: str) -> str:
     if not state or state.strip() == UNKNOWN:
         return UNKNOWN
     base = re.split(r"[（(]", state, maxsplit=1)[0].strip()
+    # 1-6 词形归一（2026-08-24 直修）：「已作废」系手写非法词（法定枚举=「作废」），
+    # 曾致 engine store 整卡跳过、看板入未知列、方案进度分母虚高（ccc075/tst003 实证）。
+    if base == "已作废":
+        base = "作废"
     return base or UNKNOWN
 
 

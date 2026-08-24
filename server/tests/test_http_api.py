@@ -954,16 +954,19 @@ class TestNoAuthMode:
         assert "tasks" in data
         assert isinstance(data["tasks"], list)
 
-    def test_conversation_post_no_token_not_configured(self, api_server):
-        """免登录：POST /conversation 无 token 可触达大脑（未配置 → 503，而非 401）。"""
+    def test_conversation_post_no_token_not_configured(self, api_server, monkeypatch):
+        """P0-2 写端点鉴权（2026-08-24 直修）：免登录模式下匿名 POST /conversation
+        属变更类请求 → 401（Bearer 缺失），不再触达大脑。"""
         _clear_brain_env()
+        monkeypatch.setenv("CCC_WEB_WRITE_AUTH", "1")
         status, data = _post(api_server, "/conversation", {"message": "hi"})
-        assert status == 503  # 未配置大脑（不是鉴权 401）
-        assert "not configured" in data["error"]
+        assert status == 401
+        assert "Bearer" in data["error"]
 
     def test_conversation_post_no_token_success(self, api_server, monkeypatch):
-        """免登录：POST /conversation 无 token 成功走通（不再要求 Bearer）。"""
+        """写端点鉴权显式关闭（CCC_WEB_WRITE_AUTH=0）→ 恢复 T45 免登录直通行为。"""
         _set_brain_env()
+        monkeypatch.setenv("CCC_WEB_WRITE_AUTH", "0")
         monkeypatch.setattr(
             "server.web.brain._run_claude",
             lambda prompt, timeout: (True, "no-auth-reply", None),

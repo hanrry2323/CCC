@@ -209,7 +209,46 @@ metrics_logger = logging.getLogger("ccc.engine.metrics")
 
 DEFAULT_HEARTBEAT_SECONDS = 60
 DEFAULT_EXECUTOR_TIMEOUT = 300
-MAX_MARKER_AGE_SECONDS = 7200  # 2h：running 标记超过此时间强制回收，防僵尸进程永久占用槽位
+MAX_MARKER_AGE_SECONDS = 7200  # 绝对兜底；实际强拆时距由 _effective_max_marker_age() 按执行超时 1.5× 推导（1-3）
+
+
+def _effective_max_marker_age() -> int:
+    """运行标记强拆时距（1-3 时距分离，2026-08-24 直修）。
+
+    原与 EXECUTOR_TIMEOUT_SECONDS 同为 7200：两墙同刻触发，清扫侧抢先击杀会以
+    「退出码 -9」烧掉业务重试预算。现取执行超时的 1.5×（下限 900s），合法长会话
+    只会被执行器自身超时路径收单（含 infra 冷却语义），清扫兜底只收真僵尸。
+    """
+    try:
+        t = max(60, int(os.environ.get("EXECUTOR_TIMEOUT_SECONDS") or 7200))
+    except ValueError:
+        t = 7200
+    return max(900, int(t * 1.5))
+
+
+def _acquire_engine_single_instance(data_dir: str) -> None:
+    """1-4 单实例锁（2026-08-24 直修）：DATA_DIR/engine.lock fcntl 排他锁。
+
+    防 watchdog kickstart 与 --once / 手动实例并发双开——双开叠加 claim 覆写前
+    击杀（F1）会演变为跨实例互杀对方在途会话。拿不到锁即退出码 2。
+    """
+    import fcntl
+
+    lock_path = Path(data_dir).expanduser() / "engine.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        logger.error("另一 engine 实例持有单实例锁(%s)，拒绝双开", lock_path)
+        raise SystemExit(2)
+    try:
+        os.truncate(fd, 0)
+        os.write(fd, f"pid={os.getpid()} started={time.strftime('%Y-%m-%d %H:%M:%S')}\n".encode())
+    except OSError:
+        pass
+    globals()["_ENGINE_LOCK_FD"] = fd  # 进程生命周期持有，退出自动释放
 
 # ── git 超时统一包装 ──
 _GIT_DEFAULT_TIMEOUT = 30  # 默认值（git 命令通常 <30s）
@@ -337,6 +376,10 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path, phase
         "上游不可用",
         "inference gateway",
         "上游",
+        # 1-3（2026-08-24 直修）：超时/被清扫击杀属基建语义，不烧业务重试预算
+        "执行超时",
+        "退出码非 0: -9",
+        "退出码非 0: -15",
     ]
     # 50x 仅在有 HTTP/状态码语义时判定基础设施失败；裸 "503"（行号/数值/端口）不误判
     status_5xx = re.compile(r"(?i)(?:http|status|错误|error|code)[^\n]{0,20}50[234]")
@@ -2389,7 +2432,10 @@ def _dispatch_and_collect(
             start_new_session=True,  # 隔离进程组：kill 时杀全组，避免孙进程变僵尸
         )
         # 标记写入子进程 PID：Engine 重启时若 CLI 仍活，不得假打回
-        _refresh_running_marker_child(log_dir, work.id, proc.pid)
+        # 1-1 标记名分流（2026-08-24 直修）：机审阶段刷新 {id}-audit.running，
+        # 不再覆写 plain {id}.running——原实现导致机审结束只清 -audit 标记而
+        # plain 标记泄漏至兜底期（ccc079 实证），且 engine_pid 恒活造成假强拆记账。
+        _refresh_running_marker_child(log_dir, work.id, proc.pid, phase=log_phase)
         logf.write(f"[ccc.engine] child_pid={proc.pid}\n")
         logf.flush()
         sampler = ProcessSampler(proc)
@@ -2414,6 +2460,8 @@ def _dispatch_and_collect(
                 os.killpg(proc.pid, signal.SIGKILL)
             except (ProcessLookupError, OSError):
                 pass
+            # 1-2 台账口径（2026-08-24 直修）：同步超时击杀同样入强拆台账，熔断口径才完整
+            _record_force_kill(work.id)
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
@@ -2664,6 +2712,28 @@ def _parse_running_marker_pids(raw: str) -> list[int]:
     return pids
 
 
+def _parse_running_marker_worker_pids(raw: str) -> list[int]:
+    """解析标记中的「工作者」PID（仅 ``pid=`` / ``child_pid=``，剔除 ``engine_pid=``）。
+
+    1-2 口径修正（2026-08-24 直修）：engine 重启后标记里的旧 engine_pid 恒活，
+    会让陈旧标记永远判「存活」、拖到兜底强拆且零击杀也记账（q2 误熔断告警根因）。
+    判活只看真正干活的子进程；killpg 收割仍走 _kill_marker_pids（含防自伤守卫）。
+    """
+    out: list[int] = []
+    for line in (raw or "").splitlines():
+        t = line.strip()
+        for prefix in ("pid=", "child_pid="):
+            if not t.startswith(prefix):
+                continue
+            rest = t[len(prefix):].strip().split()[0] if t[len(prefix):].strip() else ""
+            if rest.isdigit():
+                pid = int(rest)
+                if pid > 1 and pid not in out:
+                    out.append(pid)
+            break
+    return out
+
+
 def _parse_running_marker_pid(raw: str) -> int | None:
     """兼容旧测试：返回标记中的主 ``pid=``（或首个解析到的 PID）。"""
     text = (raw or "").strip()
@@ -2811,16 +2881,17 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path, data_dir: str | N
         except OSError:
             raw = ""
             mtime = 0.0
-        owner_pids = _parse_running_marker_pids(raw)
+        owner_pids = _parse_running_marker_worker_pids(raw)
         alive = [p for p in owner_pids if _pid_alive(p)]
 
-        # 2026-08-17 v2：即使 PID 存活，若超过最大年龄（2h）同样强制中止并回收。
+        # 2026-08-17 v2：即使 PID 存活，超过强拆时距同样强制中止并回收（1-3：1.5×执行超时）。
         # 否则仅由 cleanup_dead_markers 删标记而子进程不死，会导致卡永久处于假在途、槽死锁状态。
-        if alive and mtime > 0 and (now_ts - mtime) >= MAX_MARKER_AGE_SECONDS:
+        _eff_max_age = _effective_max_marker_age()
+        if alive and mtime > 0 and (now_ts - mtime) >= _eff_max_age:
             logger.warning(
                 "执行中任务超时未回写（age=%ds，max=%ds），强制中止进程并回收: work=%s",
                 int(now_ts - mtime),
-                MAX_MARKER_AGE_SECONDS,
+                _eff_max_age,
                 w.id,
             )
             # F1 根修：killpg 收割整棵进程树（含幸存孙进程），并记强拆台账
@@ -2884,10 +2955,13 @@ def cleanup_dead_markers(log_dir: Path, running_ids: set[str] | None = None, dat
         except OSError:
             raw = ""
             mtime = 0.0
-        pids = _parse_running_marker_pids(raw)
+        pids_all = _parse_running_marker_pids(raw)
+        # 1-2 口径修正（2026-08-24）：存活判定只认工作者 PID（pid=/child_pid=），
+        # 剔除恒活的旧 engine_pid——见 _parse_running_marker_worker_pids。
+        pids = _parse_running_marker_worker_pids(raw)
         # F3 根修：机审标记的强拆上限收紧为 2×机审超时（默认配置下 30min），
-        # 不再统一等 2h——机审会话挂起时尽早收割，防孤儿堆积。
-        max_age = MAX_MARKER_AGE_SECONDS
+        # 不再统一等兜底期——机审会话挂起时尽早收割，防孤儿堆积。
+        max_age = _effective_max_marker_age()
         if marker.name.endswith("-audit.running"):
             try:
                 audit_to = max(60, int(os.environ.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS") or 1800))
@@ -2973,16 +3047,19 @@ def _clear_claim_marker(card_path: Path, card_id: str) -> None:
         subprocess.run(
             ["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True, timeout=30
         )
-        subprocess.run(
+        commit_res = subprocess.run(
             ["git", "commit", "-m", f"claim-reclaim: 认领超时回收 {card_id}"],
             cwd=card_path.parents[2],
             check=False,
             capture_output=True,
+            timeout=30,
         )
-        subprocess.run(
-            ["git", "push", "origin", "main"], cwd=card_path.parents[2], check=False, capture_output=True, timeout=60
-        )
-        logger.info("认领标记已清理（超时回收）: %s", card_id)
+        # 1-5（2026-08-24 直修）：不再直推 origin main——主树是 origin 的本地镜像，
+        # 认领回收只落本地提交，由 sync_origin_main ff-only 对齐；原 push 失败静默
+        # 曾致本地 main 提交无限累积、环节② push 撞 non-FF。
+        if commit_res.returncode != 0:
+            logger.warning("认领回收 commit 未生效（可能无改动或冲突）: %s rc=%s", card_id, commit_res.returncode)
+        logger.info("认领标记已清理（超时回收，仅本地提交）: %s", card_id)
     except OSError:
         logger.warning("清理认领标记失败（写）: %s", card_id)
 
@@ -3023,10 +3100,16 @@ def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = 
     return _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), dispatch_tip=tip or None)
 
 
-def _refresh_running_marker_child(log_dir: Path, work_id: str, child_pid: int) -> None:
-    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）；保留 dispatch_tip。"""
-    tip = _marker_dispatch_tip(log_dir, work_id)
-    _write_running_marker(log_dir, work_id, engine_pid=os.getpid(), child_pid=child_pid, dispatch_tip=tip)
+def _refresh_running_marker_child(log_dir: Path, work_id: str, child_pid: int, phase: str = "run") -> None:
+    """子 CLI 已 Popen → 标记改写为 child_pid（防 Engine 重启假打回）；保留 dispatch_tip。
+
+    1-1 标记名分流（2026-08-24 直修）：机审阶段刷新 ``{id}-audit.running``，
+    与机审认领/清理使用同一名字；原实现覆写 plain ``{id}.running`` 造成
+    机审结束后 plain 标记泄漏（ccc079 实证）。
+    """
+    marker_id = f"{work_id}-audit" if phase == "audit" else work_id
+    tip = _marker_dispatch_tip(log_dir, marker_id)
+    _write_running_marker(log_dir, marker_id, engine_pid=os.getpid(), child_pid=child_pid, dispatch_tip=tip)
 
 
 def _marker_dispatch_tip(log_dir: Path, work_id: str) -> str | None:
@@ -4277,6 +4360,37 @@ def run_loop(
     无变化则轻量睡眠探测（2s），替代固定 heartbeat_interval 轮询延迟。
     """
     logger.info("Engine 持续模式启动（收割+补位，真实派发/收单）")
+    # 2-2 观测载体（2026-08-24 直修）：engine 内嵌 scheduler 巡检线程。
+    # 此前 scheduler.py 注册的 cluster-collect / log-janitor / scheduled-ops /
+    # merge-dsh-trigger 从无任何运行载体（launchd/cron/engine 均未加载），
+    # cluster.js 冻结在退役前快照仍宣称 610x 可达。现随 engine 进程内嵌轮跑，
+    # 首轮立即执行以刷新观测数据；watchdog 重启 engine 时线程随之复活。
+    try:
+        import threading
+
+        def _embedded_scheduler() -> None:
+            from server.engine.scheduler import _default_registry
+
+            reg = _default_registry()
+            try:
+                interval = max(30, int(cfg.get("SCHEDULER_INTERVAL") or 60))
+            except (TypeError, ValueError):
+                interval = 60
+            while True:
+                for task in reg.tasks:
+                    try:
+                        ok, summary = task.run(cfg)
+                        (logger.warning if not ok else logger.info)(
+                            "内嵌巡检 %s%s: %s", task.name, "" if ok else " 异常", summary
+                        )
+                    except Exception:
+                        logger.exception("内嵌巡检 %s 执行异常", task.name)
+                time.sleep(interval)
+
+        threading.Thread(target=_embedded_scheduler, name="embedded-scheduler", daemon=True).start()
+        logger.info("内嵌 scheduler 线程已启动（巡检任务随引擎常驻）")
+    except Exception:
+        logger.exception("内嵌 scheduler 启动失败（不影响派发主流程）")
     dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
     last_mtime = _dispatch_dir_mtime(dispatch_dir)
     # executors.json 热重载（2026-08-18）：每轮按 mtime 决定是否重新加载注册表
@@ -4316,6 +4430,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ConfigError, OSError, ValueError) as exc:
         print(f"[FATAL] {exc}", file=sys.stderr)
         return 2
+
+    # 1-4 单实例锁（2026-08-24 直修）：防 watchdog kickstart 与 --once 并发双开互杀
+    _acquire_engine_single_instance(cfg.get("DATA_DIR") or str(Path.home() / ".ccc" / "data"))
 
     dispatch_dir = cfg.get("DISPATCH_DIR") or "docs/dispatch"
     store: BoardStore = FileBoardStore(
