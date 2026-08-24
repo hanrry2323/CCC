@@ -97,3 +97,45 @@ FAILED server/tests/test_http_api.py::TestConversation::test_conversation_stream
    - 说明：纯测试夹具默认值修复，未动项目结构、技术栈与路径。
 4. **线路图**：项目近况/下一步是否变化？[否]
    - 说明：单点 flake 修复，无新增线路或近况变化。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+### 1 范围核对（base `738cac95e` → HEAD `f411c6ccd`，分支 `codex/ccc087-pytest-data-dir-flake`）
+
+- `48c70ceae` 仅改 `server/tests/test_engine_main.py`（1 file, +6/−2）——白名单内；conftest.py 未动，符合「必要时」才动的卡面约定。
+- `f411c6ccd` 仅改本卡文件（回写）。两提交均显式 add 单文件，无 `git add -A`。
+- 未触验收区/机审区既有内容/已关闭状态；未改单实例锁生产逻辑（diff 零生产文件）。
+
+### 2 对抗式核查证据（全部本席独立复现）
+
+| # | 核查项 | 命令/位置 | 结果 |
+|---|---|---|---|
+| a | 根因引证真实 | `sed -n '235,250p' server/engine/main.py`、`sed -n '4435,4448p'` | `flock(LOCK_EX\|LOCK_NB)` 失败 `SystemExit(2)`（:241-245）；`main()` 无条件调 `_acquire_engine_single_instance(DATA_DIR)`（:4441）——与回写区引证逐字相符 |
+| b | 修复命中目标 | `test_engine_main.py:133,136` | `test_once_smoke` → `_write_env(tmp_path, reg)` 无 overrides，走新 tmp_path 默认值 ✓ |
+| c | 覆盖能力保留 | diff 第 50-51 行 `overrides.get('DATA_DIR', …)` | 显式传参通路未删 ✓ |
+| d | 锁竞争专项测试「如有」 | `grep -rn "_acquire_engine_single_instance\|engine\.lock" server/tests/` | 仅命中注释行，「不触发」声明属实 ✓ |
+| e | 三轮零锁类 flake | `grep -Ec 'test_once_smoke\|BlockingIOError\|engine\.lock\|SystemExit\(2\)\|单实例锁' /tmp/ccc087-evidence/round{1,2,3}.log` | **0 ×3**，复现成立 ✓ |
+| f | 三轮完整性 | round{1,2,3}.log 各含 `[100%]` 终点、FAILED=11 | 三轮均跑完全量 ✓ |
+| g | 防伪造 | `md5` 六份工件互异；baseline.xml≠verify.xml | 等长系巧合（耗时位数相同），无复制伪造 ✓ |
+| h | 失败集合基线对照 | python 解析 verify.xml/baseline.xml | 双方 tests=1175 failures=11，失败集合差集**双向为空** → 11 个失败非本卡引入 ✓ |
+| i | push 事实 | `git for-each-ref refs/remotes/origin` | `origin/codex/ccc087-pytest-data-dir-flake`=`f411c6ccd`=本地 HEAD ✓ |
+| j | 引用工件抽查 | `docs/lessons.md:2358` | Lesson 57 存在且确载 conversation 族环境性失败（CCC_BRAIN_BASE_URL 依赖），回写区交叉引用属实 ✓ |
+
+### 3 发现（均不阻断）
+
+1. 【瑕疵·记录】round{1,2,3}.log 缺 pytest 最终计数行（`N failed, M passed in …`）；但 `[100%]` 终点 + FAILED 集合与 baseline 完全一致 + verify/baseline junitxml 权威计数交叉印证，实质结论不受影响。疑为运行器截尾，后续留证建议保留完整尾部。
+2. 【残留隐患·范围外】同模式共享默认值仍在：`test_engine_scheduler.py:54-56` `_write_env` 仍硬编码 `/tmp/ccc2/{data,logs}`（执行体已在维护区 Q2 如实披露并建议另卡，本席确认属实）；另 ENGINE_PORT/BOARD_PORT/WEB_PORT 固定 8101/8102/8103 共享，若本机真实服务占用同端口仍可能偶发冲突（本席补充，建议随 scheduler 另卡一并评估）。均在白名单外，不在本卡处置。
+
+### 4 severity 三级评分
+
+影响面 1（仅测试夹具默认值，生产零触及）+ 改动深度 1（单文件 4 行实质变更）+ 红线邻近 1（不涉生产锁逻辑/安全/数据）= **3 分 → 轻**；无任一维度高危，不强升。
+
+### 5 维护区四问核对（P1-b 机械判据）
+
+四问均为合规单选：[否]/[无]/[否]/[否]，各附一句实情说明，无模板占位。抽查声明：Q1「关联为交接问题3 非方案编号」✓；Q2「lessons.md 不在白名单」✓、「scheduler 残留」✓（grep 属实）；Q3/Q4 与 diff 事实一致 ✓。**维护区通过**。
+
+### 6 结论
+
+机审：通过
