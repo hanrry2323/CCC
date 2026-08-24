@@ -1,4 +1,4 @@
-# 任务卡 docs/dispatch/ccc/ccc073 · ccc073 · 执行体 wrapper 双仓回写语义提示（DSH 执行）
+# 任务卡 ccc073 · 执行体 wrapper 双仓回写语义提示（DSH 执行）
 
 > 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-24
 
@@ -9,7 +9,7 @@
 ## 实现
 
 白名单：scripts/dsh-executor.sh。当 BIZ_WORKTREE 非空时 PROMPT 追加：
-「双仓提示：本卡文件位于文档仓分支副本 ${WORKTREE}/ 下（相对路径 ${CARD_PATH#/Users/fan/program/CCC/}）。业务改动在当前目录实施；卡文件的状态回写、回写区与维护区四问必须在文档仓 worktree 的卡副本上完成并 commit+push 到同一分支；主仓 ${CARD_PATH} 只读勿动。」
+「双仓提示：本卡文件位于文档仓分支副本 ${{WORKTREE}}/ 下（相对路径 ${{CARD_PATH#/Users/fan/program/CCC/}}）。业务改动在当前目录实施；卡文件的状态回写、回写区与维护区四问必须在文档仓 worktree 的卡副本上完成并 commit+push 到同一分支；主仓 ${{CARD_PATH}} 只读勿动。」
 WORKTREE 缺失场景不加误导提示。文案外零逻辑变化。
 ## 红线（先看）
 

@@ -1,4 +1,4 @@
-# 任务卡 docs/dispatch/ccc/ccc070 · ccc070 · xy 历史卡头治理——移除违禁字段「批准」（DSH 执行）
+# 任务卡 ccc070 · xy 历史卡头治理——移除违禁字段「批准」（DSH 执行）
 
 > 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-24
 
@@ -35,6 +35,7 @@ xy 项目 24 张 OpenCode 时代历史卡卡头含 DOC-PROTOCOL §2.3 违禁自�
 - docs/dispatch/xy/xy053-workflow-api.md
 - docs/dispatch/xy/xy054-preview-pages.md
 - docs/dispatch/xy/xy055-workflow-visualization.md
+- docs/dispatch/xy/xy059-html-preview-cli.md
 ## 红线（先看）
 
 1. 白名单外零触碰；禁直推 main；禁 git add -A。

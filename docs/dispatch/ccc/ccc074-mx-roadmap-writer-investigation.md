@@ -1,4 +1,4 @@
-# 任务卡 docs/dispatch/ccc/ccc074 · ccc074 · mx/roadmap 周期写入者定位调查（DSH 执行）
+# 任务卡 ccc074 · mx/roadmap 周期写入者定位调查（DSH 执行）
 
 > 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-24
 

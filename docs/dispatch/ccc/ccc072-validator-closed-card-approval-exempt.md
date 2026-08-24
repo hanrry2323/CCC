@@ -1,4 +1,4 @@
-# 任务卡 docs/dispatch/ccc/ccc072 · ccc072 · 卡头校验器语义修复——已关闭卡豁免「批准」章（DSH 执行）
+# 任务卡 ccc072 · 卡头校验器语义修复——已关闭卡豁免「批准」章（DSH 执行）
 
 > 关联：无方案（2026-08-24 债务清偿 · 老板指令直派） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-24
 
@@ -10,7 +10,7 @@
 
 白名单：server/board/validate.py、server/tests/test_validator_closed_card_approval.py（新增）。
 
-1. validate.py：FORBIDDEN_HEADER_KEYS 循环前取卡头状态，base_state 为「已关闭」时跳过「批准」键（「审批/review/approval」仍全态报错）；注释引用人审节点③设计（scripts/approve-merge.sh close_card）与本卡。
+1. validate.py：FORBIDDEN_HEADER_KEYS 循环前取卡头状态，base_state 为「已关闭」时跳过「批准」键检查（「审批/review/approval」仍全态报错）；注释引用人审节点③设计（scripts/approve-merge.sh close_card）与本卡。
 2. 新增测试两张 tmp 卡夹具（唯一差异=状态 已关闭 vs 待分派，均含该行）：断言前者零 issue、后者含对应 issue。
 ## 红线（先看）
 
