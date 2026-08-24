@@ -75,8 +75,8 @@
 
 **Commit 与 push 核验**
 
-- 分支 `codex/ccc084-traj-digest-tool`（基点 origin/main@3e93a861d）：`cae16b61f` 实现；回写 commit 见下。
-- push 核验见 push 后 ls-remote 对照（回写时补记于维护区说明）。
+- 分支 `codex/ccc084-traj-digest-tool`（基点 origin/main@3e93a861d）：`cae16b61f` 实现；`b7d3091b6` 卡回写。
+- push 退出码 0；push 后 `git ls-remote origin codex/ccc084-traj-digest-tool` = `b7d3091b6e1ff0213c839dc513d19829639fbef0`，与本地 HEAD 一致。
 
 **卡回写结果**：卡头状态=已回写；回写区填实现说明/跑批摘要/对齐说明/自测/push 核验；维护区四问逐项如实勾选。未写机审区/验收区、未置已关闭。
 
