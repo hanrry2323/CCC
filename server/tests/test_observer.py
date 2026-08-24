@@ -405,47 +405,103 @@ def test_is_maintenance_complete_accepts_checkbox(tmp_path: Path) -> None:
     assert observer.is_maintenance_complete(text) is True
 
 
-def test_write_roadmap_draft(tmp_path: Path) -> None:
-    """Loop 巡查集成：write_roadmap_draft 写入草案到项目 roadmap.md 并去重。"""
+def test_write_roadmap_draft_disabled_by_default(tmp_path: Path, monkeypatch) -> None:
+    """ccc077 回归：开关默认 off → write_roadmap_draft 直接跳过，正文 mtime/内容不变。"""
     from server.engine.observer import write_roadmap_draft
 
-    # 构造临时 roadmap.md
+    monkeypatch.delenv("CCC_LOOP_OBSERVER_DRAFTS", raising=False)
     projects_dir = tmp_path / "docs" / "projects" / "ccc"
     projects_dir.mkdir(parents=True, exist_ok=True)
     roadmap_path = projects_dir / "roadmap.md"
-    roadmap_path.write_text(
-        "# CCC 线路图\n\n> 项目：ccc · 更新：2026-08-13\n\n## 草案池\n\n无。\n\n## 里程碑\n\n无。\n",
-        encoding="utf-8",
-    )
+    body = "# CCC 线路图\n\n> 项目：ccc · 更新：2026-08-13\n\n## 草案池\n\n无。\n\n## 里程碑\n\n无。\n"
+    roadmap_path.write_text(body, encoding="utf-8")
+    before_stat = roadmap_path.stat()
 
-    # 机审 ccc076 就地修复：write_roadmap_draft→create_draft→_write_roadmap 会经
-    # 未 patch 的 _repo_root() 在真实仓 docs/projects/ccc/ 下 mkdir+写 .roadmap.lock
-    # （该路径被 .gitignore *.lock 覆盖、porcelain 沉默，属文件系统面隐形触碰）。
-    # _repo_root 一并绑定 tmp 后，锁与草案全部落在 tmp 内，本用例对真实仓零写入。
-    with patch("server.board.roadmap._roadmap_path", return_value=roadmap_path), \
-            patch("server.board.roadmap._repo_root", return_value=tmp_path):
-        # 第一次写入
-        result = write_roadmap_draft("ccc", "状态漂移检测异常")
-        assert result.get("ok") is True
-        assert "状态漂移" in result.get("draft", "")
+    # ccc077 治理版 write_roadmap_draft 已彻底脱离 create_draft/_roadmap_path/_repo_root
+    # 路径（off 时直接跳过、on 时走 base_dir 草稿目录），故 ccc076 机审针对旧实现的
+    # _roadmap_path/_repo_root 补丁在此已无意义；base_dir=str(tmp_path) 即完成隔离。
+    result = write_roadmap_draft("ccc", "状态漂移检测异常", base_dir=str(tmp_path))
 
-        # 第二次写入同描述 → 去重跳过
-        result2 = write_roadmap_draft("ccc", "状态漂移检测异常")
-        assert result2.get("ok") is True
-        assert result2.get("skipped") is True
+    after_stat = roadmap_path.stat()
+    assert result.get("ok") is True
+    assert result.get("skipped") is True
+    assert result.get("reason") == "loop_observer_drafts_disabled"
+    # 文件 mtime/内容不变
+    assert after_stat.st_mtime == before_stat.st_mtime
+    assert after_stat.st_size == before_stat.st_size
+    assert roadmap_path.read_text(encoding="utf-8") == body
+    # 草稿目录不应被创建
+    assert not (tmp_path / "data" / "drafts").exists()
+    assert not (tmp_path / "drafts").exists()
 
-        # 不同描述 → 正常写入
-        result3 = write_roadmap_draft("ccc", "缺失维护区四问")
-        assert result3.get("ok") is True
-        assert result3.get("skipped") is not True
 
-        # 验证草案池内容
-        from server.board.roadmap import list_drafts
-        drafts = list_drafts("ccc")
-        titles = [d.title for d in drafts]
-        assert len(titles) == 2
-        assert any("状态漂移" in t for t in titles)
-        assert any("缺失维护区四问" in t for t in titles)
+def test_write_roadmap_draft_enabled_writes_to_data_drafts_only(tmp_path: Path, monkeypatch) -> None:
+    """ccc077 回归：on 时草稿落 data/drafts/roadmap/，docs/projects 正文不动 + 去重语义保持。"""
+    from server.engine.observer import write_roadmap_draft
+
+    monkeypatch.setenv("CCC_LOOP_OBSERVER_DRAFTS", "1")
+    projects_dir = tmp_path / "docs" / "projects" / "ccc"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    roadmap_path = projects_dir / "roadmap.md"
+    body = "# CCC 线路图\n\n> 项目：ccc · 更新：2026-08-13\n\n## 草案池\n\n无。\n\n## 里程碑\n\n无。\n"
+    roadmap_path.write_text(body, encoding="utf-8")
+    before_stat = roadmap_path.stat()
+
+    # 第一次写入 → 落草稿文件
+    result = write_roadmap_draft("ccc", "状态漂移检测异常", base_dir=str(tmp_path))
+    assert result.get("ok") is True
+    assert result.get("skipped") is not True
+    draft_file = tmp_path / "drafts" / "roadmap" / "ccc-draft.md"
+    assert draft_file.is_file(), f"草稿应落 {draft_file}"
+    first_content = draft_file.read_text(encoding="utf-8")
+    assert "状态漂移检测异常" in first_content
+
+    # 同描述再写 → 去重跳过，文件内容不变
+    result2 = write_roadmap_draft("ccc", "状态漂移检测异常", base_dir=str(tmp_path))
+    assert result2.get("skipped") is True
+    assert result2.get("reason") == "duplicate"
+    assert draft_file.read_text(encoding="utf-8") == first_content
+
+    # 不同描述 → 追加
+    result3 = write_roadmap_draft("ccc", "缺失维护区四问", base_dir=str(tmp_path))
+    assert result3.get("ok") is True
+    assert result3.get("skipped") is not True
+    grown = draft_file.read_text(encoding="utf-8")
+    assert "缺失维护区四问" in grown
+    assert grown.count("\n- ") == 2  # 恰好两条草案行
+
+    # docs/projects 正文 mtime/内容零变化（自动链路只读化）
+    after_stat = roadmap_path.stat()
+    assert after_stat.st_mtime == before_stat.st_mtime
+    assert after_stat.st_size == before_stat.st_size
+    assert roadmap_path.read_text(encoding="utf-8") == body
+
+
+def test_loop_drafts_env_parsing(tmp_path: Path, monkeypatch) -> None:
+    """ccc077 回归：CCC_LOOP_OBSERVER_DRAFTS 取值解析——默认 off；仅 1/true/yes/on 为 on。"""
+    from server.engine.observer import _loop_drafts_enabled
+
+    monkeypatch.delenv("CCC_LOOP_OBSERVER_DRAFTS", raising=False)
+    assert _loop_drafts_enabled() is False
+    for off_val in ("0", "false", "no", "off", "", "random"):
+        monkeypatch.setenv("CCC_LOOP_OBSERVER_DRAFTS", off_val)
+        assert _loop_drafts_enabled() is False, f"value={off_val!r} 应视为 off"
+    for on_val in ("1", "true", "TRUE", "Yes", "on"):
+        monkeypatch.setenv("CCC_LOOP_OBSERVER_DRAFTS", on_val)
+        assert _loop_drafts_enabled() is True, f"value={on_val!r} 应视为 on"
+
+
+def test_loop_drafts_dir_resolution(tmp_path: Path, monkeypatch) -> None:
+    """ccc077 回归：草稿目录解析——显式 base_dir 优先；否则 env 兜底；路径固定 drafts/roadmap。"""
+    from server.engine.observer import _loop_drafts_dir
+
+    monkeypatch.delenv("CCC_DATA_DIR", raising=False)
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    explicit = _loop_drafts_dir(str(tmp_path))
+    assert explicit == (tmp_path / "drafts" / "roadmap").resolve()
+    monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path / "envdata"))
+    from_env = _loop_drafts_dir()
+    assert from_env == (tmp_path / "envdata" / "drafts" / "roadmap").resolve()
 
 
 def test_run_playwright_smoke_test_failure() -> None:
@@ -605,9 +661,10 @@ def test_scan_findings_plan_progress_consistency_mocked(
 @patch("server.engine.observer.write_roadmap_draft")
 @patch("server.engine.observer.scan_findings")
 def test_run_observer_writes_draft_for_consistency(
-    mock_scan_findings, mock_write_draft, tmp_path
+    mock_scan_findings, mock_write_draft, tmp_path, monkeypatch
 ):
-    """PRIME-DIRECTIVE §6.3：consistency 发现自动回线路图草案池（治理债）。"""
+    """PRIME-DIRECTIVE §6.3：consistency 发现自动回草案池——ccc077 起 on 时才接线，落点为 data/drafts。"""
+    monkeypatch.setenv("CCC_LOOP_OBSERVER_DRAFTS", "1")
     mock_scan_findings.return_value = [
         {
             "id": "milestone_progress_xy_a",
@@ -643,8 +700,120 @@ def test_run_observer_writes_draft_for_consistency(
     ):
         ok, _ = run_observer({"SCHEDULER_DISPATCH_DIR": "", "DATA_DIR": str(tmp_path)})
         assert ok is True
-    # 只对 consistency 接线草案池；drift 不写
-    mock_write_draft.assert_called_once_with("xy", "里程碑 xy/a 进度不一致", draft_type="治理债")
+    # 只对 consistency 接线草案池；drift 不写；落点经 base_dir=<DATA_DIR> 指向 data/drafts
+    mock_write_draft.assert_called_once_with(
+        "xy", "里程碑 xy/a 进度不一致", draft_type="治理债", base_dir=str(tmp_path)
+    )
+
+
+_CONSISTENCY_FINDING = {
+    "id": "milestone_progress_xy_a",
+    "title": "里程碑 xy/a 进度不一致",
+    "project": "xy",
+    "type": "consistency",
+    "cross_confirm": 0.5,
+    "acting_on": "docs/projects/xy/roadmap.md",
+    "evidence": "docs/projects/xy/roadmap.md:1",
+}
+
+
+def _make_isolated_repo(tmp_path: Path) -> tuple[Path, str]:
+    """造隔离 repo 片段：per-project roadmap 正文；返回 (正文路径, 正文内容)。
+
+    测试把 observer.PROJECT_ROOT patch 到 tmp_path，避免 run_observer 的
+    docs/notes 报告等写入触碰真实仓库。
+    """
+    body_file = tmp_path / "docs" / "projects" / "xy" / "roadmap.md"
+    body_file.parent.mkdir(parents=True, exist_ok=True)
+    body = "# xy 线路图\n\n> 项目：xy · 更新：2026-08-24\n\n## 草案池\n\n无。\n"
+    body_file.write_text(body, encoding="utf-8")
+    return body_file, body
+
+
+@patch("server.engine.observer.write_roadmap_draft")
+@patch("server.engine.observer._auto_fix_deterministic", return_value=[])
+@patch("server.engine.observer.scan_findings")
+def test_run_observer_skips_drafts_when_off(
+    mock_scan_findings, _mock_auto_fix, mock_write_draft, tmp_path, monkeypatch, caplog
+):
+    """ccc077 回归：默认 off → 整轮跳过草稿写入（不调用 + DEBUG 一次/轮）+ 正文 mtime/内容不变。"""
+    import logging
+
+    from server.engine.observer import run_observer
+
+    monkeypatch.delenv("CCC_LOOP_OBSERVER_DRAFTS", raising=False)
+    body_file, body = _make_isolated_repo(tmp_path)
+    before_stat = body_file.stat()
+    # 两条可写候选（consistency + tech），off 时也只允许记一次 DEBUG
+    mock_scan_findings.return_value = [
+        dict(_CONSISTENCY_FINDING),
+        {
+            "id": "tech_rejected_cards_xy",
+            "title": "xy 有打回卡待处理",
+            "project": "xy",
+            "type": "tech",
+            "cross_confirm": 0.5,
+            "acting_on": "docs/dispatch",
+            "evidence": "docs/dispatch:1",
+        },
+    ]
+
+    with patch("server.engine.observer.PROJECT_ROOT", tmp_path), patch(
+        "server.engine.observer.load_projects", return_value=[]
+    ), patch("server.engine.observer.load_dispatch_cards", return_value=[]), patch(
+        "server.engine.observer.list_plans", return_value=[]
+    ), patch("server.engine.observer.should_run", return_value=(True, "test")):
+        with caplog.at_level(logging.DEBUG, logger="ccc.engine.observer"):
+            ok, _ = run_observer({"SCHEDULER_DISPATCH_DIR": "", "DATA_DIR": str(tmp_path)})
+            assert ok is True
+
+    mock_write_draft.assert_not_called()
+    after_stat = body_file.stat()
+    assert after_stat.st_mtime == before_stat.st_mtime
+    assert after_stat.st_size == before_stat.st_size
+    assert body_file.read_text(encoding="utf-8") == body
+    assert not (tmp_path / "drafts" / "roadmap").exists()
+    skip_logs = [
+        r
+        for r in caplog.records
+        if r.name == "ccc.engine.observer"
+        and r.levelno == logging.DEBUG
+        and "CCC_LOOP_OBSERVER_DRAFTS" in r.getMessage()
+    ]
+    assert len(skip_logs) == 1, [r.getMessage() for r in caplog.records]
+
+
+@patch("server.engine.observer._auto_fix_deterministic", return_value=[])
+@patch("server.engine.observer.scan_findings")
+def test_run_observer_on_end_to_end_drafts_not_body(
+    mock_scan_findings, _mock_auto_fix, tmp_path, monkeypatch
+):
+    """ccc077 回归（端到端）：on 时 run_observer 草稿真落 <DATA_DIR>/drafts/roadmap/<p>-draft.md，正文不动。"""
+    from server.engine.observer import run_observer
+
+    monkeypatch.setenv("CCC_LOOP_OBSERVER_DRAFTS", "1")
+    body_file, body = _make_isolated_repo(tmp_path)
+    before_stat = body_file.stat()
+    mock_scan_findings.return_value = [dict(_CONSISTENCY_FINDING)]
+
+    with patch("server.engine.observer.PROJECT_ROOT", tmp_path), patch(
+        "server.engine.observer.load_projects", return_value=[]
+    ), patch("server.engine.observer.load_dispatch_cards", return_value=[]), patch(
+        "server.engine.observer.list_plans", return_value=[]
+    ), patch("server.engine.observer.should_run", return_value=(True, "test")):
+        ok, _ = run_observer({"SCHEDULER_DISPATCH_DIR": "", "DATA_DIR": str(tmp_path)})
+        assert ok is True
+
+    draft_file = tmp_path / "drafts" / "roadmap" / "xy-draft.md"
+    assert draft_file.is_file(), f"草稿应落 {draft_file}"
+    content = draft_file.read_text(encoding="utf-8")
+    assert "[治理债][Loop巡查]" in content
+    assert "里程碑 xy/a 进度不一致" in content
+    # 正文零触碰
+    after_stat = body_file.stat()
+    assert after_stat.st_mtime == before_stat.st_mtime
+    assert after_stat.st_size == before_stat.st_size
+    assert body_file.read_text(encoding="utf-8") == body
 
 
 # ── 第三步：技术债巡检（tech 检查项） ──
