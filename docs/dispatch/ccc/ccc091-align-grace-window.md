@@ -62,3 +62,18 @@ server/git_sync.py `_force_align_dispatch` 对 dispatch 子目录内 **mtime 距
    - 说明：[否]。仅 server/git_sync.py 内部加固与 server/tests/ 单测补充，不改项目结构/技术栈/路径。
 4. **线路图**：[否]
    - 说明：[否]。单点防线收口，不构成新里程，项目近况符合原规划。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+- **范围核对**：代码 commit `352e91b0f` 仅触碰 `server/git_sync.py`（+65/-7）与 `server/tests/test_git_sync.py`（+75），在卡白名单内；基线 `c5d927686` = origin/main；工作树干净。ff-only 主流程与已跟踪文件对齐语义零改动（diff 实证：fetch :111 / merge :123 / 成功路径调用行 :130 均未触碰语义）。
+- **契约变更核验**：`_force_align_dispatch` 返回 int→dict，全仓仅本文件两处调用——`:130` 返回值弃用、`:145` 消费 dict；外部调用方（board/scheduler.py:50、engine/main.py:4110）只读 `ok/detail/method`，不受影响。
+- **机械复现**（机审席独立执行，非采信执行体自述）：`pytest server/tests/test_git_sync.py -v` → 11 passed；回归 `test_board_scheduler + test_engine_main + test_engine_dispatch` → 168 passed；`ruff check` → All checks passed；`git ls-remote origin codex/ccc091-align-grace-window` → `7f9341f6f`（回写已推送实证）。
+- **对抗探针**（隔离沙箱 bare origin 复刻生产拓扑）：非 `.md` 未跟踪文件不受宽限保护立即清除 ✓；子目录 `.md` 新卡受宽限窗覆盖 ✓；非法 env 回退 300s ✓；**F1 实锤**：未来 mtime（时钟偏斜）+ `CCC_ALIGN_GRACE_SECONDS=0` 时 `age<0 < grace=0` 为真 → 卡被保留且告警渲染「0s < 0s」，违背回写区「负值按 0=恢复原立即清除语义」承诺。
+- **severity 三级**：影响面 1（病态场景、下周期自愈）+ 改动深度 1（单条件边界）+ 红线邻近 1（无）= 3 → 轻。
+- **分流（轻→就地修复）**：机审席 F1 已修复——age 钳制 `max(0.0, now-mtime)`（server/git_sync.py:203-206），新增 `test_future_mtime_card_removed_when_grace_disabled` 锁定契约；修复后 12 passed、ruff 全绿；commit `0dfc3701c` 已推分支。
+- **轻微项记录（不计分）**：O1 `_GRACE_WARNED` 进程生命周期不清理，同路径重建卡不再告警——符合卡面「告警一次（同文件去重）」规格，仅备忘；O2 验收标准两复选框未勾选，回写区证据已覆盖，不影响判定。
+- **维护区核对**：四问均单选 [否]/[无] 非占位，说明各为一句实情；抽查 Q2「未另立 docs/notes」属实（grep docs/notes 无 ccc091/宽限窗相关文件）；Push 证据与远端一致。
+
+机审：通过
