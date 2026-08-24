@@ -1,6 +1,6 @@
 # 任务卡 ccc080 · R3 流程闭环实测卡——全链演练专用（DSH 执行）
 
-> 关联：R3 排查指令（2026-08-24 老板直接任务） · 执行体：DSH · 验收：DSH · 状态：执行中 · 派发：engine · 项目：ccc · 日期：2026-08-24
+> 关联：R3 排查指令（2026-08-24 老板直接任务） · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-24
 
 > 处理记录（2026-08-24 · 出卡说明）：new-card.sh 按 FORBIDDEN_CARD_PREFIXES 设计拦截 ccc 自指出卡；本卡系老板 R3 指令明确要求「一条真实测试卡（ccc-prefix）穿过全链」，依 ccc075/076-079 先例以指令为授权手工落卡。另取证：dispatch 未提交新卡会被引擎 _force_align_dispatch 按 untracked 清除（吃单窗），故本卡落盘即提交。
 
@@ -42,4 +42,27 @@
 
 ## 回写区
 
-（执行体回写时填写）
+- 改动清单（2026-08-24 · DSH 执行体）：
+  - 新增 `docs/notes/r3-drill-ccc080.md`（唯一白名单内新文件，内容一行：`R3 pipeline drill ok 2026-08-24T13:35:32Z`）。
+  - 本卡文件状态流转回写：待分派→执行中（业务 commit）→已回写（本 commit）；并按 docgate 完成钩子补 `## 维护区` 节四问。
+- commit：
+  - 业务 commit：`17a550271`（drill(ccc080): R3 全链演练——新增规定取证文件，卡头 待分派→执行中）
+  - 回写 commit：见分支最新一笔（drill(ccc080): 回写……）
+- 自测证据：
+  - `cat docs/notes/r3-drill-ccc080.md` → 输出 `R3 pipeline drill ok 2026-08-24T13:35:32Z`
+  - `grep -c "^R3 pipeline drill ok " docs/notes/r3-drill-ccc080.md` → `1`（MATCH）
+  - `ls -la docs/notes/r3-drill-ccc080.md` → 文件存在（42 字节）
+- 分支：`codex/ccc080-r3-pipeline-drill`；相对 origin/main 含业务 commit + 回写 commit，未触碰 main。
+
+## 维护区
+
+> 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。
+
+1. **方案同步**：[否]
+   - 说明：本卡系老板 R3 指令的一次性全链演练卡，无关联方案编号，不推进方案。
+2. **教训沉淀**：[无]
+   - 说明：演练产出即取证文件 docs/notes/r3-drill-ccc080.md，本次无新增流程教训需另立笔记。
+3. **档案/README**：[否]
+   - 说明：白名单仅限单文件新增，未触及 docs/projects/ccc/README.md 等项目档案。
+4. **线路图**：[否]
+   - 说明：一次性流程演练，不改变任何线路图意向或排期。
