@@ -76,4 +76,4 @@ server/git_sync.py `_force_align_dispatch` 对 dispatch 子目录内 **mtime 距
 - **轻微项记录（不计分）**：O1 `_GRACE_WARNED` 进程生命周期不清理，同路径重建卡不再告警——符合卡面「告警一次（同文件去重）」规格，仅备忘；O2 验收标准两复选框未勾选，回写区证据已覆盖，不影响判定。
 - **维护区核对**：四问均单选 [否]/[无] 非占位，说明各为一句实情；抽查 Q2「未另立 docs/notes」属实（grep docs/notes 无 ccc091/宽限窗相关文件）；Push 证据与远端一致。
 
-机审：通过
+机审：通过（被审 7f9341f6fbdf）
