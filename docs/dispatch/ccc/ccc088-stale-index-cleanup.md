@@ -185,4 +185,4 @@ pytest server/tests/test_board_scheduler.py server/tests/test_board_visibility.p
 
 severity=轻（影响面 1 + 深度 1 + 红线邻近 2 = 4 分：卡内目标、红线、验收标准全部达标，残余项均为外部已上呈事项）。按 v4 分流：就地收口=本席机审区落盘并推送，无需打回；FT1/O1 随合入说明上呈环节②处置；24h 复核由环节②按卡验收标准执行。
 
-机审：通过
+机审：通过（被审 d9ed4a0001d0）
