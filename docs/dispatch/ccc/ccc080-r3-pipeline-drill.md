@@ -66,3 +66,19 @@
    - 说明：白名单仅限单文件新增，未触及 docs/projects/ccc/README.md 等项目档案。
 4. **线路图**：[否]
    - 说明：一次性流程演练，不改变任何线路图意向或排期。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-24 · severity：轻**
+
+- 范围核对：`git diff --name-status origin/main...HEAD` 仅 `A docs/dispatch/ccc/ccc080-r3-pipeline-drill.md` + `A docs/notes/r3-drill-ccc080.md` 两文件；三笔拆分清晰——960049b3c（派发前置补卡副本，干预点①）、17a550271（业务取证文件+卡头 待分派→执行中）、3ea26ced1（纯回写）。未触 engine/board/scripts 任何代码。
+- 取证文件核验：`cat -e docs/notes/r3-drill-ccc080.md` → 单行 `R3 pipeline drill ok 2026-08-24T13:35:32Z$`；`wc -c` = 42 字节；`grep -cE '^R3 pipeline drill ok [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'` = 1。内容时间戳 13:35:32Z 与业务提交时刻 21:36:29+08:00 自洽（先写后提交 57 秒）。
+- 推送与红线：HEAD `3ea26ced1` == origin/codex/ccc080-r3-pipeline-drill（ls-remote 一致）；origin/main 停在 `6926db6a3` 未动；远端无 ccc080 杂散分支；各 commit 文件清单精确（无 add -A 痕迹）；卡内未写机审区/验收区/已关闭。
+- 卡内声明抽查属实：42 字节 ✓、sha 17a550271 ✓、grep 计数 1 ✓、「new-card.sh 拦截 ccc 自指出卡」属实——scripts/new-card.sh:120,135 FORBIDDEN_CARD_PREFIXES 拦截逻辑存在，docs/projects/registry.yaml 中 ccc 条目 forbidden:true（「断根」注记），手工落卡有老板 R3 指令授权与先例。
+- 维护区四问核对：[否]/[无]/[否]/[否] 四问均单选合规（docgate.py 解析为 choice.strip("[]")∈{是,否,有,无,x,X,空}）；四条说明均一句实情非占位；Q1=[否] 与卡头关联字段无方案编号相互一致；Q2=[无] 无需引用沉淀文件。
+- 验收标准逐条：① 取证文件存在且匹配规定前缀（字节级复核）✓ ② 相对 origin/main 含业务 commit 17a550271 + 回写 commit 3ea26ced1 ✓ ③ 状态流转 待分派(960049b3c)→执行中(17a550271)→已回写(3ea26ced1) 逐笔 git show 可复现 ✓。
+- 观察项（不计缺陷）：960049b3c 字面上超出「仅新增一个文件」业务白名单，但系卡载体自身的派发前置干预，处理记录（卡头第5行）与提交消息双留痕，判为授权内；目标中 ready_for_merge 可见性于本机审通过后由看板侧达成，回写时刻不可见不构成缺陷。
+- 对抗式找茬结论：范围越界/假数据/mock/作者篡改/直推 main/越区写入均未发现（0 P0/P1）；证据全部来自本 worktree 可复现命令，未引用执行体自述作为判定依据。
+- 评分：影响面 1 + 改动深度 1 + 红线邻近 1 = 3 → 轻（无任一维度高，不触发强制重）。
+
+机审：通过
