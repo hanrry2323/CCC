@@ -20,6 +20,13 @@ os.environ.setdefault(
 )
 os.environ.setdefault("DATA_DIR", _tempfile.mkdtemp(prefix="ccc-test-data-"))
 
+# ccc082 测试隔离：全局机审注册表同样锚到临时目录，防测试经默认
+# ~/.ccc/data/audit-inflight 读写生产防线面。
+os.environ.setdefault(
+    "CCC_AUDIT_REGISTRY_DIR",
+    os.path.join(_tempfile.mkdtemp(prefix="ccc-test-audit-reg-")),
+)
+
 # 提前注入鉴权凭据：`server.web.server` 在 import 时冻结用户名/密码哈希。
 # 按字母序先收集的模块若提前 import server，会冻住空凭据 → http_api 全线 500。
 # 此处只注入凭据，不设 CCC_WEB_AUTH_REQUIRED（各测试自行控制）。
