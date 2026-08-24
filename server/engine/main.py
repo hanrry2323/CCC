@@ -2461,7 +2461,8 @@ def _dispatch_and_collect(
             except (ProcessLookupError, OSError):
                 pass
             # 1-2 台账口径（2026-08-24 直修）：同步超时击杀同样入强拆台账，熔断口径才完整
-            _record_force_kill(work.id)
+            # R2 修正：必须透传 data_dir——缺省回退 ~/.ccc/data 曾使测试实锤污染生产台账
+            _record_force_kill(work.id, data_dir=cfg.get("DATA_DIR"))
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
@@ -2908,6 +2909,12 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path, data_dir: str | N
             )
             continue
         try:
+            # R2 修正（C-P1-A，2026-08-24）：本支路是全链唯一不做 killpg 的回收口——
+            # 组领导已死但同组孙进程幸存时，判死回收+重派会让幸存者与新会话并发写
+            # 同一 worktree（即 ccc078 雪崩机制）。unlink 前先按进程组收割。
+            killed = _kill_marker_pids(raw, reason="回收孤儿执行中", work_id=w.id)
+            if killed:
+                _record_force_kill(w.id, data_dir=data_dir)
             # 不进打回：回待分派自动再派（避免 kickstart 误杀长任务）
             w.transition(
                 State.TODO,

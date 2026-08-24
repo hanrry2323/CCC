@@ -46,7 +46,9 @@ def marker_pid_alive(log_dir: Path, work_id: str) -> bool:
             raw = marker.read_text(encoding="utf-8")
         except OSError:
             continue
-        pids = [int(m) for m in re.findall(r"(?:pid|engine_pid|child_pid)=(\d+)", raw)]
+        # R2 口径对齐（2026-08-24）：判活只认工作者 PID（pid=/child_pid=），
+        # 剔除恒活 engine_pid——与 main.py::_parse_running_marker_worker_pids 同源语义。
+        pids = [int(m) for m in re.findall(r"(?:pid|child_pid)=(\d+)", raw)]
         for pid in pids:
             if pid <= 1:
                 continue
