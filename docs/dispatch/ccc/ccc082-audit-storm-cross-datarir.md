@@ -121,3 +121,34 @@ python3 -c "from server.board.docgate import verify_maintenance; print(verify_ma
    - 说明：[否]。纯 engine 内部 marker 机制加固，配置经环境变量覆盖，不改任何对外文档口径。
 4. **线路图**：[否]
    - 说明：[否]。单点防线收口，不构成新里程。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：中**
+
+### 范围核对（git 实证）
+
+- 分支 `codex/ccc082-audit-storm-cross-datarir`，HEAD=a1eb7575f，工作区干净；`git rev-list --left-right --count origin/codex/ccc082-audit-storm-cross-datarir...HEAD` = `0 0`，与回写区 push 声明一致。
+- 卡内变更面（3e93a861d..HEAD）：实现提交 de08ca4bc 全落白名单——main.py marker 函数族（+92）、server/tests/conftest.py（+7）、新增 test_engine_audit_cross_datadir.py（150 行），合计 +247/-2 与卡载一致；第2轮 a1eb7575f 仅 docs/lessons.md(+10) 与本卡回写——lessons.md 为 Doc-Gate Q2 机械门禁强制工件，非越界；08bf7ea2f 为引擎自动状态信封。未触验收区/已关闭；人工批注留空无待落实项。
+- 生产零触碰独立复核：`ls ~/.ccc/data/audit-inflight` → No such file or directory；conftest.py:23-27 setdefault `CCC_AUDIT_REGISTRY_DIR` 到临时目录属实。
+
+### 对抗式找茬结果（0 P0 / 0 P1 / 4 P2 记录性观察）
+
+- **P2-1 残余 check-then-act 竞窗**：判活门（main.py:4274）与认领（:3370）非跨进程原子，双 engine 微秒级同时过门仍可双审。该竞窗为既有本地标记机制固有（非本卡引入）；风暴主场景（多实例错峰轮询）已被注册表挡住且有核心回归用例锁定（test_cross_datarir_double_claim_blocked_by_registry）。如需彻底互斥，后续可升级 O_EXCL 认领语义（超出本卡「最小加固」范围）。
+- **P2-2 注册表条目 last-writer-wins**：镜像经 `os.replace` 盲覆盖（main.py:3103），「A 认领→B 覆盖→A 收尾双清」交错会连带清掉 B 的条目——退化后果等于加固前行为，不劣于现状，且触发需精确交错。
+- **P2-3 锚点为用户级**：默认 `~/.ccc/data/audit-inflight` 同机异用户（或异 `$HOME`）仍穿透——卡已显式声明「同机同用户必互见」边界，与当前单用户部署模型一致，留档即可。
+- **P2-4 镜像 best-effort**：`_mirror_audit_registry` 失败仅告警不打断派发（docstring 已载明取舍理由）；持续失败时跨 DATA_DIR 防线静默退化。warning 可观测，建议环节②合入后关注该告警频度。
+
+### severity 三级评分
+
+影响面 2（机审热路径函数，但单 DATA_DIR 行为逐字不变——本地命中即短路 main.py:1092，注册表仅在本地未命中或判死后追加查询）/ 改动深度 2（新增全局锚点 + 四函数收敛，复用单一判活源 `_marker_raw_alive` 无平行判定逻辑，死条目顺手回收零新增清扫器）/ 红线邻近 2（双审防线核心 + ccc078 事故区，然属加法式防御，兼容与 mx055 回收语义均有专测）。合计 6 → 中；无任一维度 3 分，不触发强制重。
+
+### 维护区核对（逐项实证）
+
+Q1[否]/Q3[否]/Q4[否] 均单选加实情说明非占位；Q2[有] 引用 docs/lessons.md Lesson 58——实查 :2370 存在且四段式（问题/根因/修复/如何应用）齐全，声明属实。docgate 独立复现：`verify_maintenance('docs/dispatch/ccc/ccc082-audit-storm-cross-datarir.md', '.')` → `(True, [])`。第1轮打回证据链旁证成立：引擎信封提交 08bf7ea2f（00:14 状态→待分派·机审打回）+ `~/.ccc/logs/exec/ccc082.log` 载「机械门禁：维护区未完成 → 机审打回（不跑 DSH）」引文一致（ccc082.audit.log 本体已被本轮启动覆写，以两处旁证为准）。验收标准 `- [ ]` 未勾为全仓模板惯例（ccc080/ccc081 同构），非漏勾。
+
+### 结论
+
+三项验收标准全达：穿透结论明确且附实验输出（加固前 cross-log_dir alive=False 与旧代码 OSError→False 逻辑一致）；6 条回归单测实质有效（镜像存在断言 + 判活断言在无加固时必然失败，非恒真测试）；生产文件零触碰实证。P2 四项均为记录性观察不构成打回事由，如实留档供环节②参考。
+
+机审：通过
