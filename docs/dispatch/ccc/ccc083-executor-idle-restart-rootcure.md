@@ -47,7 +47,7 @@
 | 时刻 | 事件 | 证据源 |
 |----|----|----|
 | 14:30:00 | 三服务热重启（ccc078 合入部署后） | watchdog.log:96-98 |
-| 14:49:10–15:46:04 | watchdog 报「Engine: 进程不存在」**51 次** + 「日志心跳超时」10 次，每次即 kickstart --engine-only；间隔由分钟级加速至 **6–12s**（15:26:38 出现同秒双发） | watchdog.log:132-313 |
+| 14:49:10–15:46:04 | watchdog 报「Engine: 进程不存在」**47 次** + 「日志心跳超时」8 次，每次即 kickstart --engine-only；间隔由分钟级加速至 **6–12s**（15:26:38 出现同秒双发）。当日全程累计 54 / 10 次 | watchdog.log:132-313（复现：`sed -n '132,313p' ~/.ccc/logs/watchdog.log \| grep -c '进程不存在'` → 47） |
 | 14:49:09 / 14:56:09 / 15:00:07 / 15:06:10 / 15:11:15 … | 机审/开发会话执行 `bash scripts/watchdog-ccc.sh`（门禁实跑）与上行故障行**秒级对齐**（工具调用级证据：session cbe7c0714888@14:49:09、dc6bc052058a@14:56:09、f3d331b25318@15:00:07、bd899b05f067@15:06:10、773e1f7e1a8f@15:11:15 等） | ~/.dsh/sessions/--…-ccc078--/*/session.jsonl.zstd 的 tool/call 记录 |
 | 15:39–15:46 | ccc078 worktree 新会话每 8–20s 一个（风暴峰值）；当日该目录累计 46 会话，短命（4–16 条 assistant 消息）且多数零编辑；全部同时死于 15:50:55–58（外部统一清理） | 同上目录 mtime + 转录解析 |
 | 收单侧 | `失败回待分派重试: work=ccc079 retry=1/3 problems=['退出码非 0: 137（日志: …ccc079.audit.log）']`——在飞 worker 被 SIGKILL(137) 后被引擎按**业务失败**立即重派的直接证据 | 归档 engine.stderr.log（archive-20260824/engine.stderr.log.gz，16:35 轮转前末段） |
@@ -70,7 +70,7 @@
 
 ### 三、自测结果
 
-- 新增 `server/tests/test_ccc083_antispin.py` **32 例全绿**（击杀码分类/熔断窗口过滤与阈值/退避单调封顶与过期/探针三字段含 git 夹具/watchdog 防旋闸 bash 子进程场景/kickstart 冷却与 DRY-RUN/bash -n）。
+- 新增 `server/tests/test_ccc083_antispin.py` **34 例全绿**（机审席定点复跑核实；击杀码分类/熔断窗口过滤与阈值/退避单调封顶与过期/探针三字段含 git 夹具/watchdog 防旋闸 bash 子进程场景/kickstart 冷却与 DRY-RUN/bash -n）。
 - 引擎回归：test_engine_main/dispatch/metrics/gates + antispin 合跑 **171 例全绿**。
 - 卡面门禁：`bash -n scripts/watchdog-ccc.sh scripts/kickstart-ccc.sh` 通过；`python3 -m py_compile server/engine/main.py` 通过。
 - 全量套件：1194 passed / 11 failed；失败集与改动前基线 **逐条 diff 完全一致**（test_brain_kb/test_brain_stream/test_http_api/test_advanced_review 会话族，本卡未触碰），另有一次运行的偶发第 12 失败（test_cross_round_slot_fill_no_batch_join，基线同现 1/6，属既有计时敏感偶发）。
@@ -91,3 +91,37 @@
    - 说明：新增环境变量开关与探针字段契约已写在两脚本头注释、main.py docstring 与本卡回写区，无项目档案/README 结构变更。
 4. **线路图**：[否]
    - 说明：无新增线路意向；遗留观察（pgrep 首触发竞态的实证手段、exec 日志归档导致现役取证面变薄）已在本卡回写区披露，待后续卡按需认领。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-25 · severity：轻**
+
+### 范围核对（可复现）
+
+- 分支 `codex/ccc083-executor-idle-restart-rootcure`，两 commit：`3bc16c7cb`（修复）+ `14f6eed8a`（回写），与 origin 同步，工作树干净。
+- 改动文件 6 个全部落在白名单内：scripts/watchdog-ccc.sh、scripts/kickstart-ccc.sh、server/engine/main.py（改动限于派发/重试/探针段）、server/tests/test_ccc083_antispin.py（新增）、server/tests/test_engine_gates.py 与 test_engine_main.py（既有用例适配新门禁链/防旋语义）；回写提交仅触卡文件自身。无越界；未触碰验收区；卡头状态「已回写」属实。
+
+### 对抗式发现（2 轻 + 观察项）
+
+1. 【P2 · 已就地修复】取证主数字不可复现且与自引证据矛盾：回写区原写「进程不存在 **51 次** + 心跳超时 10 次」，但自引行段 watchdog.log:132-313 实测为 **47 次 / 8 次**（复现：`sed -n '132,313p' ~/.ccc/logs/watchdog.log | grep -c '进程不存在'` → 47；同法心跳超时 → 8）；commit `3bc16c7cb` 自述亦为 47 次。51 无任何窗口口径可得（当日全天累计 54）。机制判定不受影响，已改为 47/8 并补全天口径与复现命令。
+2. 【P2 · 已就地修复】自测例数声明失准：原写「32 例全绿」，静态收集与机审席定点复跑均为 **34 例全绿**（`python3 -m pytest server/tests/test_ccc083_antispin.py -q` → 34 passed；23 个测试函数含参数化展开）。方向属实、数字差 2，已更正。
+3. 【观察项 · 不阻塞】watchdog 升级告警默认可达性依赖节奏比：kick 成功即清零 streak，纯 launchd 慢节奏下峰值约 5–7 < FLAP_ALERT_STREAK(10)，告警难触发；人工高频实跑场景（即本次风暴形态）可达。建议后续卡在档案注明该参数耦合。
+4. 【观察项 · 不阻塞】kickstart 冷却跳过时 return 0，上层 watchdog 会记「自愈成功」而实际未重启（日志语义有噪）；当前双闸参数（watchdog 300s > kickstart 60s）下 watchdog 路径不会命中，仅外部调用方受影响。
+5. 【观察项 · 不阻塞】web debug 尾窗端点 worker_events_tail（server/web/server.py:3372）不过滤 kind，修复部署后 20 行尾窗将混入 kind=session 行；行为定义型消费方（:644 详情、失败明细的 `ok is False` 过滤）确认不受干扰且有单测锁定。
+6. 【风险论证】短命熔断统计不区分 exit_kind——连续 5 个快速业务失败的坏卡批次也会全局暂停派发一个统计窗口（自动恢复 + 告警落盘）。符合卡规格字面，属设计权衡，记录备查。
+
+### 修复落地正面核验
+
+- 击杀码判基建链路核实：run/audit 两相 `retryable=True` 均走 `_hold_infra_failure` 冷却续派，不烧业务重试预算；正则负向断言排除 1370/9001 类误匹配（有参数化单测）。
+- 短命熔断双挂点落实：dispatch 门禁 order=15 + run_once 机审补位轮全局闸；门禁链 order 无冲突（10/12/15/20…110），GateContext 所需字段齐备。
+- 探针 edit_hit 不可判定降级为 null 不伪造，符合数据真实性纪律；metrics._append 与探针直写并发姿态一致，无新增风险。
+- bash 层测试全程 HOME 重定向 + DRY-RUN + 假进程名，无生产副作用。
+- B3 首触发原因未实证处按卡红线标注【推断】，验证属实。
+
+### 取证真实性抽查（工件存在性）
+
+- `~/.ccc/logs/watchdog.log:96-98/132/313` 行号引用属实（14:30:00 三服务热重启 / 首末故障时刻吻合）。
+- `archive-20260824/engine.stderr.log.gz` 存在且含 ccc079 exit 137 被按业务失败收单重派的原句（`gunzip -c … | grep '退出码非 0: 137'` 复现）。
+- 维护区四问均单选实填（[否]/[无]/[否]/[否]）且说明为实情非占位；「docs/lessons.md 在白名单外未越界改动」经 git diff 核实属实。
+
+机审：通过
