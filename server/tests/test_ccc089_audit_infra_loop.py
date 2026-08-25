@@ -26,7 +26,7 @@ from server.engine.runtime_state import read_card_state, write_card_state
 from server.engine.store import InMemoryBoardStore
 from server.engine.task import State, Work
 
-CARD_TEXT = """# 任务卡 ccc999 · ccc089 复现夹具
+CARD_TEXT = """# 任务卡 ccc089-loop · ccc089 复现夹具
 
 > 状态：已回写 · 项目：ccc · 执行体：DSH
 
@@ -52,7 +52,7 @@ class Env:
         self.log_dir.mkdir(parents=True)
         card_dir = tmp_path / "docs" / "dispatch"
         card_dir.mkdir(parents=True)
-        self.card = card_dir / "ccc999-infra-loop.md"
+        self.card = card_dir / "ccc089-loop-infra-loop.md"
         self.card.write_text(CARD_TEXT, encoding="utf-8")
         # 必败 worktree_base：目标父目录是普通文件 → git worktree add 真实失败。
         blocker = tmp_path / "blocker.txt"
@@ -66,7 +66,7 @@ class Env:
             worktree_base=str(blocker / "wt"),
         )
         self.registry = ExecutorRegistry((acceptor,))
-        self.work = Work(id="ccc999", role="开发执行体", state=State.DONE, card_path=str(self.card))
+        self.work = Work(id="ccc089-loop", role="开发执行体", state=State.DONE, card_path=str(self.card))
         self.store = InMemoryBoardStore()
         self.store.seed(self.work)
         self.cfg = {
@@ -78,7 +78,7 @@ class Env:
         }
 
     def audit_log(self) -> Path:
-        return self.log_dir / "ccc999.audit.log"
+        return self.log_dir / "ccc089-loop.audit.log"
 
     def infra_rows(self) -> list[dict]:
         return [r for r in _ledger_rows(self.ledger) if r.get("kind") == "infra"]
@@ -133,7 +133,7 @@ def test_infra_recorded_without_session_launch(fast_env: Env) -> None:
     assert env.work.state is State.DONE
 
     # 4. sidecar 记录冷却临时态与 strikes=1
-    rt = read_card_state(env.log_dir).get("ccc999") or {}
+    rt = read_card_state(env.log_dir).get("ccc089-loop") or {}
     assert int(rt.get("infra_count") or 0) == 1
     assert rt.get("infra_cooldown_until")
 
@@ -169,22 +169,22 @@ def test_cooldown_gate_delays_then_releases(prod_env: Env) -> None:
     env.run_worker_once()
     assert len(env.infra_rows()) == 1
 
-    rt = read_card_state(env.log_dir).get("ccc999") or {}
+    rt = read_card_state(env.log_dir).get("ccc089-loop") or {}
     until = datetime.fromisoformat((rt.get("infra_cooldown_until") or "").replace("Z", "+00:00"))
     delta = (until - t0).total_seconds()
     assert 50 <= delta <= 70, f"首轮冷却应≈60s（指数退避基数），实测 {delta}s"
 
     # 冷却期内：_audit_round 门禁（main.py infra_cooldown gate）判定拦截
     # （_infra_cooldown_active 第一参为全量 runtime dict：{card_id: rec}）
-    assert _infra_cooldown_active({"ccc999": rt}, "ccc999", now_ts=t0.timestamp() + 10)
+    assert _infra_cooldown_active({"ccc089-loop": rt}, "ccc089-loop", now_ts=t0.timestamp() + 10)
 
     # 模拟冷却到期（真实时间推进的等价操作：sidecar until 回拨到过去）
     expired = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(
         timespec="seconds"
     ).replace("+00:00", "Z")
-    write_card_state(env.log_dir, "ccc999", infra_cooldown_until=expired)
-    rt2 = read_card_state(env.log_dir).get("ccc999") or {}
-    assert not _infra_cooldown_active({"ccc999": rt2}, "ccc999")
+    write_card_state(env.log_dir, "ccc089-loop", infra_cooldown_until=expired)
+    rt2 = read_card_state(env.log_dir).get("ccc089-loop") or {}
+    assert not _infra_cooldown_active({"ccc089-loop": rt2}, "ccc089-loop")
 
     # 到期 → 重审评估放行 → 同一根因再次记账（第 2 条 infra 行，audit.log 仍静态）
     env.run_worker_once()
