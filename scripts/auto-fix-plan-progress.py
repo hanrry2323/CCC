@@ -25,6 +25,14 @@ from pathlib import Path
 # 仅认 CCC_DATA_DIR 口径（loader 另支持 DATA_DIR，此处不启用）。
 os.environ.setdefault("CCC_DATA_DIR", str(Path.home() / ".ccc" / "data"))
 
+# ccc094/auto-fix-001：裸 subprocess 调用时 sys.path[0]=scripts/，仓根不在 sys.path，
+# 下方延迟 import 必然 ModuleNotFoundError（生产日志实证失败 196 次、成功 0 次）。
+# 以脚本文件位置向上推仓根并前置插入 sys.path，保证非仓根 cwd 的生产调用可导入 server 包；
+# 仅引导导入路径，不改任何业务行为。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 def main() -> int:
     if len(sys.argv) < 3:
