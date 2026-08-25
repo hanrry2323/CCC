@@ -1443,11 +1443,13 @@ class TestParallelAndRelayGuard:
         reset_dispatch_pool()
 
         # 2. 边界：当任务数刚好等于上限 (3 == 3) -> 派发 3，排队为 0
+        # ccc083 注：卡 ID 每子用例独立——上一子用例被回收击杀的卡现在按基础设施
+        # 冷却处理（防旋语义），复用同 ID 会被冷却拦截而污染边界断言。
         store = InMemoryBoardStore()
         store.seed(
-            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
-            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
-            Work(id="q3", role="开发执行体", card_path=str(tmp_path / "q3.md")),
+            Work(id="q4", role="开发执行体", card_path=str(tmp_path / "q4.md")),
+            Work(id="q5", role="开发执行体", card_path=str(tmp_path / "q5.md")),
+            Work(id="q6", role="开发执行体", card_path=str(tmp_path / "q6.md")),
         )
         summary = run_once(reg, store, cfg, wait=False)
         assert summary["dispatched"] == 3
@@ -1459,10 +1461,10 @@ class TestParallelAndRelayGuard:
         # 3. 边界：当任务数超过上限 (4 > 3) -> 派发 3，排队 1
         store = InMemoryBoardStore()
         store.seed(
-            Work(id="q1", role="开发执行体", card_path=str(tmp_path / "q1.md")),
-            Work(id="q2", role="开发执行体", card_path=str(tmp_path / "q2.md")),
-            Work(id="q3", role="开发执行体", card_path=str(tmp_path / "q3.md")),
-            Work(id="q4", role="开发执行体", card_path=str(tmp_path / "q4.md")),
+            Work(id="q7", role="开发执行体", card_path=str(tmp_path / "q7.md")),
+            Work(id="q8", role="开发执行体", card_path=str(tmp_path / "q8.md")),
+            Work(id="q9", role="开发执行体", card_path=str(tmp_path / "q9.md")),
+            Work(id="q10", role="开发执行体", card_path=str(tmp_path / "q10.md")),
         )
         summary = run_once(reg, store, cfg, wait=False)
         assert summary["dispatched"] == 3
@@ -1609,6 +1611,213 @@ class TestParallelAndRelayGuard:
         assert w.id == "ret2"
         assert w.state is State.REJECTED
         assert any("超时" in p for p in w.problems)
+
+
+def _git(tmp_path: Path, *args: str, cwd: Path | None = None) -> None:
+    """测试内 git 助手：失败即抛，避免静默假绿。"""
+    subprocess.run(
+        ["git", "-C", str(cwd or tmp_path), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _seed_worktree_repo(tmp_path: Path) -> tuple[Path, Path]:
+    """构造 bare origin + repo（main 已推远端）+ codex 分支 worktree 的最小审计场。"""
+    bare = tmp_path / "origin.git"
+    _git(tmp_path, "init", "--bare", "-q", str(bare))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "config", "user.email", "t@example.com")
+    card_dir = repo / "docs" / "dispatch" / "xy"
+    card_dir.mkdir(parents=True)
+    (card_dir / "xy093-audit-budget-pushdetect.md").write_text(
+        "# 任务卡 xy093 · 测试\n\n## 目标\nx\n", encoding="utf-8"
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "init")
+    _git(repo, "remote", "add", "origin", str(bare))
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    branch = "codex/xy093-audit-budget-pushdetect"
+    _git(repo, "checkout", "-q", "-b", branch)
+    return repo, bare
+
+
+AUDIT_PASS_SECTION = "\n\n## 机审区\n\n| 项目 | 内容 |\n|---|---|\n\n**机审：通过**\n"
+
+
+class TestAuditAdaptiveBudget:
+    """ccc093 目标①：审计超时预算按被审 diff 规模自适应（base → 线性上浮 ≤2×）。"""
+
+    def test_small_diff_gets_base(self, tmp_path: Path) -> None:
+        from server.engine.main import (
+            AUDIT_BUDGET_DIFF_FREE_LINES,
+            _audit_adaptive_timeout_seconds,
+            _audit_diff_changed_lines,
+        )
+
+        repo, _bare = _seed_worktree_repo(tmp_path)
+        big = repo / "work.txt"
+        lines = AUDIT_BUDGET_DIFF_FREE_LINES - 1  # 免浮门槛之内的小 diff
+        big.write_text("\n".join(f"line{i}" for i in range(lines)) + "\n", encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "small diff")
+        n = _audit_diff_changed_lines(str(repo))
+        assert n == lines, n
+        cfg = {"EXECUTOR_AUDIT_TIMEOUT_SECONDS": "600"}
+        assert _audit_adaptive_timeout_seconds(cfg, str(repo)) == 600
+
+    def test_mid_diff_linear_float(self, tmp_path: Path) -> None:
+        from server.engine.main import (
+            AUDIT_BUDGET_DIFF_CAP_LINES,
+            AUDIT_BUDGET_DIFF_FREE_LINES,
+            _audit_adaptive_timeout_seconds,
+        )
+
+        repo, _bare = _seed_worktree_repo(tmp_path)
+        mid = (AUDIT_BUDGET_DIFF_FREE_LINES + AUDIT_BUDGET_DIFF_CAP_LINES) // 2  # 线性段中点 → 1.5×
+        (repo / "work.txt").write_text(
+            "\n".join(f"line{i}" for i in range(mid)) + "\n", encoding="utf-8"
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "mid diff")
+        base = 600
+        got = _audit_adaptive_timeout_seconds({"EXECUTOR_AUDIT_TIMEOUT_SECONDS": str(base)}, str(repo))
+        assert got == int(round(base * 1.5)), got
+
+    def test_large_diff_caps_at_double(self, tmp_path: Path) -> None:
+        from server.engine.main import (
+            AUDIT_BUDGET_DIFF_CAP_LINES,
+            _audit_adaptive_timeout_seconds,
+        )
+
+        repo, _bare = _seed_worktree_repo(tmp_path)
+        huge = AUDIT_BUDGET_DIFF_CAP_LINES + 5000  # 远超封顶线
+        (repo / "work.txt").write_text(
+            "\n".join(f"line{i}" for i in range(huge)) + "\n", encoding="utf-8"
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "huge diff")
+        base = 900
+        got = _audit_adaptive_timeout_seconds({"EXECUTOR_AUDIT_TIMEOUT_SECONDS": str(base)}, str(repo))
+        assert got == base * 2, got
+
+    def test_no_git_returns_base(self, tmp_path: Path) -> None:
+        from server.engine.main import _audit_adaptive_timeout_seconds, _audit_diff_changed_lines
+
+        plain = tmp_path / "plain"
+        plain.mkdir()  # 非 git 目录
+        assert _audit_diff_changed_lines(str(plain)) is None
+        assert _audit_diff_changed_lines(None) is None
+        cfg = {"EXECUTOR_AUDIT_TIMEOUT_SECONDS": "600"}
+        assert _audit_adaptive_timeout_seconds(cfg, str(plain)) == 600
+        assert _audit_adaptive_timeout_seconds(cfg, None) == 600
+
+    def test_bad_config_falls_back_to_default_base(self) -> None:
+        from server.engine.main import _audit_adaptive_timeout_seconds
+
+        # 坏配置兜底口径不变（1800），自适应只在其上按 diff 上浮
+        assert _audit_adaptive_timeout_seconds({"EXECUTOR_AUDIT_TIMEOUT_SECONDS": "bad"}, None) == 1800
+
+
+class TestPushIdleRemoteEvidence:
+    """ccc093 目标②：push 空转疑云以 origin 分支事实双重校验去误报（ccc088 假 infra 行）。"""
+
+    BRANCH = "codex/xy093-audit-budget-pushdetect"
+    REL = "docs/dispatch/xy/xy093-audit-budget-pushdetect.md"
+
+    def _prep_remote_evidence(self, tmp_path: Path) -> Path:
+        """repo 分支卡文含机审通过区且已推远端（远端事实成立）。"""
+        repo, _bare = _seed_worktree_repo(tmp_path)
+        card = repo / self.REL
+        card.write_text(card.read_text(encoding="utf-8") + AUDIT_PASS_SECTION, encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "audit evidence")
+        _git(repo, "push", "-q", "origin", self.BRANCH)
+        return repo
+
+    def _fail_local_head_show(self, monkeypatch: pytest.MonkeyPatch, wt: str) -> None:
+        """拦截本地 HEAD 复核使其失败，模拟 ccc088「空转」误报现场；其余命令透传。"""
+        real_run = subprocess.run
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if list(cmd[:2]) == ["git", "-C"] and len(cmd) > 4 and cmd[2] == wt and any(
+                str(c).startswith("HEAD:") for c in cmd[4:]
+            ):
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="simulated idle")
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def test_local_idle_but_remote_has_evidence_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from server.engine.main import _commit_and_push_worktree_card
+
+        repo = self._prep_remote_evidence(tmp_path)
+        self._fail_local_head_show(monkeypatch, str(repo))
+        # 本地 HEAD 校验空转，但 ls-remote+分支卡文双重校验核实已达远端 → pass 覆盖
+        assert _commit_and_push_worktree_card(str(repo), self.REL, "xy093") is True
+
+    def test_push_error_but_remote_has_evidence_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from server.engine.main import _commit_and_push_worktree_card
+
+        repo = self._prep_remote_evidence(tmp_path)
+        real_run = subprocess.run
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if list(cmd[:2]) == ["git", "-C"] and len(cmd) > 3 and cmd[2] == str(repo) and "push" in cmd[3:5]:
+                return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="helper noise fake failure")
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        # push 报错但远端事实已有证据 → 记 pass 覆盖（以 origin 为准）
+        assert _commit_and_push_worktree_card(str(repo), self.REL, "xy093") is True
+
+    def test_remote_missing_branch_stays_infra(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from server.engine.main import _commit_and_push_worktree_card
+
+        repo, _bare = _seed_worktree_repo(tmp_path)  # 远端只有 main，无 codex 分支
+        card = repo / self.REL
+        card.write_text(card.read_text(encoding="utf-8") + AUDIT_PASS_SECTION, encoding="utf-8")
+        real_run = subprocess.run
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if list(cmd[:2]) == ["git", "-C"] and len(cmd) > 4 and cmd[2] == str(repo):
+                args = [str(c) for c in cmd[3:]]
+                if any(c.startswith("HEAD:") for c in args):  # 本地 HEAD 复核空转
+                    return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="simulated idle")
+                if "push" in args[:2]:  # push 报错，分支未达远端
+                    return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="push rejected")
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        # 本地校验空转 + ls-remote 查无此分支 → 双重校验失败，维持原 infra 路径（不放宽）
+        assert _commit_and_push_worktree_card(str(repo), self.REL, "xy093") is False
+
+    def test_remote_branch_without_pass_verdict_stays_infra(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from server.engine.main import _commit_and_push_worktree_card
+
+        repo, _bare = _seed_worktree_repo(tmp_path)
+        # 远端分支存在但卡文无机审区通过结论 → 第二关不过，维持原 infra 路径
+        _git(repo, "push", "-q", "origin", self.BRANCH)
+        self._fail_local_head_show(monkeypatch, str(repo))
+        assert _commit_and_push_worktree_card(str(repo), self.REL, "xy093") is False
+
+    def test_symlinked_worktree_keeps_full_rel(self, tmp_path: Path) -> None:
+        """ccc088 机制修复：worktree 路径经符号链接时 rel 不得退化成裸文件名。
+
+        单侧 resolve（worktree 解析了 /tmp→/private/tmp 而 wt_card 未解析）曾让
+        relative_to 必败 → rel=裸文件名 → add/show 全走错路径 → 假空转假 infra 行。
+        """
+        from server.engine.main import _commit_and_push_worktree_card
+
+        repo = self._prep_remote_evidence(tmp_path)
+        link = tmp_path / "link-to-repo"
+        link.symlink_to(repo)
+        # 全链路真实执行（不经 mock）：rel 正确 → 本地 HEAD 校验直接成功
+        assert _commit_and_push_worktree_card(str(link), self.REL, "xy093") is True
 
 
 class TestAuditRejectionExitZero:

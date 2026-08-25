@@ -9,6 +9,11 @@
 
 set -euo pipefail
 
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下 Phase2 的 validate_cards 经
+# loader 回落写 <repo>/data/cards/cards.index.jsonl（陈旧副本），与生产看板双写分裂。
+# 仅认 CCC_DATA_DIR 口径（loader 另支持 DATA_DIR，此处不启用），与生产看板同源。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"

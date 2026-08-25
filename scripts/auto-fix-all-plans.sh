@@ -11,6 +11,12 @@
 # 退出码：0=完成（含跳过）；1=参数错误。
 set -euo pipefail
 
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下 sync_plan_progress 级联
+# （plans.py 作废级联 load_dispatch_cards）经 loader 回落写
+# <repo>/data/cards/cards.index.jsonl（陈旧副本），与生产看板双写分裂。
+# 仅认 CCC_DATA_DIR 口径（loader 另支持 DATA_DIR，此处不启用），与生产看板同源。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
+
 if [ $# -lt 1 ]; then
   echo "用法: auto-fix-all-plans.sh <prefix> [prefix2 ...]" >&2
   echo "例:   auto-fix-all-plans.sh mx hp xy" >&2

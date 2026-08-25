@@ -206,11 +206,13 @@ class TestDispatchGateChain:
         )
 
     def test_gate_chain_11_ordered(self) -> None:
-        """11 个门禁装配成功且顺序正确。"""
+        """13 个门禁装配成功且顺序正确（ccc083 新增 retry_backoff/short_session_breaker）。"""
         reg = _build_dispatch_gates()
         names = [g.name for g in reg.ordered()]
         assert names == [
             "infra_cooldown",
+            "retry_backoff",
+            "short_session_breaker",
             "worktree_card_copy",
             "accepted_card",
             "parent_closed",
