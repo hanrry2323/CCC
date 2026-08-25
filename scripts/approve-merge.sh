@@ -50,6 +50,40 @@ done
 
 cd "$PROJECT_ROOT"
 
+# ── 环境预检段（ccc095 am-precheck-001 · 2026-08-26）：A类可静默项一次性前置 ──
+# 纯只读 git 查询；不改变任何既有检查函数的判定语义。
+# 全过 → 仅输出一行 [PRE-OK]；任一失败 → [PREFAIL] 指明失败项并以独立退出码中止：
+#   31=branch 非main  32=worktree 脏  33=fetch 不可达  34=本地落后远端
+env_precheck() {
+  local cur
+  cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  if [[ "$cur" != "main" ]]; then
+    echo "[PREFAIL] 失败项：branch —— 当前分支 ${cur} ≠ main；请切回 main 再执行合入批准" >&2
+    return 31
+  fi
+  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+    echo "[PREFAIL] 失败项：worktree —— 工作树存在未提交改动；请先提交或还原（git status 查看）后再合入" >&2
+    return 32
+  fi
+  if ! git fetch origin main --no-write-fetch-head >/dev/null 2>&1; then
+    echo "[PREFAIL] 失败项：fetch —— origin/main 拉取失败（网络或远端异常）；排除后重试" >&2
+    return 33
+  fi
+  local behind
+  behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  if [[ "${behind:-0}" != "0" ]]; then
+    echo "[PREFAIL] 失败项：lagging —— 本地落后 origin/main ${behind} 个提交；先 git pull --ff-only 对齐再合入" >&2
+    return 34
+  fi
+  echo "[PRE-OK] 环境预检通过（branch/worktree/fetch/ff）"
+  return 0
+}
+env_precheck
+_rc=$?
+if [[ $_rc -ne 0 ]]; then
+  exit "$_rc"
+fi
+
 if [[ "$USE_READY" == true ]]; then
   IDS=()
   while IFS= read -r line; do

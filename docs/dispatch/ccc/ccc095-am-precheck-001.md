@@ -1,6 +1,6 @@
 # 任务卡 ccc095 · am-precheck-001：approve-merge.sh 增设一次性环境预检段——环境检查与质量核验分区呈现（管理席直改·异席机审）
 
-> 关联：外脑清场收尾2026-08-26 · 依据/tmp/approve-merge-diagnosis.md · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：manual · 项目：ccc · 日期：2026-08-26
+> 关联：外脑清场收尾2026-08-26 · 依据/tmp/approve-merge-diagnosis.md · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：manual · 项目：ccc · 日期：2026-08-26
 
 ## 基准文件（先看）
 
@@ -58,7 +58,24 @@ lint：
 
 ## 回写区
 
-**执行体**：DSH · 日期：
+**执行体**：DSH · 日期：2026-08-26
+
+### 实现说明
+
+- scripts/approve-merge.sh 参数解析后（`cd "$PROJECT_ROOT"` 之后）纯新增 `env_precheck` 函数与一次调用（+45行，零删改）：branch=main / worktree 干净 / origin fetch 可达 / 本地不落后 四项只读检查。
+- 全过 → 一行 `[PRE-OK] 环境预检通过（branch/worktree/fetch/ff）`；任一失败 → `[PREFAIL] 失败项：<名称>：<指引>` 并以独立退出码中止（31=branch / 32=worktree / 33=fetch / 34=lagging）。
+- B类八项检查与 git_sync 竞态检测零改动（diff 可证：纯新增块，无任何既有行变更）。
+
+### 测试结果（/tmp/amtest 隔离克隆实测）
+
+1. bash -n → PASS。
+2. 场景a 干净环境：报告首行即 `[PRE-OK]`，与改动前基线输出 diff 仅多这一行，下游 spot-check 行为逐字节一致（rc 同为 1）。
+3. 场景b 脏worktree（echo dirty >> README.md）：`[PREFAIL] 失败项：worktree …`，rc=32 非0。
+4. 场景b2 非main分支（tmp-test）：`[PREFAIL] 失败项：branch …`，rc=31。
+
+### push 证据
+
+- 直改随本卡同一 commit 推送 main（见 git log feat(am-precheck-001)）。
 
 ## 维护区
 
