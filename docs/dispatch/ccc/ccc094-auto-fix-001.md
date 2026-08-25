@@ -59,7 +59,7 @@ lint：
 
 **执行体**：DSH · 日期：2026-08-26
 
-- **实现说明**：`scripts/auto-fix-plan-progress.py` 头部 import 区后（`CCC_DATA_DIR` setdefault 兜底行原样保留之后）新增仓根 sys.path 引导段：`_REPO_ROOT = Path(__file__).resolve().parents[1]`，不在 sys.path 则 `insert(0, …)`，共 8 行纯新增（4 行注释 + 3 行引导代码）；业务逻辑零改动，`sync_plan_progress`/`sync_milestone_progress` 调用方式、参数、退出码约定全部不变。仓根顶层无 `.py` 文件，前置插入无标准库遮蔽风险。
+- **实现说明**：`scripts/auto-fix-plan-progress.py` 头部 import 区后（`CCC_DATA_DIR` setdefault 兜底行原样保留之后）新增仓根 sys.path 引导段：`_REPO_ROOT = Path(__file__).resolve().parents[1]`，不在 sys.path 则 `insert(0, …)`，共 8 行纯新增（4 行注释 + 3 行引导代码 + 1 行块后空行；机审席更正：原拆分漏计空行）；业务逻辑零改动，`sync_plan_progress`/`sync_milestone_progress` 调用方式、参数、退出码约定全部不变。仓根顶层无 `.py` 文件，前置插入无标准库遮蔽风险。
 - **测试结果**：① 门禁 `python3 -m py_compile scripts/auto-fix-plan-progress.py` PASS；② 修前复现：`cd /tmp && env -u PYTHONPATH python3 <repo>/scripts/auto-fix-plan-progress.py <repo> docs/projects/xy/plans/006-quality-quantification.md xy` → `ModuleNotFoundError: No module named 'server'` rc=1（死障实证）；③ 修后同口径复测 → `进度已同步: 3/3 (100%)` rc=0；④ xy-plan-006~009 四方案全量触发均 rc=0、无 ModuleNotFoundError。自测产生的 roadmap/方案回写属脚本正常业务行为且在白名单外，已还原不随本卡提交。
 - **push 证据**：分支 `codex/ccc094-auto-fix-001` → commit `27dd63041`（1 file changed, 8 insertions），已 push 至 origin 成功（rc=0）。
 
@@ -109,3 +109,33 @@ lint：
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
 
 - **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。
+
+## 机审区
+
+**DSH 机审席 · 2026-08-26 · severity：轻**
+
+> 独立核验基础：`git show 27dd63041` / `cc3b543d4` 全文、origin 分支比对、生产口径探针复现、方案池与仓根结构扫描。不采信执行体自述，结论全部附可复现证据。
+
+**范围核对（在白名单内）**
+
+- fix commit `27dd63041`：仅触 `scripts/auto-fix-plan-progress.py`，numstat `1 file changed, 8 insertions(+)` 零删改；回写 commit `cc3b543d4`：仅触本卡文件。
+- 分支 `codex/ccc094-auto-fix-001` 符合命名规范；本地 HEAD == `origin/codex/ccc094-auto-fix-001`（`cc3b543d4`），push 证据属实。
+
+**对抗式核查（0 实质缺陷 · 风险论证）**
+
+1. 业务语义零变更：diff 为纯新增 8 行，插于 CCC_DATA_DIR setdefault 兜底行（原样保留）与 `def main` 之间；`sync_plan_progress`/`sync_milestone_progress` 调用方式、参数、退出码约定逐行比对未变（红线 2/3 守住）。
+2. 生产口径独立复现：`cd /tmp && env -u PYTHONPATH python3 <repo>/scripts/auto-fix-plan-progress.py <repo> docs/projects/__probe_nonexistent_094__.md ccc` → stderr 仅业务级「sync_plan_progress 失败: 方案文件不存在」rc=1，无 ModuleNotFoundError——裸 subprocess 死障确已解除；探针后 `git status --short` 干净，零污染。
+3. 遮蔽风险排查：仓根顶层无 `.py` 文件（回写声明属实）；顶层目录 deploy/desktop/docs/inbox/knowledge/references/scripts/server/specs/vendor 与 server/ 全部顶层 import 名零交集（grep 扫描空集）；server 以 namespace package 经仓根入径，前置插入无新增遮蔽面。scripts/ 内模块名多为连字符不可导入，且其 sys.path 位次相对关系未被本次改动恶化。
+4. 卡面引用核实：`server/engine/observer.py:694` 即 `script = project_root / "scripts" / "auto-fix-plan-progress.py"`，subprocess.run 无 env 定制——死障机理与卡描述一致。测试回归面干净：test_observer.py 仅 tmp_path 造脚本断言参数，不执行真脚本。
+5. 维护区四问机械判据：四问均单选实填（[否]/[无]/[否]/[否]），说明非占位非模板；第 1 问抽查方案池——041-writeback-loop-fix 对本脚本仅历史背景引用（其 P1-2 断链当时已收口），并非本卡关联方案，「无关联方案需同步」声明成立；第 3/4 问与分支 diff 比对属实（结构/路径/roadmap 零变化）。
+6. 「失败 196 次」计数为本机无法独立复核的日志值（本机无对应日志文件）；按机制推定成立：修前该脚本任何裸调用必 ModuleNotFoundError，成功 0 次与代码事实一致。
+
+**发现项（均轻微，合计 severity=轻）**
+
+- F1 回写区行数拆分口径不精确：「8 行纯新增（4 行注释 + 3 行引导代码）」漏计 1 行块后空行（4+3≠8；numstat「8 insertions」本身准确）。已按先例（ccc093 numstat 更正）就地更正，随本席 commit+push。
+- F2 制卡模板残留矛盾（记录不改原文）：卡「执行提示」段写「直接在本仓 main 工作区修改…commit+push 到 main；禁止直推 main 之外的分支操作」，与硬红线「不直推 main」直接冲突。执行体实际走 codex/ 分支 push，为合规路线。本席不改制卡指令原文，留此记录供制卡模板修正——后续同型直派卡应删除该残留句。
+
+**结论**：无 P0/P1，白名单/兜底口径/main 红线三向守住，维护区四问真实填写，验收标准第 1 条经独立同口径复现证实。F1 就地修复完毕，F2 记录备模板治理。
+
+机审：通过
+
