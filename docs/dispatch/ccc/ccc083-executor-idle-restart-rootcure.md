@@ -1,6 +1,7 @@
 # 任务卡 ccc083 · 执行体重启空转根治——B3 取证与防旋修复（DSH 执行）
+> 批准：老板合入批准 · 2026-08-25
 
-> 关联：环节②交接指令(S116-01)卡2 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-24
+> 关联：环节②交接指令(S116-01)卡2 · 执行体：DSH · 验收：DSH · 状态：已关闭· 派发：engine · 项目：ccc · 日期：2026-08-24
 
 ## 目标
 
@@ -103,7 +104,11 @@
 ### 一、范围核对（可复现）
 
 - 分支 `codex/ccc083-executor-idle-restart-rootcure` 共三 commit：`3bc16c7cb`（修复）→ `14f6eed8a`（回写）→ `82f2e0c04`（首轮机审区），`git rev-list --left-right --count origin/…HEAD` → `0 0` 与 origin 同步，`git status --porcelain` 干净。
-- 修复 commit 触及 6 文件全部在卡白名单内：scripts/watchdog-ccc.sh、scripts/kickstart-ccc.sh、server/engine/main.py（hunk 全部落点经 `git show --stat` + `grep '^@@'` 核验，限于基建判定/熔断退避/门禁装配/run_once 补位/探针段）、server/tests/test_ccc083_antispin.py（新增 439 行）、test_engine_gates.py / test_engine_main.py（既有用例适配）；后两 commit 仅触卡文件自身。`~/.dsh/run-executor.sh` 未改。无越界、无 `## 验收区`、卡头状态「已回写」未变「已关闭」。
+- 修复 commit 触及 6 文件全部在卡白名单内：scripts/watchdog-ccc.sh、scripts/kickstart-ccc.sh、server/engine/main.py（hunk 全部落点经 `git show --stat` + `grep '^@@'` 核验，限于基建判定/熔断退避/门禁装配/run_once 补位/探针段）、server/tests/test_ccc083_antispin.py（新增 439 行）、test_engine_gates.py / test_engine_main.py（既有用例适配）；后两 commit 仅触卡文件自身。`~/.dsh/run-executor.sh` 未改。无越界、无 `## 验收区
+
+**合入批准** · 日期：2026-08-25
+- 判定：通过
+`、卡头状态「已回写」未变「已关闭」。
 
 ### 二、对抗式发现（0 P0/P1；4 观察项均不阻塞）
 
