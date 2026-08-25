@@ -1,6 +1,6 @@
 # 任务卡 ccc094 · auto-fix-001：修复 auto-fix-plan-progress.py 生产subprocess调用import server必然失败的死障（DSH 执行）
 
-> 关联：外脑清场收尾2026-08-26 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-26
+> 关联：外脑清场收尾2026-08-26 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：ccc · 日期：2026-08-26
 
 ## 基准文件（先看）
 
@@ -57,20 +57,24 @@ lint：
 
 ## 回写区
 
-**执行体**：DSH · 日期：
+**执行体**：DSH · 日期：2026-08-26
+
+- **实现说明**：`scripts/auto-fix-plan-progress.py` 头部 import 区后（`CCC_DATA_DIR` setdefault 兜底行原样保留之后）新增仓根 sys.path 引导段：`_REPO_ROOT = Path(__file__).resolve().parents[1]`，不在 sys.path 则 `insert(0, …)`，共 8 行纯新增（4 行注释 + 3 行引导代码）；业务逻辑零改动，`sync_plan_progress`/`sync_milestone_progress` 调用方式、参数、退出码约定全部不变。仓根顶层无 `.py` 文件，前置插入无标准库遮蔽风险。
+- **测试结果**：① 门禁 `python3 -m py_compile scripts/auto-fix-plan-progress.py` PASS；② 修前复现：`cd /tmp && env -u PYTHONPATH python3 <repo>/scripts/auto-fix-plan-progress.py <repo> docs/projects/xy/plans/006-quality-quantification.md xy` → `ModuleNotFoundError: No module named 'server'` rc=1（死障实证）；③ 修后同口径复测 → `进度已同步: 3/3 (100%)` rc=0；④ xy-plan-006~009 四方案全量触发均 rc=0、无 ModuleNotFoundError。自测产生的 roadmap/方案回写属脚本正常业务行为且在白名单外，已还原不随本卡提交。
+- **push 证据**：分支 `codex/ccc094-auto-fix-001` → commit `27dd63041`（1 file changed, 8 insertions），已 push 至 origin 成功（rc=0）。
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：本卡为外脑清场收尾指令直派单点修复（编号 auto-fix-001），非方案池转卡，无关联方案需同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：修复为 Python 导入机制既有知识级别的单行 sys.path 引导，未达新增 lessons 条目门槛；pattern 已留痕于卡面与 commit message。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅单文件内 import 路径引导，项目结构/技术栈/路径零变化。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：死障修复不改规划，项目近况与下一步无变化。
 
 ## 批注落实
 
