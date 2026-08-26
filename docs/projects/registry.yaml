@@ -200,6 +200,7 @@ projects:
     status: active
     dossier: docs/projects/_catalog/qx-map.md
     role: 外脑/知识地图；CCC 运行时不依赖（D2）
+    notes2: 2026-08-26 备注：仓体在 M1 机（mac2017=null），2017 本轮清理不可达
 
   # ── 目录可见、非 CCC 主线（archived / catalog）──
   - prefix: null
