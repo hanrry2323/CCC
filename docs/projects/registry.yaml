@@ -48,12 +48,12 @@ projects:
       mac2017: /Users/fan/program/apps/qb
     isolation:
       max_concurrent: 2
-    taskable: true
+    taskable: false
     forbidden: false
-    status: active
+    status: archived
     dossier: docs/projects/qb/README.md
     role: CCC 自动化开发测试项目
-    notes: 2026-08-26 校正——实际有 origin(github hanrry2323/qb) 且完全同步；M1 无本机 qb 代码，勿用 /Users/apple/program/projects/qb/
+    notes: 2026-08-26 老板定调封存——定性为研究性验证任务、无实际价值；taskable 关闭，Agent 不再派发；Redis 不安装，告警队列/实时夏普相关功能随封存作废。2026-08-26 校正——实际有 origin(github hanrry2323/qb) 且完全同步；M1 无本机 qb 代码，勿用 /Users/apple/program/projects/qb/
 
   - prefix: mx
     id: medio-0
