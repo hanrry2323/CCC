@@ -79,11 +79,11 @@ lint：
 
 **执行体**：DSH · 日期：2026-08-26
 
-> 本区为机审打回后的第 8 次回写（第 7 轮后 Engine 打回信封 `9ae4b6bb` 再次仅将状态行翻回「待分派（机审打回·重试中）」，仍未附任何可执行打回原因，人工批注节仍为空）；第 8 轮对既有实现全量复核（卡副本以本文档仓分支版为准＋业务仓两白名单文件逐字比对＋门禁复跑＋git 跟踪文件清单＋远端同步与祖先关系核验），业务仓零代码改动。
+> 本区为第 9 次回写（第 8 次回写后本卡已两度获机审「通过」（落卡提交 `df368babe`、`b671fb636`），卡分支又先后并入 origin/main（文档仓 `d62d0ba87`、`0e4e78873`），本轮 Engine 再次派发；按执行体 SOP 对既有实现全量复核：业务仓两白名单文件与卡内代码块逐字 diff＋门禁复跑＋git 跟踪文件清单＋远端同步与祖先关系核验），业务仓零代码改动。
 
-- **实现说明**：按卡「实现」节的两个白名单文件已在 tst 业务仓真实存在且与卡内代码逐字一致——`math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`，3 行）、`tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`，5 行）；未建 Python 包、未改 README、未加依赖或配置文件；第 8 轮 `git ls-files` 复核跟踪文件仅 README.md＋两白名单文件，`git diff origin/main...HEAD --stat` 仅含白名单两个新增文件（+3/+5），无越界（`__pycache__/` 为 pytest 本地运行产物，未跟踪未提交）。
-- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行（第 8 轮复跑）：退出码=0，输出 `. [100%] 1 passed in 0.13s`。
-- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））第 8 轮复核仍为业务分支 HEAD 且与远端同值（fetch 后 `git rev-parse origin/codex/tst006-e2e-add-smoke` 返回 `e037d42486e689f1e71358aff45a926e832e7f87`＝本地 HEAD）；`origin/main`（`1ceae1b`）经 fetch 后 `git merge-base --is-ancestor` 核验为 HEAD 直接祖先（无需 rebase），未直推 main；文档仓本卡分支第 8 次回写 commit 见下方 git log，push 后本地与 `origin/codex/tst006-e2e-add-smoke` 同值。
+- **实现说明**：按卡「实现」节的两个白名单文件已在 tst 业务仓真实存在且与卡内代码逐字一致——`math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`，3 行）、`tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`，5 行）；未建 Python 包、未改 README、未加依赖或配置文件；第 9 轮 `git ls-files` 复核跟踪文件仅 README.md＋两白名单文件，`git diff origin/main...HEAD --stat` 仅含白名单两个新增文件（+3/+5），无越界（`__pycache__/` 为 pytest 本地运行产物，未跟踪未提交）。
+- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行（第 9 轮复跑）：退出码=0，输出 `. [100%] 1 passed in 0.05s`；另以临时期望文件对两白名单文件做逐字 diff，均完全一致。
+- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））第 9 轮复核仍为业务分支 HEAD 且与远端同值（fetch 后 `git rev-parse origin/codex/tst006-e2e-add-smoke` 返回 `e037d42486e689f1e71358aff45a926e832e7f87`＝本地 HEAD）；`origin/main`（`1ceae1b`）经 fetch 后 `git merge-base --is-ancestor` 核验为 HEAD 直接祖先（无需 rebase），未直推 main；文档仓本卡分支第 9 次回写 commit 见下方 git log，push 后本地与 `origin/codex/tst006-e2e-add-smoke` 同值。
 
 ## 维护区
 
