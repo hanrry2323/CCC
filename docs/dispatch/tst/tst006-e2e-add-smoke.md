@@ -1,6 +1,6 @@
 # 任务卡 tst006 · 管线E2E体检·tst仓新增add纯函数与pytest单测（DSH 执行）
 
-> 关联：产线E2E实弹验证（老板授权·外脑起草） · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：tst · 日期：2026-08-26
+> 关联：产线E2E实弹验证（老板授权·外脑起草） · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-26
 
 
 
@@ -79,11 +79,11 @@ lint：
 
 **执行体**：DSH · 日期：2026-08-26
 
-> 本区为机审打回后的第 6 次回写（第 5 轮后卡已处「已回写」待机审态；本轮为 Engine 再次派发同一卡的执行体复核轮，人工批注节仍为空）；第 6 轮对既有实现全量复核（卡副本以本文档仓分支版为准＋业务仓文件逐字比对＋门禁复跑＋git 跟踪文件清单＋远端同步与祖先关系核验），业务仓零代码改动。
+> 本区为机审打回后的第 7 次回写（第 6 轮后卡已处「已回写」待机审态，Engine 打回信封 `0fe1bf7a` 仅将状态行翻回「待分派」，未附打回原因；本轮为 Engine 再次派发同一卡的执行体复核轮，人工批注节仍为空）；第 7 轮对既有实现全量复核（卡副本以本文档仓分支版为准＋业务仓文件逐字比对＋门禁复跑＋git 跟踪文件清单＋远端同步与祖先关系核验），业务仓零代码改动。
 
-- **实现说明**：按卡「实现」节的两个白名单文件已在 tst 业务仓真实存在且与卡内代码逐字一致——`math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`，3 行）、`tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`，5 行）；未建 Python 包、未改 README、未加依赖或配置文件；第 6 轮 `git ls-files` 复核跟踪文件仅 README.md＋两白名单文件，`git diff origin/main...HEAD --stat` 仅含白名单两个新增文件（+3/+5），无越界（`__pycache__/` 为 pytest 本地运行产物，未跟踪未提交）。
-- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行（第 6 轮复跑）：退出码=0，输出 `. [100%] 1 passed in 0.13s`。
-- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））第 6 轮复核仍为业务分支 HEAD 且与远端同值（`git ls-remote origin codex/tst006-e2e-add-smoke` 返回 `e037d42486e689f1e71358aff45a926e832e7f87`＝本地 HEAD）；`origin/main`（`1ceae1b`）经 fetch 后核验仍为 HEAD 直接父提交（无需 rebase），未直推 main；文档仓本卡分支第 6 次回写 commit 见下方 git log，push 后本地与 `origin/codex/tst006-e2e-add-smoke` 同值。
+- **实现说明**：按卡「实现」节的两个白名单文件已在 tst 业务仓真实存在且与卡内代码逐字一致——`math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`，3 行）、`tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`，5 行）；未建 Python 包、未改 README、未加依赖或配置文件；第 7 轮 `git ls-files` 复核跟踪文件仅 README.md＋两白名单文件，`git diff origin/main...HEAD --stat` 仅含白名单两个新增文件（+3/+5），无越界（`__pycache__/` 为 pytest 本地运行产物，未跟踪未提交）。
+- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行（第 7 轮复跑）：退出码=0，输出 `. [100%] 1 passed in 0.31s`。
+- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））第 7 轮复核仍为业务分支 HEAD 且与远端同值（fetch 后 `git ls-remote origin codex/tst006-e2e-add-smoke` 返回 `e037d42486e689f1e71358aff45a926e832e7f87`＝本地 HEAD）；`origin/main`（`1ceae1b`）经 fetch 后核验仍为 HEAD 直接父提交（无需 rebase），未直推 main；文档仓本卡分支第 7 次回写 commit 见下方 git log，push 后本地与 `origin/codex/tst006-e2e-add-smoke` 同值。
 
 ## 维护区
 
