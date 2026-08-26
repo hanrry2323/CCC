@@ -121,3 +121,9 @@ lint：
 - 禁止：改动与任务无关的文件、编写 `## 验收区`、置卡状态为已关闭
 
 - **完成钩子（Doc-Gate）**：核对卡 `## 维护区` 四问是否已逐项勾选并填说明。
+
+## 机审区
+
+> 结论：通过
+> 来源：engine 自动落盘（m4-first-audit-evidence）· 2026-08-26 12:06
+> 证据：main=50fb5decc; pytest registry+audit_backfill+ccc_plan 绿; 实现已在 main（M4 受控首跑机审）
