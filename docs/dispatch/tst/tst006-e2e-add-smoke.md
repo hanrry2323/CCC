@@ -1,6 +1,6 @@
 # 任务卡 tst006 · 管线E2E体检·tst仓新增add纯函数与pytest单测（DSH 执行）
 
-> 关联：产线E2E实弹验证（老板授权·外脑起草） · 执行体：DSH · 验收：DSH · 状态：待分派（机审打回·重试中） · 派发：engine · 项目：tst · 日期：2026-08-26
+> 关联：产线E2E实弹验证（老板授权·外脑起草） · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-26
 
 
 
@@ -79,18 +79,18 @@ lint：
 
 **执行体**：DSH · 日期：2026-08-26
 
-> 本区为机审打回后的第 7 次回写（第 6 轮后卡已处「已回写」待机审态，Engine 打回信封 `0fe1bf7a` 仅将状态行翻回「待分派」，未附打回原因；本轮为 Engine 再次派发同一卡的执行体复核轮，人工批注节仍为空）；第 7 轮对既有实现全量复核（卡副本以本文档仓分支版为准＋业务仓文件逐字比对＋门禁复跑＋git 跟踪文件清单＋远端同步与祖先关系核验），业务仓零代码改动。
+> 本区为机审打回后的第 8 次回写（第 7 轮后 Engine 打回信封 `9ae4b6bb` 再次仅将状态行翻回「待分派（机审打回·重试中）」，仍未附任何可执行打回原因，人工批注节仍为空）；第 8 轮对既有实现全量复核（卡副本以本文档仓分支版为准＋业务仓两白名单文件逐字比对＋门禁复跑＋git 跟踪文件清单＋远端同步与祖先关系核验），业务仓零代码改动。
 
-- **实现说明**：按卡「实现」节的两个白名单文件已在 tst 业务仓真实存在且与卡内代码逐字一致——`math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`，3 行）、`tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`，5 行）；未建 Python 包、未改 README、未加依赖或配置文件；第 7 轮 `git ls-files` 复核跟踪文件仅 README.md＋两白名单文件，`git diff origin/main...HEAD --stat` 仅含白名单两个新增文件（+3/+5），无越界（`__pycache__/` 为 pytest 本地运行产物，未跟踪未提交）。
-- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行（第 7 轮复跑）：退出码=0，输出 `. [100%] 1 passed in 0.31s`。
-- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））第 7 轮复核仍为业务分支 HEAD 且与远端同值（fetch 后 `git ls-remote origin codex/tst006-e2e-add-smoke` 返回 `e037d42486e689f1e71358aff45a926e832e7f87`＝本地 HEAD）；`origin/main`（`1ceae1b`）经 fetch 后核验仍为 HEAD 直接父提交（无需 rebase），未直推 main；文档仓本卡分支第 7 次回写 commit 见下方 git log，push 后本地与 `origin/codex/tst006-e2e-add-smoke` 同值。
+- **实现说明**：按卡「实现」节的两个白名单文件已在 tst 业务仓真实存在且与卡内代码逐字一致——`math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`，3 行）、`tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`，5 行）；未建 Python 包、未改 README、未加依赖或配置文件；第 8 轮 `git ls-files` 复核跟踪文件仅 README.md＋两白名单文件，`git diff origin/main...HEAD --stat` 仅含白名单两个新增文件（+3/+5），无越界（`__pycache__/` 为 pytest 本地运行产物，未跟踪未提交）。
+- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行（第 8 轮复跑）：退出码=0，输出 `. [100%] 1 passed in 0.13s`。
+- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））第 8 轮复核仍为业务分支 HEAD 且与远端同值（fetch 后 `git rev-parse origin/codex/tst006-e2e-add-smoke` 返回 `e037d42486e689f1e71358aff45a926e832e7f87`＝本地 HEAD）；`origin/main`（`1ceae1b`）经 fetch 后 `git merge-base --is-ancestor` 核验为 HEAD 直接祖先（无需 rebase），未直推 main；文档仓本卡分支第 8 次回写 commit 见下方 git log，push 后本地与 `origin/codex/tst006-e2e-add-smoke` 同值。
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：卡头「关联」无方案编号——本卡为老板直接授权的产线E2E实弹验证卡；方案池 tst-plan-001 仅关联 tst002–tst004 且已完结，与本卡无关，无需同步。
+   - 说明：卡头「关联」无方案编号——本卡为老板直接授权的产线E2E实弹验证卡；第 8 轮复核方案池（`docs/projects/tst/plans/001-pipeline-smoke.md`＝tst-plan-001）仍仅关联 tst002–tst004 且已完结，与本卡无关，无需同步。
 2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
    - 说明：常规最小冒烟实现且门禁一次通过，无新增可复用教训。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
