@@ -16,7 +16,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/clawmed-ccc
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/clawmed-ccc
       max_concurrent: 3
     taskable: true
     forbidden: false
@@ -48,14 +47,13 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/qb
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/qb
       max_concurrent: 2
     taskable: true
     forbidden: false
     status: active
     dossier: docs/projects/qb/README.md
     role: CCC 自动化开发测试项目
-    notes: M1 无本机 qb 代码；勿用 /Users/apple/program/projects/qb/
+    notes: 2026-08-26 校正——实际有 origin(github hanrry2323/qb) 且完全同步；M1 无本机 qb 代码，勿用 /Users/apple/program/projects/qb/
 
   - prefix: mx
     id: medio-0
@@ -66,7 +64,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/medio-0
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/mx
       max_concurrent: 3
     taskable: true
     forbidden: false
@@ -83,7 +80,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/xianyu
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/xy
       max_concurrent: 1
     taskable: true
     forbidden: false
@@ -100,7 +96,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/hp
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/hp
       max_concurrent: 1
     taskable: true
     forbidden: false
@@ -118,7 +113,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-tst
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/tst
       max_concurrent: 1
     taskable: true
     forbidden: false
@@ -141,6 +135,7 @@ projects:
     status: active
     dossier: docs/projects/qh/README.md
     role: 独立轨道；禁止经 CCC Engine 出卡/派发
+    notes2: 2026-08-26 备注：仓体在 M1 机（mac2017=null），2017 本轮清理不可达
 
   # ── 可出卡前缀（续）──
   - prefix: cd
@@ -152,7 +147,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-demo
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/cd
       max_concurrent: 1
     taskable: false
     forbidden: false
@@ -170,7 +164,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/clwarp
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/clw
       max_concurrent: 1
     taskable: false
     forbidden: false
