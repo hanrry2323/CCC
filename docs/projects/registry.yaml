@@ -4,7 +4,7 @@
 # 禁止手维第二份真值。
 
 schema: ccc-project-registry-v1
-updated_at: "2026-08-22"
+updated_at: "2026-08-26"
 
 projects:
   - prefix: cla
@@ -187,12 +187,12 @@ projects:
     paths:
       m1: /Users/apple/program/ai-loop-router
       mac2017: null
-    taskable: true
+    taskable: false
     forbidden: false
-    status: active
+    status: archived
     dossier: docs/projects/_catalog/ai-loop-router.md
     role: 模型出口路由基建（6100/6102）
-    notes: UI 可 taskable；无卡前缀——平台改动仍走 ccc 卡，勿口头加前缀
+    notes: 2026-08-26 老板定调停用——路由服务已退役（config.env 2026-08-24 注记：大脑直连 Claude CLI，不再走 6100 中转）；2017 无本仓副本、无进程/端口/launchd 残留（当日取证）。条目转档案，Agent 目标清单不再可见。
 
   - prefix: null
     id: qx-map
