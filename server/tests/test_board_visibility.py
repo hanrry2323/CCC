@@ -42,7 +42,7 @@ def _isolate_board_index_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def _visible_items():
-    return load_dispatch_cards(DISPATCH_DIR)
+    return load_dispatch_cards(DISPATCH_DIR, include_archived=True)
 
 
 def test_loader_includes_platform_cards() -> None:
