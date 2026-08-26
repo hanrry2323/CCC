@@ -2846,6 +2846,16 @@ def _dispatch_and_collect(
                 )
                 return False, [f"基础设施：业务仓 worktree 创建失败：{biz_err}"]
             logger.info("业务仓 worktree 就绪: work=%s path=%s", work.id, biz_worktree_path)
+    else:
+        # E2E体检发现 · 老板授权热修（2026-08-26）：机审阶段补传 biz_worktree，与开发派发对齐。
+        # 复用开发期已建的业务仓 worktree（存在才传；缺失保持空串走旧路径，不重复建仓、
+        # 不改门禁逻辑、不削弱任何检查）——修复机审门禁在卡副本仓跑业务测试必 exit=4 的死循环。
+        biz_project = _business_project(work)
+        if biz_project:
+            candidate = _business_worktree_path(biz_project, work.id)
+            if candidate.is_dir():
+                biz_worktree_path = str(candidate)
+                logger.info("机审复用业务仓 worktree: work=%s path=%s", work.id, biz_worktree_path)
 
     # 在单测下，豁免对 mock/fake 临时卡的缺失校��
     import sys
