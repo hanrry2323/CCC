@@ -555,8 +555,14 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                 )
 
         # 2. Check index vs disk
+        # E2E体检发现 · 老板授权热修（2026-08-26）：归档行（path 含 docs/archive/ccc-tasks/）
+        # 按其归档路径核验文件存在性——文件在归档区即在册，不再按 dispatch 路径误报孤立；
+        # 归档区文件也缺失的真孤儿仍报错。活跃卡检查逻辑零改动。
         for card_id, entry in index_entries.items():
             if card_id not in disk_ids:
+                entry_path = str(entry.get("path", ""))
+                if "docs/archive/ccc-tasks/" in entry_path and (project_root / entry_path).is_file():
+                    continue
                 issues.append(
                     CardIssue(
                         card_id=card_id,
