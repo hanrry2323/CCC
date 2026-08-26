@@ -150,12 +150,13 @@ lint：
 
 **DSH 机审席 · 2026-08-26 · severity：轻**
 
-独立复核证据（业务仓 `/Users/fan/program/apps/.ccc-wt/tst/tst006`，分支 `codex/tst006-e2e-add-smoke`）：
+本轮为引擎再次派发的独立复审（上轮机审通过后卡分支又并入 origin/main，即文档仓 d62d0ba87），对当前状态全量重验，不引用执行体自述、不沿用上轮机审结论。业务仓 `/Users/fan/program/apps/.ccc-wt/tst/tst006`，分支 `codex/tst006-e2e-add-smoke`：
 
-1. 范围核对：`git diff origin/main...HEAD --stat` 仅含白名单两新增文件 `math_utils.py`（+3）与 `tests/test_math_utils.py`（+5），内容与卡「实现」节代码块逐字一致；`git ls-files` 仅 `README.md`＋两白名单文件；未跟踪项仅 pytest 本地运行产物 `__pycache__/`（未入提交）。README 未被触碰。
-2. 门禁复跑：在仓根执行 `python3 -m pytest tests/test_math_utils.py -q` → 退出码=0，输出 `. [100%] 1 passed in 0.05s`，与回写区自述一致。
-3. push 证据属实：`git rev-parse HEAD`＝`e037d42486e689f1e71358aff45a926e832e7f87`＝`origin/codex/tst006-e2e-add-smoke`（fetch 后同值）；`git merge-base --is-ancestor origin/main HEAD` 通过（origin/main=`1ceae1b` 为 HEAD 直接祖先，无需 rebase，未直推 main）；提交作者/提交者均为 `qx-observer <qx-observer@local>`，身份未被改写。
-4. 维护区四问核对：四问均单选落位（[否]/[无]/[否]/[否]），说明各为一句实情、非空非占位（P1-b 机械判据通过）；抽查第 1 问声明引用的 `docs/projects/tst/plans/001-pipeline-smoke.md` 真实存在，其「关联卡：tst002, tst003, tst004」与本卡无关的表述属实——无声明不实。
-5. 对抗式找茬 0 发现（风险论证）：实现为卡内逐字规定的纯函数＋最小断言，无 IO/副作用/全局状态；`add` 的类型边界行为（非数值入参抛 TypeError）是 `+` 的固有语义且卡明确锁定最小实现，扩展反越白名单；`from math_utils import add` 依赖 cwd 进 sys.path 由门禁命令 `python3 -m pytest` 形式保证，已真实跑通。另记录：Engine 历轮打回信封（如 `9ae4b6bb`）未附可执行打回原因，属看板流转侧问题，非本卡质量缺陷，不构成本席打回事由。
+1. 范围核对：业务仓 `git diff origin/main...HEAD --name-status` 仅 `A math_utils.py`、`A tests/test_math_utils.py`（`--stat` +3/+5，纯新增）；`git ls-files` 仅 `README.md`＋两白名单文件；未跟踪项仅 pytest 运行产物 `__pycache__/`、`tests/__pycache__/`（未入提交）。README 及仓内其他文件零触碰——白名单外零越界。
+2. 内容逐字比对：卡「实现」节两个 python 代码块分别与 `math_utils.py`（3 行）、`tests/test_math_utils.py`（5 行）做 `diff` 全空（MATH_VERBATIM_OK / TEST_VERBATIM_OK）——实现即卡所规定，无夹带改动。
+3. 门禁复跑：在业务仓根真实执行 `python3 -m pytest tests/test_math_utils.py -q` → 退出码=0，输出 `. [100%] 1 passed in 0.05s`，与回写区自述一致。
+4. push/红线核验：fetch 后 `git rev-parse HEAD`＝`e037d42486e689f1e71358aff45a926e832e7f87`＝`origin/codex/tst006-e2e-add-smoke`（本地与远端同值）；`origin/main`＝`1ceae1be17b47dd433a5616e351f3e5383868283` 且 `git merge-base --is-ancestor origin/main HEAD` 通过（main 为直接祖先、未被直推）；提交作者/提交者均为 `qx-observer <qx-observer@local>`，身份未被改写；卡头=已回写属实。
+5. 维护区四问核对（P1-b 机械判据）：四问均单选落位问题行方括号（[否]/[无]/[否]/[否]），说明各为一句实情、非空非占位（grep 无 `[是/否]`/`[有/无]` 模板残留）；抽查第 1 问引用工件 `docs/projects/tst/plans/001-pipeline-smoke.md` 真实存在，其卡头「关联卡：tst002, tst003, tst004」与说明表述一致——无声明不实。
+6. 对抗式找茬 0 发现（风险论证）：实现为卡内逐字锁定的纯函数＋最小断言，无 IO/副作用/全局状态/新增依赖；`add` 对非数值入参抛 TypeError 是 `+` 的固有语义，卡已锁定最小实现，扩展反越白名单；`from math_utils import add` 的根导入由门禁命令 `python3 -m pytest`（cwd 入 sys.path）保证且已真实跑通，补 conftest/ini 反而越界。另记录：Engine 历轮打回信封未附可执行打回原因属看板流转侧问题，非本卡质量缺陷。severity 计分：影响面 1（管线自检专用仓）＋改动深度 1（纯新增 8 行）＋红线邻近 1（零接触）＝3 → 轻。
 
-机审：通过（被审 cab3a3903deb）
+机审：通过
