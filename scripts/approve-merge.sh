@@ -455,6 +455,25 @@ v6_drift_gate() {
         | grep -E '^(机审|结论)(：|:)通过(（被审[0-9a-f]{7,40}）|\(被审[0-9a-f]{7,40}\))?$' || true)"
       if [[ -n "$_norm_hits" ]]; then
         env_commits+=("$_c")
+        continue
+      fi
+      # E2E体检发现 · 老板授权第三热修（2026-08-26）：补「重申口径」——复审型信封的结论行
+      # 与上一轮逐字相同时，git 记为上下文行而非新增行，上方严格字形永不命中，漂移基线被
+      # 永久钉死在首轮（tst006 实证）。补充认定须同时满足四条件：
+      #   ① 改动文件集仅含本卡文件；② 提交信息含「机审」；
+      #   ③ 补丁 ± 行（新增/修改，排除文件头）真实改写了含「机审」字样的内容——纯上下文
+ #      行携带旧结论不算（防任意卡文提交借邻近旧结论自动达标）；
+      #   ④ 提交后的卡文件含规范独立结论行（机审：通过/结论：通过，可附被审钉）。
+      # 信封纯度、钉完整性、ledger 真值等其余门禁一律不动。
+      _files="$(git show --name-only --pretty=format: "$_c" 2>/dev/null | sed '/^$/d')"
+      if [[ "$_files" == "$path" ]] \
+        && git log -1 --format='%s%n%b' "$_c" 2>/dev/null | grep -q '机审' \
+        && git show "$_c" -- "$path" 2>/dev/null \
+          | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cut -c2- | grep -q '机审' \
+        && git show "$_c:$path" 2>/dev/null \
+          | sed -E 's/^[[:space:]#*>-]+//' | tr -d ' \t*#>' \
+          | grep -qE '^(机审|结论)(：|:)通过(（被审[0-9a-f]{7,40}）|\(被审[0-9a-f]{7,40}\))?$'; then
+        env_commits+=("$_c")
       fi
     done < <(git log --format='%H' "origin/${branch}" -- "$path" 2>/dev/null)
   fi
