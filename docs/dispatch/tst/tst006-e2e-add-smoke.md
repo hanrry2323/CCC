@@ -150,13 +150,13 @@ lint：
 
 **DSH 机审席 · 2026-08-26 · severity：轻**
 
-本轮为引擎再次派发的独立复审（上轮机审通过后卡分支又并入 origin/main，即文档仓 d62d0ba87），对当前状态全量重验，不引用执行体自述、不沿用上轮机审结论。业务仓 `/Users/fan/program/apps/.ccc-wt/tst/tst006`，分支 `codex/tst006-e2e-add-smoke`：
+本轮为引擎再次派发的独立复审；复审进行中执行体并发完成第 9 次回写（文档仓 `f9bccaeac`，仅刷新回写区轮次与证据表述，业务仓零代码改动），本席对第 9 次回写后的当前状态全量重验，不引用执行体自述、不沿用上轮机审结论。业务仓 `/Users/fan/program/apps/.ccc-wt/tst/tst006`（分支 `codex/tst006-e2e-add-smoke`），文档卡副本 `/Users/fan/program/CCC-wt/tst006/docs/dispatch/tst/tst006-e2e-add-smoke.md`（审查基线＝文档仓 HEAD `f9bccaeac`）：
 
-1. 范围核对：业务仓 `git diff origin/main...HEAD --name-status` 仅 `A math_utils.py`、`A tests/test_math_utils.py`（`--stat` +3/+5，纯新增）；`git ls-files` 仅 `README.md`＋两白名单文件；未跟踪项仅 pytest 运行产物 `__pycache__/`、`tests/__pycache__/`（未入提交）。README 及仓内其他文件零触碰——白名单外零越界。
-2. 内容逐字比对：卡「实现」节两个 python 代码块分别与 `math_utils.py`（3 行）、`tests/test_math_utils.py`（5 行）做 `diff` 全空（MATH_VERBATIM_OK / TEST_VERBATIM_OK）——实现即卡所规定，无夹带改动。
-3. 门禁复跑：在业务仓根真实执行 `python3 -m pytest tests/test_math_utils.py -q` → 退出码=0，输出 `. [100%] 1 passed in 0.05s`，与回写区自述一致。
-4. push/红线核验：fetch 后 `git rev-parse HEAD`＝`e037d42486e689f1e71358aff45a926e832e7f87`＝`origin/codex/tst006-e2e-add-smoke`（本地与远端同值）；`origin/main`＝`1ceae1be17b47dd433a5616e351f3e5383868283` 且 `git merge-base --is-ancestor origin/main HEAD` 通过（main 为直接祖先、未被直推）；提交作者/提交者均为 `qx-observer <qx-observer@local>`，身份未被改写；卡头=已回写属实。
-5. 维护区四问核对（P1-b 机械判据）：四问均单选落位问题行方括号（[否]/[无]/[否]/[否]），说明各为一句实情、非空非占位（grep 无 `[是/否]`/`[有/无]` 模板残留）；抽查第 1 问引用工件 `docs/projects/tst/plans/001-pipeline-smoke.md` 真实存在，其卡头「关联卡：tst002, tst003, tst004」与说明表述一致——无声明不实。
-6. 对抗式找茬 0 发现（风险论证）：实现为卡内逐字锁定的纯函数＋最小断言，无 IO/副作用/全局状态/新增依赖；`add` 对非数值入参抛 TypeError 是 `+` 的固有语义，卡已锁定最小实现，扩展反越白名单；`from math_utils import add` 的根导入由门禁命令 `python3 -m pytest`（cwd 入 sys.path）保证且已真实跑通，补 conftest/ini 反而越界。另记录：Engine 历轮打回信封未附可执行打回原因属看板流转侧问题，非本卡质量缺陷。severity 计分：影响面 1（管线自检专用仓）＋改动深度 1（纯新增 8 行）＋红线邻近 1（零接触）＝3 → 轻。
+1. 范围核对：业务仓 `git diff origin/main...HEAD --name-status` 仅 `A math_utils.py`、`A tests/test_math_utils.py`（`--stat` +3/+5，纯新增），`git ls-files` 仅 `README.md`＋两白名单文件，未跟踪项仅 pytest 运行产物 `__pycache__/`、`tests/__pycache__/`（未入提交）——白名单外零越界；文档仓 fetch 后三方 `git diff origin/main...HEAD --stat` 仅触本卡 md 一个文件（31+/10−，merge-base＝`origin/main` 尖端 `3c535c7f`），分支侧提交全部为本卡回写/机审落卡/Engine 打回信封/合并 main，无越界文件。
+2. 内容逐字比对：卡「实现」节代码块与 `math_utils.py`（3 行）、`tests/test_math_utils.py`（5 行）分别以临时期望文件 `diff` 全空（MATH_VERBATIM_OK / TEST_VERBATIM_OK），实现即卡所规定，无夹带改动。
+3. 门禁复跑：在业务仓根真实执行 `python3 -m pytest tests/test_math_utils.py -q` → 退出码=0，输出 `. [100%] 1 passed in 0.05s`，与第 9 次回写区自述一致。
+4. push/红线核验：业务仓 fetch 后 HEAD＝`e037d42486e689f1e71358aff45a926e832e7f87`＝`origin/codex/tst006-e2e-add-smoke`（本地远端同值）；`origin/main`＝`1ceae1be…` 经 `git merge-base --is-ancestor origin/main HEAD` 核验为 HEAD 直接祖先（未直推 main、无需 rebase）；提交作者/提交者均为 `qx-observer <qx-observer@local>`（身份未改写）。文档仓 fetch 后 HEAD＝`f9bccaeac` 与远端卡分支同值、工作树干净；卡相对 main 版改动仅四处——状态行（待分派→已回写）、回写区、维护区、机审区，目标/基准文件/实现/红线/范围/步骤/验收标准/门禁各节零篡改；无 `## 验收区` 节，「已关闭」仅出现于红线/提示模板文本，状态落位为「已回写」。
+5. 维护区四问核对（P1-b 机械判据）：四问均单选落位问题行方括号（[否]/[无]/[否]/[否]），说明各为一句实情、非空非占位（维护区内 grep 无 `[是/否]`/`[有/无]` 模板残留、无空说明行）；抽查第 1 问引用工件 `docs/projects/tst/plans/001-pipeline-smoke.md` 真实存在（1687 字节），其卡头「关联卡：tst002, tst003, tst004 · 状态：已确定」与「与本卡无关、无需同步」的说明一致。微瑕记录（不计缺陷）：该条说明内「第 8 轮复核方案池」为轮次表述滞后于第 9 次回写，方案池内容未变、陈述仍属实。
+6. 对抗式找茬 0 发现（风险论证）：实现为卡内逐字锁定的纯函数＋最小断言，无 IO/副作用/全局状态/新增依赖；`add` 对非数值入参抛 TypeError 是 `+` 的固有语义，卡已锁定最小实现，扩展反越白名单；`from math_utils import add` 的根导入由门禁命令 cwd 进 sys.path 保证且本轮真实跑通，补 conftest/pyproject 反触「不加依赖或配置文件」红线。观察项（不计 severity、非本卡缺陷）：①Engine 历轮打回信封未附可执行打回原因，属看板流转侧问题；②本文档 worktree 卡分支 upstream 配置指向 `origin/main`，存在误操作直推风险，建议后续一律显式 refspec 推送。severity 计分：影响面 1（管线自检专用仓）＋改动深度 1（纯新增 8 行）＋红线邻近 1（零接触）＝3 → 轻；0 处需就地修复。
 
 机审：通过
