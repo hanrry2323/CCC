@@ -84,7 +84,7 @@ lint：
 1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
    - 说明：本卡为外脑清场收尾直派运维卡，无 prefix-plan-NNN 方案关联，无方案文件需同步。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：两条已落 docs/notes/2026-08-26-ccc-lessons.md——①dispatch 卡文件任何未提交编辑会被 git_sync 对齐秒级回吃，必须编辑与 commit 原子化；②engine 建工作树与出卡提交存在竞态，分支基点可能落后一拍，防护闸跳过派发时用 ff-only 对齐解卡。
+   - 说明：两条已落 docs/notes/2026-08-26-ccc-lessons.md——含「管理席直改卡同样必须同步填写维护区，否则机审门禁打回+熔断连锁」（外脑补充）；①dispatch 卡文件任何未提交编辑会被 git_sync 对齐秒级回吃，必须编辑与 commit 原子化；②engine 建工作树与出卡提交存在竞态，分支基点可能落后一拍，防护闸跳过派发时用 ff-only 对齐解卡。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
    - 说明：仅新增 approve-merge.sh 预检段，目录结构/技术栈/路径零变化（numstat 纯增可证）。
 4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
