@@ -1,6 +1,6 @@
 # 任务卡 tst006 · 管线E2E体检·tst仓新增add纯函数与pytest单测（DSH 执行）
 
-> 关联：产线E2E实弹验证（老板授权·外脑起草） · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-26
+> 关联：产线E2E实弹验证（老板授权·外脑起草） · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-26
 
 
 
@@ -77,20 +77,24 @@ lint：
 
 ## 回写区
 
-**执行体**：DSH · 日期：
+**执行体**：DSH · 日期：2026-08-26
+
+- **实现说明**：按卡「实现」节在 tst 业务仓新增 `math_utils.py`（仓根，`add(a,b)` 纯函数返回 `a+b`）与 `tests/test_math_utils.py`（`test_add` 断言 `add(2, 3) == 5`）；未建 Python 包、未改 README、未加依赖或配置文件；分支相对 `origin/main` 的 diff 仅含白名单两个新增文件。
+- **测试结果**：门禁命令 `python3 -m pytest tests/test_math_utils.py -q` 在业务仓根真实执行：退出码=0，输出 `. [100%] 1 passed in 0.02s`。
+- **push 证据**：commit `e037d42`（tst006: 新增 add 纯函数与 pytest 单测（管线E2E体检））已推送至 `origin/codex/tst006-e2e-add-smoke`（远端新建分支，push 退出码=0）；push 前 `git fetch origin && git rebase origin/main` 结果 up to date，未直推 main。
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（方案推进「部分执行」或「已完成」，关联卡补全）
+   - 说明：卡头「关联」无方案编号——本卡为老板直接授权的产线E2E实弹验证卡；方案池 tst-plan-001 仅关联 tst002–tst004 且已完结，与本卡无关，无需同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：常规最小冒烟实现且门禁一次通过，无新增可复用教训。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅新增两个代码文件，项目路径、技术栈与目录约定均未变化，档案无需更新。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：本卡为管线自检例行执行例，项目近况与下一步无里程碑级变化。
 
 ## 批注落实
 
