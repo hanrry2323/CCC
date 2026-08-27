@@ -327,3 +327,36 @@ def _machine_audit_pass_ids() -> set[str]:
 def has_pass(card_id: str) -> bool:
     """机审通过真值：查账本是否有该卡 machine_audit_pass 记录（单一事实源）。"""
     return card_id in _machine_audit_pass_ids()
+
+
+def has_pass_verdict(card_id: str) -> bool:
+    """机审末行裁决真值（2026-08-25 加固，ccc088 教训）：machine_audit_pass 之后若
+    出现 kind∈{audit,infra} 的「不通过」行（打回/证据未推送等），以**末行为准**判不通过，
+    杜绝 stale machine_audit_pass 让已打回卡漏进 ready 队列/放行。
+
+    判定：收集该卡全部"裁决行"（action=machine_audit_pass，或 kind∈{audit,infra} 且带
+    conclusion），按 ts 升序取末行；末行通过 → True，末行不通过或无机审记录 → False。
+
+    使用边界：approve-merge 入队/合入门禁用本判据（门禁从严）；看板展示仍用 has_pass
+    （存在即显示 audit 标记），显示与门禁解耦——已打回卡展示层可信卡状态回落。
+    """
+    path = _ledger_path()
+    try:
+        rows = _read_rows(path)
+    except OSError:
+        return False
+    verdicts: list[tuple[str, bool]] = []
+    for r in rows:
+        rid = r.get("object_id") or r.get("work_id") or r.get("card_id")
+        if rid != card_id:
+            continue
+        action = r.get("action")
+        kind = r.get("kind")
+        if action == "machine_audit_pass":
+            verdicts.append((str(r.get("ts", "")), True))
+        elif kind in ("audit", "infra") and r.get("conclusion"):
+            verdicts.append((str(r.get("ts", "")), r.get("conclusion") == "通过"))
+    if not verdicts:
+        return False
+    verdicts.sort(key=lambda t: t[0])
+    return verdicts[-1][1]

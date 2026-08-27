@@ -37,6 +37,18 @@ ENGINE_PNAME="server.engine.main"
 WEB_PNAME="server.web.server"
 SCHEDULER_PNAME="server.board.scheduler"
 
+# ── ccc083 防旋（2026-08-25）：同服务最小重启间隔 + DRY-RUN 演练 ──
+# 背景：2026-08-24 机审会话连环触发本脚本（47 次 kickstart），在飞执行体被连带击杀
+# （exit 137）→ 引擎回待分派重派 → 自持风暴。本闸为最内层防线：任何调用方
+# （watchdog/deploy/人工）对同一服务的重启间隔不得小于 CCC_KICKSTART_MIN_INTERVAL 秒。
+#   CCC_KICKSTART_MIN_INTERVAL  默认 60；设 0 关闭冷却
+#   CCC_KICKSTART_FORCE=1       跳过冷却强制重启（人工确认场景）
+#   CCC_KICKSTART_DRY_RUN=1     只记录意图不执行 launchctl/pkill（测试/演练）
+KICK_MIN_INTERVAL="${CCC_KICKSTART_MIN_INTERVAL:-60}"
+KICK_FORCE="${CCC_KICKSTART_FORCE:-0}"
+KICK_DRY_RUN="${CCC_KICKSTART_DRY_RUN:-0}"
+KICK_STATE_DIR="${CCC_KICKSTART_STATE_DIR:-${LOG_DIR}/kickstart-state}"
+
 # 解析参数
 ENGINE_ONLY=false
 WEB_ONLY=false
@@ -65,12 +77,36 @@ kickstart_service() {
   local service="$1"
   local pname="$2"
   local name="${service##*/}"
-  
+  local state_file="${KICK_STATE_DIR}/${name}.last"
+  local now last delta
+
+  # 冷却检查：距上次真实重启不足间隔则跳过（幂等安全侧）
+  now="$(date +%s)"
+  last="$(cat "${state_file}" 2>/dev/null | tr -cd '0-9')"
+  last="${last:-0}"
+  delta=$((now - last))
+  if [[ "${KICK_FORCE}" != "1" ]] && [[ "${KICK_DRY_RUN}" != "1" ]] \
+     && (( KICK_MIN_INTERVAL > 0 )) && (( delta < KICK_MIN_INTERVAL )); then
+    echo "[INFO] 服务 ${name} 距上次重启 ${delta}s < ${KICK_MIN_INTERVAL}s，冷却跳过（FORCE=1 可强制）" >&2
+    log_kickstart "冷却跳过: ${name}（${delta}s < ${KICK_MIN_INTERVAL}s）"
+    return 0
+  fi
+
+  if [[ "${KICK_DRY_RUN}" == "1" ]]; then
+    echo "[DRY-RUN] 将热重启 ${service}（未执行 launchctl/pkill）" >&2
+    log_kickstart "[DRY-RUN] 热重启意图: ${name}"
+    mkdir -p "${KICK_STATE_DIR}" 2>/dev/null || true
+    echo "${now}" > "${state_file}" 2>/dev/null || true
+    return 0
+  fi
+
   echo "[INFO] 正在尝试热重启常驻服务: ${service}..." >&2
 
   if launchctl kickstart -k "${service}" 2>/dev/null; then
     echo "[OK] 服务 ${name} 热重启成功。" >&2
     log_kickstart "热重启成功: ${name}"
+    mkdir -p "${KICK_STATE_DIR}" 2>/dev/null || true
+    echo "${now}" > "${state_file}" 2>/dev/null || true
     return 0
   fi
 

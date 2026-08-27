@@ -45,6 +45,32 @@ _RETRY_COUNT = 10
 _RETRY_DELAY = 0.1
 
 
+@pytest.fixture(autouse=True)
+def _isolate_board_index_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """索引写入隔离（ccc088）：conversation/board 系用例经 api_server 线程内请求
+    触发 load_dispatch_cards(真实 docs/dispatch)，pytest 分支激活后把增量索引
+    写进真实仓。重定向规则：
+    - dispatch_dir 在测试自建 tmp 目录内 → 维持 `<dir>/cards.index.jsonl` 原语义
+      （TestCardsFallback 显式断言该路径重建）；
+    - dispatch_dir 指向真实仓（含未 mock 的 _DISPATCH_DIR）→ 重定向 tmp_path。
+    不能只 delenv PYTEST_CURRENT_TEST——pytest 进入 call 阶段会重设该变量（实测复现）。
+    """
+    from server.board import loader
+
+    project_root = Path(__file__).resolve().parents[2]
+
+    def _safe_index_path(dispatch_dir=None):
+        if dispatch_dir is not None:
+            d = Path(dispatch_dir).resolve()
+            if d != project_root and project_root not in d.parents:
+                return d / "cards.index.jsonl"
+        return tmp_path / "cards" / "cards.index.jsonl"
+
+    monkeypatch.setattr(loader, "get_index_path", _safe_index_path)
+    monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+
 @pytest.fixture(scope="module")
 def api_server():
     """启动 HTTP API 服务（随机端口），返回 base_url。"""

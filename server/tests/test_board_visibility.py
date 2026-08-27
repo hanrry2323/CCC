@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from server.board.loader import load_dispatch_cards
 from server.board.registry import load_projects, platform_prefixes
 
@@ -19,8 +21,28 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DISPATCH_DIR = PROJECT_ROOT / "docs" / "dispatch"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_board_index_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """索引写入隔离（ccc088）：真实 docs/dispatch 只许读不许写。
+
+    pytest 进程内 get_index_path 对非空 dispatch_dir 返回
+    `<dispatch_dir>/cards.index.jsonl`，load_dispatch_cards 的增量副作用会把
+    索引写进真实仓（主仓/worktree 双双中招）。重定向 get_index_path 到
+    tmp_path 后本文件的纯读断言不受影响；不能只 delenv PYTEST_CURRENT_TEST——
+    pytest 进入 call 阶段会重设该变量（实测复现）。
+    """
+    from server.board import loader
+
+    monkeypatch.setattr(
+        loader, "get_index_path",
+        lambda dispatch_dir=None: tmp_path / "cards" / "cards.index.jsonl",
+    )
+    monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+
 def _visible_items():
-    return load_dispatch_cards(DISPATCH_DIR)
+    return load_dispatch_cards(DISPATCH_DIR, include_archived=True)
 
 
 def test_loader_includes_platform_cards() -> None:

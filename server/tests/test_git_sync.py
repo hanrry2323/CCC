@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
+import time
 from pathlib import Path
 
+from server import git_sync
 from server.git_sync import (
+    _align_grace_seconds,
+    _force_align_dispatch,
     auto_pull_enabled,
     resolve_repo_root,
     sync_origin_main,
@@ -105,3 +111,86 @@ class TestSyncOriginMain:
         assert (local / "docs" / "dispatch" / "c.md").is_file()
         assert "docs/dispatch/a.md" in summary.get("updated", [])
         assert (local / "docs" / "dispatch" / "a.md").read_text(encoding="utf-8") == "# a remote\n"
+
+
+class TestForceAlignGraceWindow:
+    """未跟踪 .md 新卡对齐宽限窗：mtime 新鲜不清除只告警，超窗才移除（ccc091）。"""
+
+    def _repo(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        return repo
+
+    def test_fresh_untracked_card_not_removed(self, tmp_path: Path, monkeypatch, caplog) -> None:
+        """宽限窗内（默认 300s）的未跟踪新卡：不移除，告警一次且同文件去重。"""
+        monkeypatch.setattr(git_sync, "_GRACE_WARNED", set())
+        monkeypatch.delenv("CCC_ALIGN_GRACE_SECONDS", raising=False)
+        repo = self._repo(tmp_path)
+        new_card = repo / "docs" / "dispatch" / "ccc099-new-card.md"
+        new_card.write_text("# fresh untracked card\n", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="ccc.git_sync"):
+            result = _force_align_dispatch(repo, "main", "docs/dispatch")
+            assert result == {"removed": 0, "grace_kept": 1}
+            assert new_card.is_file()  # 未被静默清除
+            msgs = [r.getMessage() for r in caplog.records if "疑似出卡未提交" in r.getMessage()]
+            assert len(msgs) == 1
+            assert "ccc099-new-card.md" in msgs[0]  # 告警含文件名
+            # 第二轮对齐：同文件去重，不再重复告警，卡仍保留
+            result2 = _force_align_dispatch(repo, "main", "docs/dispatch")
+            assert result2 == {"removed": 0, "grace_kept": 1}
+            assert new_card.is_file()
+            msgs2 = [r.getMessage() for r in caplog.records if "疑似出卡未提交" in r.getMessage()]
+            assert len(msgs2) == 1
+
+    def test_stale_untracked_card_removed(self, tmp_path: Path, monkeypatch) -> None:
+        """超宽限窗仍存在的未跟踪卡：按原逻辑移除。"""
+        monkeypatch.setattr(git_sync, "_GRACE_WARNED", set())
+        monkeypatch.delenv("CCC_ALIGN_GRACE_SECONDS", raising=False)
+        repo = self._repo(tmp_path)
+        old_card = repo / "docs" / "dispatch" / "ccc098-stale.md"
+        old_card.write_text("# stale untracked card\n", encoding="utf-8")
+        stale_ts = time.time() - 3600.0  # 1 小时前，远超默认 300s 宽限
+        os.utime(old_card, (stale_ts, stale_ts))
+
+        result = _force_align_dispatch(repo, "main", "docs/dispatch")
+        assert result == {"removed": 1, "grace_kept": 0}
+        assert not old_card.exists()
+
+    def test_grace_seconds_env_override(self, tmp_path: Path, monkeypatch) -> None:
+        """CCC_ALIGN_GRACE_SECONDS=0 关闭宽限窗：新鲜未跟踪卡立即移除。"""
+        monkeypatch.setattr(git_sync, "_GRACE_WARNED", set())
+        monkeypatch.setenv("CCC_ALIGN_GRACE_SECONDS", "0")
+        repo = self._repo(tmp_path)
+        fresh = repo / "docs" / "dispatch" / "ccc097-fresh.md"
+        fresh.write_text("# fresh\n", encoding="utf-8")
+
+        assert _align_grace_seconds() == 0.0
+        result = _force_align_dispatch(repo, "main", "docs/dispatch")
+        assert result["removed"] == 1
+        assert not fresh.exists()
+
+    def test_future_mtime_card_removed_when_grace_disabled(self, tmp_path: Path, monkeypatch) -> None:
+        """未来 mtime（时钟偏斜）钳制为 0：宽限窗关闭时仍立即移除（机审席 F1 修复）。"""
+        monkeypatch.setattr(git_sync, "_GRACE_WARNED", set())
+        monkeypatch.setenv("CCC_ALIGN_GRACE_SECONDS", "0")
+        repo = self._repo(tmp_path)
+        future_card = repo / "docs" / "dispatch" / "ccc096-future.md"
+        future_card.write_text("# future mtime\n", encoding="utf-8")
+        future_ts = time.time() + 3600.0  # 1 小时后的未来 mtime
+        os.utime(future_card, (future_ts, future_ts))
+
+        result = _force_align_dispatch(repo, "main", "docs/dispatch")
+        assert result == {"removed": 1, "grace_kept": 0}
+        assert not future_card.exists()
+
+    def test_grace_seconds_env_parsing(self, monkeypatch) -> None:
+        """env 解析：缺省 300s；非法值回退缺省；负值按 0。"""
+        monkeypatch.delenv("CCC_ALIGN_GRACE_SECONDS", raising=False)
+        assert _align_grace_seconds() == 300.0
+        monkeypatch.setenv("CCC_ALIGN_GRACE_SECONDS", "45")
+        assert _align_grace_seconds() == 45.0
+        monkeypatch.setenv("CCC_ALIGN_GRACE_SECONDS", "not-a-number")
+        assert _align_grace_seconds() == 300.0
+        monkeypatch.setenv("CCC_ALIGN_GRACE_SECONDS", "-3")
+        assert _align_grace_seconds() == 0.0

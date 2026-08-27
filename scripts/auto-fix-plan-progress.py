@@ -15,8 +15,23 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+# ccc088：索引口径兜底——本脚本被 observer 子进程（observer.py:694）或裸 shell 直接调起时，
+# 若环境无 CCC_DATA_DIR，sync_plan_progress 级联触发的 load_dispatch_cards 会经 loader
+# 回落写 <repo>/data/cards/cards.index.jsonl 陈旧副本。此处 setdefault 与生产看板同源；
+# 仅认 CCC_DATA_DIR 口径（loader 另支持 DATA_DIR，此处不启用）。
+os.environ.setdefault("CCC_DATA_DIR", str(Path.home() / ".ccc" / "data"))
+
+# ccc094/auto-fix-001：裸 subprocess 调用时 sys.path[0]=scripts/，仓根不在 sys.path，
+# 下方延迟 import 必然 ModuleNotFoundError（生产日志实证失败 196 次、成功 0 次）。
+# 以脚本文件位置向上推仓根并前置插入 sys.path，保证非仓根 cwd 的生产调用可导入 server 包；
+# 仅引导导入路径，不改任何业务行为。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 def main() -> int:

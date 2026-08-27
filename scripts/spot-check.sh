@@ -19,6 +19,9 @@ CARD_ID="${1:?缺 card_id}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下 loader 读回落
+# <repo>/data/cards/cards.index.jsonl 陈旧副本；注入后与生产看板同源（~/.ccc/data）。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
 cd "$PROJECT_ROOT"
 
 # 解析卡路径与分支

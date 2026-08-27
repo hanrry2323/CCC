@@ -33,11 +33,23 @@
 #
 # 环境变量（零硬编码，可覆盖默认值）：
 #   CCC_CARD_EXECUTOR / CCC_CARD_ACCEPTANCE / CCC_PYTHON_BIN
+#
+# 出卡原子化（ccc090）：写卡+validate 通过后，同进程链内自动
+#   git add <卡> → git commit（消息前缀 docs(card):）→ git push origin <当前分支>
+# （中枢主仓 main 上出卡即等价 `git push origin main`；worktree/分支上出卡推所在分支，
+#   卡必达远端且不误碰 main。）dispatch-dir 在本仓 git 树外（临时目录测试形态）→ 跳过 git。
+# 退出码：5=add 失败；6=commit 异常/失败；7=push 失败或分支不可判定。
+# 任一 git 步失败非零退出并保留现场卡文件；push 失败不回滚本地 commit（输出补推指引）。
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下出卡后的索引刷新
+# （load_dispatch_cards）会回落写 <repo>/data/cards/cards.index.jsonl 陈旧副本；
+# 注入后与生产看板/loader 权威路径（~/.ccc/data）同源。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
 
 # ── 默认值（可用环境变量覆盖） ──
 DISPATCH_DIR="${CCC_DISPATCH_DIR:-docs/dispatch}"
@@ -449,6 +461,46 @@ if errs:
     sys.exit(1)
 " "$TARGET_DIR" "$PROJECT_PREFIX" ); then
   [[ "$QUIET" != true ]] && echo "[OK] 出卡成功 + validate 通过: $CARD_PATH"
+
+  # ── ccc090 出卡原子化：落盘即提交即推送（同一进程链内，逐段捕获 rc） ──
+  # 消灭「落盘未提交被 _force_align_dispatch 按 untracked 清除」的吃单窗（R3/R4 四次实锤）。
+  # 仅当卡落在本仓 git 树内才执行；dispatch-dir 在树外（临时目录测试形态）→ 跳过，零 git 副作用。
+  if [[ -n "$PROJECT_ROOT_REAL" && "$CARD_PATH" == "$PROJECT_ROOT_REAL"/* ]]; then
+    REL_CARD="${CARD_PATH#"$PROJECT_ROOT_REAL"/}"
+    if ! git -C "$PROJECT_ROOT_REAL" add -- "$REL_CARD"; then
+      echo "[ERROR] 原子提交失败（git add）：$REL_CARD（卡已保留在磁盘：$CARD_PATH）" >&2
+      exit 5
+    fi
+    if git -C "$PROJECT_ROOT_REAL" diff --cached --quiet -- "$REL_CARD"; then
+      echo "[ERROR] 原子提交异常（git add 后无暂存变更）：$REL_CARD（卡已保留：$CARD_PATH）" >&2
+      exit 6
+    fi
+    if ! git -C "$PROJECT_ROOT_REAL" commit -m "docs(card): ${CARD_ID} ${TITLE}"; then
+      echo "[ERROR] 原子提交失败（git commit）：${CARD_ID}（卡已保留在磁盘：$CARD_PATH）" >&2
+      exit 6
+    fi
+    if [[ "$QUIET" != true ]]; then echo "[OK] 已本地提交：docs(card): ${CARD_ID}（吃单窗已消除）"; fi
+    CARD_BRANCH="$(git -C "$PROJECT_ROOT_REAL" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ -z "$CARD_BRANCH" || "$CARD_BRANCH" == "HEAD" ]]; then
+      echo "[ERROR] 无法确定当前分支（detached HEAD？），跳过推送。手动补推指引：cd \"$PROJECT_ROOT_REAL\" && git push origin <分支名>" >&2
+      exit 7
+    fi
+    if git -C "$PROJECT_ROOT_REAL" remote | grep -q "^origin$"; then
+      if PUSH_OUT="$(git -C "$PROJECT_ROOT_REAL" push origin "$CARD_BRANCH" 2>&1)"; then
+        if [[ "$QUIET" != true ]]; then echo "[OK] 已推送 origin/${CARD_BRANCH}"; fi
+      else
+        # push 失败不回滚本地 commit（卡已在本地受保护）；显式警告 + 手动补推指引。
+        echo "[WARN] push 失败（卡已在本地提交保护，不回滚）。手动补推指引：cd \"$PROJECT_ROOT_REAL\" && git push origin ${CARD_BRANCH}" >&2
+        printf '%s\n' "$PUSH_OUT" | sed 's/^/    /' >&2
+        exit 7
+      fi
+    else
+      if [[ "$QUIET" != true ]]; then echo "[提示] 本仓无 origin 远端，跳过推送（卡已在本地提交保护）"; fi
+    fi
+  else
+    if [[ "$QUIET" != true ]]; then echo "[提示] dispatch-dir 在仓外（测试形态），跳过原子提交（零 git 副作用）"; fi
+  fi
+
   # 机器可读精确路径（供 plan-to-cards 直接捕获，替代 find | head -1 歧义扫描）
   echo "CARD_PATH=$CARD_PATH"
   exit 0

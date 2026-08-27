@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -33,6 +34,28 @@ def _no_auto_pull(monkeypatch: pytest.MonkeyPatch) -> None:
     测试只测导出逻辑，不应触碰真实仓工作树。
     """
     monkeypatch.setenv("CCC_AUTO_PULL", "0")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_board_index_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """索引写入隔离（ccc088）：export_safe → load_dispatch_cards/archive_old_cards 的
+    增量副作用在 pytest 进程内会把索引写进真实 `<PROJECT_ROOT>/docs/dispatch/`
+    （--watch 子进程以 1s 间隔高频覆写，主仓与各 worktree 均被污染）。
+
+    - 主进程：monkeypatch loader.get_index_path 把索引读写统一重定向到 tmp_path；
+      不能只 delenv PYTEST_CURRENT_TEST——pytest 进入 call 阶段会重设该变量，
+      loader 的 pytest 索引分支照常激活（实测复现）。
+    - subprocess（main --watch CLI）：Popen 按 spawn 时刻 environ 快照继承，
+      delenv PYTEST_CURRENT_TEST + setenv CCC_DATA_DIR 使子进程走生产回落分支落到 tmp_path。
+    """
+    from server.board import loader
+
+    monkeypatch.setattr(
+        loader, "get_index_path",
+        lambda dispatch_dir=None: tmp_path / "cards" / "cards.index.jsonl",
+    )
+    monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
 
 
 class TestExportSafe:
@@ -126,6 +149,11 @@ class TestMainCli:
     def test_watch_smoke(self, tmp_path: Path) -> None:
         """--watch 模式：启动后至少产生一轮导出，然后被 SIGTERM 终止。"""
         out = tmp_path / "board.js"
+        # ccc088：env 显式剔除 PYTEST_CURRENT_TEST——pytest 在 call 阶段会重设该
+        # 变量（夹具 delenv 被覆盖），子进程按 spawn 时刻快照继承后激活 loader 的
+        # pytest 索引分支，以 --interval 1 每秒覆写真实 docs/dispatch/cards.index.jsonl。
+        # 剔除后子进程走生产回落分支，索引随 CCC_DATA_DIR 落 tmp_path。
+        child_env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -142,6 +170,7 @@ class TestMainCli:
             cwd=PROJECT_ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=child_env,
         )
         try:
             # 等待最多 3 秒，让至少一轮导出完成

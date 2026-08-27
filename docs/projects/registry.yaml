@@ -4,7 +4,7 @@
 # 禁止手维第二份真值。
 
 schema: ccc-project-registry-v1
-updated_at: "2026-08-22"
+updated_at: "2026-08-26"
 
 projects:
   - prefix: cla
@@ -16,7 +16,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/clawmed-ccc
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/clawmed-ccc
       max_concurrent: 3
     taskable: true
     forbidden: false
@@ -48,14 +47,13 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/qb
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/qb
       max_concurrent: 2
-    taskable: true
+    taskable: false
     forbidden: false
-    status: active
+    status: archived
     dossier: docs/projects/qb/README.md
     role: CCC 自动化开发测试项目
-    notes: M1 无本机 qb 代码；勿用 /Users/apple/program/projects/qb/
+    notes: 2026-08-26 老板定调封存——定性为研究性验证任务、无实际价值；taskable 关闭，Agent 不再派发；Redis 不安装，告警队列/实时夏普相关功能随封存作废。2026-08-26 校正——实际有 origin(github hanrry2323/qb) 且完全同步；M1 无本机 qb 代码，勿用 /Users/apple/program/projects/qb/
 
   - prefix: mx
     id: medio-0
@@ -66,7 +64,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/medio-0
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/mx
       max_concurrent: 3
     taskable: true
     forbidden: false
@@ -83,7 +80,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/xianyu
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/xy
       max_concurrent: 1
     taskable: true
     forbidden: false
@@ -100,7 +96,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/hp
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/hp
       max_concurrent: 1
     taskable: true
     forbidden: false
@@ -118,7 +113,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-tst
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/tst
       max_concurrent: 1
     taskable: true
     forbidden: false
@@ -141,6 +135,7 @@ projects:
     status: active
     dossier: docs/projects/qh/README.md
     role: 独立轨道；禁止经 CCC Engine 出卡/派发
+    notes2: 2026-08-26 备注：仓体在 M1 机（mac2017=null），2017 本轮清理不可达
 
   # ── 可出卡前缀（续）──
   - prefix: cd
@@ -152,7 +147,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/ccc-demo
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/cd
       max_concurrent: 1
     taskable: false
     forbidden: false
@@ -170,7 +164,6 @@ projects:
       m1: null
       mac2017: /Users/fan/program/apps/clwarp
     isolation:
-      worktree_root: /Users/fan/program/apps/.ccc-wt/clw
       max_concurrent: 1
     taskable: false
     forbidden: false
@@ -187,12 +180,12 @@ projects:
     paths:
       m1: /Users/apple/program/ai-loop-router
       mac2017: null
-    taskable: true
+    taskable: false
     forbidden: false
-    status: active
+    status: archived
     dossier: docs/projects/_catalog/ai-loop-router.md
     role: 模型出口路由基建（6100/6102）
-    notes: UI 可 taskable；无卡前缀——平台改动仍走 ccc 卡，勿口头加前缀
+    notes: 2026-08-26 老板定调停用——路由服务已退役（config.env 2026-08-24 注记：大脑直连 Claude CLI，不再走 6100 中转）；2017 无本仓副本、无进程/端口/launchd 残留（当日取证）。条目转档案，Agent 目标清单不再可见。
 
   - prefix: null
     id: qx-map
@@ -207,6 +200,7 @@ projects:
     status: active
     dossier: docs/projects/_catalog/qx-map.md
     role: 外脑/知识地图；CCC 运行时不依赖（D2）
+    notes2: 2026-08-26 备注：仓体在 M1 机（mac2017=null），2017 本轮清理不可达
 
   # ── 目录可见、非 CCC 主线（archived / catalog）──
   - prefix: null

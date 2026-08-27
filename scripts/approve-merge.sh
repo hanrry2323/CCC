@@ -5,6 +5,7 @@
 #   scripts/approve-merge.sh <card-id> [<card-id>...]
 #   scripts/approve-merge.sh --ready              # 批处理 2017 ready_for_merge 队列
 #   scripts/approve-merge.sh --close-only <id>    # 分支已在 main 历史/无分支时仅关卡（ready 必需）
+#   scripts/approve-merge.sh --batch-merge <ids>  # 批处理（2026-08-25）：逐卡全部门禁 → octopus 一次性合入分叉批次
 #
 # 校验：机审通过（本地卡或 API）+ origin/codex/<stem> 存在。
 # 动作：跨仓收口——业务仓分支先 ff 合入业务 main + 删（分叉阻断整卡，--close-only 也不放行分叉）；
@@ -17,6 +18,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
+# ccc088：索引口径兜底——裸 shell（无 CCC_DATA_DIR）下 loader 回落写
+# <repo>/data/cards/cards.index.jsonl（陈旧副本），与生产看板（~/.ccc/data）双写分裂。
+# 统一注入后本脚本全链（刷索引/close_card/sync_plan_cards/spot-check）与看板同源。
+export CCC_DATA_DIR="${CCC_DATA_DIR:-$HOME/.ccc/data}"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
 # 跨机执行支持（默认保留 2017 生产）：SSH 目标主机（user@ip）与 2017 生产仓路径均可覆盖
 CCC_SSH_HOST="${CCC_SSH_HOST:-fan@192.168.3.116}"
@@ -25,6 +30,8 @@ CCC_PROD_REPO="${CCC_PROD_REPO:-/Users/fan/program/CCC}"
 source "$SCRIPT_DIR/lib/card-resolve.sh"
 USE_READY=false
 CLOSE_ONLY=false
+BATCH_MERGE=false
+_BATCH_BRANCHES=()
 IDS=()
 
 usage() {
@@ -35,12 +42,47 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --ready) USE_READY=true; shift ;;
     --close-only) CLOSE_ONLY=true; shift ;;
+    --batch-merge) BATCH_MERGE=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) IDS+=("$1"); shift ;;
   esac
 done
 
 cd "$PROJECT_ROOT"
+
+# ── 环境预检段（ccc095 am-precheck-001 · 2026-08-26）：A类可静默项一次性前置 ──
+# 纯只读 git 查询；不改变任何既有检查函数的判定语义。
+# 全过 → 仅输出一行 [PRE-OK]；任一失败 → [PREFAIL] 指明失败项并以独立退出码中止：
+#   31=branch 非main  32=worktree 脏  33=fetch 不可达  34=本地落后远端
+env_precheck() {
+  local cur
+  cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  if [[ "$cur" != "main" ]]; then
+    echo "[PREFAIL] 失败项：branch —— 当前分支 ${cur} ≠ main；请切回 main 再执行合入批准" >&2
+    return 31
+  fi
+  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+    echo "[PREFAIL] 失败项：worktree —— 工作树存在未提交改动；请先提交或还原（git status 查看）后再合入" >&2
+    return 32
+  fi
+  if ! git fetch origin main --no-write-fetch-head >/dev/null 2>&1; then
+    echo "[PREFAIL] 失败项：fetch —— origin/main 拉取失败（网络或远端异常）；排除后重试" >&2
+    return 33
+  fi
+  local behind
+  behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  if [[ "${behind:-0}" != "0" ]]; then
+    echo "[PREFAIL] 失败项：lagging —— 本地落后 origin/main ${behind} 个提交；先 git pull --ff-only 对齐再合入" >&2
+    return 34
+  fi
+  echo "[PRE-OK] 环境预检通过（branch/worktree/fetch/ff）"
+  return 0
+}
+env_precheck
+_rc=$?
+if [[ $_rc -ne 0 ]]; then
+  exit "$_rc"
+fi
 
 if [[ "$USE_READY" == true ]]; then
   IDS=()
@@ -90,9 +132,12 @@ for b in out.splitlines():
         m = re.match(r"^([a-z]{2,4}\d{3})-", Path(f).stem)
         if m and machine_audit_passed_text(card):
             # P0 硬化（2026-08-22）：ready 入队须账本有机审记录（卡文自写不算，防假关闭污染批次）
-            from server.board.audit_ledger import has_pass
+            # 末行裁决加固（2026-08-25·ccc088 教训）：has_pass 只查「存在 pass 行」，打回后
+            # stale pass 会让已打回卡漏入队列；改 has_pass_verdict——pass 之后有 kind∈{audit,infra}
+            # 的「不通过」行即判不通过（如 ccc088 4615 manual 打回），杜绝漏放行。
+            from server.board.audit_ledger import has_pass_verdict
 
-            if has_pass(m.group(1)):
+            if has_pass_verdict(m.group(1)):
                 ready.append(m.group(1))
             break
 print("\n".join(sorted(set(ready))))
@@ -382,6 +427,127 @@ else:
 PY
 }
 
+# ── V6 门禁（ccc081 · 2026-08-24 纵深防御加严）：信封定位/钉完整性/信封纯度/漂移检查 ──
+# 用法：v6_drift_gate <id> <卡路径> <分支名> <has_branch:true|false>；返回非 0 = 拒绝合入。
+# 红线自洽：只加严漂移检查触发条件与信封纯度校验；机审真值判定语义
+# （server/board/models.py machine_audit_passed_text 的通过/不通过识别）不动。
+v6_drift_gate() {
+  local id="$1" path="$2" branch="$3" has_branch="$4"
+  local -a env_commits=()
+  local _c _norm_hits
+
+  # ① 信封定位：收集分支上所有「新增机审通过结论行」的信封提交（新→旧，[0]=最后审计信封）。
+  #    字形口径对齐真值判定：剥 diff '+' 前缀与行首 markdown 装饰（空格/#/标题/> 引用/- 列表/* 加粗），
+  #    再删行内空白/*/#/>（对齐 machine_audit_passed_text 的 strip('**') 与 \s* 口径），
+  #    归一化后按全行锚定匹配——粗体「**机审：通过**」「机审: 通过」、engine「> 结论：通过」
+  #    及 SOP §五「机审：通过（被审 <sha12>）」均识别；
+  #    行首散文伪信封（如「机审：通过标准见…」）不再充当信封、不前推漂移基线。
+  #    全角冒号用字节字面量交替 (：|:) 而非多字节括号 [：:]——括号表达式在 LC_ALL=C 下
+  #    永不命中规范字形（BSD grep 字节语义），字面量交替两种 locale 语义一致（ccc068 同源教训）。
+  #    漏认后果 = 漂移基线缺失 = 整段漂移检查被静默跳过（fail-open），故识别必须先于判定。
+  if [[ "$has_branch" == true ]]; then
+    while IFS= read -r _c; do
+      [[ -z "$_c" ]] && continue
+      _norm_hits="$(git show "$_c" -- "$path" 2>/dev/null \
+        | grep -E '^\+[^+]' | cut -c2- \
+        | sed -E 's/^[[:space:]#*>-]+//' \
+        | tr -d ' \t*#>' \
+        | grep -E '^(机审|结论)(：|:)通过(（被审[0-9a-f]{7,40}）|\(被审[0-9a-f]{7,40}\))?$' || true)"
+      if [[ -n "$_norm_hits" ]]; then
+        env_commits+=("$_c")
+        continue
+      fi
+      # E2E体检发现 · 老板授权第三热修（2026-08-26）：补「重申口径」——复审型信封的结论行
+      # 与上一轮逐字相同时，git 记为上下文行而非新增行，上方严格字形永不命中，漂移基线被
+      # 永久钉死在首轮（tst006 实证）。补充认定须同时满足四条件：
+      #   ① 改动文件集仅含本卡文件；② 提交信息含「机审」；
+      #   ③ 补丁 ± 行（新增/修改，排除文件头）真实改写了含「机审」字样的内容——纯上下文
+ #      行携带旧结论不算（防任意卡文提交借邻近旧结论自动达标）；
+      #   ④ 提交后的卡文件含规范独立结论行（机审：通过/结论：通过，可附被审钉）。
+      # 信封纯度、钉完整性、ledger 真值等其余门禁一律不动。
+      _files="$(git show --name-only --pretty=format: "$_c" 2>/dev/null | sed '/^$/d')"
+      if [[ "$_files" == "$path" ]] \
+        && git log -1 --format='%s%n%b' "$_c" 2>/dev/null | grep -q '机审' \
+        && git show "$_c" -- "$path" 2>/dev/null \
+          | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cut -c2- | grep -q '机审' \
+        && git show "$_c:$path" 2>/dev/null \
+          | sed -E 's/^[[:space:]#*>-]+//' | tr -d ' \t*#>' \
+          | grep -qE '^(机审|结论)(：|:)通过(（被审[0-9a-f]{7,40}）|\(被审[0-9a-f]{7,40}\))?$'; then
+        env_commits+=("$_c")
+      fi
+    done < <(git log --format='%H' "origin/${branch}" -- "$path" 2>/dev/null)
+  fi
+
+  local last_env_commit=""
+  if [[ "${#env_commits[@]}" -gt 0 ]]; then
+    last_env_commit="${env_commits[0]}"
+  elif [[ "$has_branch" == true ]]; then
+    # 分支 tip 已有通过文本（上方机审门禁已过）却定位不到任何信封提交：
+    # 字形未识别或分支历史异常 → 漂移基准缺失，显式阻断（fail-closed，不再静默跳过）。
+    echo "[ERROR] ${id}: 分支信封含机审通过文本但无法定位任何信封提交（V6 加严：字形未识别或分支历史异常）→ 漂移基准缺失，拒绝合入；请重新机审生成规范信封" >&2
+    return 1
+  fi
+
+  # ② 信封纯度（防信封+代码混合提交）：信封提交若夹带非卡文件改动，这部分代码因基线推后
+  #    会逃过漂移 diff。每个信封提交的改动文件集必须仅含卡文件本身，否则拒绝并提示拆分。
+  if [[ "${#env_commits[@]}" -gt 0 ]]; then
+    local _ec _f
+    for _ec in "${env_commits[@]}"; do
+      while IFS= read -r _f; do
+        [[ -z "$_f" ]] && continue
+        if [[ "$_f" != "$path" ]]; then
+          echo "[ERROR] ${id}: 信封纯度校验失败——机审信封提交 ${_ec:0:12} 夹带非卡文件改动「${_f}」（信封+代码混合提交会把漂移基准推到自身）→ 拒绝合入；请把代码改动从信封提交拆出为独立提交并重新机审" >&2
+          return 1
+        fi
+      done < <(git show --name-only --pretty=format: "$_ec" 2>/dev/null)
+    done
+  fi
+
+  # ③ 钉完整性加固：最后一枚「被审」钉必须可解析且不晚于最后审计信封提交（防分支改写/信钉倒挂）。
+  local pinned
+  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | tail -1 || true)"
+  if [[ -n "$pinned" ]]; then
+    local pin_sha
+    pin_sha="${pinned#被审 }"
+    if ! git rev-parse --verify "${pin_sha}^{commit}" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
+      return 1
+    fi
+    if [[ -z "$last_env_commit" ]]; then
+      # V6 加严（ccc081）：pinned 非空而信封基线为空 = 字形漏认/历史异常 → 显式 ERROR 阻断
+      # （原逻辑此处不校验，漂移检查整段静默跳过）。
+      echo "[ERROR] ${id}: 卡文含被审钉 ${pin_sha} 但未定位到「机审：通过」信封提交 → 漂移基准缺失，拒绝合入；请重新机审生成规范信封" >&2
+      return 1
+    fi
+    if [[ "$pin_sha" != "$last_env_commit" ]] \
+      && ! git merge-base --is-ancestor "$pin_sha" "$last_env_commit" >/dev/null 2>&1; then
+      echo "[ERROR] ${id}: 被审钉 ${pin_sha} 不在最后审计信封提交 ${last_env_commit} 祖先链上 → 信封可信度异常" >&2
+      return 1
+    fi
+  fi
+
+  # ④ 漂移检查：最后审计信封之后出现非卡改动 = 漂移 → 一律硬拒绝。
+  # 支持多轮审计（审计就地修复 → 二次机审复核）：二次复核信封在首轮钉之后，取信封提交
+  # 作基准而非首枚钉，避免「已复核修复」被误判为未复审漂移。
+  # 审计真实性由 approve_one 后续 ledger machine_audit_pass 门禁兜底（卡文自写不算）。
+  if [[ -n "$last_env_commit" ]]; then
+    local drift_rc=0
+    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+      git diff --quiet "${last_env_commit}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
+      drift_rc=$?
+    else
+      echo "[WARN] ${id}: 本地无 ${branch} 分支，跳过本仓漂移检查（业务仓卡片由业务 ff-only 门禁守护）" >&2
+      drift_rc=0
+    fi
+    if [[ "$drift_rc" -ne 0 ]]; then
+      # 2026-08-22 P0 硬化：机审后漂移一律硬拒绝，--close-only 不再放行（防未复审代码合入）
+      echo "[ERROR] ${id}: 机审后漂移——最后审计信封 ${last_env_commit} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
 approve_one() {
   local id="$1"
   local path stem branch
@@ -429,47 +595,11 @@ sys.exit(0 if machine_audit_passed_text(sys.stdin.read()) else 1)
     return 1
   fi
 
-  # V6：机审钉 commit——以分支上最后一个写入「机审：通过」信封的审计提交为漂移基准。
-  # 支持多轮审计（审计就地修复 → 二次机审复核）：二次复核信封在首轮钉之后，取信封提交
-  # 作基准而非首枚钉，避免「已复核修复」被误判为未复审漂移。基准之后出现非卡改动 = 漂移 → 拒绝。
-  # 审计真实性由下方 ledger machine_audit_pass 门禁兜底（卡文自写不算），V6 只管「审计后是否漂移」。
-  local last_env_commit="" _c
-  for _c in $(git log --format='%H' "origin/${branch}" -- "$path" 2>/dev/null); do
-    if git show "$_c" -- "$path" 2>/dev/null | grep -qE '^\+[[:space:]]*机审：通过'; then
-      last_env_commit="$_c"
-      break
-    fi
-  done
-  # 钉完整性加固：最后一枚「被审」钉必须可解析且不晚于最后审计信封提交（防分支改写/信钉倒挂）。
-  local pinned
-  pinned="$(git show "origin/${branch}:${path}" 2>/dev/null | grep -oE '被审 [0-9a-f]{12}' | tail -1 || true)"
-  if [[ -n "$pinned" ]]; then
-    local pin_sha
-    pin_sha="${pinned#被审 }"
-    if ! git rev-parse --verify "${pin_sha}^{commit}" >/dev/null 2>&1; then
-      echo "[ERROR] ${id}: 信封被审 commit ${pin_sha} 无法解析（分支可能已被改写）" >&2
-      return 1
-    fi
-    if [[ -n "$last_env_commit" && "$pin_sha" != "$last_env_commit" ]] \
-      && ! git merge-base --is-ancestor "$pin_sha" "$last_env_commit" >/dev/null 2>&1; then
-      echo "[ERROR] ${id}: 被审钉 ${pin_sha} 不在最后审计信封提交 ${last_env_commit} 祖先链上 → 信封可信度异常" >&2
-      return 1
-    fi
-  fi
-  if [[ -n "$last_env_commit" ]]; then
-    local drift_rc=0
-    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
-      git diff --quiet "${last_env_commit}".."origin/${branch}" -- . ':(exclude)docs/dispatch/**' 2>/dev/null
-      drift_rc=$?
-    else
-      echo "[WARN] ${id}: 本地无 ${branch} 分支，跳过本仓漂移检查（业务仓卡片由业务 ff-only 门禁守护）" >&2
-      drift_rc=0
-    fi
-    if [[ "$drift_rc" -ne 0 ]]; then
-      # 2026-08-22 P0 硬化：机审后漂移一律硬拒绝，--close-only 不再放行（防未复审代码合入）
-      echo "[ERROR] ${id}: 机审后漂移——最后审计信封 ${last_env_commit} 之后分支存在非卡文件改动（diff rc=${drift_rc}），须重新机审（--close-only 不放行）" >&2
-      return 1
-    fi
+  # V6 门禁（ccc081 函数化 · 2026-08-24 纵深防御加严）：
+  # 信封定位（字形对齐真值判定）/信封纯度（混合提交拒绝）/钉完整性/漂移检查。
+  # 返回非 0 = 拒绝合入，详见 v6_drift_gate 内注释。机审真值判定语义不动。
+  if ! v6_drift_gate "$id" "$path" "$branch" "$has_branch"; then
+    return 1
   fi
 
   # 完成钩子（Doc-Gate）：维护区机械门禁，缺失/占位拒绝合入（校验分支信封）
@@ -600,7 +730,18 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
     echo "[ERROR] 请在 main 上执行合入批准（当前：${current}）" >&2
     return 1
   fi
-  git pull --ff-only origin main
+  # 2026-08-25（ccc085 同源竞态）：git pull 走 FETCH_HEAD，与 git_sync 守护并发无锁写同一文件 →
+  # 偶发「Cannot fast-forward to multiple branches」（批处理实证 081/082 命中）。改读 origin/main ref
+  # （fetch --no-write-fetch-head），且显式错误处理：函数在 if/|| 上下文调用时 set -e 被抑制，
+  # 不能依赖 set -e 中止（非 batch 模式同源隐患一并修复）。
+  if ! git fetch origin main --no-write-fetch-head >/dev/null 2>&1; then
+    echo "[ERROR] ${id}: 拉取 origin/main 失败（fetch 异常）→ 中止本卡" >&2
+    return 1
+  fi
+  if ! git merge --ff-only origin/main; then
+    echo "[ERROR] ${id}: 拉取 origin/main 失败（无法 ff，本地落后于远端）→ 中止本卡" >&2
+    return 1
+  fi
 
   # 跨仓收口：业务仓分支先合业务 main + 删（分叉阻断整卡，杜绝「卡关闭≠代码落地」）
   # 2026-08-19 回退 b072a72a：--close-only 不再放行业务仓分叉——分叉=代码没合入main，
@@ -609,6 +750,19 @@ sys.exit(0 if has_action('machine_audit_pass', '${id}') else 1)
   if ! close_business_repo "$path" "$branch"; then
     echo "[ERROR] ${id}: 业务仓收口失败（业务分支分叉/不可达）→ 整卡不合入（--close-only 也不放行分叉）。" >&2
     echo "  处理：让执行体把业务分支 rebase 到业务 main 后再「合入批准」。" >&2
+    return 1
+  fi
+
+  # --batch-merge（2026-08-25）：分叉不逐卡阻断——逐卡门禁（架构漂移/信封机审/V6/维护区/密钥/范围/
+  # git真实性/测试证据/P0-3 账本）已全跑，合并延后到批次统一 octopus 一次性合入（免逐卡 rebase）。
+  # 返回 2 = 门禁通过、合并延后（本函数不关卡/不提交/不推送）。
+  if [[ "$BATCH_MERGE" == true ]]; then
+    if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+      _BATCH_BRANCHES+=("origin/${branch}")
+      echo "[batch] ${id}: 门禁全过，分支 ${branch} 记入批次（最终 octopus 一次性合入）"
+      return 2
+    fi
+    echo "[ERROR] ${id}: --batch-merge 需要 origin/${branch} 分支存在（当前缺失）→ 整批中止" >&2
     return 1
   fi
 
@@ -725,6 +879,86 @@ PY
 
   git push origin main
   echo "[OK] 合入批准完成：${id} → 批次全部收口后将自动触发 2017 部署检查"
+}
+
+# ── 批次收尾（--batch-merge 专用，2026-08-25）：octopus 已合入后逐卡关卡——复用 approve_one 尾部收口语义 ──
+batch_finalize_card() {
+  local id="$1"
+  local path stem branch
+  path="$(resolve_card "$id")" || return 1
+  stem="$(basename "$path" .md)"
+  branch="codex/${stem}"
+
+  echo "== 批次收尾 ${id} (${branch}) =="
+  close_card "$path"
+  # 刷新 cards.index.jsonl（同 approve_one 范式：close_card 改卡 .md 后索引未同步，sync 会读旧索引算 closed=0）
+  "$PYTHON_BIN" -c "
+import sys; sys.path.insert(0, '.')
+from server.board.loader import load_dispatch_cards
+load_dispatch_cards('docs/dispatch')
+" 2>/dev/null || echo "[WARN] ${id}: 索引刷新失败（不阻断合入，sync 可能滞后）" >&2
+  # 033 阶段 2 M6：approve_merge 真值账本（写失败 = 回滚本卡关卡）
+  if ! "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+from server.board.audit_ledger import record_action
+record_action('approve_merge', '${id}', source='approve-merge', detail='${branch}')
+" 2>/dev/null; then
+    echo "[ERROR] ${id}: approve_merge 账本写入失败 → 已 git checkout 还原本卡关卡" >&2
+    git checkout -- "$path" 2>/dev/null || true
+    return 1
+  fi
+  sync_plan_cards "$path"
+  # 机审命中率台账（v4）
+  "$PYTHON_BIN" -c "
+import sys
+sys.path.insert(0, '.')
+try:
+    from server.board.audit_ledger import mark_card_pass_hit
+    mark_card_pass_hit(sys.argv[1])
+except Exception:
+    pass
+" "$id" || true
+  # S5 质量分（增量不可劣化，软告警）
+  if [ -f scripts/quality-score.py ]; then
+    if "$PYTHON_BIN" scripts/quality-score.py . "${branch}" --record >/tmp/quality-${id}.json 2>&1; then
+      echo "[OK] ${id} 质量分达标（见 /tmp/quality-${id}.json）"
+    else
+      echo "[WARN] ${id} 质量分劣化（增量不可劣化门禁，软告警）——见 /tmp/quality-${id}.json" >&2
+    fi
+  fi
+  # 竞态防护（tst003 教训）：close_card 后断言卡头仍为已关闭（防 git_sync 强制对齐并发改写）
+  if ! grep -q "状态：已关闭" "$path"; then
+    echo "[ERROR] ${id}: 批次收尾竞态——close_card 后卡头非已关闭（疑似 git_sync 强制对齐并发改写工作树）→ 中止本卡（不提交）" >&2
+    return 1
+  fi
+  git add -- "$path"
+  # sidecar 同步
+  "$PYTHON_BIN" - "$id" <<'PY'
+import sys
+sys.path.insert(0, ".")
+from server.web.server import _executor_log_dir
+from server.engine.runtime_state import clear_card_state
+log_dir = _executor_log_dir()
+if log_dir:
+    clear_card_state(log_dir, sys.argv[1])
+    print(f"[OK] sidecar 已同步：已清除卡 {sys.argv[1]} 的 sidecar 流程态")
+else:
+    print("[WARN] 未配置 EXECUTOR_LOG_DIR，跳过 sidecar 清除")
+PY
+  # 分支清理：octopus 已合入 → 分支已是本地 HEAD 祖先，删除（用 HEAD 而非 stale origin/main）
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    if git merge-base --is-ancestor "origin/${branch}" HEAD >/dev/null 2>&1; then
+      git branch -D "${branch}" >/dev/null 2>&1 || true
+      if git push origin --delete "${branch}" >/dev/null 2>&1; then
+        echo "[OK] 已删除已合入分支: ${branch}"
+      else
+        echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
+      fi
+    fi
+  fi
+  echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
+  return 0
 }
 
 deploy_check_2017() {
@@ -873,18 +1107,70 @@ PY
   fi
 fi
 
-FAILED=0
-for id in "${IDS[@]}"; do
-  if ! approve_one "$id"; then
-    FAILED=$((FAILED + 1))
+if [[ "$BATCH_MERGE" == true ]]; then
+  echo "== 批量合入模式：${#IDS[@]} 卡（逐卡全部门禁 → octopus 一次性合入） =="
+  _BATCH_READY=()
+  for id in "${IDS[@]}"; do
+    _rc=0
+    approve_one "$id" || _rc=$?
+    if [[ $_rc -eq 2 ]]; then
+      _BATCH_READY+=("$id")
+    elif [[ $_rc -ne 0 ]]; then
+      echo "[ERROR] ${id}: 门禁未通过 → 整批中止（未合并/未关卡/未推送）" >&2
+      exit 1
+    fi
+  done
+  if [[ ${#_BATCH_READY[@]} -eq 0 ]]; then
+    echo "[ERROR] 批次内无卡片通过门禁，中止" >&2
+    exit 1
   fi
-done
+  echo "== 批次 octopus 合入：${_BATCH_READY[*]}（分支：${_BATCH_BRANCHES[*]}） =="
+  if ! git merge --no-ff -m "merge: 批量合入批准 ${_BATCH_READY[*]}" "${_BATCH_BRANCHES[@]}"; then
+    echo "[ERROR] 批量合入失败（octopus 冲突）→ 整批中止，未关卡/未推送（git merge --abort 已尝试还原）" >&2
+    git merge --abort 2>/dev/null || true
+    exit 1
+  fi
+  _BATCH_FAIL=0
+  for id in "${_BATCH_READY[@]}"; do
+    if ! batch_finalize_card "$id"; then
+      echo "[ERROR] ${id}: 批次收尾失败" >&2
+      _BATCH_FAIL=1
+      continue
+    fi
+    # G2（2026-08-25）：每卡独立 close commit，单卡可独立 revert（对账时 1-3/3-3 摩擦点）
+    if ! git diff --cached --quiet; then
+      if ! git commit -m "close: 批准并关闭 ${id}"; then
+        echo "[ERROR] ${id}: 独立关卡 commit 失败" >&2
+        _BATCH_FAIL=1
+      fi
+    else
+      echo "[WARN] ${id}: 关卡后无暂存改动（疑似并发改写/空变更）→ 跳过 commit" >&2
+    fi
+  done
+  if [[ $_BATCH_FAIL -ne 0 ]]; then
+    echo "[ERROR] 批次收尾有失败 → 已合入但关卡/账本未全完成，需人工核验后补关" >&2
+    exit 1
+  fi
+  # 残余暂存兜底（sidecar/索引等非卡文件）
+  if ! git diff --cached --quiet; then
+    git commit -m "batch: 关闭并批准 ${_BATCH_READY[*]}（残余暂存）"
+  fi
+  git push origin main
+  echo "[OK] 批量合入批准完成：${_BATCH_READY[*]}（octopus 单 commit + 每卡独立关卡 commit）"
+else
+  FAILED=0
+  for id in "${IDS[@]}"; do
+    if ! approve_one "$id"; then
+      FAILED=$((FAILED + 1))
+    fi
+  done
 
-if [[ "$FAILED" -gt 0 ]]; then
-  echo "[ERROR] ${FAILED} 张卡合入失败" >&2
-  exit 1
+  if [[ "$FAILED" -gt 0 ]]; then
+    echo "[ERROR] ${FAILED} 张卡合入失败" >&2
+    exit 1
+  fi
+  echo "[OK] 全部合入批准完成（${#IDS[@]}）"
 fi
-echo "[OK] 全部合入批准完成（${#IDS[@]}）"
 
 # ── 业务仓部署端健康检查（2026-08-20 加 · 覆盖所有已注册项目）──
 # 部署端表与 qx-map AGENTS.md「项目部署端一览」一致：开发机≠部署机。
