@@ -28,7 +28,7 @@ slices:
     acceptance:
       - "pytest server/tests/test_foo.py -q 绿"
     whitelist: ["server/foo.py"]
-    executor: OpenCode
+    executor: 执行会话
 ```
 ````
 
