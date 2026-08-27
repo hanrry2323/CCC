@@ -21,7 +21,7 @@
   │  HTTP 直连（账号密码 + token）
   ▼
 2017 单端 :7788（server/web/server.py）
-  ├─ /conversation → 大脑 Agent（Claude Code CLI via 6100，带心智/工具/知识库）
+  ├─ /conversation → 大脑 Agent（对话口接执行会话 via 6100，带心智/工具/知识库）
   ├─ /board/*      → 看板视图（snapshot/states/recent/roadmap/summaries）
   ├─ /ops/summary  → 运维聚合（节点/红灯/概览）
   └─ /session      → 账号密码换 token
@@ -40,7 +40,7 @@
   └─ export.py：导出 web/data/board.js（零 API 模式）
 
 中转站（server/relay/）
-  ├─ 6100 = Anthropic 出口（大脑 Agent Claude Code CLI 走此）
+  ├─ 6100 = Anthropic 出口（大脑 Agent 执行会话走此）
   └─ 6102 = Relay flash/code 上游路由（中转站）
 ```
 
@@ -93,7 +93,7 @@
 │   │   └── scheduler.py                        #   只读巡检 + 导出（launchd 常驻）
 │   ├── web/                                    # HTTP API + 静态页
 │   │   ├── server.py                           #   HTTP 服务端（:7788）
-│   │   ├── brain.py                            #   大脑 Agent 代理（调 Claude Code via 6100）
+│   │   ├── brain.py                            #   大脑 Agent 代理（调执行会话 via 6100）
 │   │   └── css/                                #   静态页样式
 │   ├── relay/                                  # 中转站（模型出口路由）
 │   ├── kb/                                     # 知识库（MCP + BM25 本地检索）
@@ -134,7 +134,7 @@
 │  ┌────────────────────┐  ┌─────────────────────────────┐ │
 │  │ /conversation      │  │ /board/* /ops/summary       │ │
 │  │ → brain.py         │  │ → board/queries + export    │ │
-│  │   (Claude Code     │  │                             │ │
+│  │   (执行会话        │  │                             │ │
 │  │    via 6100)       │  │ /session → 账号密码换 token │ │
 │  └─────────┬──────────┘  └─────────────┬─────────────┘ │
 │            │                             │               │
@@ -165,7 +165,7 @@
 - **Engine 只编排不执行**：工具名只存在于注册表配置；代码不硬编码工具名/端口/路径。
 - **配置集中**：所有参数从 `config.env` 读取，不在代码中硬编码。
 - **任意设备壳**：Desktop / 网页 / 手机经 HTTP 直连 2017；壳不写业务逻辑。
-- **大脑 Agent**：对话口接 2017 Claude Code（带心智/工具/知识库），非裸模型直答。
+- **大脑 Agent**：对话口接执行会话（带心智/工具/知识库），非裸模型直答。
 
 ---
 

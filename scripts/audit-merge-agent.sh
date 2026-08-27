@@ -1,7 +1,7 @@
 #!/bin/bash
 # ── scripts/audit-merge-agent.sh ──
 # CCC 审核合入 Agent · 最后环节（2026-08-22 老板定）
-# 一键进入 2017 的审核合入 Claude Code 会话（带角色心智，可恢复）。
+# 一键进入 2017 的审核合入会话（带角色心智，可恢复）。
 # 用法：在 2017 管理席（本机）跑 `cga`（别名，见下）或 `bash scripts/audit-merge-agent.sh`
 
 set -euo pipefail

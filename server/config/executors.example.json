@@ -1,11 +1,11 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表（2026-08-27 工具架构三层定调后现行态）：开发/维护/机审/只读取证 = 自动化值班组件（DSH 保留，dsh-executor.sh / dsh-auditor.sh / headless wrapper）；管理/终审/审核合入 = 桌面端总调度；CLI 为核心开发执行者。链路按三层分工（桌面端调度 / CLI 执行 / DSH 自动化值班，老板 2026-08-27 定调）。复制本文件为 executors.json 启用。",
+  "description": "CCC 执行体注册表（2026-08-27 工具架构三层定调后现行态）：开发/维护/机审/只读取证 = 执行会话 / 自动化值班组件（wrapper：dsh-executor.sh / dsh-auditor.sh / headless）；管理/终审/审核合入 = 桌面端总调度；CLI 为核心开发执行者。链路按三层分工（桌面端调度 / CLI 执行 / 自动化值班组件，老板 2026-08-27 定调）。复制本文件为 executors.json 启用。",
   "executors": [
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "DSH（自动化值班组件 · 2026-08-27）",
+      "当前绑定": "执行会话 / 自动化值班组件（2026-08-27 三层分工）",
       "命令": "scripts/dsh-executor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
@@ -17,7 +17,7 @@
     {
       "角色": "维护执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "DSH（自动化值班组件 · 2026-08-27）",
+      "当前绑定": "执行会话 / 自动化值班组件",
       "命令": "scripts/dsh-executor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
