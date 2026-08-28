@@ -111,3 +111,15 @@ def test_hit_rate(tmp_path: Path):
         assert rate["hits"] == 2
         assert rate["misses"] == 1
         assert rate["hit_rate"] == round(2 / 3, 3)
+
+
+def test_infra_always_probe_tagged(tmp_path: Path):
+    """infra（无裁决的基建失败）一律 probe=true；audit 真实裁决 probe=false（2026-08-29 单源化）。"""
+    with _patched_ledger(tmp_path):
+        record_audit("w1", "ccc010", conclusion="不通过", severity="中", kind="audit")
+        record_audit("w2", "ccc011", conclusion="不通过", severity="中", kind="infra")
+        record_audit("w3", "ccc012", conclusion="不通过", severity="中", kind="infra", probe=False)
+        rows = load_ledger()
+        assert rows[0]["probe"] is False
+        assert rows[1]["probe"] is True
+        assert rows[2]["probe"] is True  # 显式传 False 也被写入器不变量纠正

@@ -91,7 +91,10 @@ def record_audit(
 
     probe 打标（任务三）：探针记录与真实打回可区分——探针=引擎扫描/无裁决尝试，
     真实=对卡产生 通过/打回 裁决。历史记录不重写，仅新记录带该字段。
+    infra（无裁决的基建失败）一律视为探针——不变量单源化在写入器（2026-08-29），
+    与 2026-08-29 历史行补打标口径（infra→probe=true、audit→probe=false）对齐。
     """
+    probe = probe or kind == "infra"
     _append(
         {
             "ts": _now_iso(),
