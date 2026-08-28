@@ -1,4 +1,4 @@
-# 任务卡 tst997-phase2-e2e · Phase2 后半段自动闭环 E2E
+# 任务卡 tst997 · Phase2 后半段自动闭环 E2E
 > 关联：Phase1 E2E 测试卡（外脑直发·不走出卡流程） · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-28
 
 ## 目标
