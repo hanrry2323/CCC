@@ -44,6 +44,7 @@ from server.engine.dispatch import (
     load_registry,
 )
 from server.engine.gates import DispatchGate, GateContext, GateRegistry, GateResult
+from server.engine.card_gate import enforce_card_gate
 from server.engine.metrics import (
     WORKER_EVENTS_FILE,
     ProcessSampler,
@@ -4231,8 +4232,8 @@ def _build_dispatch_gates() -> GateRegistry:
     （含日志/计数/副作用），保证行为不回归。
 
     门禁链：
-        infra_cooldown → retry_backoff → short_session_breaker → worktree_card_copy
-        → accepted_card → parent_closed → depends_closed → dependency_cycle
+        infra_cooldown → retry_backoff → short_session_breaker → card_gate
+        → worktree_card_copy → accepted_card → parent_closed → depends_closed → dependency_cycle
         → decision → slot_available → biz_isolation → relay_probe → submit
 
     submit gate 为原子占槽（transition RUNNING + marker + pool.submit + 回滚），
@@ -4268,6 +4269,12 @@ def _build_dispatch_gates() -> GateRegistry:
         return GateResult(passed=True)
 
     reg.register(DispatchGate(name="short_session_breaker", order=15, check=_short_session_breaker))
+
+    def _card_gate(ctx: GateContext) -> GateResult:
+        # ccc-plan-053 阶段2：DSH 产卡派发前强制校验；非法卡作废+ledger 告警
+        return enforce_card_gate(ctx.work, ctx.store, ctx.log_dir)
+
+    reg.register(DispatchGate(name="card_gate", order=17, check=_card_gate))
 
     def _worktree_card_copy(ctx: GateContext) -> GateResult:
         # 2026-08-18 清理 is_pytest 嗅探：wt_hint 为空（无 worktree_base 的注册行/测试夹具）时
