@@ -60,7 +60,8 @@ def test_loader_writes_single_path_only(tmp_path: Path) -> None:
         "items = load_dispatch_cards({dispatch!r}, include_archived=False)\n"
         "print('items', len(items))\n"
         "print('index', get_index_path())\n"
-    ).format(repo=repo, dispatch=str(dispatch))
+    )
+    script = script.format(repo=repo, dispatch=str(dispatch))
     env = dict(os.environ)
     env.pop("PYTEST_CURRENT_TEST", None)
     env["DATA_DIR"] = str(data_dir)
