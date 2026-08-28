@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from server.engine.task import State, Work
 from server.engine.dispatch import ExecutorRegistry, ExecutorEntry
 from server.engine.store import InMemoryBoardStore
-from server.engine.main import _hold_infra_failure, _run_auto_worker, _run_audit_worker
+from server.engine.main import _hold_infra_failure, _run_auto_worker
 
 
 def test_exponential_backoff(tmp_path: Path):
@@ -142,33 +142,3 @@ def test_run_success_clears_infra_count(tmp_path: Path):
          mock_clear.assert_called_once()
          args = mock_clear.call_args
          assert "xy102" in str(args)
-
-
-def test_audit_threshold_reads_config(tmp_path: Path):
-    """测试 AUDIT 阶段的熔断阈值正确读取配置。
-    若配置为 EXECUTOR_INFRA_MAX_STRIKES=3：
-    - 连续 2 次失败后，第 3 次（next_strikes=3）失败直接触发 _fail_retry_or_reject 熔断退回待分派。
-    """
-    store = InMemoryBoardStore()
-    work = Work(id="xy103", role="开发执行体", state=State.DONE, card_path="/tmp/xy103.md")
-    store.seed(work)
-
-    entry = ExecutorEntry(role="开发执行体", category="可后台 CLI", binding="demo", note="test", command="echo")
-    reg = ExecutorRegistry((entry,))
-
-    cfg = {"EXECUTOR_INFRA_MAX_STRIKES": "3"}
-
-    with patch("server.engine.main._audit_evidence_passed", return_value=False), \
-         patch("server.engine.main._run_machine_audit_after_writeback", return_value=(False, ["502 Bad Gateway"], True)), \
-         patch("server.engine.main.is_retryable_failure", return_value=(True, "502 Bad Gateway")), \
-         patch("server.engine.runtime_state.read_card_state", return_value={"xy103": {"infra_count": 2}}), \
-         patch("server.engine.main._fail_retry_or_reject") as mock_fail:
-
-         outcome = _run_audit_worker(work, reg, store, cfg, tmp_path, timeout=30)
-         assert outcome["failed"] == 1
-         # 验证触发了 _fail_retry_or_reject
-         mock_fail.assert_called_once()
-         # 并且理由中携带了 EXECUTOR_INFRA_MAX_STRIKES 阈值信息
-         args, _ = mock_fail.call_args
-         reasons = args[2]
-         assert any("已自动重试 3 次" in r for r in reasons)

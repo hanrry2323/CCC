@@ -144,7 +144,7 @@
 - **根因**：「打回→重试」语义 + 「sidecar 覆盖磁盘」规则 + 「无人清 sidecar」三个决策叠加，无收口保证。
 - **修复**（架构级）：
   1. 定义 sidecar 生命周期契约：sidecar = 在途执行态；终态（已回写可合入/打回/已关闭）由磁盘卡 + 分支信封唯一权威。
-  2. `_run_auto_worker`/`_run_audit_worker` 每个出口显式收口（成功/打回/重试/跳过四分支明确写 or clear）。
+  2. `_run_auto_worker` 每个出口显式收口（成功/打回/重试/跳过四分支明确写 or clear）。（2026-08-29 更新：legacy 机审 `_run_audit_worker` 已按 ccc-plan-053 C0 拆除，验收席唯一座席=phase2 CC，本条只约束执行 worker。）
   3. 收敛器入 `run_once` 循环（把 `sync-runtime-state.py` 逻辑搬进 Engine，去掉人工依赖）。
   4. `_fail_retry_or_reject` 拆「不可自愈（manual/未登记/冷却）→ 立即 clear」路径。
 - **判定**：clw019 事故无代码修复 = 止血未转正，本项转正。

@@ -77,7 +77,7 @@ def test_same_datarir_defense_unchanged(tmp_path: Path, monkeypatch) -> None:
     finally:
         proc.kill()
         proc.wait()
-    # 机审收尾（_run_audit_worker finally 同款）：子进程死 + 本地标记与注册表条目双清 → 可重审
+    # 机审收尾同款语义（legacy 机审 worker 已拆，此处走手动 --audit 链路）：子进程死 + 本地标记与注册表条目双清 → 可重审
     _clear_running_marker(log_a, "w2-audit")
     assert not (log_a / "w2-audit.running").exists()
     assert not (_audit_inflight_registry_dir() / "w2-audit.running").exists()

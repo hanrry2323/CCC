@@ -50,7 +50,7 @@ from server.engine.metrics import (
     record_slot_snapshot,
     record_worker_event,
 )
-from server.engine.pool import get_audit_pool, get_dispatch_pool
+from server.engine.pool import get_dispatch_pool
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
@@ -4223,193 +4223,6 @@ def _run_auto_worker(
     return outcome
 
 
-def _run_audit_worker(
-    work: Work,
-    registry: ExecutorRegistry,
-    store: BoardStore,
-    cfg: dict[str, Any],
-    log_dir: Path,
-    timeout: int,
-) -> dict[str, int]:
-    """单卡机审（独立槽位池）：拉起验收席 CLI 写 ``## 机审区``。
-
-    通过/跳过 → ``collected=1``；业务不通过 → 回待分派重试（用尽才打回）→ ``failed=1``；
-    基础设施失败（503/上游不可用/证据落盘失败）→ 冷却后自动续审，不打回 → ``infra=1``。
-    业务结论优先：审计明确「不通过」绝不被日志里的弱特征误判为 infra（hp003 事故）。
-    """
-    outcome = {"collected": 0, "failed": 0, "infra": 0}
-    try:
-        evidence_hint = _worktree_hint_for(work, registry)
-        if _audit_evidence_passed(work, evidence_hint):
-            logger.info("机审证据已存在（分支/生产卡），跳过: work=%s", work.id)
-            outcome["collected"] = 1
-            return outcome
-        # ccc093 目标①：审计超时预算按被审 diff 规模自适应上浮（≤2×base），复杂大 diff 不再必然超时
-        audit_timeout = _audit_adaptive_timeout_seconds(cfg, evidence_hint)
-        ok, problems, _audited = _run_machine_audit_after_writeback(work, registry, cfg, log_dir, audit_timeout)
-        if ok:
-            clear_retry_backoff(work.id)  # ccc083：机审通过清业务重试退避
-            # sidecar 契约（ccc-plan-021）：机审通过出口 clear sidecar，无在途残留
-            from server.engine.runtime_state import clear_card_state
-
-            clear_card_state(log_dir, work.id)
-            outcome["collected"] = 1
-        else:
-            reasons = list(problems) if problems else ["机审：不通过"]
-            # ccc092 种子盲区硬失败：一次性打回（DONE→REJECTED 合法），禁入冷却循环
-            if any(_SEED_HARDFAIL_MARKER in p for p in reasons):
-                logger.error("%s 打回(机审): work=%s reason=%s", _SEED_HARDFAIL_MARKER, work.id, reasons[0])
-                work.transition(State.REJECTED, problems=reasons)
-                store.save_work(work)
-                from server.engine.runtime_state import clear_card_state
-
-                clear_card_state(log_dir, work.id)
-                outcome["failed"] = 1
-                return outcome
-            audit_text = _read_text_best_effort(log_dir / f"{work.id}.audit.log")
-            # F2（2026-08-10）：audit 明确「机审：不通过」→ 业务打回，不受 is_mech 压过。
-            # is_mech 的「范围越界/超出范围」等关键词本意是识别无业务结论时的机械失败特征，
-            # 但机审席打回理由常含「范围系统性越界」——若被 is_mech 抢判，业务打回会落入
-            # infra 冷却死循环（clw009 事故）。业务结论（「机审：不通过」）永远优先。
-            has_rejection = _audit_output_indicates_rejection(audit_text)
-            is_mech = _is_mechanical_rejection_text(audit_text)
-            business = has_rejection and not is_mech
-            if has_rejection and is_mech:
-                logger.warning(
-                    "机审 audit 含「不通过」结论且命中机械关键词（is_mech 抢占）: work=%s → 按业务打回处理",
-                    work.id,
-                )
-                business = True
-            retryable, hint = is_retryable_failure(work.id, reasons, log_dir, phase="audit")
-
-            # 空回写判定：直接打回，不再无限 retry
-            is_empty = False
-            empty_reason = ""
-            if any("无有效产物" in p or "空回写卡" in p or "模板占位" in p for p in reasons):
-                is_empty = True
-                empty_reason = reasons[0]
-            else:
-                wt_hint = _worktree_hint_for(work, registry)
-                if wt_hint and work.card_path and "docs/dispatch" in work.card_path:
-                    is_empty, empty_reason = is_empty_writeback_or_placeholder(work, wt_hint)
-
-            if is_empty:
-                logger.warning(
-                    "检测到机审时卡为空回写或维护区模板占位，强制直接打回不予重试: work=%s, reason=%s",
-                    work.id,
-                    empty_reason,
-                )
-                reasons = [empty_reason, *reasons]
-                work.transition(State.REJECTED, problems=reasons)
-                store.save_work(work)
-                # sidecar 契约：机审空回写打回出口 clear sidecar
-                from server.engine.runtime_state import clear_card_state
-
-                clear_card_state(log_dir, work.id)
-                outcome["failed"] = 1
-            elif business:
-                # 机审 v4 三级分流（2026-08-14 接入引擎）：读审计 severity 决策
-                # 轻→独立轻修复轮（不占重试预算，超限升级中度）；中→现状重试预算；重→直接打回
-                severity = _audit_severity(audit_text)
-                if severity == "重":
-                    work.transition(State.REJECTED, problems=reasons)
-                    store.save_work(work)
-                    from server.engine.runtime_state import clear_card_state
-
-                    clear_card_state(log_dir, work.id)
-                    outcome["failed"] = 1
-                    logger.warning("机审重度不通过直接打回（不重试）: work=%s reasons=%s", work.id, reasons[:2])
-                elif severity == "轻":
-                    # 独立轻修复轮：sidecar 记 light_fix_count，超上限升级中度（避免无限修）
-                    from server.engine.runtime_state import read_card_state, write_card_state
-
-                    rt = read_card_state(log_dir).get(work.id) or {}
-                    light_fix = int(rt.get("light_fix_count") or 0)
-                    try:
-                        light_max = int(cfg.get("AUDIT_LIGHT_FIX_MAX") or 2)
-                    except (TypeError, ValueError):
-                        light_max = 2
-                    if light_fix >= light_max:
-                        _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
-                        outcome["failed"] = 1
-                        logger.warning("轻修复轮超限(%d≥%d)升级中度处理: work=%s", light_fix, light_max, work.id)
-                    else:
-                        work.transition(State.TODO, problems=reasons)
-                        store.save_work(work)
-                        write_card_state(
-                            log_dir,
-                            work.id,
-                            state="待分派",
-                            light_fix_count=light_fix + 1,
-                        )
-                        outcome["failed"] = 1
-                        logger.warning("机审轻度不通过→轻修复轮(%d/%d): work=%s", light_fix + 1, light_max, work.id)
-                else:
-                    _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
-                    outcome["failed"] = 1
-                    logger.warning("机审不通过（业务/中度）: work=%s → %s", work.id, work.state.value)
-            elif retryable or _is_persistence_failure(reasons) or is_mech:
-                if hint and hint not in reasons[0]:
-                    reasons = [hint, *reasons]
-                from server.engine.runtime_state import read_card_state
-
-                rt = read_card_state(log_dir).get(work.id) or {}
-                infra_count = int(rt.get("infra_count") or 0)
-                next_strikes = infra_count + 1
-
-                try:
-                    max_strikes = int(cfg.get("EXECUTOR_INFRA_MAX_STRIKES") or 5)
-                except (TypeError, ValueError):
-                    max_strikes = 5
-
-                if next_strikes >= max_strikes:
-                    # 连续失败超限 → 回待分派人工跟进（可见、可操作，不打回）
-                    _fail_retry_or_reject(
-                        work,
-                        store,
-                        [*reasons, f"机审多次基础设施失败（已自动重试 {max_strikes} 次），回待分派人工跟进"],
-                        cfg,
-                        log_dir,
-                    )
-                    outcome["failed"] = 1
-                else:
-                    _hold_infra_failure(
-                        store,
-                        work,
-                        log_dir,
-                        reasons,
-                        cfg,
-                        phase="audit",
-                        infra_count=next_strikes,
-                    )
-                    outcome["infra"] = 1
-            else:
-                _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
-                outcome["failed"] = 1
-                logger.warning("机审失败: work=%s → %s", work.id, work.state.value)
-    except Exception as exc:
-        logger.exception("机审 worker 异常: work=%s: %s", work.id, exc)
-        try:
-            if work.state in (State.RUNNING, State.DONE):
-                _fail_retry_or_reject(work, store, [f"机审 worker 异常: {exc}"], cfg, log_dir)
-            outcome["failed"] = 1
-        except Exception:
-            logger.exception("机审异常后失败流转失败: work=%s", work.id)
-    finally:
-        _clear_running_marker(log_dir, f"{work.id}-audit")
-        # 2026-08-12 终态权威：机审打回 → 分支卡状态落对应终态/重试态，
-        # 防分支信封把已回写残留读成 DONE 无限机审
-        if work.state is State.REJECTED or (
-            work.state is State.TODO and any("机审" in p or "不通过" in p for p in work.problems)
-        ):
-            try:
-                state_text = "打回（机审：不通过）" if work.state is State.REJECTED else "待分派（机审打回·重试中）"
-                _mark_branch_card_state(work, registry, cfg, log_dir, state_text)
-            except Exception:
-                logger.exception("机审打回落分支卡失败: work=%s", work.id)
-    return outcome
-
-
 def _build_dispatch_gates() -> GateRegistry:
     """装配派发门禁链（借鉴 Cordis 依赖图思想 · 轻量前置条件版）。
 
@@ -4652,7 +4465,7 @@ def run_once(
     wait: bool = True,
     config_path: str | Path | None = None,
 ) -> dict[str, int]:
-    """收割 + 补位：执行槽与机审槽独立派发。
+    """收割 + 补位：执行槽派发与收单（legacy 机审槽已拆除，验收席唯一座席=phase2 CC）。
 
     ``wait=True``（``--once`` / 测试默认）：本轮 submit 后 drain 池再返回。
     ``wait=False``（持续心跳）：立即返回，不阻塞下一轮扫卡。
@@ -4673,7 +4486,6 @@ def run_once(
         probe_url = os.environ.get("EXECUTOR_PROBE_URL", "")
 
     pool = get_dispatch_pool()
-    audit_pool = get_audit_pool()
     data_dir = cfg.get("DATA_DIR")
     reclaimed = reclaim_orphaned_running(store, log_dir, data_dir=data_dir)
     running_ids = {w.id for w in store.list_work(state=State.RUNNING)}
@@ -4856,90 +4668,10 @@ def run_once(
 
     claim_collected, claim_reclaimed, claim_in_flight = _claim_round()
 
-    # ── 机审池（独立槽位）：扫「已回写 + 待机审标记 + 未通过」填槽 ──
-    def _audit_round() -> tuple[int, int, int, int, int, int]:
-        """一次机审扫描：返回 (dispatched, collected, failed, infra, pending, in_flight)。"""
-        from server.engine.runtime_state import read_card_state
-
-        runtime = read_card_state(log_dir) if log_dir else {}
-        now_ts = time.time()
-
-        audit_alive = audit_pool.alive_ids()
-        reaped = audit_pool.reap()
-        a_collected = reaped.get("collected", 0)
-        a_failed = reaped.get("failed", 0)
-        a_infra = reaped.get("infra", 0)
-        occupied = len(audit_alive)
-        for w in store.list_work(state=State.DONE):
-            if w.id not in audit_alive and _audit_marker_alive(log_dir, w.id):
-                occupied += 1
-        a_slots = max(0, int(max_audit_concurrent) - occupied)
-
-        candidates: list[Work] = []
-        # ccc083：短命会话熔断为全局闸——触发时机审队列整轮不再补充新候选（在飞不打断）
-        breaker_tripped, breaker_detail = short_session_breaker_status(log_dir, cfg, now_ts)
-        if breaker_tripped:
-            logger.error("短命会话熔断，机审本轮暂停补位: %s", breaker_detail)
-            _write_short_session_alert(log_dir, breaker_detail, now_ts)
-        for work in store.list_work(state=State.DONE):
-            if work.id in audit_alive or _audit_marker_alive(log_dir, work.id):
-                continue
-            if _infra_cooldown_active(runtime, work.id, now_ts):
-                continue  # 基础设施故障冷却中
-            if retry_backoff_active(work.id, now_ts):
-                continue  # ccc083：业务重试退避中
-            if breaker_tripped:
-                continue  # ccc083：全局防旋，暂停补充机审候选
-            if _audit_evidence_passed(work, _worktree_hint_for(work, registry)):
-                continue
-            candidates.append(work)
-        a_pending = len(candidates)
-        a_dispatched = 0
-        for work in candidates:
-            if a_slots <= 0:
-                break
-
-            def _mk_audit(w: Work = work) -> Any:
-                def _fn() -> dict[str, int]:
-                    return _run_audit_worker(w, registry, store, cfg, log_dir, timeout)
-
-                return _fn
-
-            try:
-                audit_pool.submit(work.id, _mk_audit())
-            except RuntimeError as exc:
-                logger.warning("机审 submit 跳过: work=%s (%s)", work.id, exc)
-                continue
-            a_dispatched += 1
-            a_slots -= 1
-        return a_dispatched, a_collected, a_failed, a_infra, a_pending, len(audit_pool.alive_ids())
-
-    (
-        audit_dispatched,
-        audit_collected,
-        audit_failed,
-        audit_failed_infra,
-        audit_pending,
-        audit_in_flight,
-    ) = _audit_round()
-
     if wait:
         drained = pool.drain()
         collected += drained["collected"]
         timed_out += drained["timed_out"]
-        # 执行收单可能新产生「待机审」标记：wait 模式再扫一轮机审并 drain（--once 完整闭环）
-        extra = _audit_round()
-        audit_dispatched += extra[0]
-        audit_collected += extra[1]
-        audit_failed += extra[2]
-        audit_failed_infra += extra[3]
-        audit_pending = extra[4]
-        audit_in_flight = extra[5]
-        audit_drained = audit_pool.drain()
-        audit_collected += audit_drained.get("collected", 0)
-        audit_failed += audit_drained.get("failed", 0)
-        audit_failed_infra += audit_drained.get("infra", 0)
-        audit_in_flight = len(audit_pool.alive_ids())
 
     # 看板 in_flight = 全部执行中（含 manual 挂起）；CLI 空位另用 pool.occupancy
     in_flight = len(store.list_work(state=State.RUNNING))
@@ -4971,12 +4703,13 @@ def run_once(
         "cycle_skips": cycle_skips,
         "none_skips": none_skips,
         "queued": queued,
-        "audit_dispatched": audit_dispatched,
-        "audit_in_flight": audit_in_flight,
-        "audit_pending": audit_pending,
-        "audit_collected": audit_collected,
-        "audit_failed": audit_failed,
-        "audit_failed_infra": audit_failed_infra,
+        # legacy 机审槽已拆（ccc-plan-053 C0，验收席=phase2 CC）：观测字段恒 0，保留兼容
+        "audit_dispatched": 0,
+        "audit_in_flight": 0,
+        "audit_pending": 0,
+        "audit_collected": 0,
+        "audit_failed": 0,
+        "audit_failed_infra": 0,
         "worktrees_cleaned": worktrees_cleaned,
         "worktrees_failed": worktrees_failed,
         "claim_collected": claim_collected,
@@ -5003,12 +4736,12 @@ def run_once(
                 "scanned": len(pending),
                 "queued": queued,
                 "dead_markers_cleaned": dead_markers_cleaned,
-                "audit_dispatched": audit_dispatched,
-                "audit_in_flight": audit_in_flight,
-                "audit_pending": audit_pending,
-                "audit_collected": audit_collected,
-                "audit_failed": audit_failed,
-                "audit_failed_infra": audit_failed_infra,
+                "audit_dispatched": 0,
+                "audit_in_flight": 0,
+                "audit_pending": 0,
+                "audit_collected": 0,
+                "audit_failed": 0,
+                "audit_failed_infra": 0,
                 "worktrees_cleaned": worktrees_cleaned,
                 "worktrees_failed": worktrees_failed,
             },
@@ -5020,17 +4753,17 @@ def run_once(
             log_dir,
             exec_used=len(pool.alive_ids()),
             exec_max=max_concurrent,
-            audit_used=len(audit_pool.alive_ids()),
+            audit_used=0,
             audit_max=max_audit_concurrent,
             pending_exec=len(pending),
-            audit_pending=audit_pending,
+            audit_pending=0,
             dispatched=dispatched,
             collected=collected,
             timed_out=timed_out,
-            audit_dispatched=audit_dispatched,
-            audit_collected=audit_collected,
-            audit_failed=audit_failed,
-            audit_failed_infra=audit_failed_infra,
+            audit_dispatched=0,
+            audit_collected=0,
+            audit_failed=0,
+            audit_failed_infra=0,
             reclaimed=reclaimed,
             dead_markers_cleaned=dead_markers_cleaned,
             worktrees_cleaned=worktrees_cleaned,

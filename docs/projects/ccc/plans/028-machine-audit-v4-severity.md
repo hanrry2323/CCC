@@ -24,7 +24,7 @@
    - 审计模型按 v4 skill 判定后，在输出写约定标记：`severity：轻` / `severity：中` / `severity：重`（或 `机审等级：…`）；不通过结论带 `（重度/中度/轻度：原因）` 变体兼容。
 2. **引擎解析 `_audit_severity()`**
    - `server/engine/main.py` 审计结论解析区（`_audit_output_indicates_rejection` 1523 附近）新增 `_audit_severity(text) -> "轻"|"中"|"重"`，默认「中」。解析 `severity：` / `机审等级：` 标记 + `（重度/中度/轻度：` 变体。
-3. **分流决策**（`_run_audit_worker` business 分支 3030 附近）
+3. **分流决策**（原 legacy 机审 `_run_audit_worker` business 分支；⚠️ 2026-08-29 该 worker 已按 ccc-plan-053 C0 拆除，验收席唯一座席=phase2 CC。本方案如续作，分流逻辑需在 phase2 CC 审核链路重新落地，行号/挂点均已失效）
    - **轻**不通过 → **独立轻修复轮**（D3）：回待分派，不占现有重试预算；sidecar 记 `light_fix` 计数，超上限（默认 2）升级为中度处理（避免无限修）。
    - **中**不通过 → 现状 `_fail_retry_or_reject`（重试预算→打回）。
    - **重**不通过 → **直接打回**（D2）：不自动重试，附原因；清 sidecar。

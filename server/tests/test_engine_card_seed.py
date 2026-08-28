@@ -21,7 +21,6 @@ from server.engine.main import (
     _ensure_worktree_card_seed,
     _local_main_has_card,
     _run_auto_worker,
-    _run_audit_worker,
     _self_heal_worktree_card,
 )
 from server.engine.store import InMemoryBoardStore
@@ -176,34 +175,6 @@ class TestWorkerHardfailDirectReject:
             patch.object(engine_main, "_dispatch_blocked_by_ledger", return_value=False),
         ):
             outcome = _run_auto_worker(work, None, store, {"DATA_DIR": str(tmp_path / "data")}, log_dir, 60)
-        assert outcome.get("failed") == 1
-        saved = store.list_work()[0]
-        assert saved.state is State.REJECTED
-        assert any(_SEED_HARDFAIL_MARKER in p for p in saved.problems)
-
-    def test_audit_worker_rejects_without_retry(self, tmp_path: Path) -> None:
-        """机审阶段：硬失败标记 → DONE→REJECTED 直达打回，不进冷却续审。"""
-        store = InMemoryBoardStore()
-        work = _running_work_in_store(store, tmp_path, State.DONE)
-        log_dir = tmp_path / "logs"
-        log_dir.mkdir()
-        marker_reasons = [f"{_SEED_HARDFAIL_MARKER}：卡 x 的 commit 未进本地 main；需人工介入"]
-        # 最小 registry stub：worker 前置的 _worktree_hint_for 只需 cli_entry_for_role 可调
-        fake_registry = SimpleNamespace(
-            cli_entry_for_role=lambda *a, **k: None,
-            cli_entry_for_binding=lambda *a, **k: None,
-        )
-        with (
-            patch.object(engine_main, "_audit_evidence_passed", return_value=False),
-            patch.object(
-                engine_main,
-                "_run_machine_audit_after_writeback",
-                return_value=(False, marker_reasons, True),
-            ),
-        ):
-            outcome = _run_audit_worker(
-                work, fake_registry, store, {"DATA_DIR": str(tmp_path / "data")}, log_dir, 60
-            )
         assert outcome.get("failed") == 1
         saved = store.list_work()[0]
         assert saved.state is State.REJECTED
