@@ -259,7 +259,10 @@ def _index_write_allowed(dispatch_dir: Path) -> bool:
 
     仅在 production 检出（main / detached HEAD）或非本仓 dispatch（测试临时目录）
     时才允许覆盖写索引；开发分支（rebuild/* 等）检出下 docs/dispatch 是部分快照，
-    禁止用它覆盖唯一索引（否则静默丢卡）。
+    禁止用它覆盖唯一索引（否则静默丢卡：tst998 消失根因）。
+
+    另：pytest 测试进程对真实 dispatch 一律禁写生产唯一索引（即使 get_index_path
+    被其它路径绕过，写闸作最后兜底）。
     """
     repo_root = Path(__file__).resolve().parents[2]
     try:
@@ -267,6 +270,8 @@ def _index_write_allowed(dispatch_dir: Path) -> bool:
             return True  # 非本仓 dispatch（测试临时目录等）→ 允许
     except OSError:
         return True
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return False  # 测试进程不得写生产唯一索引
     try:
         out = subprocess.run(
             ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
