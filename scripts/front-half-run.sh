@@ -49,11 +49,11 @@ source "$SELF/dsh-key.sh" 2>/dev/null || true
 "$SELF/dsh-key-check.sh" --quiet || echo "[warn] DSH 网关配额耗尽（429）—— 出卡仍执行，自动开发将失败（见 ledger dsh_quota_alert）" >&2
 
 if [[ "$DRY_RUN" == true ]]; then
-  "$SELF/plan-to-cards.sh" --plan "$PLAN_FILE" --dispatch-dir "$DISPATCH_DIR" --dry-run || exit $?
+  "$SELF/plan-to-cards.sh" "$PLAN_FILE" --dispatch-dir "$DISPATCH_DIR" --dry-run || exit $?
   exit 0
 fi
 
-OUT="$("$SELF/plan-to-cards.sh" --plan "$PLAN_FILE" --dispatch-dir "$DISPATCH_DIR" 2>&1)"
+OUT="$("$SELF/plan-to-cards.sh" "$PLAN_FILE" --dispatch-dir "$DISPATCH_DIR" 2>&1)"
 RC=$?
 echo "$OUT"
 [[ $RC -ne 0 ]] && { echo "[ERROR] 出卡失败 rc=$RC" >&2; exit $RC; }
