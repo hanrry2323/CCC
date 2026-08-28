@@ -216,3 +216,82 @@ def test_process_one_audit_fail_keeps_card(monkeypatch, tmp_path: Path) -> None:
     # 卡保留已回写（不静默丢卡）
     assert "状态：已回写" in card_file.read_text(encoding="utf-8")
     assert any(r["action"] == "phase2_audit_fail" for r in recorded)
+
+
+def test_delete_merged_branch_cleans_local_and_remote(monkeypatch) -> None:
+    """分支已并入 main → 本地+远端都删（任务四）。"""
+    calls: list[list[str]] = []
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        calls.append(list(cmd))
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    ok, problems = phase2.delete_merged_branch("codex/tst-a")
+    assert ok, problems
+    assert problems == []
+    assert ["push", "origin", "--delete", "codex/tst-a"] in calls
+    assert ["branch", "-d", "codex/tst-a"] in calls
+
+
+def test_delete_merged_branch_keeps_unmerged(monkeypatch) -> None:
+    """未确认并入 main → 保守保留，绝不动远端。"""
+    calls: list[list[str]] = []
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        calls.append(list(cmd))
+        if cmd[:2] == ["merge-base", "--is-ancestor"]:
+            return _ok_rc(1)
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    ok, problems = phase2.delete_merged_branch("codex/tst-b")
+    assert not ok
+    assert any("保守保留" in p for p in problems)
+    assert not any(c[:1] == ["push"] for c in calls)
+
+
+def test_delete_merged_branch_alerts_on_remote_delete_fail(monkeypatch) -> None:
+    """远端删除失败 → 返回 False + 明细（调用方留痕告警，禁止静默）。"""
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        if cmd[:1] == ["push"]:
+            return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="remote ref does not exist")
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    ok, problems = phase2.delete_merged_branch("codex/tst-c")
+    assert not ok
+    assert any("远端分支删除失败" in p for p in problems)
+
+
+def test_process_one_pass_closed_cleans_branch(monkeypatch, tmp_path: Path) -> None:
+    """合入收尾成功路径：phase2_pass 后触发分支清理；成功则无 phase2_alert。"""
+    card_file, card = _mk_card(tmp_path)
+    recorded: list[dict] = []
+    push_deletes: list[list[str]] = []
+
+    def fake_record_action(action, object_id, source="", detail=""):  # noqa: A002
+        recorded.append({"action": action, "object_id": object_id, "detail": detail})
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        if cmd[:2] == ["merge-base", "--is-ancestor"]:
+            return _ok_rc(0)  # 分支已并入 main → 允许删
+        if cmd[:1] == ["push"] and "--delete" in cmd:
+            push_deletes.append(list(cmd))
+            return _ok_rc(0)
+        if cmd[:1] == ["rev-parse"]:
+            return _ok_rc(0, stdout="main")
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    monkeypatch.setattr(phase2, "_branch_in_main", lambda b: False)
+    monkeypatch.setattr(phase2, "deploy_and_probe", lambda cfg: (True, "web :7788 /health 响应正常"))
+    monkeypatch.setattr("server.board.audit_ledger.record_action", fake_record_action)
+    monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+    res = phase2.process_one(card, {"DISPATCH_DIR": str(tmp_path)}, audit_driver="mock:pass")
+    assert res["result"] == "closed"
+    assert res["branch_cleanup"] == "ok"
+    assert any(c[:1] == ["push"] and "--delete" in c for c in push_deletes)
+    assert not any(r["action"] == "phase2_alert" for r in recorded)
+    assert "状态：已关闭" in card_file.read_text(encoding="utf-8")

@@ -859,25 +859,29 @@ else:
     print("[WARN] 未配置 EXECUTOR_LOG_DIR，跳过 sidecar 清除")
 PY
 
-  # 分支清理：已合入 main 的本地及远端分支自动删除，分叉分支保留并加日志
-  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
-    # 注意：此时可能已经有其它修改被 commit，所以我们需要以 origin/main 作为合入对比基准
-    if git merge-base --is-ancestor "origin/${branch}" origin/main >/dev/null 2>&1; then
-      git branch -D "${branch}" >/dev/null 2>&1 || true
-      if git push origin --delete "${branch}" >/dev/null 2>&1; then
-        echo "[OK] 已删除已合入分支: ${branch}"
-      else
-        echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
-      fi
-    else
-      echo "[INFO] 分支 ${branch} 与 main 分叉（含有独立 diff），保留该分支"
-    fi
-  fi
-
   # 输出收口日志
   echo "收口完成：card=${id} 已关闭 + sidecar 已同步"
 
   git push origin main
+
+  # 分支清理（任务四 · 2026-08-29 移到 push main 之后）：本地 main 已含合入提交，
+  # 以本地 main 为对比基准——origin/main ref 因 fetch --no-write-fetch-head 是陈旧的，
+  # 旧基准导致主合入路径恒判「未合入」而跳过清理。删除失败留痕告警，禁止静默。
+  if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+    if git merge-base --is-ancestor "origin/${branch}" main >/dev/null 2>&1; then
+      # 本地分支用安全删（-d）：含未并入 main 提交时 git 自拒 → WARN 留痕不误删
+      git branch -d "${branch}" >/dev/null 2>&1 \
+        || echo "[WARN] ${id}: 本地分支删除失败（不影响合入，分支保留）: ${branch}" >&2
+      if git push origin --delete "${branch}" >/dev/null 2>&1; then
+        echo "[OK] 已删除已合入分支: ${branch}"
+      else
+        echo "[WARN] ${id}: 远端分支删除失败（不影响合入，留待下轮清理）: ${branch}" >&2
+      fi
+    else
+      echo "[INFO] ${id}: 分支 ${branch} 未并入 main（含有独立 diff），保留该分支"
+    fi
+  fi
+
   echo "[OK] 合入批准完成：${id} → 批次全部收口后将自动触发 2017 部署检查"
 }
 
@@ -949,11 +953,12 @@ PY
   # 分支清理：octopus 已合入 → 分支已是本地 HEAD 祖先，删除（用 HEAD 而非 stale origin/main）
   if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
     if git merge-base --is-ancestor "origin/${branch}" HEAD >/dev/null 2>&1; then
-      git branch -D "${branch}" >/dev/null 2>&1 || true
+      git branch -d "${branch}" >/dev/null 2>&1 \
+        || echo "[WARN] ${id}: 本地分支删除失败（不影响合入，分支保留）: ${branch}" >&2
       if git push origin --delete "${branch}" >/dev/null 2>&1; then
         echo "[OK] 已删除已合入分支: ${branch}"
       else
-        echo "[WARN] 远端分支删除失败（不影响合入）: ${branch}"
+        echo "[WARN] ${id}: 远端分支删除失败（不影响合入，留待下轮清理）: ${branch}" >&2
       fi
     fi
   fi

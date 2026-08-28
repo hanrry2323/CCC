@@ -389,6 +389,36 @@ def merge_branch_to_main(branch: str) -> tuple[bool, str]:
     return True, ""
 
 
+def delete_merged_branch(branch: str) -> tuple[bool, list[str]]:
+    """合入收尾：清理执行分支（本地 + 远端）。失败逐条返回明细，禁止静默。
+
+    安全顺序：先确认 origin/<branch> 已并入本地 main（此刻 main 已含合入提交），
+    再删远端、后删本地（本地分支另验「无未并入 main 的提交」才删，防丢未推工作）。
+    """
+    problems: list[str] = []
+    if not branch:
+        return False, ["分支名为空，跳过清理"]
+    remote_ref = f"origin/{branch}"
+    r = git(["rev-parse", "--verify", "--quiet", remote_ref])
+    if r.returncode == 0:
+        ra = git(["merge-base", "--is-ancestor", remote_ref, "main"])
+        if ra.returncode != 0:
+            return False, [f"{remote_ref} 未确认并入 main，保守保留"]
+        rd = git(["push", "origin", "--delete", branch])
+        if rd.returncode != 0:
+            problems.append(f"远端分支删除失败: {rd.stderr.strip()[:200]}")
+    r = git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"])
+    if r.returncode == 0:
+        la = git(["merge-base", "--is-ancestor", f"refs/heads/{branch}", "main"])
+        if la.returncode != 0:
+            problems.append("本地分支含未并入 main 的提交，保守保留")
+        else:
+            rl = git(["branch", "-d", branch])
+            if rl.returncode != 0:
+                problems.append(f"本地分支删除失败: {rl.stderr.strip()[:200]}")
+    return (not problems), problems
+
+
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -518,8 +548,16 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
         if ok:
             record_action("phase2_pass", card["id"], source="phase2", detail=f"CC 审核通过自动合入+部署探活成功: {detail}")
             _refresh_index(cfg)
+            # 分支清理（本地+远端，任务四）：失败留痕告警不静默，也不回滚已关闭终态
+            cleaned, cleanup_problems = delete_merged_branch(branch)
+            if not cleaned:
+                record_action(
+                    "phase2_alert", card["id"], source="phase2",
+                    detail=f"分支清理失败: {'; '.join(cleanup_problems)}",
+                )
+                logger.error("phase2 分支清理失败（卡已关闭，分支保留）: %s %s", card["id"], cleanup_problems)
             logger.info("phase2 完成: %s → 已关闭（%s）", card["id"], detail)
-            return {"id": card["id"], "result": "closed", "reason": detail}
+            return {"id": card["id"], "result": "closed", "reason": detail, "branch_cleanup": "ok" if cleaned else "failed"}
         # 部署未就绪：卡回「已回写（部署失败）」+ 告警，下轮自动重试（不静默）
         set_card_state(card_file, f"{_WRITTEN}（部署失败）", "PASS", f"合入成功但部署未就绪: {detail}")
         git(["add", "--", str(card_file)])
