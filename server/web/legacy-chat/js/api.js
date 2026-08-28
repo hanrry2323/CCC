@@ -3,8 +3,11 @@
  *
  * 保留：页面级 GET 作用域 abort、内存 TTL 缓存+在途去重+写后代次失效、
  *       15s 超时、瞬时网络错误静默重试一次；看板/计划/线路图/运维/巡检/控制台数据面。
- * 拆除：大脑对话流（streamChat）、会话历史长轮询、Claude/DSH 会话镜像、token 登录态。
- *       （服务端鉴权机制未动；前端按 LAN 免登录模式直连，与墙 API 同一信任模型。）
+ * P0（2026-08-29 写链路打通）：全站统一 token 出口——请求自动携带 Bearer，
+ *       401 自动清 token→弹口令重签（POST /session）→重放一次；
+ *       恢复原「拆除 token 登录态」的决定：服务端写闸+读闸（2026-08-24/08-29）使
+ *       LAN 免登录只覆盖公开读，写与敏感读必须有 token。
+ * 拆除：大脑对话流（streamChat）、会话历史长轮询、Claude/DSH 会话镜像。
  */
 
 // ===== 页面级请求作用域：切路由时 abort 全部页面级在途 GET =====
@@ -102,19 +105,70 @@ function _headers(json = true) {
   return h;
 }
 
-async function _fetchWithAuth(path, options = {}, json = true) {
+// ===== 看板口令 token（P0 写链路打通 2026-08-29）=====
+// 服务端写端点与读闸端点（/wall/api/*、/ops/ports 等）均要求 Bearer token；
+// token 经 POST /session 换签，暂存 localStorage，401 时清除并自动重换一次。
+const TOKEN_KEY = 'ccc_token';
+let _tokenInflight = null;
+
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (_) { return ''; }
+}
+
+export function clearToken() {
+  try { localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+}
+
+/** 确保持有 token：无则弹口令输入现场换签（并发调用合并为一次弹窗）。 */
+export function ensureToken() {
+  const existing = getToken();
+  if (existing) return Promise.resolve(existing);
+  if (_tokenInflight) return _tokenInflight;
+  _tokenInflight = (async () => {
+    const pw = window.prompt('此操作需要看板口令（账号 ccc）：');
+    if (!pw) { throw new Error('已取消：需要看板口令才能继续'); }
+    const resp = await fetch('/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'ccc', password: pw }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(
+        data.error === 'invalid username or password' ? '口令不正确'
+          : (data.error || ('口令换签失败 HTTP ' + resp.status))
+      );
+    }
+    try { localStorage.setItem(TOKEN_KEY, data.token); } catch (_) {}
+    return data.token;
+  })().finally(() => { _tokenInflight = null; });
+  return _tokenInflight;
+}
+
+async function _fetchWithAuth(path, options = {}, json = true, allowReauth = true) {
   const method = options.method || 'GET';
   const signal = _mergedSignal({
     signal: options.signal,
     pageScoped: options.pageScoped !== false && method === 'GET',
     noTimeout: options.noTimeout === true,
   });
-  return fetch(path, {
+  const headers = { ...(options.headers || {}), ..._headers(json) };
+  const tok = getToken();
+  if (tok) headers['Authorization'] = 'Bearer ' + tok;
+  const resp = await fetch(path, {
     method,
-    headers: { ...(options.headers || {}), ..._headers(json) },
+    headers,
     body: options.body,
     signal,
   });
+  // 401（token 缺失/过期）：清掉旧 token，弹口令重签一次后重放。
+  // 导航切换中不弹窗（切页 abort 的 401 无意义）。
+  if (resp.status === 401 && allowReauth && !_isNavAbort()) {
+    clearToken();
+    await ensureToken();
+    return _fetchWithAuth(path, options, json, false);
+  }
+  return resp;
 }
 
 function _checkGetOk(path, resp) {

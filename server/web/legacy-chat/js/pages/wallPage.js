@@ -11,6 +11,7 @@
  */
 
 import { toggleLightDark, getThemeScheme } from '../theme.js';
+import { ensureToken, getToken, clearToken } from '../api.js';
 
 // ── 模块级单例状态（跨 mount 保留 → 切回秒恢复）──────────────────
 let sessions = {};       // id -> snapshot（运行中）
@@ -478,9 +479,25 @@ function applyState(sessList) {
   syncWall();
 }
 
+/** 口令门：无 token（或 token 失效）时展示，代替空转重连。 */
+function showGate() {
+  const offlineEl = _root && _root.querySelector('#wall-offline');
+  if (!offlineEl) return;
+  offlineEl.innerHTML =
+    '🔒 信息墙需看板口令 <button type="button" class="hub-btn" id="wall-gate-btn">输入口令</button>';
+  offlineEl.style.display = 'block';
+}
+
+function restoreOfflineText() {
+  const offlineEl = _root && _root.querySelector('#wall-offline');
+  if (offlineEl) offlineEl.textContent = '连接中断，正在重连…';
+}
+
 function connect() {
   const offlineEl = _root.querySelector('#wall-offline');
-  const es = new EventSource('/wall/api/stream');
+  const tok = getToken();
+  if (!tok) { showGate(); return null; } // 读闸后 SSE 必须持 token（?token= 携带）
+  const es = new EventSource('/wall/api/stream?token=' + encodeURIComponent(tok));
   es.addEventListener('state', e => {
     offlineEl.style.display = 'none';
     try {
@@ -494,9 +511,23 @@ function connect() {
   es.onerror = () => {
     offlineEl.style.display = 'block';
     es.close();
-    _reconnectTimer = setTimeout(connect, 3000);
+    _reconnectTimer = setTimeout(reconnect, 3000);
   };
   return es;
+}
+
+/** 断线重连：先校验 token 仍有效（读闸 401 会断流），失效转口令门而非空转。 */
+function reconnect() {
+  if (!_root || _disposed) return;
+  const tok = getToken();
+  if (!tok) { showGate(); return; }
+  fetch('/wall/api/active', { headers: { Authorization: 'Bearer ' + tok } })
+    .then((r) => {
+      if (_disposed || !_root) return;
+      if (r.status === 401) { clearToken(); showGate(); }
+      else { restoreOfflineText(); _es = connect(); }
+    })
+    .catch(() => { _reconnectTimer = setTimeout(reconnect, 3000); });
 }
 
 // ── 格内对话：发送走 /wall/api/dsh/prompt → DSH session.prompt(queue)──
@@ -515,20 +546,16 @@ async function sendPrompt(wrap) {
   hint.classList.remove('err');
   hint.textContent = '发送中…';
   try {
-    // R2-P0 配套（2026-08-24）：服务端写门禁生效后，墙写需携带 Bearer；
-    // 首次无 token 时现场向 /session 换取并缓存于 localStorage。
-    let tok = localStorage.getItem('ccc_token');
-    if (!tok) {
-      const pw = prompt('墙写操作需要看板口令（账号 ccc；口令见服务器 ~/.ccc/web-auth.txt）');
-      if (!pw) { btn.disabled = false; hint.textContent = '已取消'; return; }
-      const lr = await fetch('/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'ccc', password: pw }),
-      });
-      if (!lr.ok) { hint.textContent = '口令校验失败'; hint.classList.add('err'); btn.disabled = false; return; }
-      tok = (await lr.json()).token;
-      localStorage.setItem('ccc_token', tok);
+    // P0 写链路（2026-08-29）：走全站统一 token 出口（api.js ensureToken）；
+    // 无 token 弹口令换签，401 清 token 后由用户重发。
+    let tok;
+    try {
+      tok = await ensureToken();
+    } catch (e) {
+      hint.textContent = e && e.message ? e.message : '需要看板口令';
+      hint.classList.add('err');
+      btn.disabled = false;
+      return;
     }
     const r = await fetch('/wall/api/dsh/prompt', {
       method: 'POST',
@@ -536,7 +563,7 @@ async function sendPrompt(wrap) {
       body: JSON.stringify({ sessionId: sid, text }),
     });
     if (r.status === 401) {
-      localStorage.removeItem('ccc_token');
+      clearToken();
       hint.textContent = '登录态过期，请重发';
       hint.classList.add('err');
       btn.disabled = false;
@@ -712,6 +739,19 @@ export function mountWall(rootEl, ctx = {}) {
       _es.close();
       _es = connect();
     }
+  });
+
+  // 口令门按钮（读闸后信息墙需 token 才能看流；输入口令即连）
+  _on(_root, 'click', e => {
+    if (!e.target.closest('#wall-gate-btn')) return;
+    ensureToken()
+      .then(() => {
+        if (_disposed || !_root) return;
+        restoreOfflineText();
+        if (_es) { _es.close(); }
+        _es = connect();
+      })
+      .catch(() => { /* 用户取消：保持口令门 */ });
   });
 
   // 标题未读闪烁
