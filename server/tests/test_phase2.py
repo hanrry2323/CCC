@@ -295,3 +295,54 @@ def test_process_one_pass_closed_cleans_branch(monkeypatch, tmp_path: Path) -> N
     assert any(c[:1] == ["push"] and "--delete" in c for c in push_deletes)
     assert not any(r["action"] == "phase2_alert" for r in recorded)
     assert "状态：已关闭" in card_file.read_text(encoding="utf-8")
+
+
+def test_worktree_dirty_problems_ignores_untracked(monkeypatch) -> None:
+    """untracked 不算脏；已跟踪改动才算（任务五）。"""
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        return _ok_rc(0, stdout=" M server/x.py\n?? new-file.txt\n")
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    problems = phase2.worktree_dirty_problems()
+    assert problems == [" M server/x.py"]
+
+
+def test_consume_once_skips_when_dirty(monkeypatch, tmp_path: Path) -> None:
+    """工作区脏 → 整轮跳过 + phase2_alert 留痕，卡不被消费（禁止静默卡死）。"""
+    recorded: list[dict] = []
+    _, card = _mk_card(tmp_path)
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        if cmd[:1] == ["status"]:
+            return _ok_rc(0, stdout=" M docs/dispatch/tst/x.md\n")
+        return _ok_rc(0)
+
+    def fail_process_one(*a, **k):  # noqa: A002
+        raise AssertionError("脏工作区下不应消费任何卡")
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    monkeypatch.setattr(phase2, "list_written_cards", lambda d: [card])
+    monkeypatch.setattr(phase2, "process_one", fail_process_one)
+    monkeypatch.setattr("server.board.audit_ledger.record_action", lambda *a, **k: recorded.append({"action": a[0], "detail": a[3] if len(a) > 3 else k.get("detail", "")}))
+    stats = phase2.consume_once(tmp_path, {})
+    assert stats["skipped_dirty"] == 1
+    assert stats["closed"] == 0
+    assert any(r["action"] == "phase2_alert" and "工作区脏" in r["detail"] for r in recorded)
+
+
+def test_consume_once_proceeds_when_clean(monkeypatch, tmp_path: Path) -> None:
+    """工作区干净（含 untracked）→ 正常消费，不误伤。"""
+    _, card = _mk_card(tmp_path)
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        if cmd[:1] == ["status"]:
+            return _ok_rc(0, stdout="?? untracked.log\n")
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    monkeypatch.setattr(phase2, "list_written_cards", lambda d: [card])
+    monkeypatch.setattr(phase2, "process_one", lambda c, cfg, audit_driver="real": {"id": c["id"], "result": "closed"})
+    stats = phase2.consume_once(tmp_path, {})
+    assert stats["closed"] == 1
+    assert "skipped_dirty" not in stats

@@ -572,12 +572,37 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
             git(["checkout", prev_branch])
 
 
+def worktree_dirty_problems() -> list[str]:
+    """工作区前置检查（任务五）：返回未提交的已跟踪文件改动清单（untracked 不算脏）。
+
+    phase2 需 checkout/merge/reset --hard main：脏工作区下 merge 会拒绝（卡每轮 alert
+    却永不前进＝静默卡死），门禁失败路径的 reset --hard 会静默吞掉未提交改动（数据丢失）。
+    故消费前必须干净；untracked 文件不阻塞 checkout/merge，不列入。
+    """
+    r = git(["status", "--porcelain"])
+    if r.returncode != 0:
+        return [f"git status 失败（无法核实工作区状态）: {r.stderr.strip()[:200]}"]
+    problems = [ln for ln in r.stdout.splitlines() if ln.strip() and not ln.startswith("??")]
+    return problems
+
+
 def consume_once(dispatch_dir: str | Path, cfg: dict, audit_driver: str = "real") -> dict:
     """消费全部「已回写」卡。逐卡 try/except，互不阻塞。"""
     _ensure_env(cfg)
     stats: dict = {"scanned": 0, "closed": 0, "rejected": 0, "audit_failed": 0, "deploy_failed": 0, "error": 0}
     cards = list_written_cards(dispatch_dir)
     stats["scanned"] = len(cards)
+    # 前置加固（任务五）：工作区脏 → 本轮整轮跳过消费。显式 ledger 告警 + error 日志，
+    # 禁止静默卡死；卡保留「已回写」，工作区干净后下轮自动恢复消费。
+    dirty = worktree_dirty_problems()
+    if dirty:
+        from server.board.audit_ledger import record_action
+
+        detail = f"工作区脏（未提交改动 {len(dirty)} 项）→ 本轮跳过消费，卡保留已回写待下轮: {'; '.join(dirty[:5])}"
+        record_action("phase2_alert", "phase2-runtime", source="phase2", detail=detail)
+        logger.error("phase2 前置检查失败: %s", detail)
+        stats["skipped_dirty"] = len(cards)
+        return stats
     key_map = {"closed": "closed", "rejected": "rejected", "gate_failed": "rejected",
                "audit_failed": "audit_failed", "deploy_failed": "deploy_failed", "error": "error"}
     for card in cards:
