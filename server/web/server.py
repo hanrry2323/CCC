@@ -1223,23 +1223,46 @@ def _password_hash(password: str) -> str:
 def _auth_credentials() -> tuple[str, str]:
     """解析 (username, password_hash)：env 优先，回退 ~/.ccc/web-auth.txt。
 
-    文件格式：单行口令（账号固定 ccc）或 ``user:pass``；缺失/为空返回 ("", "")。
+    文件兼容三种格式：
+    1. 现网格式（2026-08-24 轮换件）：标题行 + ``账号: ccc`` + ``口令: <pw>``；
+    2. 单行 ``user:pass``；
+    3. 单行口令（账号固定 ccc）。
+    缺失/为空返回 ("", "")。
     """
     username = os.environ.get("CCC_WEB_USERNAME", "")
     password_hash = os.environ.get("CCC_WEB_PASSWORD_HASH", "")
     if username and password_hash:
         return username, password_hash
     try:
-        lines = _WEB_AUTH_FILE.read_text(encoding="utf-8").strip().splitlines()
+        text = _WEB_AUTH_FILE.read_text(encoding="utf-8")
     except OSError:
         return "", ""
-    line = lines[0].strip() if lines else ""
-    if not line:
+    user = ""
+    password = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        sep = "：" if "：" in line else (":" if ":" in line else "")
+        if not sep:
+            continue
+        key, _, val = line.partition(sep)
+        k = key.strip()
+        v = val.strip()
+        if k in ("账号", "用户", "账号名", "user", "username"):
+            user = v
+        elif k in ("口令", "密码", "password", "pass"):
+            password = v
+    if user and password:
+        return user, _password_hash(password)
+    stripped = text.strip()
+    if not stripped:
         return "", ""
-    if ":" in line:
-        user, _, password = line.partition(":")
-        return user.strip(), _password_hash(password.strip())
-    return "ccc", _password_hash(line)
+    first = stripped.splitlines()[0].strip()
+    if ":" in first:
+        u, _, p = first.partition(":")
+        return u.strip(), _password_hash(p.strip())
+    return "ccc", _password_hash(first)
 
 
 def _generate_token(username: str) -> str:

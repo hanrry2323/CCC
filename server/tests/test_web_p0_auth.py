@@ -198,6 +198,19 @@ class TestFileCredentials:
         bad, _, _ = _login(free_server, "ccc", _FILE_PASS)
         assert bad == 401
 
+    def test_session_production_note_format(self, free_server):
+        """现网格式（2026-08-24 轮换件）：标题行 + 「账号: ccc」+「口令: …」。"""
+        self.auth_file.write_text(
+            "CCC Web 新口令（2026-08-24 P0-2 轮换,此文件 600）\n"
+            "账号: ccc\n"
+            f"口令: {_FILE_PASS}\n",
+            encoding="utf-8",
+        )
+        status, _, data = _login(free_server, "ccc", _FILE_PASS)
+        assert status == 200
+        bad, _, _ = _login(free_server, "ccc", "wrong")
+        assert bad == 401
+
     def test_wrong_password_401(self, free_server):
         self.auth_file.write_text(_FILE_PASS, encoding="utf-8")
         status, _, _ = _login(free_server, "ccc", "wrong")
