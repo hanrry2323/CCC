@@ -59,6 +59,7 @@ def test_audit_retry_success(monkeypatch) -> None:
 
     monkeypatch.setattr(phase2, "_run_claude", fake_run)
     monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
+    monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (True, "preflight mocked"))
     res = phase2.audit_card({"id": "tst997"}, Path("x.md"), "codex/x", {}, audit_driver="real")
     assert res["verdict"] == "PASS"
     assert res["attempts"] == 3
@@ -74,6 +75,7 @@ def test_audit_retry_exhaust(monkeypatch) -> None:
 
     monkeypatch.setattr(phase2, "_run_claude", fake_run)
     monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
+    monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (True, "preflight mocked"))
     res = phase2.audit_card({"id": "tst997"}, Path("x.md"), "codex/x", {}, audit_driver="real")
     assert res["verdict"] == "ERROR"
     assert res["attempts"] == 3

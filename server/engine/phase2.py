@@ -74,6 +74,9 @@ def load_cfg(config_path: str | Path) -> dict:
     return load_config(config_path)
 
 
+from server.engine.dsh_gateway import cli_env, preflight_gateway
+
+
 def git(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     """只读/受控 git 调用；超时 120s。"""
     return subprocess.run(
@@ -279,7 +282,7 @@ def _extract_reasons(out: str, verdict: str) -> str:
 def _run_claude(claude_bin: str, prompt: str, timeout: int) -> tuple[int, str, str]:
     cmd = [claude_bin, "-p", prompt, "--output-format", "text"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=cli_env())
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
         return 124, "", "claude 超时"
@@ -306,6 +309,15 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     backoff_base = float(cfg.get("PHASE2_AUDIT_BACKOFF_BASE") or _DEFAULT_BACKOFF_BASE)
     timeout = int(cfg.get("PHASE2_AUDIT_TIMEOUT") or _DEFAULT_AUDIT_TIMEOUT)
     prompt = build_audit_prompt(card, card_file, branch)
+
+    # ccc-plan-053 阶段3：审核前强制配额预检；429/拔 key 即拒单（不进重试循环）
+    pf_ok, pf_detail = preflight_gateway(source="phase2")
+    if not pf_ok:
+        from server.board.audit_ledger import record_action
+
+        record_action("phase2_alert", card["id"], source="phase2", detail=f"网关预检拒单: {pf_detail}")
+        logger.error("phase2 网关预检拒单（卡保留已回写待重试）: %s: %s", card["id"], pf_detail)
+        return {"verdict": "ERROR", "reasons": f"网关预检拒单: {pf_detail}", "transcript": "", "attempts": 0}
 
     transcript = ""
     reasons = ""

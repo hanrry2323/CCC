@@ -45,6 +45,7 @@ from server.engine.dispatch import (
 )
 from server.engine.gates import DispatchGate, GateContext, GateRegistry, GateResult
 from server.engine.card_gate import enforce_card_gate
+from server.engine.dsh_gateway import preflight_gateway
 from server.engine.metrics import (
     WORKER_EVENTS_FILE,
     ProcessSampler,
@@ -4234,7 +4235,7 @@ def _build_dispatch_gates() -> GateRegistry:
     门禁链：
         infra_cooldown → retry_backoff → short_session_breaker → card_gate
         → worktree_card_copy → accepted_card → parent_closed → depends_closed → dependency_cycle
-        → decision → slot_available → biz_isolation → relay_probe → submit
+        → decision → dsh_quota → slot_available → biz_isolation → relay_probe → submit
 
     submit gate 为原子占槽（transition RUNNING + marker + pool.submit + 回滚），
     绝不拆分——拆开会产生「假 RUNNING + marker 泄漏」，破坏 reclaim 不变量。
@@ -4384,6 +4385,19 @@ def _build_dispatch_gates() -> GateRegistry:
             return GateResult(passed=False, reason="no_slot")
         return GateResult(passed=True)
 
+    def _dsh_quota(ctx: GateContext) -> GateResult:
+        # ccc-plan-053 阶段3：DSH 执行体派发前强制网关配额预检（429/拔 key 拒单）；
+        # 非 DSH 命令（demo/echo 夹具、GUI 手动等）零打扰。TTL 缓存防每轮 curl。
+        entry = ctx.registry.cli_entry_for_role(ctx.work.role)
+        command = (entry.command if entry else "") or ""
+        if Path(command).name.startswith("dsh-"):
+            ok, detail = preflight_gateway(source="engine")
+            if not ok:
+                logger.error("网关配额预检拒单: work=%s (%s)", ctx.work.id, detail)
+                return GateResult(passed=False, reason="dsh_quota")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="dsh_quota", order=75, check=_dsh_quota, requires=("decision",)))
     reg.register(DispatchGate(name="slot_available", order=80, check=_slot_available, requires=("decision",)))
 
     def _biz_isolation(ctx: GateContext) -> GateResult:

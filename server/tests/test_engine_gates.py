@@ -220,6 +220,7 @@ class TestDispatchGateChain:
             "depends_closed",
             "dependency_cycle",
             "decision",
+            "dsh_quota",
             "slot_available",
             "biz_isolation",
             "relay_probe",
