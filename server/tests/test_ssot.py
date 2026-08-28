@@ -64,6 +64,9 @@ def test_loader_writes_single_path_only(tmp_path: Path) -> None:
     script = script.format(repo=repo, dispatch=str(dispatch))
     env = dict(os.environ)
     env.pop("PYTEST_CURRENT_TEST", None)
+    # 打回修复：全量测试序中其它用例可能泄漏 CCC_DATA_DIR/DATA_DIR 到 os.environ，
+    # 子进程必须显式钉死唯一写点（防继承污染），否则 loader 写点漂移。
+    env["CCC_DATA_DIR"] = str(data_dir)
     env["DATA_DIR"] = str(data_dir)
     r = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stderr

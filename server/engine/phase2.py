@@ -200,6 +200,23 @@ def _materialize_card(card: dict) -> None:
     target.write_text(show.stdout, encoding="utf-8")
 
 
+def _refresh_index(cfg: dict) -> None:
+    """终态写回唯一索引（单一事实源收敛 · rebuild/phase2 打回修复）。
+
+    phase2 关闭/打回/部署失败会直接改卡文件并 push main，但唯一索引
+    （~/.ccc/data/cards/cards.index.jsonl）是派生缓存——卡 mtime 变更后需重扫
+    才能让索引反映终态。调用 loader 重扫即同步（写点唯一在 loader）。
+    """
+    _ensure_env(cfg)
+    try:
+        from server.board.loader import load_dispatch_cards
+
+        dispatch = str(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        load_dispatch_cards(dispatch, include_archived=False)
+    except Exception:  # noqa: BLE001
+        logger.exception("phase2 索引刷新失败（不阻断）")
+
+
 def branch_for(card_file: Path) -> str:
     return f"{_BRANCH_PREFIX}{card_file.stem.lower()}"
 
@@ -453,6 +470,7 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 git(["commit", "-m", f"chore(phase2): {card['id']} CC 审核不通过自动打回"])
                 git(["push", "origin", "main"])
                 record_action("phase2_reject", card["id"], source="phase2", detail=f"CC 审核不通过自动打回: {audit['reasons']}")
+                _refresh_index(cfg)
                 logger.warning("phase2 打回（不阻塞其他卡）: %s", card["id"])
                 return {"id": card["id"], "result": "rejected", "reason": audit["reasons"]}
             # PASS → 合入
@@ -482,6 +500,7 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
             git(["commit", "-m", f"chore(phase2): {card['id']} 门禁失败自动打回"])
             git(["push", "origin", "main"])
             record_action("phase2_reject", card["id"], source="phase2", detail=f"门禁失败自动打回: {'; '.join(gate_fails)}")
+            _refresh_index(cfg)
             logger.warning("phase2 门禁失败打回: %s", card["id"])
             return {"id": card["id"], "result": "gate_failed", "reason": gate_fails}
 
@@ -498,6 +517,7 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
         ok, detail = deploy_and_probe(cfg)
         if ok:
             record_action("phase2_pass", card["id"], source="phase2", detail=f"CC 审核通过自动合入+部署探活成功: {detail}")
+            _refresh_index(cfg)
             logger.info("phase2 完成: %s → 已关闭（%s）", card["id"], detail)
             return {"id": card["id"], "result": "closed", "reason": detail}
         # 部署未就绪：卡回「已回写（部署失败）」+ 告警，下轮自动重试（不静默）
@@ -506,6 +526,7 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
         git(["commit", "-m", f"chore(phase2): {card['id']} 部署未就绪，待重试"])
         git(["push", "origin", "main"])
         record_action("phase2_deploy_fail", card["id"], source="phase2", detail=f"部署探活失败: {detail}")
+        _refresh_index(cfg)
         logger.error("phase2 部署探活失败（卡保留已回写待重试）: %s %s", card["id"], detail)
         return {"id": card["id"], "result": "deploy_failed", "reason": detail}
     finally:
