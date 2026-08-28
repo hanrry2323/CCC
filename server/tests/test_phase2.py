@@ -136,7 +136,7 @@ def test_list_branch_written_cards(monkeypatch) -> None:
     cards = phase2._list_branch_written_cards()
     assert len(cards) == 1
     assert cards[0]["id"] == "tst997"
-    assert cards[0]["branch"] == "origin/codex/tst997-phase2-e2e"
+    assert cards[0]["branch"] == "codex/tst997-phase2-e2e"
     assert cards[0]["path_rel"] == "docs/dispatch/tst/tst997-phase2-e2e.md"
 
 

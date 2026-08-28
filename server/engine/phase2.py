@@ -140,7 +140,7 @@ def _list_branch_written_cards() -> list[dict]:
         ref = ref.strip()
         if not ref:
             continue
-        branch = ref.replace("refs/remotes/", "")
+        branch = ref.replace("refs/remotes/origin/", "")  # codex/<stem>（fetch/show 内部再加 origin/ 前缀）
         diff = git(["diff", "--name-only", "origin/main", ref, "--", "docs/dispatch"])
         for cp in (diff.stdout or "").splitlines():
             cp = cp.strip()
