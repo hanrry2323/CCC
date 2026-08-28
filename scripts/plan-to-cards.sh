@@ -146,20 +146,29 @@ acc = json.loads(sys.argv[2])
 wl = json.loads(sys.argv[3])
 goal = sys.argv[4]
 text = path.read_text(encoding='utf-8')
+# P2-g（rebuild/phase2）：模板 marker 串转义——注入的 目标/白名单/验收 文案若
+# 含模板占位串（自指）会致验收标准字面不可满足，统一中和为空白。
+_MARKERS = ('（可执行的验收点，附命令/可观察结果）', '（一句话，可验收。）',
+            '（明确本卡改动范围，白名单式列出。）', '（本切片白名单见验收点；未列路径勿改。）')
+def _neutralize(s):
+    for m in _MARKERS:
+        s = s.replace(m, '')
+    return re.sub(r'\n{2,}', '\n', s).strip()
+goal = _neutralize(goal)
 text = re.sub(
     r'(## 目标\n\n)（一句话，可验收。）',
     lambda m: m.group(1) + goal + '（ccc-plan 切片）。',
     text,
     count=1,
 )
-wl_block = '\n'.join(f'- \`{w}\`' for w in wl) if wl else '（本切片白名单见验收点；未列路径勿改。）'
+wl_block = '\n'.join(f'- \`{_neutralize(w)}\`' for w in wl) if wl else '（本切片白名单见验收点；未列路径勿改。）'
 text = re.sub(
     r'(## 范围\n\n)（明确本卡改动范围，白名单式列出。）',
     lambda m: m.group(1) + wl_block,
     text,
     count=1,
 )
-acc_block = '\n'.join(f'{i}. {a}' for i, a in enumerate(acc, 1))
+acc_block = '\n'.join(f'{i}. {_neutralize(a)}' for i, a in enumerate(acc, 1))
 text = re.sub(
     r'(## 验收标准\n\n)1\. （可执行的验收点，附命令/可观察结果）',
     lambda m: m.group(1) + acc_block,

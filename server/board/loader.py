@@ -19,6 +19,8 @@ import logging
 import os
 import json
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state, board_column, machine_audit_passed_text
@@ -216,16 +218,76 @@ def load_dispatch_cards(directory: Path | str, include_archived: bool = False) -
 
 
 def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
+    """卡片索引唯一真值路径（单一事实源 · rebuild/phase2）。
+
+    收敛规则：production 唯一真值 = `~/.ccc/data/cards/cards.index.jsonl`
+    （config.env 的 DATA_DIR=~/.ccc/data 时走 env 分支，结果相同）。
+    仓内 `data/cards/` 不再作为写点（结构上杜绝再分叉）。
+
+    第三次打回修复：
+    1. 测试隔离分支下，若传入的是**真实 docs/dispatch** → 索引落测试进程专属临时
+       目录（只许读不许写真实仓），彻底堵死「docs/dispatch/cards.index.jsonl
+       副本复活」写路径；tmp 合成 dispatch 仍用其目录内索引（保持既有测试断言）。
+    2. 唯一索引写闸：非 main 检出（开发分支）下 dispatch 是部分快照，禁止用它
+       覆盖重建唯一索引——否则 main 上存在而分支上不存在的卡会被静默丢掉
+       （tst998 整卡消失根因），见 `_index_write_allowed`。
+    """
     if "PYTEST_CURRENT_TEST" in os.environ and dispatch_dir is not None:
-        return Path(dispatch_dir) / "cards.index.jsonl"
+        d = Path(dispatch_dir)
+        real_dispatch = Path(__file__).resolve().parents[2] / "docs" / "dispatch"
+        try:
+            if d.resolve() == real_dispatch.resolve():
+                # 真实 dispatch 在 pytest 下只读：索引落测试进程临时目录
+                base = Path(tempfile.gettempdir()) / f"ccc-test-index-{os.getpid()}"
+                return base / "cards" / "cards.index.jsonl"
+        except OSError:
+            pass
+        return d / "cards.index.jsonl"
 
     raw = os.environ.get("CCC_DATA_DIR") or os.environ.get("DATA_DIR")
     if raw:
         base = Path(raw).expanduser().resolve()
         return base / "cards" / "cards.index.jsonl"
 
-    base = Path(__file__).resolve().parents[2] / "data"
+    # 无 env 兜底 = 生产数据根（与 config.env DATA_DIR 对齐）；不再回落仓内 data/
+    base = Path.home() / ".ccc" / "data"
     return base / "cards" / "cards.index.jsonl"
+
+
+def _index_write_allowed(dispatch_dir: Path) -> bool:
+    """唯一索引写闸（第三次打回根因修复）。
+
+    仅当写入目标是**生产唯一索引**（~/.ccc/data/cards/...）时才限制：
+    - pytest 测试进程一律禁写生产索引（get_index_path 已把真实 dispatch 重定向
+      到临时索引，写闸作最后兜底）；
+    - 非 main 检出（开发分支 rebuild/* 等）dispatch 是部分快照，禁止覆盖生产索引
+      ——否则 main 上存在而分支上没有的卡被静默丢出索引（tst998 消失根因）。
+    测试/临时索引目标（重定向或 tmp）一律放行。
+    """
+    index_path = get_index_path(dispatch_dir)
+    prod_root = (Path.home() / ".ccc" / "data").resolve()
+    try:
+        is_prod = index_path.resolve().is_relative_to(prod_root)
+    except (OSError, AttributeError):  # noqa: BLE001
+        is_prod = False
+    if not is_prod:
+        return True
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return False  # 测试进程不得写生产唯一索引
+    try:
+        repo_root = Path(__file__).resolve().parents[2]
+        out = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        branch = (out.stdout or "").strip()
+        if not branch or branch == "HEAD":
+            return True  # detached / 判定失败 → 保守放行
+        return branch == "main"
+    except Exception:  # noqa: BLE001
+        return True
 
 
 
@@ -453,7 +515,7 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
                     updated_entries[entry["id"]] = entry
                 continue
 
-    if len(updated_entries) != len(index_entries) or updated:
+    if (len(updated_entries) != len(index_entries) or updated) and _index_write_allowed(dispatch_dir):
         # 外层已在 load_dispatch_cards_incremental 持锁，这里直接无锁写，避免嵌套 flock 死锁
         _write_index_entries(updated_entries, get_index_path(dispatch_dir))
 

@@ -182,12 +182,23 @@ def test_process_one_pass_closed(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(phase2, "_branch_in_main", lambda b: False)
     monkeypatch.setattr(phase2, "deploy_and_probe", lambda cfg: (True, "web :7788 /health 响应正常"))
     monkeypatch.setattr("server.board.audit_ledger.record_action", fake_record_action)
-    res = phase2.process_one(card, {}, audit_driver="mock:pass")
+    monkeypatch.setenv("CCC_DATA_DIR", str(tmp_path))
+    res = phase2.process_one(card, {"DISPATCH_DIR": str(tmp_path)}, audit_driver="mock:pass")
     assert res["result"] == "closed"
     text = card_file.read_text(encoding="utf-8")
     assert "状态：已关闭" in text
     assert "结论：通过" in text
     assert any(r["action"] == "phase2_pass" for r in recorded)
+    # 打回修复：唯一索引须反映终态（phase2 关闭链路写回唯一索引）。
+    # pytest 下 get_index_path 走 PYTEST_CURRENT_TEST 隔离分支 → <dispatch>/cards.index.jsonl。
+    idx = tmp_path / "cards.index.jsonl"
+    assert idx.is_file(), "phase2 关闭后唯一索引未刷新"
+    entry = next(
+        (json.loads(ln) for ln in idx.read_text(encoding="utf-8").splitlines() if ln.strip()),
+        None,
+    )
+    assert entry is not None and entry["id"] == "tst997-phase2-e2e"  # 卡标题 token 即 id
+    assert entry["state"] == "已关闭"
 
 
 def test_process_one_audit_fail_keeps_card(monkeypatch, tmp_path: Path) -> None:

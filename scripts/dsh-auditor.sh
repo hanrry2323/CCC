@@ -16,6 +16,14 @@
 # 前置：2017 已配 OPENCODE_GO_API_KEY；inject_hint=false（Engine 不注入，v4 预设自含）。
 
 set -euo pipefail
+# P1-d/rebuild-phase2：密钥单源 + 配额预检（429 阻断并 ledger 告警，防无声循环）
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/dsh-key.sh
+source "$_SELF/dsh-key.sh" 2>/dev/null || true
+if ! "$_SELF/dsh-key-check.sh" --quiet; then
+  echo "[FATAL] DSH 网关配额耗尽（429）—— 见 ledger dsh_quota_alert；本次不执行" >&2
+  exit 2
+fi
 
 CARD_PATH="${1:?缺 card_path}"
 WORK_ID="${2:?缺 work_id}"

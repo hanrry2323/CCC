@@ -268,12 +268,13 @@ def _selftest() -> int:
             return 1
         print(f"[selftest] kb_read('{first_id}') → {len(read_result.get('content', ''))} 字符", file=sys.stderr)
 
-    # 5. 测空结果
-    empty_result = _tool_kb_search({"query": "ZZZZNOTEXIST999"})
+    # 5. 测无命中结果（rebuild/phase2 打回修复：原 ZZZZNOTEXIST999 含「999」会撞中
+    #    索引内 ccc999 等 token → 误报非空；改用无数字、无常见子串的假查询）
+    empty_result = _tool_kb_search({"query": "zzzqqqnnnmmm"})
     if len(empty_result) != 0:
-        print(f"[selftest] FAIL kb_search 空查询应返回 0 结果，实际 {len(empty_result)}", file=sys.stderr)
+        print(f"[selftest] FAIL kb_search 无命中查询应返回 0 结果，实际 {len(empty_result)}", file=sys.stderr)
         return 1
-    print("[selftest] kb_search 空结果正确", file=sys.stderr)
+    print("[selftest] kb_search 无命中结果正确", file=sys.stderr)
 
     # 6. 测域过滤 + 数字检索（T51：IP 可检索）
     ip_result = _tool_kb_search({"query": "192.168.3.116"})

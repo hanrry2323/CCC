@@ -180,9 +180,22 @@ def test_trigger_scheduled_ops_immediate(tmp_path) -> None:
     assert any("ops001" in t for t in summary["triggered"])
 
 
-def test_trigger_scheduled_ops_deferred(tmp_path) -> None:
-    """定时运维触发：定时未到的 scheduler 卡保持 pending（2026-08-11）。"""
+def test_trigger_scheduled_ops_deferred(tmp_path, monkeypatch) -> None:
+    """定时运维触发：定时未到的 scheduler 卡保持 pending（2026-08-11）。
+
+    rebuild/phase2 打回修复：原硬编码「定时：23:59」在 23:59–00:00 窗口跑会
+    触发竞态（now_str ≥ 23:59 → 误触发）——固定时钟到 12:00 使断言确定性。
+    """
+    import datetime as _dt
+
     from server.engine.observer import trigger_scheduled_ops
+
+    class _FakeDT(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ARG003
+            return _dt.datetime(2026, 8, 28, 12, 0, 0)
+
+    monkeypatch.setattr("server.engine.observer.datetime.datetime", _FakeDT)
 
     dispatch = tmp_path / "dispatch" / "ops"
     dispatch.mkdir(parents=True)

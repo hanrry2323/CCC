@@ -2065,12 +2065,12 @@ class TestProjectsEndpoint:
             assert p["is_taskable"] in (True, False)
 
     def test_taskable_flags(self, api_server):
-        """可下达任务：qb/medio-0；CCC 平台自研禁出卡（2026-08-10 红线）；QuantHive 禁止经 CCC 派发。"""
+        """可下达任务：medio-0（mx）；qb 2026-08-26 老板封存（taskable 关闭）；CCC 平台自研禁出卡；QuantHive 禁止经 CCC 派发。"""
         status, data = _get(api_server, "/projects")
         assert status == 200
         by_name = {p["name"]: p for p in data["projects"]}
-        for required in ("qb", "medio-0"):
-            assert by_name[required]["is_taskable"] is True, f"{required} 应可下达任务"
+        assert by_name["medio-0"]["is_taskable"] is True, "medio-0 应可下达任务"
+        assert by_name["qb"]["is_taskable"] is False, "qb 2026-08-26 封存后不可下达"
         assert by_name["CCC"]["is_taskable"] is False, "CCC 平台自研禁出卡（2026-08-10 红线）"
         assert by_name["QuantHive"]["is_taskable"] is False, "QuantHive 禁止 CCC taskable"
 
