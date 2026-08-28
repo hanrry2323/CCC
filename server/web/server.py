@@ -47,6 +47,10 @@ API:
 鉴权: 默认免登录（T45，``CCC_WEB_AUTH_REQUIRED=0``，单用户局域网直连即用）；
       设置 ``CCC_WEB_AUTH_REQUIRED=1`` 恢复账号密码鉴权（Bearer token 经 POST /session 获取）。
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
+      凭证文件回退（P0-1 2026-08-29）: env 未配置时读 ~/.ccc/web-auth.txt（权限 600，
+      单行口令=账号 ccc 或 user:pass）。
+      读闸（P0 2026-08-29）: 敏感读端点（/wall/api/*、/ops/ports、/ops/portals、
+      /ops/services、/projects/*/threads）免登录模式下也须持 token（Bearer 或 ?token=）。
       长轮询超时默认值: CCC_WEB_LONGPOLL_TIMEOUT（秒，见 server/config/config.example.env）。
 
 对话大脑（T29）: /conversation 调用本机 Claude Code CLI（2026-08-24 起直连出口，中转站已退役），
@@ -113,16 +117,17 @@ from server.engine.cluster import (
 )
 from server.web.brain import call_brain, stream_brain_events
 from server.web import session_store
-from server.web import dsh_reader
 from server.web import wall  # DSH 监控墙引擎（ccc-plan-045 P1，源 dsh-wall v0.3.4）
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
 _DISPATCH_DIR = _PROJECT_ROOT / "docs" / "dispatch"
 
-# ── 鉴权配置（从环境变量读取；支持运行时刷新，测试可覆盖） ──
-_AUTH_USERNAME = os.environ.get("CCC_WEB_USERNAME", "")
-_AUTH_PASSWORD_HASH = os.environ.get("CCC_WEB_PASSWORD_HASH", "")
+# ── 鉴权配置 ──
+# 凭证解析（P0-1 2026-08-29）：env 优先（CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH）；
+# 未配置时回退读 ~/.ccc/web-auth.txt（权限 600；单行=口令（账号 ccc）或 user:pass）。
+# 凭证改为请求时动态解析（原为 import 时冻结全局），测试可 monkeypatch 环境变量。
+_WEB_AUTH_FILE = Path(os.path.expanduser("~/.ccc/web-auth.txt"))
 _SERVER_SECRET = os.urandom(32).hex()
 
 
@@ -456,8 +461,9 @@ def _build_public_config() -> dict[str, Any]:
         "workspace_map": {},
         # 模型档位（T44：CCC_MODEL_TIERS，非敏感；档位选择器数据源）
         "models": _get_model_tiers(),
-        # M1 对话桥（前端直连；空则走本机 /conversation）
-        "chat_bridge_url": _chat_bridge_url(),
+        # P0 收敛（2026-08-29）：chat_bridge_url 移出公开配置——上游对话桥地址
+        # 属内部拓扑（audit 报告 §5 #11），前端零消费（对话栈已拆）；内部仍走
+        # _chat_bridge_url()（conversation 代理用），只是不再对外广播。
         "version": "v0.70.0",
     }
 
@@ -1212,6 +1218,28 @@ def _build_ops_summary() -> dict[str, Any]:
 def _password_hash(password: str) -> str:
     """计算密码的 SHA-256 哈希。"""
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def _auth_credentials() -> tuple[str, str]:
+    """解析 (username, password_hash)：env 优先，回退 ~/.ccc/web-auth.txt。
+
+    文件格式：单行口令（账号固定 ccc）或 ``user:pass``；缺失/为空返回 ("", "")。
+    """
+    username = os.environ.get("CCC_WEB_USERNAME", "")
+    password_hash = os.environ.get("CCC_WEB_PASSWORD_HASH", "")
+    if username and password_hash:
+        return username, password_hash
+    try:
+        lines = _WEB_AUTH_FILE.read_text(encoding="utf-8").strip().splitlines()
+    except OSError:
+        return "", ""
+    line = lines[0].strip() if lines else ""
+    if not line:
+        return "", ""
+    if ":" in line:
+        user, _, password = line.partition(":")
+        return user.strip(), _password_hash(password.strip())
+    return "ccc", _password_hash(line)
 
 
 def _generate_token(username: str) -> str:
@@ -1977,6 +2005,30 @@ class _APIHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         return True
 
+    def _request_token(self) -> str:
+        """提取请求 token：Authorization: Bearer 头优先，回退 ?token=（EventSource 无法带请求头）。"""
+        auth = self.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            return auth[len("Bearer "):].strip()
+        qs = self.path.split("?", 1)
+        if len(qs) == 2:
+            from urllib.parse import parse_qs as _pq
+
+            return (_pq(qs[1]).get("token", [""])[0]).strip()
+        return ""
+
+    def _gate_read(self) -> bool:
+        """读闸（P0 暴露面止血 2026-08-29）：敏感读端点无论免登录与否均须持有效 token。
+
+        通过返回 True；失败已发送 401。墙 SSE 走 ?token=（EventSource 限制），
+        其余走 Bearer 头。与全量鉴权模式（_check_auth）叠加时为二次校验，语义一致。
+        """
+        token = self._request_token()
+        if token and _validate_token(token) is not None:
+            return True
+        self._send_401("this endpoint requires a token (POST /session)")
+        return False
+
     def _check_auth(self) -> bool:
         """鉴权中间件。返回 True 通过，False 已发送 401。
 
@@ -2034,10 +2086,11 @@ class _APIHandler(BaseHTTPRequestHandler):
         if not username or not password:
             self._send_json({"error": "username and password required"}, 400)
             return
-        if not _AUTH_USERNAME or not _AUTH_PASSWORD_HASH:
+        username_cfg, password_hash_cfg = _auth_credentials()
+        if not username_cfg or not password_hash_cfg:
             self._send_json({"error": "server auth not configured"}, 500)
             return
-        if username != _AUTH_USERNAME or _password_hash(password) != _AUTH_PASSWORD_HASH:
+        if username != username_cfg or _password_hash(password) != password_hash_cfg:
             self._send_json({"error": "invalid username or password"}, 401)
             return
         _clean_expired_tokens()
@@ -3964,7 +4017,7 @@ class _APIHandler(BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "auth_required": _auth_required(),
-                    "auth_configured": bool(_AUTH_USERNAME and _AUTH_PASSWORD_HASH),
+                    "auth_configured": bool(all(_auth_credentials())),
                 }
             )
             return
@@ -3985,12 +4038,17 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_tasks_stream()
             return
         if path == "/wall/api/active":
-            # DSH 监控墙快照（ccc-plan-045 P1；与 /tasks/stream 同组置于鉴权门前，
-            # 延续墙 LAN 无鉴权现状——EventSource 无法带 Authorization 头）
+            # DSH 监控墙快照（ccc-plan-045 P1）。P0 暴露面止血（2026-08-29）：
+            # 纳入读闸——无 token 一律 401（原「LAN 无鉴权现状」豁免撤销，
+            # 见 ccc-frontend-audit-20260829 §5）；EventSource 经 ?token= 携带。
+            if not self._gate_read():
+                return
             self._send_json(wall.active_payload())
             return
         if path == "/wall/api/stream":
-            # DSH 监控墙 SSE（首帧立即推 + diff 变化推 + 15s 心跳）
+            # DSH 监控墙 SSE（首帧立即推 + diff 变化推 + 15s 心跳）；读闸同上
+            if not self._gate_read():
+                return
             self._handle_wall_stream()
             return
         if path == "/cards":
@@ -4002,7 +4060,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         if not self._check_auth():
             return
         if path.startswith("/projects/") and path.endswith("/threads"):
-            # 会话列表需鉴权（auth_required=0 时 _check_auth 直接放行）
+            # 会话列表读闸（P0 2026-08-29）：免登录模式下也须持 token。
+            # 保留理由（下线评估结论）：对话栈 web 前端已拆，桌面端会话走本地
+            # store，但该路由是对话持久化测试套的验证窗口与未来客户端唯一
+            # HTTP 面；暴露面仅为 CCC 侧会话元数据，读闸已封匿名访问。
+            if not self._gate_read():
+                return
             from urllib.parse import unquote
 
             project = unquote(path[len("/projects/") : -len("/threads")])
@@ -4030,20 +4093,12 @@ class _APIHandler(BaseHTTPRequestHandler):
         if path == "/conversation":
             self._handle_conversation_get()
             return
-        if path == "/dsh/workspaces":
-            # DSH 只读镜像：对话侧栏项目/会话源（无 DSH 数据 → 空列表，前端降级）
-            self._send_json({"workspaces": dsh_reader.load_workspaces()})
-            return
-        if path.startswith("/dsh/sessions/"):
-            # GET /dsh/sessions/<session_id>：DSH 会话历史（只读，映射为 CCC 消息形状）
-            from urllib.parse import unquote
-
-            session_id = unquote(path[len("/dsh/sessions/") :])
-            if not session_id:
-                self._send_json({"error": "session id required"}, 400)
-                return
-            self._send_json({"messages": dsh_reader.load_session_messages(session_id)})
-            return
+        # P0 下线（2026-08-29）：/dsh/workspaces 与 /dsh/sessions/<id> 路由已删除。
+        # 证据：web 前端对话栈 2026-08-24 拆除后零调用；桌面端会话走本地 Swift
+        # store（APIClient.swift 无 dsh HTTP 调用）；scripts/traj-digest.sh 读
+        # ~/.dsh/sessions 本地文件而非 HTTP。该面曾免鉴权暴露 DSH 会话全文
+        # （含敏感标题，audit 报告 §5 #1/#2），读闸不足以覆盖「已无人需要」，
+        # 直接下线（返回 404）。DSH 内容消费统一走墙 SSE（/wall/api/*，读闸内）。
         if path == "/ops/summary":
             self._handle_ops_summary()
             return
@@ -4057,6 +4112,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_ops_relay_stats()
             return
         if path == "/ops/ports":
+            # P0 读闸（2026-08-29）：端口/进程/PID 清单免登录可读=内网侦察面
+            if not self._gate_read():
+                return
             self._handle_ops_ports()
             return
         if path == "/ops/hp-health":
@@ -4072,9 +4130,15 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_ops_dsh_findings()
             return
         if path == "/ops/services":
+            # P0 读闸（2026-08-29）：launchd 服务清单+运行态（含远程启停入口元数据）
+            if not self._gate_read():
+                return
             self._handle_ops_services()
             return
         if path == "/ops/portals":
+            # P0 读闸（2026-08-29）：LAN IP 与内网服务地址表
+            if not self._gate_read():
+                return
             self._handle_ops_portals()
             return
         if path == "/loop/findings":
