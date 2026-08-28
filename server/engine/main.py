@@ -5113,6 +5113,16 @@ def run_loop(
         logger.info("heartbeat: %s", json.dumps(summary, ensure_ascii=False))
         if summary["timed_out"] > 0:
             logger.warning("催单: 本轮 %d 个任务超时未回写", summary["timed_out"])
+        # phase2 后半段（rebuild/phase1）：已回写卡 → CC 审核 → 合入 → 部署 → 终态。
+        # 与派发主流程隔离：异常只告警不阻断；事件感知 + 轮询兜底，10 分钟内必被消费。
+        try:
+            from server.engine.phase2 import consume_once
+
+            p2 = consume_once(dispatch_dir, cfg, audit_driver=os.environ.get("PHASE2_AUDIT_DRIVER", "real"))
+            if any(v for k, v in p2.items() if k in ("closed", "rejected", "audit_failed", "deploy_failed", "error")):
+                logger.info("phase2: %s", json.dumps(p2, ensure_ascii=False))
+        except Exception:
+            logger.exception("phase2 消费异常（不阻断派发主流程）")
         # 事件感知：等 dispatch 目录变化（写卡/回写/状态变更）即触发，或最长 heartbeat_interval 兜底
         waited = 0.0
         while waited < heartbeat_interval:
@@ -5175,6 +5185,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if not results["failed"] else 1
     if args.once:
         summary = run_once(registry, store, cfg)
+        try:
+            from server.engine.phase2 import consume_once
+
+            summary = {**summary, "phase2": consume_once(dispatch_dir, cfg)}
+        except Exception:
+            logger.exception("phase2 消费异常（--once 不阻断）")
         print(json.dumps(summary, ensure_ascii=False))
         return 0
     run_loop(
