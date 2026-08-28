@@ -1,35 +1,47 @@
 {
   "version": "2",
-  "description": "CCC 执行体注册表（2026-08-27 工具架构三层定调后现行态）：开发/维护/机审/只读取证 = 执行会话 / 自动化值班组件（wrapper：dsh-executor.sh / dsh-auditor.sh / headless）；管理/终审/审核合入 = 桌面端总调度；CLI 为核心开发执行者。链路按三层分工（桌面端调度 / CLI 执行 / 自动化值班组件，老板 2026-08-27 定调）。复制本文件为 executors.json 启用。",
+  "description": "CCC 执行体注册表（2026-08-22 工具收口后现行态）：开发/维护执行体、机审验收席、只读取证全 DSH（dsh-executor.sh / dsh-auditor.sh / headless wrapper）；管理席与最终审核合入 = Claude Code（出卡裁决 + audit-merge-agent 一条龙）；OpenCode 已移除。链路 = DSH 内核 + Claude Code 终审（老板 2026-08-22 定调）。",
   "executors": [
+    {
+      "角色": "验收席",
+      "分类": "可后台 CLI",
+      "当前绑定": "DSH（S4 切换 · 2026-08-22）",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-auditor.sh",
+      "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
+      "工作目录": "",
+      "worktree_base": "/Users/fan/program/CCC-wt/<task>",
+      "备注": "DSH 机审（2026-08-22 S4）；DSH 不稳回退 Claude Code（见 bak）",
+      "worker_id": "W1",
+      "注入提示": false
+    },
     {
       "角色": "开发执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "执行会话 / 自动化值班组件（2026-08-27 三层分工）",
-      "命令": "scripts/dsh-executor.sh",
+      "当前绑定": "DSH（S3 切换 · 2026-08-22）",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-executor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
-      "worktree_base": "",
-      "注入提示": false,
-      "备注": "开发执行归自动化值班组件 headless（读卡→实现→自测→回写）。inject_hint=false：wrapper 自读卡内提示，Engine 不注入（防污染位置参数）。机审由审计插件另做。",
-      "worker_id": "W4"
+      "worktree_base": "/Users/fan/program/CCC-wt/<task>",
+      "备注": "DSH 开发执行体（2026-08-22 S3 切换）；前置 OPENCODE_GO_API_KEY；DSH 不稳回退 OpenCode（见 bak）",
+      "worker_id": "W4",
+      "注入提示": false
     },
     {
       "角色": "维护执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "执行会话 / 自动化值班组件",
-      "命令": "scripts/dsh-executor.sh",
+      "当前绑定": "DSH（2026-08-22）",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-executor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
-      "worktree_base": "",
-      "备注": "维护归自动化值班组件",
+      "worktree_base": "/Users/fan/program/CCC-wt/<task>",
+      "备注": "维护默认 OpenCode",
       "worker_id": "W4",
       "注入提示": false
     },
     {
       "角色": "管理席",
       "分类": "—",
-      "当前绑定": "桌面端总调度（2026-08-27）",
+      "当前绑定": "Claude Code（2026-08-22 工具收口）",
       "命令": "",
       "参数模板": "",
       "工作目录": "",
@@ -37,26 +49,14 @@
       "worker_id": "W3"
     },
     {
-      "角色": "验收席",
-      "分类": "可后台 CLI",
-      "当前绑定": "自动化值班组件 + 桌面端终审（2026-08-27）",
-      "命令": "scripts/dsh-auditor.sh",
-      "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
-      "工作目录": "",
-      "worktree_base": "",
-      "备注": "机审（v4 指令自含）；只写 ## 机审区；终审判定归桌面端总调度",
-      "worker_id": "W1",
-      "注入提示": false
-    },
-    {
       "角色": "只读取证/审计执行体",
       "分类": "可后台 CLI",
-      "当前绑定": "自动化值班组件（headless）",
+      "当前绑定": "DSH headless",
       "命令": "bash",
       "参数模板": "/Users/fan/.dsh/run-executor.sh {card_path}",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "只读取证/审计席（headless）。经 wrapper run-executor.sh 拉起，env 从 run_audit.sh 提取，Engine 零密钥。仅只读审计，不作开发。",
+      "备注": "DSH 只读取证/审计席（2026-08-15 实测 Code Run 真执行/取证精准/零残留；2026-08-16 headless 探针跑通挂账解除）。分类升级「可后台 CLI」（2026-08-18 P4）：经 wrapper run-executor.sh 拉起，env 从 run_audit.sh 提取，Engine 零密钥。仅只读审计，不作开发。",
       "worker_id": "DSH",
       "注入提示": false
     }
