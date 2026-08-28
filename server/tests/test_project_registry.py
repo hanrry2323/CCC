@@ -40,7 +40,8 @@ def test_ccc_forbidden_platform_self_dev() -> None:
 def test_taskable_excludes_ccc_and_qh() -> None:
     clear_registry_cache()
     names = taskable_names()
-    assert "qb" in names
+    # qb 2026-08-26 老板定调封存（taskable 关闭），与 ccc/qh 同列不可下达
+    assert "qb" not in names
     assert "CCC" not in names and "ccc" not in names  # ccc 禁出卡
     assert "QuantHive" not in names
     assert "qh" not in {n.lower() for n in names if n == "qh"}
@@ -63,7 +64,8 @@ def test_isolation_fields_parsed() -> None:
     """2026-08-12 隔离升级：业务仓项目解析 isolation 配置；平台例外不生成默认隔离根。"""
     clear_registry_cache()
     projects = {p.prefix: p for p in load_projects()}
-    for pref in ("mx", "xy", "hp", "qb"):
+    # qb 2026-08-26 封存（status=archived）→ 不再作为可派发业务仓，从断言集移除
+    for pref in ("mx", "xy", "hp"):
         p = projects[pref]
         assert p.isolation_worktree_root == f"/Users/fan/program/apps/.ccc-wt/{pref}"
         assert p.isolation_max_concurrent >= 1  # 字段被解析即可，不锁死值（出卡时按需调整）
