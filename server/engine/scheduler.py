@@ -359,7 +359,6 @@ def _default_registry() -> TaskRegistry:
         稀疏洞），如需轮转应走 newsyslog 配置。
         """
         import gzip as _gzip
-        import os as _os
         import time as _time
         from pathlib import Path as _P
 

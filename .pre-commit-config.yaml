@@ -1,16 +1,18 @@
 # CCC pre-commit hooks
 # 2026-08-03 重构收口：旧 scripts/ 已退役归档，pre-commit 切到新 server/ 栈。
 #   - ruff (Python lint, server/)
+# 2026-08-29 任务六：entry 钉到仓规范 venv（.venv-hub）——裸 python/ruff 依赖提交者
+#   shell 已 activate，未激活时钩子 command-not-found 反而阻断提交。
 #
-# Install: pip install pre-commit && pre-commit install
-# Run: pre-commit run --all-files
+# Install: .venv-hub/bin/pip install pre-commit && .venv-hub/bin/pre-commit install
+# Run: .venv-hub/bin/pre-commit run --all-files
 repos:
   - repo: local
     hooks:
-      # Python lint (if ruff installed — graceful skip if absent)
+      # Python lint (server/)
       - id: ruff
         name: ruff check (server/ lint)
-        entry: ruff check server/
+        entry: .venv-hub/bin/ruff check server/
         language: system
         pass_filenames: false
         files: \.(py|pyi)$
@@ -18,7 +20,7 @@ repos:
       # 卡头门禁（T52）：任务卡字段/状态/编号唯一校验——docs/dispatch 改动即校验
       - id: card-validate
         name: validate task cards (docs/dispatch)
-        entry: python -m server.board.validate docs/dispatch
+        entry: .venv-hub/bin/python -m server.board.validate docs/dispatch
         language: system
         pass_filenames: false
         files: ^docs/dispatch/
