@@ -52,23 +52,31 @@ def test_pytest_real_dispatch_redirects_to_temp(monkeypatch) -> None:
 
 
 def test_index_write_guard(monkeypatch) -> None:
-    """第三次打回修复：唯一索引写闸——非 main 检出禁止覆盖真实 dispatch 的索引。"""
+    """第三次打回修复：唯一索引写闸——生产索引目标（~/.ccc/data）非 main/pytest 禁写；临时目标放行。"""
     import subprocess as _sp
 
     real = Path(__file__).resolve().parents[2] / "docs" / "dispatch"
-    tmp_d = Path(__file__).resolve().parents[2] / "tmp" / "nonexistent-dispatch"
+    prod_index = Path.home() / ".ccc" / "data" / "cards" / "cards.index.jsonl"
+    tmp_index = Path("/tmp") / "nonexist-ccc-test-index" / "cards.index.jsonl"
+
+    # 生产索引目标：非 main 禁写 / main 放行 / pytest 禁写
+    monkeypatch.setattr(loader, "get_index_path", lambda d=None: prod_index)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
 
     def fake_run(cmd, **kwargs):
         branch = getattr(fake_run, "_branch", "rebuild/phase2")
         return _sp.CompletedProcess(cmd, 0, stdout=branch + "\n", stderr="")
 
     monkeypatch.setattr(loader.subprocess, "run", fake_run)
-    # 非 main 检出：真实 dispatch 禁写
-    assert loader._index_write_allowed(real) is False
-    # 非本仓 dispatch（测试临时目录）→ 允许
-    assert loader._index_write_allowed(tmp_d) is True
-    # main 检出：允许
+    assert loader._index_write_allowed(real) is False  # 非 main 检出禁写生产索引
     fake_run._branch = "main"
+    assert loader._index_write_allowed(real) is True   # main 放行
+    fake_run._branch = "rebuild/phase2"
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "x")
+    assert loader._index_write_allowed(real) is False  # pytest 进程禁写生产索引
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    # 测试/临时索引目标 → 放行（不碰生产）
+    monkeypatch.setattr(loader, "get_index_path", lambda d=None: tmp_index)
     assert loader._index_write_allowed(real) is True
 
 

@@ -257,22 +257,25 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
 def _index_write_allowed(dispatch_dir: Path) -> bool:
     """唯一索引写闸（第三次打回根因修复）。
 
-    仅在 production 检出（main / detached HEAD）或非本仓 dispatch（测试临时目录）
-    时才允许覆盖写索引；开发分支（rebuild/* 等）检出下 docs/dispatch 是部分快照，
-    禁止用它覆盖唯一索引（否则静默丢卡：tst998 消失根因）。
-
-    另：pytest 测试进程对真实 dispatch 一律禁写生产唯一索引（即使 get_index_path
-    被其它路径绕过，写闸作最后兜底）。
+    仅当写入目标是**生产唯一索引**（~/.ccc/data/cards/...）时才限制：
+    - pytest 测试进程一律禁写生产索引（get_index_path 已把真实 dispatch 重定向
+      到临时索引，写闸作最后兜底）；
+    - 非 main 检出（开发分支 rebuild/* 等）dispatch 是部分快照，禁止覆盖生产索引
+      ——否则 main 上存在而分支上没有的卡被静默丢出索引（tst998 消失根因）。
+    测试/临时索引目标（重定向或 tmp）一律放行。
     """
-    repo_root = Path(__file__).resolve().parents[2]
+    index_path = get_index_path(dispatch_dir)
+    prod_root = (Path.home() / ".ccc" / "data").resolve()
     try:
-        if dispatch_dir.resolve() != (repo_root / "docs" / "dispatch").resolve():
-            return True  # 非本仓 dispatch（测试临时目录等）→ 允许
-    except OSError:
+        is_prod = index_path.resolve().is_relative_to(prod_root)
+    except (OSError, AttributeError):  # noqa: BLE001
+        is_prod = False
+    if not is_prod:
         return True
     if "PYTEST_CURRENT_TEST" in os.environ:
         return False  # 测试进程不得写生产唯一索引
     try:
+        repo_root = Path(__file__).resolve().parents[2]
         out = subprocess.run(
             ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
