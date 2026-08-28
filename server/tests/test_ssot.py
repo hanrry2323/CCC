@@ -41,6 +41,37 @@ def test_get_index_path_pytest_isolation(monkeypatch, tmp_path: Path) -> None:
     assert loader.get_index_path(tmp_path) == tmp_path / "cards.index.jsonl"
 
 
+def test_pytest_real_dispatch_redirects_to_temp(monkeypatch) -> None:
+    """第三次打回修复：pytest 下传真实 docs/dispatch → 索引落测试进程临时目录（真实仓只读）。"""
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "x")
+    real = Path(__file__).resolve().parents[2] / "docs" / "dispatch"
+    p = loader.get_index_path(real)
+    assert p.is_relative_to(Path(__import__("tempfile").gettempdir()))
+    assert "CCC" not in str(p)
+    assert p != real / "cards.index.jsonl"
+
+
+def test_index_write_guard(monkeypatch) -> None:
+    """第三次打回修复：唯一索引写闸——非 main 检出禁止覆盖真实 dispatch 的索引。"""
+    import subprocess as _sp
+
+    real = Path(__file__).resolve().parents[2] / "docs" / "dispatch"
+    tmp_d = Path(__file__).resolve().parents[2] / "tmp" / "nonexistent-dispatch"
+
+    def fake_run(cmd, **kwargs):
+        branch = getattr(fake_run, "_branch", "rebuild/phase2")
+        return _sp.CompletedProcess(cmd, 0, stdout=branch + "\n", stderr="")
+
+    monkeypatch.setattr(loader.subprocess, "run", fake_run)
+    # 非 main 检出：真实 dispatch 禁写
+    assert loader._index_write_allowed(real) is False
+    # 非本仓 dispatch（测试临时目录）→ 允许
+    assert loader._index_write_allowed(tmp_d) is True
+    # main 检出：允许
+    fake_run._branch = "main"
+    assert loader._index_write_allowed(real) is True
+
+
 def test_loader_writes_single_path_only(tmp_path: Path) -> None:
     """子进程（无 pytest env）验证：DATA_DIR 唯一写点，仓内 data/ 与 dispatch 不再分叉。"""
     dispatch = tmp_path / "dispatch"

@@ -19,6 +19,8 @@ import logging
 import os
 import json
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 
 from server.board.models import UNCLASSIFIED, UNKNOWN, BoardItem, base_state, board_column, machine_audit_passed_text
@@ -220,11 +222,27 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
 
     收敛规则：production 唯一真值 = `~/.ccc/data/cards/cards.index.jsonl`
     （config.env 的 DATA_DIR=~/.ccc/data 时走 env 分支，结果相同）。
-    仅 pytest 隔离用 dispatch_dir 内的临时索引；仓内 `data/cards/` 与
-    `docs/dispatch/cards.index.jsonl` 不再作为写点（结构上杜绝再分叉）。
+    仓内 `data/cards/` 不再作为写点（结构上杜绝再分叉）。
+
+    第三次打回修复：
+    1. 测试隔离分支下，若传入的是**真实 docs/dispatch** → 索引落测试进程专属临时
+       目录（只许读不许写真实仓），彻底堵死「docs/dispatch/cards.index.jsonl
+       副本复活」写路径；tmp 合成 dispatch 仍用其目录内索引（保持既有测试断言）。
+    2. 唯一索引写闸：非 main 检出（开发分支）下 dispatch 是部分快照，禁止用它
+       覆盖重建唯一索引——否则 main 上存在而分支上不存在的卡会被静默丢掉
+       （tst998 整卡消失根因），见 `_index_write_allowed`。
     """
     if "PYTEST_CURRENT_TEST" in os.environ and dispatch_dir is not None:
-        return Path(dispatch_dir) / "cards.index.jsonl"
+        d = Path(dispatch_dir)
+        real_dispatch = Path(__file__).resolve().parents[2] / "docs" / "dispatch"
+        try:
+            if d.resolve() == real_dispatch.resolve():
+                # 真实 dispatch 在 pytest 下只读：索引落测试进程临时目录
+                base = Path(tempfile.gettempdir()) / f"ccc-test-index-{os.getpid()}"
+                return base / "cards" / "cards.index.jsonl"
+        except OSError:
+            pass
+        return d / "cards.index.jsonl"
 
     raw = os.environ.get("CCC_DATA_DIR") or os.environ.get("DATA_DIR")
     if raw:
@@ -234,6 +252,34 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
     # 无 env 兜底 = 生产数据根（与 config.env DATA_DIR 对齐）；不再回落仓内 data/
     base = Path.home() / ".ccc" / "data"
     return base / "cards" / "cards.index.jsonl"
+
+
+def _index_write_allowed(dispatch_dir: Path) -> bool:
+    """唯一索引写闸（第三次打回根因修复）。
+
+    仅在 production 检出（main / detached HEAD）或非本仓 dispatch（测试临时目录）
+    时才允许覆盖写索引；开发分支（rebuild/* 等）检出下 docs/dispatch 是部分快照，
+    禁止用它覆盖唯一索引（否则静默丢卡）。
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        if dispatch_dir.resolve() != (repo_root / "docs" / "dispatch").resolve():
+            return True  # 非本仓 dispatch（测试临时目录等）→ 允许
+    except OSError:
+        return True
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        branch = (out.stdout or "").strip()
+        if not branch or branch == "HEAD":
+            return True  # detached / 判定失败 → 保守放行
+        return branch == "main"
+    except Exception:  # noqa: BLE001
+        return True
 
 
 
@@ -461,7 +507,7 @@ def _load_dispatch_cards_incremental(directory: Path | str, include_archived: bo
                     updated_entries[entry["id"]] = entry
                 continue
 
-    if len(updated_entries) != len(index_entries) or updated:
+    if (len(updated_entries) != len(index_entries) or updated) and _index_write_allowed(dispatch_dir):
         # 外层已在 load_dispatch_cards_incremental 持锁，这里直接无锁写，避免嵌套 flock 死锁
         _write_index_entries(updated_entries, get_index_path(dispatch_dir))
 
