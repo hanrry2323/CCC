@@ -90,19 +90,19 @@ kickstart_service() {
     return 0
   fi
 
-  # 未挂载的服务跳过（如 com.ccc.engine 待 052 卡B 装回）：WARN 不算失败，
-  # 部署链不因「服务尚未装回」而整体失败；已挂载服务的重启失败仍为 ERROR。
-  if ! launchctl print "${service}" >/dev/null 2>&1; then
-    echo "[WARN] 服务 ${name} 未挂载（launchctl print 失败），跳过重启" >&2
-    log_kickstart "跳过未挂载服务: ${name}"
-    return 0
-  fi
-
   if [[ "${KICK_DRY_RUN}" == "1" ]]; then
     echo "[DRY-RUN] 将热重启 ${service}（未执行 launchctl/pkill）" >&2
     log_kickstart "[DRY-RUN] 热重启意图: ${name}"
     mkdir -p "${KICK_STATE_DIR}" 2>/dev/null || true
     echo "${now}" > "${state_file}" 2>/dev/null || true
+    return 0
+  fi
+
+  # 未挂载的服务跳过（如 com.ccc.engine 待 052 卡B 装回）：WARN 不算失败，
+  # 部署链不因「服务尚未装回」而整体失败；已挂载服务的重启失败仍为 ERROR。
+  if ! launchctl print "${service}" >/dev/null 2>&1; then
+    echo "[WARN] 服务 ${name} 未挂载（launchctl print 失败），跳过重启" >&2
+    log_kickstart "跳过未挂载服务: ${name}"
     return 0
   fi
 

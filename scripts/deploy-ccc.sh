@@ -53,8 +53,12 @@ echo "[2/3] 正在运行测试套件，执行预校验门禁 (pytest)..."
 # G4（2026-08-25 加固）：测试环境消毒——外层若导出 CCC_AUDIT_LEDGER="" 空串，conftest 的
 # setdefault 不覆盖、audit_ledger.get("").strip() 判空后回落生产账本 → 测试直写生产 ledger
 # （DSH R3-lane3 实锤）。部署前一律 unset，交由 conftest 隔离到临时测试路径；
-# EXECUTOR_PROBE_URL 同消毒（conftest 虽直赋值覆盖，防未来加载顺序变动泄漏外层值）。
-unset CCC_AUDIT_LEDGER EXECUTOR_PROBE_URL 2>/dev/null || true
+# EXECUTOR_PROBE_URL 同消毒（conftest 虽直赋值覆盖，防未来加载顺序变动泄漏外层值）；kickstart 开关见下。
+# kickstart 开关同理消毒：调用方的 DRY_RUN/FORCE/间隔/状态目录只作用于第 3 步重启动作，
+# 不得泄入 pytest 门禁（test_ccc083_antispin 按这些开关分支，外层泄漏会假绿/假红）。
+_KICK_DRY_RUN_SAVED="${CCC_KICKSTART_DRY_RUN:-}"
+unset CCC_AUDIT_LEDGER EXECUTOR_PROBE_URL CCC_KICKSTART_DRY_RUN \
+      CCC_KICKSTART_FORCE CCC_KICKSTART_MIN_INTERVAL CCC_KICKSTART_STATE_DIR 2>/dev/null || true
 # 容许 t53 存量 3 个失败，其余测试必须全红绿通过
 # 如果 pytest 正常（除去 t53 后全过），则退出码为 0 或因 t53 退出码非 0。
 # 我们可以运行 pytest 并在失败时过滤掉由于 t53 引起的错误，或在测试断言中精确校验
@@ -64,6 +68,10 @@ unset CCC_AUDIT_LEDGER EXECUTOR_PROBE_URL 2>/dev/null || true
 if ! "${PYTHON_BIN}" -m pytest --ignore=server/tests/test_t53_console_roadmap.py -q; then
   print_recovery_hint "Pytest" "核心测试用例未通过，安全性门禁拒绝发布。"
   exit 2
+fi
+# 门禁通过后恢复调用方 kickstart 演练开关（DRY_RUN 只影响第 3 步重启动作）
+if [[ -n "${_KICK_DRY_RUN_SAVED}" ]]; then
+  export CCC_KICKSTART_DRY_RUN="${_KICK_DRY_RUN_SAVED}"
 fi
 
 echo "[3/3] 测试全部通过。正在执行热重启自愈收口 (kickstart)..."
