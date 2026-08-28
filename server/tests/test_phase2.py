@@ -113,6 +113,33 @@ def test_run_card_gates_ok_and_fail(tmp_path: Path) -> None:
     assert "失败" in fails[0]
 
 
+def test_list_branch_written_cards(monkeypatch) -> None:
+    """分支信封：origin/codex/tst997-* 分支卡=已回写 且 main 未关闭 → 待消费。"""
+    card_md = (
+        "# 任务卡 tst997 · Phase2 E2E\n"
+        "> 关联：测试 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-28\n\n"
+        "## 目标\nx\n"
+    )
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        if cmd[0] == "for-each-ref":
+            return _ok_rc(0, stdout="refs/remotes/origin/codex/tst997-phase2-e2e\n")
+        if cmd[:3] == ["diff", "--name-only", "origin/main"]:
+            return _ok_rc(0, stdout="docs/dispatch/tst/tst997-phase2-e2e.md\n")
+        if cmd[0] == "show" and "tst997" in cmd[1]:
+            return _ok_rc(0, stdout=card_md)
+        if cmd[:2] == ["merge-base", "--is-ancestor"]:
+            return _ok_rc(1)  # 分支未合入 main
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    cards = phase2._list_branch_written_cards()
+    assert len(cards) == 1
+    assert cards[0]["id"] == "tst997"
+    assert cards[0]["branch"] == "origin/codex/tst997-phase2-e2e"
+    assert cards[0]["path_rel"] == "docs/dispatch/tst/tst997-phase2-e2e.md"
+
+
 def test_process_one_reject_does_not_block(monkeypatch, tmp_path: Path) -> None:
     card_file, card = _mk_card(tmp_path)
     ledger_rows: list[dict] = []

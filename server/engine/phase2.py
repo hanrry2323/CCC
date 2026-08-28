@@ -99,39 +99,105 @@ def _branch_in_main(branch: str) -> bool:
 
 
 def list_written_cards(dispatch_dir: str | Path) -> list[dict]:
-    """扫描 dispatch，返回 base_state == 已回写 的卡（含卡文件路径）。"""
+    """扫描「已回写」卡：工作区 dispatch + origin/codex/* 分支信封两路合并去重。
+
+    真实流：DSH 在 `codex/<stem>` 分支上把卡置「已回写」并 push（分支信封），
+    引擎消费的「已回写」事实源 = 分支信封；工作区卡兜底（部署重试场景）。
+    """
     from server.board.card_header import is_task_card_text  # noqa: F401
     from server.board.loader import load_dispatch_cards, load_index_file
     from server.board.models import base_state
 
+    cards: dict[str, dict] = {}
     d = Path(dispatch_dir)
     idx = load_index_file(d)
-    cards: list[dict] = []
     for item in load_dispatch_cards(d, include_archived=False):
         if base_state(item.state) != _WRITTEN:
             continue
         path = idx.get(item.id, {}).get("path", "")
-        if path and not os.path.isabs(path):
-            path = str(_repo_root() / path)
-        cards.append(
-            {
-                "id": item.id,
-                "state": item.state,
-                "title": item.title,
-                "project": item.project,
-                "path": path,
-            }
-        )
+        cards[item.id] = {
+            "id": item.id,
+            "state": item.state,
+            "title": item.title,
+            "project": item.project,
+            "path_rel": path,
+            "path": str(_repo_root() / path) if path and not os.path.isabs(path) else path,
+            "branch": "",
+        }
+    for bc in _list_branch_written_cards():
+        cards.setdefault(bc["id"], bc)
+    return list(cards.values())
+
+
+def _list_branch_written_cards() -> list[dict]:
+    """扫 origin/codex/* 分支：分支卡状态=已回写 且 main 未关闭 且分支未合入 → 待消费。"""
+    from server.board.card_header import CardHeader
+    from server.board.models import base_state
+
+    r = git(["for-each-ref", "--format=%(refname)", "refs/remotes/origin/codex/*"])
+    cards: list[dict] = []
+    for ref in (r.stdout or "").splitlines():
+        ref = ref.strip()
+        if not ref:
+            continue
+        branch = ref.replace("refs/remotes/", "")
+        diff = git(["diff", "--name-only", "origin/main", ref, "--", "docs/dispatch"])
+        for cp in (diff.stdout or "").splitlines():
+            cp = cp.strip()
+            if not cp.endswith(".md"):
+                continue
+            show = git(["show", f"{ref}:{cp}"])
+            if show.returncode != 0:
+                continue
+            try:
+                hdr = CardHeader.from_text(show.stdout, fallback_id=Path(cp).stem)
+            except Exception:  # noqa: BLE001
+                continue
+            if base_state(hdr.state) != _WRITTEN:
+                continue
+            mshow = git(["show", f"origin/main:{cp}"])
+            if mshow.returncode == 0:
+                try:
+                    mhdr = CardHeader.from_text(mshow.stdout, fallback_id=Path(cp).stem)
+                except Exception:  # noqa: BLE001
+                    mhdr = None
+                if mhdr is not None and base_state(mhdr.state) == _CLOSED:
+                    continue  # main 已关闭 → 已消费
+            if _branch_in_main(branch):
+                continue  # 分支已合入 main → 已消费（重试场景由工作区卡接管）
+            cards.append(
+                {
+                    "id": hdr.id,
+                    "state": hdr.state,
+                    "title": hdr.title,
+                    "project": hdr.project,
+                    "path_rel": cp,
+                    "path": str(_repo_root() / cp),
+                    "branch": branch,
+                }
+            )
     return cards
 
 
 def resolve_card_file(card: dict) -> Path | None:
-    p = Path(card["path"]) if card.get("path") else None
+    p = Path(card.get("path") or card.get("path_rel") or "")
     if p and p.is_file():
         return p
-    d = _repo_root() / "docs" / "dispatch"
-    hits = list(d.glob(f"*/{card['id']}-*.md")) + list(d.glob(f"{card['id']}-*.md"))
-    return hits[0] if hits else None
+    return None
+
+
+def _materialize_card(card: dict) -> None:
+    """分支卡落工作区（打回/门禁需在 main 工作区改卡）。"""
+    branch = card.get("branch", "")
+    rel = card.get("path_rel", "")
+    if not branch or not rel:
+        return
+    show = git(["show", f"origin/{branch}:{rel}"])
+    if show.returncode != 0:
+        return
+    target = _repo_root() / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(show.stdout, encoding="utf-8")
 
 
 def branch_for(card_file: Path) -> str:
@@ -358,15 +424,15 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
     from server.board.audit_ledger import record_action
 
     card_file = resolve_card_file(card)
-    if card_file is None:
-        record_action("phase2_alert", card["id"], source="phase2", detail="卡文件缺失，无法消费")
-        return {"id": card["id"], "result": "error", "reason": "card file missing"}
-    branch = branch_for(card_file)
+    branch = card.get("branch") or (branch_for(card_file) if card_file else "")
+    if not branch:
+        record_action("phase2_alert", card["id"], source="phase2", detail="卡分支无法判定，无法消费")
+        return {"id": card["id"], "result": "error", "reason": "branch unknown"}
     prev_branch = _current_branch()
     try:
         # 已合入但部署失败的重试守卫：分支已在 main → 跳过重复审核，直接门禁+部署
         if not _branch_in_main(branch):
-            audit = audit_card(card, card_file, branch, cfg, audit_driver)
+            audit = audit_card(card, card_file or Path(card.get("path_rel", "card.md")), branch, cfg, audit_driver)
             if audit["verdict"] == "ERROR":
                 record_action(
                     "phase2_audit_fail", card["id"], source="phase2",
@@ -375,6 +441,13 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 logger.error("phase2 CC 审核失败，卡保留「已回写」（不静默丢卡）: %s", card["id"])
                 return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
             if audit["verdict"] == "REJECT":
+                git(["checkout", "main"])
+                if resolve_card_file(card) is None:
+                    _materialize_card(card)
+                card_file = resolve_card_file(card)
+                if card_file is None:
+                    record_action("phase2_alert", card["id"], source="phase2", detail="无法落打回卡文件")
+                    return {"id": card["id"], "result": "error", "reason": "card file missing on reject"}
                 set_card_state(card_file, f"{_REJECTED}（CC 审核不通过）", "REJECT", audit["reasons"])
                 git(["add", "--", str(card_file)])
                 git(["commit", "-m", f"chore(phase2): {card['id']} CC 审核不通过自动打回"])
@@ -389,9 +462,19 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 return {"id": card["id"], "result": "error", "reason": err}
         else:
             logger.info("phase2 分支已在 main（重试部署场景），跳过审核: %s", card["id"])
+            git(["checkout", "main"])
 
-        # 门禁（合并后的 main 工作区上跑）
-        gate_fails = run_card_gates(resolve_card_file(card) or card_file)
+        # 合入后卡文件应已在 main 工作区
+        card_file = resolve_card_file(card)
+        if card_file is None:
+            _materialize_card(card)
+            card_file = resolve_card_file(card)
+        if card_file is None:
+            record_action("phase2_alert", card["id"], source="phase2", detail="合入后卡文件缺失")
+            return {"id": card["id"], "result": "error", "reason": "card file missing after merge"}
+
+        # 门禁（main 工作区）
+        gate_fails = run_card_gates(card_file)
         if gate_fails:
             git(["reset", "--hard", "origin/main"])
             set_card_state(card_file, f"{_REJECTED}（门禁失败）", "REJECT", "；".join(gate_fails))
