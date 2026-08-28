@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ── scripts/kickstart-ccc.sh ──
-# 幂等重启 com.ccc.engine、com.ccc.web-server 与 com.ccc.board-scheduler（P5 灭：防部署悬挂与热自愈）
+# 幂等重启 com.ccc.engine 与 com.ccc.web-server 两服务（ccc-plan-052 卡C：服务集对齐两服务；board-scheduler/watchdog 维持停用，巡检已内嵌 engine）
 #
 # 用法：
 #   ./scripts/kickstart-ccc.sh [--engine-only] [--web-only] [--all]
@@ -28,14 +28,12 @@ log_kickstart() {
 
 UID_VAL="$(id -u)"
 
-# 服务配置
+# 服务配置（ccc-plan-052 卡C：恰两服务）
 ENGINE_SERVICE="gui/${UID_VAL}/com.ccc.engine"
 WEB_SERVICE="gui/${UID_VAL}/com.ccc.web-server"
-SCHEDULER_SERVICE="gui/${UID_VAL}/com.ccc.board-scheduler"
 
 ENGINE_PNAME="server.engine.main"
 WEB_PNAME="server.web.server"
-SCHEDULER_PNAME="server.board.scheduler"
 
 # ── ccc083 防旋（2026-08-25）：同服务最小重启间隔 + DRY-RUN 演练 ──
 # 背景：2026-08-24 机审会话连环触发本脚本（47 次 kickstart），在飞执行体被连带击杀
@@ -92,6 +90,14 @@ kickstart_service() {
     return 0
   fi
 
+  # 未挂载的服务跳过（如 com.ccc.engine 待 052 卡B 装回）：WARN 不算失败，
+  # 部署链不因「服务尚未装回」而整体失败；已挂载服务的重启失败仍为 ERROR。
+  if ! launchctl print "${service}" >/dev/null 2>&1; then
+    echo "[WARN] 服务 ${name} 未挂载（launchctl print 失败），跳过重启" >&2
+    log_kickstart "跳过未挂载服务: ${name}"
+    return 0
+  fi
+
   if [[ "${KICK_DRY_RUN}" == "1" ]]; then
     echo "[DRY-RUN] 将热重启 ${service}（未执行 launchctl/pkill）" >&2
     log_kickstart "[DRY-RUN] 热重启意图: ${name}"
@@ -142,12 +148,6 @@ fi
 
 if [[ "${ALL}" == true ]] || [[ "${WEB_ONLY}" == true ]]; then
   if ! kickstart_service "${WEB_SERVICE}" "${WEB_PNAME}"; then
-    FAILED=$((FAILED + 1))
-  fi
-fi
-
-if [[ "${ALL}" == true ]]; then
-  if ! kickstart_service "${SCHEDULER_SERVICE}" "${SCHEDULER_PNAME}"; then
     FAILED=$((FAILED + 1))
   fi
 fi

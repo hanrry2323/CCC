@@ -13,7 +13,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PYTHON_BIN="${CCC_PYTHON_BIN:-python3}"
+# ccc-plan-052 卡C：pytest 门禁统一钉死 .venv-hub venv（裸 python3 不显式、版本漂移）
+PYTHON_BIN="${CCC_PYTHON_BIN:-${PROJECT_ROOT}/.venv-hub/bin/python}"
 
 cd "$PROJECT_ROOT"
 
