@@ -753,7 +753,7 @@ def count_recent_short_sessions(
                 ts = rec.get("ts")
                 if isinstance(ts, str):
                     try:
-                        from datetime import datetime, timezone
+                        from datetime import datetime
 
                         parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                         event_ts = parsed.timestamp()
@@ -3798,6 +3798,7 @@ def _ledger_record(
     fix_action: str = "",
     source: str = "engine",
     kind: str = "audit",
+    probe: bool = False,  # rebuild/phase2：True=扫描/无裁决尝试（探针），False=真实裁决
 ) -> None:
     """机审结论落台账（命中率台账 · v4 2026-08-14 · 重度复审口径修正）。
 
@@ -3832,6 +3833,7 @@ def _ledger_record(
             fix_action=fix_action,
             source=source,
             kind=kind,
+            probe=probe or kind == "infra",  # infra（无裁决的基建失败）一律视为探针
         )
         if conclusion == "通过" and kind != "infra":
             backfill_card_hits(getattr(work, "id", "") or "")

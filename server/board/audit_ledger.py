@@ -85,8 +85,13 @@ def record_audit(
     fix_action: str = "",  # 就地修复 / 修复轮 / 打回 / ""
     source: str = "engine",  # engine / manual
     kind: str = "audit",  # audit / infra（基建失败不参与命中）
+    probe: bool = False,  # rebuild/phase2：True=扫描/探针类（无真实打回/通过裁决），False=真实裁决
 ) -> None:
-    """机审结论落定追加写入（append，带锁）。命中由回填函数设置。"""
+    """机审结论落定追加写入（append，带锁）。命中由回填函数设置。
+
+    probe 打标（任务三）：探针记录与真实打回可区分——探针=引擎扫描/无裁决尝试，
+    真实=对卡产生 通过/打回 裁决。历史记录不重写，仅新记录带该字段。
+    """
     _append(
         {
             "ts": _now_iso(),
@@ -99,6 +104,7 @@ def record_audit(
             "hit": None,
             "source": source,
             "kind": kind,
+            "probe": probe,
         }
     )
 

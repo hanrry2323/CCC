@@ -216,6 +216,13 @@ def load_dispatch_cards(directory: Path | str, include_archived: bool = False) -
 
 
 def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
+    """卡片索引唯一真值路径（单一事实源 · rebuild/phase2）。
+
+    收敛规则：production 唯一真值 = `~/.ccc/data/cards/cards.index.jsonl`
+    （config.env 的 DATA_DIR=~/.ccc/data 时走 env 分支，结果相同）。
+    仅 pytest 隔离用 dispatch_dir 内的临时索引；仓内 `data/cards/` 与
+    `docs/dispatch/cards.index.jsonl` 不再作为写点（结构上杜绝再分叉）。
+    """
     if "PYTEST_CURRENT_TEST" in os.environ and dispatch_dir is not None:
         return Path(dispatch_dir) / "cards.index.jsonl"
 
@@ -224,7 +231,8 @@ def get_index_path(dispatch_dir: Path | str | None = None) -> Path:
         base = Path(raw).expanduser().resolve()
         return base / "cards" / "cards.index.jsonl"
 
-    base = Path(__file__).resolve().parents[2] / "data"
+    # 无 env 兜底 = 生产数据根（与 config.env DATA_DIR 对齐）；不再回落仓内 data/
+    base = Path.home() / ".ccc" / "data"
     return base / "cards" / "cards.index.jsonl"
 
 
