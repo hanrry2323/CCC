@@ -1383,8 +1383,28 @@ def gather_audit_hit_rate() -> dict[str, Any]:
         return {"total": 0, "hits": 0, "misses": 0, "hit_rate": None, "error": "ledger 不可读"}
 
 
-def run_playwright_smoke_test(url: str = "http://127.0.0.1:7788") -> dict[str, Any]:
-    """Playwright 只读功能巡查：验证 health/config/看板加载状态."""
+def _web_probe_url() -> str:
+    """Playwright 巡查目标单一同源：WEB_HOST 优先（经 plist 注入 192.168.3.116）。
+
+    本地/测试模式（无 WEB_HOST）回落 http://127.0.0.1:7788，127.0.0.1 语义不破坏。
+    WEB_HOST 走 launchd 环境变量（plist EnvironmentVariables）注入，config.env 保持只读。
+    """
+    env_host = os.environ.get("WEB_HOST", "").strip()
+    host = env_host or "127.0.0.1"
+    try:
+        port = int(os.environ.get("WEB_PORT", "").strip() or 7788)
+    except (TypeError, ValueError):
+        port = 7788
+    return f"http://{host}:{port}"
+
+
+def run_playwright_smoke_test(url: str | None = None) -> dict[str, Any]:
+    """Playwright 只读功能巡查：验证 health/config/看板加载状态.
+
+    默认 url 取 _web_probe_url()（WEB_HOST 注入内网地址；本地/测试回落 127.0.0.1:7788）。
+    """
+    if url is None:
+        url = _web_probe_url()
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:

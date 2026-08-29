@@ -510,6 +510,20 @@ def test_run_playwright_smoke_test_failure() -> None:
     assert res['health_status'] in ('跳过', '失败')
 
 
+def test_web_probe_url_injected_env_points_to_lan(monkeypatch) -> None:
+    """WEB_HOST 注入（plist 环境变量 192.168.3.116）→ 巡查目标指向内网地址。"""
+    monkeypatch.setenv("WEB_HOST", "192.168.3.116")
+    monkeypatch.setenv("WEB_PORT", "7788")
+    assert observer._web_probe_url() == "http://192.168.3.116:7788"
+
+
+def test_web_probe_url_fallback_loopback(monkeypatch) -> None:
+    """无 WEB_HOST（本地/测试模式）→ 回落 http://127.0.0.1:7788，127.0.0.1 语义不破坏。"""
+    monkeypatch.delenv("WEB_HOST", raising=False)
+    monkeypatch.delenv("WEB_PORT", raising=False)
+    assert observer._web_probe_url() == "http://127.0.0.1:7788"
+
+
 # ── 第二步闭环：数据一致性检查项（里程碑/方案进度 vs 级联回写声明） ──
 
 def _make_xy_repo(tmp_path: Path) -> Path:

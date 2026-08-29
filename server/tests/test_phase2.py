@@ -348,3 +348,16 @@ def test_consume_once_proceeds_when_clean(monkeypatch, tmp_path: Path) -> None:
     stats = phase2.consume_once(tmp_path, {})
     assert stats["closed"] == 1
     assert "skipped_dirty" not in stats
+
+
+def test_web_host_injected_env_points_to_lan(monkeypatch) -> None:
+    """WEB_HOST 注入（plist 环境变量 192.168.3.116）→ 探活 host 指向内网地址。"""
+    monkeypatch.setenv("WEB_HOST", "192.168.3.116")
+    monkeypatch.delenv("WEB_PORT", raising=False)
+    assert phase2._web_host({}) == "192.168.3.116"
+
+
+def test_web_host_fallback_loopback() -> None:
+    """无 WEB_HOST（本地/测试模式）→ 回落 127.0.0.1，127.0.0.1 语义不破坏。"""
+    cfg = {"WEB_HOST": ""}
+    assert phase2._web_host(cfg) == "127.0.0.1"

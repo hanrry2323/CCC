@@ -447,9 +447,21 @@ def _http_ok(url: str, timeout: float = 5.0) -> bool:
         return False
 
 
+def _web_host(cfg: dict) -> str:
+    """web 探活主机单一同源：WEB_HOST 配置优先（经 plist 注入 192.168.3.116）。
+
+    本地/测试模式（无 WEB_HOST）回落 127.0.0.1，127.0.0.1 语义不破坏。
+    WEB_HOST 走 launchd 环境变量（plist EnvironmentVariables）注入，config.env 保持只读。
+    """
+    env_host = os.environ.get("WEB_HOST", "").strip()
+    if env_host:
+        return env_host
+    return str(cfg.get("WEB_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+
+
 def deploy_and_probe(cfg: dict) -> tuple[bool, str]:
     """启动 web（若未在听）+ /health 探活；端口响应正常才视为部署完成。"""
-    host = "127.0.0.1"
+    host = _web_host(cfg)
     try:
         port = int(cfg.get("WEB_PORT") or cfg.get("BOARD_PORT") or 7788)
     except (TypeError, ValueError):
