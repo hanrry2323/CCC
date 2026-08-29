@@ -161,14 +161,19 @@ is_engine_heartbeat_healthy() {
 }
 
 # 4. 检查 web-server HTTP 健康
+# 2026-08-29 改绑对齐：web 只听内网地址（192.168.3.116）后 127.0.0.1 不再监听，
+# 单地址探活会误判健康服务为故障 → 防旋自愈空转。改双地址探测（任一 200 即健康），
+# 地址表可用 CCC_WATCHDOG_WEB_HEALTH_URLS 覆盖（空格分隔）。
 is_web_http_healthy() {
-  local http_code
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://localhost:7788/health 2>/dev/null || echo "000")
-  if [[ "$http_code" == "200" ]]; then
-    return 0
-  else
-    return 1
-  fi
+  local url http_code
+  local urls="${CCC_WATCHDOG_WEB_HEALTH_URLS:-http://127.0.0.1:7788/health http://192.168.3.116:7788/health}"
+  for url in ${urls}; do
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "${url}" 2>/dev/null || echo "000")
+    if [[ "$http_code" == "200" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # ── P0-2a 预设变更监控（2026-08-23）：preset hash 基线校验 ──

@@ -40,6 +40,24 @@
   <div class="hub-view" id="view-dsh"></div>
 </div>
 
+<!-- 登录门（2026-08-29 读闸收口）：无 token 打开即见登录页，口令换签后进看板 -->
+<div id="hub-login" class="hub-login" hidden>
+  <form class="hub-login-card" id="hub-login-form" autocomplete="on">
+    <div class="hub-login-brand">CCC <span>看板</span></div>
+    <p class="hub-login-sub">内网看板 · 凭口令登录</p>
+    <div class="hub-login-field">
+      <label for="hub-login-user">账号</label>
+      <input id="hub-login-user" class="hub-login-input" type="text" value="ccc" autocomplete="username" spellcheck="false">
+    </div>
+    <div class="hub-login-field">
+      <label for="hub-login-pass">口令</label>
+      <input id="hub-login-pass" class="hub-login-input" type="password" autocomplete="current-password" autofocus>
+    </div>
+    <div id="hub-login-error" class="hub-login-error" hidden></div>
+    <button type="submit" id="hub-login-submit" class="hub-login-submit">登录看板</button>
+  </form>
+</div>
+
 <script src="/js/shell-ui.js?v=20260809t12"></script>
 <script type="module" src="/js/app.js?v=20260809t12"></script>
 </body>

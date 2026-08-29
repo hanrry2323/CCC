@@ -6,9 +6,13 @@
 # 浏览器 DOM 层（折叠渲染/console 具体报错）依赖 Playwright（M1 环境）。
 #
 # 两种模式：
-#   verify-shell.sh                    默认连 127.0.0.1:7788（已部署壳的复验）
+#   verify-shell.sh                    默认连 192.168.3.116:7788（已部署壳的复验；
+#                                      2026-08-29 改绑内网地址后 127.0.0.1 不再监听）
 #   verify-shell.sh --local            起本地测试服务（随机端口）后复验；
 #                                      本地服务无大脑配置，默认跳过对话类场景
+#
+# 凭证（2026-08-29 读闸收口）：敏感壳端点须持 token——设 CCC_SHELL_VERIFY_TOKEN
+# 环境变量透传给 verify_shell_checks.py；未设时场景 3 SKIP、对话类场景 401。
 #
 # 用法：
 #   scripts/verify-shell.sh [--host H] [--port P] [--local]
@@ -32,7 +36,7 @@ if [[ -z "$PYTHON_BIN" ]]; then
   exit 2
 fi
 
-HOST="127.0.0.1"
+HOST="${CCC_VERIFY_SHELL_HOST:-192.168.3.116}"
 PORT="7788"
 LOCAL=false
 SKIP_CONV=false
@@ -65,6 +69,7 @@ trap cleanup EXIT
 
 # ── 本地模式：起测试服务（随机端口） ──
 if [[ "$LOCAL" == true ]]; then
+  HOST="127.0.0.1"   # 本地测试服务只绑环回
   PORT="$("$PYTHON_BIN" - <<'PYEOF'
 import socket
 s = socket.socket()

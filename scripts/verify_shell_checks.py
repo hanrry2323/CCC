@@ -15,16 +15,22 @@
 本脚本覆盖服务端 + 前端守卫的机器可验部分；--skip-conversation 跳过 4/5/6。
 
 用法：
-  python3 scripts/verify_shell_checks.py [--base http://127.0.0.1:PORT]
+  python3 scripts/verify_shell_checks.py [--base http://192.168.3.116:7788]
+                                         [--token <Bearer token>]
                                          [--skip-conversation]
 返回码：0 = 全场景通过；1 = 有 FAIL。
+
+2026-08-29 读闸收口对齐：敏感壳端点须持 token（--token 或
+CCC_SHELL_VERIFY_TOKEN）；无凭证侧改为断言登录门/读闸生效（场景 1）。
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -32,6 +38,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # 会话维度隔离：对话类检查用专属 thread_id，不污染全局/持久化历史
 TEST_THREAD = "verify-shell-test"
+
+# 2026-08-29 读闸收口：壳端点须持 token（--token 或 CCC_SHELL_VERIFY_TOKEN）
+TOKEN = ""
 
 _results: list[tuple[str, str, str]] = []
 
@@ -42,34 +51,59 @@ def _record(name: str, status: str, detail: str) -> None:
 
 
 def _request(path: str, body: dict | None = None, timeout: float = 30.0):
-    """GET/POST helper；返回 (status, bytes)。"""
+    """GET/POST helper；返回 (status, bytes)。带 TOKEN 时附 Bearer 头。"""
     url = BASE + path
+    headers = {"Content-Type": "application/json"}
+    if TOKEN:
+        headers["Authorization"] = f"Bearer {TOKEN}"
     if body is not None:
         req = urllib.request.Request(
             url,
             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
     else:
-        req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.status, resp.read()
+        req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
 
 
 def _check_base() -> None:
-    """场景 1：免登录直进。"""
+    """场景 1：登录门生效（2026-08-29 读闸收口语义）。
+
+    /health 免鉴权返回 auth_required=false（免登录模式开）；无凭证访问壳 / 与
+    敏感读 /board/states 一律 401（登录门 + 读闸生效），不再免登录直进。"""
     try:
         status, raw = _request("/health")
         data = json.loads(raw)
         auth_req = data.get("auth_required", "?")
         no_login = auth_req in (False, "false", "False", "0")
-        if status == 200 and data.get("status") == "ok" and no_login:
-            _record("免登录直进", "PASS", f"/health ok（auth_required={auth_req}），直连免鉴权")
+        shell_status, _ = _request("/")
+        board_status, _ = _request("/board/states")
+        if (
+            status == 200
+            and data.get("status") == "ok"
+            and no_login
+            and shell_status == 401
+            and board_status == 401
+        ):
+            _record(
+                "登录门生效",
+                "PASS",
+                f"/health ok（auth_required={auth_req}）；无凭证 / → {shell_status}，/board/states → {board_status}（读闸封堵）",
+            )
         else:
-            _record("免登录直进", "FAIL", f"/health status={status} auth_required={auth_req}")
+            _record(
+                "登录门生效",
+                "FAIL",
+                f"/health status={status} auth_required={auth_req}；无凭证 / → {shell_status}，/board/states → {board_status}",
+            )
     except Exception as exc:  # noqa: BLE001
-        _record("免登录直进", "FAIL", f"连接异常: {exc}")
+        _record("登录门生效", "FAIL", f"连接异常: {exc}")
 
 
 def _check_projects() -> None:
@@ -90,7 +124,10 @@ def _check_projects() -> None:
 
 
 def _check_zero_console_error() -> None:
-    """场景 3：零 console error（服务端侧）——全部壳端点无 5xx/401。"""
+    """场景 3：零 console error（服务端侧）——全部壳端点带 token 无 5xx/401。
+
+    2026-08-29 读闸收口：敏感壳端点须持凭证（/health、/config、/projects 仍公开）。
+    """
     endpoints = [
         "/health",
         "/config",
@@ -102,6 +139,9 @@ def _check_zero_console_error() -> None:
         "/board/by_project",
         "/ops/summary",
     ]
+    if not TOKEN:
+        _record("零 console error", "SKIP", "未提供 --token/CCC_SHELL_VERIFY_TOKEN（读闸收口后壳端点须凭证）")
+        return
     bad: list[str] = []
     reachable = 0
     for ep in endpoints:
@@ -113,7 +153,7 @@ def _check_zero_console_error() -> None:
         except Exception as exc:  # noqa: BLE001
             bad.append(f"{ep}:{exc}")
     if reachable == len(endpoints) and not bad:
-        _record("零 console error", "PASS", f"{len(endpoints)} 个壳端点全部 2xx/3xx，无 5xx/401")
+        _record("零 console error", "PASS", f"{len(endpoints)} 个壳端点带 token 全部 2xx/3xx，无 5xx/401")
     else:
         _record("零 console error", "FAIL", f"异常端点: {bad}")
 
@@ -128,8 +168,11 @@ def _stream_conversation(timeout: float = 90.0) -> tuple[str, int, list[str]]:
         {"message": "ping（verify-shell 流式检查）", "stream": True, "thread_id": TEST_THREAD},
         ensure_ascii=False,
     ).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if TOKEN:
+        headers["Authorization"] = f"Bearer {TOKEN}"
     req = urllib.request.Request(
-        url, data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        url, data=payload, headers=headers, method="POST"
     )
     text_len = 0
     thinking_lens: list[int] = []
@@ -261,15 +304,19 @@ def _check_switch_no_stream_loss() -> None:
 
 
 def main(argv: list[str]) -> int:
-    global BASE, CONV_TIMEOUT
-    BASE = "http://127.0.0.1:7788"
+    global BASE, CONV_TIMEOUT, TOKEN
+    # 2026-08-29 改绑对齐：web 只听内网地址，127.0.0.1 不再监听
+    BASE = "http://192.168.3.116:7788"
     CONV_TIMEOUT = 120
+    TOKEN = os.environ.get("CCC_SHELL_VERIFY_TOKEN", "").strip()
     skip_conv = False
     args = list(argv)
     while args:
         a = args.pop(0)
         if a == "--base":
             BASE = args.pop(0)
+        elif a == "--token":
+            TOKEN = args.pop(0).strip()
         elif a == "--skip-conversation":
             skip_conv = True
         elif a == "--conv-timeout":

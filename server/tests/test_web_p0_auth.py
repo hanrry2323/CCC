@@ -1,8 +1,10 @@
 """test_web_p0_auth — P0 暴露面止血 + 凭证文件回退回归测试（2026-08-29）。
 
-对应 ccc-frontend-audit-20260829 P0 分期，覆盖：
-- 免登录模式（CCC_WEB_AUTH_REQUIRED=0）下的读闸：/wall/api/*、/ops/ports、
-  /ops/portals、/ops/services、/projects/*/threads 无 token 一律 401，带 token 200；
+对应 ccc-frontend-audit-20260829 P0 分期 + P1 尾巴收口（2026-08-29），覆盖：
+- 免登录模式（CCC_WEB_AUTH_REQUIRED=0）下的读闸：登录门之后的全部读端点
+  （/wall/api/*、/tasks/*、/cards*、/conversation、/ops/*、/loop/findings、
+  /plans/*、/board/*、/roadmap/*）无 token 一律 401，带 token 200；
+- 公开白名单收敛：仅 /health、/config、/projects 与静态页免鉴权；
 - SSE 端点 ?token= 携带方式（EventSource 无法带 Authorization 头）；
 - ~/.ccc/web-auth.txt 凭证回退（单行口令 / user:pass），/session 可正常签发；
 - 零消费遗留路由下线：/dsh/workspaces、/dsh/sessions/<id> 返回 404；
@@ -156,10 +158,87 @@ class TestReadGateFreeMode:
         status, _, _ = _request(free_server, "GET", "/wall/api/active?token=deadbeef")
         assert status == 401
 
-    def test_open_read_stays_free(self, free_server):
-        """读闸只封清单内端点：/cards 等常规读在免登录模式仍直连可用。"""
-        status, _, _ = _request(free_server, "GET", "/cards")
-        assert status == 200
+    def test_p1_tail_read_gate_401_without_token(self, free_server):
+        """读闸整体收口（2026-08-29 P1 尾巴）：登录门之后的全部读端点
+        无凭证一律 401——卡片/任务/看板/计划/线路图/运维/巡检/对话历史。"""
+        paths = (
+            "/tasks/running",
+            "/tasks/ccc-001",
+            "/cards",
+            "/cards/search?q=x",
+            "/conversation",
+            "/ops/summary",
+            "/ops/failures",
+            "/ops/concurrency",
+            "/ops/relay-stats",
+            "/ops/hp-health",
+            "/ops/pg-health",
+            "/ops/kb-health",
+            "/ops/dsh-findings",
+            "/loop/findings",
+            "/plans/list",
+            "/plans/card-states",
+            "/board/states",
+            "/board/realtime",
+            "/board/recent",
+            "/board/by_project",
+            "/board/snapshot",
+            "/board/roadmap",
+            "/roadmap/projects",
+        )
+        for path in paths:
+            status, _, _ = _request(free_server, "GET", path)
+            assert status == 401, f"{path} 无凭证应 401，got {status}"
+
+    def test_p1_tail_read_gate_200_with_token(self, free_server):
+        """同一批端点带有效 token 一律 200（读闸放行持签者）。"""
+        token = self._token(free_server)
+        headers = {"Authorization": f"Bearer {token}"}
+        paths = (
+            "/tasks/running",
+            "/cards",
+            "/cards/search?q=x",
+            "/conversation",
+            "/ops/summary",
+            "/ops/failures",
+            "/ops/concurrency",
+            "/ops/relay-stats",
+            "/ops/hp-health",
+            "/ops/pg-health",
+            "/ops/kb-health",
+            "/ops/dsh-findings",
+            "/loop/findings",
+            "/plans/list",
+            "/plans/card-states",
+            "/board/states",
+            "/board/realtime",
+            "/board/recent",
+            "/board/by_project",
+            "/board/snapshot",
+            "/board/roadmap",
+            "/roadmap/projects",
+        )
+        for path in paths:
+            status, _, _ = _request(free_server, "GET", path, headers=headers)
+            assert status == 200, f"{path} 带 token 应 200，got {status}"
+
+    def test_tasks_stream_401_without_token(self, free_server):
+        """SSE 日志流同在读闸：无凭证连接即断（EventSource 走 ?token=）。"""
+        parsed = urlparse(free_server)
+        conn = HTTPConnection(parsed.hostname, parsed.port, timeout=10)
+        try:
+            conn.request("GET", "/tasks/stream?ids=ccc-001")
+            resp = conn.getresponse()
+            assert resp.status == 401
+            resp.read()
+        finally:
+            conn.close()
+
+    def test_public_read_stays_free(self, free_server):
+        """读闸白名单收敛后仍公开：/health、/config、/projects 免登录直连。"""
+        for path in ("/health", "/config", "/projects"):
+            status, _, _ = _request(free_server, "GET", path)
+            assert status == 200, f"{path} 公开读应 200，got {status}"
 
 
 class TestFileCredentials:
@@ -233,13 +312,29 @@ class TestRetiredRoutesAndConfig:
     def _free_mode(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("CCC_WEB_AUTH_REQUIRED", "0")
 
-    def test_dsh_workspaces_retired_404(self, free_server):
+    def test_dsh_workspaces_retired(self, free_server):
+        """下线路由：无凭证先撞读闸 401；持签者确认仍下线 404。"""
         status, _, _ = _request(free_server, "GET", "/dsh/workspaces")
+        assert status == 401
+        token = self._token(free_server)
+        status, _, _ = _request(
+            free_server, "GET", "/dsh/workspaces", headers={"Authorization": f"Bearer {token}"}
+        )
         assert status == 404
 
-    def test_dsh_sessions_retired_404(self, free_server):
+    def test_dsh_sessions_retired(self, free_server):
         status, _, _ = _request(free_server, "GET", "/dsh/sessions/session-abc")
+        assert status == 401
+        token = self._token(free_server)
+        status, _, _ = _request(
+            free_server, "GET", "/dsh/sessions/session-abc", headers={"Authorization": f"Bearer {token}"}
+        )
         assert status == 404
+
+    def _token(self, free_server) -> str:
+        status, _, data = _login(free_server, "testuser", "testpass")
+        assert status == 200, data
+        return _json(data)["token"]
 
     def test_config_no_chat_bridge_url(self, free_server):
         status, _, data = _request(free_server, "GET", "/config")

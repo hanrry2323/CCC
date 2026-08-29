@@ -106,8 +106,9 @@ function _headers(json = true) {
 }
 
 // ===== 看板口令 token（P0 写链路打通 2026-08-29）=====
-// 服务端写端点与读闸端点（/wall/api/*、/ops/ports 等）均要求 Bearer token；
-// token 经 POST /session 换签，暂存 localStorage，401 时清除并自动重换一次。
+// 服务端写端点与读闸端点（/wall/api/*、/ops/* 等）均要求 Bearer token；
+// token 经 POST /session 换签，暂存 localStorage，401 时清除并走登录页重换一次。
+// 登录页本体见 login.js（打开即见登录页；此处动态 import 避开静态循环依赖）。
 const TOKEN_KEY = 'ccc_token';
 let _tokenInflight = null;
 
@@ -115,32 +116,22 @@ export function getToken() {
   try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (_) { return ''; }
 }
 
+export function setToken(token) {
+  try { localStorage.setItem(TOKEN_KEY, token); } catch (_) {}
+}
+
 export function clearToken() {
   try { localStorage.removeItem(TOKEN_KEY); } catch (_) {}
 }
 
-/** 确保持有 token：无则弹口令输入现场换签（并发调用合并为一次弹窗）。 */
+/** 确保持有 token：无则唤起登录页换签（并发调用合并为一次登录页）。 */
 export function ensureToken() {
   const existing = getToken();
   if (existing) return Promise.resolve(existing);
   if (_tokenInflight) return _tokenInflight;
   _tokenInflight = (async () => {
-    const pw = window.prompt('此操作需要看板口令（账号 ccc）：');
-    if (!pw) { throw new Error('已取消：需要看板口令才能继续'); }
-    const resp = await fetch('/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'ccc', password: pw }),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      throw new Error(
-        data.error === 'invalid username or password' ? '口令不正确'
-          : (data.error || ('口令换签失败 HTTP ' + resp.status))
-      );
-    }
-    try { localStorage.setItem(TOKEN_KEY, data.token); } catch (_) {}
-    return data.token;
+    const { showLogin } = await import('./login.js');
+    return showLogin();
   })().finally(() => { _tokenInflight = null; });
   return _tokenInflight;
 }

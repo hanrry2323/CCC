@@ -8,6 +8,7 @@
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initRouter, navigate } from './router.js';
 import { pageScopeAbort, setRouteSwitching } from './api.js';
+import { ensureLogin } from './login.js';
 
 // 路由→已加载页面注册表。必须是模块级：onHubRoute 的 unmount 循环遍历它来卸载旧页。
 // （2026-08-24 修复史：曾被懒加载改造误改为函数内局部 const，unmount 全部空转、
@@ -92,7 +93,6 @@ async function onHubRoute(route) {
 
 async function init() {
   applyTheme(getThemeScheme());
-  initRouter(onHubRoute);
 
   // toast 全局注册（window.showToast，各页面零依赖调用）
   await import('./components/toast.js');
@@ -101,6 +101,12 @@ async function init() {
   document.getElementById('hub-settings-btn')?.addEventListener('click', () => {
     import('./components/settings.js').then((m) => m.openSettings());
   });
+
+  // 登录门（2026-08-29 读闸收口）：打开即见登录页，口令换签后才挂路由进看板。
+  // 已存 token 直接放行；token 失效由各请求 401 → api.js 自动唤起登录页重签。
+  await ensureLogin();
+
+  initRouter(onHubRoute);
 
   // 健康横幅等感知层保留在 chatStatus？——已随对话栈拆除；
   // 断连提示由各页自身请求失败路径呈现。

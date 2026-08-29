@@ -49,8 +49,10 @@ API:
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
       凭证文件回退（P0-1 2026-08-29）: env 未配置时读 ~/.ccc/web-auth.txt（权限 600，
       单行口令=账号 ccc 或 user:pass）。
-      读闸（P0 2026-08-29）: 敏感读端点（/wall/api/*、/ops/ports、/ops/portals、
-      /ops/services、/projects/*/threads）免登录模式下也须持 token（Bearer 或 ?token=）。
+      读闸（P0 2026-08-29 → P1 尾巴收口 2026-08-29）: 免登录模式下「登录门之后的
+      全部读端点」也须持 token（Bearer 或 ?token=）——卡片/任务/看板/计划/线路图/
+      运维/巡检/对话历史/墙 SSE 无凭证一律 401；仅 /health、/config、/projects
+      与静态页（登录门自身）免鉴权。前端打开即见登录页，口令换签后进看板。
       长轮询超时默认值: CCC_WEB_LONGPOLL_TIMEOUT（秒，见 server/config/config.example.env）。
 
 对话大脑（T29）: /conversation 调用本机 Claude Code CLI（2026-08-24 起直连出口，中转站已退役），
@@ -285,15 +287,20 @@ def _ensure_chat_bridge() -> None:
 
 
 # ── 免鉴权的路径前缀 ──
-# /tasks/running 与 /projects 同组（T53：控制台后台任务进程面板数据源，免登录白名单）
-_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects", "/tasks/running", "/cards", "/cards/search"})
+# 仅登录门自身（/health、/session）与公开元数据（/config、/projects）免鉴权。
+# 卡片/任务/运维/看板读面（含曾入白名单的 /tasks/running、/cards、/cards/search）
+# 已全部移入读闸（2026-08-29 P1 尾巴收口）：无凭证一律 401。
+_NO_AUTH_PATHS = frozenset({"/health", "/session", "/config", "/projects"})
 
 
 # ── 静态托管（T23：浏览器直开 7788 看页面；T25：旧对话页 legacy-chat/） ──
-# 白名单：仅这些路径免鉴权返回静态文件（页面本身是登录入口）。
+# 白名单：仅登录门壳与静态资源；SPA 壳（/、/wall、/app）无有效 token 时以 401
+# 返回登录页响应体（浏览器正常渲染登录门；验收④b「无凭证根页→401」字面满足）。
 _STATIC_WEB_ROOT = _PROJECT_ROOT / "server" / "web"
 # 旧对话页根目录（T25：legacy-chat/ 下的文件通过前缀匹配自动托管）
 _STATIC_LEGACY_CHAT_ROOT = _STATIC_WEB_ROOT / "legacy-chat"
+# SPA 壳路径（同指 index.html）：无有效 token → 401 + 登录页体
+_STATIC_SHELL_PATHS = frozenset({"/", "/wall", "/app", "/index.html"})
 # 路径 → 磁盘文件相对 web 根的映射（显式白名单，禁止目录穿越）
 _STATIC_WHITELIST: dict[str, str] = {
     # ccc-plan-045 P1.5 深度融合：信息墙是 SPA 默认视图（#/wall），根路径即主壳；
@@ -303,12 +310,14 @@ _STATIC_WHITELIST: dict[str, str] = {
     # /app 旧书签入口（2026-08-24 回归修复：深度融合时误删致 /app#/board 404）
     "/app": "legacy-chat/index.html",
     "/js/app.js": "legacy-chat/js/app.js",
-    "/data/board.js": "data/board.js",
-    "/data/cluster.js": "data/cluster.js",
     # T44：favicon 免鉴权返回（否则浏览器自动请求触发 401 噪音）
     "/favicon.ico": "favicon.svg",
     "/favicon.svg": "favicon.svg",
 }
+# 2026-08-29 读闸收口：/data/board.js、/data/cluster.js 从静态白名单移除——
+# 二者是旧版看板静态导出物（含卡面标题等业务数据），SPA 已零消费；
+# 白名单残留会在导出任务生成文件后形成免鉴权数据泄露面。移除后无凭证 401、
+# 带 token 404（无 API 处理器），磁盘文件保留供本地工具使用。
 
 
 def _resolve_static_file(path: str) -> tuple[Path, str] | None:
@@ -1981,11 +1990,13 @@ class _APIHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "not found"}, 404)
 
     def _send_static(self, path: str) -> bool:
-        """处理静态白名单路径（免鉴权）。命中返回 True，未命中返回 False。
+        """处理静态白名单路径。命中返回 True，未命中返回 False。
 
-        T23：浏览器直开 7788 看页面，静态资源（HTML/CSS/JS/data）放行。
+        T23：浏览器直开 7788 看页面，静态资源（HTML/CSS/JS）放行。
         非白名单路径不处理，由 do_GET 继续走鉴权 + API 路由。
-        白名单路径但文件尚未生成（如 board.js 未 export）→ 404，勿掉进 401。
+        白名单路径但文件尚未生成（如导出物未生成）→ 404，勿掉进 401。
+        SPA 壳（/、/wall、/app）：无有效 token → HTTP 401 + 登录页响应体
+        （浏览器照常渲染登录门；无凭证探测者只见 401）；带有效 token → 200。
         """
         resolved = _resolve_static_file(path)
         if resolved is None:
@@ -2002,15 +2013,24 @@ class _APIHandler(BaseHTTPRequestHandler):
         if ctype.startswith("text/html") or str(target).endswith(".html"):
             text = body.decode("utf-8", errors="replace").replace("v=20260809t12", f"v={_compute_static_version()}")
             body = text.encode("utf-8")
+        status = 200
+        cache_control = "no-cache"
+        if path in _STATIC_SHELL_PATHS:
+            token = self._request_token()
+            authed = bool(token) and _validate_token(token) is not None
+            status = 200 if authed else 401
+            if not authed:
+                # 登录门体不做任何缓存，防止共享设备残留
+                cache_control = "no-store"
+        else:
+            query = self.path.split("?", 1)[1] if "?" in self.path else ""
+            cache_control = "max-age=31536000, immutable" if "v=" in query else "no-cache"
         # 2026-08-20 传输优化：带 ?v= 版本参数的静态资源长缓存（immutable），
         # 无版本参数（index.html）no-cache 保证每次取最新版本号；大资源 gzip 压缩。
         accept_encoding = self.headers.get("Accept-Encoding", "")
-        query = self.path.split("?", 1)[1] if "?" in self.path else ""
-        versioned = "v=" in query
-        cache_control = "max-age=31536000, immutable" if versioned else "no-cache"
         if "gzip" in accept_encoding and len(body) > 512:
             body = gzip.compress(body, 6)
-            self.send_response(200)
+            self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Content-Encoding", "gzip")
@@ -2019,7 +2039,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return True
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Vary", "Accept-Encoding")
@@ -4053,11 +4073,17 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"projects": _build_public_projects()})
             return
         if path == "/tasks/running":
-            # T53：执行中任务进程视图（免登录白名单，与 /projects 同组；须在 /tasks/{id} 之前）
+            # T53：执行中任务进程视图。P1 尾巴收口（2026-08-29）：移入读闸，
+            # 不再免登录直连（曾与 /projects 同白名单组——执行详情属敏感面）。
+            if not self._gate_read():
+                return
             self._send_json(_load_running_tasks())
             return
         if path == "/tasks/stream":
-            # 执行中/机审卡内实时日志流（SSE：snapshot 最近 3 行 + 增量 log 事件 + 心跳）
+            # 执行中/机审卡内实时日志流（SSE：snapshot 最近 3 行 + 增量 log 事件 + 心跳）。
+            # P1 尾巴收口（2026-08-29）：移入读闸（执行日志 = 敏感面）；EventSource 经 ?token= 携带。
+            if not self._gate_read():
+                return
             self._handle_tasks_stream()
             return
         if path == "/wall/api/active":
@@ -4075,20 +4101,30 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_wall_stream()
             return
         if path == "/cards":
+            # 卡全景（合成视图 + 运行时富化）。P1 尾巴收口（2026-08-29）：
+            # 曾入 _NO_AUTH_PATHS 白名单 → 移入读闸（卡面 = 业务敏感面）。
+            if not self._gate_read():
+                return
             self._handle_cards_get()
             return
         if path == "/cards/search":
+            if not self._gate_read():
+                return
             self._handle_cards_search()
             return
         if not self._check_auth():
             return
+        # 读闸整体收口（P1 尾巴 2026-08-29）：_check_auth 在免登录模式下放行全部
+        # GET（单用户局域网直连原设计）；本行把「登录门之后的全部读端点」统一纳入
+        # 读闸——/conversation、/ops/*、/loop/findings、/plans/*、/board/*、/roadmap/*、
+        # /tasks/{id} 无凭证一律 401。既有点位（/projects/*/threads、/ops/ports、
+        # /ops/services、/ops/portals）的内联读闸被本行覆盖，已删（行为等价）。
+        if not self._gate_read():
+            return
         if path.startswith("/projects/") and path.endswith("/threads"):
-            # 会话列表读闸（P0 2026-08-29）：免登录模式下也须持 token。
-            # 保留理由（下线评估结论）：对话栈 web 前端已拆，桌面端会话走本地
-            # store，但该路由是对话持久化测试套的验证窗口与未来客户端唯一
-            # HTTP 面；暴露面仅为 CCC 侧会话元数据，读闸已封匿名访问。
-            if not self._gate_read():
-                return
+            # 会话列表（P0 2026-08-29 上闸；现由整体读闸覆盖）：对话栈 web 前端已拆，
+            # 桌面端会话走本地 store，该路由是对话持久化测试套的验证窗口与未来客户端
+            # 唯一 HTTP 面；暴露面仅为 CCC 侧会话元数据，读闸已封匿名访问。
             from urllib.parse import unquote
 
             project = unquote(path[len("/projects/") : -len("/threads")])
@@ -4135,9 +4171,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_ops_relay_stats()
             return
         if path == "/ops/ports":
-            # P0 读闸（2026-08-29）：端口/进程/PID 清单免登录可读=内网侦察面
-            if not self._gate_read():
-                return
+            # 端口/进程/PID 清单（P0 2026-08-29 上闸；现由整体读闸覆盖）
             self._handle_ops_ports()
             return
         if path == "/ops/hp-health":
@@ -4153,15 +4187,11 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._handle_ops_dsh_findings()
             return
         if path == "/ops/services":
-            # P0 读闸（2026-08-29）：launchd 服务清单+运行态（含远程启停入口元数据）
-            if not self._gate_read():
-                return
+            # launchd 服务清单+运行态（P0 2026-08-29 上闸；现由整体读闸覆盖）
             self._handle_ops_services()
             return
         if path == "/ops/portals":
-            # P0 读闸（2026-08-29）：LAN IP 与内网服务地址表
-            if not self._gate_read():
-                return
+            # LAN IP 与内网服务地址表（P0 2026-08-29 上闸；现由整体读闸覆盖）
             self._handle_ops_portals()
             return
         if path == "/loop/findings":

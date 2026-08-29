@@ -3,7 +3,8 @@
 覆盖：
 - 鉴权三态（成功/失败/过期）
 - 未鉴权请求 401
-- T45 免登录模式（CCC_WEB_AUTH_REQUIRED=0 → 全部端点免鉴权；改配置即恢复登录）
+- T45 免登录模式（CCC_WEB_AUTH_REQUIRED=0 → 公开读免鉴权，敏感读走读闸须 token；
+  2026-08-29 读闸收口：登录门之后全部读端点无凭证一律 401）
 - 对话往返（回声占位）
 - 5 个 board 接口各自 200 + 数据形状断言
 - /health 返回正确结构
@@ -946,36 +947,51 @@ class TestNoAuthMode:
         _clear_brain_env()
 
     def test_board_endpoints_no_token(self, api_server):
-        """免登录：/board/* 无 token 直接 200（不再 401）。"""
+        """免登录+读闸收口（2026-08-29）：/board/* 无 token 一律 401，带 token 200。"""
+        token = _get_token(api_server)
         for path in ("/board/states", "/board/realtime", "/board/recent", "/board/by_project"):
             status, data = _get(api_server, path)
-            assert status == 200, f"{path} 免登录应 200，got {status}"
+            assert status == 401, f"{path} 免登录读闸应 401，got {status}"
+            status, data = _get(api_server, path, token=token)
+            assert status == 200, f"{path} 带 token 应 200，got {status}"
             assert isinstance(data, (dict, list))
 
     def test_board_snapshot_no_token(self, api_server):
-        """免登录：/board/snapshot 无 token 200。"""
+        """免登录+读闸收口：/board/snapshot 无 token 401，带 token 200。"""
+        token = _get_token(api_server)
         status, data = _get(api_server, "/board/snapshot")
+        assert status == 401
+        status, data = _get(api_server, "/board/snapshot", token=token)
         assert status == 200
         assert "columns" in data
         assert "counts" in data
 
     def test_conversation_get_no_token(self, api_server):
-        """免登录：GET /conversation 无 token 200（历史可读）。"""
+        """免登录+读闸收口：GET /conversation 无 token 401（历史含对话内容），带 token 200。"""
+        token = _get_token(api_server)
         status, data = _get(api_server, "/conversation")
+        assert status == 401
+        status, data = _get(api_server, "/conversation", token=token)
         assert status == 200
         assert "messages" in data
         assert "seq" in data
 
     def test_ops_summary_no_token(self, api_server, monkeypatch):
-        """免登录：/ops/summary 无 token 200。"""
+        """免登录+读闸收口：/ops/summary 无 token 401，带 token 200。"""
         monkeypatch.delenv("CLUSTER_TARGETS", raising=False)
+        token = _get_token(api_server)
         status, data = _get(api_server, "/ops/summary")
+        assert status == 401
+        status, data = _get(api_server, "/ops/summary", token=token)
         assert status == 200
         assert "severity" in data
 
     def test_tasks_running_no_token(self, api_server):
-        """免登录：/tasks/running 无 token 200（与 /projects 同白名单组，T53）。"""
+        """免登录+读闸收口：/tasks/running 无 token 401（执行详情敏感面），带 token 200。"""
+        token = _get_token(api_server)
         status, data = _get(api_server, "/tasks/running")
+        assert status == 401
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         assert "tasks" in data
         assert isinstance(data["tasks"], list)
@@ -1016,9 +1032,9 @@ class TestStaticHosting:
     """静态白名单路径免鉴权返回磁盘文件；目录穿越 404；非白名单 API 无 token 401。"""
 
     def test_root_returns_legacy_chat_html(self, api_server):
-        """GET / 返回统一壳页（ccc-plan-045 P1.5：信息墙为默认视图）。"""
+        """GET / 无凭证 → 401，响应体即登录门壳（SPA shell；浏览器照常渲染）。"""
         status, body_text = _get_raw(api_server, "/")
-        assert status == 200
+        assert status == 401
         assert "<html" in body_text.lower()
         # 深度融合标志：hub-nav 首项为信息墙，墙样式表已挂载
         assert "信息墙" in body_text
@@ -1026,16 +1042,16 @@ class TestStaticHosting:
         assert "/css/wall.css" in body_text
 
     def test_wall_bookmark_serves_spa(self, api_server):
-        """GET /wall 书签入口同指统一壳（hash 路由归一到 #/wall）。"""
+        """GET /wall 书签入口同指统一壳；无凭证与 / 同为 401+登录门体。"""
         status_root, root_text = _get_raw(api_server, "/")
         status_wall, wall_text = _get_raw(api_server, "/wall")
-        assert (status_root, status_wall) == (200, 200)
+        assert (status_root, status_wall) == (401, 401)
         assert wall_text == root_text
 
     def test_index_html(self, api_server):
-        """GET /index.html 200。"""
+        """GET /index.html 无凭证 401（与壳同口径），体为登录门壳。"""
         status, body_text = _get_raw(api_server, "/index.html")
-        assert status == 200
+        assert status == 401
         assert "<html" in body_text.lower()
 
     def test_legacy_chat_js_app_js(self, api_server):
@@ -1098,17 +1114,26 @@ class TestStaticHosting:
         assert status == 200
 
     def test_board_page_still_accessible(self, api_server):
-        """看板静态资源免鉴权；board.js 未 export 时 404（勿 401）。"""
+        """样式等静态资源免鉴权；旧导出物 /data/board.js 已出白名单（读闸收口）→ 无凭证 401。"""
         status, _ = _get_raw(api_server, "/css/base.css")
         assert status == 200
         status, _ = _get_raw(api_server, "/data/board.js")
-        assert status in (200, 404)
+        assert status == 401
 
     def test_static_no_auth_required(self, api_server):
-        """静态路径无 token 仍 200（页面本身是登录入口）。"""
-        status, _ = _get_raw(api_server, "/")
-        assert status == 200
+        """代码类静态资源无 token 仍 200；SPA 壳无 token → 401+登录门体（读闸收口）。"""
+        status, body_text = _get_raw(api_server, "/")
+        assert status == 401
+        assert "<html" in body_text.lower()
         status, _ = _get_raw(api_server, "/js/app.js")
+        assert status == 200
+
+    def test_shell_200_with_valid_token(self, api_server):
+        """SPA 壳带有效 token → 200（登录后刷新页面正常）。"""
+        token = _get_token(api_server)
+        status, _ = _get_raw(api_server, f"/?token={token}")
+        assert status == 200
+        status, _ = _get_raw(api_server, f"/wall?token={token}")
         assert status == 200
 
     def test_directory_traversal_rejected(self, api_server):
@@ -1445,7 +1470,7 @@ class TestTaskDetail:
 
 
 class TestTasksRunning:
-    """GET /tasks/running：执行中任务进程视图（免登录白名单 + 日志尾部）。"""
+    """GET /tasks/running：执行中任务进程视图（读闸内 + 日志尾部）。"""
 
     @pytest.fixture(autouse=True)
     def _clear_running_cache(self):
@@ -1456,9 +1481,13 @@ class TestTasksRunning:
         yield
         _RUNNING_TASKS_CACHE.update(ts=0.0, key="__reset__", data=None)
 
-    def test_whitelisted_requires_no_token(self, api_server):
-        """鉴权开启时 /tasks/running 仍免登录 200（与 /projects 同白名单组）。"""
+    def test_gated_token_required(self, api_server):
+        """读闸收口（2026-08-29）：/tasks/running 已出免登录白名单——
+        鉴权开启时无 token 401，带 token 200。"""
         status, data = _get(api_server, "/tasks/running")
+        assert status == 401
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         assert "tasks" in data
 
@@ -1481,7 +1510,8 @@ class TestTasksRunning:
                 BoardItem(id="T998", title="无日志运行中", state="执行中", executor="OpenCode"),
             ],
         )
-        status, data = _get(api_server, "/tasks/running")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         tasks = data["tasks"]
         assert len(tasks) == 2  # 只含执行中
@@ -1524,7 +1554,8 @@ class TestTasksRunning:
             "_load_board_items",
             lambda: [BoardItem(id="T777", title="脏", state="执行中", executor="Claude Code")],
         )
-        status, data = _get(api_server, "/tasks/running")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         t = data["tasks"][0]
         assert t["dirty_files"] == 1
@@ -1556,7 +1587,8 @@ class TestTasksRunning:
                 BoardItem(id="T5", title="已关闭", state="已关闭"),
             ],
         )
-        status, data = _get(api_server, "/tasks/running")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         ids = {t["work_id"] for t in data["tasks"]}
         assert ids == {"T3", "T4"}
@@ -1576,7 +1608,8 @@ class TestTasksRunning:
             "_load_board_items",
             lambda: [BoardItem(id="T5", title="跑着", state="执行中", executor="X")],
         )
-        status, data = _get(api_server, "/tasks/running")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         t = data["tasks"][0]
         assert t["work_id"] == "T5"
@@ -1601,7 +1634,8 @@ class TestTasksRunning:
             "_load_board_items",
             lambda: [BoardItem(id="T77", title="cfg日志", state="执行中", executor="OpenCode")],
         )
-        status, data = _get(api_server, "/tasks/running")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         t = data["tasks"][0]
         assert t["work_id"] == "T77"
@@ -1641,7 +1675,8 @@ class TestTasksRunning:
                 BoardItem(id="Talive", title="活标记", state="已回写", executor="OpenCode"),
             ],
         )
-        status, data = _get(api_server, "/tasks/running")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/tasks/running", token=token)
         assert status == 200
         ids = {t["work_id"] for t in data["tasks"]}
         assert ids == {"Talive"}
@@ -2216,15 +2251,16 @@ class TestThreadPersistence:
             )
         monkeypatch.setattr(srv_mod, "_DISPATCH_DIR", dispatch_dir)
 
-        # 1. Test GET /cards (no auth)
-        status, data = _get(api_server, "/cards")
+        token = _get_token(api_server)
+        # 1. Test GET /cards
+        status, data = _get(api_server, "/cards", token=token)
         assert status == 200
         assert data["total"] == 3
         assert len(data["cards"]) == 3
         assert {c["id"] for c in data["cards"]} == {"xy001", "xy002", "qb001"}
 
         # 2. Test GET /cards with project filter
-        status, data = _get(api_server, "/cards?project=xy")
+        status, data = _get(api_server, "/cards?project=xy", token=token)
         assert status == 200
         assert data["total"] == 2
         assert all(c["project"] == "xy" for c in data["cards"])
@@ -2232,20 +2268,20 @@ class TestThreadPersistence:
         # 3. Test GET /cards with state filter
         from urllib.parse import quote
 
-        status, data = _get(api_server, f"/cards?state={quote('执行中')}")
+        status, data = _get(api_server, f"/cards?state={quote('执行中')}", token=token)
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "xy002"
 
         # 4. Test GET /cards pagination
-        status, data = _get(api_server, "/cards?page_size=2&page=1")
+        status, data = _get(api_server, "/cards?page_size=2&page=1", token=token)
         assert status == 200
         assert len(data["cards"]) == 2
         assert data["total"] == 3
         assert data["pages"] == 2
 
         # 5. Test GET /cards/search keyword and scoring
-        status, data = _get(api_server, "/cards/search?q=Claude")
+        status, data = _get(api_server, "/cards/search?q=Claude", token=token)
         assert status == 200
         assert len(data["cards"]) == 2
         assert data["cards"][0]["executor"] == "Claude"
@@ -2328,7 +2364,8 @@ class TestCardsFallback:
         assert not index_file.exists()
 
         # 发起查询
-        status, data = _get(api_server, "/cards")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/cards", token=token)
         assert status == 200
         assert data["total"] == 2
         assert len(data["cards"]) == 2
@@ -2344,7 +2381,8 @@ class TestCardsFallback:
         assert not index_file.exists()
 
         # 发起查询
-        status, data = _get(api_server, "/cards/search?q=Claude")
+        token = _get_token(api_server)
+        status, data = _get(api_server, "/cards/search?q=Claude", token=token)
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "tst001"
@@ -2372,26 +2410,27 @@ class TestCardsFallback:
 
         load_dispatch_cards(dispatch_dir, include_archived=True)
 
+        token = _get_token(api_server)
         # 1. 默认查询不含已归档任务卡
-        status, data = _get(api_server, "/cards")
+        status, data = _get(api_server, "/cards", token=token)
         assert status == 200
         assert data["total"] == 2
         assert "tst003" not in {c["id"] for c in data["cards"]}
 
         # 2. 显式指定 include_archived=1 含已归档任务卡
-        status, data = _get(api_server, "/cards?include_archived=1")
+        status, data = _get(api_server, "/cards?include_archived=1", token=token)
         assert status == 200
         assert data["total"] == 3
         assert "tst003" in {c["id"] for c in data["cards"]}
 
         # 3. 按执行体 (executor) 过滤回顾
-        status, data = _get(api_server, "/cards?executor=Claude&include_archived=1")
+        status, data = _get(api_server, "/cards?executor=Claude&include_archived=1", token=token)
         assert status == 200
         assert data["total"] == 2
         assert {c["id"] for c in data["cards"]} == {"tst001", "tst003"}
 
         # 4. 按分派日期 (dispatched_at) 过滤回顾
-        status, data = _get(api_server, "/cards?dispatched_at=2026-08-02")
+        status, data = _get(api_server, "/cards?dispatched_at=2026-08-02", token=token)
         assert status == 200
         assert data["total"] == 1
         assert data["cards"][0]["id"] == "tst002"
