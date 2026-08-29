@@ -1014,6 +1014,51 @@ class TestSyncPlanProgress:
             # 只应出现一次进度行
             assert updated.count("进度：") == 1
 
+    def test_sync_skips_when_referenced_cards_missing_from_index(self, tmp_path: Path) -> None:
+        """ccc-plan-055 守卫一：关联卡不在当前卡索引（模拟重建期卡宇宙收缩）→ 跳过回写，文件不变。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002")
+        # 预置历史进度 100%——事故形态：残缺索引会把真值 100% 反推为 0%
+        content = content.replace("关联方案：无\n", "关联方案：无\n> 进度：2/2 (100%)\n")
+        p.write_text(content)
+
+        # 模拟重建期：索引仅剩 ccc001，ccc002 缺失（残缺卡宇宙）
+        mock_index = {"ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"}}
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            before = p.read_text()
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+            assert result.get("skipped") is True
+            assert result["reason"] == "missing_cards"
+            assert result["missing_cards"] == ["ccc002"]
+            assert result["finding"]["id"] == "plan_ref_missing_cards_ccc-plan-001"
+            assert p.read_text() == before, "缺卡时不得落盘改动方案文件"
+
+    def test_sync_monotonic_guard_blocks_progress_regression(self, tmp_path: Path) -> None:
+        """ccc-plan-055 守卫二：实算进度低于档内现值 → 不落盘记 finding（进度只增不减）。"""
+        _make_registry(tmp_path, ["ccc"])
+        p = _make_plan(tmp_path, "ccc", "001", "test", "部分执行")
+        content = p.read_text()
+        content = content.replace("关联卡：无", "关联卡：ccc001, ccc002")
+        content = content.replace("关联方案：无\n", "关联方案：无\n> 进度：2/2 (100%)\n")
+        p.write_text(content)
+
+        # 卡宇宙完整但实算 1/2 (50%)，低于档内现值 100% → 拦截
+        mock_index = {
+            "ccc001": {"id": "ccc001", "state": "已关闭", "path": "x"},
+            "ccc002": {"id": "ccc002", "state": "执行中", "path": "x"},
+        }
+        with patch("server.board.loader.load_index_file", return_value=mock_index):
+            before = p.read_text()
+            result = sync_plan_progress(tmp_path, "docs/projects/ccc/plans/001-test.md")
+            assert result.get("skipped") is True
+            assert result["reason"] == "progress_monotonic"
+            assert result["declared"]["progress_pct"] == 100
+            assert result["computed"]["progress_pct"] == 50
+            assert result["finding"]["id"] == "plan_progress_monotonic_ccc-plan-001"
+            assert p.read_text() == before, "单调保护拦截时不得落盘改动方案文件"
+
 
 # ── ccc-plan-027 核心流程：里程碑字段 / 功能卡段 / 自动完成 / 双向同步 ──
 

@@ -916,8 +916,15 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
 
     被 convert_plan / update_plan 调用，在看板卡状态变更时自动触发级联回写。
 
+    守卫（ccc-plan-055 进度回写真值源守卫，2026-08-29 事故：重建期卡宇宙收缩把 59 档
+    进度 100% 反推 0%）：
+    - 缺卡跳过：声明的关联卡在当前卡索引缺失 → 索引非真值源，跳过回写不落盘
+      （finding 口径对齐 observer plan_ref_missing_cards）；
+    - 单调保护：实算进度低于档内现值 → 跳过回写不落盘（进度只增不减，下降只能人工改档）。
+
     Returns:
-        {ok, progress: {total, closed, progress_pct}} or {error}
+        {ok, progress: {total, closed, progress_pct}} or {error}；
+        命中守卫时 {ok, skipped: True, reason, finding}，不写盘。
     """
     plan_file = repo_root / rel_path
     if not plan_file.exists():
@@ -956,6 +963,34 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
         if _idm:
             card_id_lower_map.setdefault(_idm.group(1), v)
 
+    # 守卫一（ccc-plan-055 缺卡跳过）：声明的关联卡在当前卡索引中缺失（如重建期卡宇宙
+    # 收缩，2026-08-29 快照实证 cards_count=3 vs 73 方案）→ 索引非真值源，任何回写都会
+    # 把历史进度反推为 0 → 不落盘。finding 口径对齐 observer plan_ref_missing_cards。
+    _pm = _PLAN_PATH_RE.match(rel_path)
+    plan_id = f"{_pm.group(1)}-plan-{_pm.group(2)}" if _pm else rel_path
+    missing_cards = [cid for cid in card_ids if cid.lower() not in card_id_lower_map]
+    if missing_cards:
+        finding = {
+            "id": f"plan_ref_missing_cards_{plan_id}",
+            "title": f"方案 {plan_id} 关联了不存在的任务卡: {', '.join(missing_cards)}",
+            "type": "broken_link",
+            "cross_confirm": 0.5,
+            "acting_on": rel_path,
+            "evidence": f"{rel_path}:1",
+        }
+        logger.warning(
+            "进度回写守卫（缺卡跳过）：%s 关联卡 %s 不在当前卡索引，跳过回写不落盘",
+            plan_id,
+            ", ".join(missing_cards),
+        )
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "missing_cards",
+            "missing_cards": missing_cards,
+            "finding": finding,
+        }
+
     total = len(card_ids)
     closed = 0
     voided = 0
@@ -973,6 +1008,39 @@ def sync_plan_progress(repo_root: Path, rel_path: str) -> dict[str, Any]:
     # 活跃卡 = 总关联卡 − 作废卡（作废=不再做，不占完成分母）
     total_active = total - voided
     progress_pct = int(closed / total_active * 100) if total_active > 0 else 0
+
+    # 守卫二（ccc-plan-055 单调保护）：进度只增不减——实算回写值低于档内现值（如卡宇宙
+    # 收缩把 100% 反推 0%）→ 不落盘记 finding，下降只能人工改档（2026-08-29 老板定）。
+    _declared = re.search(r">\s*进度：(\d+)/(\d+)", current)
+    if _declared:
+        _d_closed, _d_total = int(_declared.group(1)), int(_declared.group(2))
+        _d_pct = int(_d_closed / _d_total * 100) if _d_total > 0 else 0
+        if progress_pct < _d_pct:
+            finding = {
+                "id": f"plan_progress_monotonic_{plan_id}",
+                "title": (
+                    f"方案 {plan_id} 进度回写被单调保护拦截：档内现值 {_d_closed}/{_d_total} ({_d_pct}%)，"
+                    f"实算 {closed}/{total_active} ({progress_pct}%)——进度只增不减，下降须人工改档"
+                ),
+                "type": "consistency",
+                "cross_confirm": 0.5,
+                "acting_on": rel_path,
+                "evidence": f"{rel_path}:1",
+            }
+            logger.warning(
+                "进度回写守卫（单调保护）：%s 实算 %d%% 低于档内现值 %d%%，跳过回写不落盘",
+                plan_id,
+                progress_pct,
+                _d_pct,
+            )
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "progress_monotonic",
+                "declared": {"closed": _d_closed, "total": _d_total, "progress_pct": _d_pct},
+                "computed": {"closed": closed, "total": total_active, "progress_pct": progress_pct},
+                "finding": finding,
+            }
 
     # 回写进度到方案文件头部
     # 格式: > 进度：3/5 (60%)（作废 2）——作废卡单列，不占完成分母
