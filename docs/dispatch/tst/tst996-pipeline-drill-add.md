@@ -1,6 +1,6 @@
 # 任务卡 tst996 · 管线全链预演·add 纯函数与 pytest 单测（DSH 执行）
 
-> 关联：tst-plan-003 · 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-30
+> 关联：tst-plan-003 · 执行体：DSH · 验收：Claude Code · 状态：作废（预演收口：卡门拦截无效，清场作废） · 派发：engine · 项目：tst · 日期：2026-08-30
 
 
 
