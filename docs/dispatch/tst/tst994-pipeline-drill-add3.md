@@ -1,6 +1,6 @@
 # 任务卡 tst994 · 管线全链预演·add 纯函数与 pytest 单测（DSH 执行）
 
-> 关联：tst-plan-003 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-30
+> 关联：tst-plan-003 · 执行体：DSH · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：tst · 日期：2026-08-30
 
 
 
