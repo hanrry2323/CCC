@@ -1,6 +1,6 @@
 # 任务卡 tst994 · 管线全链预演·add 纯函数与 pytest 单测（DSH 执行）
 
-> 关联：tst-plan-003 · 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-30
+> 关联：tst-plan-003 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-30
 
 
 
@@ -58,20 +58,24 @@ lint：
 
 ## 回写区
 
-**执行体**：DSH · 日期：
+**执行体**：DSH · 日期：2026-08-30
+
+- 实现说明：基线含 add 纯函数与基础单测（tst006 先例已入 main）；本卡在注入 worktree（分支 codex/tst994-pipeline-drill-add3）内强化 `math_utils.py`（add 两数相加纯函数，补 `float | int` 类型注解）并扩充 `tests/test_math_utils.py` 边界单测（零值/负数/浮点）；最小可标识，无业务逻辑/数据。
+- 测试结果：`python3 -m pytest -v` → 4 passed（test_add / test_add_zero / test_add_negative / test_add_float），EXIT=0。
+- push 证据：实现 commit `0e1580c6209dd8805902c39aba5565dcb839a37e`（tst994: 强化 add 纯函数类型契约并扩充边界单测）已 push 至 `origin/codex/tst994-pipeline-drill-add3`（远端 refs 核验一致）；未直推 main。
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（方案推进「部分执行」或「已完成」，关联卡补全）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]
+   - 说明：关联方案 tst-plan-003 状态为「已确认」，本卡为 drill 预演卡；方案推进与关联卡补全由机审/人审环节按流程处理，本次未改方案文件。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]
+   - 说明：纯预演 drill 卡，无新教训；同内容已有 tst006 先例。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
+   - 说明：仅在同一仓既有文件上强化（math_utils.py / tests/test_math_utils.py），结构未变。
+4. **线路图**：项目近况/下一步是否变化？[否]
+   - 说明：无变化，等待机审与合入。
 
 ## 批注落实
 
