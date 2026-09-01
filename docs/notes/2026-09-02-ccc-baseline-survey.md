@@ -155,10 +155,11 @@ FP(){ printf '%s' "$1" | shasum -a 256 | cut -c1-12; }
 
 ### 4.1 opencode 配额现状（C1 真枪复跑前置）
 
-- `scripts/dsh-key-check.sh` 实测：env 旧 key 线 exit 0、plist 新 key 线 exit 0（网关均非 429；探针等价 HTTP 200）。
-- **结论：配额充足，C1 前置可通过**。注意：探针 `dsh_key_probe.py` 的密钥源声明（停用 plist）需先修正（见 §1.2 附带发现 3），否则管理席读到的配额对象是错 key。
+- **勘误（2026-09-02 外脑三连复现实证）**：外脑实测 opencode 网关 **429×3 稳定复现**（`dsh-key-check` exit 2 + 两次直探 http=429）。本调研此前上报「双线探针 exit 0、无 429」系 **http=000 假阴性**：`scripts/dsh-key-check.sh` 对 `curl` 失败回落的 `code=000`（网络/连接失败）只判定 429→exit 2，其余码一律 return 0——探针在调研时段连网关失败返回 000 被我方误判为通过。
+- **结论：opencode 网关 429 周配额耗尽（09-02 复现实证），C1 真枪前置不成立**，需等配额重置或充值；恢复排期须以 429 解除为先决。
+- 附注：探针 `dsh_key_probe.py` 的密钥源声明（停用 plist）需先修正（见 §1.2 附带发现 3），否则管理席读到的配额对象是错 key。
 
-复现：`bash scripts/dsh-key-check.sh --quiet; echo $?`（0=通过，2=429）。
+复现：`bash scripts/dsh-key-check.sh; echo $?`（2=429；0 含网络 000 假通过）；直探 `curl -s -o /dev/null -w '%{http_code}' -m 20 -H "x-api-key: $OPENCODE_GO_API_KEY" -H "anthropic-version: 2023-06-01" -H "Content-Type: application/json" -d '{"model":"deepseek-v4-flash","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}' https://opencode.ai/zen/go/v1/messages`（http=429）。
 
 ### 4.2 待老板决项（5 条 · 每条带建议）
 
@@ -179,6 +180,7 @@ FP(){ printf '%s' "$1" | shasum -a 256 | cut -c1-12; }
 | R3 | 真枪执行链路 key 单源化：交互 shell 清旧 key 或 053 阶段 3 env 自包含（source dsh-key.sh） | 现状真枪若走 shell 用旧 key `sk-cFDJ…`（429 史源）（§1.2） |
 | R4 | `dsh_key_probe.py` 密钥源改指现役 dsh-web plist | 现读停用 plist，配额探针对象错误（§1.2 发现3） |
 | R5 | 053 阶段 0：legacy 机审（`_run_audit_worker`）未拆除前，禁恢复 engine 自动派发 | 双审冲突（053 阶段 0 定论；engine run_loop 与 phase2 同批已回写卡双审） |
+| R6 | `dsh-key-check.sh` 对 `http=000` 静默 exit 0 属假阴性缺陷（只列不改） | 本次 429 误报为「配额正常」的根因：`code=000`（网络/连接失败）未被区分，0 与通过混淆（§4.1 勘误） |
 
 **普通该修**
 
@@ -204,6 +206,6 @@ FP(){ printf '%s' "$1" | shasum -a 256 | cut -c1-12; }
 2. A-1 commit：`bfa3d5040`（留本地，未 push）
 3. key 指纹比对：**三方内部一致（e81c88daa504；sha256 前缀）；与 08-29 基准 2c7acd88cc34 不一致**（本机无可溯对象，待外脑确认基准口径）
 4. 卡态总览：看板活跃 0 张、阻塞 0 张（账本 6 张：3 已关闭 + 3 作废，全 tst 域；051-054 方案均待排期，055 无落盘）
-5. 需老板决项 5 条（§4.2）+ 危险必修 5 条（§4.3 R1-R5）
+5. 需老板决项 5 条（§4.2）+ 危险必修 6 条（§4.3 R1-R6；含配额结论勘误：429 耗尽、C1 前置不成立）
 
 > 红线声明：本调研未改动任何代码/配置/服务/定时任务；唯一写动作 = A-1 报告提交（09-01 报告追加外脑复核结论）。工作区已清场（A-1 后 `git status --porcelain` 为空；本报告入库后再核一遍）。
