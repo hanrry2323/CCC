@@ -68,6 +68,12 @@ def _run(env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess
         ["bash", str(SCRIPT), "--quiet"],
         capture_output=True,
         text=True,
+        # P0-1 编码边界：text=True 默认按 locale 解码（ASCII locale 下对脚本
+        # UTF-8 中文诊断会抛 UnicodeDecodeError）。显式指定 UTF-8 + 无损
+        # backslashreplace：真实输出为合法 UTF-8 可完整解码；异常字节以 \xNN
+        # 保留可见，不静默丢弃。退出码/判定逻辑完全不受影响。
+        encoding="utf-8",
+        errors="backslashreplace",
         cwd=str(REPO),
         env=env,
     )
