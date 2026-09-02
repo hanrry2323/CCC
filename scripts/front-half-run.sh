@@ -43,10 +43,10 @@ done
 
 echo "[front-half] $(date '+%H:%M:%S') 方案=$PLAN_FILE dispatch=$DISPATCH_DIR"
 
-# 密钥单源 + 配额预检（DSH 侧将执行开发；429 提前告警不阻断出卡）
+# 密钥单源 + 三态预检（DSH 侧将执行开发；预检未通过仅告警不阻断出卡）
 # shellcheck source=scripts/dsh-key.sh
 source "$SELF/dsh-key.sh" 2>/dev/null || true
-"$SELF/dsh-key-check.sh" --quiet || echo "[warn] DSH 网关配额耗尽（429）—— 出卡仍执行，自动开发将失败（见 ledger dsh_quota_alert）" >&2
+"$SELF/dsh-key-check.sh" --quiet || echo "[warn] DSH 网关预检未通过（code=$?）—— 出卡仍执行，自动开发将失败（见 ledger dsh_quota_alert/日志）" >&2
 
 if [[ "$DRY_RUN" == true ]]; then
   "$SELF/plan-to-cards.sh" "$PLAN_FILE" --dispatch-dir "$DISPATCH_DIR" --dry-run || exit $?

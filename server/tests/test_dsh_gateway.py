@@ -94,6 +94,35 @@ def test_preflight_ok_caches(iso_ledger: Path, monkeypatch: pytest.MonkeyPatch) 
     assert calls["n"] == 1
 
 
+@pytest.mark.parametrize("rc", [3, 4, 5, 6, 7])
+def test_preflight_nonpass_rc_refuses(iso_ledger: Path, monkeypatch: pytest.MonkeyPatch, rc: int) -> None:
+    """P0-1：AUTH/UPSTREAM/UNAVAILABLE/NO_KEY/ERROR 退出码一律拒单，不得静默放行。"""
+    monkeypatch.setattr(dsh_gateway, "resolve_key", lambda: "sk-test-fake")
+
+    class FakeProc:
+        returncode = rc
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(dsh_gateway.subprocess, "run", lambda *a, **k: FakeProc())
+    ok, detail = dsh_gateway.preflight_gateway(force=True)
+    assert ok is False
+    assert "拒单" in detail
+
+
+def test_preflight_probe_spawn_failure_blocks(iso_ledger: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """P0-1：预检进程自身起不来（OSError）→ 拒单（探针不可用=明确错误态），不再放行。"""
+    monkeypatch.setattr(dsh_gateway, "resolve_key", lambda: "sk-test-fake")
+
+    def boom(*a, **k):
+        raise OSError("bash not found")
+
+    monkeypatch.setattr(dsh_gateway.subprocess, "run", boom)
+    ok, detail = dsh_gateway.preflight_gateway(force=True)
+    assert ok is False
+    assert "unavailable" in detail or "不可用" in detail
+
+
 def test_phase2_audit_refuses_on_preflight_fail(iso_ledger: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """phase2 审核：预检拒单 → verdict ERROR + attempts=0 + ledger phase2_alert，卡不烧重试。"""
 

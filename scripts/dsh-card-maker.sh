@@ -13,13 +13,15 @@
 # 产出：方案 + 卡落在 CCC docs/，validate-plans 校验。
 
 set -euo pipefail
-# P1-d/rebuild-phase2：密钥单源 + 配额预检（429 阻断并 ledger 告警，防无声循环）
+# P1-d/rebuild-phase2 + P0-1：密钥单源 + 三态预检（非 0 一律阻断，保留真实退出码）
 _SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/dsh-key.sh
 source "$_SELF/dsh-key.sh" 2>/dev/null || true
-if ! "$_SELF/dsh-key-check.sh" --quiet; then
-  echo "[FATAL] DSH 网关配额耗尽（429）—— 见 ledger dsh_quota_alert；本次不执行" >&2
-  exit 2
+_KC_RC=0
+"$_SELF/dsh-key-check.sh" --quiet || _KC_RC=$?
+if [[ $_KC_RC -ne 0 ]]; then
+  echo "[FATAL] DSH 网关预检未通过（code=$_KC_RC）—— 见 ledger dsh_quota_alert/日志；本次不执行" >&2
+  exit "$_KC_RC"
 fi
 
 INTENT="${1:?缺老板意图}"
