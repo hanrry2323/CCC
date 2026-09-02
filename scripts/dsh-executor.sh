@@ -21,7 +21,7 @@ source "$_SELF/dsh-key.sh" 2>/dev/null || true
 _KC_RC=0
 "$_SELF/dsh-key-check.sh" --quiet || _KC_RC=$?
 if [[ $_KC_RC -ne 0 ]]; then
-  echo "[FATAL] DSH 网关预检未通过（code=$_KC_RC）—— 见 ledger dsh_quota_alert/日志；本次不执行" >&2
+  echo "[FATAL] DSH 网关预检未通过（code=$_KC_RC）见 ledger dsh_quota_alert/日志；本次不执行" >&2
   exit "$_KC_RC"
 fi
 
