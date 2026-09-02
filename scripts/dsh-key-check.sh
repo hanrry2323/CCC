@@ -47,7 +47,7 @@ curl_rc=$?
 
 # 000 / curl 失败（超时28 / DNS6 / 连接7 / TLS35,60 等）一律 PROBE_UNAVAILABLE，绝不 PASS
 if [[ "$code" == "000" || $curl_rc -ne 0 ]]; then
-  say "[error] dsh-key-check: 探针不可达（PROBE_UNAVAILABLE http=$code curl_rc=$curl_rc url=$URL）"
+  say "[error] dsh-key-check: 探针不可达（PROBE_UNAVAILABLE http=$code curl_rc=$curl_rc url=${URL}）"
   exit 5
 fi
 
@@ -65,28 +65,28 @@ record_action('dsh_quota_alert', 'gateway', source='dsh-key-check',
     exit 2
     ;;
   401|403)
-    say "[error] dsh-key-check: 认证失败（AUTH_ERROR http=$code）"
+    say "[error] dsh-key-check: 认证失败（AUTH_ERROR http=${code}）"
     exit 3
     ;;
   2??)
     # 2xx：非空响应 + 含模型响应标记才 PASS；空/无法解析一律 PROBE_UNAVAILABLE
     if [[ ! -s "$TMP" ]]; then
-      say "[error] dsh-key-check: 空响应（PROBE_UNAVAILABLE http=$code）"
+      say "[error] dsh-key-check: 空响应（PROBE_UNAVAILABLE http=${code}）"
       exit 5
     fi
     if ! grep -qE '"content"|"model"|"choices"' "$TMP" 2>/dev/null; then
-      say "[error] dsh-key-check: 响应无法解析/无模型响应标记（PROBE_UNAVAILABLE http=$code）"
+      say "[error] dsh-key-check: 响应无法解析/无模型响应标记（PROBE_UNAVAILABLE http=${code}）"
       exit 5
     fi
-    say "[ok] dsh-key-check: PASS（http=$code）"
+    say "[ok] dsh-key-check: PASS（http=${code}）"
     exit 0
     ;;
   5??)
-    say "[error] dsh-key-check: 上游错误（UPSTREAM_ERROR http=$code）"
+    say "[error] dsh-key-check: 上游错误（UPSTREAM_ERROR http=${code}）"
     exit 4
     ;;
   *)
-    say "[error] dsh-key-check: 未分类 HTTP 状态（ERROR http=$code）"
+    say "[error] dsh-key-check: 未分类 HTTP 状态（ERROR http=${code}）"
     exit 7
     ;;
 esac
