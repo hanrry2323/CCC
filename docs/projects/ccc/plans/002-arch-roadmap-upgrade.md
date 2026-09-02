@@ -2,7 +2,7 @@
 
 > 项目：ccc · 编号：ccc-plan-002 · 状态：已完成 · 作者：老板 · 工具：OpenCode
 > 创建：2026-08-08 · 更新：2026-08-08
-> 关联卡：ccc009, ccc010
+>  关联卡：已归档（原引用 ccc009, ccc010 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：无
 > 迁移自：docs/notes/m9-arch-roadmap-plan.md（合并自 qx-map decisions/线路图升级为集群全景架构图-2026-08-08.md）
 

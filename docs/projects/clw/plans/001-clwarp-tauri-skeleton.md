@@ -2,7 +2,7 @@
 
 > 项目：clw · 编号：clw-plan-001 · 状态：已完成 · 作者：老板 · 工具：Claude Code
 > 创建：2026-08-09 · 更新：2026-08-11
-> 关联卡：clw001, clw002, clw003, clw004, clw005, clw006, clw007
+>  关联卡：已归档（原引用 clw001, clw002, clw003, clw004, clw005, clw006, clw007 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：clw-plan-002（技术栈演进）、clw-plan-003（缺陷收口）
 > 决策文档：qx-map `__archive__/decisions/clwarp-统一AI桌面驾驶舱-方案-2026-08-09.md`
 

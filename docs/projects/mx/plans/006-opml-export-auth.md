@@ -4,7 +4,7 @@
 > 批准：老板确认转卡 · 2026-08-19
 > 创建：2026-08-18 · 更新：2026-08-24
 > 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：RssSidebar.tsx 已为 fetch+Blob+createObjectURL 虚拟点击且携带 Bearer（:202/:215）；契约单测 RssSidebar.test.tsx 在位（commit 74a4f15）；前端 vitest 381 全绿（2026-08-24 实测）
-> 关联卡：mx054
+>  关联卡：已归档（原引用 mx054 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 进度：1/1 (100%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.2）
 

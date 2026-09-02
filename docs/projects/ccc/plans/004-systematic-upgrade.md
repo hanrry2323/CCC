@@ -2,7 +2,7 @@
 
 > 项目：ccc · 编号：ccc-plan-004 · 状态：已完成 · 作者：老板 · 工具：Claude Code
 > 创建：2026-08-08 · 更新：2026-08-10
-> 关联卡：ccc013, ccc014, ccc022
+>  关联卡：已归档（原引用 ccc013, ccc014, ccc022 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：无
 > 迁移自：qx-map `__archive__/decisions/ccc-系统化升级方案-2026-08-08.md`
 > 联动：`ccc-loop-engineering-评估与100卡基线计划-2026-08-08.md`（M8 基线计划）· `CCC机审与验收双轨定稿-2026-08-08.md`

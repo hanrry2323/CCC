@@ -1,6 +1,6 @@
 # 方案 · 管线全链预演·ccc-tst 仓 add 纯函数与 pytest 单测
 
-> 项目：tst · 编号：tst-plan-003 · 状态：已确认 · 作者：engine-drill · 工具：ccc
+> 项目：tst · 编号：tst-plan-003 · 状态：待排期 · 作者：engine-drill · 工具：ccc
 > 创建：2026-08-30 · 更新：2026-08-30
 > 关联卡：无
 > 关联方案：无

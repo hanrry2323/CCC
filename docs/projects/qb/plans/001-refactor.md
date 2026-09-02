@@ -2,7 +2,7 @@
 
 > 项目：qb · 编号：qb-plan-001 · 状态：已完成 · 作者：老板 · 工具：Codex
 > 创建：2026-08-03 · 更新：2026-08-10
-> 关联卡：qb001, qb002, qb003, qb004, qb005, qb006
+>  关联卡：已归档（原引用 qb001, qb002, qb003, qb004, qb005, qb006 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：无
 > 进度：6/6 (100%)
 > 迁移自：qx-map `__archive__/decisions/qb-refactor-方案-2026-08-03.md`

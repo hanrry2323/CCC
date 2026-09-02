@@ -4,7 +4,7 @@
 > 批准：老板确认转卡 · 2026-08-19
 > 创建：2026-08-18 · 更新：2026-08-24
 > 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：排除项收窄 + rss/websub/scan_scheduler 单测补齐（commit d4f4c94，含 lessons 沉淀 2835194）；CI 覆盖率门禁 medio-core ≥80% 在位；cargo test --workspace 578 全绿。备注：≥80% 当前值未本地复跑 tarpaulin，以 CI 门禁为准
-> 关联卡：mx053
+>  关联卡：已归档（原引用 mx053 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 进度：1/1 (100%)
 > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.4）
 

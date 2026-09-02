@@ -2,7 +2,7 @@
 
 > 项目：ccc · 编号：ccc-plan-003 · 状态：已完成 · 作者：老板 · 工具：Claude Code
 > 创建：2026-08-09 · 更新：2026-08-10
-> 关联卡：ccc008
+>  关联卡：已归档（原引用 ccc008 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：无
 > 迁移自：docs/notes/2026-08-09-fix-plan.md
 

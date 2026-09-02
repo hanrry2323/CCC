@@ -2,7 +2,7 @@
 
 > 项目：ccc · 编号：ccc-plan-011 · 状态：已完成 · 作者：老板
 > 创建：2026-08-09 · 更新：2026-08-10
-> 关联卡：ccc023 ccc024 ccc025 ccc026 ccc027 ccc028 ccc029 ccc030 ccc031 ccc032
+>  关联卡：已归档（原引用 ccc023, ccc024, ccc025, ccc026, ccc027, ccc028, ccc029, ccc030, ccc031, ccc032 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 
 ## 目标
 

@@ -2,7 +2,7 @@
 
 > 项目：clw · 编号：clw-plan-002 · 状态：已完成 · 作者：OpenCode（中枢） · 工具：OpenCode
 > 创建：2026-08-10 · 更新：2026-08-10
-> 关联卡：clw008, clw009, clw010, clw011, clw012
+>  关联卡：已归档（原引用 clw008, clw009, clw010, clw011, clw012 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：clw-plan-001（已完成的 v0.1.0 骨架方案）
 > 进度：5/5 (100%)
 

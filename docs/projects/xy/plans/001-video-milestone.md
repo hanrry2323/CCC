@@ -2,7 +2,7 @@
 
 > 项目：xy · 编号：xy-plan-001 · 状态：已完成 · 作者：老板 · 工具：Codex
 > 创建：2026-08-03 · 更新：2026-08-10
-> 关联卡：xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy027, xy028, xy029, xy030, xy031, xy032
+>  关联卡：已归档（原引用 xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy027, xy028, xy029, xy030, xy031, xy032 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）
 > 关联方案：无
 > 进度：31/31 (100%)
 > 迁移自：qx-map `__archive__/decisions/xianyu-视频里程碑-方案-2026-08-03.md`
