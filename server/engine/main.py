@@ -53,7 +53,7 @@ from server.engine.metrics import (
     record_worker_event,
 )
 from server.engine.pool import get_dispatch_pool
-from server.engine.card_state_store import CardCASConflict, CardStateStore
+from server.engine.card_state_store import CardCASConflict, CardStateError, CardStateStore
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
@@ -1172,27 +1172,27 @@ def _worktree_branch_tip(worktree_hint: str, branch: str) -> str | None:
 
 
 def _pin_audit_commit(card_path: str, sha: str) -> bool:
-    """机审信封钉被审 commit：把「机审：通过」改写为「机审：通过（被审 <sha12>）」（幂等）。
-
-    V6：合入前凭此行校验分支无漂移（机审通过后执行体再 push 非卡改动 → 拒绝合入）。
-    """
+    """机审信封钉被审 commit：只更新 worktree 分支卡副本（经统一门面，幂等）。"""
     if not sha:
         return True
+    path = Path(card_path)
     try:
-        text = Path(card_path).read_text(encoding="utf-8")
-    except OSError:
-        return False
-    if "被审 " in text:
+        text = path.read_text(encoding="utf-8")
+        if "被审 " in text:
+            return True
+        if not re.search(r"^(机审：通过\s*)$", text, flags=re.MULTILINE):
+            return True
+        try:
+            wt_root = _worktree_root_from(card_path)
+        except ValueError:
+            wt_root = path.parent
+        state_store = CardStateStore(wt_root, dispatch_dir="docs/dispatch", data_dir=wt_root / ".ccc-state")
+
+        state_store.materialize(path, text.replace("机审：通过\n", f"机审：通过（被审 {sha[:12]}）\n"), actor="engine-audit-pin")
         return True
-    m = re.search(r"^(机审：通过\s*)$", text, flags=re.MULTILINE)
-    if not m:
-        return True
-    text = text[: m.start()] + f"机审：通过（被审 {sha[:12]}）\n" + text[m.end() :]
-    try:
-        Path(card_path).write_text(text, encoding="utf-8")
-    except OSError:
+    except (OSError, CardStateError, ValueError) as exc:
+        logger.warning("固定机审被审提交失败（保留原文）: %s (%s)", card_path, exc)
         return False
-    return True
 
 
 def _is_remote_work(work: Work) -> bool:
@@ -1329,67 +1329,21 @@ def _commit_and_push_worktree_card(
     except (ValueError, OSError):
         rel = wt_card.name
     try:
-        subprocess.run(
-            ["git", "-C", worktree_path, "add", "--", rel],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        res = subprocess.run(
-            ["git", "-C", worktree_path, "commit", "-m", f"docs(card): 机审通过 {work_id}"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if res.returncode != 0:
-            logger.info("worktree 卡 commit 无改动（可能已由机审 CLI 提交）: %s", work_id)
-        push = subprocess.run(
-            ["git", "-C", worktree_path, "push", "origin", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        if push.returncode != 0:
-            # ccc093：push 报错 ≠ 未达远端（helper 噪声可致假失败）——以 origin 分支事实复核，
-            # 远端已含证据则记 pass 覆盖；校验不过仍走原失败路径（不放宽）。
-            branch = f"codex/{Path(card_path).stem.lower()}"
-            if _remote_branch_audit_evidence(worktree_path, rel, branch):
-                logger.info(
-                    "机审证据 push 报错但远端分支已含证据（ls-remote+卡文双重校验通过）: work=%s → 记 pass",
-                    work_id,
-                )
-                return True
-            logger.warning("机审证据 push 失败: work=%s (%s)", work_id, push.stderr.strip())
-            return False
-        # 验证证据确实进了分支（commit 失败被吞 → 机审区只留工作区的死结洞）
-        check = subprocess.run(
-            ["git", "-C", worktree_path, "show", f"HEAD:{rel}"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if check.returncode != 0 or "机审：通过" not in check.stdout:
-            # ccc093：本地 HEAD 复核空转 ≠ 证据未达远端（ccc088 假 infra 行）——
-            # 以 origin 分支事实双重校验（ls-remote + 分支卡文含机审区），核实已达
-            # 远端则记 pass 覆盖；校验失败仍走原 infra 续审路径（不放宽）。
-            branch = f"codex/{Path(card_path).stem.lower()}"
-            if _remote_branch_audit_evidence(worktree_path, rel, branch):
-                logger.info(
-                    "机审证据本地校验空转但远端分支已含证据（ls-remote+卡文双重校验通过）: work=%s → 记 pass",
-                    work_id,
-                )
-                return True
-            logger.warning(
-                "机审证据未进分支（commit/push 空转，只留工作区）: work=%s → 走 infra 续审",
-                work_id,
-            )
-            return False
+        state_store = CardStateStore(worktree_path, dispatch_dir="docs/dispatch", data_dir=Path(worktree_path) / ".ccc-state")
+        state_store.commit_card_changes(wt_card, message=f"docs(card): 机审通过 {work_id}", actor="engine-audit", push=True)
         logger.info("机审证据已提交并推送分支: work=%s", work_id)
         return True
+    except CardStateError as exc:
+        # 以 origin 分支事实双重校验：本地 commit/push 空转 ≠ 证据未达远端。
+        branch = f"codex/{Path(card_path).stem.lower()}"
+        if _remote_branch_audit_evidence(worktree_path, rel, branch):
+            logger.info(
+                "机审证据本地 commit/push 空转但远端分支已含证据（ls-remote+卡文双重校验通过）: work=%s → 记 pass",
+                work_id,
+            )
+            return True
+        logger.warning("机审证据未进分支（commit/push 空转，只留工作区）: work=%s (%s)", work_id, exc)
+        return False
     except Exception as exc:
         logger.warning("机审证据 commit/push 异常: work=%s (%s)", work_id, exc)
         return False
@@ -2484,7 +2438,10 @@ def _replace_audit_section(text: str, section: str) -> str:
 
 
 def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) -> bool:
-    """生产卡写入通过机审区；已有「不通过」区则替换为通过（2026-08-20 事故修复）。"""
+    """把通过机审区写入 worktree 分支卡副本（保持「机审区证据只落分支卡」语义）。
+
+    经 CardStateStore 门面原子落盘并与 engine/git_sync 共享锁互斥。
+    """
     if not card_path:
         return False
     if _card_machine_audit_passed(card_path):
@@ -2493,18 +2450,16 @@ def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) ->
     try:
         text = prod.read_text(encoding="utf-8")
     except OSError as exc:
-        logger.warning("读取生产卡失败，无法落盘机审区: %s (%s)", card_path, exc)
+        logger.warning("读取分支卡失败，无法落盘机审区: %s (%s)", card_path, exc)
         return False
+    original_text = text
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     snippet = re.sub(r"\s+", " ", (evidence or "").strip())[:400]
-    # F3（ccc-plan-035）：engine 输出对齐契约格式（> 结论： + > 来源：）
     section = f"\n\n## 机审区\n\n> 结论：通过\n> 来源：engine 自动落盘（{source}）· {stamp}\n> 证据：{snippet or '见 audit.log'}\n"
     if re.search(r"^##\s*机审区\s*$", text, flags=re.MULTILINE):
-        # 已有机审区（不通过结论）→ 替换旧区，重审通过覆盖
         new_text = _replace_audit_section(text, section)
     else:
         new_text = text.rstrip() + section
-    # F1（ccc-plan-035）：落盘前校验机审区格式，非法即拦截
     from server.board.card_header import validate_audit_section
 
     valid, reason = validate_audit_section(new_text)
@@ -2512,19 +2467,41 @@ def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) ->
         logger.error("机审区格式校验失败，拒绝落盘: %s (%s)", card_path, reason)
         return False
     try:
-        prod.write_text(new_text, encoding="utf-8")
-    except OSError as exc:
-        logger.warning("写入机审区失败: %s (%s)", card_path, exc)
+        # 分支卡副本所在仓根推导；测试夹具（flat tmp_path）退化为候选文件做原子物化
+        try:
+            wt_root = _worktree_root_from(card_path)
+        except ValueError:
+            wt_root = prod.parent
+        si = CardStateStore(
+            wt_root,
+            dispatch_dir="docs/dispatch",
+            data_dir=wt_root / ".ccc-state",
+        )
+        si.materialize(
+            prod,
+            new_text,
+            actor="engine-audit",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("机审区经统一门面落盘失败（保留原文）: %s (%s)", card_path, exc)
         return False
     ok = _card_machine_audit_passed(card_path)
     if ok:
-        logger.info("机审区已自动落盘到生产卡: %s (%s)", card_path, source)
-        # 033 阶段 2 M6：机审通过写批准真值账本（machine_audit_pass）——机审来源不可伪造
+        logger.info("机审区已通过统一门面落盘到分支卡: %s (%s)", card_path, source)
         from server.board.audit_ledger import record_action
 
         _card_id = Path(card_path).stem.split("-", 1)[0]
         record_action("machine_audit_pass", _card_id, source=source or "engine", detail=card_path)
     return ok
+
+
+def _worktree_root_from(card_path: str) -> Path:
+    """从分支卡绝对路径推导 worktree 根（卡副本所在仓 = repos 消息文件父级向上）。"""
+    p = Path(card_path).expanduser().resolve()
+    for ancestor in p.parents:
+        if (ancestor / ".git").exists() or (ancestor / "docs" / "dispatch").exists():
+            return ancestor
+    raise ValueError(f"无法推导 worktree 根: {card_path}")
 
 
 def _archive_executor_log(log_path: Path) -> Path | None:
@@ -3732,29 +3709,27 @@ def _clear_claim_marker(card_path: Path, card_id: str) -> None:
     new_first = _re.sub(r" · 认领：\S+ · 认领时间：\S+", "", first)
     if new_first == first:
         new_first = _re.sub(r" · 认领：\S+", "", first)
-    text = text[: m.start(1)] + new_first + text[m.end(1) :]
     try:
-        card_path.write_text(text, encoding="utf-8")
-        import subprocess
+        repo_root = card_path.parents[2]
+        state_store = CardStateStore(repo_root, dispatch_dir="docs/dispatch", data_dir=repo_root / ".ccc-state")
 
-        subprocess.run(
-            ["git", "add", str(card_path)], cwd=card_path.parents[2], check=False, capture_output=True, timeout=30
+        def _mutator(current_text: str) -> str:
+            current_match = _re.search(r"^(>[^\n]*?)(?:\n|$)", current_text, _re.MULTILINE)
+            if not current_match:
+                return current_text
+            return current_text[: current_match.start(1)] + new_first + current_text[current_match.end(1) :]
+
+        state_store.update_card(
+            card_path,
+            mutator=_mutator,
+            actor="claim-reclaim",
+            reason="认领超时回收（仅本地提交，不 push）",
+            commit=True,
+            push=False,
         )
-        commit_res = subprocess.run(
-            ["git", "commit", "-m", f"claim-reclaim: 认领超时回收 {card_id}"],
-            cwd=card_path.parents[2],
-            check=False,
-            capture_output=True,
-            timeout=30,
-        )
-        # 1-5（2026-08-24 直修）：不再直推 origin main——主树是 origin 的本地镜像，
-        # 认领回收只落本地提交，由 sync_origin_main ff-only 对齐；原 push 失败静默
-        # 曾致本地 main 提交无限累积、环节② push 撞 non-FF。
-        if commit_res.returncode != 0:
-            logger.warning("认领回收 commit 未生效（可能无改动或冲突）: %s rc=%s", card_id, commit_res.returncode)
-        logger.info("认领标记已清理（超时回收，仅本地提交）: %s", card_id)
-    except OSError:
-        logger.warning("清理认领标记失败（写）: %s", card_id)
+        logger.info("认领标记已清理（超时回收，统一门面仅本地提交）: %s", card_id)
+    except (OSError, CardStateError) as exc:
+        logger.warning("清理认领标记失败（写）: %s (%s)", card_id, exc)
 
 
 def _claim_running_marker(log_dir: Path, work_id: str, main_repo: Path | None = None, data_dir: str | None = None) -> Path:

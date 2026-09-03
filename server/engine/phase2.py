@@ -30,9 +30,12 @@ import time
 import urllib.request
 from pathlib import Path
 
+from server.engine.card_state_store import CardStateStore
 from server.engine.dsh_gateway import cli_env, preflight_gateway
 
 logger = logging.getLogger("ccc.engine.phase2")
+
+_PHASE2_STORE_CACHE: dict[str, CardStateStore] = {}
 
 _WRITTEN = "已回写"
 _CLOSED = "已关闭"
@@ -125,10 +128,28 @@ def list_written_cards(dispatch_dir: str | Path) -> list[dict]:
             "path_rel": path,
             "path": str(_repo_root() / path) if path and not os.path.isabs(path) else path,
             "branch": "",
+            "worktree": _worktree_for(item.project, item.id) or "",
         }
     for bc in _list_branch_written_cards():
         cards.setdefault(bc["id"], bc)
     return list(cards.values())
+
+
+def _worktree_for(project: str, work_id: str) -> str:
+    """按注册表隔离根计算该项目卡的实际 worktree 路径（与 _audit_worktree_path 同源）。
+
+    解决机审误报根因：磁盘上业务 worktree 存在，但 card 对象缺少 worktree 键，
+    _run_dsh_auditor 因此在调用 wrapper 前提前判定「worktree 缺失」。
+    """
+    try:
+        from server.board.registry import load_projects
+
+        for entry in load_projects():
+            if entry.prefix == project and entry.isolation_worktree_root:
+                return str(Path(entry.isolation_worktree_root).expanduser() / work_id.lower())
+    except Exception:
+        return ""
+    return ""
 
 
 def _list_branch_written_cards() -> list[dict]:
@@ -176,6 +197,7 @@ def _list_branch_written_cards() -> list[dict]:
                     "path_rel": cp,
                     "path": str(_repo_root() / cp),
                     "branch": branch,
+                    "worktree": _worktree_for(hdr.project, hdr.id) or "",
                 }
             )
     return cards
@@ -189,17 +211,21 @@ def resolve_card_file(card: dict) -> Path | None:
 
 
 def _materialize_card(card: dict) -> None:
-    """分支卡落工作区（打回/门禁需在 main 工作区改卡）。"""
+    """分支卡落工作区（打回/门禁需在 main 工作区改卡），经统一门面原子物化。"""
     branch = card.get("branch", "")
     rel = card.get("path_rel", "")
     if not branch or not rel:
         return
     show = git(["show", f"origin/{branch}:{rel}"])
-    if show.returncode != 0:
+    if show.returncode != 0 or not isinstance(show.stdout, str):
         return
     target = _repo_root() / rel
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(show.stdout, encoding="utf-8")
+    try:
+        _phase2_store().materialize(target, show.stdout, actor="phase2-materialize")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("phase2 分支卡物化失败（保留原文）: %s (%s)", target, exc)
+
 
 
 def _refresh_index(cfg: dict) -> None:
@@ -306,15 +332,10 @@ def _audit_worktree_path(card: dict, card_file: Path, cfg: dict) -> Path:
     """按项目注册表/配置定位机审分支 worktree，不写死个人业务路径。"""
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0]).lower()
     project = str(card.get("project") or "").strip()
-    try:
-        from server.board.registry import load_projects
-
-        for entry in load_projects():
-            if entry.prefix == project and entry.isolation_worktree_root:
-                return Path(entry.isolation_worktree_root).expanduser() / work_id
-    except Exception:
-        pass
-    base = str(cfg.get("CCC_WORKTREE_BASE") or "").strip()
+    registered = _worktree_for(project, work_id)
+    if registered:
+        return Path(registered)
+    base = str(cfg.get("CCC_WORKTREE_BASE") or "").strip()# fallback for non-registered test/config projects.
     for token in ("<task>", "{task}", "<work_id>", "{work_id}"):
         base = base.replace(token, work_id)
     return Path(base).expanduser() if base else Path(card_file).resolve().parent.parent.parent / ".ccc-wt" / work_id
@@ -462,26 +483,93 @@ def run_card_gates(card_file: Path) -> list[str]:
 
 
 def set_card_state(card_file: Path, state_text: str, verdict: str, reasons: str) -> bool:
-    """改写卡头「状态：X」+ 追加机审区结论（幂等）。"""
+    """改写卡头「状态：X」+ 追加机审区结论（经 CardStateStore 统一门面，幂等）。"""
     if not card_file.is_file():
         return False
-    text = card_file.read_text(encoding="utf-8")
-    new_text, n = _STATE_RE.subn(rf"\g<1>{state_text}", text, count=1)
-    if n == 0:
+    try:
+        store = _phase2_store(card_file)
+        text = card_file.read_text(encoding="utf-8")
+        target = _base_state_of(text)
+        audit_section = _audit_section(verdict, reasons)
+        # 真实 Git 仓走受保护提交+push；无 .git 的测试夹具只验证原子落盘
+        push = store.repo_root.joinpath(".git").exists()
+
+        def _mutator(current_text: str) -> str:
+            new_text, n = _STATE_RE.subn(rf"\g<1>{state_text}", current_text, count=1)
+            if n == 0:
+                raise ValueError("卡头缺少状态字段，无法写入状态")
+            if "## 机审区" in new_text:
+                return re.sub(
+                    r"## 机审区\s*\n.*?(?=\n## |\Z)",
+                    audit_section.rstrip("\n") + "\n",
+                    new_text,
+                    flags=re.S,
+                    count=1,
+                )
+            return new_text.rstrip("\n") + "\n\n" + audit_section.rstrip("\n") + "\n"
+
+        store.transition(
+            card_file,
+            target=state_text,
+            expected_state=target,
+            expected_version=_version_of(text),
+            expected_commit=None,
+            actor="phase2",
+            reason=f"机审{'通过' if verdict == 'PASS' else '不通过'}: {reasons[:120]}",
+            mutator=_mutator,
+            push=push,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("set_card_state 统一门面失败（保留原文）: %s (%s)", card_file, exc)
         return False
+    return True
+
+
+def _phase2_store(card_file: Path | None = None) -> CardStateStore:
+    """按卡所在仓库构造统一 store（进程级缓存）。"""
+    dispatch_dir = os.environ.get("DISPATCH_DIR") or "docs/dispatch"
+    from server.git_sync import resolve_repo_root
+
+    repo_root = resolve_repo_root(card_file.parent if card_file is not None else dispatch_dir)
+    key = str(repo_root.resolve())
+    cached = _PHASE2_STORE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    store = CardStateStore(
+        repo_root,
+        dispatch_dir=dispatch_dir if (repo_root / dispatch_dir).is_dir() else repo_root,
+        data_dir=os.environ.get("DATA_DIR") or (repo_root / ".ccc-state"),
+    )
+    _PHASE2_STORE_CACHE[key] = store
+    return store
+
+
+
+
+
+
+
+
+def _base_state_of(text: str) -> str:
+    from server.board.models import base_state
+
+    m = re.search(r"状态\s*[:：]\s*([^\n·]+?)(?=\s*·|\s*$)", text)
+    return base_state(m.group(1).strip()) if m else ""
+
+
+def _version_of(text: str) -> int:
+    m = re.search(r"状态版本\s*[:：]\s*(\d+)", text)
+    return int(m.group(1)) if m else 0
+
+
+def _audit_section(verdict: str, reasons: str) -> str:
     verdict_cn = "通过" if verdict == "PASS" else "不通过"
-    audit_section = (
+    return (
         "## 机审区\n\n"
         "- 审核方：Claude Code（phase2 自动）\n"
         f"- 结论：{verdict_cn}\n"
         f"- 理由：{reasons}\n"
     )
-    if "## 机审区" in new_text:
-        new_text = re.sub(r"## 机审区\s*\n.*?(?=\n## |\Z)", audit_section.rstrip("\n") + "\n", new_text, flags=re.S, count=1)
-    else:
-        new_text = new_text.rstrip("\n") + "\n\n" + audit_section.rstrip("\n") + "\n"
-    card_file.write_text(new_text, encoding="utf-8")
-    return True
 
 
 def merge_branch_to_main(branch: str) -> tuple[bool, str]:
@@ -619,10 +707,12 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 if card_file is None:
                     record_action("phase2_alert", card["id"], source="phase2", detail="无法落打回卡文件")
                     return {"id": card["id"], "result": "error", "reason": "card file missing on reject"}
-                set_card_state(card_file, f"{_REJECTED}（CC 审核不通过）", "REJECT", audit["reasons"])
-                git(["add", "--", str(card_file)])
-                git(["commit", "-m", f"chore(phase2): {card['id']} CC 审核不通过自动打回"])
-                git(["push", "origin", "main"])
+                if not set_card_state(card_file, f"{_REJECTED}（CC 审核不通过）", "REJECT", audit["reasons"]):
+                    record_action(
+                        "phase2_alert", card["id"], source="phase2",
+                        detail="机审打回落盘失败（保留原文，不覆盖）",
+                    )
+                    return {"id": card["id"], "result": "error", "reason": "机审打回落盘失败"}
                 record_action("phase2_reject", card["id"], source="phase2", detail=f"CC 审核不通过自动打回: {audit['reasons']}")
                 _refresh_index(cfg)
                 logger.warning("phase2 打回（不阻塞其他卡）: %s", card["id"])
@@ -648,24 +738,19 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
         # 门禁（main 工作区）
         gate_fails = run_card_gates(card_file)
         if gate_fails:
-            git(["reset", "--hard", "origin/main"])
-            set_card_state(card_file, f"{_REJECTED}（门禁失败）", "REJECT", "；".join(gate_fails))
-            git(["add", "--", str(card_file)])
-            git(["commit", "-m", f"chore(phase2): {card['id']} 门禁失败自动打回"])
-            git(["push", "origin", "main"])
+            if not set_card_state(card_file, f"{_REJECTED}（门禁失败）", "REJECT", "；".join(gate_fails)):
+                record_action("phase2_alert", card["id"], source="phase2", detail="门禁失败状态落盘失败（保留原文，不覆盖）")
+                return {"id": card["id"], "result": "error", "reason": "门禁失败状态落盘失败"}
             record_action("phase2_reject", card["id"], source="phase2", detail=f"门禁失败自动打回: {'; '.join(gate_fails)}")
             _refresh_index(cfg)
             logger.warning("phase2 门禁失败打回: %s", card["id"])
             return {"id": card["id"], "result": "gate_failed", "reason": gate_fails}
 
-        # 置已关闭 + 提交 push main
-        set_card_state(card_file, _CLOSED, "PASS", "CC 审核通过，自动合入完成")
-        git(["add", "--", str(card_file)])
-        git(["commit", "-m", f"chore(phase2): {card['id']} CC 审核通过自动合入关闭"])
-        r = git(["push", "origin", "main"])
-        if r.returncode != 0:
-            record_action("phase2_alert", card["id"], source="phase2", detail=f"push main 失败: {r.stderr.strip()[:200]}")
-            return {"id": card["id"], "result": "error", "reason": f"push main 失败: {r.stderr.strip()[:200]}"}
+
+        # 置已关闭 + 提交 push main（统一门面自带 commit/push）
+        if not set_card_state(card_file, _CLOSED, "PASS", "CC 审核通过，自动合入完成"):
+            record_action("phase2_alert", card["id"], source="phase2", detail="合入后状态落盘失败（保留原文，不覆盖）")
+            return {"id": card["id"], "result": "error", "reason": "合入后状态落盘失败"}
 
         # 部署 + 探活
         ok, detail = deploy_and_probe(cfg)
@@ -683,10 +768,9 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
             logger.info("phase2 完成: %s → 已关闭（%s）", card["id"], detail)
             return {"id": card["id"], "result": "closed", "reason": detail, "branch_cleanup": "ok" if cleaned else "failed"}
         # 部署未就绪：卡回「已回写（部署失败）」+ 告警，下轮自动重试（不静默）
-        set_card_state(card_file, f"{_WRITTEN}（部署失败）", "PASS", f"合入成功但部署未就绪: {detail}")
-        git(["add", "--", str(card_file)])
-        git(["commit", "-m", f"chore(phase2): {card['id']} 部署未就绪，待重试"])
-        git(["push", "origin", "main"])
+        if not set_card_state(card_file, f"{_WRITTEN}（部署失败）", "PASS", f"合入成功但部署未就绪: {detail}"):
+            record_action("phase2_alert", card["id"], source="phase2", detail="部署失败状态落盘失败（保留原文，不覆盖）")
+            return {"id": card["id"], "result": "error", "reason": "部署失败状态落盘失败"}
         record_action("phase2_deploy_fail", card["id"], source="phase2", detail=f"部署探活失败: {detail}")
         _refresh_index(cfg)
         logger.error("phase2 部署探活失败（卡保留已回写待重试）: %s %s", card["id"], detail)

@@ -386,7 +386,121 @@ class CardStateStore:
 
         load_dispatch_cards(self.dispatch_dir)
 
-    def _commit_push(self, rel_path: str, message: str, *, branch: str) -> str:
+    def materialize(
+        self,
+        card: str | Path,
+        text: str,
+        *,
+        expected_commit: str | None = None,
+        actor: str = "materialize",
+    ) -> CardSnapshot:
+        """在卡锁内物化已验证来源的卡副本，不执行状态迁移或提交。
+
+        用于 phase2 将分支信封复制到 main 工作树；目标文件可以尚不存在，
+        因为分支信封物化本身就是创建主仓卡副本的步骤。
+        """
+        raw = Path(card).expanduser()
+        path = raw if raw.is_absolute() else self.repo_root / raw
+        path = path.resolve()
+        try:
+            path.relative_to(self.repo_root)
+        except ValueError as exc:
+            raise ValueError(f"任务卡不在 repo_root 内: {path}") from exc
+        card_id = path.stem.split("-", 1)[0]
+        with self.lock_card(card_id):
+            if path.is_file():
+                current = self.read_snapshot(path)
+                if expected_commit is not None and current.commit != expected_commit:
+                    raise CardCASConflict(
+                        f"物化提交冲突: expected={expected_commit}, actual={current.commit}"
+                    )
+            else:
+                if expected_commit is not None:
+                    raise CardCASConflict(f"物化目标不存在，无法校验提交基线: {path}")
+                current = CardSnapshot(
+                    card_id=card_id,
+                    path=path,
+                    rel_path=self._rel(path),
+                    text="",
+                    state="",
+                    version=0,
+                    commit="",
+                    blob="",
+                    branch=self._branch(),
+                )
+            self._history(current, text, actor=actor, outcome="materialized")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._write_atomic(path, text)
+            self._refresh_index()
+            return self.read_snapshot(path)
+
+    def update_card(
+        self,
+        card: str | Path,
+        *,
+        mutator: Callable[[str], str],
+        actor: str,
+        reason: str = "",
+        expected_version: int | None = None,
+        expected_commit: str | None = None,
+        push: bool = True,
+        commit: bool = True,
+    ) -> TransitionReceipt:
+        """通过同一 CAS/锁/提交门面更新卡正文（状态可保持不变）。"""
+        initial = self.read_snapshot(card)
+        with self.lock_card(initial.card_id):
+            current = self.read_snapshot(initial.path)
+            if expected_version is not None and current.version != expected_version:
+                raise CardCASConflict(
+                    f"版本冲突: expected={expected_version}, actual={current.version}"
+                )
+            if expected_commit is not None and current.commit != expected_commit:
+                raise CardCASConflict(
+                    f"提交冲突: expected={expected_commit}, actual={current.commit}"
+                )
+            updated = mutator(current.text)
+            if updated == current.text:
+                return TransitionReceipt(
+                    card_id=current.card_id,
+                    old_state=current.state,
+                    new_state=current.state,
+                    old_version=current.version,
+                    new_version=current.version,
+                    old_commit=current.commit,
+                    new_commit=current.commit,
+                    rel_path=current.rel_path,
+                )
+            updated = self._with_version(updated, current.version + 1)
+            self._history(current, updated, actor=actor, outcome="candidate", reason=reason)
+            self._write_atomic(current.path, updated)
+            try:
+                self._refresh_index()
+                if commit:
+                    new_commit = self._commit_push(
+                        current.rel_path,
+                        f"chore(card): {current.card_id} {actor}",
+                        branch=current.branch,
+                        push=push,
+                    )
+                    if push:
+                        self.reverify_remote(current, commit=new_commit)
+                else:
+                    new_commit = self._git_commit(current.path)
+            except CardStateError as exc:
+                self._history(current, updated, actor=actor, outcome="failed", reason=str(exc))
+                raise
+            return TransitionReceipt(
+                card_id=current.card_id,
+                old_state=current.state,
+                new_state=current.state,
+                old_version=current.version,
+                new_version=current.version + 1,
+                old_commit=current.commit,
+                new_commit=new_commit,
+                rel_path=current.rel_path,
+            )
+
+    def _commit_push(self, rel_path: str, message: str, *, branch: str, push: bool = True) -> str:
         with self._git_lock():
             add = _run_git(self.repo_root, ["add", "--", rel_path])
             if add.returncode != 0:
@@ -397,9 +511,34 @@ class CardStateStore:
             new_commit = _run_git(self.repo_root, ["rev-parse", "HEAD"])
             if new_commit.returncode != 0:
                 raise CardCommitError("无法读取新提交")
-            push = _run_git(self.repo_root, ["push", self.remote, branch], timeout=60)
-            if push.returncode != 0:
-                raise CardPushError((_text_output(push.stderr) or _text_output(push.stdout) or "git push 失败").strip())
+            if push:
+                pushed = _run_git(self.repo_root, ["push", self.remote, branch], timeout=60)
+                if pushed.returncode != 0:
+                    raise CardPushError((_text_output(pushed.stderr) or _text_output(pushed.stdout) or "git push 失败").strip())
+            return _text_output(new_commit.stdout).strip()
+
+    def commit_if_changed(self, rel_path: str, message: str, *, branch: str, push: bool = True) -> str:
+        """像 _commit_push 但在 nothing-to-commit 空提交时静默放行（已由他方落盘）。"""
+        with self._git_lock():
+            add = _run_git(self.repo_root, ["add", "--", rel_path])
+            if add.returncode != 0:
+                raise CardCommitError((_text_output(add.stderr) or _text_output(add.stdout) or "git add 失败").strip())
+            commit = _run_git(self.repo_root, ["commit", "-m", message])
+            if commit.returncode != 0:
+                details = (_text_output(commit.stderr) or _text_output(commit.stdout) or "")
+                if "nothing to commit" in details or "no changes added to commit" in details:
+                    # 证据已由他方提交，本地仅复核远端即可
+                    head = _run_git(self.repo_root, ["rev-parse", "HEAD"])
+                    if head.returncode == 0:
+                        return _text_output(head.stdout).strip()
+                raise CardCommitError(details[:200])
+            new_commit = _run_git(self.repo_root, ["rev-parse", "HEAD"])
+            if new_commit.returncode != 0:
+                raise CardCommitError("无法读取新提交")
+            if push:
+                pushed = _run_git(self.repo_root, ["push", self.remote, branch], timeout=60)
+                if pushed.returncode != 0:
+                    raise CardPushError((_text_output(pushed.stderr) or _text_output(pushed.stdout) or "git push 失败").strip())
             return _text_output(new_commit.stdout).strip()
 
     def reverify_remote(self, snapshot: CardSnapshot, *, commit: str | None = None) -> None:
@@ -439,6 +578,7 @@ class CardStateStore:
         ``mutator`` 只负责正文附加修改；状态和版本由本门面统一写入。
         ``push=False`` 仅用于隔离测试/离线候选，生产调用方必须保留默认 push。
         """
+        state_text = target
         target = base_state(target)
         if target not in _STATE_TARGETS:
             raise CardValidationError(f"非法目标状态: {target}")
@@ -461,7 +601,7 @@ class CardStateStore:
                 if not (allow_mirror_completion and current.state == State.TODO.value and target == State.DONE.value):
                     raise CardValidationError(f"非法状态转移: {current.state} → {target}")
             updated = mutator(current.text) if mutator is not None else current.text
-            updated = self._with_state(updated, target)
+            updated = self._with_state(updated, state_text)
             updated = self._with_version(updated, current.version + 1)
             self._history(current, updated, actor=actor, outcome="candidate", reason=reason)
             self._write_atomic(current.path, updated)
@@ -500,6 +640,27 @@ class CardStateStore:
         """
         with protected_git_lock(self.repo_root, blocking=blocking) as _lock:
             yield _lock
+
+    def commit_card_changes(
+        self,
+        card: str | Path,
+        *,
+        message: str,
+        actor: str = "engine",
+        push: bool = True,
+    ) -> str:
+        """把已在工作树修改的卡以统一 Git 锁提交/推送并复核远端。
+
+        提供给 ``_commit_and_push_worktree_card`` 等在 apply 之后只差 commit+push 的
+        调用方；会先做一次卡级校验并保留原文与冲突语义。
+        """
+        path = self._card_path(card)
+        current = self.read_snapshot(path)
+        branch = current.branch
+        new_commit = self._commit_push(current.rel_path, message, branch=branch, push=push)
+        if push:
+            self.reverify_remote(current, commit=new_commit)
+        return new_commit
 
 
 __all__ = [
