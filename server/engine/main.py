@@ -2745,6 +2745,33 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
             dispatch_root = repo_root / dispatch_root
         # 持久化重写索引，再 commit；否则 pre-commit card-validate 读取旧索引，
         # 把「引擎已回写」误报成状态不一致（tst905 实测）。
+        rel = str(card_path.relative_to(repo_root))
+
+        def _diff_stat_snapshot(label: str) -> str:
+            try:
+                r = subprocess.run(
+                    ["git", "diff", "--stat", "--", rel],
+                    cwd=str(repo_root), capture_output=True, text=True, timeout=15, check=False,
+                )
+                stat = (r.stdout or r.stderr or "").strip()
+                logger.info("[引擎代写 %s] git diff --stat:\n%s", label, stat)
+                return stat
+            except Exception as _exc:  # noqa: BLE001
+                logger.warning("[引擎代写 %s] git diff --stat 快照失败: %s", label, _exc)
+                return ""
+
+        _diff_stat_snapshot("代写前")
+        # 代写动作已发生于上方；只有卡文件自身产生实际 diff 才允许提交。
+        card_diff = subprocess.run(
+            ["git", "diff", "--quiet", "--", rel],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=15, check=False,
+        )
+        _diff_stat_snapshot("代写后")
+        if card_diff.returncode == 0:
+            logger.warning("引擎代写结束但无卡面变更，禁止空提交: work=%s", work.id)
+            return False, "无卡面变更"
+        if card_diff.returncode not in (1,):
+            return False, f"无法核验卡面 diff（git diff rc={card_diff.returncode}）"
         if not _refresh_index(cfg, dispatch_root):
             return False, "引擎代写卡前持久化刷新索引失败"
         rel = str(card_path.relative_to(repo_root))

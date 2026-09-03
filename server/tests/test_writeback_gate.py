@@ -442,7 +442,7 @@ def test_apply_executor_result_to_card_rewrites_card(tmp_path, monkeypatch):
     def fake_run(cmd, **kw):
         captured["cmd"] = cmd
         m = MagicMock()
-        m.returncode = 0
+        m.returncode = 1 if "--quiet" in cmd else 0
         return m
 
     monkeypatch.setattr("server.engine.main.subprocess.run", fake_run)
@@ -477,7 +477,11 @@ def test_apply_executor_result_title_sample_is_accepted(tmp_path, monkeypatch):
     )
     work = Work(id="tst905", role="开发执行体", card_path=str(card_path))
     monkeypatch.setattr("server.git_sync.resolve_repo_root", lambda *a, **k: tmp_path)
-    monkeypatch.setattr("server.engine.main.subprocess.run", lambda *a, **k: MagicMock(returncode=0))
+    def fake_run(*args, **kwargs):
+        command = args[0] if args else []
+        return MagicMock(returncode=1 if "--quiet" in command else 0)
+
+    monkeypatch.setattr("server.engine.main.subprocess.run", fake_run)
     ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
     assert ok, err
     assert "执行结果已完成" in card_path.read_text(encoding="utf-8")
@@ -509,7 +513,8 @@ def test_apply_executor_result_refreshes_index_before_commit(tmp_path, monkeypat
 
     def fake_run(cmd, **kwargs):
         calls.append(cmd[1] if len(cmd) > 1 else cmd[0])
-        return MagicMock(returncode=0)
+        # git diff --quiet 返回 1 表示卡面存在待提交变更。
+        return MagicMock(returncode=1 if "--quiet" in cmd else 0)
 
     monkeypatch.setattr("server.engine.main.subprocess.run", fake_run)
     ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
