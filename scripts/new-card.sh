@@ -30,6 +30,12 @@
 #   --slug <slug>             文件名 slug 覆盖（默认从标题派生；小写字母数字+单连字符）
 #   --dry-run                 只打印卡内容与目标路径，不写文件
 #   --quiet                   不打印写卡日志
+#   -f <内容文件>             用内容文件全量作卡体（跳过模板占位段；一次成卡内置化）。
+#                             从文件首行解析卡标题（# 任务卡 <ID> · <标题>）；仍走编号查重/validate/原子提交推送。
+#
+# 卡体来源二选一：
+#   - 默认：脚本生成标准骨架（八节 + 占位正文，执行体在实现前补齐）
+#   - `-f`：内容文件全量进卡（须含合规卡头 + 完整段落；常见废卡原因见卡作者手册）
 #
 # 环境变量（零硬编码，可覆盖默认值）：
 #   CCC_CARD_EXECUTOR / CCC_CARD_ACCEPTANCE / CCC_PYTHON_BIN
@@ -65,6 +71,7 @@ DISPATCH="${CCC_CARD_DISPATCH:-engine}"
 PYTHON_BIN="${CCC_PYTHON_BIN:-}"
 
 TITLE=""
+CONTENT_FILE=""
 ID_OVERRIDE=""
 SLUG_OVERRIDE=""
 DRY_RUN=false
@@ -90,11 +97,26 @@ while [[ $# -gt 0 ]]; do
     --slug) SLUG_OVERRIDE="$2"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
     --quiet) QUIET=true; shift ;;
+    -f|--file) CONTENT_FILE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "[ERROR] 未知参数: $1" >&2; usage; exit 2 ;;
   esac
 done
 
+if [[ -n "$CONTENT_FILE" ]]; then
+  # -f 模式：标题从内容文件首行解析（# 任务卡 <ID> · <标题>…）
+  if [[ ! -f "$CONTENT_FILE" ]]; then
+    echo "[ERROR] 内容文件不存在: $CONTENT_FILE" >&2
+    exit 2
+  fi
+  if [[ -z "$TITLE" ]]; then
+    TITLE="$(sed -n '1s/^# 任务卡 [A-Za-z0-9]\{3,\} · *//p' "$CONTENT_FILE" 2>/dev/null | sed 's/ *（.*）\?$//')"
+  fi
+  if [[ -z "$TITLE" ]]; then
+    echo "[ERROR] -f 内容文件首行须为「# 任务卡 <前缀><NNN> · <标题>…」（无法解析标题），或用 --title 显式指定" >&2
+    exit 2
+  fi
+fi
 if [[ -z "$TITLE" ]]; then
   echo "[ERROR] 缺少 --title（卡标题必填）" >&2
   usage
@@ -415,6 +437,24 @@ lint：
 
 （中枢在出卡时注入，验收体（机审大模型）读到本节后优先遵循。）
 EOF
+
+if [[ -n "$CONTENT_FILE" ]]; then
+  # -f：全量采用内容文件，跳过模板占位段；但仍沿用本脚本的路径、编号、索引、validate、原子 git 链。
+  if [[ -z "$ID_OVERRIDE" ]]; then
+    echo "[ERROR] -f 内容文件须配 --id（内容文件卡号必须与目标路径一致，避免正文/文件名漂移）" >&2
+    exit 3
+  fi
+  CONTENT_CARD_ID="$(sed -n '1s/^# 任务卡 \([A-Za-z0-9]\{3,\}\).*/\1/p' "$CONTENT_FILE" 2>/dev/null)"
+  if [[ -z "$CONTENT_CARD_ID" ]]; then
+    echo "[ERROR] -f 内容文件首行无法解析卡号" >&2
+    exit 3
+  fi
+  if [[ "$CONTENT_CARD_ID" != "$CARD_ID" ]]; then
+    echo "[ERROR] -f 内容文件卡号 ${CONTENT_CARD_ID} 与目标卡 ${CARD_ID} 不一致；请用同一 --id" >&2
+    exit 3
+  fi
+  CARD_BODY="$(cat "$CONTENT_FILE")"
+fi
 
 if [[ "$DRY_RUN" == true ]]; then
   echo "# [dry-run] 目标文件: $CARD_PATH"
