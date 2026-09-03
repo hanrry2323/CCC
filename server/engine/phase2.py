@@ -354,18 +354,25 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     worktree = str(card.get("worktree") or "")
     if not worktree:
-        wt = _ensure_audit_worktree(card, card_file, cfg, branch)
-        if wt is None:
-            return 127, "", f"机审 worktree 创建失败: {work_id}（当前模型通道=3456/Code）"
-        worktree = str(wt)
+        wt = _audit_worktree_path(card, card_file, cfg)
+        return 127, "", f"机审失败：worktree 缺失，无法审计: {wt}"
+    if not Path(worktree).is_dir():
+        return 127, "", f"机审失败：worktree 缺失，无法审计: {worktree}"
     rel = card_file.resolve().relative_to(_repo_root().resolve())
     audit_card = Path(worktree) / rel
     if not audit_card.is_file():
         return 127, "", f"机审 worktree 卡缺失: {audit_card}（当前模型通道=3456/Code）"
     card["_audit_card_file"] = str(audit_card)
+    # 主仓分支保护（A4 加固）：机审前记录主仓分支，机审后校验未漂移。
+    prev_branch = _current_branch()
     cmd = [str(auditor), str(card_file), work_id, worktree, "验收席"]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=cli_env(), cwd=str(_repo_root()))
+        after_branch = _current_branch()
+        if after_branch != prev_branch:
+            logger.warning("机审后主仓分支漂移: %s -> %s，自动恢复 %s，机审判失败", prev_branch, after_branch, prev_branch)
+            git(["checkout", prev_branch])
+            return 127, "", f"机审后主仓分支漂移（{prev_branch} -> {after_branch}），已恢复 {prev_branch}，机审失败"
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
         return 124, "", f"dsh-auditor 超时（{timeout}s，当前模型通道=3456/Code）"

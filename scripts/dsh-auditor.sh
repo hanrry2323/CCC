@@ -78,17 +78,20 @@ fi
 # R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
 # 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，
 # 杜绝 DSH 对占位维护区误判「通过」。红线：门禁不削弱，仅前置化）。
-# P0-1b-fix（2026-08-24 tst003 误打回归因）：机审对象=被审分支的卡副本，不是主仓 main 版占位卡。
+# P0-1b-fix（2026-08-24 tst003 误打回归因）：机审对象必须是被审分支的卡副本，不能回退主仓。
 # docs 类卡 biz_worktree 不含卡文件；回写与引擎信封都落在 WORKTREE 分支副本。
-# 机械门禁 / 测试截获 / DSH 机审 prompt 一律用 AUDIT_CARD（worktree 副本优先，缺失回退 CARD_PATH）。
-AUDIT_CARD="$CARD_PATH"
-if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
-  REL_CARD="${CARD_PATH#/Users/fan/program/CCC/}"
-  if [ "$REL_CARD" != "$CARD_PATH" ] && [ -f "$WORKTREE/$REL_CARD" ]; then
-    AUDIT_CARD="$WORKTREE/$REL_CARD"
-    echo "[dsh-auditor] 审查对象=worktree 分支副本: $AUDIT_CARD" >&2
-  fi
+# A4 加固（2026-09-03）：WORKTREE 缺失/卡副本缺失直接失败，禁止主仓 fallback，防止污染 main。
+if [ -z "$WORKTREE" ] || [ ! -d "$WORKTREE" ]; then
+  echo "[dsh-auditor] 机审失败：worktree 缺失，无法审计: ${WORKTREE:-<空>}" >&2
+  exit 64
 fi
+REL_CARD="${CARD_PATH#/Users/fan/program/CCC/}"
+if [ "$REL_CARD" = "$CARD_PATH" ] || [ ! -f "$WORKTREE/$REL_CARD" ]; then
+  echo "[dsh-auditor] 机审失败：worktree 卡副本缺失，无法审计: $WORKTREE/$REL_CARD" >&2
+  exit 64
+fi
+AUDIT_CARD="$WORKTREE/$REL_CARD"
+echo "[dsh-auditor] 审查对象=worktree 分支副本: $AUDIT_CARD" >&2
 
 # R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
 # 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，

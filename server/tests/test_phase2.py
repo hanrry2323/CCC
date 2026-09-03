@@ -366,3 +366,48 @@ def test_web_host_fallback_loopback() -> None:
     """无 WEB_HOST（本地/测试模式）→ 回落 127.0.0.1，127.0.0.1 语义不破坏。"""
     cfg = {"WEB_HOST": ""}
     assert phase2._web_host(cfg) == "127.0.0.1"
+
+
+def _fake_auditor(tmp_path: Path) -> str:
+    """创建真实存在的假 auditor.sh 供 _run_dsh_auditor 通过文件检查。"""
+    p = tmp_path / "fake-dsh-auditor.sh"
+    p.write_text("#!/bin/bash\n", encoding="utf-8")
+    return str(p)
+
+
+def test_dsh_auditor_rejects_missing_worktree(tmp_path: Path) -> None:
+    """A4 加固：机审没有分支 worktree 时直接失败，不回退主仓。"""
+    card_file = tmp_path / "tst998.md"
+    card_file.write_text("# 任务卡 tst998\n", encoding="utf-8")
+    rc, out, err = phase2._run_dsh_auditor(
+        {"id": "tst998", "project": "tst"}, card_file, "codex/tst998", {"DSH_AUDITOR_BIN": _fake_auditor(tmp_path)}, 900
+    )
+    assert rc == 127
+    assert "worktree 缺失，无法审计" in err
+
+
+def test_dsh_auditor_branch_drift_restores(monkeypatch, tmp_path: Path) -> None:
+    """A4 加固：auditor 返回后发现主仓分支漂移，恢复原分支并报告失败。"""
+    card_file = tmp_path / "tst999.md"
+    card_file.write_text("# 任务卡 tst999\n", encoding="utf-8")
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    (worktree / "tst999.md").write_text("# 任务卡 tst999\n", encoding="utf-8")
+    monkeypatch.setattr(phase2, "_repo_root", lambda: tmp_path)
+    branch_calls = {"n": 0}
+
+    def drifting_branch():
+        branch_calls["n"] += 1
+        return "main" if branch_calls["n"] == 1 else "codex/tst999"
+
+    monkeypatch.setattr(phase2, "_current_branch", drifting_branch)
+    calls = []
+    monkeypatch.setattr(phase2, "git", lambda args, cwd=None: calls.append(args) or _ok_rc())
+    monkeypatch.setattr(phase2.subprocess, "run", lambda *args, **kwargs: _ok_rc(0))
+    card = {"id": "tst999", "project": "tst999", "worktree": str(worktree)}
+    rc, out, err = phase2._run_dsh_auditor(
+        card, card_file, "codex/tst999", {"DSH_AUDITOR_BIN": _fake_auditor(tmp_path)}, 900
+    )
+    assert rc == 127
+    assert "分支漂移" in err
+    assert ["checkout", "main"] in calls
