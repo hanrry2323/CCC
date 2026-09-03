@@ -1,11 +1,11 @@
 """server/engine/phase2.py — 后半段自动闭环（rebuild/phase1 · Phase 1）
 
 链路：卡「已回写」 → 引擎自动触发（server.engine.main.run_loop 每轮调用 /
-      phase2 --daemon 兜底轮询） → Claude Code 审核 → 合入 → 提交 → 部署 → 探活 → 终态。
+      phase2 --daemon 兜底轮询） → DSH auditor（3456/Code）审核 → 合入 → 提交 → 部署 → 探活 → 终态。
 
 规则（老板定稿架构 · 后半段）：
-- 审核 = 调用 Claude Code（claude -p）；调用失败重试 >= 3 次退避；耗尽 → ledger 告警 +
-  卡保留「已回写」（禁止无声丢卡）。
+- 审核 = 调用 `scripts/dsh-auditor.sh`（DSH local-litellm → M1 中转 3456 → Code）；
+  调用失败重试 >= 3 次退避；耗尽 → ledger 告警 + 卡保留「已回写」（禁止无声丢卡）。
 - 结论「不通过」→ 自动打回 + ledger 记录 + 控制台告警，不阻塞其他卡。
 - 结论「通过」→ 合入 main → 门禁 → 提交 push → 部署 web → /health 探活 → 卡置「已关闭」。
 - 部署探活失败 → 卡回「已回写（部署失败）」+ ledger 告警，下轮自动重试（分支已在 main 时跳过重复审核）。
@@ -309,6 +309,11 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
         return 127, "", f"机审 wrapper 不存在: {auditor}（当前模型通道=3456/Code）"
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     worktree = str(card.get("worktree") or "")
+    if not worktree:
+        base = str(cfg.get("CCC_WORKTREE_BASE") or "").strip()
+        if base:
+            worktree = base.replace("<task>", work_id.lower()).replace("{task}", work_id.lower())
+            worktree = worktree.replace("<work_id>", work_id.lower()).replace("{work_id}", work_id.lower())
     cmd = [str(auditor), str(card_file), work_id, worktree, "验收席"]
     env = cli_env()
     try:
@@ -363,7 +368,7 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
             return {
                 "verdict": verdict,
                 "reasons": card_reason or _extract_reasons(out, verdict),
-                "transcript": out + ("\\n" + err if err else ""),
+                "transcript": out + ("\n" + err if err else ""),
                 "attempts": attempt,
             }
         reasons = (
