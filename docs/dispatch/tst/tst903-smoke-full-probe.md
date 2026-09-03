@@ -69,7 +69,7 @@ lint：
 1. `git rev-parse --short HEAD` 输出：e4dbd1ae6
 2. `curl http://127.0.0.1:7788/health` 状态码：000（连接失败 exit 7，本机 7788 健康服务未运行）
 3. `ls .../math_utils.py` 输出：/Users/fan/program/apps/ccc-tst/math_utils.py（文件存在）
-4. push 证据（commit hash）：（首提后回填）
+4. push 证据（commit hash）：b5b9eb982（本卡回写经 update-card.sh 原子提交推送，非手动 git push）
 
 ## 维护区
 
