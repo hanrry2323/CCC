@@ -339,7 +339,8 @@ class TestAnnotationGate:
         )
         assert _errors(validate_cards(tmp_path)) == []
 
-    def test_rejected_card_annotation_waits_execution(self, tmp_path: Path) -> None:
-        """打回卡有批注但未重跑 → 不要求批注落实（待执行后机审把关）。"""
+    def test_rejected_card_annotation_requires_fulfillment(self, tmp_path: Path) -> None:
+        """含真实人工批注的卡，无论当前状态都必须带批注落实。"""
         self._card(tmp_path, "打回", annotation="把接口改成 POST")
-        assert _errors(validate_cards(tmp_path)) == []
+        issues = _errors(validate_cards(tmp_path))
+        assert any("批注落实" in i.reason for i in issues)

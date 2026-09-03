@@ -454,7 +454,7 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
             )
         if base in ("已回写", "已关闭", "打回") and not _body_has(path, "## 回写区"):
             issues.append(CardIssue(card_id, str(path), f"状态 {base} 但缺少 ## 回写区"))
-        if base in ("已回写", "已关闭") and _has_real_annotation(path) and not _body_has(path, "## 批注落实"):
+        if _has_real_annotation(path) and not _body_has(path, "## 批注落实"):
             issues.append(
                 CardIssue(
                     card_id,
