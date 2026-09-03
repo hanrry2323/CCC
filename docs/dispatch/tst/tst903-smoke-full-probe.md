@@ -1,6 +1,6 @@
 # 任务卡 tst903 · smoke: card flow full-probe（DSH 执行）
 
-> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-09-03
+> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-09-03
 
 ## 基准文件（先看）
 
@@ -64,24 +64,25 @@ lint：
 
 ## 回写区
 
-**执行体**：DSH · 日期：
-0. 卡标题复述：
-1. `git rev-parse --short HEAD` 输出：
-2. `curl http://127.0.0.1:7788/health` 状态码：
-3. `ls .../math_utils.py` 输出：
+**执行体**：DSH · 日期：2026-09-03
+0. 卡标题复述：tst903 · smoke: card flow full-probe（DSH 执行）
+1. `git rev-parse --short HEAD` 输出：e4dbd1ae6
+2. `curl http://127.0.0.1:7788/health` 状态码：000（连接失败 exit 7，本机 7788 健康服务未运行）
+3. `ls .../math_utils.py` 输出：/Users/fan/program/apps/ccc-tst/math_utils.py（文件存在）
+4. push 证据（commit hash）：（首提后回填）
 
 ## 维护区
 
 > 完成钩子（Doc-Gate）：回写时必须逐项勾选填写，禁止留占位。缺失/占位 = 机审打回 + 合入拒绝。
 
-1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[是/否]（本卡为冒烟探针，无关联方案）
-   - 说明：
-2. **教训沉淀**：本卡是否产出可复用教训？[有/无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
-   - 说明：
-3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[是/否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
-   - 说明：
-4. **线路图**：项目近况/下一步是否变化？[是/否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
-   - 说明：
+1. **方案同步**：`关联方案` 状态/关联卡是否已同步？[否]（本卡为冒烟探针，无关联方案）
+   - 说明：本卡为冒烟探针，卡头无方案编号，无关联方案可同步。
+2. **教训沉淀**：本卡是否产出可复用教训？[无]（有 → 业务仓 lessons.md 或 CCC docs/notes/YYYY-MM-DD-<prefix>-lessons.md 新增一条）
+   - 说明：只读探针卡，未产出需沉淀的教训；发现 7788 健康服务未运行（curl 000）已如实记录于回写区。
+3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]（是 → 项目档案 `docs/projects/<prefix>/README.md` 同步更新）
+   - 说明：仅回写卡文件本身，未改变项目结构/技术栈/路径。
+4. **线路图**：项目近况/下一步是否变化？[否]（是 → `docs/roadmap.md` 或档案「线路/近况」更新）
+   - 说明：冒烟探针无业务推进，线路图无变化。
 
 ## 执行提示
 
