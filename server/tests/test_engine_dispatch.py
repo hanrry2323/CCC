@@ -556,3 +556,74 @@ class TestDshExecutor:
         entry = reg.cli_entry_for_role("开发执行体")
         assert entry.command == "scripts/dsh-executor.sh"
         assert entry.inject_hint is False
+
+
+class TestBuildCommandPositionalSentinel:
+    """2026-09-03：空可选 worktree 保位修复（tst904 参数错位根因）。
+
+    build_command 模板 {card_path} {work_id} {worktree} {role} {biz_worktree}
+    当 worktree/biz_worktree 为空时，shlex 拆分会吃掉空参数，导致 role/biz_worktree
+    左移错位（tst904 实测把「开发执行体」当成了 worktree 路径）。修复用
+    __CCC_EMPTY__ 哨兵保位，wrapper 侧还原为空。
+    """
+
+    def test_empty_worktree_keeps_position(self) -> None:
+        from server.engine.dispatch import build_command
+
+        entry = ExecutorEntry(
+            role="开发执行体",
+            category="可后台 CLI",
+            binding="DSH",
+            note="",
+            command="scripts/dsh-executor.sh",
+            args_template="{card_path} {work_id} {worktree} {role} {biz_worktree}",
+            workdir="",
+        )
+        cmd = build_command(
+            entry,
+            work_id="tst904",
+            role="开发执行体",
+            card_path="docs/dispatch/tst/tst904-smoke-full-probe.md",
+            default_workdir="/data",
+            worktree="",
+            biz_worktree="",
+        )
+        # 空 worktree/biz_worktree 渲染为哨兵，参数位置不左移
+        assert cmd == [
+            "scripts/dsh-executor.sh",
+            "docs/dispatch/tst/tst904-smoke-full-probe.md",
+            "tst904",
+            "__CCC_EMPTY__",
+            "开发执行体",
+            "__CCC_EMPTY__",
+        ]
+
+    def test_nonempty_worktree_untouched(self) -> None:
+        from server.engine.dispatch import build_command
+
+        entry = ExecutorEntry(
+            role="开发执行体",
+            category="可后台 CLI",
+            binding="DSH",
+            note="",
+            command="scripts/dsh-executor.sh",
+            args_template="{card_path} {work_id} {worktree} {role} {biz_worktree}",
+            workdir="",
+        )
+        cmd = build_command(
+            entry,
+            work_id="tst904",
+            role="开发执行体",
+            card_path="docs/dispatch/tst/tst904-smoke-full-probe.md",
+            default_workdir="/data",
+            worktree="/wt/tst904",
+            biz_worktree="/biz/tst904",
+        )
+        assert cmd == [
+            "scripts/dsh-executor.sh",
+            "docs/dispatch/tst/tst904-smoke-full-probe.md",
+            "tst904",
+            "/wt/tst904",
+            "开发执行体",
+            "/biz/tst904",
+        ]

@@ -413,14 +413,17 @@ def build_command(
         raise ValueError("可后台 CLI 行命令为空，无法构造启动命令")
 
     workdir = entry.workdir or default_workdir
+    # Keep positional argument templates stable when an optional worktree is empty.
+    # Empty fields otherwise disappear during shlex.split and shift role/biz_worktree
+    # into the wrong wrapper arguments (observed in tst904).
     rendered = entry.args_template.format_map(
         _SafeFormatDict(
             work_id=work_id,
             card_path=card_path,
             role=role,
             workdir=workdir,
-            worktree=worktree,
-            biz_worktree=biz_worktree,
+            worktree=worktree or "__CCC_EMPTY__",
+            biz_worktree=biz_worktree or "__CCC_EMPTY__",
         )
     )
     args = shlex.split(rendered)

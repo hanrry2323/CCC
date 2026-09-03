@@ -30,6 +30,9 @@ WORK_ID="${2:?缺 work_id}"
 WORKTREE="${3:-}"
 ROLE="${4:-开发执行体}"
 BIZ_WORKTREE="${5:-}"
+# build_command uses a sentinel to preserve empty optional argv positions.
+[[ "$WORKTREE" == "__CCC_EMPTY__" ]] && WORKTREE=""
+[[ "$BIZ_WORKTREE" == "__CCC_EMPTY__" ]] && BIZ_WORKTREE=""
 
 # R-2026-08-23 P0-2：launchd 下 Engine PATH 极简（/usr/bin:/bin:/usr/sbin:/sbin），
 # 裸 `dsh` 会 127。兜底补 npm 全局 bin（dsh 本体）+ /usr/local/bin（node，dsh 运行时入口），
