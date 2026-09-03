@@ -402,3 +402,43 @@ class TestRegistryHotReload:
         # 传 None path
         reg2, mtime2 = _load_registry_cached(None, None)
         assert reg2 is None and mtime2 is None
+
+
+class TestDispatchPoolExecutorDedup:
+    """B2（2026-09-03）：槽位按执行体池去重计数。"""
+
+    def _store(self) -> InMemoryBoardStore:
+        from server.engine.task import Work
+
+        store = InMemoryBoardStore()
+        store.seed(
+            Work(id="a1", role="开发执行体", executor="DSH", state=State.RUNNING),
+            Work(id="a2", role="开发执行体", executor="DSH", state=State.RUNNING),
+            Work(id="b1", role="开发执行体", executor="OpenCode", state=State.RUNNING),
+            Work(id="c1", role="开发执行体", executor="", state=State.RUNNING),
+        )
+        return store
+
+    def test_occupancy_dedups_by_executor(self, tmp_path):
+        from server.engine.pool import DispatchPool
+        from server.engine.task import Work
+
+        store = self._store()
+        # 只有带 .running marker 的才算在途；a1/a2 同 DSH → 1 槽
+        (tmp_path / "a1.running").write_text("pid")
+        (tmp_path / "a2.running").write_text("pid")
+        (tmp_path / "b1.running").write_text("pid")
+        (tmp_path / "c1.running").write_text("pid")
+        pool = DispatchPool()
+        assert pool.occupancy(store, tmp_path) == 3  # DSH、OpenCode、c1(回退 id)
+
+    def test_occupancy_ignores_non_running(self, tmp_path):
+        from server.engine.pool import DispatchPool
+        from server.engine.task import Work
+
+        store = InMemoryBoardStore()
+        store.seed(Work(id="x", role="开发执行体", executor="DSH", state=State.TODO))
+        (tmp_path / "x.running").write_text("pid")
+        pool = DispatchPool()
+        # x 不在 RUNNING 态 → 不计入（其 .running 残留不属于在途）
+        assert pool.occupancy(store, tmp_path) == 0

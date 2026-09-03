@@ -34,12 +34,28 @@ class DispatchPool:
             return {wid for wid, t in self._threads.items() if t.is_alive()}
 
     def occupancy(self, store: BoardStore, log_dir: Path) -> int:
-        """池内存活 id ∪（执行中且有 ``{id}.running``）。manual 无标记不占槽。"""
+        """占用槽位数 = 按执行体池（executor binding）去重的在途执行数。
+
+        2026-09-03（B2 编排加固）：从「按 work_id 计数」改为「按 executor binding 计数」——
+        同一执行体（如 DSH）多卡并发只占一个执行体池槽位（worktree 已隔离）。
+        保留原口径的 work_id 集合作为兜底（无法解析 executor 时退回 work_id）。
+
+        Returns:
+            int：去重后的占用槽位数。
+        """
         ids = self.alive_ids()
+        # 运行中的 work（.running marker）
         for w in store.list_work(state=State.RUNNING):
             if (log_dir / f"{w.id}.running").is_file():
                 ids.add(w.id)
-        return len(ids)
+        # 解析每个在途 id 的 executor binding，按执行体池去重
+        executor_by_id: dict[str, str] = {}
+        for w in store.list_work():
+            executor_by_id[w.id] = w.executor or w.id
+        pool_keys: set[str] = set()
+        for wid in ids:
+            pool_keys.add(executor_by_id.get(wid, wid))
+        return len(pool_keys)
 
     def free_slots(self, max_n: int, store: BoardStore, log_dir: Path) -> int:
         return max(0, int(max_n) - self.occupancy(store, log_dir))
