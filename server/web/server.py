@@ -125,6 +125,11 @@ from server.web import wall  # DSH 监控墙引擎（ccc-plan-045 P1，源 dsh-w
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
 _DISPATCH_DIR = _PROJECT_ROOT / "docs" / "dispatch"
 
+
+def _repo_root_for_dispatch() -> Path:
+    """无对等 Engine 配置时的默认仓根（与 _PROJECT_ROOT 同源）。"""
+    return _PROJECT_ROOT
+
 # ── 鉴权配置 ──
 # 凭证解析（P0-1 2026-08-29）：env 优先（CCC_WEB_USERNAME / CCC_WEB_PASSWORD_HASH）；
 # 未配置时回退读 ~/.ccc/web-auth.txt（权限 600；单行=口令（账号 ccc）或 user:pass）。
@@ -2597,54 +2602,33 @@ class _APIHandler(BaseHTTPRequestHandler):
             )
 
     def _card_git_commit(self, card_path: Path, message: str) -> bool:
-        """卡文件变更落 git（commit + push，失败留脏现场 + 告警，不吞错误不重试）。
+        """（已自 CardStateStore 迁移后保留的兼容 stub）卡状态提交一律走 CardStateStore。
 
-        人审调整动作统一化：卡作废（终态）写卡文件后落 git，与 roadmap 落 git 同规则。
-
-        Returns:
-            True = commit+push 全成功；False = 任一环节失败（卡文件保留脏现场）。
-
-        2026-09-03 修复：commit 前先刷新唯一索引（load_dispatch_cards 重扫），
-        避免作废/状态变更被 pre-commit card-validate 的「索引对账失败」拦截
-        （tst902 死循环根因：索引仍是旧状态 → 作废 commit 失败 → origin 保持待分派 → 引擎重拉）。
+        本方法只应被不再使用的历史调用路径引用；新作废写卡直接经
+        ``CardStateStore.transition``（内含受保护 commit+push）。保留为兼容 facade，
+        未再被调用时置弃用。
         """
-        rel = str(card_path.relative_to(_PROJECT_ROOT))
         try:
-            from server.board.loader import load_dispatch_cards
+            from server.engine.card_state_store import CardStateStore
 
-            load_dispatch_cards(_DISPATCH_DIR)  # 先刷新索引，与磁盘卡一致
-        except Exception:
-            logger.exception("作废前刷新索引失败（不阻断，交由 card-validate 兜底）")
-        try:
-            subprocess.run(
-                ["git", "add", "--", rel],
-                cwd=str(_PROJECT_ROOT),
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=30,
+            store = CardStateStore(
+                _PROJECT_ROOT,
+                dispatch_dir="docs/dispatch",
+                data_dir=_executor_log_dir().parent if _executor_log_dir() else None,
             )
-            subprocess.run(
-                ["git", "commit", "-m", message],
-                cwd=str(_PROJECT_ROOT),
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            subprocess.run(
-                ["git", "push"],
-                cwd=str(_PROJECT_ROOT),
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
+            snap = store.read_snapshot(card_path)
+            store.transition(
+                card_path,
+                target=f"作废（{message or ''}）"[:200],
+                expected_state=snap.state,
+                expected_version=snap.version,
+                expected_commit=None,
+                actor="web-legacy",
+                reason=message,
             )
             return True
-        except subprocess.CalledProcessError as exc:
-            logger.error(
-                "card 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
-            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("card 落 git 失败（保留脏现场）: %s (%s)", message, exc)
             return False
 
     def _delete_card_remote_branch(self, card_path: Path) -> None:
@@ -3181,27 +3165,30 @@ class _APIHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": f"未找到卡文件: {task_id}"}, 404)
                 return
 
-            # 写卡文件 `状态：作废（原因）`（复用 engine store 的状态段替换）
-            from server.engine.store import _replace_state_in_metadata
+            # 写卡文件 `状态：作废（原因）`——经 CardStateStore 统一门面（CAS + 卡锁 + 受保护 commit/push）
+            from server.engine.card_state_store import CardStateStore
 
             try:
-                text = card_path.read_text(encoding="utf-8")
-                new_text = _replace_state_in_metadata(text, f"作废（{reason[:40]}）")
-            except ValueError as exc:
-                self._send_json({"error": f"卡头无状态段: {exc}"}, 500)
-                return
-            card_path.write_text(new_text, encoding="utf-8")
-
-            # git commit + push（与 roadmap 落 git 同规则）。
-            # 2026-09-03：失败必须返回非 2xx，禁止假成功（否则 origin 仍是旧状态 → 引擎重拉死循环）。
-            if not self._card_git_commit(card_path, f"cards: {task_id} 作废（人审取消）"):
+                store = CardStateStore(
+                    _repo_root_for_dispatch(),
+                    dispatch_dir="docs/dispatch",
+                    data_dir=_executor_log_dir().parent if _executor_log_dir() else None,
+                )
+                snap = store.read_snapshot(card_path)
+                store.transition(
+                    card_path,
+                    target=f"作废（{reason[:40]}）",
+                    expected_state=snap.state,
+                    expected_version=snap.version,
+                    expected_commit=None,
+                    actor="web",
+                    reason=f"人审取消: {reason[:120]}",
+                )
+            except Exception as exc:  # noqa: BLE001
                 self._send_json(
                     {
                         "ok": False,
-                        "error": (
-                            f"作废落 git 失败：卡文件已写「作废」但 commit/push 未成功，"
-                            f"origin 仍是「{cur}」——请人工核验后再操作"
-                        ),
+                        "error": f"作废落盘失败（保留原文，不覆盖）: {exc}",
                     },
                     500,
                 )
@@ -3695,7 +3682,17 @@ class _APIHandler(BaseHTTPRequestHandler):
                 if idx > 999:
                     self._send_json({"ok": False, "error": "报告序号用尽"}, 500)
                     return
-            target.write_text(markdown + "\n", encoding="utf-8")
+            # 原子写（tmp + fsync + os.replace），消除同名检查→写之间的 TOCTOU：
+            # 并发两个同 name 请求不得落到同一文件的半截内容。
+            tmp = target.with_suffix(target.suffix + f".tmp-{os.getpid()}-{time.time_ns()}")
+            try:
+                with tmp.open("w", encoding="utf-8") as handle:
+                    handle.write(markdown + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(tmp, target)
+            finally:
+                tmp.unlink(missing_ok=True)
         except Exception as exc:
             self._send_json({"ok": False, "error": f"write failed: {exc}"}, 500)
             return

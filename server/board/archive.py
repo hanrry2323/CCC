@@ -89,72 +89,65 @@ def _git_commit_and_push(repo: Path, archived_ids: list[str], moved: list[Path])
 
     stamp = " ".join(sorted(archived_ids))
     msg = f"board(archive): 归档 {len(archived_ids)} 张卡 — {stamp[:120]}"
-    try:
-        subprocess.run(
-            ["git", "add", "--", *rel_paths],
-            cwd=str(repo),
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (subprocess.CalledProcessError, subprocess.SubprocessError) as exc:
-        logger.error("归档后 git add 失败（保留脏现场）: %s (%s)", rel_paths, exc)
-        return False
-
-    # 无实际变更（可能已在之前批次 commit）→ 直接跳过 push
-    if (
-        subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        ).returncode
-        == 0
-    ):
-        logger.info("归档后无待提交变更，跳过 commit/push")
-        return True
-
-    try:
-        subprocess.run(
-            ["git", "commit", "-m", msg],
-            cwd=str(repo),
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        logger.info("归档已 commit: %s", msg)
-    except (subprocess.CalledProcessError, subprocess.SubprocessError) as exc:
-        logger.error("归档后 git commit 失败（保留脏现场）: %s (%s)", msg, exc)
-        return False
-
-    # push：失败只告警，保留本地脏提交，不做循环重试
-    if (
-        not subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        ).returncode
-        == 0
-    ):
-        logger.warning("归档目录无 origin 远程，跳过 push（commit 已留本地）")
-        return True
-
     branch = _git_branch(repo)
     try:
-        res = subprocess.run(
-            ["git", "push", "origin", branch],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except (subprocess.SubprocessError, OSError) as exc:
-        logger.error("归档后 git push 失败（保留本地 commit，须人工处理）: %s", exc)
+        # 纳入 protected_git_lock：mv + add + commit + push 全程在锁内，杜绝与
+        # git_sync checkout -f / 卡合约提交 相互清扫（B3 `archive vs git_sync 对攻` 收口）。
+        from server.engine.card_state_store import protected_git_lock
+
+        with protected_git_lock(repo, blocking=True):
+            subprocess.run(
+                ["git", "add", "--", *rel_paths],
+                cwd=str(repo),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            # 无实际变更（可能已在之前批次 commit）→ 直接跳过 push
+            if (
+                subprocess.run(
+                    ["git", "diff", "--cached", "--quiet"],
+                    cwd=str(repo),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                ).returncode
+                == 0
+            ):
+                logger.info("归档后无待提交变更，跳过 commit/push")
+                return True
+            subprocess.run(
+                ["git", "commit", "-m", msg],
+                cwd=str(repo),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            logger.info("归档已 commit: %s", msg)
+            # push：失败只告警，保留本地脏提交，不做循环重试
+            if (
+                not subprocess.run(
+                    ["git", "remote", "get-url", "origin"],
+                    cwd=str(repo),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                ).returncode
+                == 0
+            ):
+                logger.warning("归档目录无 origin 远程，跳过 push（commit 已留本地）")
+                return True
+            res = subprocess.run(
+                ["git", "push", "origin", branch],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+    except (subprocess.CalledProcessError, subprocess.SubprocessError, OSError) as exc:
+        logger.error("归档 git mv/add/commit/push 阶段失败（保留脏现场）: %s (%s)", msg, exc)
         return False
     if res.returncode != 0:
         logger.error("归档后 git push 失败（保留本地 commit，须人工处理）: %s", res.stderr.strip()[:500])

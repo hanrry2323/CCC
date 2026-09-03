@@ -1331,6 +1331,27 @@ def _commit_and_push_worktree_card(
     try:
         state_store = CardStateStore(worktree_path, dispatch_dir="docs/dispatch", data_dir=Path(worktree_path) / ".ccc-state")
         state_store.commit_card_changes(wt_card, message=f"docs(card): 机审通过 {work_id}", actor="engine-audit", push=True)
+        # 提交后二次校验：分支卡 HEAD 内容必须确含「机审：通过」结论才可放行。
+        branch = f"codex/{Path(card_path).stem.lower()}"
+        check = subprocess.run(
+            ["git", "-C", worktree_path, "show", f"HEAD:{rel}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if check.returncode != 0 or (check.stdout and "机审：通过" not in check.stdout):
+            if _remote_branch_audit_evidence(worktree_path, rel, branch):
+                logger.info(
+                    "机审证据本地 HEAD 复核空转但远端分支已含证据（ls-remote+卡文双重校验通过）: work=%s → 记 pass",
+                    work_id,
+                )
+                return True
+            logger.warning(
+                "机审证据未进分支（commit/push 空转，只留工作区）: work=%s → 走 infra 续审",
+                work_id,
+            )
+            return False
         logger.info("机审证据已提交并推送分支: work=%s", work_id)
         return True
     except CardStateError as exc:

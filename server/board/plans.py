@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -202,6 +203,8 @@ def _patch_card_depends(card_path: Path, dep_ids: list[str]) -> None:
         text = re.sub(r"(^> 关联：[^\n]*$)", f"\\1\n{dep_line}", text, count=1, flags=re.M)
     else:
         text = re.sub(r"(^# [^\n]*$)", f"\\1\n{dep_line}", text, count=1, flags=re.M)
+    # 直写仅用于 plan-to-cards 一次性创建流程（新卡尚未进入 git，创建动作非状态变更），
+    # 由 plan-to-cards.sh 原子创建后统一 git add/commit/push；不属于卡契约状态写入口。
     card_path.write_text(text, encoding="utf-8")
 
 
@@ -733,11 +736,32 @@ def _void_cascade_cards(repo_root: Path, card_ids: list[str], reason: str) -> li
             continue
         card_path = repo_root / rel_path
         try:
-            text = card_path.read_text(encoding="utf-8")
-            new_text = _replace_state_in_metadata(text, f"作废（{reason[:40]}）")
-        except (OSError, ValueError):
+            if (repo_root / ".git").exists():
+                # 真实 Git 仓：卡状态走统一门面（CAS + 卡锁 + 受保护 commit/push）。
+                from server.engine.card_state_store import CardStateStore
+
+                store = CardStateStore(repo_root, dispatch_dir="docs/dispatch", data_dir=repo_root / ".ccc-state")
+                snap = store.read_snapshot(card_path)
+                store.transition(
+                    card_path,
+                    target=f"作废（{reason[:40]}）",
+                    expected_state=snap.state,
+                    expected_version=snap.version,
+                    expected_commit=None,
+                    actor="plans-cascade",
+                    reason=f"方案作废级联: {reason[:80]}",
+                )
+            else:
+                # 无 Git 测试/沙箱环境：保留原子落盘（与 set_card_state 一致降级），
+                # 不创建提交语义；生产仓始终命中 .git 分支。
+                text = card_path.read_text(encoding="utf-8")
+                new_text = _replace_state_in_metadata(text, f"作废（{reason[:40]}）")
+                tmp = card_path.with_suffix(card_path.suffix + ".tmp")
+                tmp.write_text(new_text, encoding="utf-8")
+                os.replace(tmp, card_path)
+        except Exception:  # noqa: BLE001
+            logger.warning("方案作废级联：%s 经统一门面作废失败（跳过，保留原文）", cid)
             continue
-        card_path.write_text(new_text, encoding="utf-8")
         cascaded.append(cid)
         cascaded_paths.append(rel_path)
     if cascaded:

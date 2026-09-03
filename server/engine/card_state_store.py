@@ -649,21 +649,49 @@ class CardStateStore:
         actor: str = "engine",
         push: bool = True,
     ) -> str:
-        """把已在工作树修改的卡以统一 Git 锁提交/推送并复核远端。
-
-        提供给 ``_commit_and_push_worktree_card`` 等在 apply 之后只差 commit+push 的
-        调用方；会先做一次卡级校验并保留原文与冲突语义。
-        """
+        """把已在工作树修改的卡以统一 Git 锁提交/推送并复核远端。"""
         path = self._card_path(card)
         current = self.read_snapshot(path)
-        branch = current.branch
-        new_commit = self._commit_push(current.rel_path, message, branch=branch, push=push)
-        if push:
-            self.reverify_remote(current, commit=new_commit)
+        return self.commit_paths(
+            [current.rel_path],
+            message=message,
+            branch=current.branch,
+            push=push,
+            verify=(path, current),
+        )
+
+    def commit_paths(
+        self,
+        rel_paths: list[str],
+        *,
+        message: str,
+        branch: str,
+        push: bool = True,
+        verify: tuple[Path, CardSnapshot] | None = None,
+    ) -> str:
+        """在共享 Git 锁内提交一组已修改路径并可选推送/复核。"""
+        with self._git_lock():
+            add = _run_git(self.repo_root, ["add", "--", *rel_paths])
+            if add.returncode != 0:
+                raise CardCommitError((_text_output(add.stderr) or _text_output(add.stdout) or "git add 失败").strip())
+            commit = _run_git(self.repo_root, ["commit", "-m", message])
+            if commit.returncode != 0:
+                details = (_text_output(commit.stderr) or _text_output(commit.stdout) or "git commit 失败").strip()
+                if "nothing to commit" not in details and "no changes added to commit" not in details:
+                    raise CardCommitError(details)
+            head = _run_git(self.repo_root, ["rev-parse", "HEAD"])
+            if head.returncode != 0:
+                raise CardCommitError("无法读取新提交")
+            new_commit = _text_output(head.stdout).strip()
+            if push:
+                pushed = _run_git(self.repo_root, ["push", self.remote, branch], timeout=60)
+                if pushed.returncode != 0:
+                    raise CardPushError((_text_output(pushed.stderr) or _text_output(pushed.stdout) or "git push 失败").strip())
+        if verify is not None and push:
+            self.reverify_remote(verify[1], commit=new_commit)
         return new_commit
 
-
-__all__ = [
+    __all__ = [
     "CardCASConflict",
     "CardCommitError",
     "CardLockError",

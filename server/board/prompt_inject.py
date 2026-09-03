@@ -581,6 +581,10 @@ def inject_hints(
         return content
 
     if card_path_obj is not None:
+        # 裁定（2026-09-04 B3）：保留直写。这是「出卡注入提示」= 新卡初始生成动作
+        # （new-card.sh 原子创建→索引刷新→validate→git add/commit/push 全流程内），
+        # 非卡状态写入口；若强行过 CardStateStore.materialize 会因卡尚未 git 跟踪而
+        # 引入不必要的 commit 语义。仅限出卡原子流程内使用，禁止用于已入仓卡的后续修改。
         card_path_obj.write_text(content, encoding="utf-8")
         logger.info("提示段已注入: %s", card_path_obj)
 
