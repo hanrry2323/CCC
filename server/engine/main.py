@@ -2675,6 +2675,19 @@ def _executor_result_path(log_dir: Path, work_id: str) -> Path:
     return log_dir / f"{work_id}-ccc-result.md"
 
 
+def _refresh_index(cfg: dict[str, Any], dispatch_root: Path | None = None) -> bool:
+    """持久化刷新卡索引，并返回刷新后的 loader 状态。"""
+    from server.board.loader import get_index_path, load_dispatch_cards, load_index_file
+
+    dispatch_dir = str(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+    root = dispatch_root or Path(dispatch_dir)
+    items = load_dispatch_cards(root)
+    index_path = get_index_path(root)
+    indexed = load_index_file(root)
+    logger.info("卡索引持久化刷新: dispatch=%s index=%s cards=%d", root, index_path, len(indexed))
+    return bool(items is not None and index_path.is_file())
+
+
 def _replace_card_section(text: str, heading: str, body: str) -> str:
     """替换卡内一个二级节的正文，保留节标题。"""
     marker = f"## {heading}"
@@ -2730,25 +2743,49 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
         dispatch_root = Path(dispatch_dir)
         if not dispatch_root.is_absolute():
             dispatch_root = repo_root / dispatch_root
-        # 先重扫刚写入的卡，再 commit；否则 pre-commit card-validate 读取旧索引，
+        # 持久化重写索引，再 commit；否则 pre-commit card-validate 读取旧索引，
         # 把「引擎已回写」误报成状态不一致（tst905 实测）。
-        load_dispatch_cards(dispatch_root)
+        if not _refresh_index(cfg, dispatch_root):
+            return False, "引擎代写卡前持久化刷新索引失败"
         rel = str(card_path.relative_to(repo_root))
+
+        def _status_snapshot(label: str) -> None:
+            try:
+                r = subprocess.run(
+                    ["git", "status", "--short"],
+                    cwd=str(repo_root), capture_output=True, text=True, timeout=15, check=False,
+                )
+                logger.info("[引擎代写 %s] git status --short:\n%s", label, (r.stdout or r.stderr or "").strip())
+            except Exception as _exc:  # noqa: BLE001
+                logger.warning("[引擎代写 %s] git status 快照失败: %s", label, _exc)
+
+        _status_snapshot("add前")
         subprocess.run(
             ["git", "add", "--", rel],
             cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
         )
-        subprocess.run(
-            ["git", "commit", "-m", f"chore(engine): {work.id} 引擎代写执行结果"],
-            cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
-        )
+        try:
+            commit_res = subprocess.run(
+                ["git", "commit", "-m", f"chore(engine): {work.id} 引擎代写执行结果"],
+                cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
+            )
+            logger.info("[引擎代写] commit ok: %s", commit_res.stdout[-400:] if commit_res.stdout else "")
+        except subprocess.CalledProcessError as _ce:
+            logger.error(
+                "[引擎代写] git commit 失败，完整输出:\nSTDOUT:\n%s\nSTDERR:\n%s",
+                _ce.stdout or "",
+                _ce.stderr or "",
+            )
+            raise
+        _status_snapshot("commit后")
         subprocess.run(
             ["git", "push", "origin", "main"],
             cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=60,
         )
         load_dispatch_cards(cfg.get("DISPATCH_DIR") or "docs/dispatch")
     except (OSError, subprocess.CalledProcessError, ValueError) as exc:
-        return False, f"引擎代写卡 commit/push 失败: {exc}"
+        detail = getattr(exc, "stdout", None) or getattr(exc, "stderr", None) or str(exc)
+        return False, f"引擎代写卡 commit/push 失败: {detail}"
     return True, ""
 
 

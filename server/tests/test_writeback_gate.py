@@ -503,6 +503,9 @@ def test_apply_executor_result_refreshes_index_before_commit(tmp_path, monkeypat
         return []
 
     monkeypatch.setattr("server.board.loader.load_dispatch_cards", fake_load)
+    index_path = tmp_path / "cards.index.jsonl"
+    index_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr("server.board.loader.get_index_path", lambda _path: index_path)
 
     def fake_run(cmd, **kwargs):
         calls.append(cmd[1] if len(cmd) > 1 else cmd[0])
