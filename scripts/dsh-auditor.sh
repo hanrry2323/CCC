@@ -85,6 +85,17 @@ if [ -z "$WORKTREE" ] || [ ! -d "$WORKTREE" ]; then
   echo "[dsh-auditor] 机审失败：worktree 缺失，无法审计: ${WORKTREE:-<空>}" >&2
   exit 64
 fi
+# 三重校验：路径必须是目录、必须是 Git worktree、必须含被审卡副本。
+WORKTREE_ABS="$(cd "$WORKTREE" && pwd -P)"
+GIT_TOP="$(git -C "$WORKTREE" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$GIT_TOP" ] || [ "$(cd "$GIT_TOP" && pwd -P)" != "$WORKTREE_ABS" ]; then
+  echo "[dsh-auditor] 机审失败：路径不是有效 Git worktree: $WORKTREE" >&2
+  exit 64
+fi
+if ! git -C "$WORKTREE" worktree list --porcelain 2>/dev/null | grep -Fqx "worktree $WORKTREE_ABS"; then
+  echo "[dsh-auditor] 机审失败：路径未登记为 Git worktree: $WORKTREE" >&2
+  exit 64
+fi
 REL_CARD="${CARD_PATH#/Users/fan/program/CCC/}"
 if [ "$REL_CARD" = "$CARD_PATH" ] || [ ! -f "$WORKTREE/$REL_CARD" ]; then
   echo "[dsh-auditor] 机审失败：worktree 卡副本缺失，无法审计: $WORKTREE/$REL_CARD" >&2
