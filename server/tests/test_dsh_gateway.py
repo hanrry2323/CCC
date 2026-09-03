@@ -34,11 +34,11 @@ def test_cli_env_self_contained(monkeypatch: pytest.MonkeyPatch) -> None:
     """env -i 语境：cli_env 显式导出网关三件 + key 单源注入（不含裸 env 依赖）。"""
     monkeypatch.setattr(dsh_gateway, "resolve_key", lambda: "sk-test-fake")
     env = dsh_gateway.cli_env(base_env={})
-    assert env["ANTHROPIC_BASE_URL"] == "https://opencode.ai/zen/go"
-    assert env["ANTHROPIC_MODEL"] == "deepseek-v4-flash"
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:3456/v1/messages"
+    assert env["ANTHROPIC_MODEL"] == "Code"
     assert env["ANTHROPIC_API_KEY"] == "sk-test-fake"
     assert env["OPENCODE_GO_API_KEY"] == "sk-test-fake"
-    assert env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "deepseek-v4-flash"
+    assert env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "Code"
 
 
 def test_cli_env_never_prints_key_in_detail() -> None:

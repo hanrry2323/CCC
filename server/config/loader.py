@@ -30,6 +30,8 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
 # RELAY_PORT / RELAY_UPSTREAM_URL 原为必填，2026-08-24 中转站退役后从必需移除（生产不再提供）
 OPTIONAL_KEYS: dict[str, str] = {
     "PYTHON_BIN": "",
+    # phase2 机审 CLI（从 config.env 读取，避免 launchd PATH 缺失时退回裸命令）
+    "CCC_BRAIN_CLAUDE_BIN": "claude",
     # 定时任务框架
     "SCHEDULER_INTERVAL": "60",
     "SCHEDULER_DISPATCH_DIR": "",

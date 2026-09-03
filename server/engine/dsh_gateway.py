@@ -10,9 +10,9 @@ launchd 语境无 zshrc，网关三件（base/model/key）必须显式装配：
 通道口径（2026-09-02 取证）：
 - 配额/通道**探针默认目标 = 真实执行通道** local-litellm 127.0.0.1:3456
   （经 m1-tunnel → M1 SCNet；唯一事实源见 scripts/lib/dsh-probe.sh）。
-- 下方 ``ANTHROPIC_BASE_URL`` 是 **Claude CLI 审核通道**（opencode.ai/zen/go，
-  053 阶段3 设定），独立于探针目标，属兼容/历史保留（phase2 audit 仍经此出），
-  勿与探针默认通道混用；如需将审核也切到 local-litellm，另行按方案处理。
+- ``ANTHROPIC_BASE_URL`` 与 ``ANTHROPIC_MODEL`` 是 **Claude CLI 审核通道**，
+  与 DSH 探针统一走 local-litellm（127.0.0.1:3456/v1/messages · Code），
+  由 M1 中转隧道提供，2017 本机不另设第二条模型出口。
 
 密钥安全：本模块任何路径不得打印 key 值（2026-08-24 密钥泄漏教训）。
 """
@@ -26,9 +26,9 @@ from pathlib import Path
 
 from server.board.audit_ledger import record_action
 
-# Claude CLI 审核通道（053 阶段3 设定；P0-1 保留为兼容/历史，非探针默认通道）
-ANTHROPIC_BASE_URL = "https://opencode.ai/zen/go"
-ANTHROPIC_MODEL = "deepseek-v4-flash"
+# Claude CLI 审核通道（2026-09-03 对齐 2017 全通道真值：M1 中转站 local-litellm 3456 · Code）
+ANTHROPIC_BASE_URL = "http://127.0.0.1:3456/v1/messages"
+ANTHROPIC_MODEL = "Code"
 _KEY_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dsh-key.sh"
 _CHECK_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dsh-key-check.sh"
 _PREFLIGHT_TTL_SECONDS = 300.0
@@ -56,12 +56,24 @@ def resolve_key() -> str:
 
 
 def cli_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Claude CLI 子进程环境：显式导出网关三件，launchd env -i 语境自包含。"""
+    """Claude CLI 子进程环境：显式导出网关三件，launchd env -i 语境自包含。
+
+    2026-09-03 修复：launchd 环境 PATH 极简（env -i），``claude``/``node`` 解析不到
+    会直接 ``No such file or directory``（rc=127，phase2 机审断点）。这里兜底补
+    npm 全局 bin + /usr/local/bin，确保 CLI 与其 node 运行时都能被拉起。
+    """
     env = dict(base_env if base_env is not None else os.environ)
     env.setdefault("ANTHROPIC_BASE_URL", ANTHROPIC_BASE_URL)
     env.setdefault("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
     for tier in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"):
         env.setdefault(tier, ANTHROPIC_MODEL)
+    # PATH 兜底：launchd env -i 下默认无 npm bin；claude.exe 是 node 包装，node 也需可解析
+    current_path = env.get("PATH") or ""
+    npm_bin = os.path.expanduser("~/.npm-global/bin")
+    required = [npm_bin, "/usr/local/bin", "/usr/bin", "/bin"]
+    missing = [p for p in required if p not in current_path.split(":")]
+    if missing:
+        env["PATH"] = ":".join(missing + ([current_path] if current_path else []))
     key = resolve_key()
     if key:
         env.setdefault("OPENCODE_GO_API_KEY", key)

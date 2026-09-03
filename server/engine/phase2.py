@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -280,14 +281,25 @@ def _extract_reasons(out: str, verdict: str) -> str:
 
 
 def _run_claude(claude_bin: str, prompt: str, timeout: int) -> tuple[int, str, str]:
-    cmd = [claude_bin, "-p", prompt, "--output-format", "text"]
+    """通过当前统一的 3456/Code CLI 通道执行机审。
+
+    ``claude_bin`` 可为配置中的命令名或绝对路径；PATH 由 ``cli_env`` 补齐。
+    不再把找不到 CLI 吞进通用重试，返回明确的 rc=127 原因。
+    """
+    env = cli_env()
+    resolved = claude_bin if "/" in claude_bin else shutil.which(claude_bin, path=env.get("PATH"))
+    if not resolved:
+        return 127, "", f"机审 CLI 不可执行: {claude_bin!r}（PATH 中未找到；当前模型通道=3456/Code）"
+    cmd = [resolved, "-p", prompt, "--output-format", "text"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=cli_env())
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
-        return 124, "", "claude 超时"
+        return 124, "", "机审 CLI 超时（当前模型通道=3456/Code）"
+    except OSError as exc:
+        return 127, "", f"机审 CLI 启动失败: {exc}（当前模型通道=3456/Code）"
     except Exception as exc:  # noqa: BLE001
-        return 127, "", f"claude 调用异常: {exc}"
+        return 127, "", f"机审 CLI 调用异常: {exc}（当前模型通道=3456/Code）"
 
 
 def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver: str = "real") -> dict:
