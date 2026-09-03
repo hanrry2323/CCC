@@ -1,6 +1,6 @@
 # 任务卡 tst903 · smoke: card flow full-probe（DSH 执行）
 
-> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-09-03
+> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：作废（旧链路清理，保留 git 历史与 stash） · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：1
 
 ## 基准文件（先看）
 
