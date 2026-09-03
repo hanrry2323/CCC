@@ -390,3 +390,110 @@ def test_get_modified_files_branch_resolution(tmp_path: Path):
 
         res = get_modified_files(tmp_path, card_file)
         assert res == ["docs/projects/ccc/README.md"]
+
+
+# ── A2 引擎代写执行结果（2026-09-03 产线整备）──
+
+def _a2_card_text() -> str:
+    return (
+        "# 任务卡 tst904 · smoke: a2 代写\n"
+        "> 关联：TEST · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-09-03\n"
+        "## 目标\n占位\n"
+        "## 回写区\n\n**执行体**：DSH · 日期：\n"
+        "## 维护区\n\n1. **方案同步**：是/否\n"
+        "2. **教训沉淀**：有/无\n"
+    )
+
+
+def _a2_result_text() -> str:
+    return (
+        "# 执行结果 · tst904 · smoke: a2 代写\n"
+        "## 0. 卡标题复述\n\ntst904 · smoke: a2 代写\n"
+        "## 1. 探针输出\n\n- exit_code=0\n- PASS\n"
+        "## 2. 自测输出\n\n- 8 passed\n"
+        "## 3. 维护区四问\n\n"
+        "1. 方案同步：[否] 无关联方案\n"
+        "2. 教训沉淀：[无] 探针卡\n"
+        "3. 档案/README：[否] 无结构变更\n"
+        "4. 线路图：[否] 无变化\n"
+        "## 4. 变更证据\n\ncommit=abc branch=codex/x push=success\n"
+    )
+
+
+def test_apply_executor_result_to_card_rewrites_card(tmp_path, monkeypatch):
+    """A2：.ccc-result.md 存在且契约完整 → 引擎代写主仓卡：状态已回写 + 回写区 + 维护区。"""
+    from server.engine.main import _apply_executor_result_to_card
+    from server.engine.task import Work
+
+    card_path = tmp_path / "docs" / "dispatch" / "tst" / "tst904-smoke.md"
+    card_path.parent.mkdir(parents=True)
+    card_path.write_text(_a2_card_text(), encoding="utf-8")
+
+    result_path = tmp_path / "logs" / "tst904-ccc-result.md"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text(_a2_result_text(), encoding="utf-8")
+
+    work = Work(id="tst904", role="开发执行体", card_path=str(card_path))
+
+    # 让 resolve_repo_root 指向 tmp（非 git 也够），且 subprocess git 全 mock 成功
+    monkeypatch.setattr("server.git_sync.resolve_repo_root", lambda *a, **k: tmp_path)
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    monkeypatch.setattr("server.engine.main.subprocess.run", fake_run)
+
+    ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
+    assert ok, err
+
+    text = card_path.read_text(encoding="utf-8")
+    assert "状态：已回写" in text, text
+    assert "## 回写区" in text
+    assert "## 0. 卡标题复述" in text
+    assert "tst904 · smoke: a2 代写" in text
+    assert "## 维护区" in text
+    assert "方案同步：[否] 无关联方案" in text
+    # 引擎随后做了 git add/commit/push
+    assert captured["cmd"] is not None
+
+
+def test_apply_executor_result_to_card_missing_contract(tmp_path, monkeypatch):
+    """A2：结果文件缺契约段 → 不代写，返回错误。"""
+    from server.engine.main import _apply_executor_result_to_card
+    from server.engine.task import Work
+
+    card_path = tmp_path / "docs" / "dispatch" / "tst" / "tst904b-smoke.md"
+    card_path.parent.mkdir(parents=True)
+    card_path.write_text(_a2_card_text(), encoding="utf-8")
+
+    result_path = tmp_path / "logs" / "tst904b-ccc-result.md"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text("# 执行结果 · tst904b\n## 1. 探针输出\n\nok\n", encoding="utf-8")
+
+    work = Work(id="tst904b", role="开发执行体", card_path=str(card_path))
+    ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
+    assert ok is False
+    assert "契约不完整" in err
+
+    # 卡未被改写
+    assert "状态：待分派" in card_path.read_text(encoding="utf-8")
+
+
+def test_apply_executor_result_to_card_missing_result(tmp_path):
+    """A2：结果文件不存在 → 返回失败（空转嫌疑），不代写。"""
+    from server.engine.main import _apply_executor_result_to_card
+    from server.engine.task import Work
+
+    card_path = tmp_path / "docs" / "dispatch" / "tst" / "tst904c-smoke.md"
+    card_path.parent.mkdir(parents=True)
+    card_path.write_text(_a2_card_text(), encoding="utf-8")
+
+    missing = tmp_path / "logs" / "tst904c-ccc-result.md"
+    work = Work(id="tst904c", role="开发执行体", card_path=str(card_path))
+    ok, err = _apply_executor_result_to_card(work, missing, {"DISPATCH_DIR": "docs/dispatch"})
+    assert ok is False
+    assert "未产出结果文件" in err
