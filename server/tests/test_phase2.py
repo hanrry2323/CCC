@@ -48,35 +48,40 @@ def test_verdict_parsing_chinese() -> None:
     assert phase2._claude_verdict_from_output("无关内容") is None
 
 
-def test_audit_retry_success(monkeypatch) -> None:
+def test_audit_retry_success(monkeypatch, tmp_path: Path) -> None:
     calls = {"n": 0}
+    card_file = tmp_path / "tst997.md"
+    card_file.write_text("# 任务卡 tst997\n", encoding="utf-8")
 
-    def fake_run(bin, prompt, timeout):  # noqa: A002
+    def fake_run(card, card_path, branch, cfg, timeout):
         calls["n"] += 1
-        if calls["n"] < 3:
-            return 1, "", "429 quota"
-        return 0, "PHASE2_VERDICT: PASS\nok", ""
+        if calls["n"] == 3:
+            card_file.write_text("# 任务卡 tst997\n## 机审区\n机审：通过\n", encoding="utf-8")
+            return 0, "审计完成", ""
+        return 1, "", "429 quota"
 
-    monkeypatch.setattr(phase2, "_run_claude", fake_run)
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
     monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
     monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (True, "preflight mocked"))
-    res = phase2.audit_card({"id": "tst997"}, Path("x.md"), "codex/x", {}, audit_driver="real")
+    res = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", {}, audit_driver="real")
     assert res["verdict"] == "PASS"
     assert res["attempts"] == 3
     assert calls["n"] == 3
 
 
-def test_audit_retry_exhaust(monkeypatch) -> None:
+def test_audit_retry_exhaust(monkeypatch, tmp_path: Path) -> None:
     calls = {"n": 0}
+    card_file = tmp_path / "tst997.md"
+    card_file.write_text("# 任务卡 tst997\n", encoding="utf-8")
 
-    def fake_run(bin, prompt, timeout):  # noqa: A002
+    def fake_run(card, card_path, branch, cfg, timeout):
         calls["n"] += 1
         return 1, "", "429 quota"
 
-    monkeypatch.setattr(phase2, "_run_claude", fake_run)
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
     monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
     monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (True, "preflight mocked"))
-    res = phase2.audit_card({"id": "tst997"}, Path("x.md"), "codex/x", {}, audit_driver="real")
+    res = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", {}, audit_driver="real")
     assert res["verdict"] == "ERROR"
     assert res["attempts"] == 3
     assert "429" in res["reasons"]

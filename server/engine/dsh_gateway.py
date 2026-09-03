@@ -63,10 +63,11 @@ def cli_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
     npm 全局 bin + /usr/local/bin，确保 CLI 与其 node 运行时都能被拉起。
     """
     env = dict(base_env if base_env is not None else os.environ)
-    env.setdefault("ANTHROPIC_BASE_URL", ANTHROPIC_BASE_URL)
-    env.setdefault("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
+    # 统一覆盖调用方/launchd 残留的旧 zen/go 与 deepseek 模型，确保 2017 全通道走 M1 3456 Code。
+    env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE_URL
+    env["ANTHROPIC_MODEL"] = ANTHROPIC_MODEL
     for tier in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"):
-        env.setdefault(tier, ANTHROPIC_MODEL)
+        env[tier] = ANTHROPIC_MODEL
     # PATH 兜底：launchd env -i 下默认无 npm bin；claude.exe 是 node 包装，node 也需可解析
     current_path = env.get("PATH") or ""
     npm_bin = os.path.expanduser("~/.npm-global/bin")

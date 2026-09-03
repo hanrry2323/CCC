@@ -23,13 +23,14 @@ import json
 import logging
 import os
 import re
-import shutil
 import socket
 import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path
+
+from server.engine.dsh_gateway import cli_env, preflight_gateway
 
 logger = logging.getLogger("ccc.engine.phase2")
 
@@ -48,7 +49,7 @@ _REJECT_MARKER = "PHASE2_VERDICT: REJECT"
 
 _DEFAULT_MAX_ATTEMPTS = 3
 _DEFAULT_BACKOFF_BASE = 5.0          # 5s / 10s / 20s ...
-_DEFAULT_AUDIT_TIMEOUT = 600
+_DEFAULT_AUDIT_TIMEOUT = 900
 _DEFAULT_HEALTH_TIMEOUT = 30
 _DEFAULT_DEPLOY_WAIT = 45
 
@@ -73,9 +74,6 @@ def load_cfg(config_path: str | Path) -> dict:
     from server.config.loader import load_config
 
     return load_config(config_path)
-
-
-from server.engine.dsh_gateway import cli_env, preflight_gateway
 
 
 def git(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
@@ -280,26 +278,48 @@ def _extract_reasons(out: str, verdict: str) -> str:
     return text[:500] or ("通过" if verdict == "PASS" else "不通过")
 
 
-def _run_claude(claude_bin: str, prompt: str, timeout: int) -> tuple[int, str, str]:
-    """通过当前统一的 3456/Code CLI 通道执行机审。
+def _dsh_auditor_path(cfg: dict) -> Path:
+    """解析仓内机审 wrapper；不依赖个人绝对路径。"""
+    configured = str(cfg.get("DSH_AUDITOR_BIN") or os.environ.get("DSH_AUDITOR_BIN") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return _repo_root() / "scripts" / "dsh-auditor.sh"
 
-    ``claude_bin`` 可为配置中的命令名或绝对路径；PATH 由 ``cli_env`` 补齐。
-    不再把找不到 CLI 吞进通用重试，返回明确的 rc=127 原因。
-    """
+
+def _read_audit_verdict(card_file: Path, output: str) -> tuple[str | None, str]:
+    """从卡内 ## 机审区读取结论；输出仅作诊断，不作为结论来源。"""
+    text = ""
+    if card_file.is_file():
+        text = card_file.read_text(encoding="utf-8", errors="replace")
+    section = text.split("## 机审区", 1)[1] if "## 机审区" in text else ""
+    section = section.split("## ", 1)[0]
+    if re.search(r"^机审：通过\s*$", section, re.M):
+        severity = re.search(r"severity[：:]\s*(轻|中|重)", section)
+        return "PASS", severity.group(1) if severity else ""
+    reject = re.search(r"^机审：不通过(?:（([^\n）]*)）)?\s*$", section, re.M)
+    if reject:
+        return "REJECT", reject.group(1) or ""
+    return None, ""
+
+
+def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeout: int) -> tuple[int, str, str]:
+    """通过 dsh-auditor.sh 走 local-litellm→3456→Code。"""
+    auditor = _dsh_auditor_path(cfg)
+    if not auditor.is_file():
+        return 127, "", f"机审 wrapper 不存在: {auditor}（当前模型通道=3456/Code）"
+    work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
+    worktree = str(card.get("worktree") or "")
+    cmd = [str(auditor), str(card_file), work_id, worktree, "验收席"]
     env = cli_env()
-    resolved = claude_bin if "/" in claude_bin else shutil.which(claude_bin, path=env.get("PATH"))
-    if not resolved:
-        return 127, "", f"机审 CLI 不可执行: {claude_bin!r}（PATH 中未找到；当前模型通道=3456/Code）"
-    cmd = [resolved, "-p", prompt, "--output-format", "text"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, cwd=str(_repo_root()))
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
-        return 124, "", "机审 CLI 超时（当前模型通道=3456/Code）"
+        return 124, "", f"dsh-auditor 超时（{timeout}s，当前模型通道=3456/Code）"
     except OSError as exc:
-        return 127, "", f"机审 CLI 启动失败: {exc}（当前模型通道=3456/Code）"
+        return 127, "", f"dsh-auditor 启动失败: {exc}（当前模型通道=3456/Code）"
     except Exception as exc:  # noqa: BLE001
-        return 127, "", f"机审 CLI 调用异常: {exc}（当前模型通道=3456/Code）"
+        return 127, "", f"dsh-auditor 调用异常: {exc}（当前模型通道=3456/Code）"
 
 
 def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver: str = "real") -> dict:
@@ -313,16 +333,17 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         if v == "error":
             return {"verdict": "ERROR", "reasons": "mock-error（测试隔离）", "transcript": "", "attempts": 3}
 
-    claude_bin = cfg.get("CCC_BRAIN_CLAUDE_BIN") or os.environ.get("CLAUDE_BIN") or "claude"
     try:
         max_attempts = max(1, int(cfg.get("PHASE2_AUDIT_MAX_ATTEMPTS") or _DEFAULT_MAX_ATTEMPTS))
     except (TypeError, ValueError):
         max_attempts = _DEFAULT_MAX_ATTEMPTS
     backoff_base = float(cfg.get("PHASE2_AUDIT_BACKOFF_BASE") or _DEFAULT_BACKOFF_BASE)
-    timeout = int(cfg.get("PHASE2_AUDIT_TIMEOUT") or _DEFAULT_AUDIT_TIMEOUT)
-    prompt = build_audit_prompt(card, card_file, branch)
+    try:
+        timeout = max(900, int(cfg.get("PHASE2_AUDIT_TIMEOUT") or _DEFAULT_AUDIT_TIMEOUT))
+    except (TypeError, ValueError):
+        timeout = _DEFAULT_AUDIT_TIMEOUT
 
-    # ccc-plan-053 阶段3：审核前强制配额预检；429/拔 key 即拒单（不进重试循环）
+    # 审核前强制配额预检；3456/Code 是 DSH auditor 的统一出口。
     pf_ok, pf_detail = preflight_gateway(source="phase2")
     if not pf_ok:
         from server.board.audit_ledger import record_action
@@ -334,16 +355,22 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     transcript = ""
     reasons = ""
     for attempt in range(1, max_attempts + 1):
-        rc, out, err = _run_claude(claude_bin, prompt, timeout)
+        rc, out, err = _run_dsh_auditor(card, card_file, branch, cfg, timeout)
         transcript = out
-        if rc == 0 and out.strip():
-            verdict = _claude_verdict_from_output(out)
-            if verdict in ("PASS", "REJECT"):
-                return {"verdict": verdict, "reasons": _extract_reasons(out, verdict), "transcript": transcript, "attempts": attempt}
-            reasons = f"claude 输出无法判定结论（attempt {attempt}）: {out[-300:]}"
-        else:
-            reasons = f"claude 调用失败 rc={rc}（attempt {attempt}）: {(err or out)[-300:]}"
-        logger.warning("CC 审核失败重试 %d/%d: %s", attempt, max_attempts, reasons)
+        # dsh-auditor 将机审区写入卡文件；结论以卡内真值为准。
+        verdict, card_reason = _read_audit_verdict(card_file, out)
+        if verdict in ("PASS", "REJECT"):
+            return {
+                "verdict": verdict,
+                "reasons": card_reason or _extract_reasons(out, verdict),
+                "transcript": out + ("\\n" + err if err else ""),
+                "attempts": attempt,
+            }
+        reasons = (
+            f"dsh-auditor 未在卡内 ## 机审区写入可解析 verdict（rc={rc}, attempt={attempt}）: "
+            f"{(err or out)[-500:]}"
+        )
+        logger.warning("DSH 机审失败重试 %d/%d: %s", attempt, max_attempts, reasons)
         if attempt < max_attempts:
             time.sleep(backoff_base * (2 ** (attempt - 1)))
     return {"verdict": "ERROR", "reasons": reasons, "transcript": transcript, "attempts": max_attempts}

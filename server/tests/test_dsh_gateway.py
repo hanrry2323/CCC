@@ -130,7 +130,7 @@ def test_phase2_audit_refuses_on_preflight_fail(iso_ledger: Path, monkeypatch: p
         raise AssertionError("预检拒单后不得调用 claude")
 
     monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (False, "429 周配额耗尽，拒单"))
-    monkeypatch.setattr(phase2, "_run_claude", boom)
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", boom)
     res = phase2.audit_card({"id": "tst998"}, Path("x.md"), "codex/x", {}, audit_driver="real")
     assert res["verdict"] == "ERROR"
     assert res["attempts"] == 0
