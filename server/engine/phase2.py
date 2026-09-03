@@ -302,22 +302,70 @@ def _read_audit_verdict(card_file: Path, output: str) -> tuple[str | None, str]:
     return None, ""
 
 
+def _audit_worktree_path(card: dict, card_file: Path, cfg: dict) -> Path:
+    """按项目注册表/配置定位机审分支 worktree，不写死个人业务路径。"""
+    work_id = str(card.get("id") or card_file.stem.split("-", 1)[0]).lower()
+    project = str(card.get("project") or "").strip()
+    try:
+        from server.board.registry import load_projects
+
+        for entry in load_projects():
+            if entry.prefix == project and entry.isolation_worktree_root:
+                return Path(entry.isolation_worktree_root).expanduser() / work_id
+    except Exception:
+        pass
+    base = str(cfg.get("CCC_WORKTREE_BASE") or "").strip()
+    for token in ("<task>", "{task}", "<work_id>", "{work_id}"):
+        base = base.replace(token, work_id)
+    return Path(base).expanduser() if base else Path(card_file).resolve().parent.parent.parent / ".ccc-wt" / work_id
+
+
+def _ensure_audit_worktree(card: dict, card_file: Path, cfg: dict, branch: str) -> Path | None:
+    """创建/复用机审分支 worktree，确保 auditor 不写主仓卡。"""
+    target = _audit_worktree_path(card, card_file, cfg)
+    repo = _repo_root()
+    try:
+        if target.is_dir() and (target / ".git").exists():
+            return target
+        target.parent.mkdir(parents=True, exist_ok=True)
+        remote = subprocess.run(
+            ["git", "show-ref", "--verify", f"refs/remotes/origin/{branch}"],
+            cwd=repo, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if remote.returncode == 0:
+            cmd = ["git", "worktree", "add", str(target), branch]
+        else:
+            cmd = ["git", "worktree", "add", "-b", branch, str(target), "origin/main"]
+        created = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, check=False, timeout=60)
+        if created.returncode != 0:
+            logger.warning("机审 worktree 创建失败: %s", (created.stderr or created.stdout).strip()[:300])
+            return None
+        return target
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("机审 worktree 准备失败: %s", exc)
+        return None
+
+
 def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeout: int) -> tuple[int, str, str]:
-    """通过 dsh-auditor.sh 走 local-litellm→3456→Code。"""
+    """通过 dsh-auditor.sh 走 local-litellm→3456→Code，且只写机审分支副本。"""
     auditor = _dsh_auditor_path(cfg)
     if not auditor.is_file():
         return 127, "", f"机审 wrapper 不存在: {auditor}（当前模型通道=3456/Code）"
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     worktree = str(card.get("worktree") or "")
     if not worktree:
-        base = str(cfg.get("CCC_WORKTREE_BASE") or "").strip()
-        if base:
-            worktree = base.replace("<task>", work_id.lower()).replace("{task}", work_id.lower())
-            worktree = worktree.replace("<work_id>", work_id.lower()).replace("{work_id}", work_id.lower())
+        wt = _ensure_audit_worktree(card, card_file, cfg, branch)
+        if wt is None:
+            return 127, "", f"机审 worktree 创建失败: {work_id}（当前模型通道=3456/Code）"
+        worktree = str(wt)
+    rel = card_file.resolve().relative_to(_repo_root().resolve())
+    audit_card = Path(worktree) / rel
+    if not audit_card.is_file():
+        return 127, "", f"机审 worktree 卡缺失: {audit_card}（当前模型通道=3456/Code）"
+    card["_audit_card_file"] = str(audit_card)
     cmd = [str(auditor), str(card_file), work_id, worktree, "验收席"]
-    env = cli_env()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, cwd=str(_repo_root()))
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=cli_env(), cwd=str(_repo_root()))
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
         return 124, "", f"dsh-auditor 超时（{timeout}s，当前模型通道=3456/Code）"
@@ -362,8 +410,9 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     for attempt in range(1, max_attempts + 1):
         rc, out, err = _run_dsh_auditor(card, card_file, branch, cfg, timeout)
         transcript = out
-        # dsh-auditor 将机审区写入卡文件；结论以卡内真值为准。
-        verdict, card_reason = _read_audit_verdict(card_file, out)
+        # dsh-auditor 将机审区写入 worktree 分支卡副本；结论以该副本卡内真值为准。
+        verdict_card = Path(card.get("_audit_card_file") or card_file)
+        verdict, card_reason = _read_audit_verdict(verdict_card, out)
         if verdict in ("PASS", "REJECT"):
             return {
                 "verdict": verdict,
