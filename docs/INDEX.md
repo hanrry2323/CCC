@@ -37,6 +37,7 @@
 | 2b1 | `AGENTS.md` · `CLAUDE.md` | **通用双入口**（工具无关，零硬编码） |
 | 2b1p | [`projects/_template/plan-template.md`](projects/_template/plan-template.md) · [`DOC-PROTOCOL.md §2.7`](DOC-PROTOCOL.md) | **方案/计划模板 + 编号规则**：路径 `docs/projects/<prefix>/plans/<NNN>-<slug>.md`；校验 `scripts/validate-plans.sh` |
 | 2b2a | [`product/card-hub-manual.md`](product/card-hub-manual.md) | **制卡发卡操作手册**：任何工具加载本仓的自举路径（门禁 `scripts/check-entry-docs.py`） |
+| 2b2b | [`product/card-author-guide.md`](product/card-author-guide.md) | **卡作者手册**：范围路径、段名、四问与常见废卡原因 |
 | 2b2 | [`product/north-star-slice.md`](product/north-star-slice.md) | **北星竖切**：ccc-plan → 入队 → ready_for_merge → 合入批准 |
 | 2c | [`projects/registry.yaml`](projects/registry.yaml) | **项目注册唯一事实源**（前缀 / 路径 / taskable）；每项目一页见 `projects/<prefix>/README.md` |
 | 3 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`） |
