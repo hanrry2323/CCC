@@ -2596,12 +2596,25 @@ class _APIHandler(BaseHTTPRequestHandler):
                 "roadmap 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
             )
 
-    def _card_git_commit(self, card_path: Path, message: str) -> None:
+    def _card_git_commit(self, card_path: Path, message: str) -> bool:
         """卡文件变更落 git（commit + push，失败留脏现场 + 告警，不吞错误不重试）。
 
         人审调整动作统一化：卡作废（终态）写卡文件后落 git，与 roadmap 落 git 同规则。
+
+        Returns:
+            True = commit+push 全成功；False = 任一环节失败（卡文件保留脏现场）。
+
+        2026-09-03 修复：commit 前先刷新唯一索引（load_dispatch_cards 重扫），
+        避免作废/状态变更被 pre-commit card-validate 的「索引对账失败」拦截
+        （tst902 死循环根因：索引仍是旧状态 → 作废 commit 失败 → origin 保持待分派 → 引擎重拉）。
         """
         rel = str(card_path.relative_to(_PROJECT_ROOT))
+        try:
+            from server.board.loader import load_dispatch_cards
+
+            load_dispatch_cards(_DISPATCH_DIR)  # 先刷新索引，与磁盘卡一致
+        except Exception:
+            logger.exception("作废前刷新索引失败（不阻断，交由 card-validate 兜底）")
         try:
             subprocess.run(
                 ["git", "add", "--", rel],
@@ -2627,10 +2640,12 @@ class _APIHandler(BaseHTTPRequestHandler):
                 text=True,
                 timeout=60,
             )
+            return True
         except subprocess.CalledProcessError as exc:
             logger.error(
                 "card 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
             )
+            return False
 
     def _delete_card_remote_branch(self, card_path: Path) -> None:
         """作废卡自动删远端 codex/<stem> 分支（人审统一化 2026-08-14）。
@@ -3177,8 +3192,20 @@ class _APIHandler(BaseHTTPRequestHandler):
                 return
             card_path.write_text(new_text, encoding="utf-8")
 
-            # git commit + push（与 roadmap 落 git 同规则）
-            self._card_git_commit(card_path, f"cards: {task_id} 作废（人审取消）")
+            # git commit + push（与 roadmap 落 git 同规则）。
+            # 2026-09-03：失败必须返回非 2xx，禁止假成功（否则 origin 仍是旧状态 → 引擎重拉死循环）。
+            if not self._card_git_commit(card_path, f"cards: {task_id} 作废（人审取消）"):
+                self._send_json(
+                    {
+                        "ok": False,
+                        "error": (
+                            f"作废落 git 失败：卡文件已写「作废」但 commit/push 未成功，"
+                            f"origin 仍是「{cur}」——请人工核验后再操作"
+                        ),
+                    },
+                    500,
+                )
+                return
 
             # 人审统一化：作废卡自动删远端 codex/ 分支（避免僵尸分支；仅当分支存在）
             self._delete_card_remote_branch(card_path)

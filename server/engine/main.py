@@ -2670,6 +2670,81 @@ def validate_card_state_after_writeback(card_path: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def _executor_result_path(log_dir: Path, work_id: str) -> Path:
+    """A1 执行结果文件路径（由 wrapper 从 worktree 传入 log_dir）。"""
+    return log_dir / f"{work_id}-ccc-result.md"
+
+
+def _replace_card_section(text: str, heading: str, body: str) -> str:
+    """替换卡内一个二级节的正文，保留节标题。"""
+    marker = f"## {heading}"
+    start = text.find(marker)
+    if start < 0:
+        return text.rstrip() + f"\n\n{marker}\n\n{body.strip()}\n"
+    content_start = start + len(marker)
+    next_match = re.search(r"\\n## ", text[content_start:])
+    end = content_start + (next_match.start() if next_match else len(text[content_start:]))
+    return text[:content_start] + "\\n\\n" + body.strip() + "\\n" + text[end:]
+
+
+def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str, Any]) -> tuple[bool, str]:
+    """读取 A1 结果契约，由 Engine 代写主仓卡并原子提交推送。"""
+    if not result_path.is_file():
+        return False, f"执行体未产出结果文件: {result_path}"
+    try:
+        result = result_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError as exc:
+        return False, f"读取执行结果失败: {exc}"
+    required = ("## 0. 卡标题复述", "## 1. 探针输出", "## 2. 自测输出", "## 3. 维护区四问")
+    missing = [heading for heading in required if heading not in result]
+    if missing:
+        return False, f"执行结果契约不完整，缺少: {', '.join(missing)}"
+    card_path = Path(work.card_path)
+    try:
+        card_text = card_path.read_text(encoding="utf-8")
+        title_section = result.split("## 0. 卡标题复述", 1)[1].split("## 1.", 1)[0].strip()
+        if not title_section or work.id.lower() not in title_section.lower():
+            return False, "执行结果标题复述为空或未包含卡号"
+        writeback = "## 0. 卡标题复述\n\n" + title_section
+        for heading in ("## 1. 探针输出", "## 2. 自测输出"):
+            section = result.split(heading, 1)[1]
+            section = section.split("## ", 1)[0].strip()
+            writeback += f"\n\n{heading}\n\n{section}"
+        maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
+        from server.engine.store import _replace_state_in_metadata
+
+        updated = _replace_state_in_metadata(card_text, "已回写")
+        updated = _replace_card_section(updated, "回写区", writeback)
+        updated = _replace_card_section(updated, "维护区", maintenance)
+        card_path.write_text(updated, encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        return False, f"引擎代写卡失败: {exc}"
+
+    try:
+        from server.git_sync import resolve_repo_root
+        from server.board.loader import load_dispatch_cards
+
+        repo_root = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        load_dispatch_cards(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        rel = str(card_path.relative_to(repo_root))
+        subprocess.run(
+            ["git", "add", "--", rel],
+            cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", f"chore(engine): {work.id} 引擎代写执行结果"],
+            cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
+        )
+        subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=60,
+        )
+        load_dispatch_cards(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        return False, f"引擎代写卡 commit/push 失败: {exc}"
+    return True, ""
+
+
 def _dispatch_and_collect(
     work: Work,
     registry: ExecutorRegistry,
@@ -3108,27 +3183,35 @@ def _dispatch_and_collect(
                         logger.warning("检查远端凭证异常: %s", e)
 
                 if not remote_passed:
-                    # 空回写与凭证校验 (Task 2 & 3) - 无论 worktree 与默认目录派发都生效
-                    card_file_path = Path(work.card_path)
-                    if worktree_path:
-                        card_file_path = Path(worktree_path) / work.card_path
-                    stem = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
-                    wb_ok, wb_err = check_writeback_credentials(card_file_path, stem)
-                    if not wb_ok:
-                        logger.warning("回写凭证校验失败: %s -> 打回", wb_err)
-                        _emit(False, 0, "ok", [wb_err])
-                        return False, [wb_err]
+                    # A2（2026-09-03）：执行体交 .ccc-result.md，引擎代写卡。结果文件有效时
+                    # 跳过「卡回写区/卡头状态」两项卡文件校验（执行体不再直接写卡）；
+                    # 结果文件缺失 → 回退旧链路卡文件校验（兼容旧执行体）。
+                    result_file = _executor_result_path(log_dir, work.id)
+                    has_result = log_phase == "run" and result_file.is_file()
+                    if not has_result:
+                        # 空回写与凭证校验 (Task 2 & 3) - 无论 worktree 与默认目录派发都生效
+                        card_file_path = Path(work.card_path)
+                        if worktree_path:
+                            card_file_path = Path(worktree_path) / work.card_path
+                        stem = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
+                        wb_ok, wb_err = check_writeback_credentials(card_file_path, stem)
+                        if not wb_ok:
+                            logger.warning("回写凭证校验失败: %s -> 打回", wb_err)
+                            _emit(False, 0, "ok", [wb_err])
+                            return False, [wb_err]
 
-                    # 卡头状态合法性校验：防止执行体写非法状态值（如 "completed"）
-                    # 导致机审链路静默断裂（mx028 事故）
-                    state_ok, state_err = validate_card_state_after_writeback(card_file_path)
-                    if not state_ok:
-                        logger.warning("卡头状态非法: %s -> 打回", state_err)
-                        _emit(False, 0, "ok", [state_err])
-                        return False, [state_err]
+                        # 卡头状态合法性校验：防止执行体写非法状态值（如 "completed"）
+                        # 导致机审链路静默断裂（mx028 事故）
+                        state_ok, state_err = validate_card_state_after_writeback(card_file_path)
+                        if not state_ok:
+                            logger.warning("卡头状态非法: %s -> 打回", state_err)
+                            _emit(False, 0, "ok", [state_err])
+                            return False, [state_err]
 
                     # 机械门禁：仅在 worktree_path 存在时生效
-                    if worktree_path:
+                    # A2（2026-09-03）：A1 结果文件有效时放宽——执行体只交 .ccc-result.md，
+                    # 探针/只读卡无业务代码改动，结果文件本身即产物（审计独立核验其内容）。
+                    if worktree_path and not has_result:
                         tip = _marker_dispatch_tip(log_dir, work.id)
                         has_commit = _worktree_has_new_commit(worktree_path, since_ref=tip)
                         has_diff = _worktree_has_nonempty_diff(worktree_path)
@@ -4128,6 +4211,21 @@ def _run_auto_worker(
     try:
         ok, problems = _dispatch_and_collect(work, registry, cfg, log_dir, timeout)
         if ok:
+            # A2（2026-09-03）：执行体只交结果文件，引擎代写主仓卡
+            result_path = _executor_result_path(log_dir, work.id)
+            if result_path.is_file() and (log_dir / f"{work.id}.log").is_file():
+                applied, apply_err = _apply_executor_result_to_card(work, result_path, cfg)
+                if not applied:
+                    logger.warning("引擎代写卡失败（回写留空，走机审打回）: work=%s err=%s", work.id, apply_err)
+                    problems = [apply_err, *problems]
+                    work.transition(State.REJECTED, problems=problems)
+                    store.save_work(work)
+                    from server.engine.runtime_state import clear_card_state
+
+                    clear_card_state(log_dir, work.id)
+                    outcome["failed"] = 1
+                    return outcome
+                logger.info("引擎代写卡成功: work=%s → 卡已回写", work.id)
             work.transition(State.DONE)
             store.save_work(work)
             clear_retry_backoff(work.id)  # ccc083：收单成功清业务重试退避
@@ -4187,13 +4285,13 @@ def _run_auto_worker(
                 next_strikes = strikes + 1
 
                 try:
-                    max_strikes = int(cfg.get("EXECUTOR_INFRA_MAX_STRIKES") or 5)
+                    max_strikes = int(cfg.get("EXECUTOR_INFRA_MAX_STRIKES") or 3)
                 except (TypeError, ValueError):
-                    max_strikes = 5
+                    max_strikes = 3
 
                 if next_strikes >= max_strikes:
-                    # 连续失败超限，不再冷却续跑，强制打回
-                    reasons = [f"基础设施连续失败 {next_strikes} 次强制打回（可人工恢复后再派）", *reasons]
+                    # 连续基础设施/击杀失败超限：挂起待人工（打回终态，禁止自动重拉占槽）
+                    reasons = [f"基础设施连续失败 {next_strikes} 次，已挂起待人工处理（禁止自动重拉）", *reasons]
                     work.transition(State.REJECTED, problems=reasons)
                     store.save_work(work)
                     # sidecar 契约：熔断打回出口 clear sidecar，磁盘终态权威（reason 在 problems）

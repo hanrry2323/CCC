@@ -78,9 +78,17 @@ else
 fi
 
 PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，角色：${ROLE}）。
-按你的开发执行体心智执行本卡全流程（读卡→白名单实现→自测→commit+push→回写已回写与维护区四问→停手）。
+按你的开发执行体心智执行本卡全流程（读卡→白名单实现→自测→worktree commit+push→写 .ccc-result.md→停手）。
 授权声明：本次运行授权在 ${WORKDIR_LABEL} $(pwd) 内读写卡白名单文件并执行 git add/commit/push（限卡白名单范围）。
-工作目录：$(pwd)"
+工作目录：$(pwd)
+
+【严格约束 · A1 结果契约】
+- 禁止修改主仓卡文件 ${CARD_PATH}（那是只读指针；卡回写由引擎代做）。
+- 完成实现与自测后，必须在 worktree 根写 .ccc-result.md，结构固定：
+  # 执行结果 · <work_id> · <卡标题>
+  四段：## 0. 卡标题复述（完整复述卡标题）/ ## 1. 探针输出 / ## 2. 自测输出 / ## 3. 维护区四问（[是/否][有/无]+说明）/ ## 4. 变更证据（commit= branch= push=）
+- .ccc-result.md 写完后由 wrapper 负责传输，你【不要】把它 git add/commit 进业务仓。
+- 写完 .ccc-result.md 后停手，不要再改卡。"
 
 # ccc073（2026-08-24）：业务仓型任务 cwd 落在 biz_worktree，卡文件不在眼前——
 # xy059 首轮实证执行体普遍漏做文档仓侧卡回写。BIZ_WORKTREE 非空时 PROMPT 追加
@@ -123,6 +131,25 @@ fi
 if [[ -f "$CARD_PATH" && -d "$_TE_EVIDENCE_WORKDIR" ]]; then
   bash /Users/fan/program/CCC/scripts/test-evidence.sh "$CARD_PATH" "$_TE_EVIDENCE_WORKDIR" "$_TE_EVIDENCE_LOG" || true
   echo "[dsh-executor] 测试证据已截获 → ${_TE_EVIDENCE_LOG}" >&2
+fi
+
+# ── A1 结果传输（2026-09-03）：DSH 在 worktree 写 .ccc-result.md，wrapper 拷贝到 log_dir ──
+# worktree 会被引擎回收清理，结果必须落到 log_dir/<work_id>-ccc-result.md 供引擎收单读取。
+# .ccc-result.md 不 commit 进业务仓（防污染 mx/hp 真业务仓），传输只走本 log_dir 通道。
+_RESULT_SRC="$(pwd)/.ccc-result.md"
+_RESULT_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.md"
+if [[ "$DSH_RC" -eq 0 ]]; then
+  if [[ -f "$_RESULT_SRC" ]]; then
+    if cp "$_RESULT_SRC" "$_RESULT_DST" 2>/dev/null; then
+      echo "[dsh-executor] 结果文件已传输 → ${_RESULT_DST}" >&2
+    else
+      echo "[dsh-executor] ERROR: 结果文件拷贝失败 ${_RESULT_SRC} → ${_RESULT_DST}" >&2
+      exit 64
+    fi
+  else
+    echo "[dsh-executor] WARN: DSH 退出码 0 但 .ccc-result.md 缺失（空转嫌疑）→ 上报 rc=64" >&2
+    exit 64
+  fi
 fi
 
 echo "[dsh-executor] work=${WORK_ID} 执行结束 rc=${DSH_RC}"
