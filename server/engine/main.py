@@ -53,6 +53,7 @@ from server.engine.metrics import (
     record_worker_event,
 )
 from server.engine.pool import get_dispatch_pool
+from server.engine.card_state_store import CardCASConflict, CardStateStore
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
 from server.board.roles import normalize_tool
@@ -469,71 +470,26 @@ def _mark_branch_card_state(
         else:
             rel_card_path = Path(work.card_path).name
 
-        card_file = Path(wt_hint) / rel_card_path
-        if not card_file.is_file():
-            return
-        text = card_file.read_text(encoding="utf-8")
-        new_text, n = re.subn(
-            r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)",
-            rf"\g<1>{state_text}",
-            text,
-            count=1,
+        store = CardStateStore(wt_hint, dispatch_dir=cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        snap = store.read_snapshot(rel_card_path)
+
+        def _mutator(text: str) -> str:
+            if state_text.startswith("打回"):
+                from server.board.card_header import bump_reject_count
+                return bump_reject_count(text)
+            return text
+
+        store.transition(
+            rel_card_path,
+            target=state_text,
+            expected_state=snap.state,
+            expected_version=snap.version,
+            expected_commit=None,
+            actor="engine",
+            reason=f"机审打回落分支信封: {state_text}",
+            mutator=_mutator,
         )
-        if n == 0 or new_text == text:
-            return
-        # 打回次数修复（统一化）：机审打回（终态）时递增卡头 打回次数：N
-        if state_text.startswith("打回"):
-            from server.board.card_header import bump_reject_count
-
-            new_text = bump_reject_count(new_text)
-        card_file.write_text(new_text, encoding="utf-8")
-        branch = f"codex/{Path(work.card_path).stem.lower()}"
-
-        # 检查 rc：git add/commit/push 失败时保留脏现场 + 写告警（使用 worktree 相对路径）
-        add = subprocess.run(
-            ["git", "add", "--", str(rel_card_path)], cwd=wt_hint, capture_output=True, check=False, timeout=30
-        )
-        if add.returncode != 0:
-            logger.error(
-                "机审打回落分支 git add 失败（保留脏现场）: work=%s branch=%s stderr=%s",
-                work.id,
-                branch,
-                add.stderr.strip()[:200],
-            )
-            _write_pipeline_warning("git_add_failed", work.id, f"git add 失败: {add.stderr.strip()[:200]}")
-            return
-
-        commit = subprocess.run(
-            ["git", "commit", "-m", f"chore(engine): {work.id} 机审打回，状态落分支信封（防死循环）"],
-            cwd=wt_hint,
-            capture_output=True,
-            check=False,
-            timeout=30,
-        )
-        if commit.returncode != 0:
-            logger.error(
-                "机审打回落分支 git commit 失败（保留脏现场）: work=%s branch=%s stderr=%s",
-                work.id,
-                branch,
-                commit.stderr.strip()[:200],
-            )
-            _write_pipeline_warning("git_commit_failed", work.id, f"git commit 失败: {commit.stderr.strip()[:200]}")
-            return
-
-        push = subprocess.run(
-            ["git", "push", "origin", branch], cwd=wt_hint, capture_output=True, check=False, timeout=60
-        )
-        if push.returncode != 0:
-            logger.error(
-                "机审打回落分支 git push 失败（保留脏现场）: work=%s branch=%s stderr=%s",
-                work.id,
-                branch,
-                push.stderr.strip()[:200],
-            )
-            _write_pipeline_warning("git_push_failed", work.id, f"git push 失败: {push.stderr.strip()[:200]}")
-            return
-
-        logger.warning("机审打回已落分支卡状态: work=%s branch=%s", work.id, branch)
+        logger.warning("机审打回已落分支卡状态: work=%s state=%s", work.id, state_text)
     except Exception as exc:
         logger.warning("机审打回落分支卡失败（不阻断打回）: work=%s (%s)", work.id, exc)
 
@@ -2675,6 +2631,21 @@ def _executor_result_path(log_dir: Path, work_id: str) -> Path:
     return log_dir / f"{work_id}-ccc-result.md"
 
 
+_CARD_STORE_CACHE: dict[str, CardStateStore] = {}
+
+
+def _card_store(card_path: str | Path, cfg: dict[str, Any]) -> CardStateStore:
+    """取统一 CardStateStore（按 repo_root 缓存复用，避免每张卡重复 init）。"""
+    from server.git_sync import resolve_repo_root
+
+    dispatch_dir = str(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+    repo_root = resolve_repo_root(dispatch_dir)
+    key = str(repo_root)
+    if key not in _CARD_STORE_CACHE:
+        _CARD_STORE_CACHE[key] = CardStateStore(repo_root, dispatch_dir=dispatch_dir, data_dir=cfg.get("DATA_DIR"))
+    return _CARD_STORE_CACHE[key]
+
+
 def _refresh_index(cfg: dict[str, Any], dispatch_root: Path | None = None) -> bool:
     """持久化刷新卡索引，并返回刷新后的 loader 状态。"""
     from server.board.loader import get_index_path, load_dispatch_cards, load_index_file
@@ -2725,94 +2696,30 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
             section = section.split("## ", 1)[0].strip()
             writeback += f"\n\n{heading}\n\n{section}"
         maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
-        from server.engine.store import _replace_state_in_metadata
 
-        updated = _replace_state_in_metadata(card_text, "已回写")
-        updated = _replace_card_section(updated, "回写区", writeback)
-        updated = _replace_card_section(updated, "维护区", maintenance)
-        card_path.write_text(updated, encoding="utf-8")
+        def _mutator(text: str) -> str:
+            updated = _replace_card_section(text, "回写区", writeback)
+            return _replace_card_section(updated, "维护区", maintenance)
+
+        # B1：A2 代写改走 CardStateStore（版本/状态 CAS + 卡锁 + 受保护提交）。
+        store = _card_store(work.card_path, cfg)
+        snap = store.read_snapshot(card_path)
+        store.transition(
+            card_path,
+            target="已回写",
+            expected_state=snap.state,
+            expected_version=snap.version,
+            expected_commit=None,
+            actor="engine",
+            reason="A2 执行结果代写",
+            mutator=_mutator,
+            allow_mirror_completion=True,
+        )
+    except CardCASConflict as exc:
+        return False, f"引擎代写卡冲突（未覆盖）: {exc}"
     except (OSError, ValueError) as exc:
         return False, f"引擎代写卡失败: {exc}"
 
-    try:
-        from server.git_sync import resolve_repo_root
-        from server.board.loader import load_dispatch_cards
-
-        dispatch_dir = str(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-        repo_root = resolve_repo_root(dispatch_dir)
-        dispatch_root = Path(dispatch_dir)
-        if not dispatch_root.is_absolute():
-            dispatch_root = repo_root / dispatch_root
-        # 持久化重写索引，再 commit；否则 pre-commit card-validate 读取旧索引，
-        # 把「引擎已回写」误报成状态不一致（tst905 实测）。
-        rel = str(card_path.relative_to(repo_root))
-
-        def _diff_stat_snapshot(label: str) -> str:
-            try:
-                r = subprocess.run(
-                    ["git", "diff", "--stat", "--", rel],
-                    cwd=str(repo_root), capture_output=True, text=True, timeout=15, check=False,
-                )
-                stat = (r.stdout or r.stderr or "").strip()
-                logger.info("[引擎代写 %s] git diff --stat:\n%s", label, stat)
-                return stat
-            except Exception as _exc:  # noqa: BLE001
-                logger.warning("[引擎代写 %s] git diff --stat 快照失败: %s", label, _exc)
-                return ""
-
-        _diff_stat_snapshot("代写前")
-        # 代写动作已发生于上方；只有卡文件自身产生实际 diff 才允许提交。
-        card_diff = subprocess.run(
-            ["git", "diff", "--quiet", "--", rel],
-            cwd=str(repo_root), capture_output=True, text=True, timeout=15, check=False,
-        )
-        _diff_stat_snapshot("代写后")
-        if card_diff.returncode == 0:
-            logger.warning("引擎代写结束但无卡面变更，禁止空提交: work=%s", work.id)
-            return False, "无卡面变更"
-        if card_diff.returncode not in (1,):
-            return False, f"无法核验卡面 diff（git diff rc={card_diff.returncode}）"
-        if not _refresh_index(cfg, dispatch_root):
-            return False, "引擎代写卡前持久化刷新索引失败"
-        rel = str(card_path.relative_to(repo_root))
-
-        def _status_snapshot(label: str) -> None:
-            try:
-                r = subprocess.run(
-                    ["git", "status", "--short"],
-                    cwd=str(repo_root), capture_output=True, text=True, timeout=15, check=False,
-                )
-                logger.info("[引擎代写 %s] git status --short:\n%s", label, (r.stdout or r.stderr or "").strip())
-            except Exception as _exc:  # noqa: BLE001
-                logger.warning("[引擎代写 %s] git status 快照失败: %s", label, _exc)
-
-        _status_snapshot("add前")
-        subprocess.run(
-            ["git", "add", "--", rel],
-            cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
-        )
-        try:
-            commit_res = subprocess.run(
-                ["git", "commit", "-m", f"chore(engine): {work.id} 引擎代写执行结果"],
-                cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=30,
-            )
-            logger.info("[引擎代写] commit ok: %s", commit_res.stdout[-400:] if commit_res.stdout else "")
-        except subprocess.CalledProcessError as _ce:
-            logger.error(
-                "[引擎代写] git commit 失败，完整输出:\nSTDOUT:\n%s\nSTDERR:\n%s",
-                _ce.stdout or "",
-                _ce.stderr or "",
-            )
-            raise
-        _status_snapshot("commit后")
-        subprocess.run(
-            ["git", "push", "origin", "main"],
-            cwd=str(repo_root), check=True, capture_output=True, text=True, timeout=60,
-        )
-        load_dispatch_cards(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
-        detail = getattr(exc, "stdout", None) or getattr(exc, "stderr", None) or str(exc)
-        return False, f"引擎代写卡 commit/push 失败: {detail}"
     return True, ""
 
 
@@ -4164,25 +4071,17 @@ def _run_machine_audit_after_writeback(
             )
             _record_machine_audit_pass(work)
             return True, [], True
-        logger.warning("worktree 卡缺失，回退生产卡落证据: work=%s", work.id)
-    if not _append_machine_audit_pass(
-        work.card_path,
-        source="engine-audit",
-        evidence=evidence,
-    ):
-        _ledger_record(
-            work,
-            severity,
-            "不通过",
-            ["机审通过但机审区落盘失败"],
-            fix_action="",
-            source=("manual" if manual else "engine"),
-            kind="infra",
-        )
-        return False, ["机审通过但机审区落盘失败"], True
-    _ledger_record(work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit")
-    _record_machine_audit_pass(work)
-    return True, [], True
+        logger.warning("worktree 卡缺失，禁止 fallback 生产卡: work=%s", work.id)
+    _ledger_record(
+        work,
+        severity,
+        "不通过",
+        ["机审失败：未检测到有效卡副本，禁止 fallback 生产卡"],
+        fix_action="",
+        source=("manual" if manual else "engine"),
+        kind="infra",
+    )
+    return False, ["机审失败：未检测到有效卡副本，禁止 fallback 生产卡"], True
 
 
 def _parent_blocks_dispatch(work: Work, by_id: dict[str, Work]) -> str | None:

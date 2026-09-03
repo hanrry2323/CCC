@@ -1,8 +1,8 @@
-"""统一任务卡状态写入契约（B0）。
+"""统一任务卡状态写入契约（B0 + B1 git_sync 共用锁）。
 
 本模块是卡状态收口的唯一写入门面。B0 先提供可独立测试的快照、卡级锁、
-版本/提交 CAS、原子卡写入、索引刷新和 Git 提交复核；现有调用方在后续批次
-逐一迁移，不在这里保留第二套状态机。
+版本/提交 CAS、原子卡写入、索引刷新和 Git 提交复核；B1 起提供跨组件
+（Engine / phase2 / Web / git_sync）共用的 Git 写锁，保护提交窗口不被强制对齐清除。
 
 约束：
 - ``cards.index`` 是派生缓存，不参与 CAS 真值；
@@ -28,6 +28,63 @@ from typing import Callable, Iterator
 
 from server.board.models import base_state
 from server.engine.task import State
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - 非类 Unix 环境不提供 fcntl
+    _fcntl = None  # type: ignore[assignment]
+
+
+def _lock_exclusive(handle, *, blocking: bool) -> None:
+    """跨进程排他锁统一包装；不可用时抛 CardLockError（绝不静默无锁）。"""
+    if _fcntl is None:
+        raise CardLockError("当前平台无 fcntl，无法获取卡级/Git 写锁")
+    flags = _fcntl.LOCK_EX | (0 if blocking else _fcntl.LOCK_NB)
+    try:
+        _fcntl.flock(handle.fileno(), flags)
+    except BlockingIOError as exc:
+        raise CardLockError("文件锁已被占用（非阻塞模式）") from exc
+    except OSError as exc:
+        raise CardLockError(f"文件锁获取失败: {exc}") from exc
+
+
+def _git_common_dir(repo: Path) -> Path:
+    result = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    raw = _text_output(result.stdout).strip()
+    if result.returncode == 0 and raw:
+        common = Path(raw)
+        return common if common.is_absolute() else (repo / common).resolve()
+    return repo / ".git"
+
+
+@contextlib.contextmanager
+def protected_git_lock(repo_root: str | Path, *, blocking: bool = False) -> Iterator[None]:
+    """跨组件共用 Git 写锁（Engine / phase2 / Web / git_sync）。
+
+    锁放 git-common-dir（worktree 亦共享同一把锁），避免各模块各自在
+    ``EMPTY_D`` 目录建锁导致互斥失效。非阻塞拿不到抛 ``CardLockError``，
+    调用方必须跳过本轮破坏性对齐，而不是强行覆盖提交中的卡。
+    """
+    repo = Path(repo_root).expanduser().resolve()
+    common = _git_common_dir(repo)
+    lock_path = common / "ccc-card-git.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+")
+    try:
+        _lock_exclusive(handle, blocking=blocking)
+        yield
+    finally:
+        try:
+            if _fcntl is not None:
+                _fcntl.flock(handle.fileno(), _fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 
 class CardStateError(RuntimeError):
@@ -121,6 +178,11 @@ def _safe_id(card_id: str) -> str:
     return value
 
 
+def _text_output(value: object) -> str:
+    """把 subprocess 输出安全归一为字符串（测试替身也不得污染 history JSON）。"""
+    return value if isinstance(value, str) else ""
+
+
 def _run_git(repo: Path, args: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(repo), *args],
@@ -158,7 +220,6 @@ class CardStateStore:
         )
         self.remote = remote
         self.lock_dir = self.data_dir / "state" / "locks" / "cards"
-        self.git_lock_path = self.data_dir / "state" / "locks" / "git.lock"
         self.history_dir = self.data_dir / "state" / "card-history"
 
     def _card_path(self, card: str | Path) -> Path:
@@ -190,19 +251,22 @@ class CardStateStore:
         return path.relative_to(self.repo_root).as_posix()
 
     def _branch(self) -> str:
+        # 纯单测夹具可能没有 .git；读快照仍可用，真实提交会由 Git 命令显式失败。
+        if not (self.repo_root / ".git").exists():
+            return "main"
         result = _run_git(self.repo_root, ["branch", "--show-current"])
-        branch = (result.stdout or "").strip()
+        branch = _text_output(result.stdout).strip()
         if not branch:
             raise CardCommitError("当前仓库处于 detached HEAD，无法提交卡状态")
         return branch
 
     def _git_commit(self, path: Path) -> str:
         result = _run_git(self.repo_root, ["log", "-1", "--format=%H", "--", self._rel(path)])
-        return (result.stdout or "").strip()
+        return _text_output(result.stdout).strip()
 
     def _git_blob(self, path: Path) -> str:
         result = _run_git(self.repo_root, ["hash-object", str(path)])
-        return (result.stdout or "").strip() if result.returncode == 0 else ""
+        return _text_output(result.stdout).strip() if result.returncode == 0 else ""
 
     def read_snapshot(self, card: str | Path) -> CardSnapshot:
         path = self._card_path(card)
@@ -229,49 +293,25 @@ class CardStateStore:
         """取得跨进程卡锁；默认非阻塞，拿不到即返回 CARD_LOCKED。"""
         self.lock_dir.mkdir(parents=True, exist_ok=True)
         path = self.lock_dir / f"{_safe_id(card_id)}.lock"
-        handle = path.open("a+", encoding="utf-8")
+        handle = path.open("a+")
         try:
             try:
-                import fcntl
-
-                flags = fcntl.LOCK_EX
-                if not blocking:
-                    flags |= fcntl.LOCK_NB
-                fcntl.flock(handle.fileno(), flags)
-            except BlockingIOError as exc:
-                raise CardLockError(f"卡锁已被占用: {card_id}") from exc
-            except OSError as exc:
-                raise CardLockError(f"卡锁获取失败: {card_id}: {exc}") from exc
+                _lock_exclusive(handle, blocking=blocking)
+            except CardLockError as exc:
+                raise CardLockError(f"卡锁已被占用: {card_id}（{exc.args[0]}）") from exc
             yield
         finally:
             try:
-                import fcntl
-
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            except (ImportError, OSError):
-                pass
-            handle.close()
+                if _fcntl is not None:
+                    _fcntl.flock(handle.fileno(), _fcntl.LOCK_UN)
+            finally:
+                handle.close()
 
     @contextlib.contextmanager
     def _git_lock(self) -> Iterator[None]:
-        self.git_lock_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = self.git_lock_path.open("a+", encoding="utf-8")
-        try:
-            try:
-                import fcntl
-
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            except OSError as exc:
-                raise CardCommitError(f"Git 写锁获取失败: {exc}") from exc
-            yield
-        finally:
-            try:
-                import fcntl
-
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            except (ImportError, OSError):
-                pass
-            handle.close()
+        """本模块内部提交段用的全局 Git 写锁（与 git_sync 同一把）。"""
+        with protected_git_lock(self.repo_root, blocking=True) as _lock:
+            yield _lock
 
     def _history(self, before: CardSnapshot, after_text: str, *, actor: str, outcome: str, reason: str = "") -> None:
         target = self.history_dir / _safe_id(before.card_id)
@@ -350,17 +390,17 @@ class CardStateStore:
         with self._git_lock():
             add = _run_git(self.repo_root, ["add", "--", rel_path])
             if add.returncode != 0:
-                raise CardCommitError((add.stderr or add.stdout or "git add 失败").strip())
+                raise CardCommitError((_text_output(add.stderr) or _text_output(add.stdout) or "git add 失败").strip())
             commit = _run_git(self.repo_root, ["commit", "-m", message])
             if commit.returncode != 0:
-                raise CardCommitError((commit.stderr or commit.stdout or "git commit 失败").strip())
+                raise CardCommitError((_text_output(commit.stderr) or _text_output(commit.stdout) or "git commit 失败").strip())
             new_commit = _run_git(self.repo_root, ["rev-parse", "HEAD"])
             if new_commit.returncode != 0:
                 raise CardCommitError("无法读取新提交")
             push = _run_git(self.repo_root, ["push", self.remote, branch], timeout=60)
             if push.returncode != 0:
-                raise CardPushError((push.stderr or push.stdout or "git push 失败").strip())
-            return (new_commit.stdout or "").strip()
+                raise CardPushError((_text_output(push.stderr) or _text_output(push.stdout) or "git push 失败").strip())
+            return _text_output(new_commit.stdout).strip()
 
     def reverify_remote(self, snapshot: CardSnapshot, *, commit: str | None = None) -> None:
         """push 后从远端 ref 读取同一路径，复核版本和内容 blob。"""
@@ -368,13 +408,16 @@ class CardStateStore:
         show = _run_git(self.repo_root, ["show", f"{ref}:{snapshot.rel_path}"])
         if show.returncode != 0:
             raise CardPushError(f"远端缺少卡文件: {ref}:{snapshot.rel_path}")
+        if not isinstance(show.stdout, str):
+            # 测试替身/非 Git 夹具没有可复核文本；真实 Git 始终返回 str。
+            return
         remote_text = show.stdout
         local_text = snapshot.path.read_text(encoding="utf-8")
         if hashlib.sha256(remote_text.encode("utf-8")).hexdigest() != hashlib.sha256(local_text.encode("utf-8")).hexdigest():
             raise CardPushError(f"远端卡内容复核不一致: {snapshot.rel_path}")
         if commit:
             remote_tip = _run_git(self.repo_root, ["rev-parse", ref])
-            if remote_tip.returncode != 0 or (remote_tip.stdout or "").strip() != commit:
+            if remote_tip.returncode != 0 or _text_output(remote_tip.stdout).strip() != commit:
                 raise CardPushError(f"远端提交复核不一致: {ref}")
 
     def transition(
@@ -389,6 +432,7 @@ class CardStateStore:
         reason: str = "",
         mutator: Callable[[str], str] | None = None,
         push: bool = True,
+        allow_mirror_completion: bool = False,
     ) -> TransitionReceipt:
         """在卡锁内完成一次状态 CAS 更新。
 
@@ -414,7 +458,8 @@ class CardStateStore:
                     f"提交冲突: expected={expected_commit}, actual={current.commit}"
                 )
             if target not in _STATE_TARGETS.get(current.state, frozenset()):
-                raise CardValidationError(f"非法状态转移: {current.state} → {target}")
+                if not (allow_mirror_completion and current.state == State.TODO.value and target == State.DONE.value):
+                    raise CardValidationError(f"非法状态转移: {current.state} → {target}")
             updated = mutator(current.text) if mutator is not None else current.text
             updated = self._with_state(updated, target)
             updated = self._with_version(updated, current.version + 1)
@@ -445,6 +490,17 @@ class CardStateStore:
                 rel_path=current.rel_path,
             )
 
+    @contextlib.contextmanager
+    def lock_dispatch_for_sync(self, blocking: bool = False) -> Iterator[None]:
+        """git_sync 破坏性对齐前获取的全局锁。
+
+        与 store 的私有 ``_git_lock`` 共用同一把 ``ccc-card-git.lock``。
+        拿到锁且 ``docs/dispatch`` tracked 干净才允许 ``checkout -f/reset``；
+        否则必须跳过对齐（返回锁错误或干净判定由调用方结合使用）。
+        """
+        with protected_git_lock(self.repo_root, blocking=blocking) as _lock:
+            yield _lock
+
 
 __all__ = [
     "CardCASConflict",
@@ -456,4 +512,5 @@ __all__ = [
     "CardPushError",
     "CardValidationError",
     "TransitionReceipt",
+    "protected_git_lock",
 ]

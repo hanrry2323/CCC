@@ -23,7 +23,27 @@ import time
 from pathlib import Path
 from typing import Any
 
+from server.engine.card_state_store import CardLockError, protected_git_lock
+
 logger = logging.getLogger("ccc.git_sync")
+
+
+class SyncLockedError(RuntimeError):
+    """卡状态写入/Git 提交正在进行，本轮不得覆盖主仓卡。"""
+
+
+def _protected_force_align(repo: Path, ref: str, dispatch_subdir: str) -> dict[str, int]:
+    """拿到全局 Git 写锁才允许强制对齐；拿不到则跳过本轮，保护提交中的卡。
+
+    返回的 dict 在锁不可得时额外带 ``{"locked": 1}``，调用方据此报告
+    ``blocked``，且不得 checkout/reset/unlink。
+    """
+    try:
+        with protected_git_lock(repo, blocking=False):
+            return _force_align_dispatch(repo, ref, dispatch_subdir)
+    except CardLockError as exc:
+        logger.warning("git sync 跳过 dispatch 强制对齐（卡提交锁占用）: %s", exc)
+        return {"removed": 0, "grace_kept": 0, "locked": 1}
 
 # 已告警过「疑似出卡未提交」的未跟踪文件绝对路径（同文件去重，进程生命周期内有效）
 _GRACE_WARNED: set[str] = set()
@@ -127,7 +147,13 @@ def sync_origin_main(
         return summary
 
     if merged.returncode == 0:
-        _force_align_dispatch(repo, ref, dispatch_subdir)
+        align = _protected_force_align(repo, ref, dispatch_subdir)
+        if align.get("locked"):
+            summary["ok"] = False
+            summary["method"] = "blocked"
+            summary["detail"] = "git sync blocked: 卡状态提交/Git 写锁占用，跳过 dispatch 强制对齐"
+            logger.warning("git sync ff-only 后对齐被锁跳过: %s", summary["detail"])
+            return summary
         summary["ok"] = True
         summary["method"] = "ff-only"
         summary["detail"] = (merged.stdout or "up to date").strip()[:300]
@@ -142,11 +168,26 @@ def sync_origin_main(
         logger.warning("git sync blocked: %s", summary["detail"])
         return summary
 
-    align = _force_align_dispatch(repo, ref, dispatch_subdir)
+    align = _protected_force_align(repo, ref, dispatch_subdir)
     removed_untracked = align["removed"]
     grace_kept = align["grace_kept"]
+    sync_locked = bool(align.get("locked"))
     updated = diff.stdout.splitlines()
     updated = [rel.strip() for rel in updated if rel.strip()]
+
+    if sync_locked:
+        # 提交锁被占用：本轮跳过破坏性对齐与 retry-merge（进度归文件并保留候选卡）
+        summary["ok"] = False
+        summary["method"] = "blocked"
+        summary["updated"] = updated
+        summary["removed_untracked"] = 0
+        summary["grace_kept"] = 0
+        summary["detail"] = (
+            "git sync blocked: 卡状态提交/Git 写锁占用，跳过 dispatch 强制对齐，"
+            "保留待提交卡现场"
+        ).strip()[:300]
+        logger.warning("git sync dispatch 对齐被锁跳过: %s", summary["detail"])
+        return summary
 
     # 清理后重试 ff-only（卡文件已对齐，剩余阻挡仅限非 dispatch 路径）
     merged_retry = _run(repo, ["merge", "--ff-only", ref], timeout=60.0)

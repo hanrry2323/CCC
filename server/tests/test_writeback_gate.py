@@ -517,8 +517,18 @@ def test_apply_executor_result_refreshes_index_before_commit(tmp_path, monkeypat
         return MagicMock(returncode=1 if "--quiet" in cmd else 0)
 
     monkeypatch.setattr("server.engine.main.subprocess.run", fake_run)
+    # B1：卡状态 commit 已收口到 CardStateStore，不再由 main.py 直接调用 subprocess。
+    def fake_store_run(cmd, **kwargs):
+        calls.append(cmd[3] if len(cmd) > 3 else cmd[-1])
+        # 让 git show 远端复核时模拟返回与本地写入后一致的 mock 数据，避免 reverify_remote 阻断
+        if "show" in cmd:
+            return MagicMock(returncode=0, stdout=card_path.read_text(encoding="utf-8"))
+        return MagicMock(returncode=0, stdout="main\n")
+
+    monkeypatch.setattr("server.engine.card_state_store.subprocess.run", fake_store_run)
     ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
     assert ok, err
+    assert "refresh" in calls
     assert calls.index("refresh") < calls.index("commit")
 
 

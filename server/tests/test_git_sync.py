@@ -57,6 +57,40 @@ class TestAutoPullEnabled:
         assert auto_pull_enabled({"CCC_AUTO_PULL": "0"}) is False
 
 
+def test_force_align_skipped_when_card_state_locked(tmp_path: Path) -> None:
+    """写入持锁中 git_sync 触发 → 跳过对齐，卡改动完好（B1 必修）。"""
+    from server.engine.card_state_store import protected_git_lock
+
+    bare = tmp_path / "bare.git"
+    subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+    local = tmp_path / "local"
+    _init_repo(local)
+    _git(local, "remote", "add", "origin", str(bare))
+    _git(local, "push", "-u", "origin", "main")
+
+    # 远端推进（预期触发本地 ff 失败 + force-checkout 路径）
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", str(bare), str(other)], check=True, capture_output=True)
+    _git(other, "config", "user.email", "t@example.com")
+    _git(other, "config", "user.name", "t")
+    (other / "docs" / "dispatch" / "b.md").write_text("# b remote\n", encoding="utf-8")
+    _git(other, "add", "docs/dispatch/b.md")
+    _git(other, "commit", "-m", "advance remote")
+    _git(other, "push", "origin", "main")
+    # 注：merged.fetch 路径下本地 main 尚未消费 b.md，b 的存在不影响本测试意图。
+
+    # 本地构建一笔待提交的卡改动
+    (local / "docs" / "dispatch" / "a.md").write_text("# a in-progress\n", encoding="utf-8")
+    with protected_git_lock(local, blocking=True):
+        summary = sync_origin_main(local, remote="origin", branch="main")
+        assert summary["ok"] is False, "持锁期间对齐不得声称成功"
+        assert summary["method"] == "blocked", summary
+        # 锁内提交中的卡改动必须完好（不被 checkout -f / reset 覆盖）
+        assert (local / "docs" / "dispatch" / "a.md").read_text(encoding="utf-8") == "# a in-progress\n"
+    # 持锁期间本轮不对本地工作树做任何对齐 checkout 与 untracked 删除
+    # （对齐是否完成由方法字段 blocked 表示；合并进度归远端 ref，不归本地工作树）
+
+
 class TestSyncOriginMain:
     def test_ff_only(self, tmp_path: Path) -> None:
         bare = tmp_path / "bare.git"

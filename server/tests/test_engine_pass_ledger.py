@@ -87,7 +87,7 @@ def test_pass_worktree_path_records_ledger(ledger_file, monkeypatch, tmp_path: P
 
 
 def test_pass_prod_card_path_records_ledger(ledger_file, monkeypatch, tmp_path: Path) -> None:
-    """生产卡兜底通过路径也必须写 machine_audit_pass。"""
+    """生产卡兜底通过路径（已移除主仓 fallback，该测试现在预期返回 False 并阻断）。"""
     card = tmp_path / "mx099-task.md"
     card.write_text("# 卡\n", encoding="utf-8")
     called = []
@@ -101,8 +101,8 @@ def test_pass_prod_card_path_records_ledger(ledger_file, monkeypatch, tmp_path: 
     monkeypatch.setattr("server.engine.main._audit_evidence_passed", lambda *a, **k: False)
     work = _work(card_path=str(card))
     ok, problems, audited = _run_machine_audit_after_writeback(work, None, {}, tmp_path / "logs", 300)
-    assert ok is True
-    assert any(cid == "mx099" for cid, _ in called)
+    assert ok is False
+    assert "禁止 fallback 生产卡" in problems[0]
 
 
 def test_branch_audit_requires_ledger_not_card_text(monkeypatch, tmp_path: Path) -> None:
