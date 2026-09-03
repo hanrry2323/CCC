@@ -2,6 +2,7 @@
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
 > **版本**：`VERSION`（**v0.70.0**）  
+> **渠道真值以本文为准 · 2026-09-03 更新**：2017 所有模型通道统一经 M1 中转 `3456 → LiteLLM → Code`；`6100/6102` 与 opencode.ai 直连均为退役历史路径。看板已启用鉴权，匿名读接口返回 401。  
 > **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）  
 > **文档怎么写 / 项目注册**：[`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) · [`docs/projects/registry.yaml`](docs/projects/registry.yaml)  
 > **Cursor 已弃用**（2026-08-14，入口 `CURSOR.md` 已移除）  
@@ -14,10 +15,10 @@
 **人定意图 → 写任务卡到 `docs/dispatch/` → 2017 Engine 派发执行体 → 收单回写看板 → 验收闭环；全程只认一个权威仓 + 一份任务卡文档。**
 
 CCC = **Connect–Claude Code** = **Loop Engineer**  
-**任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（Claude Code CLI via 6100）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
+**任意设备壳**（Desktop / 网页 / 手机）经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**（统一经 M1 中转 3456 的 Code）；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）远端开发。
 
 **席位（硬，2026-08-07 · 北星）**：
-- **OpenCode** = 2017 默认**开发**（6102）
+- **DSH Code** = 2017 统一执行/机审通道（M1 中转 3456）
 - **自验收（2026-08-07 起）**：谁开发谁验收（OpenCode↔OpenCode / Claude↔Claude）
 - **机审** = 验收席按 **code-review 技能**完整审查（P0/P1 就地修复复审）；开发禁止写机审区
 - **合入批准** = 人审 diff 后唯一常规动作（[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md)；旧称「验收看板」）
@@ -37,9 +38,9 @@ SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) ·
 
 | | |
 |--|--|
-| **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（默认免登录，`CCC_WEB_AUTH_REQUIRED=0`） |
-| **大脑 / Claude Code `:6100`** | Anthropic 出口 flash：对话 + Claude Code 机审/合入执行体（开发归 OpenCode） |
-| **Relay / OpenCode `:6102`** | code 档上游路由（OpenCode 等） |
+| **2017 单端 `:7788`** | HTTP 直连：对话 / 看板 / 运维 / 线路图（已启用鉴权；匿名读请求返回 401） |
+| **M1 中转 `:3456`** | LiteLLM → Code：2017 对话、DSH 执行体与机审统一主通道 |
+| **6100 / 6102** | 旧中转路径，进程已停用，仅保留历史记录 |
 | **3 个 launchd 服务** | `com.ccc.web-server` + `com.ccc.engine` + `com.ccc.board-scheduler`（仅 2017） |
 
 ---
@@ -48,8 +49,8 @@ SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) ·
 
 ```text
 任意设备壳（Desktop / 网页 / 手机）
-  → HTTP 直连 2017:7788（默认免登录）
-  → /conversation 聊意图（大脑 Agent）
+  → HTTP 直连 2017:7788（需登录 token）
+  → /conversation 聊意图（大脑 Agent，经 3456 Code）
   → 写任务卡到 docs/dispatch/T<n>-*.md
   → Engine 按卡头派发 OpenCode / Claude Code（可后台 CLI）
   → 收单 → 五态流转（待分派 → 执行中 → 已回写 → 已关闭）
@@ -123,8 +124,8 @@ python -m server.board.validate docs/dispatch
 ## 7. 模型（执行面）
 
 ```bash
-# 大脑 / 执行体（2017，via 6100）
-ANTHROPIC_BASE_URL=http://127.0.0.1:6100 ANTHROPIC_MODEL=flash \
+# 大脑 / 执行体（2017，via M1 中转 3456）
+ANTHROPIC_BASE_URL=http://127.0.0.1:3456 ANTHROPIC_MODEL=Code \
   claude -p "<msg>" --output-format text
 ```
 

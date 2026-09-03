@@ -460,7 +460,7 @@ bash scripts/opencode-watchdog.sh; echo "exit=$?"  # 期望 0
 bash scripts/ccc-exec-launcher.sh 1 /tmp/executor-prompt.txt
 # 等价于：
 #   bash scripts/ccc-monitor.sh claude-code
-#   tmux send-keys -t claude-code:1 "cat /tmp/executor-prompt.txt | claude --bare --model deepseek-v4-flash" Enter
+#   tmux send-keys -t claude-code:1 "cat /tmp/executor-prompt.txt | claude --bare --model Code" Enter
 #   nohup bash scripts/ccc-poll.sh 1 claude-code 300 &
 ```
 

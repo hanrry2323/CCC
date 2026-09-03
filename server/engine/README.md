@@ -18,7 +18,7 @@
   - 卡未指定执行体 / binding 未命中 → 回退 `decide(role)`（现行为不变）。
 - 状态机 = **契约 §2 五态**：`待分派 → 执行中 → 已回写 → 已关闭`；失败路径 `执行中/已回写 → 打回（附问题清单）`，人工处理后 `打回 → 待分派` 重新派发；终态 `已关闭`。**非法状态转移一律抛 `IllegalTransitionError`。**
 - 零硬编码：执行体命令/参数模板/工作目录全部走注册表；超时/日志目录走 `config.env`。代码不出现工具名字面量。
-- 模型出口一律经 `relay/`，engine 不直连上游。
+- 现役模型出口统一经 M1 中转 `127.0.0.1:3456 → LiteLLM → Code`；`server/relay/` 与 6100/6102 为退役历史路径，engine 不直连上游。
 
 ## 实现
 
@@ -69,7 +69,7 @@ run_once(registry, store, cfg)
 | 模块 | 关系 |
 |------|------|
 | `config/` | 经 `loader.load_config` 读运行参数；读 `EXECUTOR_REGISTRY_PATH` / `EXECUTOR_TIMEOUT_SECONDS` / `EXECUTOR_LOG_DIR` |
-| `relay/` | 出模型时调 relay 路由（engine 不直连上游） |
+| `relay/` | 退役历史目录；现役模型经 M1 `3456 → LiteLLM → Code`（engine 不直连上游） |
 | `board/` | 状态更新写入 `store.py` 看板接口（T3 换真实数据结构，不改接口） |
 | `deploy/` | `run.example.sh` 以 `$PYTHON_BIN -m server.engine.main --config …` 启动本模块入口 |
 

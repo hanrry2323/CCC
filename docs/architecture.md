@@ -21,7 +21,7 @@
   │  HTTP 直连（账号密码 + token）
   ▼
 2017 单端 :7788（server/web/server.py）
-  ├─ /conversation → 大脑 Agent（对话口接执行会话 via 6100，带心智/工具/知识库）
+  ├─ /conversation → 大脑 Agent（对话口接执行会话，经 M1 中转 3456/Code，带心智/工具/知识库）
   ├─ /board/*      → 看板视图（snapshot/states/recent/roadmap/summaries）
   ├─ /ops/summary  → 运维聚合（节点/红灯/概览）
   └─ /session      → 账号密码换 token
@@ -39,9 +39,9 @@
   ├─ queries.py：实时/7天/项目分类三视图 + 线路图聚合
   └─ export.py：导出 web/data/board.js（零 API 模式）
 
-中转站（server/relay/）
-  ├─ 6100 = Anthropic 出口（大脑 Agent 执行会话走此）
-  └─ 6102 = Relay flash/code 上游路由（中转站）
+模型通道（2026-09-03 现役）
+  └─ 127.0.0.1:3456 = M1 中转 LiteLLM → Code（2017 统一主通道）
+旧中转站 server/relay/（6100/6102）已退役，仅保留历史记录。
 ```
 
 ---
@@ -135,7 +135,7 @@
 │  │ /conversation      │  │ /board/* /ops/summary       │ │
 │  │ → brain.py         │  │ → board/queries + export    │ │
 │  │   (执行会话        │  │                             │ │
-│  │    via 6100)       │  │ /session → 账号密码换 token │ │
+│  │  via 3456/Code)    │  │ /session → 账号密码换 token │ │
 │  └─────────┬──────────┘  └─────────────┬─────────────┘ │
 │            │                             │               │
 │  ┌─────────▼─────────────────────────────▼─────────────┐ │
