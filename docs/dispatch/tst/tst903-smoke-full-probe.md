@@ -90,8 +90,8 @@ lint：
 
 ### 独立核验
 
-- **范围**：`git status --short --branch` 显示工作树为 `main`；`git log` 显示本卡回写提交 `b5b9eb982`、`ea29c18a0` 均已进入 `main`，且 `git ls-remote origin 'refs/heads/codex/tst903-smoke-full-probe.md'` 无输出。卡头第 26 行虽仅声明本卡文件范围，但回写证据未证明按卡名对应的 `codex/tst903-smoke-full-probe` 分支推送。
-- **回写证据**：第 72 行把 push 证据写成 `b5b9eb982`，但该提交只包含首次回写，push 证据修订实际发生在后续提交 `ea29c18a0`；两次提交均为 `CCC Dev`，且当前无对应的 tst903 远端分支，声明不能独立复现。
+- **范围**：审查时 `git status --short --branch` 显示工作树为 `main`；`git log` 显示本卡回写提交 `b5b9eb982`、`ea29c18a0` 均已进入 `main`，且当时 `git ls-remote origin 'refs/heads/codex/tst903-smoke-full-probe.md'` 无输出。卡头第 26 行虽仅声明本卡文件范围，但回写证据未证明按卡名对应的 `codex/tst903-smoke-full-probe` 分支推送。
+- **回写证据**：第 72 行把 push 证据写成 `b5b9eb982`，但该提交只包含首次回写，push 证据修订实际发生在后续提交 `ea29c18a0`；两次提交均为 `CCC Dev`，审查时也无对应的 tst903 远端分支，声明不能独立复现。
 - **验收要求对账**：第 59 行规定机审席写入本节，但当前卡此前不存在 `## 机审区`；因此回写未完成卡明示的机审交付要求。健康探针第 70 行记录 `000` 与原始命令输出一致，但不能证明 7788 健康链路可用；这项本身已如实记录，不单独作为打回原因。
 
 ### Severity
