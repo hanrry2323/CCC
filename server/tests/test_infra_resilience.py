@@ -85,13 +85,13 @@ def test_run_stage_infra_continuous_failure_and_melt_down(tmp_path: Path):
     reg = ExecutorRegistry((entry,))
 
     cfg = {
-        "EXECUTOR_INFRA_MAX_STRIKES": "5",
+        "EXECUTOR_INFRA_MAX_STRIKES": "3",
         "EXECUTOR_INFRA_COOLDOWN_SECONDS": "60",
         "EXECUTOR_INFRA_COOLDOWN_MAX_SECONDS": "1800"
     }
 
-    # 1. 模拟前 4 次失败（每次 sidecar 的 infra_count 会依次增加）
-    for strike in range(0, 4):
+    # 1. 模拟前 2 次失败（每次 sidecar 的 infra_count 会依次增加）
+    for strike in range(0, 2):
         # 每次重置状态为 RUNNING 以确保转换合法
         work.state = State.RUNNING
         with patch("server.engine.main._dispatch_and_collect", return_value=(False, ["503 Service Unavailable"])), \
@@ -104,11 +104,11 @@ def test_run_stage_infra_continuous_failure_and_melt_down(tmp_path: Path):
              assert work.state == State.TODO  # 回待分派冷却中
              assert mock_write.call_args[1]["infra_count"] == strike + 1
 
-    # 2. 模拟第 5 次失败，应该熔断打回
+    # 2. 模拟第 3 次失败，应该熔断打回
     work.state = State.RUNNING
     with patch("server.engine.main._dispatch_and_collect", return_value=(False, ["503 Service Unavailable"])), \
              patch("server.engine.main.is_retryable_failure", return_value=(True, "503 Service Unavailable")), \
-             patch("server.engine.runtime_state.read_card_state", return_value={"xy101": {"infra_count": 4}}), \
+             patch("server.engine.runtime_state.read_card_state", return_value={"xy101": {"infra_count": 2}}), \
              patch("server.engine.runtime_state.write_card_state") as mock_write:
 
          outcome = _run_auto_worker(work, reg, store, cfg, tmp_path, timeout=30)
@@ -116,7 +116,7 @@ def test_run_stage_infra_continuous_failure_and_melt_down(tmp_path: Path):
          assert work.state == State.REJECTED  # 强制打回！
 
          # 验证 problems 标记
-         assert any("连续失败" in p and "强制打回" in p for p in work.problems)
+         assert any("连续失败" in p and "挂起待人工" in p for p in work.problems)
          # sidecar 契约（ccc-plan-021）：熔断打回出口 clear sidecar，磁盘终态权威
          args = mock_write.call_args
          assert args is None  # 熔断出口不再写 write_card_state（改为 clear）
