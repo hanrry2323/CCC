@@ -2682,9 +2682,9 @@ def _replace_card_section(text: str, heading: str, body: str) -> str:
     if start < 0:
         return text.rstrip() + f"\n\n{marker}\n\n{body.strip()}\n"
     content_start = start + len(marker)
-    next_match = re.search(r"\\n## ", text[content_start:])
+    next_match = re.search(r"\n## ", text[content_start:])
     end = content_start + (next_match.start() if next_match else len(text[content_start:]))
-    return text[:content_start] + "\\n\\n" + body.strip() + "\\n" + text[end:]
+    return text[:content_start] + "\n\n" + body.strip() + "\n" + text[end:]
 
 
 def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str, Any]) -> tuple[bool, str]:
@@ -2703,7 +2703,8 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
     try:
         card_text = card_path.read_text(encoding="utf-8")
         title_section = result.split("## 0. 卡标题复述", 1)[1].split("## 1.", 1)[0].strip()
-        if not title_section or work.id.lower() not in title_section.lower():
+        # A2 修复：按 A1 实际模板识别段内卡号，不要求标题必须是特定单行格式。
+        if not title_section or not re.search(rf"\b{re.escape(work.id)}\b", title_section, re.IGNORECASE):
             return False, "执行结果标题复述为空或未包含卡号"
         writeback = "## 0. 卡标题复述\n\n" + title_section
         for heading in ("## 1. 探针输出", "## 2. 自测输出"):
@@ -2724,8 +2725,14 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
         from server.git_sync import resolve_repo_root
         from server.board.loader import load_dispatch_cards
 
-        repo_root = resolve_repo_root(cfg.get("DISPATCH_DIR") or "docs/dispatch")
-        load_dispatch_cards(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        dispatch_dir = str(cfg.get("DISPATCH_DIR") or "docs/dispatch")
+        repo_root = resolve_repo_root(dispatch_dir)
+        dispatch_root = Path(dispatch_dir)
+        if not dispatch_root.is_absolute():
+            dispatch_root = repo_root / dispatch_root
+        # 先重扫刚写入的卡，再 commit；否则 pre-commit card-validate 读取旧索引，
+        # 把「引擎已回写」误报成状态不一致（tst905 实测）。
+        load_dispatch_cards(dispatch_root)
         rel = str(card_path.relative_to(repo_root))
         subprocess.run(
             ["git", "add", "--", rel],

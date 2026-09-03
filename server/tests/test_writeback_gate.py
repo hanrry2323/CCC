@@ -461,6 +461,59 @@ def test_apply_executor_result_to_card_rewrites_card(tmp_path, monkeypatch):
     assert captured["cmd"] is not None
 
 
+def test_apply_executor_result_title_sample_is_accepted(tmp_path, monkeypatch):
+    """A1 实际结果格式：标题段可含自然语言，只要出现卡号即可通过。"""
+    from server.engine.main import _apply_executor_result_to_card
+    from server.engine.task import Work
+
+    card_path = tmp_path / "docs" / "dispatch" / "tst" / "tst905-sample.md"
+    card_path.parent.mkdir(parents=True)
+    card_path.write_text(_a2_card_text().replace("tst904", "tst905"), encoding="utf-8")
+    result_path = tmp_path / "logs" / "tst905-ccc-result.md"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text(
+        _a2_result_text().replace("tst904", "执行结果已完成：tst905 · smoke: A1-A2 clean full-probe"),
+        encoding="utf-8",
+    )
+    work = Work(id="tst905", role="开发执行体", card_path=str(card_path))
+    monkeypatch.setattr("server.git_sync.resolve_repo_root", lambda *a, **k: tmp_path)
+    monkeypatch.setattr("server.engine.main.subprocess.run", lambda *a, **k: MagicMock(returncode=0))
+    ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
+    assert ok, err
+    assert "执行结果已完成" in card_path.read_text(encoding="utf-8")
+
+
+def test_apply_executor_result_refreshes_index_before_commit(tmp_path, monkeypatch):
+    """A2：唯一索引刷新发生在 git commit 之前。"""
+    from server.engine.main import _apply_executor_result_to_card
+    from server.engine.task import Work
+
+    card_path = tmp_path / "docs" / "dispatch" / "tst" / "tst906-smoke.md"
+    card_path.parent.mkdir(parents=True)
+    card_path.write_text(_a2_card_text().replace("tst904", "tst906"), encoding="utf-8")
+    result_path = tmp_path / "logs" / "tst906-ccc-result.md"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text(_a2_result_text().replace("tst904", "tst906"), encoding="utf-8")
+    work = Work(id="tst906", role="开发执行体", card_path=str(card_path))
+    monkeypatch.setattr("server.git_sync.resolve_repo_root", lambda *a, **k: tmp_path)
+    calls = []
+
+    def fake_load(_path, **_kwargs):
+        calls.append("refresh")
+        return []
+
+    monkeypatch.setattr("server.board.loader.load_dispatch_cards", fake_load)
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd[1] if len(cmd) > 1 else cmd[0])
+        return MagicMock(returncode=0)
+
+    monkeypatch.setattr("server.engine.main.subprocess.run", fake_run)
+    ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
+    assert ok, err
+    assert calls.index("refresh") < calls.index("commit")
+
+
 def test_apply_executor_result_to_card_missing_contract(tmp_path, monkeypatch):
     """A2：结果文件缺契约段 → 不代写，返回错误。"""
     from server.engine.main import _apply_executor_result_to_card
