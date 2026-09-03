@@ -73,20 +73,17 @@ def _body_has(card: Path, marker: str) -> bool:
 
 
 def _has_real_annotation(card: Path) -> bool:
-    """卡含 `## 人工批注` 且内容非模板占位（老板写了真实修订指示）。"""
+    """卡含 `## 人工批注` 且内容非模板占位/无批注 sentinel（老板写了真实修订指示）。
+
+    统一走 server.board.annotation.classify_annotation（与 observer 同源）。
+    """
     try:
+        from server.board.annotation import classify_annotation
+
         text = card.read_text(encoding="utf-8")
+        return classify_annotation(text) == "REAL"
     except OSError:
         return False
-    m = re.search(r"^##\s*人工批注\s*$", text, flags=re.MULTILINE)
-    if not m:
-        return False
-    tail = text[m.end() :]
-    nxt = re.search(r"^##\s", tail, flags=re.MULTILINE)
-    content = (tail[: nxt.start()] if nxt else tail).strip()
-    if not content:
-        return False
-    return "老板对打回卡/审核的批注意见写这里" not in content
 
 
 def _is_accepted(path: Path) -> bool | None:

@@ -458,10 +458,11 @@ def scan_findings(cfg: dict[str, Any], project_root: Path) -> list[dict[str, Any
             ctext = card_file.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
-        if "## 人工批注" not in ctext:
-            continue
-        seg = ctext.split("## 人工批注", 1)[1].split("## ", 1)[0]
-        if not seg.strip() or "老板对打回卡/审核的批注意见写这里" in seg:
+        # P1：统一走 annotation.classify_annotation（与 validate.py 同源），
+        # sentinel 清单收敛，避免两处对「（无批注。）」等误判。
+        from server.board.annotation import requires_fulfillment
+
+        if not requires_fulfillment(ctext):
             continue
         if "## 批注落实" not in ctext:
             findings.append(

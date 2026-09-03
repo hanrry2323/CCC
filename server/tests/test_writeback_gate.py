@@ -420,6 +420,33 @@ def _a2_result_text() -> str:
     )
 
 
+def test_apply_executor_result_to_card_appends_annotation_fulfillment(tmp_path, monkeypatch):
+    """P1：卡含「## 人工批注」节时，A2 代写同步补「## 批注落实」（card-validate 必过）。"""
+    from server.engine.main import _apply_executor_result_to_card
+    from server.engine.task import Work
+
+    card_path = tmp_path / "docs" / "dispatch" / "tst" / "tst905-smoke.md"
+    card_path.parent.mkdir(parents=True)
+    card_path.write_text(
+        _a2_card_text().replace("tst904", "tst905")
+        + "\n## 人工批注\n\n（无批注。）\n",
+        encoding="utf-8",
+    )
+    result_path = tmp_path / "logs" / "tst905-ccc-result.md"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text(_a2_result_text().replace("tst904", "tst905"), encoding="utf-8")
+    work = Work(id="tst905", role="开发执行体", card_path=str(card_path))
+
+    monkeypatch.setattr("server.git_sync.resolve_repo_root", lambda *a, **k: tmp_path)
+    monkeypatch.setattr("server.engine.main.subprocess.run", lambda cmd, **kw: MagicMock(returncode=1 if "--quiet" in cmd else 0))
+
+    ok, err = _apply_executor_result_to_card(work, result_path, {"DISPATCH_DIR": "docs/dispatch"})
+    assert ok, err
+    text = card_path.read_text(encoding="utf-8")
+    assert "## 批注落实" in text
+    assert "无批注，无需落实" in text or "批注" in text.split("## 批注落实", 1)[1]
+
+
 def test_apply_executor_result_to_card_rewrites_card(tmp_path, monkeypatch):
     """A2：.ccc-result.md 存在且契约完整 → 引擎代写主仓卡：状态已回写 + 回写区 + 维护区。"""
     from server.engine.main import _apply_executor_result_to_card
