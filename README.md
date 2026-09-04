@@ -57,10 +57,9 @@ CCC 不是「又一个 IDE」，也不是「角色超市」。它是一台 **Loo
 git clone https://github.com/hanrry2323/CCC.git
 cd CCC
 
-# 2017 生产端已部署三 launchd 常驻服务（T22 落地）：
+# 2017 生产端已部署两 launchd 常驻服务（T22 落地；board-scheduler 已收敛进 engine）：
 # - com.ccc.web-server       → server/web/server.py :7788
 # - com.ccc.engine           → server/engine/main.py
-# - com.ccc.board-scheduler  → server/board/scheduler.py
 
 # 任意设备壳直连（默认免登录即用；服务端可配置恢复账号密码登录）
 curl -s http://192.168.3.116:7788/health
@@ -96,7 +95,7 @@ python3 -m server.web.server --port 7788
 
 | 路径 | 说明 |
 |------|------|
-| `server/` | ★ 新栈（2026-08-02 重构定稿）：engine / board / web / relay / kb / config / deploy |
+| `server/` | ★ 新栈（2026-08-02 重构定稿）：engine / board / web / kb / config / deploy（relay/ 中转站已于 2026-08-24 退役拆除） |
 | `server/engine/` | 薄驱动核心：dispatch / main / scheduler / store / task / cluster |
 | `server/board/` | 看板服务端：loader / queries / export / models / scheduler |
 | `server/web/` | HTTP API + 静态页：server.py / brain.py（大脑 Agent 代理） |
