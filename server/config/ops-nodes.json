@@ -1,0 +1,26 @@
+{
+  "services": {
+    "com.ccc.web-server": {"name": "CCC Web", "port": 7788, "url": "http://192.168.3.116:7788"},
+    "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
+    "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
+    "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
+    "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
+    "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
+    "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
+    "com.qb.data-engine": {"name": "QB Data Engine", "port": 8091, "url": "http://127.0.0.1:8091"},
+    "com.qb.order-gateway": {"name": "QB Order Gateway", "port": 0, "url": ""},
+    "com.ccc.sync-skills": {"name": "Sync Skills", "port": 0, "url": ""}
+  },
+  "portals": [
+    {"name": "CCC 控制台", "machine": "Mac2017", "port": 7788, "url": "http://192.168.3.116:7788"},
+    {"name": "DSH Web", "machine": "Mac2017", "port": 3080, "url": "http://192.168.3.116:3080"},
+    {"name": "xy Admin", "machine": "Mac2017", "port": 8765, "url": "http://192.168.3.116:8765"},
+    {"name": "QB Data Engine", "machine": "Mac2017", "port": 8091, "url": "http://127.0.0.1:8091"},
+    {"name": "HP MCP Server", "machine": "HP", "port": 8083, "url": "http://192.168.3.131:8083/mcp"},
+    {"name": "HP Memory Store", "machine": "HP", "port": 8082, "url": "http://192.168.3.131:8082"},
+    {"name": "HP PostgreSQL", "machine": "HP", "port": 5432, "url": ""},
+    {"name": "M1 PostgreSQL", "machine": "M1", "port": 5432, "url": ""},
+    {"name": "QuantHive API", "machine": "HK", "port": 8000, "url": "http://127.0.0.1:8000"},
+    {"name": "QuantHive Gateway", "machine": "HK", "port": 443, "url": "https://124.156.166.72"}
+  ]
+}

@@ -120,6 +120,7 @@ from server.engine.cluster import (
 from server.web.brain import call_brain, stream_brain_events
 from server.web import session_store
 from server.web import wall  # DSH 监控墙引擎（ccc-plan-045 P1，源 dsh-wall v0.3.4）
+from server.config.ops_nodes import load_known_services, load_portals  # 运维节点表单源（批D 项3）
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
@@ -3782,18 +3783,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         import subprocess as _sp
 
         # 本机已知服务白名单（label → 显示名/端口/URL；仅收录 CCC 集群可管服务）
-        KNOWN_SERVICES = {
-            "com.ccc.web-server": {"name": "CCC Web", "port": 7788, "url": "http://192.168.3.116:7788"},
-            "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
-            "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
-            "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
-            "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
-            "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
-            "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
-            "com.qb.data-engine": {"name": "QB Data Engine", "port": 8091, "url": "http://127.0.0.1:8091"},
-            "com.qb.order-gateway": {"name": "QB Order Gateway", "port": 0, "url": ""},
-            "com.ccc.sync-skills": {"name": "Sync Skills", "port": 0, "url": ""},
-        }
+        # 单一来源：server/config/ops-nodes.json（缺失/损坏回落内嵌默认表，批D 项3）
+        KNOWN_SERVICES = load_known_services()
         if action not in ("start", "stop", "restart"):
             self._send_json({"error": f"无效 action: {action}"}, 400)
             return
@@ -3838,18 +3829,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         import os as _os
         import subprocess as _sp
 
-        KNOWN_SERVICES = {
-            "com.ccc.web-server": {"name": "CCC Web", "port": 7788, "url": "http://192.168.3.116:7788"},
-            "com.ccc.engine": {"name": "CCC Engine", "port": 0, "url": ""},
-            "com.ccc.scheduler": {"name": "CCC Scheduler", "port": 0, "url": ""},
-            "com.ccc.board-scheduler": {"name": "Board Scheduler", "port": 0, "url": ""},
-            "com.deepseek.dsh-web": {"name": "DSH Web", "port": 3080, "url": "http://192.168.3.116:3080"},
-            "com.deepseek.dsh-web-watchdog": {"name": "DSH Watchdog", "port": 0, "url": ""},
-            "com.xianyu.worker": {"name": "Xianyu Worker", "port": 0, "url": ""},
-            "com.qb.data-engine": {"name": "QB Data Engine", "port": 8091, "url": "http://127.0.0.1:8091"},
-            "com.qb.order-gateway": {"name": "QB Order Gateway", "port": 0, "url": ""},
-            "com.ccc.sync-skills": {"name": "Sync Skills", "port": 0, "url": ""},
-        }
+        # 与 _handle_ops_service 共用单一来源（批D 项3）
+        KNOWN_SERVICES = load_known_services()
         uid = _os.getuid()
         services = []
         for label, meta in KNOWN_SERVICES.items():
@@ -3891,22 +3872,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         """
         from concurrent.futures import ThreadPoolExecutor
 
-        PORTALS = [
-            # 2017（本机）
-            {"name": "CCC 控制台", "machine": "Mac2017", "port": 7788, "url": "http://192.168.3.116:7788"},
-            {"name": "DSH Web", "machine": "Mac2017", "port": 3080, "url": "http://192.168.3.116:3080"},
-            {"name": "xy Admin", "machine": "Mac2017", "port": 8765, "url": "http://192.168.3.116:8765"},
-            {"name": "QB Data Engine", "machine": "Mac2017", "port": 8091, "url": "http://127.0.0.1:8091"},
-            # HP
-            {"name": "HP MCP Server", "machine": "HP", "port": 8083, "url": "http://192.168.3.131:8083/mcp"},
-            {"name": "HP Memory Store", "machine": "HP", "port": 8082, "url": "http://192.168.3.131:8082"},
-            {"name": "HP PostgreSQL", "machine": "HP", "port": 5432, "url": ""},
-            # M1
-            {"name": "M1 PostgreSQL", "machine": "M1", "port": 5432, "url": ""},
-            # 腾讯云 HK
-            {"name": "QuantHive API", "machine": "HK", "port": 8000, "url": "http://127.0.0.1:8000"},
-            {"name": "QuantHive Gateway", "machine": "HK", "port": 443, "url": "https://124.156.166.72"},
-        ]
+        # 已开发成果汇总表单一来源：server/config/ops-nodes.json（批D 项3）
+        PORTALS = load_portals()
 
         def _probe(p: dict) -> dict:
             try:
