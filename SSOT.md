@@ -18,7 +18,7 @@
 
 | 目录 | 状态 |
 |------|------|
-| `server/` | **SSOT** — 薄驱动 Engine + 看板服务端 + HTTP API + 中转站 + 知识库 + 配置化 + 部署模板 |
+| `server/` | **SSOT** — 薄驱动 Engine + 看板服务端 + HTTP API + 知识库 + 配置化 + 部署模板（relay/ 中转站已退役） |
 | `server/engine/` | 薄驱动核心（dispatch / main / scheduler / store / task / cluster） |
 | `server/board/` | 看板服务端（loader / queries / export / models / scheduler） |
 | `server/web/` | HTTP API + 静态页（server.py / brain.py 大脑 Agent 代理） |
