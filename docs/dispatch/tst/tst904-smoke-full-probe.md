@@ -1,6 +1,6 @@
 # 任务卡 tst904 · smoke: A1-A2 full-probe（DSH 执行）
 
-> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：7
+> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：8
 
 ## 基准文件（先看）
 
@@ -39,6 +39,40 @@ docs/dispatch/tst/tst904-smoke-full-probe.md
 
 1. worktree 根存在 `.ccc-result.md`，含卡标题复述「tst904 · smoke: A1-A2 full-probe」与 3 条命令原始输出。
 2. 引擎收单后主仓卡：`## 回写区
+
+## 0. 卡标题复述
+
+tst904 · smoke: A1-A2 full-probe（DSH 执行）
+
+## 1. 探针输出
+
+按任务卡「步骤」节执行 3 条只读命令，以下为原始输出与退出码：
+
+```text
+$ git -C /Users/fan/program/CCC rev-parse --short HEAD
+1dd510160
+(exit=0)
+
+$ curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7788/health
+000
+(exit=7)
+
+$ ls /Users/fan/program/apps/ccc-tst/math_utils.py
+/Users/fan/program/apps/ccc-tst/math_utils.py
+(exit=0)
+```
+
+明细说明：
+
+| # | 命令 | 输出 | 退出码 | 说明 |
+|---|------|------|--------|------|
+| 1 | `git -C /Users/fan/program/CCC rev-parse --short HEAD` | `1dd510160` | 0 | CCC 主仓 HEAD 可解析，短哈希 1dd510160 |
+| 2 | `curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7788/health` | `000` | 7 | 退出码 7 = Failed to connect to host；本地 127.0.0.1:7788 未监听从服务，health 端点不可达（本会话未拉起该服务） |
+| 3 | `ls /Users/fan/program/apps/ccc-tst/math_utils.py` | `/Users/fan/program/apps/ccc-tst/math_utils.py` | 0 | 业务仓参考文件存在 |
+
+## 2. 自测输出
+
+卡内未声明独立测试、编译或 lint 门禁；本卡为只读探针卡，红线明确禁止业务仓写操作及 commit/push。无额外自测命令；自测结果等同上述 3 条只读探针：主仓 HEAD 退出码 `0`；health 退出码 `7`、输出 `000`（本地服务未监听）；业务文件探针退出码 `0`。
 
 ## 0. 卡标题复述
 
