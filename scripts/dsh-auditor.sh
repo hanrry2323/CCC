@@ -16,6 +16,7 @@
 set -euo pipefail
 # P1-d/rebuild-phase2 + P0-1：密钥单源 + 三态预检（非 0 一律阻断，保留真实退出码）
 _SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_CCC_ROOT="$(cd "$_SELF/.." && pwd -P)"
 # shellcheck source=scripts/dsh-key.sh
 source "$_SELF/dsh-key.sh" 2>/dev/null || true
 _KC_RC=0
@@ -82,7 +83,7 @@ echo "[dsh-auditor] 审查对象=主仓卡（只读）: $AUDIT_CARD" >&2
 if [ -f "$AUDIT_CARD" ]; then
   MG_PROBLEMS="$(python3 - "$AUDIT_CARD" "$(pwd)" <<'PY'
 import sys
-sys.path.insert(0, "/Users/fan/program/CCC")
+sys.path.insert(0, "$_CCC_ROOT")
 try:
     from server.board.docgate import verify_maintenance
     ok, problems = verify_maintenance(sys.argv[1], sys.argv[2])
@@ -111,7 +112,7 @@ fi
 # 日志落 $EXECUTOR_LOG_DIR/<work_id>.test-evidence.log（与 Engine EXECUTOR_LOG_DIR 同源）。
 _TE_EXEC_LOG_DIR="${EXECUTOR_LOG_DIR:-}"
 if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
-  _TE_CFG="${CCC_CONFIG_ENV:-/Users/fan/program/CCC/server/config/config.env}"
+  _TE_CFG="${CCC_CONFIG_ENV:-$_CCC_ROOT/server/config/config.env}"
   if [[ -f "$_TE_CFG" ]]; then
     _TE_EXEC_LOG_DIR="$(grep -E '^\s*EXECUTOR_LOG_DIR\s*=' "$_TE_CFG" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"'"'" | xargs 2>/dev/null || true)"
   fi
@@ -123,7 +124,7 @@ _TE_EVIDENCE_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}.test-evidence.log"
 _TE_WORKDIR="$(pwd)"
 # 仅当卡文件可读且 workdir 存在时才截获；无测试声明（no_test_declared）视为无可验放行
 if [[ -f "$AUDIT_CARD" && -d "$_TE_WORKDIR" ]]; then
-  if bash /Users/fan/program/CCC/scripts/test-evidence.sh "$AUDIT_CARD" "$_TE_WORKDIR" "$_TE_EVIDENCE_LOG"; then
+  if bash "$_CCC_ROOT/scripts/test-evidence.sh" "$AUDIT_CARD" "$_TE_WORKDIR" "$_TE_EVIDENCE_LOG"; then
     : # 测试通过或无声明 → 放行进 DSH 机审
   else
     _TE_RC=$?

@@ -16,6 +16,7 @@
 set -euo pipefail
 # P1-d/rebuild-phase2 + P0-1：密钥单源 + 三态预检（非 0 一律阻断，保留真实退出码）
 _SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_CCC_ROOT="$(cd "$_SELF/.." && pwd -P)"
 # shellcheck source=scripts/dsh-key.sh
 source "$_SELF/dsh-key.sh" 2>/dev/null || true
 _KC_RC=0
@@ -99,7 +100,7 @@ PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，角色：${ROLE}）。
 # 仅增补提示文案，其余零逻辑变化。
 if [ -n "$BIZ_WORKTREE" ] && [ -n "$WORKTREE" ]; then
   PROMPT+="
-双仓提示：本卡文件位于文档仓分支副本 ${WORKTREE}/ 下（相对路径 ${CARD_PATH#/Users/fan/program/CCC/}）。业务改动在当前目录实施；卡文件的状态回写、回写区与维护区四问必须在文档仓 worktree 的卡副本上完成并 commit+push 到同一分支；主仓 ${CARD_PATH} 只读勿动。"
+双仓提示：本卡文件位于文档仓分支副本 ${WORKTREE}/ 下（相对路径 ${CARD_PATH#$_CCC_ROOT/}）。业务改动在当前目录实施；卡文件的状态回写、回写区与维护区四问必须在文档仓 worktree 的卡副本上完成并 commit+push 到同一分支；主仓 ${CARD_PATH} 只读勿动。"
 fi
 
 # 后台执行 + wait 传播退出码（R1）；engine 侧另有全局超时
@@ -113,7 +114,7 @@ rm -f "$OVERLAY"
 # 日志落 $EXECUTOR_LOG_DIR/<work_id>.test-evidence.log（与 Engine 同源，不经 DSH 加工）。
 _TE_EXEC_LOG_DIR="${EXECUTOR_LOG_DIR:-}"
 if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
-  _TE_CFG="${CCC_CONFIG_ENV:-/Users/fan/program/CCC/server/config/config.env}"
+  _TE_CFG="${CCC_CONFIG_ENV:-$_CCC_ROOT/server/config/config.env}"
   if [[ -f "$_TE_CFG" ]]; then
     _TE_EXEC_LOG_DIR="$(grep -E '^\s*EXECUTOR_LOG_DIR\s*=' "$_TE_CFG" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\"' | tr -d "'" | xargs 2>/dev/null || true)"
   fi
@@ -132,7 +133,7 @@ else
   _TE_EVIDENCE_WORKDIR="$(pwd)"
 fi
 if [[ -f "$CARD_PATH" && -d "$_TE_EVIDENCE_WORKDIR" ]]; then
-  bash /Users/fan/program/CCC/scripts/test-evidence.sh "$CARD_PATH" "$_TE_EVIDENCE_WORKDIR" "$_TE_EVIDENCE_LOG" || true
+  bash "$_CCC_ROOT/scripts/test-evidence.sh" "$CARD_PATH" "$_TE_EVIDENCE_WORKDIR" "$_TE_EVIDENCE_LOG" || true
   echo "[dsh-executor] 测试证据已截获 → ${_TE_EVIDENCE_LOG}" >&2
 fi
 

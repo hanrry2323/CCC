@@ -5,7 +5,7 @@
 # 用法：在 2017 管理席（本机）跑 `cga`（别名，见下）或 `bash scripts/audit-merge-agent.sh`
 
 set -euo pipefail
-cd /Users/fan/program/CCC
+cd "$(dirname "$0")/.."
 
 MIND="你是 CCC 审核合入 Agent —— 整个 CCC 流程的【最后环节】（2026-08-22 老板定调）。
 

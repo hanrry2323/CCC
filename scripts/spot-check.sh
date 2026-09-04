@@ -76,7 +76,7 @@ echo "   card=${CARD_PATH} branch=${BRANCH} has_branch=${HAS_BRANCH}"
 #    无测试声明 → 放行；有声明但缺日志/失败 → 抽验不通过
 LOG_DIR="${EXECUTOR_LOG_DIR:-}"
 if [[ -z "$LOG_DIR" ]]; then
-  CFG="${CCC_CONFIG_ENV:-/Users/fan/program/CCC/server/config/config.env}"
+  CFG="${CCC_CONFIG_ENV:-$PROJECT_ROOT/server/config/config.env}"
   if [[ -f "$CFG" ]]; then
     LOG_DIR="$(grep -E '^\s*EXECUTOR_LOG_DIR\s*=' "$CFG" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs 2>/dev/null || true)"
   fi
