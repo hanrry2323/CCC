@@ -1,6 +1,6 @@
 # 任务卡 tst905 · smoke: A1-A2 clean full-probe（DSH 执行）
 
-> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：3
+> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：4
 
 ## 基准文件（先看）
 
@@ -76,6 +76,45 @@ lint：
 
 ## 1. 探针输出
 
+执行位置：业务 worktree `/Users/fan/program/apps/.ccc-wt/tst/tst905`。
+
+```
+===== CMD: git -C /Users/fan/program/CCC rev-parse --short HEAD =====
+d9ae1f26e
+===== EXIT=0 =====
+
+===== CMD: curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://192.168.3.116:7788/health =====
+200
+===== EXIT=0 =====
+
+===== CMD: ls /Users/fan/program/apps/ccc-tst/math_utils.py =====
+/Users/fan/program/apps/ccc-tst/math_utils.py
+===== EXIT=0 =====
+```
+
+说明：命令 1 stdout=`d9ae1f26e`、命令 2 stdout=`200`、命令 3 stdout=`/Users/fan/program/apps/ccc-tst/math_utils.py`；三条命令 stderr 为空，退出码均为 0。
+
+## 2. 自测输出
+
+按验收标准核对结果产物；卡门禁未声明测试、编译或 lint，范围：false。
+
+```
+[check 1] .ccc-result.md 位于执行体 worktree 根
+  → /Users/fan/program/apps/.ccc-wt/tst/tst905/.ccc-result.md 已写入；EXIT=0
+[check 2] 包含
+
+## 0. 卡标题复述
+
+任务卡 tst905 · smoke: A1-A2 clean full-probe（DSH 执行）
+
+- 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-09-03
+- 目标：验证 A1/A2 新链路——DSH 在业务 worktree 执行只读探针并产出 `.ccc-result.md`，wrapper 传输结果，引擎代写主仓卡并进入机审。
+- 实现要求：执行体必须先通读本卡全文；只在引擎提供的 worktree 中执行步骤命令；禁止修改主仓卡，回写由引擎负责。
+- 红线：1. 只读探针，不改业务仓文件、配置或主仓卡；2. 不写 `## 机审区`、不改卡头状态、不执行手动 git push；结果交给 wrapper 和引擎。
+- 步骤：复述卡标题 → 执行 3 条只读命令并记录原始输出与退出码 → 产出含五段的 `.ccc-result.md` → 停手。
+
+## 1. 探针输出
+
 执行位置：业务 worktree `/Users/fan/program/apps/.ccc-wt/tst/tst905`（探针目标为主仓/远端服务/业务参考仓，均只读）。
 
 ```
@@ -109,7 +148,7 @@ lint：
 ## 维护区
 
 1. **方案同步**：[否]
-   - 说明：本卡为独立管线冒烟，无关联方案（业务仓仅作只读参考，无代码改动）。
+   - 说明：本卡为独立管线冒烟，无关联方案；业务仓仅作只读参考，无代码改动。
 2. **教训沉淀**：[无]
    - 说明：本卡仅验证既有 A1/A2 链路，不新增业务教训。
 3. **档案/README**：[否]
