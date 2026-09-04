@@ -326,6 +326,22 @@ def _audit_result_artifact(card: dict, cfg: dict) -> Path:
     return _audit_log_dir(cfg) / f"{card.get('id')}-ccc-result.md"
 
 
+def _audit_cooldown_active(card_id: str, cfg: dict) -> bool:
+    """同卡机审基础设施失败冷却未到期时跳过本轮。"""
+    from datetime import datetime, timezone
+    from server.engine.runtime_state import read_card_state
+
+    record = read_card_state(_audit_log_dir(cfg)).get(card_id) or {}
+    raw = record.get("infra_cooldown_until")
+    if not raw:
+        return False
+    try:
+        until = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return False
+    return until > datetime.now(timezone.utc)
+
+
 def _card_is_written(card_file: Path) -> bool:
     if not card_file.is_file():
         return False
@@ -510,6 +526,15 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         return {"verdict": "ERROR", "reasons": prereq_reason, "transcript": "", "attempts": 0, "infra": True}
 
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
+    if _audit_cooldown_active(work_id, cfg):
+        return {
+            "verdict": "ERROR",
+            "reasons": "机审基础设施冷却中，跳过本轮",
+            "transcript": "",
+            "attempts": 0,
+            "infra": True,
+            "cooldown": True,
+        }
     verdict_file = _audit_verdict_path(cfg, work_id)
     transcript = ""
     reasons = ""
