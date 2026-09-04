@@ -16,13 +16,13 @@
 
 > **一句话**：线路图管未来，计划管当前，看板管正在进行时。老板定意图，机器管执行。
 > **最高准则**：[`CCC-PRIME-DIRECTIVE.md`](CCC-PRIME-DIRECTIVE.md) — 三层全自动开发模式，所有功能开发、流程设计、方案决策以此为准。
-> **定位声明（2026-08-14）**：CCC = **意图开发平台**，不做 IDE / 工具 / 单 agent 引擎。执行层工具是可替换执行体槽位，按 `executors.json` 接入、退出码收单；**一切皆插件**——Skill / Worker / 节点 / 门禁 / 回写皆是可替换组件。DeepSeek Harness（DSH）已登记接入为自动化值班组件（2026-08-27 三层分工）。决策源：qx-map `__archive__/decisions/意图开发定位与DeepSeekHarness协同-2026-08-14.md`。
+> **定位声明（2026-08-14）**：CCC = **意图开发平台**，不做 IDE / 工具 / 单 agent 引擎。执行层工具是可替换执行体槽位，按 `executors.json` 接入、退出码收单；**一切皆插件**——Skill / Worker / 节点 / 门禁 / 回写皆是可替换组件。现役插件登记见 `server/config/executors.json`（前段 DSH / 后段 CC CLI，均可换）。决策源：qx-map 归档。
 
 | # | 核心 | 成功标准 |
 |---|------|----------|
-| **A** | 只跟一个主 IDE 谈方案 | 确认 `ccc-plan` → `plan-to-cards` 自动多卡；禁止一张张聊着出卡 |
-| **B** | CCC = 代码质量门 | 绿静默；质量靠机械门禁/CI/机审 exit code；人只审 diff /「合入批准」 |
-| **C** | 三层架构：线路图→计划→看板 | 老板定意图（3 个人审节点），其余全自动流转；Loop 巡查螺旋上升 |
+| **A** | 只跟一个主 IDE 谈方案 | 确认 `ccc-plan` → `plan-to-cards` 自动多卡；老板/外脑逐张拟卡指令为合法单卡通道，批量 plan-to-cards 仍是方案期默认 |
+| **B** | CCC = 代码质量门 | 绿静默；质量靠机械门禁/CI/机审 exit code；合入默认 phase2 自动执行，老板保留否决/打回与重大合入人审 |
+| **C** | 三层架构：线路图→计划→看板 | 老板定意图，其余按三层分工自动流转；Loop 巡查螺旋上升 |
 
 **反目标（禁止当产品演进）**：新增验收同义句、席位表、AGENTS 长禁令、看板列解释文、为教 Agent 堆 SOP。缺口进 [`roadmap.md`](roadmap.md) 挂账，不写心智补丁。  
 **进度真值**：只认 2017 `:7788` board API；取证认 `origin/codex/<stem>`（见 `scripts/card-evidence.sh`）。  
@@ -30,7 +30,7 @@
 
 | 优先级 | 文档 | 管什么 |
 |--------|------|--------|
-| **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `command-post/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
+| **0** | **重构决策定稿 + 契约 v1**（qx-map `__archive__/decisions/ccc-refactor-方案-定稿-2026-08-02.md` D1–D10 · `__archive__/dispatch-legacy-2026-08/ccc-refactor-contract-v1-2026-08-02.md`） | **最高优先级**：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳；§2 状态机 / §7 执行体注册表 / §8 任意设备=壳 |
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实（以 VERSION 文件为准） |
 | 2 | [`ENGINEERING-CANON.md`](ENGINEERING-CANON.md) | 工程宪法（原则 + 验收体系 + 架构根因修复） |
 | 2b | [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) | **文档写入 + 任务卡命名（硬·定死）**：落点表；优先 `plan-to-cards`；单卡 `new-card.sh` |
@@ -45,7 +45,7 @@
 | 5 | [`product/dialogue-orchestration-boundary.md`](archive/dialogue-orchestration-boundary.md) | **已被重构方案取代（史）**——旧对话/编排边界 |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC；两层验收 |
 | 5b2 | [`product/hub-context-sop.md`](product/hub-context-sop.md) | 中枢出卡前了解项目（本仓本地 / 禁业务 ssh 深挖） |
-| 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | 「验收看板」= **合入批准** 别名（人审 diff） |
+| 5c | [`product/accept-board-sop.md`](product/accept-board-sop.md) | 「验收看板」= **合入批准（默认 phase2 自动执行；老板保留否决/打回）** 别名（人审 diff） |
 | 5d | [`product/machine-audit-flow.md`](product/machine-audit-flow.md) | 2017 机审流程 + 看板「机审」栏 |
 | 6 | [`product/ccc-desktop-architecture.md`](archive/ccc-desktop-architecture.md) | Desktop 产品形态（任意设备壳之一） |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token（已按终态重写） |
@@ -53,9 +53,9 @@
 
 部署拓扑：[`deploy/topology.md`](deploy/topology.md)。2017 布局：[`deploy/server-layout.md`](deploy/server-layout.md)。
 
-**重构收口任务卡**：[`dispatch/T31`](dispatch/T31-refactor-closeout-docs-baseline.md)～[`T35`](dispatch/T35-refactor-closeout-hangover-regression.md)（文档基线 / Engine 真派发 / 硬编码 / 死码 / 回归）。  
+
 **自动化基建（T52）**：[`automation-base.md`](automation-base.md)（出卡模板 / 一键放行 / 壳复验 / 卡头门禁 CI+pre-commit）。  
-**现行开发方向（2026-08-09 收口）**：双阶段模型——自研期 Codex 出卡驱动、业务期壳直聊 Agent；任务卡体系规则（索引/命名/大卡小卡）见 qx-map `__archive__/decisions/`；前端六板块（对话/看板/计划/线路图/运维/控制台）以计划页面为方案池，见 `docs/projects/<prefix>/plans/`。
+**现行开发方向**：三层分工——前段 DSH 开发+前置机审，已回写后由后段 CC CLI（phase2）审核/验收/合入/部署；任务卡体系规则（索引/命名/大卡小卡）见 qx-map `__archive__/decisions/`；前端六板块（对话/看板/计划/线路图/运维/控制台）以计划页面为方案池，见 `docs/projects/<prefix>/plans/`。
 **日常短读**：本 §0 → [`DOC-PROTOCOL.md`](DOC-PROTOCOL.md) → `architecture.md` → `STARTUP-BRIEF.md`。
 
 ---
@@ -88,7 +88,7 @@
 
 | 文档 | 状态 | 怎么用 |
 |------|------|--------|
-| **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.70 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
+| **[`roadmap.md`](roadmap.md)「当前方向」+ §0 重构决策** | **现行北星** | v0.71 薄驱动 Engine + 2017 单端 + 任务卡；下阶段只认这份 |
 | ~~CURSOR.md~~ · ~~`.cursor/rules/`~~ | **Cursor 已弃用** | 2026-08-14 弃用卸载；rules 已归档 `_archive/`（2026-08-27） |
 | [`product/hub-shell-roadmap.md`](archive/hub-shell-roadmap.md) | **史（Hub 时期北星）** | 多端壳+Hub API 旧规划；已被 2017 单端重构取代 |
 | [`archive/roadmap-history-v0.19-v0.26.md`](archive/roadmap-history-v0.19-v0.26.md) | **史** | 从 roadmap.md 迁出的 v0.19 等长史；勿覆盖「当前方向」 |
