@@ -328,12 +328,15 @@ def _default_registry() -> TaskRegistry:
             return (True, {"skipped": "无新 merge"})
 
         # 新 merge → SSH 触发 DSH（fire-and-forget）
+        # 机器身份/路径抽配置（批D 项4）：env 覆盖，默认值=现值
+        deploy_home = os.environ.get("CCC_M2_DEPLOY_HOME", "/Users/fan")
+        ssh_target = os.environ.get("CCC_SSH_TARGET", "fan@192.168.3.116")
+        patrol_script = os.environ.get("CCC_PATROL_SCRIPT", f"{deploy_home}/.dsh/run_patrol.sh")
         try:
-            deploy_home = os.environ.get("M2_DEPLOY_HOME", "/Users/fan")
             _sp.run(
                 ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                 "fan@192.168.3.116",
-                 f"cd {deploy_home} && nohup /bin/bash {deploy_home}/.dsh/run_patrol.sh >> {deploy_home}/.dsh/patrol_merge.log 2>&1 &"],
+                 ssh_target,
+                 f"cd {deploy_home} && nohup /bin/bash {patrol_script} >> {deploy_home}/.dsh/patrol_merge.log 2>&1 &"],
                 capture_output=True, text=True, timeout=15,
             )
             os.makedirs(os.path.dirname(state_file), exist_ok=True)
