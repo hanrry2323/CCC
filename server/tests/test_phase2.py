@@ -465,6 +465,81 @@ def test_dsh_auditor_accepts_empty_worktree_contract(monkeypatch, tmp_path: Path
     assert rc == 0
 
 
+def test_dsh_auditor_reads_command_from_registry(monkeypatch, tmp_path: Path) -> None:
+    """批E 定向：注册表换命令 → phase2 用新命令（插座单源）。
+
+    cfg 注入 tmp 注册表，验收席「命令」指向临时 wrapper；_run_dsh_auditor
+    应以注册表命令拉起（不再写死 dsh-auditor.sh）。
+    """
+    card_file = tmp_path / "tst997.md"
+    card_file.write_text("# 任务卡 tst997\n", encoding="utf-8")
+    fake = _fake_auditor(tmp_path)
+    reg_file = tmp_path / "executors.json"
+    reg_file.write_text(
+        json.dumps(
+            {
+                "executors": [
+                    {
+                        "角色": "验收席",
+                        "分类": "可后台 CLI",
+                        "当前绑定": "后段 CC CLI（主链 phase2 自动）",
+                        "命令": fake,
+                        "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
+                        "工作目录": "",
+                        "worktree_base": "",
+                        "备注": "测试注册表",
+                        "worker_id": "W1",
+                        "注入提示": False,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2, "_current_branch", lambda: "main")
+    monkeypatch.setattr(phase2, "cli_env", lambda: {})
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        phase2.subprocess,
+        "run",
+        lambda args, **kwargs: calls.append(list(args)) or _ok_rc(0),
+    )
+    rc, out, err = phase2._run_dsh_auditor(
+        {"id": "tst997", "project": "tst"},
+        card_file,
+        "",
+        {"EXECUTOR_REGISTRY_PATH": str(reg_file)},
+        900,
+    )
+    assert rc == 0
+    assert calls and calls[0][0] == fake, f"应使用注册表命令 {fake}，实际 {calls[0] if calls else 'no call'}"
+    # 参数模板保持：card_path work_id 空 worktree 哨兵 role
+    assert calls[0][1:] == [str(card_file), "tst997", "__CCC_EMPTY__", "验收席"]
+
+
+def test_dsh_auditor_registry_read_failure_falls_back(monkeypatch, tmp_path: Path) -> None:
+    """批E 定向：注册表读取失败 → 回退默认 auditor 路径 + 不硬断。"""
+    card_file = tmp_path / "tst996.md"
+    card_file.write_text("# 任务卡 tst996\n", encoding="utf-8")
+    monkeypatch.setattr(phase2, "_repo_root", lambda: tmp_path)
+    fake_default = tmp_path / "scripts" / "dsh-auditor.sh"
+    fake_default.parent.mkdir(parents=True, exist_ok=True)
+    fake_default.write_text("#!/bin/bash\n", encoding="utf-8")
+    fake_default.chmod(0o755)
+    monkeypatch.setattr(phase2, "_current_branch", lambda: "main")
+    monkeypatch.setattr(phase2, "cli_env", lambda: {})
+    monkeypatch.setattr(phase2.subprocess, "run", lambda *args, **kwargs: _ok_rc(0))
+    rc, out, err = phase2._run_dsh_auditor(
+        {"id": "tst996", "project": "tst"},
+        card_file,
+        "",
+        {"EXECUTOR_REGISTRY_PATH": str(tmp_path / "missing-registry.json")},
+        900,
+    )
+    assert rc == 0
+
+
 def test_dsh_auditor_branch_drift_restores(monkeypatch, tmp_path: Path) -> None:
     """A4 加固：auditor 返回后发现主仓分支漂移，恢复原分支并报告失败。"""
     card_file = tmp_path / "tst999.md"

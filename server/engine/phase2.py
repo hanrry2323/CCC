@@ -4,7 +4,8 @@
       phase2 --daemon 兜底轮询） → 后段验收插件（现役绑定见 executors.json）审核 → 合入 → 提交 → 部署 → 探活 → 终态。
 
 规则（老板定稿架构 · 后半段）：
-- 审核 = 调用 `scripts/dsh-auditor.sh`（现役后段审核插件；通道经 M1 中转 3456 → Code，绑定见 executors.json）；
+- 审核 = 调用注册表「验收席」命令（现役后段审核插件 = Claude Code CLI cc-auditor.sh；
+  通道经 M1 中转 3456 → Code，绑定见 executors.json，插座单源）；命令读取失败回退默认；
   调用失败重试 >= 3 次退避；耗尽 → ledger 告警 + 卡保留「已回写」（禁止无声丢卡）。
 - 结论「不通过」→ 自动打回 + ledger 记录 + 控制台告警，不阻塞其他卡。
 - 结论「通过」→ 合入 main → 门禁 → 提交 push → 部署 web → /health 探活 → 卡置「已关闭」。
@@ -312,10 +313,30 @@ def _extract_reasons(out: str, verdict: str) -> str:
 
 
 def _dsh_auditor_path(cfg: dict) -> Path:
-    """解析仓内机审 wrapper；不依赖个人绝对路径。"""
+    """解析后段验收席 wrapper 命令（插座单源：注册表「验收席」行命令）。
+
+    命令来源=执行体注册表（EXECUTOR_REGISTRY_PATH，角色「验收席」行的「命令」），
+    2026-09-04 重构批E：后段验收席换 Claude Code CLI wrapper（cc-auditor.sh）。
+    优先级：DSH_AUDITOR_BIN 显式覆盖（测试注入）→ 注册表「验收席」命令 →
+    回退仓内 dsh-auditor.sh（读取失败/缺失时 warning，不硬断）。
+    """
     configured = str(cfg.get("DSH_AUDITOR_BIN") or os.environ.get("DSH_AUDITOR_BIN") or "").strip()
     if configured:
         return Path(configured).expanduser()
+    registry_path = str(cfg.get("EXECUTOR_REGISTRY_PATH") or "").strip()
+    if registry_path:
+        try:
+            from server.engine.dispatch import load_registry
+
+            reg = load_registry(registry_path)
+            entry = reg.cli_entry_for_role("验收席")
+            if entry is not None and entry.command.strip():
+                cmd = entry.command.strip()
+                p = Path(cmd).expanduser()
+                return p if p.is_absolute() else _repo_root() / p
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("注册表「验收席」命令读取失败，回退默认 auditor: %s", exc)
+    logger.warning("未从注册表读到验收席命令，回退 %s", _repo_root() / "scripts" / "dsh-auditor.sh")
     return _repo_root() / "scripts" / "dsh-auditor.sh"
 
 
@@ -388,8 +409,10 @@ def _read_audit_verdict(verdict_file: Path, output: str = "") -> tuple[str | Non
 
 
 def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeout: int) -> tuple[int, str, str]:
-    """通过 dsh-auditor.sh 审计主仓卡；verdict 由 wrapper 写入 log_dir 工件。
+    """调用后段验收席 wrapper 审计主仓卡；verdict 由 wrapper 写入 log_dir 工件。
 
+    命令来源=注册表（_dsh_auditor_path 读「验收席」行），历史函数名 _run_dsh_auditor
+    保留（避免大面改名；2026-09-04 批E 起现役绑定为 Claude Code CLI cc-auditor.sh）。
     业务 worktree 退出机审契约：审计目标 = 主仓卡（只读），不创建/校验 worktree。
     """
     auditor = _dsh_auditor_path(cfg)
@@ -419,11 +442,11 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
             return 127, "", f"机审后主仓分支漂移（{prev_branch} -> {after_branch}），已恢复 {prev_branch}，机审失败"
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
-        return 124, "", f"dsh-auditor 超时（{timeout}s，当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
+        return 124, "", f"验收席 wrapper 超时（{timeout}s，当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
     except OSError as exc:
-        return 127, "", f"dsh-auditor 启动失败: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
+        return 127, "", f"验收席 wrapper 启动失败: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
     except Exception as exc:  # noqa: BLE001
-        return 127, "", f"dsh-auditor 调用异常: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
+        return 127, "", f"验收席 wrapper 调用异常: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
 
 
 def _write_audit_verdict(card_file: Path, cfg: dict, verdict: str, reasons: str) -> bool:
@@ -617,7 +640,7 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
                 "attempts": attempt,
             }
         if rc != 0 and verdict == "REJECT":
-            reasons = card_reason or f"dsh-auditor 退出码 {rc}，机审不通过"
+            reasons = card_reason or f"验收席 wrapper 退出码 {rc}，机审不通过"
             if rc == 2:
                 _clear_audit_strikes(work_id, cfg)
                 return {
@@ -626,10 +649,10 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
                     "transcript": out + ("\n" + err if err else ""),
                     "attempts": attempt,
                 }
-            reasons = f"dsh-auditor 基础设施失败（rc={rc}），但工件含不通过：{reasons}"
+            reasons = f"验收席 wrapper 基础设施失败（rc={rc}），但工件含不通过：{reasons}"
         else:
-            reasons = f"dsh-auditor 基础设施失败（rc={rc}）: {err or out}"
-        logger.warning("DSH 机审失败重试 %d/%d: %s", attempt, max_attempts, reasons)
+            reasons = f"验收席 wrapper 基础设施失败（rc={rc}）: {err or out}"
+        logger.warning("后段机审失败重试 %d/%d: %s", attempt, max_attempts, reasons)
         if attempt < max_attempts:
             time.sleep(backoff_base * (2 ** (attempt - 1)))
         continue
