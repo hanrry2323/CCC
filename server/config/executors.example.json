@@ -39,12 +39,12 @@
     {
       "角色": "验收席",
       "分类": "可后台 CLI",
-      "当前绑定": "后段 CC CLI（主链 phase2 自动）",
-      "命令": "scripts/dsh-auditor.sh",
+      "当前绑定": "后段 CC CLI（claude wrapper，主链 phase2）",
+      "命令": "/ABS/PATH/TO/CCC/scripts/cc-auditor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
       "worktree_base": "",
-      "备注": "后段验收契约 v2（主仓卡只读+log_dir 工件→verdict 工件）；本行命令为 --audit 手动兜底链（历史绑定 DSH，批E 换 claude wrapper）；主链 phase2 不经本行",
+      "备注": "后段验收契约 v2（主仓卡只读+log_dir 工件→verdict 工件）；2026-09-04 起主链与兜底链统一 claude wrapper；命令须为绝对路径（Engine Popen cwd 语义，2026-08-29 实证）",
       "worker_id": "W1",
       "注入提示": false
     },
