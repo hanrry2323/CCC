@@ -22,7 +22,7 @@
 | 平台共识 / 权威裁决 | 先改 [`INDEX.md`](INDEX.md) §0，再改被引用文 | 短、可裁决冲突；禁止只留在聊天 |
 | 下一程意向（未出卡） | [`roadmap.md`](roadmap.md)「下一程挂账」 | **一行**意图 + 备注；未出卡不写长文 |
 | 注册 / 改项目 | [`projects/registry.yaml`](projects/registry.yaml) + 对应 [`projects/<prefix>/README.md`](projects/) | 改完跑校验；禁止只改 `PREFIXES` 或只改 KB seed |
-| 开发任务 | **优先** `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡仍可用 `new-card.sh` | 命名见 §2；方案确认后禁止一张张聊着出卡 |
+| 开发任务 | **优先** `scripts/plan-to-cards.sh`（`ccc-plan`）；单卡仍可用 `new-card.sh` | 命名见 §2；方案确认后禁止一张张聊着出卡；老板/外脑逐张拟卡指令为合法单卡通道，批量 plan-to-cards 仍是方案期默认 |
 | 方案 / 计划 | [`projects/<prefix>/plans/`](projects/) `<NNN>-<slug>.md` | 模板 [`projects/_template/plan-template.md`](projects/_template/plan-template.md)；命名见 §2.7；状态五态见 §2.8 |
 | 平台现行 SOP | [`product/`](product/) **白名单**（须进 INDEX §0/§1） | 新 SOP 必须同时改 INDEX；**禁止**心智补丁类新建（原则 #5） |
 | 部署 / 拓扑 | [`deploy/`](deploy/) | 短、可执行 |
@@ -82,13 +82,13 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 - 状态六态定死：`待分派` / `执行中` / `已回写` / `已关闭` / `打回` / `作废`（可带括号原因，归桶看基础态）。  
 - 看板「机审」是派生列，**不是**卡头第七态。
 - **作废**（2026-08-14 人审调整动作统一化新增）：终态。人审取消单卡（待分派/执行中/已回写/打回 均可作废，须附原因），作废后不可再流转。
-- 「验收」= 执行体自身（**自验收**，2026-08-07 改）：谁开发谁验收。两条硬规则：① 机审是独立步骤——开发阶段禁止写 `## 机审区`，验收席（即使与开发同工具）按 Code Review 技能独立审查、写机审区、过 ready 门禁；② 老板「合入批准」= 人审最终 diff，任何人/工具不可绕过。
+- 「验收」= 执行体自身（**自验收**，2026-08-07 改）：谁开发谁验收。两条硬规则：① 机审是独立步骤——开发阶段禁止写 `## 机审区`，验收席（即使与开发同工具）按 Code Review 技能独立审查、写机审区、过 ready 门禁；② 合入默认由 phase2 自动执行，老板保留否决/打回；重大合入可要求人审。
 - `## 人工批注`（可选固定节）：老板对打回卡/审核的批注意见写这里。若存在，执行体**必须先读批注**并按批注修订目标/步骤后再执行，批注优先于正文。重新分派 = `打回 → 待分派`（写纯「待分派」，引擎重试计数归零；`打回次数` 保留为历史）。
 - `## CodeRun 编排要求`（可选固定节，2026-08-17 加）：多步骤/多服务任务建议加。贴入**标准段落**（唯一表述，禁止用 DSH 术语）见 `docs/product/run-code-convention.md` §5.2。机审据此验证遵守度（逐轮散调无编排脚本 → 打回）。单文件简单改动不加。
 
 ### 2.4 出卡方式（定死）
 
-1. **入口双层**：批量/方案转卡**优先** `scripts/plan-to-cards.sh`（`ccc-plan`，方案确认后禁止一张张聊着出卡）；单卡/临时卡走 `scripts/new-card.sh --project <prefix> --title "…" [--slug …]`。  
+1. **入口双层**：批量/方案转卡**优先** `scripts/plan-to-cards.sh`（`ccc-plan`，方案确认后禁止一张张聊着出卡；老板/外脑逐张拟卡指令为合法单卡通道，批量 plan-to-cards 仍是方案期默认）；单卡/临时卡走 `scripts/new-card.sh --project <prefix> --title "…" [--slug …]`。  
 2. 禁止手搓文件名绕过；禁止在 `docs/dispatch/` **根目录**新建卡。  
 3. 禁止新出 `T<数字>-*.md`（旧 T 卡只读保留，**永不批量改名**）。  
 4. 禁止前缀 `qh`（QuantHive 独立轨道）。
