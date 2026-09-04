@@ -11,7 +11,7 @@
     if decision is DispatchDecision.AUTO:
         entry = reg.cli_entry_for_role(work.role)
         cmd = build_command(entry, work, card_path="/path/card.md", default_workdir=cfg["DATA_DIR"])
-        # cmd = ["opencode", "--dir", "/data", "-p", "请按任务卡 /path/card.md 完成 work w1"]
+        # cmd = ["executor", "--dir", "/data", "-p", "请按任务卡 /path/card.md 完成 work w1"]
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ccc.engine.dispatch")
 
-# 契约 §7：分类只允许「可后台 CLI」/「手动 GUI」；管理席/验收席不做执行，分类「—」
+# 契约 §7：分类只允许「可后台 CLI」/「手动 GUI」/「—」；管理/验收角色的执行边界由注册表语义决定，不在此按工具固定。
 VALID_CATEGORIES: frozenset[str] = frozenset({"可后台 CLI", "手动 GUI", "—"})
 # 契约 §7：注册表每行必填字段
 REQUIRED_FIELDS: frozenset[str] = frozenset({"角色", "分类", "当前绑定", "备注"})
@@ -60,7 +60,7 @@ class DispatchDecision(StrEnum):
     - AUTO：可后台 CLI + 本机 transport → Engine 本机拉起
     - REMOTE：远端 Worker 认领（执行体 W 号 / 派发 scheduler|REMOTE）→ 走认领协议，Engine 不本地拉起
     - MANUAL：手动 GUI → 挂起等人
-    - NONE：管理席/验收席（分类「—」）/未知角色 → 不派发
+    - NONE：管理/验收角色（分类「—」）/未知角色 → 不派发
     """
 
     AUTO = "auto"
@@ -76,9 +76,9 @@ class ExecutorEntry:
     Attributes:
         role: 角色（如「开发执行体」）。
         category: 分类（「可后台 CLI」/「手动 GUI」/「—」）。
-        binding: 当前绑定工具名（如 OpenCode）。
+        binding: 当前绑定工具名（具体绑定见执行体注册表）。
         note: 备注。
-        command: 启动命令（可后台 CLI 必填，如 `opencode`）。
+        command: 启动命令（可后台 CLI 必填）。
         args_template: 参数模板，含 {work_id}/{card_path}/{role}/{workdir} 占位符。
         workdir: 工作目录（留空则用 config 的 DATA_DIR）。
         project: 项目级绑定（按项目隔离）。
@@ -123,7 +123,7 @@ class ExecutorRegistry:
         """返回与工具名（卡头「执行体」绑定）匹配的全部注册行（T39）。优先匹配项目。
 
         精确字符串比较（保持 T39 原语义：绑定串含注记时不视为同名，
-        如卡头 `Claude Code` 不应命中 `Claude Code（2026-08-22 工具收口）` 管理席行）。
+        如卡头 `Claude Code` 不应命中 `Claude Code（工具收口注记）` 管理席行）。
         绑定名归一化兜底只在 cli_entry_for_binding / role_for_binding 内做。
         """
         binding_entries = [e for e in self.entries if e.binding == tool_name]
@@ -315,13 +315,13 @@ def decide(role: str, registry: ExecutorRegistry, project: str = "") -> Dispatch
 def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     """按卡头「执行体」绑定优先做派发决策（T39）。
 
-    解决 T38 插曲：卡头指定手动 GUI 执行体（如 Trae）时，不应因角色含 CLI 行而自动拉起。
+    解决 T38 插曲：卡头指定手动 GUI 执行体（手动 GUI 分类）时，不应因角色含 CLI 行而自动拉起。
 
     决策顺序：
     1. 有 `work.executor`（卡头指定执行体）→ 按 binding 找注册表行：
        - 命中行含「可后台 CLI」→ AUTO；
        - 仅命中「手动 GUI」→ MANUAL；
-       - 仅命中「—」（管理/验收席）→ NONE；
+       - 仅命中「—」（管理/验收角色）→ NONE；
        - 未命中任何行（未知执行体）→ 回退 `decide(work.role, registry)`。
     2. 无 `work.executor`（卡未指定执行体）→ 回退 `decide(work.role, registry)`（现行为不变）。
 
@@ -340,7 +340,7 @@ def decide_work(work: Work, registry: ExecutorRegistry) -> DispatchDecision:
     if work.type == "epic":
         logger.info("Epic 卡不派发: work=%s", work.id)
         return DispatchDecision.NONE
-    # T53：卡头「派发：manual」→ 管理席派发，Engine 不自动拉，保持待分派（消灭假「执行中」）。
+    # T53：卡头「派发：manual」→ 由调度插件派发，Engine 不自动拉，保持待分派（消灭假「执行中」）。
     if work.dispatch == "manual":
         logger.info("manual 卡由管理席派发，Engine 不自动拉: work=%s", work.id)
         return DispatchDecision.NONE
@@ -402,7 +402,7 @@ def build_command(
         biz_worktree: 业务仓每卡独立 worktree 路径（2026-08-12 隔离升级；空 = 非业务仓型任务）。
 
     Returns:
-        argv 列表，如 `["opencode", "--dir", "/data", "-p", "请按..."]`。
+        argv 列表，如 `["executor", "--dir", "/data", "-p", "请按..."]`。
 
     Raises:
         ValueError: entry 不是可后台 CLI 行、或命令为空。
