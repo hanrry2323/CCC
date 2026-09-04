@@ -5,6 +5,7 @@ Stdlib only (no PyYAML): production web-server is zero-dependency.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -12,6 +13,14 @@ from typing import Any
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = _PROJECT_ROOT / "docs" / "projects" / "registry.yaml"
+
+# 业务仓根前缀（批D 项5）：env 覆盖，默认=现值
+_DEFAULT_WORKTREE_ROOT_PREFIX = "/Users/fan/program/"
+
+
+def _worktree_root_prefix() -> str:
+    """2017 业务仓根前缀；CCC_WORKTREE_ROOT_PREFIX env 覆盖（默认 /Users/fan/program/）。"""
+    return os.environ.get("CCC_WORKTREE_ROOT_PREFIX", _DEFAULT_WORKTREE_ROOT_PREFIX)
 
 
 @dataclass(frozen=True)
@@ -252,7 +261,7 @@ def check_path_locations(
                 )
         if p.isolation_worktree_root:
             wt = Path(p.isolation_worktree_root).expanduser()
-            if "mac2017-apps" in tags and not str(wt).startswith("/Users/fan/program/"):
+            if "mac2017-apps" in tags and not str(wt).startswith(_worktree_root_prefix()):
                 issues.append(
                     f"{label}: 隔离 worktree 根越界 {p.isolation_worktree_root}（须在 ~/program/ 下）"
                 )
