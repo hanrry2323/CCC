@@ -1,8 +1,8 @@
 """server/web/brain.py — 大脑 Agent 对话模块（T29）。
 
-`/conversation` 调用 2017 本机 Claude Code CLI（2026-08-24 起直连，
-中转站 6100/6102 已退役），携带 CCC 大脑人格 + 历史上下文，
-返回真实 Agent 输出（有心智/工具/知识库）。
+`/conversation` 调用 2017 本机 Claude Code CLI；出口由 config.env 的
+`CCC_BRAIN_BASE_URL` 决定。现役经 M1 3456 中转；若实配为空则为直连模式，
+携带 CCC 大脑人格 + 历史上下文，返回真实 Agent 输出（有心智/工具/知识库）。
 
 调用方式::
 
