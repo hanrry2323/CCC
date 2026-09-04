@@ -13,11 +13,11 @@
 | 重构里程碑 | 完成度 | 说明 |
 |------------|--------|------|
 | **P0 旧栈退役** | ✅ 已完成 | `scripts/` 归档至 `docs/archive/legacy-retired-2026-08-02/scripts/`；旧端口（7777/7775/7778）退役 |
-| **P1 新栈骨架** | ✅ 已完成 | `server/` 七模块（engine/board/web/relay/kb/config/deploy）+ 测试 |
+| **P1 新栈骨架** | ✅ 已完成 | `server/` 模块（engine/board/web/kb/config/deploy）+ 测试；relay 已退役 |
 | **P2 Engine + 看板 + HTTP** | ✅ 已完成 | 薄驱动 Engine + 看板服务端 + HTTP API（T1–T14） |
 | **P3 线路图 + 运维定时** | ✅ 已完成 | 线路图聚合 + board-scheduler 只读巡检（T5–T7） |
-| **P4 2017 部署** | ✅ 已完成 | 三 launchd 常驻（web-server/engine/board-scheduler，T22） |
-| **P5 对话大脑 Agent** | ✅ 已完成 | `/conversation` 调 Claude Code via 6100（T29）+ HTTP 页面重构（T30） |
+| **P4 2017 部署** | ✅ 已完成 | 两 launchd 常驻（web-server/engine；board-scheduler 已收敛进 engine，T22） |
+| **P5 对话大脑 Agent** | ✅ 已完成 | `/conversation` 经 M1 3456 出口连接 Code（T29）+ HTTP 页面重构（T30） |
 
 | 重构收口（T31–T35） | 状态 | 说明 |
 |---------------------|------|------|
@@ -29,10 +29,10 @@
 
 | 现状 | 说明 |
 |------|------|
-| **M1（开发机）** | 开发工具（Claude/OpenCode）改 CCC 仓；不保留业务第二树 |
-| **M2（2017 生产）** | 单端 :7788 + Engine + board-scheduler 三服务常驻；大脑 Agent via 6100 |
+| **M1（开发机）** | 2017 权威仓；M1 副本已退役，不保留业务第二树 |
+| **M2（2017 生产）** | 单端 :7788 + Engine 两服务常驻；大脑 Agent 经 M1 3456 |
 | **M3（任意设备壳）** | Desktop / 网页 / 手机经 HTTP 直连 2017；账号密码 + token |
-| **M4（中转站）** | 6100 Anthropic 出口 + 6102 Relay flash 出口 |
+| **M4（中转站）** | M1 3456（LiteLLM → Code）；6100/6102 已退役，仅保留历史记录 |
 
 | 开源与介绍 | 说明 |
 |------------|------|
