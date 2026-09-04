@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from server.board.audit_ledger import has_action, load_ledger
+from server.engine.dispatch import ExecutorRegistry, load_registry
 from server.engine.main import (
     _record_machine_audit_pass,
     _run_machine_audit_after_writeback,
@@ -27,6 +28,36 @@ def ledger_file(tmp_path: Path, monkeypatch):
 
 def _work(card_path: str = "/x/docs/dispatch/mx/mx099-task.md") -> Work:
     return Work(id="mx099", role="开发执行体", executor="OpenCode", card_path=card_path)
+
+
+def _registry_with_acceptor(tmp_path: Path) -> ExecutorRegistry:
+    """批E：_run_machine_audit_after_writeback 直取注册表「验收席」行，测试注入真实注册表。"""
+    import json
+
+    reg_file = tmp_path / "executors.json"
+    reg_file.write_text(
+        json.dumps(
+            {
+                "executors": [
+                    {
+                        "角色": "验收席",
+                        "分类": "可后台 CLI",
+                        "当前绑定": "后段 CC CLI（claude wrapper，主链 phase2）",
+                        "命令": "/tmp/cc-auditor.sh",
+                        "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
+                        "工作目录": "",
+                        "worktree_base": "",
+                        "备注": "test",
+                        "worker_id": "W1",
+                        "注入提示": False,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return load_registry(reg_file)
 
 
 def test_record_machine_audit_pass_writes_ledger(ledger_file) -> None:
@@ -75,13 +106,12 @@ def test_pass_worktree_path_records_ledger(ledger_file, monkeypatch, tmp_path: P
     monkeypatch.setattr("server.engine.main._append_machine_audit_pass", lambda *a, **k: True)
     monkeypatch.setattr("server.engine.main._pin_audit_commit", lambda *a, **k: None)
     monkeypatch.setattr("server.engine.main._commit_and_push_worktree_card", lambda *a, **k: True)
-    monkeypatch.setattr("server.engine.main._audit_cli_entry", lambda *a, **k: object())
     monkeypatch.setattr(
         "server.engine.main._audit_evidence_passed",
         lambda *a, **k: False,
     )
     work = _work(card_path=str(card))
-    ok, problems, audited = _run_machine_audit_after_writeback(work, None, {}, tmp_path / "logs", 300)
+    ok, problems, audited = _run_machine_audit_after_writeback(work, _registry_with_acceptor(tmp_path), {}, tmp_path / "logs", 300)
     assert ok is True
     assert any(cid == "mx099" for cid, _ in called)
 
@@ -97,10 +127,9 @@ def test_pass_prod_card_path_records_ledger(ledger_file, monkeypatch, tmp_path: 
     monkeypatch.setattr("server.engine.main._worktree_hint_for", lambda *a, **k: None)
     monkeypatch.setattr("server.engine.main._dispatch_and_collect", lambda *a, **k: (True, []))
     monkeypatch.setattr("server.engine.main._append_machine_audit_pass", lambda *a, **k: True)
-    monkeypatch.setattr("server.engine.main._audit_cli_entry", lambda *a, **k: object())
     monkeypatch.setattr("server.engine.main._audit_evidence_passed", lambda *a, **k: False)
     work = _work(card_path=str(card))
-    ok, problems, audited = _run_machine_audit_after_writeback(work, None, {}, tmp_path / "logs", 300)
+    ok, problems, audited = _run_machine_audit_after_writeback(work, _registry_with_acceptor(tmp_path), {}, tmp_path / "logs", 300)
     assert ok is False
     assert "禁止 fallback 生产卡" in problems[0]
 

@@ -2140,18 +2140,6 @@ class TestRunOnceFakeSuccessGuard:
         assert summary["collected"] == 0
         assert store.list_work(state=State.REJECTED)
 
-    def test_audit_prompt_no_re_run_wording(self) -> None:
-        """断言 MachineAuditPrompt 构造函数输出，且不含「复跑测试/复跑编译裁决」等表述。"""
-        from server.engine.main import MachineAuditPrompt
-
-        prompt_obj = MachineAuditPrompt(card_path="docs/dispatch/c1.md", work_id="c1", worktree="/tmp/wt")
-        prompt_text = prompt_obj.build()
-        assert "复跑测试" not in prompt_text
-        assert "复跑编译" not in prompt_text
-        assert "编译裁决" not in prompt_text
-        assert "只做原则性 Code Review" in prompt_text
-        assert "就地修复" in prompt_text
-
     def test_gate_probe_failure_blocks_audit(self, tmp_path: Path, monkeypatch) -> None:
         """2026-08-16 质量门禁：测试/编译门禁失败 = 硬打回，不再放行到机审。"""
         monkeypatch.chdir(tmp_path)

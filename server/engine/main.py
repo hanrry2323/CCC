@@ -56,7 +56,6 @@ from server.engine.pool import get_dispatch_pool
 from server.engine.card_state_store import CardCASConflict, CardStateError, CardStateStore
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
-from server.board.roles import normalize_tool
 
 # 业务仓 worktree 失败计数（2026-08-12 · 隔离升级）：进程内累计，run_once 汇总后清零
 _WORKTREE_FAILURES = 0
@@ -2198,6 +2197,26 @@ def _audit_rejection_reason(text: str) -> str | None:
     return None
 
 
+def _audit_verdict_from_artifact(log_dir: Path, work_id: str) -> tuple[str, str] | None:
+    """从 log_dir 验收席 verdict 工件读取整行结论（批E cc-auditor 契约 v2）。
+
+    返回 (verdict, reason)：verdict ∈ {"PASS", "REJECT"}；工件缺失或无法解析 → None。
+    """
+    verdict_file = log_dir / f"{work_id}-audit-verdict.md"
+    if not verdict_file.is_file():
+        return None
+    text = verdict_file.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.match(r"^机审：通过(?:\s*（([^）]*)）)?\s*$", line)
+        if m:
+            return "PASS", m.group(1) or ""
+        m = re.match(r"^机审：不通过(?:（([^\n）]*)）)?\s*$", line)
+        if m:
+            return "REJECT", m.group(1) or ""
+    return None
+
+
 def _audit_severity(text: str) -> str:
     """解析审计输出里的 severity 标记（机审 v4 三级：轻/中/重）。
 
@@ -2217,34 +2236,6 @@ def _audit_severity(text: str) -> str:
     if m:
         return m.group(1)
     return "中"
-
-
-class MachineAuditPrompt:
-    """机审/验收席系统 Prompt 构造器。
-
-    DEAD：待批E收敛删除。仅 --audit 手动侧链适用；主链 phase2 已退出机审。
-    遵循职责分离原则：仅进行原则性审查与就地修复，删除「独立复跑测试/编译裁决」职责。
-    """
-
-    def __init__(self, card_path: str, work_id: str, worktree: str) -> None:
-        self.card_path = card_path
-        self.work_id = work_id
-        self.worktree = worktree
-
-    def build(self) -> str:
-        return (
-            f"你是 2017 机审席。任务卡 {self.card_path}（work {self.work_id}）已回写。你以验收席身份独立审查——"
-            "即使开发者与你同工具，也按独立审查执行，不因同工具放水。\n"
-            "职责规范：\n"
-            "- 只做原则性 Code Review（包括代码实现质量、边界安全、架构隐患、人工批注落实等）；\n"
-            f"- 发现可修问题 → 在 worktree {self.worktree} 路径下就地修复并 commit+push，修完直接通过（进 ready）；\n"
-            "- 原则性红线问题（如范围系统性越界、核心业务意图违背）→ 输出「机审：不通过（具体原因）」并以非零退出。\n"
-            "- 不通过结论必须标注 severity（机审 v4 三级）：可快速修复=「severity：轻」/ 一般=「severity：中」/ 红线高风险=「severity：重」。\n"
-            "⚠️ 打回时必须在最后真正执行非零退出（exit 1）：引擎按 audit 文本「机审：不通过」判定业务打回，"
-            "但仅靠文字声明而 exit 0 会造成收单歧义。\n"
-            f"通过则把「## 机审区」+「机审：通过」+ 审查摘要 写进 worktree 卡文件（相对路径同 {self.card_path}，engine 会提交推送）。"
-            "禁止改动与任务无关的文件、禁止编写 ## 验收区、禁止置卡状态为已关闭。"
-        )
 
 
 def _is_mechanical_rejection_text(text: str) -> bool:
@@ -3850,26 +3841,6 @@ def _clear_running_marker(log_dir: Path, work_id: str) -> None:
             logger.warning("全局机审注册表清理失败: %s", work_id)
 
 
-def _audit_cli_entry(registry: ExecutorRegistry, acceptor: str) -> ExecutorEntry | None:
-    """验收席可后台 CLI 行（机审）；按绑定名匹配，未命中回退按角色取行。
-
-    R-2026-08-23 P0-1：2026-08-22 工具收口后验收席绑定改为 DSH（S4），
-    交叉配对名（Claude Code/OpenCode）永不再命中 → 机审被静默跳过。
-    绑定名匹配优先保留（兼容显式指定工具的旧口径），未命中时按「验收席」
-    角色取首个可后台 CLI 行（现行态 = dsh-auditor.sh v4，指令自含）。
-    """
-    name = normalize_tool(acceptor)
-    if name:
-        for e in registry.entries:
-            if e.role == "验收席" and e.category == "可后台 CLI" and normalize_tool(e.binding) == name:
-                return e
-        # 回退：绑定名失配 → 按角色取验收席 CLI 行（工具收口后主路径）
-        for e in registry.entries:
-            if e.role == "验收席" and e.category == "可后台 CLI":
-                return e
-    return None
-
-
 def _ledger_record(
     work: Work,
     severity: str | None,
@@ -3987,20 +3958,15 @@ def _run_machine_audit_after_writeback(
                 return True, [], True
             logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
             logger.info("[ccc089-trace] 补提交支路失败转重审（本支路自身不记账）: work=%s", work.id)
-    # DEAD：待批E收敛删除。历史 2017 机审固定交叉配对逻辑；主链 phase2 已退出 worktree 机审。
-    # 卡头「验收」字段只决定后段验收角色，不再在此固定具体工具。
-    executor_norm = normalize_tool(work.executor)
-    acceptor = "OpenCode" if executor_norm == "Claude Code" else "Claude Code"
-    entry = _audit_cli_entry(registry, acceptor)
+    # 批E（2026-09-04）收敛：删除历史交叉配对死逻辑；机审直接取注册表「验收席」行
+    # （插座单源，现役 = cc-auditor.sh claude wrapper）。卡头「验收」字段只决定
+    # 后段验收角色，不再在此固定具体工具。
+    entry = registry.cli_entry_for_role("验收席") if registry is not None else None
     if entry is None:
-        logger.warning(
-            "机审跳过（无验收席可后台 CLI 绑定 %s）: work=%s",
-            acceptor,
-            work.id,
-        )
+        logger.warning("机审跳过（无验收席可后台 CLI 绑定）: work=%s", work.id)
         # P1-E 修复：无验收席 = 未审（audited=False），调用方不得当作「通过」
         return True, [], False
-    logger.info("拉起机审: work=%s acceptor=%s", work.id, acceptor)
+    logger.info("拉起机审: work=%s role=%s binding=%s", work.id, entry.role, entry.binding)
     audited_tip: str | None = None
     if worktree_hint:
         branch = f"codex/{Path(work.card_path).stem.lower()}"
@@ -4026,11 +3992,19 @@ def _run_machine_audit_after_writeback(
     audit_log = log_dir / f"{work.id}.audit.log"
     audit_text = _read_text_best_effort(audit_log)
 
-    # 业务结论优先（F1 根修，2026-08-10）：audit 文本明确「机审：不通过」→ 业务打回，
+    # 批E（2026-09-04）：结论以验收席 verdict 工件为准（cc-auditor 契约 v2），
+    # 不再依赖 worktree 心智旧链的「机审区落分支卡」路径；stdout/.audit.log 仅兜底。
+    artifact_verdict = _audit_verdict_from_artifact(log_dir, work.id)
+
+    # 业务结论优先（F1 根修，2026-08-10）：明确「机审：不通过」→ 业务打回，
     # 与 exit code 无关。机审 agent 打回时可能 exit 0（claude -p 声称非零退出不可靠），
     # 仅凭 exit code 会把「不通过」误判为通过/落盘失败 → 进 infra 冷却死循环（clw009 事故）。
-    if _audit_output_indicates_rejection(audit_text):
+    rejection = None
+    if artifact_verdict is not None and artifact_verdict[0] == "REJECT":
+        rejection = artifact_verdict[1] or "机审：不通过"
+    elif _audit_output_indicates_rejection(audit_text):
         rejection = _audit_rejection_reason(audit_text) or "机审：不通过"
+    if rejection:
         _ledger_record(
             work,
             severity,
@@ -4040,10 +4014,11 @@ def _run_machine_audit_after_writeback(
             source=("manual" if manual else "engine"),
             kind="audit",
         )
-        logger.warning("机审明确不通过（业务，按 audit 文本判定）: work=%s reason=%s", work.id, rejection)
+        logger.warning("机审明确不通过（业务，按 verdict 工件判定）: work=%s reason=%s", work.id, rejection)
         return False, [rejection], True
 
-    if not ok and not _audit_output_indicates_pass(audit_text):
+    passed = artifact_verdict is not None and artifact_verdict[0] == "PASS"
+    if not ok and not passed and not _audit_output_indicates_pass(audit_text):
         # P1-C 修复：机审执行失败 = 基建故障（kind=infra），不参与命中判定
         _ledger_record(
             work,
@@ -4057,6 +4032,15 @@ def _run_machine_audit_after_writeback(
         return False, problems or ["机审执行失败"], True
 
     evidence = audit_text[-800:]
+    # 批E：cc-auditor 契约下通过结论直接按 verdict 工件成立（主仓卡只读，不落分支卡机审区）。
+    if passed:
+        _ledger_record(
+            work, severity, "通过", [], fix_action="", source=("manual" if manual else "engine"), kind="audit"
+        )
+        _record_machine_audit_pass(work)
+        return True, [], True
+
+    # ── 历史 worktree 心智旧链（兼容旧 wrapper，dsh-auditor 等写分支卡机审区）──
     if worktree_hint:
         wt_card = _worktree_card_candidate(worktree_hint, work.card_path)
         if wt_card is not None:
