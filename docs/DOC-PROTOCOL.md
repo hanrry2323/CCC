@@ -43,7 +43,7 @@
 ## 2. 任务卡 / 任务命名（硬 · 定死）
 
 > **门禁**：`scripts/new-card.sh` + `server/board/validate.py`。不合规 = 出不了卡 / CI 红。  
-> **前缀表**：[`projects/registry.yaml`](projects/registry.yaml)（唯一）；[`dispatch/T-mapping.md`](dispatch/T-mapping.md) 仅历史对照。
+> **前缀表**：[`projects/registry.yaml`](projects/registry.yaml)（唯一）。`dispatch/T-mapping.md` 已清理，不再作为现行或历史对照。
 
 ### 2.1 一句话公式
 
