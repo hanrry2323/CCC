@@ -312,83 +312,83 @@ def _dsh_auditor_path(cfg: dict) -> Path:
     return _repo_root() / "scripts" / "dsh-auditor.sh"
 
 
-def _read_audit_verdict(card_file: Path, output: str) -> tuple[str | None, str]:
-    """从卡内 ## 机审区读取结论；输出仅作诊断，不作为结论来源。"""
-    text = ""
-    if card_file.is_file():
-        text = card_file.read_text(encoding="utf-8", errors="replace")
-    section = text.split("## 机审区", 1)[1] if "## 机审区" in text else ""
-    section = section.split("## ", 1)[0]
-    if re.search(r"^机审：通过\s*$", section, re.M):
-        severity = re.search(r"severity[：:]\s*(轻|中|重)", section)
-        return "PASS", severity.group(1) if severity else ""
-    reject = re.search(r"^机审：不通过(?:（([^\n）]*)）)?\s*$", section, re.M)
-    if reject:
-        return "REJECT", reject.group(1) or ""
+def _audit_log_dir(cfg: dict) -> Path:
+    """机审前置工件目录；与 Engine 执行体日志目录保持同源。"""
+    raw = cfg.get("EXECUTOR_LOG_DIR") or cfg.get("LOG_DIR") or os.environ.get("EXECUTOR_LOG_DIR")
+    return Path(str(raw)).expanduser() if raw else Path.home() / ".ccc" / "logs" / "exec"
+
+
+def _audit_verdict_path(cfg: dict, work_id: str) -> Path:
+    return _audit_log_dir(cfg) / f"{work_id}-audit-verdict.md"
+
+
+def _audit_result_artifact(card: dict, cfg: dict) -> Path:
+    return _audit_log_dir(cfg) / f"{card.get('id')}-ccc-result.md"
+
+
+def _card_is_written(card_file: Path) -> bool:
+    if not card_file.is_file():
+        return False
+    try:
+        return _phase2_store(card_file).read_snapshot(card_file).state == _WRITTEN
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _audit_prerequisites(card: dict, card_file: Path, cfg: dict) -> tuple[bool, str]:
+    """校验新机审契约：主仓卡已回写 + 执行结果工件存在。
+
+    前置缺失 = 明确原因 fail-fast（熔断路径），不再重试。
+    """
+    if not _card_is_written(card_file):
+        return False, f"机审前置失败：主仓卡不是已回写: {card_file}"
+    result = _audit_result_artifact(card, cfg)
+    if not result.is_file():
+        return False, f"机审前置失败：执行结果工件缺失: {result}"
+    return True, ""
+
+
+def _read_audit_verdict(verdict_file: Path, output: str = "") -> tuple[str | None, str]:
+    """从 log_dir 机审工件读取整行结论；stdout 仅作诊断，不作为结论来源。"""
+    if not verdict_file.is_file():
+        return None, ""
+    text = verdict_file.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        line = line.strip()
+        match = re.match(r"^机审：通过(?:\s*（([^）]*)）)?\s*$", line)
+        if match:
+            return "PASS", match.group(1) or ""
+        match = re.match(r"^机审：不通过(?:（([^\n）]*)）)?\s*$", line)
+        if match:
+            return "REJECT", match.group(1) or ""
     return None, ""
 
 
-def _audit_worktree_path(card: dict, card_file: Path, cfg: dict) -> Path:
-    """按项目注册表/配置定位机审分支 worktree，不写死个人业务路径。"""
-    work_id = str(card.get("id") or card_file.stem.split("-", 1)[0]).lower()
-    project = str(card.get("project") or "").strip()
-    registered = _worktree_for(project, work_id)
-    if registered:
-        return Path(registered)
-    base = str(cfg.get("CCC_WORKTREE_BASE") or "").strip()# fallback for non-registered test/config projects.
-    for token in ("<task>", "{task}", "<work_id>", "{work_id}"):
-        base = base.replace(token, work_id)
-    return Path(base).expanduser() if base else Path(card_file).resolve().parent.parent.parent / ".ccc-wt" / work_id
-
-
-def _ensure_audit_worktree(card: dict, card_file: Path, cfg: dict, branch: str) -> Path | None:
-    """创建/复用机审分支 worktree，确保 auditor 不写主仓卡。"""
-    target = _audit_worktree_path(card, card_file, cfg)
-    repo = _repo_root()
-    try:
-        if target.is_dir() and (target / ".git").exists():
-            return target
-        target.parent.mkdir(parents=True, exist_ok=True)
-        remote = subprocess.run(
-            ["git", "show-ref", "--verify", f"refs/remotes/origin/{branch}"],
-            cwd=repo, capture_output=True, text=True, check=False, timeout=30,
-        )
-        if remote.returncode == 0:
-            cmd = ["git", "worktree", "add", str(target), branch]
-        else:
-            cmd = ["git", "worktree", "add", "-b", branch, str(target), "origin/main"]
-        created = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, check=False, timeout=60)
-        if created.returncode != 0:
-            logger.warning("机审 worktree 创建失败: %s", (created.stderr or created.stdout).strip()[:300])
-            return None
-        return target
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("机审 worktree 准备失败: %s", exc)
-        return None
-
-
 def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeout: int) -> tuple[int, str, str]:
-    """通过 dsh-auditor.sh 走 local-litellm→3456→Code，且只写机审分支副本。"""
+    """通过 dsh-auditor.sh 审计主仓卡；verdict 由 wrapper 写入 log_dir 工件。
+
+    业务 worktree 退出机审契约：审计目标 = 主仓卡（只读），不创建/校验 worktree。
+    """
     auditor = _dsh_auditor_path(cfg)
     if not auditor.is_file():
         return 127, "", f"机审 wrapper 不存在: {auditor}（当前模型通道=3456/Code）"
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
-    worktree = str(card.get("worktree") or "")
-    if not worktree:
-        wt = _audit_worktree_path(card, card_file, cfg)
-        return 127, "", f"机审失败：worktree 缺失，无法审计: {wt}"
-    if not Path(worktree).is_dir():
-        return 127, "", f"机审失败：worktree 缺失，无法审计: {worktree}"
-    rel = card_file.resolve().relative_to(_repo_root().resolve())
-    audit_card = Path(worktree) / rel
-    if not audit_card.is_file():
-        return 127, "", f"机审 worktree 卡缺失: {audit_card}（当前模型通道=3456/Code）"
-    card["_audit_card_file"] = str(audit_card)
     # 主仓分支保护（A4 加固）：机审前记录主仓分支，机审后校验未漂移。
     prev_branch = _current_branch()
-    cmd = [str(auditor), str(card_file), work_id, worktree, "验收席"]
+    cmd = [str(auditor), str(card_file), work_id, "__CCC_EMPTY__", "验收席"]
+    child_env = cli_env()
+    audit_log_dir = _audit_log_dir(cfg)
+    child_env.setdefault("EXECUTOR_LOG_DIR", str(audit_log_dir))
+    child_env.setdefault("LOG_DIR", str(cfg.get("LOG_DIR") or audit_log_dir.parent))
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=cli_env(), cwd=str(_repo_root()))
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=child_env,
+            cwd=str(_repo_root()),
+        )
         after_branch = _current_branch()
         if after_branch != prev_branch:
             logger.warning("机审后主仓分支漂移: %s -> %s，自动恢复 %s，机审判失败", prev_branch, after_branch, prev_branch)
@@ -403,6 +403,70 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
         return 127, "", f"dsh-auditor 调用异常: {exc}（当前模型通道=3456/Code）"
 
 
+def _write_audit_verdict(card_file: Path, cfg: dict, verdict: str, reasons: str) -> bool:
+    """经 CardStateStore 门面把机审结论写入主仓卡（CAS/锁，禁旁路直写）。"""
+    try:
+        store = _phase2_store(card_file)
+        push = (store.repo_root / ".git").exists()
+        store.write_audit_verdict(card_file, verdict=verdict, reasons=reasons, push=push)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("机审区经统一门面落主卡失败: %s (%s)", card_file, exc)
+        return False
+
+
+def _record_audit_failure(card: dict, card_file: Path, cfg: dict, reason: str) -> str:
+    """记录机审基础设施失败；同卡连续失败达限 → 熔断打回。"""
+    from server.board.audit_ledger import record_action
+    from server.engine.runtime_state import clear_card_state, read_card_state
+    from server.engine.task import State, Work
+
+    card_id = str(card.get("id") or card_file.stem)
+    log_dir = _audit_log_dir(cfg)
+    current = read_card_state(log_dir).get(card_id, {})
+    strikes = int(current.get("infra_count") or 0) + 1
+    try:
+        max_strikes = max(
+            1,
+            int(cfg.get("PHASE2_AUDIT_MAX_STRIKES")
+                or cfg.get("EXECUTOR_INFRA_MAX_STRIKES")
+                or 3),
+        )
+    except (TypeError, ValueError):
+        max_strikes = 3
+    if strikes >= max_strikes:
+        detail = f"机审基础设施连续失败 {strikes} 次，已挂起待人工处理：{reason}"
+        if set_card_state(card_file, f"{_REJECTED}（机审基础设施熔断）", "REJECT", detail):
+            clear_card_state(log_dir, card_id)
+        record_action("phase2_audit_circuit_open", card_id, source="phase2", detail=detail)
+        return "circuit_open"
+
+    # 与派发侧共用同一冷却/sidecar 语义；audit 阶段不改变卡的业务状态。
+    from server.engine.main import _hold_infra_failure
+
+    work = Work(id=card_id, role="验收席", state=State.DONE, card_path=str(card_file))
+
+    class _NoopStore:
+        def save_work(self, _work: Work) -> None:
+            return None
+
+    _hold_infra_failure(
+        _NoopStore(),
+        work,
+        log_dir,
+        [reason],
+        cfg,
+        phase="audit",
+        infra_count=strikes,
+    )
+    return "cooldown"
+
+
+# 新契约下不创建/校验业务 worktree；旧 helper 已删除。
+
+
+
+
 def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver: str = "real") -> dict:
     """CC 审核（mock 驱动仅供测试闭环）。返回 {verdict, reasons, transcript, attempts}。"""
     if audit_driver.startswith("mock:"):
@@ -412,7 +476,7 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         if v == "reject":
             return {"verdict": "REJECT", "reasons": "mock-reject（测试隔离）：结论不通过", "transcript": _REJECT_MARKER, "attempts": 1}
         if v == "error":
-            return {"verdict": "ERROR", "reasons": "mock-error（测试隔离）", "transcript": "", "attempts": 3}
+            return {"verdict": "ERROR", "reasons": "mock-error（测试隔离）", "transcript": "", "attempts": 3, "infra": True}
 
     try:
         max_attempts = max(1, int(cfg.get("PHASE2_AUDIT_MAX_ATTEMPTS") or _DEFAULT_MAX_ATTEMPTS))
@@ -431,16 +495,33 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
 
         record_action("phase2_alert", card["id"], source="phase2", detail=f"网关预检拒单: {pf_detail}")
         logger.error("phase2 网关预检拒单（卡保留已回写待重试）: %s: %s", card["id"], pf_detail)
-        return {"verdict": "ERROR", "reasons": f"网关预检拒单: {pf_detail}", "transcript": "", "attempts": 0}
+        return {
+            "verdict": "ERROR",
+            "reasons": f"网关预检拒单: {pf_detail}",
+            "transcript": "",
+            "attempts": 0,
+            "infra": True,
+        }
 
+    # 新契约前置工件校验：主仓卡已回写 + log_dir 执行结果工件存在。缺失 → fail-fast。
+    ok_prereq, prereq_reason = _audit_prerequisites(card, card_file, cfg)
+    if not ok_prereq:
+        logger.error("phase2 机审前置不满足（熔断，不盲目重试）: %s %s", card["id"], prereq_reason)
+        return {"verdict": "ERROR", "reasons": prereq_reason, "transcript": "", "attempts": 0, "infra": True}
+
+    work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
+    verdict_file = _audit_verdict_path(cfg, work_id)
     transcript = ""
     reasons = ""
     for attempt in range(1, max_attempts + 1):
+        try:
+            verdict_file.unlink(missing_ok=True)
+        except OSError:
+            pass
         rc, out, err = _run_dsh_auditor(card, card_file, branch, cfg, timeout)
         transcript = out
-        # dsh-auditor 将机审区写入 worktree 分支卡副本；结论以该副本卡内真值为准。
-        verdict_card = Path(card.get("_audit_card_file") or card_file)
-        verdict, card_reason = _read_audit_verdict(verdict_card, out)
+        # verdict 以 log_dir 审计工件为准；exit 2 的 verdict 文件内容视为 REJECT。
+        verdict, card_reason = _read_audit_verdict(verdict_file, out)
         if verdict in ("PASS", "REJECT"):
             return {
                 "verdict": verdict,
@@ -449,13 +530,13 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
                 "attempts": attempt,
             }
         reasons = (
-            f"dsh-auditor 未在卡内 ## 机审区写入可解析 verdict（rc={rc}, attempt={attempt}）: "
-            f"{(err or out)[-500:]}"
+            f"dsh-auditor 未写入可解析 verdict 工件（rc={rc}, attempt={attempt}）: "
+            f"{verdict_file} {(err or out)[-500:]}"
         )
         logger.warning("DSH 机审失败重试 %d/%d: %s", attempt, max_attempts, reasons)
         if attempt < max_attempts:
             time.sleep(backoff_base * (2 ** (attempt - 1)))
-    return {"verdict": "ERROR", "reasons": reasons, "transcript": transcript, "attempts": max_attempts}
+    return {"verdict": "ERROR", "reasons": reasons, "transcript": transcript, "attempts": max_attempts, "infra": True}
 
 
 # ───────────────────────── 门禁 / 状态 / 合入 / 部署 ─────────────────────────
@@ -597,7 +678,9 @@ def delete_merged_branch(branch: str) -> tuple[bool, list[str]]:
     """
     problems: list[str] = []
     if not branch:
-        return False, ["分支名为空，跳过清理"]
+        # wrapper 型卡没有代码分支；无分支即无需清理，不视为失败。
+        return True, []
+
     remote_ref = f"origin/{branch}"
     r = git(["rev-parse", "--verify", "--quiet", remote_ref])
     if r.returncode == 0:
@@ -683,21 +766,27 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
     from server.board.audit_ledger import record_action
 
     card_file = resolve_card_file(card)
-    branch = card.get("branch") or (branch_for(card_file) if card_file else "")
-    if not branch:
-        record_action("phase2_alert", card["id"], source="phase2", detail="卡分支无法判定，无法消费")
-        return {"id": card["id"], "result": "error", "reason": "branch unknown"}
+    branch = card.get("branch") or ""
+    # wrapper 型卡无代码分支；机审通过后直接在主仓走门禁/关闭路径。
+    has_merge_branch = bool(branch)
+    if not card_file:
+        record_action("phase2_alert", card["id"], source="phase2", detail="主仓卡文件缺失，无法消费")
+        return {"id": card["id"], "result": "error", "reason": "card file missing"}
     prev_branch = _current_branch()
     try:
-        # 已合入但部署失败的重试守卫：分支已在 main → 跳过重复审核，直接门禁+部署
-        if not _branch_in_main(branch):
-            audit = audit_card(card, card_file or Path(card.get("path_rel", "card.md")), branch, cfg, audit_driver)
+        # 已合入但部署失败的重试守卫：分支已在 main → 跳过重复审核，直接门禁+部署。
+        # wrapper 型卡无分支信封，按主仓卡与 log_dir 工件执行机审。
+        if not has_merge_branch or not _branch_in_main(branch):
+            audit = audit_card(card, card_file, branch, cfg, audit_driver)
             if audit["verdict"] == "ERROR":
-                record_action(
-                    "phase2_audit_fail", card["id"], source="phase2",
-                    detail=f"CC 审核调用失败（{audit['attempts']} 次重试后仍失败）: {audit['reasons']}",
-                )
-                logger.error("phase2 CC 审核失败，卡保留「已回写」（不静默丢卡）: %s", card["id"])
+                if audit.get("infra"):
+                    failure_mode = _record_audit_failure(card, card_file, cfg, audit["reasons"])
+                    if failure_mode == "circuit_open":
+                        return {"id": card["id"], "result": "rejected", "reason": audit["reasons"], "attempts": audit["attempts"]}
+                    record_action("phase2_audit_fail", card["id"], source="phase2", detail=f"机审基础设施失败（冷却）: {audit['reasons']}")
+                else:
+                    record_action("phase2_audit_fail", card["id"], source="phase2", detail=f"CC 审核调用失败: {audit['reasons']}")
+                logger.error("phase2 CC 审核失败，卡保留「已回写」: %s", card["id"])
                 return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
             if audit["verdict"] == "REJECT":
                 git(["checkout", "main"])
@@ -717,11 +806,12 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 _refresh_index(cfg)
                 logger.warning("phase2 打回（不阻塞其他卡）: %s", card["id"])
                 return {"id": card["id"], "result": "rejected", "reason": audit["reasons"]}
-            # PASS → 合入
-            ok, err = merge_branch_to_main(branch)
-            if not ok:
-                record_action("phase2_alert", card["id"], source="phase2", detail=f"合入失败: {err}")
-                return {"id": card["id"], "result": "error", "reason": err}
+            # PASS → 有代码分支才合入；wrapper 型卡直接进入主仓门禁。
+            if has_merge_branch:
+                ok, err = merge_branch_to_main(branch)
+                if not ok:
+                    record_action("phase2_alert", card["id"], source="phase2", detail=f"合入失败: {err}")
+                    return {"id": card["id"], "result": "error", "reason": err}
         else:
             logger.info("phase2 分支已在 main（重试部署场景），跳过审核: %s", card["id"])
             git(["checkout", "main"])
