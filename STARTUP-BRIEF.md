@@ -103,7 +103,7 @@ python -m server.board.validate docs/dispatch
             打回 → 待分派（人工重派）
 ```
 
-任务卡 = 唯一事实源：`docs/dispatch/T<n>-*.md`。看板由 `server/board/loader.py` 派生。
+任务卡 = 唯一事实源：`docs/dispatch/<prefix>/<prefix><NNN>-*.md`。看板由 `server/board/loader.py` 派生。
 
 ---
 
@@ -114,7 +114,8 @@ python -m server.board.validate docs/dispatch
 - **1** 不动系统文件 / 密钥  
 - **11** Verdict 必须落文件  
 - **12** 禁止 agent 自主启用 CCC  
-- **R-15** 禁止 CCC 本体经看板自消费（平台合入走 OpenCode 开发 → 机审 → 「合入批准」）  
+- **R-15** 禁止 CCC 本体经看板自消费（指令直改（CLI）+ phase2 合入）
+
 
 ---
 
