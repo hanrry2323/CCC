@@ -87,6 +87,6 @@
 - 每 commit 前 `git diff --check` 通过（期间两处版本行尾随空格已单独清理 commit）
 - 相邻同源错误顺手修正（已在报告中列明）：STARTUP-BRIEF `T<n>` 卡 glob、architecture VERSION SSOT 注释
 - 遗留说明：STARTUP-BRIEF :5/:42 与 architecture :44 的「6100/6102 已退役」为历史记录口径，非现役绑定，保留
-- 最终 head：`35ca579b3`
+- 最终 head：`faf1e6f65`（本报告 commit）
 
-ALIGN-A-DONE 35ca579b3
+ALIGN-A-DONE faf1e6f65
