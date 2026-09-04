@@ -74,7 +74,11 @@
 launchctl kickstart -k gui/$(id -u)/com.ccc.engine
 ```
 
-重启后核验新 PID 与心跳；核验结果追加在本报告末尾。
+重启后核验新 PID 与心跳；核验结果：
+
+- `launchctl print gui/$(id -u)/com.ccc.engine`：`state = running`，`pid = 11901`。
+- 本机 `127.0.0.1:7788` 不监听；按 launchd/WEB_HOST 实际配置核验 `curl -fsS http://192.168.3.116:7788/health`，返回 `{"status": "ok", "auth_required": false, "auth_configured": true}`。
+- 因此健康心跳以配置的 `192.168.3.116:7788` 端点为准；localhost 探测失败不是引擎未运行证据。
 
 ## 复核备注
 
