@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from server.board.audit_ledger import record_action
-from server.board.registry import load_projects
+from server.board.registry import forbidden_prefixes, load_projects
 from server.engine.gates import GateResult
 from server.engine.task import State, Work
 
@@ -111,6 +111,16 @@ def validate_card(
         elif fields.get("项目") and fields["项目"] != prefix:
             problems.append(f"卡头项目「{fields['项目']}」与卡号前缀「{prefix}」不一致")
 
+    # A5：禁卡前缀（FORBIDDEN_CARD_PREFIXES）——即便前缀在 registry，命中禁表即拒单
+    # （手工放卡 docs/dispatch/ccc/ 直达派发绕行门禁的断根：引擎队列与 card_gate 同源判据）
+    if prefix:
+        try:
+            forbidden = forbidden_prefixes()
+        except Exception:
+            forbidden = frozenset()  # 平台故障：跳过禁表项，不因平台问题误伤
+        if prefix.lower() in forbidden:
+            problems.append(f"卡号前缀「{prefix}」在禁卡表（FORBIDDEN_CARD_PREFIXES）——禁止经 CCC Engine 派发（平台自研/独立轨道）")
+
     for name in REQUIRED_SECTIONS:
         if not _has_content(_section_lines(text, name)):
             problems.append(f"缺必备段或段为空:「{name}」")
@@ -164,6 +174,23 @@ def enforce_card_gate(
         except OSError:
             text = ""
     fields = _header_fields(text) if text else None
+    # A5：禁卡前缀断根——手工放卡（docs/dispatch/ccc/ 等禁前缀）无论执行体一律拒单
+    # （new-card.sh CLI 与 validate.py 已拦，但引擎队列/手工放卡可绕行；此处与队列同源判据）
+    if card_path is not None:
+        stem_prefix = re.match(r"^([A-Za-z]+)\d+", card_path.stem)
+        if stem_prefix:
+            try:
+                forbidden = forbidden_prefixes()
+            except Exception:
+                forbidden = frozenset()  # 平台故障：跳过禁表项，不因平台问题误伤
+            if stem_prefix.group(1).lower() in forbidden:
+                problems = [f"卡号前缀「{stem_prefix.group(1)}」在禁卡表（FORBIDDEN_CARD_PREFIXES）——禁止经 CCC Engine 派发"]
+                record_action("card_gate_reject", work.id, source="engine", detail=problems[0][:300])
+                if log_dir:
+                    _write_alert(Path(log_dir), work.id, problems)
+                work.transition(State.VOIDED, problems=[f"卡校验门拦截（非法卡不入池）: {p}" for p in problems])
+                store.save_work(work)
+                return GateResult(passed=False, reason="card_gate_forbidden")
     if fields is None or fields.get("执行体") != "DSH":
         return GateResult(passed=True)  # 非 DSH 产卡不走新校验门
     if work.state is not State.TODO:

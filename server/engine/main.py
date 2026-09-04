@@ -2699,16 +2699,21 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
             section = section.split("## ", 1)[0].strip()
             writeback += f"\n\n{heading}\n\n{section}"
         maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
-        annotation_body = "无批注，无需落实。"
+        from server.board.annotation import classify_annotation
+
+        real_annotation = classify_annotation(card_text) == "REAL"
+        annotation_body = ""
         for heading in ("## 批注落实", "## 4. 批注落实", "## 5. 批注落实"):
             if heading in result:
-                annotation_body = result.split(heading, 1)[1].split("## ", 1)[0].strip() or annotation_body
+                annotation_body = result.split(heading, 1)[1].split("## ", 1)[0].strip()
                 break
+        if real_annotation and not annotation_body:
+            return False, "批注未落实：执行结果缺少「批注落实」段"
 
         def _mutator(text: str) -> str:
             updated = _replace_card_section(text, "回写区", writeback)
             updated = _replace_card_section(updated, "维护区", maintenance)
-            if re.search(r"^##\s*人工批注\s*$", updated, flags=re.MULTILINE):
+            if real_annotation:
                 updated = _replace_card_section(updated, "批注落实", annotation_body)
             return updated
 

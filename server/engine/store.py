@@ -184,6 +184,12 @@ class FileBoardStore:
         runtime = read_card_state(self._log_dir) if self._log_dir else {}
         works: list[Work] = []
         try:
+            from server.board.registry import forbidden_prefixes
+
+            forbidden = forbidden_prefixes()
+        except Exception:
+            forbidden = frozenset()
+        try:
             from server.git_sync import resolve_repo_root
 
             project_root = resolve_repo_root(self._dir)
@@ -193,6 +199,14 @@ class FileBoardStore:
         for entry in index_entries.values():
             # 归档卡不进 Engine 派发队列（看板 loader 已过滤；store 须对齐）
             if entry.get("archived"):
+                continue
+            entry_prefix = str(entry.get("project") or "").strip().lower()
+            if entry_prefix in forbidden:
+                logger.warning(
+                    "跳过禁卡前缀卡: id=%s project=%s",
+                    entry.get("id"),
+                    entry_prefix,
+                )
                 continue
             raw_state = entry.get("state", "")
             rt = runtime.get(entry["id"]) or {}

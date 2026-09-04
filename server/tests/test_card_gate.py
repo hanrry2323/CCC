@@ -172,3 +172,39 @@ def test_validate_card_prefix_and_scope_checks(gate_env: Path) -> None:
     assert any("不在项目 registry" in p for p in problems)
     assert any("范围路径不存在: no/such/path.txt" in p for p in problems)
     assert any("日期格式" in p for p in problems)
+
+
+def test_forbidden_prefix_card_is_rejected_before_dispatch(gate_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A5：手工放入禁用前缀卡时，card gate 拒单并写入作废状态。"""
+    from server.engine import card_gate
+
+    card = gate_env / "ccc001-forbidden.md"
+    card.write_text(VALID_CARD.replace("tst995", "ccc001").replace("项目：tst", "项目：ccc"), encoding="utf-8")
+    monkeypatch.setattr(card_gate, "forbidden_prefixes", lambda: frozenset({"ccc"}))
+    store = InMemoryBoardStore()
+    work = Work(id="ccc001", role="开发执行体", card_path=str(card))
+    store.seed(work)
+
+    result = card_gate.enforce_card_gate(work, store, gate_env / "logs")
+
+    assert result.passed is False
+    assert result.reason == "card_gate_forbidden"
+    assert work.state is State.VOIDED
+    assert any("禁卡表" in problem for problem in work.problems)
+
+
+def test_forbidden_prefix_is_filtered_from_file_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A5：store.list_work 与 card gate 同源过滤禁用前缀卡。"""
+    from server.board import registry as registry_mod
+    from server.engine import store as store_mod
+    from server.engine.dispatch import ExecutorRegistry
+
+    dispatch = tmp_path / "dispatch" / "ccc"
+    dispatch.mkdir(parents=True)
+    card = dispatch / "ccc002-forbidden.md"
+    card.write_text(VALID_CARD.replace("tst995", "ccc002").replace("项目：tst", "项目：ccc"), encoding="utf-8")
+    monkeypatch.setattr(registry_mod, "forbidden_prefixes", lambda: frozenset({"ccc"}))
+    registry = ExecutorRegistry(())
+    file_store = store_mod.FileBoardStore(tmp_path / "dispatch", registry)
+
+    assert file_store.list_work() == []
