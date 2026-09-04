@@ -524,7 +524,14 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         max_attempts = _DEFAULT_MAX_ATTEMPTS
     backoff_base = float(cfg.get("PHASE2_AUDIT_BACKOFF_BASE") or _DEFAULT_BACKOFF_BASE)
     try:
-        timeout = max(900, int(cfg.get("PHASE2_AUDIT_TIMEOUT") or _DEFAULT_AUDIT_TIMEOUT))
+        timeout = max(
+            900,
+            int(
+                cfg.get("PHASE2_AUDIT_TIMEOUT")
+                or cfg.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS")
+                or _DEFAULT_AUDIT_TIMEOUT
+            ),
+        )
     except (TypeError, ValueError):
         timeout = _DEFAULT_AUDIT_TIMEOUT
 
