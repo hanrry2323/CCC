@@ -7,12 +7,10 @@
 # 用法：
 #   scripts/dsh-auditor.sh <card_path> <work_id> <worktree> [role] [biz_worktree]
 #
-# biz_worktree（P1-b 2026-08-23）：业务仓型任务每卡独立 worktree；机审复用开发产物，
-# 优先切 biz_worktree 核验（卡文件 + 业务改动都在其中）；非业务仓任务传空，忽略。
-#
-# 输出契约（engine 机审收集用）：
-#   通过 → 写「## 机审区」+「机审：通过」到 worktree 卡文件，退出 0
-#   不通过 → 输出「机审：不通过（原因）」，退出非 0
+# 新契约（2026-09-04）：审计目标为主仓卡（只读），不依赖业务 worktree；
+# verdict 写入 $EXECUTOR_LOG_DIR/<work_id>-audit-verdict.md。
+#   通过 → 工件写整行「机审：通过」，退出 0
+#   不通过 → 工件写整行「机审：不通过（原因）」，退出 2
 # 前置：2017 已配 OPENCODE_GO_API_KEY；inject_hint=false（Engine 不注入，v4 预设自含）。
 
 set -euo pipefail
@@ -67,67 +65,47 @@ yaml.safe_dump(
 )
 PY
 
-# 切工作目录：业务仓型任务优先 biz_worktree（复用开发产物），否则 worktree（含卡副本）
-# P1-b 2026-08-23：机审在开发产物所在仓核验，cwd 必须落在其中。
-if [ -n "$BIZ_WORKTREE" ] && [ -d "$BIZ_WORKTREE" ]; then
-  cd "$BIZ_WORKTREE"
-elif [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
-  cd "$WORKTREE"
-fi
+# 新机审契约（2026-09-04）：审计目标是主仓卡（只读），业务 worktree 退出机审链路。
+# WORKTREE/BIZ_WORKTREE 仅为兼容旧调用保留，空值不再失败；cwd 固定 CCC 主仓。
+REPO_ROOT="$(cd "$_SELF/.." && pwd -P)"
+cd "$REPO_ROOT"
+AUDIT_CARD="$CARD_PATH"
+LOG_DIR="${EXECUTOR_LOG_DIR:-${LOG_DIR:-$HOME/.ccc/logs/exec}}"
+mkdir -p "$LOG_DIR"
+VERDICT_FILE="$LOG_DIR/${WORK_ID}-audit-verdict.md"
+TMP_OUTPUT="$(mktemp)"
+trap 'rm -f "$OVERLAY" "$TMP_OUTPUT"' EXIT
 
-# R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
-# 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，
-# 杜绝 DSH 对占位维护区误判「通过」。红线：门禁不削弱，仅前置化）。
-# P0-1b-fix（2026-08-24 tst003 误打回归因）：机审对象必须是被审分支的卡副本，不能回退主仓。
-# docs 类卡 biz_worktree 不含卡文件；回写与引擎信封都落在 WORKTREE 分支副本。
-# A4 加固（2026-09-03）：WORKTREE 缺失/卡副本缺失直接失败，禁止主仓 fallback，防止污染 main。
-if [ -z "$WORKTREE" ] || [ ! -d "$WORKTREE" ]; then
-  echo "[dsh-auditor] 机审失败：worktree 缺失，无法审计: ${WORKTREE:-<空>}" >&2
-  exit 64
-fi
-# 三重校验：路径必须是目录、必须是 Git worktree、必须含被审卡副本。
-WORKTREE_ABS="$(cd "$WORKTREE" && pwd -P)"
-GIT_TOP="$(git -C "$WORKTREE" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "$GIT_TOP" ] || [ "$(cd "$GIT_TOP" && pwd -P)" != "$WORKTREE_ABS" ]; then
-  echo "[dsh-auditor] 机审失败：路径不是有效 Git worktree: $WORKTREE" >&2
-  exit 64
-fi
-if ! git -C "$WORKTREE" worktree list --porcelain 2>/dev/null | grep -Fqx "worktree $WORKTREE_ABS"; then
-  echo "[dsh-auditor] 机审失败：路径未登记为 Git worktree: $WORKTREE" >&2
-  exit 64
-fi
-REL_CARD="${CARD_PATH#/Users/fan/program/CCC/}"
-if [ "$REL_CARD" = "$CARD_PATH" ] || [ ! -f "$WORKTREE/$REL_CARD" ]; then
-  echo "[dsh-auditor] 机审失败：worktree 卡副本缺失，无法审计: $WORKTREE/$REL_CARD" >&2
-  exit 64
-fi
-AUDIT_CARD="$WORKTREE/$REL_CARD"
-echo "[dsh-auditor] 审查对象=worktree 分支副本: $AUDIT_CARD" >&2
+echo "[dsh-auditor] 审查对象=主仓卡（只读）: $AUDIT_CARD" >&2
 
-# R-2026-08-23 P1-b 修复卡（机审维护区假断言）：机械前置门禁——维护区四问未完成/占位
-# 直接打回，不跑 DSH（docgate verify_maintenance 与 approve-merge 完成钩子同一实现，
-# 杜绝 DSH 对占位维护区误判「通过」。红线：门禁不削弱，仅前置化）。
-if [ -n "$AUDIT_CARD" ] && [ -f "$AUDIT_CARD" ]; then
+# 机械门禁仍保留，但只读取主仓卡；失败必须产出 REJECT verdict 工件。
+if [ -f "$AUDIT_CARD" ]; then
   MG_PROBLEMS="$(python3 - "$AUDIT_CARD" "$(pwd)" <<'PY'
 import sys
 sys.path.insert(0, "/Users/fan/program/CCC")
 try:
     from server.board.docgate import verify_maintenance
     ok, problems = verify_maintenance(sys.argv[1], sys.argv[2])
+    if not ok:
+        print("；".join(problems) or "维护区未完成")
     sys.exit(0 if ok else 2)
-except Exception as exc:  # 机械门禁自身异常：不静默放行，打回由 DSH 兜底
+except Exception as exc:
     print(f"维护区机械校验异常: {exc}")
     sys.exit(3)
 PY
 )" || MG_RC=$?
   if [ "${MG_RC:-0}" = "2" ]; then
-    echo "[dsh-auditor] 机械门禁：维护区未完成 → 机审打回（不跑 DSH）" >&2
-    echo "机审：不通过（维护区未完成）" >&2
-    rm -f "$OVERLAY"
+    printf '机审：不通过（维护区未完成：%s）\n' "${MG_PROBLEMS:-未知原因}" > "$VERDICT_FILE"
+    echo "[dsh-auditor] 机械门禁不通过，已写 verdict: $VERDICT_FILE" >&2
     exit 2
+  elif [ "${MG_RC:-0}" != "0" ]; then
+    echo "[dsh-auditor] 机械门禁异常" >&2
+    exit 3
   fi
   unset MG_RC
 fi
+
+# 主仓卡作为唯一输入，禁止 DSH 会话写入任何卡文件。
 
 # P0-1b 测试真实性机械截获（2026-08-23）：在 DSH 之外独立跑卡门禁测试，失败硬打回不跑机审。
 # 日志落 $EXECUTOR_LOG_DIR/<work_id>.test-evidence.log（与 Engine EXECUTOR_LOG_DIR 同源）。
@@ -150,19 +128,30 @@ if [[ -f "$AUDIT_CARD" && -d "$_TE_WORKDIR" ]]; then
   else
     _TE_RC=$?
     echo "[dsh-auditor] 机械门禁：卡声明测试真实失败（exit=${_TE_RC}，证据 log=${_TE_EVIDENCE_LOG}）→ 机审打回（不跑 DSH）" >&2
-    echo "机审：不通过（测试真实失败：见 ${_TE_EVIDENCE_LOG}）" >&2
-    rm -f "$OVERLAY"
+    printf '机审：不通过（测试真实失败：见 %s）\n' "$_TE_EVIDENCE_LOG" > "$VERDICT_FILE"
     exit 2
   fi
 fi
 
-PROMPT="任务卡（被审分支副本）：${AUDIT_CARD}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
-注意：主仓 ${CARD_PATH} 是 main 版占位卡（未含回写），勿据其下结论、勿写入。
-按你的机审席心智执行 v4 对抗式审查（范围核对→找茬→severity 三级→分流→维护区核对→写机审区）。
-授权声明：本次运行授权读写任务卡文件、在 worktree $(pwd) 内就地修复并 git add/commit/push。
+PROMPT="任务卡（主仓只读）：${AUDIT_CARD}（work ${WORK_ID}，验收席角色：${ROLE}）已回写，待机审。
+按你的机审席心智执行 v4 对抗式审查（范围核对→找茬→severity 三级→分流→维护区核对）。
+主仓卡是唯一输入；禁止写入任何卡文件、禁止修改业务 worktree。
+审计结束必须将整行‘机审：通过’或‘机审：不通过（原因）’写入 ${VERDICT_FILE}，不得只输出到 stdout。
 工作目录：$(pwd)"
 
-dsh --profile headless --patch "$OVERLAY" "$PROMPT"
+set +e
+dsh --profile headless --patch "$OVERLAY" "$PROMPT" > "$TMP_OUTPUT" 2>&1
 rc=$?
-rm -f "$OVERLAY"
-exit $rc
+set -e
+cat "$TMP_OUTPUT"
+if [ ! -s "$VERDICT_FILE" ]; then
+  if grep -Eq '^机审：通过([[:space:]]|$)' "$TMP_OUTPUT"; then
+    printf '机审：通过\n' > "$VERDICT_FILE"
+  elif grep -Eq '^机审：不通过' "$TMP_OUTPUT"; then
+    grep -E '^机审：不通过' "$TMP_OUTPUT" | tail -1 > "$VERDICT_FILE"
+  fi
+fi
+if [ "$rc" -eq 2 ] && [ ! -s "$VERDICT_FILE" ]; then
+  printf '机审：不通过（auditor exit 2，未产出结论）\n' > "$VERDICT_FILE"
+fi
+exit "$rc"

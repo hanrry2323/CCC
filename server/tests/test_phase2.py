@@ -48,22 +48,35 @@ def test_verdict_parsing_chinese() -> None:
     assert phase2._claude_verdict_from_output("无关内容") is None
 
 
+def _written_audit_env(tmp_path: Path, card_id: str = "tst997") -> tuple[Path, dict]:
+    """构造新机审契约前置：已回写主仓卡 + log_dir 执行结果工件。"""
+    card_file = tmp_path / f"{card_id}.md"
+    card_file.write_text(
+        "> 状态：已回写 · 项目：tst\n\n## 维护区\n- 说明：测试\n",
+        encoding="utf-8",
+    )
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / f"{card_id}-ccc-result.md").write_text("result", encoding="utf-8")
+    cfg = {"EXECUTOR_LOG_DIR": str(log_dir)}
+    return card_file, cfg
+
+
 def test_audit_retry_success(monkeypatch, tmp_path: Path) -> None:
     calls = {"n": 0}
-    card_file = tmp_path / "tst997.md"
-    card_file.write_text("# 任务卡 tst997\n", encoding="utf-8")
+    card_file, cfg = _written_audit_env(tmp_path)
 
     def fake_run(card, card_path, branch, cfg, timeout):
         calls["n"] += 1
         if calls["n"] == 3:
-            card_file.write_text("# 任务卡 tst997\n## 机审区\n机审：通过\n", encoding="utf-8")
+            (tmp_path / "logs" / "tst997-audit-verdict.md").write_text("机审：通过\n", encoding="utf-8")
             return 0, "审计完成", ""
         return 1, "", "429 quota"
 
     monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
     monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
     monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (True, "preflight mocked"))
-    res = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", {}, audit_driver="real")
+    res = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg, audit_driver="real")
     assert res["verdict"] == "PASS"
     assert res["attempts"] == 3
     assert calls["n"] == 3
@@ -71,8 +84,7 @@ def test_audit_retry_success(monkeypatch, tmp_path: Path) -> None:
 
 def test_audit_retry_exhaust(monkeypatch, tmp_path: Path) -> None:
     calls = {"n": 0}
-    card_file = tmp_path / "tst997.md"
-    card_file.write_text("# 任务卡 tst997\n", encoding="utf-8")
+    card_file, cfg = _written_audit_env(tmp_path)
 
     def fake_run(card, card_path, branch, cfg, timeout):
         calls["n"] += 1
@@ -81,10 +93,19 @@ def test_audit_retry_exhaust(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
     monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
     monkeypatch.setattr(phase2, "preflight_gateway", lambda **k: (True, "preflight mocked"))
-    res = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", {}, audit_driver="real")
+    res = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg, audit_driver="real")
     assert res["verdict"] == "ERROR"
     assert res["attempts"] == 3
     assert "429" in res["reasons"]
+
+
+def test_audit_prerequisites_missing_result_artifacts(tmp_path: Path) -> None:
+    """前置失败：主仓卡已回写但执行结果工件缺失 → fail-fast（不盲目重试）。"""
+    card_file, cfg = _written_audit_env(tmp_path)
+    (tmp_path / "logs" / "tst997-ccc-result.md").unlink()
+    ok, reason = phase2._audit_prerequisites({"id": "tst997"}, card_file, cfg)
+    assert not ok
+    assert "执行结果工件缺失" in reason
 
 
 def test_audit_mock_drivers() -> None:
@@ -299,7 +320,8 @@ def test_process_one_pass_closed_cleans_branch(monkeypatch, tmp_path: Path) -> N
     res = phase2.process_one(card, {"DISPATCH_DIR": str(tmp_path)}, audit_driver="mock:pass")
     assert res["result"] == "closed"
     assert res["branch_cleanup"] == "ok"
-    assert any(c[:1] == ["push"] and "--delete" in c for c in push_deletes)
+    # wrapper 型卡无代码分支，不触发分支清理。
+    assert push_deletes == []
     assert not any(r["action"] == "phase2_alert" for r in recorded)
     assert "状态：已关闭" in card_file.read_text(encoding="utf-8")
 
@@ -372,18 +394,21 @@ def _fake_auditor(tmp_path: Path) -> str:
     """创建真实存在的假 auditor.sh 供 _run_dsh_auditor 通过文件检查。"""
     p = tmp_path / "fake-dsh-auditor.sh"
     p.write_text("#!/bin/bash\n", encoding="utf-8")
+    p.chmod(0o755)
     return str(p)
 
 
-def test_dsh_auditor_rejects_missing_worktree(tmp_path: Path) -> None:
-    """A4 加固：机审没有分支 worktree 时直接失败，不回退主仓。"""
+def test_dsh_auditor_accepts_empty_worktree_contract(monkeypatch, tmp_path: Path) -> None:
+    """新契约：auditor 调用不要求业务 worktree，空值不再失败。"""
     card_file = tmp_path / "tst998.md"
     card_file.write_text("# 任务卡 tst998\n", encoding="utf-8")
+    monkeypatch.setattr(phase2, "_current_branch", lambda: "main")
+    monkeypatch.setattr(phase2, "cli_env", lambda: {})
+    monkeypatch.setattr(phase2.subprocess, "run", lambda *args, **kwargs: _ok_rc(0))
     rc, out, err = phase2._run_dsh_auditor(
-        {"id": "tst998", "project": "tst"}, card_file, "codex/tst998", {"DSH_AUDITOR_BIN": _fake_auditor(tmp_path)}, 900
+        {"id": "tst998", "project": "tst"}, card_file, "", {"DSH_AUDITOR_BIN": _fake_auditor(tmp_path)}, 900
     )
-    assert rc == 127
-    assert "worktree 缺失，无法审计" in err
+    assert rc == 0
 
 
 def test_dsh_auditor_branch_drift_restores(monkeypatch, tmp_path: Path) -> None:
