@@ -3,7 +3,7 @@
 > **⚠ 待核（T31 文档基线收口）** — 本文部分口径（阶段能力包、Hub、7 角色 launchd）描述 2026-08-02 重构定稿前的旧架构。
 > 现行权威 = [`docs/INDEX.md`](../docs/INDEX.md) §0：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。  
 > **读写文档**：必须按 [`docs/DOC-PROTOCOL.md`](../docs/DOC-PROTOCOL.md)；项目注册 [`docs/projects/registry.yaml`](../docs/projects/registry.yaml)。
-> 红线本身仍现行（红线 1/3/6/11/12/R-15 等）；与旧架构绑定的描述（如「阶段能力包定时开发系统」「7 launchd plist」）待后续卡清理。
+> 红线本身仍现行（红线 1/3/12/R-15 等）；与旧架构绑定的描述（如「阶段能力包定时开发系统」「7 launchd plist」）待后续卡清理。
 
 > **⚠ 2026-08-04 重构口径修正** — 2026-08-02 重构（D1）已取消角色分层/三档契约/能力包/重试预算等重型机制，以下**历史红线**随旧流程退役，仅作追溯：**4（单 phase 单 commit）、5（phases.json 必写全）、6（角色不互串）、11（Verifier 写 verdict）、14/15（Executor monitor/轮询）、19（独立 Verifier 验收）、20（bash v3 模板）、X1–X3（OpenCode 进程池/杀进程/watchdog）**。
 > **现行红线（替代上述历史项）**：任务卡是唯一事实源（卡头状态机合法）；单卡单 commit、回写前必须 push 成功并附证据；前段机审=DSH、后段验收/合入=phase2 CC CLI（均可换）；杜绝硬编码（D10）；不越范围、不碰运行面；零外脑独立（D2）；对话口鉴权（免登录仅限局域网配置）。
@@ -27,7 +27,7 @@
 | 9 | Executor 卡死立即止损 | v0.5 |
 | 10 | 禁止跨会话隐式记忆 | v0.5 |
 | 11 | Verifier 必须写 verdict 文件 | v0.5（Lesson 28 配套）· **历史（重构取消，改验收席判定）** |
-| 12 | 禁止 agent 自主启用 CCC | v0.5（Lesson 28 配套） |
+| 12 | 禁止 agent 自主启用 CCC（经老板明示授权的调度插件，授权须可追溯，不在此列） | v0.5（Lesson 28 配套） |
 | 13 | 禁止未使用路线代码 | v0.7-slim（含旧 v0.6 watchdog 子条） |
 | 14 | Executor 必须配 monitor + 5min 轮询 | v0.7d-prime |
 | 15 | 轮询进程完成自动终止 | v0.7d-prime |
@@ -161,7 +161,7 @@
 | C3 | SSH 到远程 | 不连接外部服务器操作源文件 |
 | C4 | rsync/scp | 不通过文件同步工具直接改项目 |
 | C5 | sed 盲改 | 不通过正则替换无审查直接修改文件（问题：不可审查 + 不可控） |
-| C6 | mavis session new | 不用 `mavis session new <agent>` 启动子会话（会导致非目标模型执行）— **v0.5 起改红线 9 表述为：禁止用 IPC 通道绕过 CCC dispatch** |
+| C6 | mavis session new | 不用 `mavis session new <agent>` 启动子会话（会导致非目标模型执行） |
 
 **触犯后果**：C1–C6 均为 Critical — 该 phase 无效，回滚并重跑。
 
@@ -266,7 +266,7 @@
 ```
 
 **机制钩子**：
-1. **Planner 红线 8 加码**：Planner 看到 report.md 缺 VERDICT 引用即停下要求补救
+1. **Planner 红线 8 加码**：Planner 看到 report.md 缺 VERDICT 引用即停下，要求 Executor 补救后重跑
 2. **Verifier 模板硬要求**：每次 Verifier prompt 末尾必须写一句"将结论写到 .ccc/verdicts/<task>.verdict.md，退出前用 ls 验证文件存在"
 3. **报告模板修订**：`templates/report.report.md` 加 `> VERDICT:` 段为必填（不是可选）
 
@@ -645,13 +645,9 @@ fi
 
 #### 红线 R-15：禁止 CCC 本体经看板自消费（v0.51 orch 分离）
 
-- **规则**：不得将 CCC 编排仓（`role=orch` / `engine=false`）的平台需求投进 CCC backlog，由 Engine 跑 product/dev/reviewer/tester/kb。平台缺陷一律在 **CCC 仓用开发工具（Claude/OpenCode 或指定 IDE）改一次**，全局生效。
+- **规则**：R-15 = 禁 CCC 业务卡自我派发消费（仍有效）；CCC 本体改动=老板授权下指令直改（CLI），合入经 phase2 自动链（053 v2）。
 - **Why**：自 Loop 把「编排底座」与「业务执行」搅在一起，导致无统一维护窗口、业务仓就地 fork 平台补丁。
-- **机制**：
-  1. `~/.ccc/workspaces.json`：CCC `role=orch`、`engine=false`
-  2. Engine `_discover_workspaces` / `list_engine_paths` 跳过 orch；空 eligible → idle（不 fallback 只跑 CCC）
-  3. Hub 创建任务 API + 前端下达：目标为 orch → 400 / toast 拒绝
-- **允许**：Hub 选 CCC **只聊**运维/设计；控制台 / doctor / runtime 观察
+- **允许**：老板/外脑授权的指令直改与 phase2 合入；经老板明示授权的调度插件（授权须可追溯）不在此列。
 - **触犯后果**：Critical — 底座自消费 = 维护面分裂。
 
 #### 红线 X8：audit 角色必须 ≥ 2h 间隔（v0.22 起）
