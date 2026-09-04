@@ -1,6 +1,6 @@
 # 任务卡 tst904 · smoke: A1-A2 full-probe（DSH 执行）
 
-> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：2
+> 关联：阶段 3 P1 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：tst · 日期：2026-09-03 · 状态版本：3
 
 ## 基准文件（先看）
 
@@ -93,4 +93,4 @@ $ ls /Users/fan/program/apps/ccc-tst/math_utils.py
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：回写契约不完整且结果工件缺失
+- 理由：维护区未完成：完成钩子：维护区只找到 0/4 问
