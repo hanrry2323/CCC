@@ -3113,8 +3113,8 @@ class _APIHandler(BaseHTTPRequestHandler):
         """POST /tasks/{id}/transition → 卡级动作统一入口（人审调整动作统一化 2026-08-14）。
 
         两种动作：
-        1. 重新分派（打回/待分派 → 待分派）：写运行时 sidecar（state=待分派、
-           retry_count=0、redispatch=ts），engine 每轮读取视同重派。主树卡文件只读。
+        1. 重新分派（打回/待分派 → 待分派）：经 CardStateStore.transition 写回卡头并
+           push（REJECTED→TODO 是合法边），sidecar 仅辅助记录重派时间/重试归零。
         2. 作废（待分派/执行中/已回写/打回 → 作废）：终态，写卡文件
            `状态：作废（原因）` + git commit/push + 清 sidecar（与「已关闭」同级权威）。
         body: {status: "待分派"|"作废", reason?: string}
@@ -3209,7 +3209,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "id": task_id, "from": cur, "to": "作废", "reason": reason})
             return
 
-        # ── 重新分派（打回/待分派 → 待分派，运行时 sidecar）──
+        # ── 重新分派（打回/待分派 → 待分派，经 CardStateStore 写卡头）──
         if log_dir is None:
             self._send_json({"error": "EXECUTOR_LOG_DIR 未配置，无法写运行时状态"}, 500)
             return
@@ -3223,8 +3223,45 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         from datetime import datetime, timezone
 
-        from server.engine.runtime_state import write_card_state
+        from server.engine.card_state_store import CardStateStore
+        from server.engine.runtime_state import clear_card_state, write_card_state
 
+        card_path = self._find_card_file(task_id)
+        if card_path is None:
+            self._send_json({"error": f"未找到卡文件: {task_id}"}, 404)
+            return
+        try:
+            store = CardStateStore(
+                _repo_root_for_dispatch(),
+                dispatch_dir="docs/dispatch",
+                data_dir=_executor_log_dir().parent if _executor_log_dir() else None,
+            )
+            snap = store.read_snapshot(card_path)
+            if snap.state != "待分派":
+                store.transition(
+                    card_path,
+                    target="待分派",
+                    expected_state=snap.state,
+                    expected_version=snap.version,
+                    expected_commit=None,
+                    actor="web",
+                    reason=f"人审重新分派: {task_id}",
+                )
+            else:
+                # 对已是待分派的卡保持幂等，不制造无意义状态版本。
+                logger.info("重派幂等：卡已是待分派 %s", task_id)
+        except Exception as exc:
+            self._send_json(
+                {"ok": False, "error": f"重派落盘失败（保留原文，不覆盖）: {exc}"},
+                500,
+            )
+            return
+
+        # sidecar 辅助记录：清旧 infra 冷却/熔断计数，重派时间戳 + 重试归零。
+        try:
+            clear_card_state(log_dir, task_id)
+        except Exception:
+            pass
         ts = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         write_card_state(
             log_dir,
@@ -3240,7 +3277,7 @@ class _APIHandler(BaseHTTPRequestHandler):
             mark_card_pass_miss(task_id)
         except Exception:
             pass
-        self._send_json({"ok": True, "id": task_id, "from": cur, "to": "待分派", "runtime": True})
+        self._send_json({"ok": True, "id": task_id, "from": cur, "to": "待分派", "card": str(card_path), "runtime": True})
 
     def _handle_task_audit(self, task_id: str):
         """POST /tasks/{id}/audit — 手动机审节点（流程开发阶段·老板手动转发去机审）。

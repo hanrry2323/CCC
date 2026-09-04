@@ -640,8 +640,11 @@ class CardStateStore:
                     f"提交冲突: expected={expected_commit}, actual={current.commit}"
                 )
             if target not in _STATE_TARGETS.get(current.state, frozenset()):
-                if not (allow_mirror_completion and current.state == State.TODO.value and target == State.DONE.value):
+                if target != current.state and not (
+                    allow_mirror_completion and current.state == State.TODO.value and target == State.DONE.value
+                ):
                     raise CardValidationError(f"非法状态转移: {current.state} → {target}")
+            # 同态更新允许刷新机审区/部署失败原因，但仍递增版本并走 CAS。
             updated = mutator(current.text) if mutator is not None else current.text
             updated = self._with_state(updated, state_text)
             updated = self._with_version(updated, current.version + 1)

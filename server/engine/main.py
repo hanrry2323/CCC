@@ -510,6 +510,7 @@ def _hold_infra_failure(
     *,
     phase: str,
     infra_count: int | None = None,
+    cooldown_seconds: int | None = None,
 ) -> None:
     """基础设施/引擎侧故障：不进业务重试预算、不打回；记冷却时间，冷却后自动续跑。
 
@@ -520,7 +521,11 @@ def _hold_infra_failure(
 
     strikes = infra_count if infra_count is not None else 0
     power = max(0, strikes - 1)
-    base = _infra_cooldown_seconds(cfg)
+    base = (
+        max(0, int(cooldown_seconds))
+        if cooldown_seconds is not None
+        else _infra_cooldown_seconds(cfg)
+    )
     cooldown = base * (2**power)
 
     try:

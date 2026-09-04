@@ -436,3 +436,89 @@ def test_dsh_auditor_branch_drift_restores(monkeypatch, tmp_path: Path) -> None:
     assert rc == 127
     assert "分支漂移" in err
     assert ["checkout", "main"] in calls
+
+
+def test_branch_written_skips_main_rejected_card(monkeypatch) -> None:
+    """main 已打回的卡不应从 codex 分支信封重捞。"""
+    card_md = (
+        "# 任务卡 tst997 · Phase2 E2E\n"
+        "> 关联：测试 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：tst · 日期：2026-08-28\n"
+    )
+    rejected_main = card_md.replace("状态：已回写", "状态：打回（CC 审核不通过）")
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        if cmd[0] == "for-each-ref":
+            return _ok_rc(0, stdout="refs/remotes/origin/codex/tst997-phase2-e2e\n")
+        if cmd[:3] == ["diff", "--name-only", "origin/main"]:
+            return _ok_rc(0, stdout="docs/dispatch/tst/tst997-phase2-e2e.md\n")
+        if cmd[0] == "show" and cmd[1].startswith("origin/main:"):
+            return _ok_rc(0, stdout=rejected_main)
+        if cmd[0] == "show":
+            return _ok_rc(0, stdout=card_md)
+        return _ok_rc(1)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    assert phase2._list_branch_written_cards() == []
+
+
+def test_probe_failure_does_not_increment_strikes(monkeypatch, tmp_path: Path) -> None:
+    """网关探针失败只写 480s 冷却，不增加 strikes。"""
+    card_file, cfg = _written_audit_env(tmp_path)
+    writes: list[dict] = []
+
+    monkeypatch.setattr(phase2, "_audit_cooldown_active", lambda card_id, cfg: False)
+    monkeypatch.setattr(
+        "server.engine.runtime_state.write_card_state",
+        lambda log_dir, card_id, **kwargs: writes.append(kwargs),
+    )
+    monkeypatch.setattr(phase2, "set_card_state", lambda *args, **kwargs: True)
+    monkeypatch.setattr(phase2, "git", lambda cmd, cwd=None: _ok_rc(0, stdout="main"))
+    result = phase2._record_audit_failure(
+        {"id": "tst997"}, card_file, cfg, "dsh-key-check: 探针不可用（PROBE_UNAVAILABLE）", count_strike=False
+    )
+    assert result == "cooldown"
+    assert writes[-1]["infra_count"] == 0
+    until = writes[-1]["infra_cooldown_until"]
+    from datetime import datetime, timezone
+
+    remaining = datetime.fromisoformat(until.replace("Z", "+00:00")) - datetime.now(timezone.utc)
+    assert 470 <= remaining.total_seconds() <= 481
+
+
+def test_deploy_failure_keeps_card_written(monkeypatch, tmp_path: Path) -> None:
+    """探活失败发生在关闭前，卡必须保留已回写。"""
+    card_file, card = _mk_card(tmp_path)
+    states: list[str] = []
+
+    monkeypatch.setattr(phase2, "git", lambda cmd, cwd=None: _ok_rc(0, stdout="main"))
+    monkeypatch.setattr(phase2, "_branch_in_main", lambda branch: False)
+    monkeypatch.setattr(phase2, "deploy_and_probe", lambda cfg: (False, "health unavailable"))
+    monkeypatch.setattr(phase2, "set_card_state", lambda path, state, verdict, reasons: states.append(state) or True)
+    monkeypatch.setattr("server.board.audit_ledger.record_action", lambda *args, **kwargs: None)
+    result = phase2.process_one(card, {}, audit_driver="mock:pass")
+    assert result["result"] == "deploy_failed"
+    assert states == ["已回写（部署失败）"]
+    assert "状态：已回写" in card_file.read_text(encoding="utf-8")
+
+
+def test_audit_success_clears_strikes(monkeypatch, tmp_path: Path) -> None:
+    """真实审计产出结论后清零历史 strikes。"""
+    card_file, cfg = _written_audit_env(tmp_path)
+    writes: list[dict] = []
+    verdict = tmp_path / "logs" / "tst997-audit-verdict.md"
+
+    def fake_run(card, card_path, branch, cfg, timeout):
+        verdict.write_text("机审：通过\n", encoding="utf-8")
+        return 0, "审计完成", ""
+
+    monkeypatch.setattr(phase2, "preflight_gateway", lambda **kwargs: (True, "ok"))
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
+    monkeypatch.setattr(phase2, "_current_branch", lambda: "main")
+    monkeypatch.setattr(phase2, "cli_env", lambda: {})
+    monkeypatch.setattr(
+        "server.engine.runtime_state.write_card_state",
+        lambda log_dir, card_id, **kwargs: writes.append(kwargs),
+    )
+    result = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg)
+    assert result["verdict"] == "PASS"
+    assert writes[-1] == {"infra_count": 0, "infra_cooldown_until": "1970-01-01T00:00:00Z"}

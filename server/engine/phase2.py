@@ -184,8 +184,9 @@ def _list_branch_written_cards() -> list[dict]:
                     mhdr = CardHeader.from_text(mshow.stdout, fallback_id=Path(cp).stem)
                 except Exception:  # noqa: BLE001
                     mhdr = None
-                if mhdr is not None and base_state(mhdr.state) == _CLOSED:
-                    continue  # main 已关闭 → 已消费
+                if mhdr is not None and base_state(mhdr.state) in (_CLOSED, _REJECTED):
+                    # main 已消费：已关闭，或已打回（打回后分支信封不得重捞）。
+                    continue
             if _branch_in_main(branch):
                 continue  # 分支已合入 main → 已消费（重试场景由工作区卡接管）
             cards.append(
@@ -431,8 +432,27 @@ def _write_audit_verdict(card_file: Path, cfg: dict, verdict: str, reasons: str)
         return False
 
 
-def _record_audit_failure(card: dict, card_file: Path, cfg: dict, reason: str) -> str:
-    """记录机审基础设施失败；同卡连续失败达限 → 熔断打回。"""
+def _clear_audit_strikes(card_id: str, cfg: dict) -> None:
+    """真实机审成功后清零该卡基础设施 strikes 与冷却标记。"""
+    from server.engine.runtime_state import write_card_state
+
+    write_card_state(
+        _audit_log_dir(cfg),
+        card_id,
+        infra_count=0,
+        infra_cooldown_until="1970-01-01T00:00:00Z",
+    )
+
+
+def _record_audit_failure(
+    card: dict,
+    card_file: Path,
+    cfg: dict,
+    reason: str,
+    *,
+    count_strike: bool = True,
+) -> str:
+    """记录机审失败；仅真实审计运行失败计入 strikes，其他故障只冷却。"""
     from server.board.audit_ledger import record_action
     from server.engine.runtime_state import clear_card_state, read_card_state
     from server.engine.task import State, Work
@@ -440,7 +460,10 @@ def _record_audit_failure(card: dict, card_file: Path, cfg: dict, reason: str) -
     card_id = str(card.get("id") or card_file.stem)
     log_dir = _audit_log_dir(cfg)
     current = read_card_state(log_dir).get(card_id, {})
-    strikes = int(current.get("infra_count") or 0) + 1
+    # 冷却期内直接跳过：strikes 与冷却均不动，等待冷却自然到期再重试。
+    if _audit_cooldown_active(card_id, cfg):
+        return "cooldown"
+    strikes = int(current.get("infra_count") or 0) + (1 if count_strike else 0)
     try:
         max_strikes = max(
             1,
@@ -450,7 +473,7 @@ def _record_audit_failure(card: dict, card_file: Path, cfg: dict, reason: str) -
         )
     except (TypeError, ValueError):
         max_strikes = 3
-    if strikes >= max_strikes:
+    if count_strike and strikes >= max_strikes:
         detail = f"机审基础设施连续失败 {strikes} 次，已挂起待人工处理：{reason}"
         if set_card_state(card_file, f"{_REJECTED}（机审基础设施熔断）", "REJECT", detail):
             clear_card_state(log_dir, card_id)
@@ -473,7 +496,8 @@ def _record_audit_failure(card: dict, card_file: Path, cfg: dict, reason: str) -
         [reason],
         cfg,
         phase="audit",
-        infra_count=strikes,
+        infra_count=strikes if count_strike else 0,
+        cooldown_seconds=480 if not count_strike else None,
     )
     return "cooldown"
 
@@ -504,6 +528,18 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     except (TypeError, ValueError):
         timeout = _DEFAULT_AUDIT_TIMEOUT
 
+    work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
+    # 预检/探针属于瞬态基础设施故障：冷却期内整卡跳过，不计 strikes。
+    if _audit_cooldown_active(work_id, cfg):
+        return {
+            "verdict": "ERROR",
+            "reasons": "机审基础设施冷却中，跳过本轮",
+            "transcript": "",
+            "attempts": 0,
+            "infra": True,
+            "cooldown": True,
+        }
+
     # 审核前强制配额预检；3456/Code 是 DSH auditor 的统一出口。
     pf_ok, pf_detail = preflight_gateway(source="phase2")
     if not pf_ok:
@@ -517,13 +553,23 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
             "transcript": "",
             "attempts": 0,
             "infra": True,
+            # 预检未启动 auditor，所有拒单原因均只冷却，不计真实运行 strikes。
+            "transient_probe": True,
         }
 
     # 新契约前置工件校验：主仓卡已回写 + log_dir 执行结果工件存在。缺失 → fail-fast。
+
     ok_prereq, prereq_reason = _audit_prerequisites(card, card_file, cfg)
     if not ok_prereq:
-        logger.error("phase2 机审前置不满足（熔断，不盲目重试）: %s %s", card["id"], prereq_reason)
-        return {"verdict": "ERROR", "reasons": prereq_reason, "transcript": "", "attempts": 0, "infra": True}
+        logger.error("phase2 机审前置不满足（仅冷却，不计 strikes）: %s %s", card["id"], prereq_reason)
+        return {
+            "verdict": "ERROR",
+            "reasons": prereq_reason,
+            "transcript": "",
+            "attempts": 0,
+            "infra": True,
+            "transient_probe": True,
+        }
 
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     if _audit_cooldown_active(work_id, cfg):
@@ -550,6 +596,7 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         if rc == 2 and verdict is not None:
             verdict = "REJECT"
         if rc == 0 and verdict in ("PASS", "REJECT"):
+            _clear_audit_strikes(work_id, cfg)
             return {
                 "verdict": verdict,
                 "reasons": card_reason or _extract_reasons(out, verdict),
@@ -559,6 +606,7 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         if rc != 0 and verdict == "REJECT":
             reasons = card_reason or f"dsh-auditor 退出码 {rc}，机审不通过"
             if rc == 2:
+                _clear_audit_strikes(work_id, cfg)
                 return {
                     "verdict": "REJECT",
                     "reasons": reasons,
@@ -738,6 +786,27 @@ def delete_merged_branch(branch: str) -> tuple[bool, list[str]]:
     return (not problems), problems
 
 
+def _clear_rejected_branch_envelope(card: dict) -> tuple[bool, list[str]]:
+    """机审判不通过打回时同步清理该卡 codex 分支信封（复用 delete_merged_branch 安全校验）。
+
+    若分支已并入 main（合入后门禁失败场景），按合入收尾规则删除；否则分支信封
+    只是打回前的已回写镜像，直接删除（main 已置打回，_list_branch_written_cards 不再重捞）。
+    """
+    branch = str(card.get("branch") or "")
+    if not branch:
+        return True, []
+    if _branch_in_main(branch):
+        return delete_merged_branch(branch)
+    # 未合入的残信封：远端指向旧已回写镜像，删除即可，无需本地分支操作。
+    r = git(["rev-parse", "--verify", "--quiet", f"origin/{branch}"])
+    if r.returncode != 0:
+        return True, []
+    rd = git(["push", "origin", "--delete", branch])
+    if rd.returncode != 0:
+        return False, [f"打回信封远端分支删除失败: {rd.stderr.strip()[:200]}"]
+    return True, []
+
+
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -819,7 +888,13 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                     if audit.get("cooldown"):
                         logger.warning("phase2 机审仍在基础设施冷却期，跳过计数: %s", card["id"])
                         return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
-                    failure_mode = _record_audit_failure(card, card_file, cfg, audit["reasons"])
+                    failure_mode = _record_audit_failure(
+                        card,
+                        card_file,
+                        cfg,
+                        audit["reasons"],
+                        count_strike=not audit.get("transient_probe", False),
+                    )
                     if failure_mode == "circuit_open":
                         return {"id": card["id"], "result": "rejected", "reason": audit["reasons"], "attempts": audit["attempts"]}
                     record_action("phase2_audit_fail", card["id"], source="phase2", detail=f"机审基础设施失败（冷却）: {audit['reasons']}")
@@ -842,9 +917,21 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                     )
                     return {"id": card["id"], "result": "error", "reason": "机审打回落盘失败"}
                 record_action("phase2_reject", card["id"], source="phase2", detail=f"CC 审核不通过自动打回: {audit['reasons']}")
+                cleaned, cleanup_problems = _clear_rejected_branch_envelope(card)
+                if not cleaned:
+                    record_action(
+                        "phase2_alert", card["id"], source="phase2",
+                        detail=f"打回信封清理失败: {'; '.join(cleanup_problems)}",
+                    )
+                    logger.error("phase2 打回信封清理失败（卡已打回，分支保留）: %s %s", card["id"], cleanup_problems)
                 _refresh_index(cfg)
                 logger.warning("phase2 打回（不阻塞其他卡）: %s", card["id"])
-                return {"id": card["id"], "result": "rejected", "reason": audit["reasons"]}
+                return {
+                    "id": card["id"],
+                    "result": "rejected",
+                    "reason": audit["reasons"],
+                    "branch_cleanup": "ok" if cleaned else "failed",
+                }
             # PASS → 有代码分支才合入；wrapper 型卡直接进入主仓门禁。
             if has_merge_branch:
                 ok, err = merge_branch_to_main(branch)
@@ -876,34 +963,33 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
             return {"id": card["id"], "result": "gate_failed", "reason": gate_fails}
 
 
-        # 置已关闭 + 提交 push main（统一门面自带 commit/push）
+        # 部署 + 探活必须先于关闭：探活失败时卡保留「已回写」，下轮可重试。
+        ok, detail = deploy_and_probe(cfg)
+        if not ok:
+            if not set_card_state(card_file, f"{_WRITTEN}（部署失败）", "PASS", f"合入成功但部署未就绪: {detail}"):
+                record_action("phase2_alert", card["id"], source="phase2", detail="部署失败状态落盘失败（保留原文，不覆盖）")
+                return {"id": card["id"], "result": "error", "reason": "部署失败状态落盘失败"}
+            record_action("phase2_deploy_fail", card["id"], source="phase2", detail=f"部署探活失败: {detail}")
+            _refresh_index(cfg)
+            logger.error("phase2 部署探活失败（卡保留已回写待重试）: %s %s", card["id"], detail)
+            return {"id": card["id"], "result": "deploy_failed", "reason": detail}
+
+        # 探活成功后置已关闭 + 提交 push main（统一门面自带 commit/push）。
         if not set_card_state(card_file, _CLOSED, "PASS", "CC 审核通过，自动合入完成"):
             record_action("phase2_alert", card["id"], source="phase2", detail="合入后状态落盘失败（保留原文，不覆盖）")
             return {"id": card["id"], "result": "error", "reason": "合入后状态落盘失败"}
-
-        # 部署 + 探活
-        ok, detail = deploy_and_probe(cfg)
-        if ok:
-            record_action("phase2_pass", card["id"], source="phase2", detail=f"CC 审核通过自动合入+部署探活成功: {detail}")
-            _refresh_index(cfg)
-            # 分支清理（本地+远端，任务四）：失败留痕告警不静默，也不回滚已关闭终态
-            cleaned, cleanup_problems = delete_merged_branch(branch)
-            if not cleaned:
-                record_action(
-                    "phase2_alert", card["id"], source="phase2",
-                    detail=f"分支清理失败: {'; '.join(cleanup_problems)}",
-                )
-                logger.error("phase2 分支清理失败（卡已关闭，分支保留）: %s %s", card["id"], cleanup_problems)
-            logger.info("phase2 完成: %s → 已关闭（%s）", card["id"], detail)
-            return {"id": card["id"], "result": "closed", "reason": detail, "branch_cleanup": "ok" if cleaned else "failed"}
-        # 部署未就绪：卡回「已回写（部署失败）」+ 告警，下轮自动重试（不静默）
-        if not set_card_state(card_file, f"{_WRITTEN}（部署失败）", "PASS", f"合入成功但部署未就绪: {detail}"):
-            record_action("phase2_alert", card["id"], source="phase2", detail="部署失败状态落盘失败（保留原文，不覆盖）")
-            return {"id": card["id"], "result": "error", "reason": "部署失败状态落盘失败"}
-        record_action("phase2_deploy_fail", card["id"], source="phase2", detail=f"部署探活失败: {detail}")
+        record_action("phase2_pass", card["id"], source="phase2", detail=f"CC 审核通过自动合入+部署探活成功: {detail}")
         _refresh_index(cfg)
-        logger.error("phase2 部署探活失败（卡保留已回写待重试）: %s %s", card["id"], detail)
-        return {"id": card["id"], "result": "deploy_failed", "reason": detail}
+        # 分支清理（本地+远端，任务四）：失败留痕告警不静默，也不回滚已关闭终态
+        cleaned, cleanup_problems = delete_merged_branch(branch)
+        if not cleaned:
+            record_action(
+                "phase2_alert", card["id"], source="phase2",
+                detail=f"分支清理失败: {'; '.join(cleanup_problems)}",
+            )
+            logger.error("phase2 分支清理失败（卡已关闭，分支保留）: %s %s", card["id"], cleanup_problems)
+        logger.info("phase2 完成: %s → 已关闭（%s）", card["id"], detail)
+        return {"id": card["id"], "result": "closed", "reason": detail, "branch_cleanup": "ok" if cleaned else "failed"}
     finally:
         if _current_branch() != prev_branch:
             git(["checkout", prev_branch])
