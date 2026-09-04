@@ -109,15 +109,14 @@ class TestLoadRegistry:
         assert cli.command == "scripts/dsh-executor.sh"
         assert cli.args_template == "{card_path} {work_id} {worktree} {role} {biz_worktree}"
         assert cli.inject_hint is False
-        # S4（2026-08-22）：机审验收席切 DSH（dsh-auditor.sh）；Claude Code 不再绑定
-        dsh_audit = reg.cli_entry_for_binding("后段 CC CLI（主链 phase2 自动）")
-        assert dsh_audit is not None
-        assert dsh_audit.role == "验收席"
-        assert dsh_audit.command == "scripts/dsh-auditor.sh"
-        assert dsh_audit.inject_hint is False
-        # 工具收口：中间环节（开发/维护/验收）无 OpenCode/Claude Code，全 DSH
+        # 批E（2026-09-04）：机审验收席换 Claude Code CLI wrapper（cc-auditor.sh）
+        acc_audit = reg.cli_entry_for_binding("后段 CC CLI（claude wrapper，主链 phase2）")
+        assert acc_audit is not None
+        assert acc_audit.role == "验收席"
+        assert acc_audit.command == "/ABS/PATH/TO/CCC/scripts/cc-auditor.sh"
+        assert acc_audit.inject_hint is False
         acc_rows = [e for e in reg.entries if e.role == "验收席"]
-        assert {e.binding for e in acc_rows} == {"后段 CC CLI（主链 phase2 自动）"}
+        assert {e.binding for e in acc_rows} == {"后段 CC CLI（claude wrapper，主链 phase2）"}
         assert all(e.category == "可后台 CLI" for e in acc_rows)
         assert all(e.command for e in acc_rows)
         # 维护也 DSH；全注册表无 opencode 引用

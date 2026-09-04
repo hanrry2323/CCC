@@ -265,3 +265,18 @@ class TestExecutorsExample:
         for e in executors_data["executors"]:
             assert str(e.get("当前绑定", "")) != "OpenCode", "当前绑定不得为 OpenCode"
             assert "opencode" not in str(e.get("命令", "")).lower(), "命令不得指向 opencode"
+
+
+# ── 批E（2026-09-04）：cc-auditor.sh 语法门禁 ──
+
+def test_cc_auditor_script_bash_syntax() -> None:
+    """cc-auditor.sh（后段验收席 claude wrapper）必须通过 bash -n 语法检查。
+
+    批E 第五步：wrapper 是核心产线行为变更，语法门禁入测试（轻量）。
+    """
+    script = PROJECT_ROOT / "scripts" / "cc-auditor.sh"
+    assert script.is_file(), f"cc-auditor.sh 缺失: {script}"
+    import subprocess
+
+    res = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert res.returncode == 0, f"bash -n 失败: {res.stderr}"
