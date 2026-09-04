@@ -9,7 +9,7 @@
 | `docs/INDEX.md` §0 | **重构决策定稿 + 契约 v1（最高优先级）** |
 | `docs/VISION.md` | 对外/对内叙事 |
 | `docs/architecture.md` | 架构概览（新栈 `server/`） |
-| `VERSION` / `CHANGELOG.md` | 版本（v0.70.0） |
+| `VERSION` / `CHANGELOG.md` | 版本（v0.71.0） |
 | `STARTUP-BRIEF.md` | Agent 启动（省 token） |
 | `CLAUDE.md` | 平台开发硬规则 + 开发命令 |
 | `README.md` | 对外首页（须与 VISION 一致） |
