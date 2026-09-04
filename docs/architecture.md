@@ -1,6 +1,6 @@
 # CCC — 框架说明书
 
-> 本文件解释 CCC v0.70.0 的架构（2026-08-02 重构定稿）。面向维护者，agent 不读本文件。  
+> 本文件解释 CCC v0.71.0 的架构（2026-08-02 重构定稿）。面向维护者，agent 不读本文件。  
 > 权威链：[`INDEX.md`](INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）。
 
 ---
@@ -14,7 +14,7 @@
 
 ---
 
-## 概念模型（v0.70.0 重构定稿）
+## 概念模型（v0.71.0 重构定稿）
 
 ```
 任意设备壳（Desktop / 网页 / 手机）
@@ -93,7 +93,7 @@
 │   │   └── scheduler.py                        #   只读巡检 + 导出（launchd 常驻）
 │   ├── web/                                    # HTTP API + 静态页
 │   │   ├── server.py                           #   HTTP 服务端（:7788）
-│   │   ├── brain.py                            #   大脑 Agent 代理（调执行会话 via 6100）
+│   │   ├── brain.py                            #   大脑 Agent 代理（经现役出口）
 │   │   └── css/                                #   静态页样式
 │   ├── relay/                                  # 中转站（模型出口路由）
 │   ├── kb/                                     # 知识库（MCP + BM25 本地检索）
@@ -102,9 +102,8 @@
 │   │   ├── config.example.env                  #   运行参数占位
 │   │   └── executors.example.json              #   执行体注册表（契约 §7）
 │   ├── deploy/                                 # 进程编排
-│   │   ├── com.ccc.web-server.plist            #   launchd plist × 3
+│   │   ├── com.ccc.web-server.plist            #   launchd plist × 2
 │   │   ├── com.ccc.engine.plist
-│   │   ├── com.ccc.board-scheduler.plist
 │   │   └── run.example.sh / health.example.sh
 │   └── tests/                                  # 测试（冒烟 + 单元 + HTTP API）
 │
@@ -120,7 +119,7 @@
 
 ---
 
-## 终态架构（v0.70.0）
+## 终态架构（v0.71.0）
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -147,7 +146,7 @@
 │            │                                              │
 │  ┌─────────▼──────────────────────────────────────────┐  │
 │  │  board/loader.py（任务卡 → BoardItem）              │  │
-│  │  board/scheduler.py（只读巡检 + 导出，launchd 常驻）│  │
+│  │  board/scheduler.py（只读巡检 + 导出，已收敛进 engine） │  │
 │  │  config/loader.py + executors.json（契约 §7）       │  │
 │  └────────────────────────────────────────────────────┘  │
 └────────────────────────┬────────────────────────────────┘
@@ -187,14 +186,14 @@
 
 ## 执行体注册表（契约 §7）
 
-`server/config/executors.json` 六角色，分类只允许「可后台 CLI」/「手动 GUI」：
+`server/config/executors.json` 五角色，分类只允许「可后台 CLI」/「手动 GUI」；工具是可替换插件：
 
 | 角色语义 | 分类 | 当前绑定 |
 |----------|------|----------|
-| 开发 / 写码 | 可后台 CLI | 执行会话 / 自动化值班组件（2026-08-27 三层分工） |
-| 维护 | 可后台 CLI | 执行会话 / 自动化值班组件 |
-| 管理席 | — | 桌面端总调度 |
-| 验收 / 机审 | 可后台 CLI | 自动化值班组件（机审）+ 桌面端终审 |
+| 开发 / 写码 | 可后台 CLI | 前段 DSH |
+| 维护 | 可后台 CLI | 前段 DSH |
+| 管理席 | — | 可替换调度插件（现役外脑 Z Code；桌面端休眠） |
+| 验收 / 机审 | 可后台 CLI | 后段 CC CLI（phase2）+老板否决；前置机审=前段 DSH |
 | 只读取证 / 审计 | — | 自动化值班组件（headless，人工触发，不参与 AUTO 派发） |
 
 派发规则：`可后台 CLI` → Engine 自动拉起；`手动 GUI` → 挂起等人；未知角色 → 不派发。
@@ -226,7 +225,7 @@ reviewer + tester 同时扫「执行中」列：
 
 ## 红线
 
-完整见 `references/red-lines.md`。CCC v0.70.0 红线集：
+完整见 `references/red-lines.md`。CCC v0.71.0 红线集：
 - 18 条编号红线（核心安全/契约/边界）
 - X 系列 8 条（扩展场景：成本/可观测性/契约校验）
 - R 系列 7 条（回归红线）
