@@ -1,7 +1,7 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **版本**：`VERSION`（**v0.71.0**）  
+> **版本**：`VERSION`（**v0.71.0**）
 > **渠道真值以本文为准 · 2026-09-03 更新**：2017 所有模型通道统一经 M1 中转 `3456 → LiteLLM → Code`；`6100/6102` 与 opencode.ai 直连均为退役历史路径。看板已启用鉴权，匿名读接口返回 401。  
 > **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0（重构决策定稿 + 契约 v1 最高优先级）  
 > **文档怎么写 / 项目注册**：[`docs/DOC-PROTOCOL.md`](docs/DOC-PROTOCOL.md) · [`docs/projects/registry.yaml`](docs/projects/registry.yaml)  
