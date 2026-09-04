@@ -1,6 +1,6 @@
-"""后半段 Claude CLI 网关环境自包含 + 配额/通道预检（ccc-plan-053 阶段3 · P0-1 三态收紧）。
+"""后段审核插件网关环境自包含 + 配额/通道预检（ccc-plan-053 阶段3 · P0-1 三态收紧）。
 
-launchd 语境无 zshrc，网关三件（base/model/key）必须显式装配：
+现役经 M1 3456 中转，模型绑定走配置；launchd 语境无 zshrc，网关三件（base/model/key）必须显式装配：
 - key 只经 ``scripts/dsh-key.sh`` 单源解析（env → dsh-web plist → disabled engine plist），
   禁裸依赖 shell env；
 - 派发（engine 门禁，仅 DSH 执行体命令）与审核（phase2 audit_card）前强制调

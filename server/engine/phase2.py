@@ -1,10 +1,10 @@
 """server/engine/phase2.py — 后半段自动闭环（rebuild/phase1 · Phase 1）
 
 链路：卡「已回写」 → 引擎自动触发（server.engine.main.run_loop 每轮调用 /
-      phase2 --daemon 兜底轮询） → DSH auditor（3456/Code）审核 → 合入 → 提交 → 部署 → 探活 → 终态。
+      phase2 --daemon 兜底轮询） → 后段验收插件（现役绑定见 executors.json）审核 → 合入 → 提交 → 部署 → 探活 → 终态。
 
 规则（老板定稿架构 · 后半段）：
-- 审核 = 调用 `scripts/dsh-auditor.sh`（DSH local-litellm → M1 中转 3456 → Code）；
+- 审核 = 调用 `scripts/dsh-auditor.sh`（现役后段审核插件；通道经 M1 中转 3456 → Code，绑定见 executors.json）；
   调用失败重试 >= 3 次退避；耗尽 → ledger 告警 + 卡保留「已回写」（禁止无声丢卡）。
 - 结论「不通过」→ 自动打回 + ledger 记录 + 控制台告警，不阻塞其他卡。
 - 结论「通过」→ 合入 main → 门禁 → 提交 push → 部署 web → /health 探活 → 卡置「已关闭」。
@@ -31,7 +31,7 @@ import urllib.request
 from pathlib import Path
 
 from server.engine.card_state_store import CardStateStore
-from server.engine.dsh_gateway import cli_env, preflight_gateway
+from server.engine.dsh_gateway import ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, cli_env, preflight_gateway
 
 logger = logging.getLogger("ccc.engine.phase2")
 
@@ -394,7 +394,7 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
     """
     auditor = _dsh_auditor_path(cfg)
     if not auditor.is_file():
-        return 127, "", f"机审 wrapper 不存在: {auditor}（当前模型通道=3456/Code）"
+        return 127, "", f"机审 wrapper 不存在: {auditor}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     # 主仓分支保护（A4 加固）：机审前记录主仓分支，机审后校验未漂移。
     prev_branch = _current_branch()
@@ -419,11 +419,11 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
             return 127, "", f"机审后主仓分支漂移（{prev_branch} -> {after_branch}），已恢复 {prev_branch}，机审失败"
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired:
-        return 124, "", f"dsh-auditor 超时（{timeout}s，当前模型通道=3456/Code）"
+        return 124, "", f"dsh-auditor 超时（{timeout}s，当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
     except OSError as exc:
-        return 127, "", f"dsh-auditor 启动失败: {exc}（当前模型通道=3456/Code）"
+        return 127, "", f"dsh-auditor 启动失败: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
     except Exception as exc:  # noqa: BLE001
-        return 127, "", f"dsh-auditor 调用异常: {exc}（当前模型通道=3456/Code）"
+        return 127, "", f"dsh-auditor 调用异常: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
 
 
 def _write_audit_verdict(card_file: Path, cfg: dict, verdict: str, reasons: str) -> bool:
