@@ -1177,7 +1177,7 @@ def _worktree_branch_tip(worktree_hint: str, branch: str) -> str | None:
 
 
 def _pin_audit_commit(card_path: str, sha: str) -> bool:
-    """机审信封钉被审 commit：只更新 worktree 分支卡副本（经统一门面，幂等）。"""
+    """机审信封钉被审 commit：仅适用于 ``--audit`` 手动侧链；主链 phase2 已退出 worktree 机审。"""
     if not sha:
         return True
     path = Path(card_path)
@@ -1203,7 +1203,7 @@ def _pin_audit_commit(card_path: str, sha: str) -> bool:
 def _is_remote_work(work: Work) -> bool:
     """判定卡是否为远端 Worker 卡（认领协议）：执行体 W 号 或 派发 scheduler|remote。
 
-    remote 卡无本地 worktree → 机审/证据检查走分支信封（ccc-plan-020 v2）。
+    DEAD：待批E收敛删除。本判定仅保留兼容旧认领协议，主链 phase2 已退出 worktree 机审。
     """
     import re as _re
 
@@ -1321,7 +1321,10 @@ def _commit_and_push_worktree_card(
     card_path: str,
     work_id: str,
 ) -> bool:
-    """把 worktree 卡（含机审区）commit+push 到分支（信封证据进 git）。"""
+    """把 worktree 卡（含机审区）commit+push 到分支（信封证据进 git）。
+
+    仅适用于 ``--audit`` 手动侧链；主链 phase2 已退出 worktree 机审。
+    """
     wt_card = _worktree_card_candidate(worktree_path, card_path)
     if wt_card is None:
         logger.warning("worktree 卡不存在，无法提交机审证据: work=%s", work_id)
@@ -2219,6 +2222,7 @@ def _audit_severity(text: str) -> str:
 class MachineAuditPrompt:
     """机审/验收席系统 Prompt 构造器。
 
+    DEAD：待批E收敛删除。仅 --audit 手动侧链适用；主链 phase2 已退出机审。
     遵循职责分离原则：仅进行原则性审查与就地修复，删除「独立复跑测试/编译裁决」职责。
     """
 
@@ -3983,9 +3987,8 @@ def _run_machine_audit_after_writeback(
                 return True, [], True
             logger.warning("机审区补提交失败: work=%s → 走重审", work.id)
             logger.info("[ccc089-trace] 补提交支路失败转重审（本支路自身不记账）: work=%s", work.id)
-    # 2017 机审固定交叉配对（老板 2026-08-08 定稿，恢复 08-06 原规则）：
-    # OpenCode 开发 → Claude Code 机审（2026-08-15 起开发仅 OpenCode，Claude Code 不接触开发职能）。
-    # 卡头「验收」字段只决定 M1 端合入验收席（自验收），不决定 2017 机审工具。
+    # DEAD：待批E收敛删除。历史 2017 机审固定交叉配对逻辑；主链 phase2 已退出 worktree 机审。
+    # 卡头「验收」字段只决定后段验收角色，不再在此固定具体工具。
     executor_norm = normalize_tool(work.executor)
     acceptor = "OpenCode" if executor_norm == "Claude Code" else "Claude Code"
     entry = _audit_cli_entry(registry, acceptor)
