@@ -88,8 +88,8 @@ worktree 目录名片段 = <prefix><NNN> 小写（例：ccc-dev-ws-ccc005）
 
 ### 2.4 出卡方式（定死）
 
-1. **入口双层**：批量/方案转卡**优先** `scripts/plan-to-cards.sh`（`ccc-plan`，方案确认后禁止一张张聊着出卡；老板/外脑逐张拟卡指令为合法单卡通道，批量 plan-to-cards 仍是方案期默认）；单卡/临时卡走 `scripts/new-card.sh --project <prefix> --title "…" [--slug …]`。  
-2. 禁止手搓文件名绕过；禁止在 `docs/dispatch/` **根目录**新建卡。  
+1. **入口双层**：批量/方案转卡**优先** `scripts/plan-to-cards.sh`（`ccc-plan`，方案确认后禁止一张张聊着出卡；老板/外脑逐张拟卡指令为合法单卡通道，批量 plan-to-cards 仍是方案期默认）；单卡/临时卡走 `scripts/new-card.sh --project <prefix> --title "…" [--slug …]`。
+2. 禁止手搓文件名绕过；禁止在 `docs/dispatch/` **根目录**新建卡。
 3. 禁止新出 `T<数字>-*.md`（旧 T 卡只读保留，**永不批量改名**）。  
 4. 禁止前缀 `qh`（QuantHive 独立轨道）。
 
