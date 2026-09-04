@@ -504,6 +504,12 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     except (TypeError, ValueError):
         timeout = _DEFAULT_AUDIT_TIMEOUT
 
+    # 新契约前置工件校验：主仓卡已回写 + log_dir 执行结果工件存在。缺失 → fail-fast。
+    ok_prereq, prereq_reason = _audit_prerequisites(card, card_file, cfg)
+    if not ok_prereq:
+        logger.error("phase2 机审前置不满足（熔断，不盲目重试）: %s %s", card["id"], prereq_reason)
+        return {"verdict": "ERROR", "reasons": prereq_reason, "transcript": "", "attempts": 0, "infra": True}
+
     # 审核前强制配额预检；3456/Code 是 DSH auditor 的统一出口。
     pf_ok, pf_detail = preflight_gateway(source="phase2")
     if not pf_ok:
@@ -518,12 +524,6 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
             "attempts": 0,
             "infra": True,
         }
-
-    # 新契约前置工件校验：主仓卡已回写 + log_dir 执行结果工件存在。缺失 → fail-fast。
-    ok_prereq, prereq_reason = _audit_prerequisites(card, card_file, cfg)
-    if not ok_prereq:
-        logger.error("phase2 机审前置不满足（熔断，不盲目重试）: %s %s", card["id"], prereq_reason)
-        return {"verdict": "ERROR", "reasons": prereq_reason, "transcript": "", "attempts": 0, "infra": True}
 
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     if _audit_cooldown_active(work_id, cfg):
@@ -805,6 +805,9 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
             audit = audit_card(card, card_file, branch, cfg, audit_driver)
             if audit["verdict"] == "ERROR":
                 if audit.get("infra"):
+                    if audit.get("cooldown"):
+                        logger.warning("phase2 机审仍在基础设施冷却期，跳过计数: %s", card["id"])
+                        return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
                     failure_mode = _record_audit_failure(card, card_file, cfg, audit["reasons"])
                     if failure_mode == "circuit_open":
                         return {"id": card["id"], "result": "rejected", "reason": audit["reasons"], "attempts": audit["attempts"]}
