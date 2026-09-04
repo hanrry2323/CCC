@@ -43,6 +43,9 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CLUSTER_HP_TARGET": "",
     "CLUSTER_PG_TARGET": "",
     "CLUSTER_PG_SSH_USER": "hp",
+    # Claude CLI 审核通道（与 DSH 探针同源；config.env 未配时回落现常量）
+    "CCC_GATEWAY_BASE_URL": "http://127.0.0.1:3456/v1/messages",
+    "CCC_GATEWAY_MODEL": "Code",
     # 执行体派发运行参数（T32 真实派发闭环）
     "EXECUTOR_TIMEOUT_SECONDS": "300",
     "EXECUTOR_LOG_DIR": "",

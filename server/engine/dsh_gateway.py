@@ -26,9 +26,38 @@ from pathlib import Path
 
 from server.board.audit_ledger import record_action
 
-# Claude CLI 审核通道（2026-09-03 对齐 2017 全通道真值：M1 中转站 local-litellm 3456 · Code）
-ANTHROPIC_BASE_URL = "http://127.0.0.1:3456/v1/messages"
-ANTHROPIC_MODEL = "Code"
+# Claude CLI 审核通道（2026-09-03 对齐 2017 全通道真值：M1 中转站 local-litellm 3456 · Code）。
+# 单源化：网关与探针共用同一对键（DSH_PROBE_URL / DSH_PROBE_MODEL，loader OPTIONAL_KEYS 已有），
+# 未配置时回落现常量值。
+_DEFAULT_BASE_URL = "http://127.0.0.1:3456/v1/messages"
+_DEFAULT_MODEL = "Code"
+
+
+def _gateway_channel() -> tuple[str, str]:
+    """解析 Claude CLI 审核通道（base_url, model）：DSH_PROBE_* env → config.env → 现常量。
+
+    launchd env -i 语境可能无 DSH_PROBE_*（engine plist 只注入 CCC_CONFIG_ENV），
+    故 env 缺失时再回落 config.env；两者皆缺才用常量默认值（行为等价）。
+    """
+    from server.config.loader import load_config
+
+    base_url = os.environ.get("DSH_PROBE_URL", "").strip()
+    model = os.environ.get("DSH_PROBE_MODEL", "").strip()
+    if base_url and model:
+        return base_url, model
+    cfg_path = os.environ.get("CCC_CONFIG_ENV", "").strip() or str(
+        Path(__file__).resolve().parents[2] / "server" / "config" / "config.env"
+    )
+    try:
+        cfg = load_config(cfg_path)
+        base_url = base_url or str(cfg.get("DSH_PROBE_URL") or "").strip()
+        model = model or str(cfg.get("DSH_PROBE_MODEL") or "").strip()
+    except Exception:
+        pass
+    return base_url or _DEFAULT_BASE_URL, model or _DEFAULT_MODEL
+
+
+ANTHROPIC_BASE_URL, ANTHROPIC_MODEL = _gateway_channel()
 _KEY_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dsh-key.sh"
 _CHECK_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dsh-key-check.sh"
 _PREFLIGHT_TTL_SECONDS = 300.0
