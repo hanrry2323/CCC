@@ -5,14 +5,14 @@
 
 ## 一、任务卡 = 唯一事实源
 
-任务卡是 `docs/dispatch/T<序号>-<slug>.md` 的 Markdown 文档。**没有独立待办库**；看板是派生视图，不存数据、不做决策。
+任务卡是 `docs/dispatch/<prefix>/<prefix><NNN>-<slug>.md` 的 Markdown 文档。**没有独立待办库**；看板是派生视图，不存数据、不做决策。
 
 ### 卡结构
 
 ```markdown
-# 任务卡 T46 · 标题（执行体名执行）
+# 任务卡 ccc046 · 标题（执行体执行）
 
-> 关联：项目/意图 · 执行体：X · 验收：Codex · 状态：待分派 · 日期：YYYY-MM-DD
+> 关联：项目/意图 · 执行体：X · 验收：执行体自验收 · 状态：待分派 · 项目：ccc · 日期：YYYY-MM-DD
 
 ## 目标
 一句话，可验收。
@@ -51,16 +51,16 @@
 
 ## 三、执行体注册表（契约 §7）
 
-`server/config/executors.json`：五角色（开发/维护/管理/验收/…），分类只允许「可后台 CLI / 手动 GUI / —」。
+`server/config/executors.json`：角色注册表，分类只允许「可后台 CLI / 手动 GUI / —」，具体绑定见注册表。
 
-- 可后台 CLI（OpenCode/Claude Code）→ Engine 自动拉起（命令+参数模板来自注册表，零硬编码）；
-- 手动 GUI（Trae）→ 挂起等人；
-- 管理/验收席（Codex）→ 不派发。
+- 可后台 CLI → Engine 自动拉起（命令+参数模板来自注册表，零硬编码）；
+- 手动 GUI → 挂起等人；
+- 管理/验收席 → 按角色语义处理，不因工具名固定派发规则。
 - 派发决策按**卡头执行体绑定优先**（`decide_work`，T39）。
 
 ## 四、Engine 驱动（server/engine/）
 
-1. `FileBoardStore` 扫 `docs/dispatch/*.md` → 解析卡头 → `Work`；
+1. `FileBoardStore` 扫 `docs/dispatch/<prefix>/*.md` → 解析卡头 → `Work`；
 2. `decide_work` 决策：AUTO 真实 `subprocess.Popen`（超时/退出码判定）；MANUAL 挂起；
 3. 收单：退出码 0 → 已回写；非 0/超时/启动失败 → 打回附原因；
 4. `save_work` 原子回写卡头 `状态` 行（tmp + os.replace）。
