@@ -58,8 +58,8 @@ OPTIONAL_KEYS: dict[str, str] = {
     # 如需启用，显式在 config.env 配置 EXECUTOR_PROBE_URL
     "EXECUTOR_PROBE_URL": "",
     # DSH 配额/通道探针（P0-1）：统一探针目标 URL/模型覆盖入口。
-    # 缺省（空）由 scripts/lib/dsh-probe.sh 单源解析，默认=真实执行通道
-    # （local-litellm 127.0.0.1:3456/v1/messages · 模型 claude-4-5-haiku）。
+    # 缺省（空）由 scripts/lib/dsh-probe.sh 单源解析，默认=真实执行通道。
+    # 模型绑定走 DSH_PROBE_MODEL/配置单源，不在注释里固定模型名。
     "DSH_PROBE_URL": "",
     "DSH_PROBE_MODEL": "",
     "EXECUTOR_RETRY_ONCE": "true",
