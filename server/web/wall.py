@@ -550,7 +550,7 @@ def dsh_rpc(method: str, payload: dict, timeout: int = 5) -> tuple[bool, str]:
         "payload": payload,
     }).encode("utf-8")
     req = urllib.request.Request(
-        f"http://127.0.0.1:3080/api/{method}",
+        f"{os.environ.get('CCC_DSH_WEB_URL', 'http://127.0.0.1:3080/api/')}{method}",
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
