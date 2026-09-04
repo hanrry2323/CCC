@@ -108,6 +108,30 @@ fi
 CREATED=()
 cd "$PROJECT_ROOT"
 
+# A2 骨架竞态修复：多卡路径「本地全部生成+内容注入完成」后才逐卡走校验/commit/push 链。
+# new-card.sh 单卡即提交即推送（ccc090 原子化）会在中途失败时残留半批已推送卡——
+# 这里先以 CCC_SKIP_GIT=1 跳过单卡 git 链，全部切片注入完成后再统一 git add/commit/push。
+# 失败分支显式对已生成卡置「作废」+commit+push（禁止 rm -f 假回滚：已推送卡无法靠删除撤销）。
+_void_and_commit() {
+  local reason="$1"
+  for c in "${CREATED[@]}"; do
+    [[ -f "$c" ]] || continue
+    "$PYTHON_BIN" - "$c" "$reason" <<'PY'
+from pathlib import Path
+import re, sys
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+t = re.sub(r"(状态\s*[:：])待分派", rf"\1作废（{sys.argv[2]}）", t, count=1)
+p.write_text(t, encoding="utf-8")
+PY
+  done
+  if [[ "$NO_PUSH" != true && ${#CREATED[@]} -gt 0 ]]; then
+    git add -- "${CREATED[@]}" >/dev/null 2>&1 \
+      && git commit -m "chore(card): 作废批量出卡失败残留" >/dev/null 2>&1 \
+      && git push >/dev/null 2>&1 || true
+  fi
+}
+
 while IFS= read -r row; do
   [[ -z "$row" ]] && continue
   stitle="$("$PYTHON_BIN" -c "import json,sys; print(json.load(sys.stdin)['title'])" <<<"$row")"
@@ -117,7 +141,7 @@ while IFS= read -r row; do
   wl_json="$("$PYTHON_BIN" -c "import json,sys; print(json.dumps(json.load(sys.stdin)['whitelist'], ensure_ascii=False))" <<<"$row")"
 
   CARD_PATH="$(
-    "$SCRIPT_DIR/new-card.sh" \
+    CCC_SKIP_GIT=1 "$SCRIPT_DIR/new-card.sh" \
       --title "$stitle" \
       --project "$PROJECT" \
       --slug "$slug" \
@@ -133,8 +157,7 @@ while IFS= read -r row; do
   fi
   if [[ -z "$CARD_PATH" || ! -f "$CARD_PATH" ]]; then
     echo "[ERROR] 出卡后找不到 ${PROJECT}*-${slug}.md" >&2
-    # 回滚：删除已生成的临时卡
-    for c in "${CREATED[@]}"; do rm -f "$c"; done
+    _void_and_commit "批量出卡中途失败"
     exit 1
   fi
 
@@ -210,8 +233,8 @@ if errs:
     sys.exit(1)
 print('[OK] 本项目卡头校验通过')
 " ); then
-  echo "[ERROR] 全量校验未通过，回滚所有临时卡" >&2
-  for c in "${CREATED[@]}"; do rm -f "$c"; done
+  echo "[ERROR] 全量校验未通过，作废本批次已生成卡" >&2
+  _void_and_commit "批量校验失败"
   exit 1
 fi
 

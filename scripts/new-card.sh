@@ -508,7 +508,7 @@ if errs:
   # ── ccc090 出卡原子化：落盘即提交即推送（同一进程链内，逐段捕获 rc） ──
   # 消灭「落盘未提交被 _force_align_dispatch 按 untracked 清除」的吃单窗（R3/R4 四次实锤）。
   # 仅当卡落在本仓 git 树内才执行；dispatch-dir 在树外（临时目录测试形态）→ 跳过，零 git 副作用。
-  if [[ -n "$PROJECT_ROOT_REAL" && "$CARD_PATH" == "$PROJECT_ROOT_REAL"/* ]]; then
+  if [[ "${CCC_SKIP_GIT:-0}" != "1" && -n "$PROJECT_ROOT_REAL" && "$CARD_PATH" == "$PROJECT_ROOT_REAL"/* ]]; then
     REL_CARD="${CARD_PATH#"$PROJECT_ROOT_REAL"/}"
     if ! git -C "$PROJECT_ROOT_REAL" add -- "$REL_CARD"; then
       echo "[ERROR] 原子提交失败（git add）：$REL_CARD（卡已保留在磁盘：$CARD_PATH）" >&2
