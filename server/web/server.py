@@ -1376,7 +1376,7 @@ def _board_cache_key() -> str:
     （board-scheduler/engine/工具链）经 loader 全部落权威路径，该文件仅剩
     pytest 污染偶发更新；对齐后缓存键恢复「索引变更即失效」语义。
     """
-    parts: list[str] = []
+    parts: list[str] = [str(_DISPATCH_DIR)]
     from server.board.loader import get_index_path
 
     for p in (get_index_path(),):
@@ -1568,6 +1568,14 @@ def _compose_board_items(items):
             rel = path_by_id.get(item.id)
             if rel:
                 closed_at = closed_map.get(rel, "")
+                if not closed_at:
+                    try:
+                        closed_at = closed_map.get(
+                            Path(rel).resolve().relative_to(Path(repo_root).resolve()).as_posix(),
+                            "",
+                        )
+                    except ValueError:
+                        pass
         if not audited and base_state(new_state) == "已回写":
             # 机审列状态标签：审核中 / 冷却中 / 修复中 / 待审
             if log_dir and _marker_alive_web(log_dir, item.id, audit=True):

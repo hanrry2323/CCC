@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -50,6 +51,9 @@ def _isolate_board_index_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     """
     from server.board import loader
 
+    isolated_dispatch = tmp_path / "dispatch"
+    shutil.copytree(DISPATCH_DIR, isolated_dispatch)
+    monkeypatch.setattr(sys.modules[__name__], "DISPATCH_DIR", str(isolated_dispatch))
     monkeypatch.setattr(
         loader, "get_index_path",
         lambda dispatch_dir=None: tmp_path / "cards" / "cards.index.jsonl",

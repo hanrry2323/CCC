@@ -30,7 +30,9 @@ os.environ.setdefault("CCC_WEB_TOKEN_TTL", "3600")
 os.environ.setdefault("CCC_WEB_AUTH_REQUIRED", "1")
 
 import json
+import shutil
 import socket
+import subprocess
 import threading
 import time
 from http.client import HTTPConnection
@@ -73,8 +75,36 @@ def _isolate_board_index_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.fixture(scope="module")
-def api_server():
-    """启动 HTTP API 服务（随机端口），返回 base_url。"""
+def api_server(tmp_path_factory: pytest.TempPathFactory):
+    """启动隔离的 HTTP API 服务（随机端口），返回 base_url。
+
+    批次三 P1 修复：API 状态转换（重派/作废）经 CardStateStore 提交卡文件——
+    把 dispatch 复制进临时 Git 仓库作为服务数据源，测试请求永不触碰真实仓与真实卡状态。
+    模块级共享一个隔离副本；各测试类如需自建数据，自行 monkeypatch _DISPATCH_DIR（
+    function scope 覆盖 module scope，测试结束即还原）。
+    """
+    import server.web.server as web_server
+
+    iso_root = tmp_path_factory.mktemp("ccc-api-iso")
+    isolated_dispatch = iso_root / "docs" / "dispatch"
+    isolated_dispatch.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(Path(__file__).resolve().parents[2] / "docs" / "dispatch", isolated_dispatch)
+    remote = iso_root / "remote.git"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(iso_root)], check=True)
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    subprocess.run(["git", "-C", str(iso_root), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(iso_root), "config", "user.name", "test"], check=True)
+    subprocess.run(["git", "-C", str(iso_root), "remote", "add", "origin", str(remote)], check=True)
+    subprocess.run(["git", "-C", str(iso_root), "add", "--", "docs/dispatch"], check=True)
+    subprocess.run(["git", "-C", str(iso_root), "commit", "-q", "-m", "seed dispatch"], check=True)
+    subprocess.run(["git", "-C", str(iso_root), "push", "-q", "-u", "origin", "main"], check=True)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(web_server, "_DISPATCH_DIR", isolated_dispatch)
+    monkeypatch.setattr(web_server, "_repo_root_for_dispatch", lambda: iso_root)
+    monkeypatch.setattr(web_server, "_BOARD_CACHE", None)
+    monkeypatch.setattr(web_server, "_CLOSED_AT_CACHE", None)
+    monkeypatch.setattr(web_server, "_ENRICHED_CACHE", None)
+
     server = create_server(host="127.0.0.1", port=0)
     addr = server.server_address
     base_url = f"http://{addr[0]}:{addr[1]}"
@@ -94,12 +124,14 @@ def api_server():
             time.sleep(_RETRY_DELAY)
     else:
         server.server_close()
+        monkeypatch.undo()
         pytest.fail("API 服务启动失败")
 
     yield base_url
 
     server.shutdown()
     server.server_close()
+    monkeypatch.undo()
 
 
 # ── 鉴权辅助 ──

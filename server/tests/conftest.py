@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # 全局禁用测试时的网络探活，避免测试运行受本地 6100 端口状态影响
 os.environ["EXECUTOR_PROBE_URL"] = ""
 
@@ -39,3 +41,67 @@ os.environ.setdefault("CCC_WEB_TOKEN_TTL", "3600")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+@pytest.fixture(autouse=True)
+def _protect_real_dispatch_writes(monkeypatch: pytest.MonkeyPatch):
+    """测试保险：真实 ``docs/dispatch`` 目录在 pytest 内只允许读。"""
+    real_dispatch = (PROJECT_ROOT / "docs" / "dispatch").resolve()
+
+    def _is_real(path: Path) -> bool:
+        try:
+            return path.resolve() == real_dispatch or real_dispatch in path.resolve().parents
+        except OSError:
+            return False
+
+    def _guard(path: Path, operation: str) -> None:
+        if _is_real(path):
+            raise AssertionError(f"测试禁止写入真实 dispatch 目录: {operation} {path}")
+
+    original_open = Path.open
+    original_write_text = Path.write_text
+    original_write_bytes = Path.write_bytes
+    original_unlink = Path.unlink
+    original_mkdir = Path.mkdir
+    original_replace = Path.replace
+    original_rename = Path.rename
+
+    def guarded_open(self, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in ("w", "a", "x", "+")):
+            _guard(self, f"open({mode})")
+        return original_open(self, mode, *args, **kwargs)
+
+    def guarded_write_text(self, *args, **kwargs):
+        _guard(self, "write_text")
+        return original_write_text(self, *args, **kwargs)
+
+    def guarded_write_bytes(self, *args, **kwargs):
+        _guard(self, "write_bytes")
+        return original_write_bytes(self, *args, **kwargs)
+
+    def guarded_unlink(self, *args, **kwargs):
+        _guard(self, "unlink")
+        return original_unlink(self, *args, **kwargs)
+
+    def guarded_mkdir(self, *args, **kwargs):
+        _guard(self, "mkdir")
+        return original_mkdir(self, *args, **kwargs)
+
+    def guarded_replace(self, target, *args, **kwargs):
+        _guard(self, "replace")
+        _guard(Path(target), "replace-target")
+        return original_replace(self, target, *args, **kwargs)
+
+    def guarded_rename(self, target, *args, **kwargs):
+        _guard(self, "rename")
+        _guard(Path(target), "rename-target")
+        return original_rename(self, target, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded_open)
+    monkeypatch.setattr(Path, "write_text", guarded_write_text)
+    monkeypatch.setattr(Path, "write_bytes", guarded_write_bytes)
+    monkeypatch.setattr(Path, "unlink", guarded_unlink)
+    monkeypatch.setattr(Path, "mkdir", guarded_mkdir)
+    monkeypatch.setattr(Path, "replace", guarded_replace)
+    monkeypatch.setattr(Path, "rename", guarded_rename)
+    yield

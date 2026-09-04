@@ -255,7 +255,7 @@ def verify_maintenance(card_path: str | Path, repo_root: str | Path) -> tuple[bo
         choice = item["choice"].strip("[]").strip()
         note = item["note"].strip()
 
-        if choice not in ("是", "否", "有", "无", "x", "X", " "):
+        if choice not in ("是", "否", "有", "无", "x", "X", "✓", "√"):
             problems.append(f"第 {num} 问「{item['name']}」未正确勾选（当前值为: {item['choice']!r}，应为: 是/否/有/无 或 [x]/[ ]）")
             continue
 

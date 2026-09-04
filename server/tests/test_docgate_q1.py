@@ -71,6 +71,17 @@ def test_q1_and_missing_card(tmp_path: Path):
     assert any("不包含本卡 ID「ccc101」" in p for p in problems)
 
 
+def test_blank_checkbox_choice_is_rejected(tmp_path: Path):
+    """空格 checkbox 不得被当作合法勾选。"""
+    card_file = _make_env(tmp_path, plan_status="部分执行", plan_cards="ccc101")
+    text = card_file.read_text(encoding="utf-8").replace("1. **方案同步**：[是]", "1. **方案同步**：[ ]")
+    card_file.write_text(text, encoding="utf-8")
+    with patch("server.board.docgate.get_modified_files", return_value=[]):
+        ok, problems = verify_maintenance(card_file, tmp_path)
+    assert ok is False
+    assert any("未正确勾选" in problem for problem in problems)
+
+
 def test_q1_no_choice_with_plan_explained(tmp_path: Path):
     """勾选[否] + 卡头有方案编号 + 说明里解释 → 通过（不硬拒绝）。"""
     card_file = _make_env(tmp_path, plan_status="草案", plan_cards="")

@@ -2251,12 +2251,12 @@ class TestPromptInjection:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
 
-        dispatch_dir = tmp_path / "dispatch" / "ccc"
+        dispatch_dir = tmp_path / "dispatch" / "tst"
         dispatch_dir.mkdir(parents=True)
-        card_file = dispatch_dir / "ccc001-test.md"
+        card_file = dispatch_dir / "tst001-test.md"
         card_file.write_text(
-            "# 任务卡 ccc001 · 测试\n"
-            "> 关联：TEST · 执行体：demo · 验收：demo · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09\n"
+            "# 任务卡 tst001 · 测试\n"
+            "> 关联：TEST · 执行体：demo · 验收：demo · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-09\n"
             "\n"
             "## 目标\n测试\n"
             "\n"
@@ -2270,7 +2270,7 @@ class TestPromptInjection:
             encoding="utf-8",
         )
 
-        store.seed(Work(id="ccc001", role="开发执行体", card_path=str(card_file), executor="demo"))
+        store.seed(Work(id="tst001", role="开发执行体", card_path=str(card_file), executor="demo"))
         done_work = store.list_work()[0]
         done_work.state = State.TODO
         store.save_work(done_work)
@@ -2288,7 +2288,7 @@ class TestPromptInjection:
         assert summary["collected"] == 1
 
         # 检查执行体日志是否包含注入的提示
-        log_file = tmp_path / "logs" / "ccc001.log"
+        log_file = tmp_path / "logs" / "tst001.log"
         log_content = log_file.read_text(encoding="utf-8")
         # 日志第一行是引擎启动信息，包含完整 cmd
         assert "项目：test" in log_content
@@ -2300,12 +2300,12 @@ class TestPromptInjection:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
 
-        dispatch_dir = tmp_path / "dispatch" / "ccc"
+        dispatch_dir = tmp_path / "dispatch" / "tst"
         dispatch_dir.mkdir(parents=True)
-        card_file = dispatch_dir / "ccc002-test.md"
+        card_file = dispatch_dir / "tst002-test.md"
         card_file.write_text(
-            "# 任务卡 ccc002 · 旧卡\n"
-            "> 关联：TEST · 执行体：demo · 验收：demo · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-09\n"
+            "# 任务卡 tst002 · 旧卡\n"
+            "> 关联：TEST · 执行体：demo · 验收：demo · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-09\n"
             "\n"
             "## 目标\n旧卡测试\n"
             "\n"
@@ -2315,7 +2315,7 @@ class TestPromptInjection:
             encoding="utf-8",
         )
 
-        store.seed(Work(id="ccc002", role="开发执行体", card_path=str(card_file), executor="demo"))
+        store.seed(Work(id="tst002", role="开发执行体", card_path=str(card_file), executor="demo"))
         done_work = store.list_work()[0]
         done_work.state = State.TODO
         store.save_work(done_work)
@@ -2332,7 +2332,7 @@ class TestPromptInjection:
         summary = run_once(reg, store, cfg)
         assert summary["collected"] == 1
 
-        log_file = tmp_path / "logs" / "ccc002.log"
+        log_file = tmp_path / "logs" / "tst002.log"
         log_content = log_file.read_text(encoding="utf-8")
         # 旧卡无提示段 → 不含注入标记
 
@@ -2359,12 +2359,12 @@ class TestPromptInjection:
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
 
-        dispatch_dir = tmp_path / "dispatch" / "ccc"
+        dispatch_dir = tmp_path / "dispatch" / "tst"
         dispatch_dir.mkdir(parents=True)
-        card_file = dispatch_dir / "ccc999-test.md"
+        card_file = dispatch_dir / "tst999-test.md"
         card_file.write_text(
-            "# 任务卡 ccc999 · DSH 探针\n"
-            "> 关联：TEST · 执行体：DSH headless · 验收：demo · 状态：待分派 · 派发：engine · 项目：ccc · 日期：2026-08-18\n"
+            "# 任务卡 tst999 · DSH 探针\n"
+            "> 关联：TEST · 执行体：DSH headless · 验收：demo · 状态：待分派 · 派发：engine · 项目：tst · 日期：2026-08-18\n"
             "\n"
             "## 目标\n探针\n"
             "\n"
@@ -2379,7 +2379,7 @@ class TestPromptInjection:
         )
 
         store.seed(
-            Work(id="ccc999", role="只读取证/审计执行体", card_path=str(card_file), executor="DSH headless")
+            Work(id="tst999", role="只读取证/审计执行体", card_path=str(card_file), executor="DSH headless")
         )
         done_work = store.list_work()[0]
         done_work.state = State.TODO
@@ -2398,7 +2398,7 @@ class TestPromptInjection:
         assert summary["collected"] == 1
 
         # cmd 应保持 [bash, wrapper, card_path]，不追加提示（wrapper 自读卡）
-        log_file = tmp_path / "logs" / "ccc999.log"
+        log_file = tmp_path / "logs" / "tst999.log"
         log_content = log_file.read_text(encoding="utf-8")
         # 日志首行 = start 信息，含完整 cmd；不应含注入标记「项目提示」
         assert "## 项目提示" not in log_content
