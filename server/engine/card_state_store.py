@@ -500,6 +500,48 @@ class CardStateStore:
                 rel_path=current.rel_path,
             )
 
+    def write_audit_verdict(
+        self,
+        card: str | Path,
+        *,
+        verdict: str,
+        reasons: str,
+        actor: str = "phase2",
+        push: bool = True,
+    ) -> TransitionReceipt:
+        """经 CAS/卡锁写入机审区，不改变卡状态。"""
+        if verdict not in {"PASS", "REJECT"}:
+            raise CardValidationError(f"非法机审结论: {verdict}")
+        snapshot = self.read_snapshot(card)
+        verdict_cn = "通过" if verdict == "PASS" else "不通过"
+        section = (
+            "## 机审区\n\n"
+            "- 审核方：DSH auditor（phase2）\n"
+            f"- 结论：{verdict_cn}\n"
+            f"- 理由：{reasons[:500]}\n"
+        )
+
+        def _mutator(text: str) -> str:
+            if "## 机审区" in text:
+                return re.sub(
+                    r"## 机审区\s*\n.*?(?=\n## |\Z)",
+                    section.rstrip("\n") + "\n",
+                    text,
+                    flags=re.S,
+                    count=1,
+                )
+            return text.rstrip("\n") + "\n\n" + section
+
+        return self.update_card(
+            snapshot.path,
+            mutator=_mutator,
+            actor=actor,
+            reason=f"机审结论：{verdict_cn}",
+            expected_version=snapshot.version,
+            expected_commit=snapshot.commit or None,
+            push=push,
+        )
+
     def _commit_push(self, rel_path: str, message: str, *, branch: str, push: bool = True) -> str:
         with self._git_lock():
             add = _run_git(self.repo_root, ["add", "--", rel_path])
