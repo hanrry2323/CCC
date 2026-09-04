@@ -5,14 +5,14 @@
 
 ## 一句话
 
-主 IDE 谈方案 → 确认 `ccc-plan` → `plan-to-cards` 入队 → Engine+机审静默 → 人审 diff → **合入批准**。
+主 IDE 谈方案 → 确认 `ccc-plan` → `plan-to-cards` 入队 → Engine+机审静默 → phase2 默认自动 **审核→合入→部署**；老板保留否决/打回（可人工兜底触发 `approve-merge`）。
 
 ## 老板口令（只留两个）
 
 | 口令 | 动作 |
 |------|------|
 | 确认方案 / 拆卡入队 | `scripts/plan-to-cards.sh <plan>` → 多卡一次 push |
-| **合入批准** `[卡号…]` | `scripts/approve-merge.sh <id>`（可批处理 ready 队列） |
+| **合入批准** `[卡号…]` | `scripts/approve-merge.sh <id>`（可批处理 ready 队列；默认由 phase2 自动执行，此为人工兜底/否决通道） |
 
 「验收看板」及旧同义句 = **合入批准** 的文档别名（见 [`accept-board-sop.md`](accept-board-sop.md)）。质量过不过看机审/门禁 exit code，不看口头流程。
 
@@ -37,7 +37,7 @@ slices:
 ## 命令
 
 ```bash
-# 拆卡（方案确认后唯一出卡路径；禁止一张张聊着出）
+# 拆卡（方案确认后唯一出卡路径；禁止一张张聊着出；老板/外脑逐张拟卡指令=合法单卡通道）
 scripts/plan-to-cards.sh docs/notes/my.plan.md
 # 或 stdin：cat plan.md | scripts/plan-to-cards.sh -
 
