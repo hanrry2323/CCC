@@ -7,7 +7,7 @@ description: "CCC — Connect–Claude Code. Loop Engineer: 任意设备壳经 H
 
 > **Loop Engineer。** 人定意图，系统自动编排与自主执行。  
 > **任意设备壳**经 HTTP 直连 **2017 单端 :7788**；对话口接**大脑 Agent**；编排面（**薄驱动 Engine + 文档流转 + 看板/HTTP**）。  
-> 权威链：`docs/INDEX.md` §0 · **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`（**v0.70.0**）  
+> 权威链：`docs/INDEX.md` §0 · **文档规范**：`docs/DOC-PROTOCOL.md` · **项目注册**：`docs/projects/registry.yaml` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`（**v0.71.0**）  
 > **注意**：`docs/VISION.md` 仍含 Hub 时期段落（标待核），**勿当现行架构**。  
 > **硬**：读写项目文档必须按 DOC-PROTOCOL；禁止落点外新建、禁止双写 registry。
 
@@ -36,11 +36,9 @@ grep -A 15 "## 红线 11" references/red-lines.md
 ## 人机优先路径（两层验收 · 2026-08-06）
 
 ```text
-任意设备壳 / M1 IDE → 出卡（执行体 OpenCode · 验收 Claude Code）
-  → push → 2017 自动 pull → Engine 派发 OpenCode → worktree
-  → 机械门禁（新 commit + 非空 diff）→ 已回写
-  → Engine 拉 Claude 机审 → ## 机审区 通过
-  → 老板说「验收看板」→ M1 终验 → ## 验收区 + 已关闭 → 合入
+任意设备壳 / 调度插件 → 拟指令
+  → 前段 DSH 开发+前置机审 → 已回写
+  → 后段 CC CLI（phase2）审核/验收/合入/部署 → 已关闭
 ```
 
 小改动（单文件 1–5 行 / 查信息）→ **直接处理，不强制走看板**（红线 12：不擅自启用 CCC）。
@@ -53,17 +51,13 @@ grep -A 15 "## 红线 11" references/red-lines.md
 
 | 席位 | 绑定 |
 |------|------|
-| 日常开发 | **OpenCode**（2017 默认，6102）→ 已回写；不写机审/验收区 |
-| 2017 机审 | 卡头「验收」方（默认 Claude）写 `## 机审区`（回写后自动） |
-| M1 终验 | 听「验收看板」；Claude↔OpenCode 交叉；写 `## 验收区`+已关闭 |
-| 难度突击 | 按需由 Claude Code/OpenCode 顶替（原 Cursor，2026-08-14 弃用） |
-| 管理 | **Codex**（出卡/裁决；**不验收**） |
-| M1 IDE | 开发中枢 + 「验收看板」终验入口 |
-| Trae | 停用 |
+| 前段开发 / 前置机审 | **DSH**（可替换插件）→ 已回写 |
+| 后段审核 / 验收 / 合入 / 部署 | **CC CLI（phase2）**（可替换插件）→ 已关闭 |
+| 管理席 | 可替换调度插件（现役外脑） |
 | HTTP 看板/运维 | 人机实时面 |
-| Desktop | 暂缓 |
+| 其他工具 | 按 `server/config/executors.json` 登记，随时可换 |
 
-用户**不**需要选 Codex 做验收（Cursor 已弃用 2026-08-14）。终验 SOP：`docs/product/accept-board-sop.md`。
+用户**不**需要选 Codex 做验收（Cursor 已弃用 2026-08-14）。后段验收/合入按 phase2 自动链执行，老板保留否决/打回权。
 
 **状态机**（五态不变；可终验 = 已回写 + 机审通过）：
 
