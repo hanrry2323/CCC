@@ -1,4 +1,4 @@
-> ⚠️ 2026-08-24 中转站已退役拆除；文中 ai-loop-router 相关「现行」表述作废——权威拓扑见 `deploy/topology.md`。
+> **史（Hub/Desktop 期）**：本文保留旧 Hub/Desktop 期目录说明；现行目录规范以 2017 布局为准，权威拓扑见 `deploy/topology.md`。中转站已退役拆除。
 # Mac2017 服务端目录规范
 
 > SSOT：Server 机 `~/program` 布局。禁止随意新建顶层业务目录。  
@@ -16,9 +16,9 @@
 /Users/fan/program/
   README.md                 # 本机三句话说明 → 指向本文
   CCC/                      # 主产品 + orch（唯一编排仓）
-  relay/                    # 旧 CCC Relay 子系统（已废弃）；三档 flash/Pro/code 路由
+  relay/                    # 旧 CCC Relay 子系统（已废弃，史）
   infra/
-    ai-loop-router/         # 旧独立仓归档；勿再启用其 plist。现行路由 = M1 的 ai-loop-router（:4100/:4102）
+    ai-loop-router/         # 旧独立仓归档；勿再启用其 plist。现行出口按配置单源管理
   apps/
     ccc-demo/               # 默认 demo
     clawmed-ccc/            # 垂直产品（测试中）
@@ -35,8 +35,8 @@
 
 | 路径 | 用途 | 规则 |
 |------|------|------|
-| `CCC/` | 主产品、Hub/Engine、`relay/` CCC Relay 源码 | 唯一编排仓；不在仓外散落产品代码 |
-| `infra/ai-loop-router/` | 历史中转（旧独立仓名已退役） | **不** register；勿启旧 plist。现行 **ai-loop-router** = M1 的 ai-loop-router（`:4100`/`:4102`） |
+| `CCC/` | 主产品、Engine、`relay/` 历史源码（已废弃，史） | 唯一编排仓；不在仓外散落产品代码 |
+| `infra/ai-loop-router/` | 历史中转（旧独立仓名已退役，史） | **不** register；勿启旧 plist |
 | `apps/<name>/` | 经 doctor register 的业务仓 | **新项目必须落这里**；**唯一代码权威** |
 | `archive/` | 冷存 | 不参与 Engine 登记 |
 | 其他顶层目录 | — | **禁止**；先改本文再创建 |
