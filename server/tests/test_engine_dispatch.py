@@ -105,19 +105,19 @@ class TestLoadRegistry:
         cli = reg.cli_entry_for_role("开发执行体")
         assert cli is not None
         # S3（2026-08-22 起，A4 中性化 08-27 改写绑定措辞）：开发执行体切 DSH（wrapper 自读提示，注入关闭）
-        assert cli.binding == "执行会话 / 自动化值班组件（2026-08-27 三层分工）"
+        assert cli.binding == "DSH"
         assert cli.command == "scripts/dsh-executor.sh"
         assert cli.args_template == "{card_path} {work_id} {worktree} {role} {biz_worktree}"
         assert cli.inject_hint is False
         # S4（2026-08-22）：机审验收席切 DSH（dsh-auditor.sh）；Claude Code 不再绑定
-        dsh_audit = reg.cli_entry_for_binding("自动化值班组件 + 桌面端终审（2026-08-27）")
+        dsh_audit = reg.cli_entry_for_binding("后段 CC CLI（主链 phase2 自动）")
         assert dsh_audit is not None
         assert dsh_audit.role == "验收席"
         assert dsh_audit.command == "scripts/dsh-auditor.sh"
         assert dsh_audit.inject_hint is False
         # 工具收口：中间环节（开发/维护/验收）无 OpenCode/Claude Code，全 DSH
         acc_rows = [e for e in reg.entries if e.role == "验收席"]
-        assert {e.binding for e in acc_rows} == {"自动化值班组件 + 桌面端终审（2026-08-27）"}
+        assert {e.binding for e in acc_rows} == {"后段 CC CLI（主链 phase2 自动）"}
         assert all(e.category == "可后台 CLI" for e in acc_rows)
         assert all(e.command for e in acc_rows)
         # 维护也 DSH；全注册表无 opencode 引用

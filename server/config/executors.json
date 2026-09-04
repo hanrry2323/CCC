@@ -6,19 +6,19 @@
       "角色": "开发执行体",
       "分类": "可后台 CLI",
       "当前绑定": "DSH",
-      "命令": "scripts/dsh-executor.sh",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-executor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
       "worktree_base": "",
-      "注入提示": false,
-      "备注": "开发执行归自动化值班组件 headless（读卡→实现→自测→回写）。inject_hint=false：wrapper 自读卡内提示，Engine 不注入（防污染位置参数）。机审由审计插件另做。",
-      "worker_id": "W4"
+      "备注": "开发执行归自动化值班组件 headless（读卡→实现→自测→回写）。inject_hint=false：wrapper 自读卡内提示，Engine 不注入（防污染位置参数）。机审由 phase2 CC 审核另做（2026-08-27 起后半段闭环）。",
+      "worker_id": "W4",
+      "注入提示": false
     },
     {
       "角色": "维护执行体",
       "分类": "可后台 CLI",
       "当前绑定": "执行会话 / 自动化值班组件",
-      "命令": "scripts/dsh-executor.sh",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-executor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
       "worktree_base": "",
@@ -33,14 +33,16 @@
       "命令": "",
       "参数模板": "",
       "工作目录": "",
+      "worktree_base": "",
       "备注": "出卡/裁决；不执行；不验收",
-      "worker_id": "W3"
+      "worker_id": "W3",
+      "注入提示": false
     },
     {
       "角色": "验收席",
       "分类": "可后台 CLI",
       "当前绑定": "后段 CC CLI（主链 phase2 自动）",
-      "命令": "scripts/dsh-auditor.sh",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-auditor.sh",
       "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
       "工作目录": "",
       "worktree_base": "",
