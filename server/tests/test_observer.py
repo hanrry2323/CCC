@@ -306,16 +306,17 @@ def test_gather_mcp_metrics(tmp_path: Path, monkeypatch) -> None:
     log_dir.mkdir()
     (log_dir / 'T1.log').write_text('⚙ ccc-kb_kb_search\n⚙ ccc-kb_kb_read\n', encoding='utf-8')
     (log_dir / 'T2.log').write_text('⚙ kb_list\n⚙ other_tool\n', encoding='utf-8')
-    opencode_conf = tmp_path / 'opencode.json'
-    opencode_conf.write_text(json.dumps({'mcp': {'ccc-kb': {'enabled': True}}}), encoding='utf-8')
     claude_conf = tmp_path / 'settings.json'
     claude_conf.write_text(json.dumps({'mcpServers': {'ccc-kb': {}}}), encoding='utf-8')
-    monkeypatch.setattr(Path, 'is_file', lambda self: True if self.name in ('opencode.json', 'settings.json') else False)
+    monkeypatch.setattr(Path, 'is_file', lambda self: True if self.name == 'settings.json' else False)
     monkeypatch.setattr(observer, 'Path', lambda *args, **kwargs: tmp_path / args[0] if args and isinstance(args[0], str) and args[0].endswith('.json') else Path(*args, **kwargs))
     metrics = observer.gather_mcp_metrics(log_dir)
     assert metrics['total_calls_observed'] == 3
+    assert metrics['claude_mcp_enabled'] is True
     # F1：成功率无法从日志判定 → None（此前恒 100% 是伪造）
     assert metrics['call_success_rate'] is None
+    # 2026-09-02 OpenCode 通道退役：字段已移除
+    assert 'opencode_mcp_enabled' not in metrics
 
 
 def test_gather_mcp_metrics_strips_ansi_between_glyph_and_tool(tmp_path: Path, monkeypatch) -> None:
@@ -328,14 +329,26 @@ def test_gather_mcp_metrics_strips_ansi_between_glyph_and_tool(tmp_path: Path, m
     log_dir.mkdir()
     (log_dir / 'T1.log').write_text('⚙ \x1b[0m ccc-kb_kb_search\n⚙ \x1b[0m ccc-kb_kb_read\n', encoding='utf-8')
     (log_dir / 'T2.log').write_text('⚙\x1b[0m hp-kb_knowledge_search\n', encoding='utf-8')
-    opencode_conf = tmp_path / 'opencode.json'
-    opencode_conf.write_text(json.dumps({'mcp': {'ccc-kb': {'enabled': True}}}), encoding='utf-8')
     claude_conf = tmp_path / 'settings.json'
     claude_conf.write_text(json.dumps({'mcpServers': {'ccc-kb': {}}}), encoding='utf-8')
-    monkeypatch.setattr(Path, 'is_file', lambda self: True if self.name in ('opencode.json', 'settings.json') else False)
+    monkeypatch.setattr(Path, 'is_file', lambda self: self.name == 'settings.json')
     monkeypatch.setattr(observer, 'Path', lambda *args, **kwargs: tmp_path / args[0] if args and isinstance(args[0], str) and args[0].endswith('.json') else Path(*args, **kwargs))
     metrics = observer.gather_mcp_metrics(log_dir)
     assert metrics['total_calls_observed'] == 3
+    assert 'opencode_mcp_enabled' not in metrics
+
+
+def test_gather_mcp_metrics_does_not_probe_opencode(monkeypatch, tmp_path: Path) -> None:
+    """OpenCode 通道退役后，巡查不访问 ~/.config/opencode/opencode.json。"""
+    log_dir = tmp_path / 'logs'
+    log_dir.mkdir()
+    monkeypatch.setattr(observer, 'Path', lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError('retired OpenCode path must not be probed')
+    ) if args and isinstance(args[0], str) and 'opencode' in args[0] else Path(*args, **kwargs))
+    metrics = observer.gather_mcp_metrics(log_dir)
+    assert 'opencode_mcp_enabled' not in metrics
+    assert metrics['total_calls_observed'] == 0
+
 
 def test_gather_maintenance_metrics(tmp_path: Path, monkeypatch) -> None:
     mock_files = [tmp_path / 'ccc001-test.md', tmp_path / 'ccc002-test.md']

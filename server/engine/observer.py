@@ -1223,18 +1223,13 @@ def is_maintenance_complete(text: str) -> bool:
 
 
 def gather_mcp_metrics(log_dir: Path) -> dict[str, Any]:
-    """指标 1：执行体能否经 ccc-kb 检索项目知识 (检查配置与调用次数)."""
+    """指标 1：执行体能否经 ccc-kb 检索项目知识 (检查配置与调用次数).
+
+    2026-09-02 OpenCode 通道退役：不再探测 ~/.config/opencode/opencode.json，
+    该字段直接移除（观测面行为变更，批D 项6）。
+    """
     # 按当前用户解析配置路径（M1/2017 用户不同，避免绑定 /Users/fan）
-    opencode_conf = Path(os.path.expanduser("~/.config/opencode/opencode.json"))
     claude_conf = Path(os.path.expanduser("~/.claude/settings.json"))
-    opencode_ok = False
-    if opencode_conf.is_file():
-        try:
-            with opencode_conf.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-                opencode_ok = "ccc-kb" in data.get("mcp", {}) and data["mcp"]["ccc-kb"].get("enabled", True)
-        except Exception:
-            pass
     claude_ok = False
     if claude_conf.is_file():
         try:
@@ -1259,7 +1254,6 @@ def gather_mcp_metrics(log_dir: Path) -> dict[str, Any]:
     # 失败数无法从原始日志判定（failed_calls 无来源）——不再伪造 100% 成功率；
     # call_success_rate=None 表示「无法从日志判定失败」，由消费端显式标注而非虚报。
     return {
-        "opencode_mcp_enabled": opencode_ok,
         "claude_mcp_enabled": claude_ok,
         "total_calls_observed": total_calls,
         "call_success_rate": None,
@@ -1463,7 +1457,7 @@ def run_observation(dispatch_dir: Path, log_dir: Path, output_file: Path) -> dic
     audit = gather_audit_trends_metrics(dispatch_dir)
     audit_hit = gather_audit_hit_rate()
     pw = run_playwright_smoke_test()
-    op_enabled = mcp["opencode_mcp_enabled"] or mcp["claude_mcp_enabled"]
+    op_enabled = mcp["claude_mcp_enabled"]
     maint_pct = maint["maintenance_coverage_pct"]
     lesson_pct = lesson["lesson_recirculation_rate_pct"]
     if op_enabled and maint_pct >= 80.0 and (lesson_pct >= 50.0):
@@ -1486,7 +1480,7 @@ def run_observation(dispatch_dir: Path, log_dir: Path, output_file: Path) -> dic
         f"> 报告时间：{today} · 观测执行体：Loop Observer\n\n"
         f"## 1. 观测结论\n\n- **生效评估**：**{conclusion}生效**\n- **核心证据**：{evidence}\n\n"
         f"## 2. 4 项观测指标实测值\n\n### 指标 1：执行体 ccc-kb MCP 检索接入\n"
-        f"- **OpenCode 配置状态**：{('已启用 (Active)' if mcp['opencode_mcp_enabled'] else '未启用 (Inactive)')}\n"
+        f"- **OpenCode 通道**：已退役（2026-09-02 通道退役）\n"
         f"- **Claude Code 配置状态**：{('已启用 (Active)' if mcp['claude_mcp_enabled'] else '未启用 (Inactive)')}\n"
         f"- **观测到实际调用次数**：{mcp['total_calls_observed']} 次\n"
         f"- **调用成功率**：{_mcp_success_display}\n\n"
@@ -1574,7 +1568,7 @@ def main_metrics():
         results = run_observation(dispatch_dir, log_dir, output_file)
         print("\n=== 指标采集摘要 ===")
         print(
-            f"ccc-kb 接入: OpenCode={results['mcp']['opencode_mcp_enabled']}, Claude={results['mcp']['claude_mcp_enabled']}, 累计调用={results['mcp']['total_calls_observed']}次"
+            f"ccc-kb 接入: OpenCode=退役（2026-09-02）, Claude={results['mcp']['claude_mcp_enabled']}, 累计调用={results['mcp']['total_calls_observed']}次"
         )
         print(f"维护区四问覆盖率: {results['maint']['maintenance_coverage_pct']:.1f}%")
         print(f"教训回流率: {results['lesson']['lesson_recirculation_rate_pct']:.1f}%")
