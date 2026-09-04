@@ -85,6 +85,7 @@ def write_card_state(
     redispatch: str | None = None,
     infra_cooldown_until: str | None = None,
     infra_count: int | None = None,
+    conflict_strikes: int | None = None,
     light_fix_count: int | None = None,
 ) -> None:
     """追加一条运行时状态（调用方给定字段；缺省保持历史不变）。"""
@@ -101,6 +102,8 @@ def write_card_state(
         rec["infra_cooldown_until"] = infra_cooldown_until
     if infra_count is not None:
         rec["infra_count"] = int(infra_count)
+    if conflict_strikes is not None:
+        rec["conflict_strikes"] = int(conflict_strikes)
     if light_fix_count is not None:
         rec["light_fix_count"] = int(light_fix_count)
     try:

@@ -95,8 +95,14 @@ def _current_branch() -> str:
     return (r.stdout or "").strip() or "HEAD"
 
 
-def _branch_in_main(branch: str) -> bool:
-    r = git(["merge-base", "--is-ancestor", f"origin/{branch}", "main"])
+def _branch_in_main(branch: str, *, base_ref: str = "origin/main") -> bool:
+    """判定分支是否已并入远端 main（origin/main 为权威；可测试注入）。
+
+    C-7：原对本地 main 判定——merge 已落本地 main 但 push 失败时误判「已消费」，
+    卡 CLOSED→CLOSED 非法转移永久 error。改对 origin/main 判定后，本地领先提交
+    由下轮补推收敛。
+    """
+    r = git(["merge-base", "--is-ancestor", f"origin/{branch}", base_ref])
     return r.returncode == 0
 
 
@@ -744,8 +750,30 @@ def _audit_section(verdict: str, reasons: str) -> str:
     )
 
 
-def merge_branch_to_main(branch: str) -> tuple[bool, str]:
-    """fetch + 合入 origin/<branch> 到本地 main（不 push）。失败自动回滚回原分支。"""
+def _conflict_strikes(card_id: str, cfg: dict, *, increment: bool = False) -> int:
+    """读取（或递增）同卡 merge 冲突 strikes（复用 sidecar 语义）。
+
+    与批二 infra strikes 同源：冲突连犯 ≥2 次 → C-5 熔断打回，不再重审烧 token。
+    """
+    from server.engine.runtime_state import read_card_state, write_card_state
+
+    log_dir = _audit_log_dir(cfg)
+    current = read_card_state(log_dir).get(str(card_id), {})
+    strikes = int(current.get("conflict_strikes") or 0)
+    if increment:
+        strikes += 1
+        write_card_state(log_dir, str(card_id), conflict_strikes=strikes)
+    return strikes
+
+
+def merge_branch_to_main(branch: str, *, card_id: str = "", cfg: dict | None = None) -> tuple[bool, str]:
+    """fetch + 合入 origin/<branch> 到本地 main + 立即补推（C-7）。
+
+    失败自动回滚回原分支。冲突 → 递增 conflict strikes；≥2 → 返回带
+    `CONFLICT_CIRCUIT_OPEN` 的失败原因（调用方据此打回），避免无界重审循环。
+    push 失败：merge 已落本地 main，返回失败原因含 `PUSH_NEEDS_RETRY`，
+    调用方保留卡「已回写」+infra 冷却，下轮补推（杜绝 CLOSED→CLOSED 死锁）。
+    """
     r = git(["fetch", "origin", branch])
     if r.returncode != 0:
         return False, f"fetch origin/{branch} 失败: {r.stderr.strip()[:200]}"
@@ -755,10 +783,35 @@ def merge_branch_to_main(branch: str) -> tuple[bool, str]:
         return False, f"checkout main 失败: {r.stderr.strip()[:200]}"
     r = git(["merge", "--no-edit", f"origin/{branch}"])
     if r.returncode != 0:
+        merge_err = r.stderr.strip()[:200] or r.stdout.strip()[:200]
+        conflicts = _conflict_files()
         git(["merge", "--abort"])
         git(["checkout", prev])
-        return False, f"merge origin/{branch} 失败: {r.stderr.strip()[:200]}"
+        strikes = _conflict_strikes(card_id, cfg or {}, increment=True) if cfg else 1
+        detail = f"merge origin/{branch} 冲突（第 {strikes} 次）: {merge_err}"
+        if conflicts:
+            detail += f"；冲突文件: {', '.join(conflicts[:8])}"
+        if strikes >= 2:
+            return False, f"{detail}; CONFLICT_CIRCUIT_OPEN"
+        return False, detail
+    # C-7：merge 落本地 main 后、状态推进前先补推一次。push 失败保留本地提交，
+    # 下轮重试补推（_branch_in_main 对 origin/main 判定 → 不会误判已消费）。
+    push = git(["push", "origin", "main"])
+    if push.returncode != 0:
+        return False, f"merge 已落本地 main，push 失败: {push.stderr.strip()[:200]}; PUSH_NEEDS_RETRY"
     return True, ""
+
+
+def _conflict_files() -> list[str]:
+    """读取 merge 冲突文件名（合并状态下 git status --porcelain 的 UU/AA/DD 行）。"""
+    r = git(["status", "--porcelain"])
+    out: list[str] = []
+    if r.returncode != 0:
+        return out
+    for ln in (r.stdout or "").splitlines():
+        if len(ln) > 2 and ln[:2].strip() == "UU":
+            out.append(ln[3:].strip())
+    return out
 
 
 def delete_merged_branch(branch: str) -> tuple[bool, list[str]]:
@@ -941,8 +994,24 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 }
             # PASS → 有代码分支才合入；wrapper 型卡直接进入主仓门禁。
             if has_merge_branch:
-                ok, err = merge_branch_to_main(branch)
+                ok, err = merge_branch_to_main(branch, card_id=str(card["id"]), cfg=cfg)
                 if not ok:
+                    # C-5：连续 merge 冲突两次熔断打回，不再重新跑 LLM 机审。
+                    if "CONFLICT_CIRCUIT_OPEN" in err:
+                        git(["checkout", "main"])
+                        card_file = resolve_card_file(card) or card_file
+                        if not set_card_state(card_file, f"{_REJECTED}（合入冲突熔断）", "REJECT", err):
+                            record_action("phase2_alert", card["id"], source="phase2", detail="冲突熔断打回落盘失败")
+                            return {"id": card["id"], "result": "error", "reason": err}
+                        record_action("phase2_reject", card["id"], source="phase2", detail=f"连续合入冲突自动打回: {err}")
+                        _refresh_index(cfg)
+                        return {"id": card["id"], "result": "rejected", "reason": err}
+                    # C-7：merge 已落本地但 push 失败，卡保持已回写并进入 infra 冷却，
+                    # 下轮先补推/重试，不得推进到已关闭再触发 CLOSED→CLOSED 非法转移。
+                    if "PUSH_NEEDS_RETRY" in err:
+                        _record_audit_failure(card, card_file, cfg, err, count_strike=False)
+                        record_action("phase2_alert", card["id"], source="phase2", detail=f"合入后补推待重试: {err}")
+                        return {"id": card["id"], "result": "audit_failed", "reason": err, "infra": True}
                     record_action("phase2_alert", card["id"], source="phase2", detail=f"合入失败: {err}")
                     return {"id": card["id"], "result": "error", "reason": err}
         else:

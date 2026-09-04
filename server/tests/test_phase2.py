@@ -246,6 +246,60 @@ def test_process_one_audit_fail_keeps_card(monkeypatch, tmp_path: Path) -> None:
     assert any(r["action"] == "phase2_audit_fail" for r in recorded)
 
 
+def test_branch_in_main_uses_origin_main(monkeypatch) -> None:
+    """C-7：合入判定必须以 origin/main 为基准，而非本地 main。"""
+    calls: list[list[str]] = []
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        calls.append(list(cmd))
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    assert phase2._branch_in_main("codex/tst-a") is True
+    assert ["merge-base", "--is-ancestor", "origin/codex/tst-a", "origin/main"] in calls
+
+
+def test_merge_push_failure_is_retryable(monkeypatch, tmp_path: Path) -> None:
+    """C-7：合并已落本地但 push 失败时返回补推标记，不推进终态。"""
+    calls: list[list[str]] = []
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        calls.append(list(cmd))
+        if cmd[:2] == ["push", "origin"] and cmd[-1] == "main":
+            return _ok_rc(1, stderr="network down")
+        if cmd[:1] == ["rev-parse"]:
+            return _ok_rc(0, stdout="main")
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    ok, reason = phase2.merge_branch_to_main("codex/tst-a", card_id="tst1", cfg={"EXECUTOR_LOG_DIR": str(tmp_path)})
+    assert ok is False
+    assert "PUSH_NEEDS_RETRY" in reason
+    assert ["push", "origin", "main"] in calls
+
+
+def test_merge_conflict_second_strike_opens_circuit(monkeypatch, tmp_path: Path) -> None:
+    """C-5：同卡连续两次合入冲突后熔断，返回打回标记。"""
+    calls: list[list[str]] = []
+
+    def fake_git(cmd, cwd=None):  # noqa: A002
+        calls.append(list(cmd))
+        if cmd[:1] == ["merge"]:
+            return _ok_rc(1, stderr="CONFLICT (content): merge conflict")
+        if cmd[:1] == ["status"]:
+            return _ok_rc(0, stdout="UU docs/dispatch/tst/tst1.md\\n")
+        if cmd[:1] == ["rev-parse"]:
+            return _ok_rc(0, stdout="main")
+        return _ok_rc(0)
+
+    monkeypatch.setattr(phase2, "git", fake_git)
+    cfg = {"EXECUTOR_LOG_DIR": str(tmp_path)}
+    first = phase2.merge_branch_to_main("codex/tst-a", card_id="tst1", cfg=cfg)
+    second = phase2.merge_branch_to_main("codex/tst-a", card_id="tst1", cfg=cfg)
+    assert "CONFLICT_CIRCUIT_OPEN" not in first[1]
+    assert "CONFLICT_CIRCUIT_OPEN" in second[1]
+
+
 def test_delete_merged_branch_cleans_local_and_remote(monkeypatch) -> None:
     """分支已并入 main → 本地+远端都删（任务四）。"""
     calls: list[list[str]] = []
