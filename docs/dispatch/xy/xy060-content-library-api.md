@@ -1,6 +1,6 @@
 # 任务卡 xy060 · M6.1 内容库 API（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：21
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：22
 
 ## 基准文件（先看）
 
@@ -102,9 +102,45 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 批注落实
 
-」，内容为无批注，无额外落实项。
+」，内容为「无批注，无额外落实项」，无批注落实项。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+卡标题：**任务卡 xy060 · M6.1 内容库 API（DSH 执行）**（关联 xy-plan-009；执行体 DSH；状态待分派；日期 2026-09-05）。
+
+- 目标：在 xianyu 现有 admin 只读适配层中实现或补齐 M6.1「内容库 API」：扫描既有视频产出目录与图文产物目录，按稳定契约输出只读 JSON 元数据列表，供后续展示台消费；每次请求实时发现新产出，不引入发布或工作流副作用。
+- 非目标：不实现或修改 M6.2 工作流 API、M6.3 视频/图文预览页面、M6.4 工作流可视化页面；不修改视频/图文生产核心、pipeline 状态机、worker、调度、发布、数据库 schema 或外部工作流 API；不触发发布、不启动生产任务、不增加后台常驻扫描、不接入鉴权以外的新运行时依赖；不改变既有 admin 页面；本卡只交付 API 适配与对应测试。
+- 红线落实：业务改动仅限 `admin/api/server.py` 与 `tests/admin/test_library.py`；未触碰 `src/xianyu/`、视频管线核心、worker/调度/发布、数据库；未发布、未写数据库、未写真实产出目录、未删除/覆盖真实产物、未调用工作流 API；未修改 CCC 主仓卡；`.ccc-result.md` 未纳入业务仓提交。
+- 人工批注：已读取卡内「## 人工批注」与「## 批注落实」，内容为「无批注，无额外落实项」，无批注落实项。
+
+## 1. 探针输出
+
+工作目录：`/Users/fan/program/apps/.ccc-wt/xy/xy060`（分支 `codex/xy060-content-library-api`）。
+
+| 核实项 | 命令/证据 | 原始输出与结果 |
+|---|---|---|
+| 分支与工作树 | `git branch --show-current && git status --short --branch` | `codex/xy060-content-library-api`；`
+
+## 2. 自测输出
+
+以下命令均在业务 worktree `/Users/fan/program/apps/.ccc-wt/xy/xy060` 执行，记录原始输出与退出码：
+
+1. 测试：`uv run pytest tests/admin/test_library.py tests/admin/ -q`
+   - 原始输出末段：`collected 98 items`；各文件全过（`tests/admin/test_library.py ....................`）；`======================= 98 passed, 30 warnings in 5.60s ========================`（30 个 warning 均为既有测试的 DeprecationWarning/Starlette 弃用提示，与本卡无关）。
+   - 退出码：`0`
+2. 编译：`uv run python -m compileall admin/`
+   - 原始输出：`Listing 'admin/'...`、`Listing 'admin/api'...`、`Listing 'admin/css'...`、`Listing 'admin/js'...`、`Listing 'admin/pages'...`
+   - 退出码：`0`
+3. lint：`uv run ruff check admin/ tests/admin/`
+   - 原始输出：`All checks passed!`
+   - 退出码：`0`
+4. 最终范围与提交核验：`git status --short --branch && git rev-parse HEAD && git rev-parse origin/codex/xy060-content-library-api && git diff --stat origin/main...HEAD && git diff --name-only origin/main...HEAD`
+   - 原始输出：`admin/api/server.py | 138 +++++++++++++++++++++++++++++++++-----------`、`tests/admin/test_library.py | 136 +++++++++++++++++++++++++++++++++++++++++++`；仅上述两个业务文件；工作树仅预置未跟踪 `.venv`；HEAD 与 origin 远端分支同为 `f76951465e9cbc7a5d1ae0480ba4434c70ddb841`。
+   - 退出码：`0`
+
+实现证据：`admin/api/server.py:1410-1614`（实时只读目录扫描、视频/图文字段归一化、坏元数据/不可读条目容错、日期倒序、`GET /api/v1/library` 认证路由）；测试证据：`tests/admin/test_library.py:1-416`（20 个用例覆盖卡内验收第 1–7 条）。
 
 ## 0. 卡标题复述
 
@@ -358,9 +394,7 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 维护区
 
-1. 方案同步：`[是]` —— 仅涉及 `xy-plan-009` 的 6.1「内容库 API」；对账 origin/main 已有 M6.1 实现后仅修复图文真实产出目录、坏元数据与根目录不可读等证据明确的缺口；未宣称 6.2、6.3、6.4 完成。证据：方案文档 `009-frontend-showcase.md:115-120`，业务实现 `admin/api/server.py:1410-1614`。
-2. 教训沉淀：`[无]` —— 本次未新增或修改 CCC 主仓中真实存在的 `docs/notes/YYYY-MM-DD-*.md` 或 `lessons.md` 文档；按卡要求不以口头过程记录替代教训沉淀。
+1. 方案同步：`[是]` —— 本卡仅涉及 `xy-plan-009` 的 6.1「内容库 API」；对账 origin/main 已有 M6.1 实现后，仅修复了证据明确的缺口：真实图文产出目录 `workspace/outputs/image_text` 未接入（新增 `_scan_article_library` 与 `LIBRARY_ARTICLE_OUTPUT_DIR`）、`total_duration` 非法类型导致 500（新增数值归一化）、目录/条目不可读导致 500（新增 OSError 防护）；未宣称 6.2、6.3、6.4 完成。
+2. 教训沉淀：`[无]` —— 本次未新增或修改 CCC 主仓中真实存在的 `docs/notes/YYYY-MM-DD-*.md` 或 `lessons.md` 文档；按卡契约不以口头教训或过程记录代替。
 3. 档案/README：`[否]` —— 未改变项目结构、技术栈或路径；`git diff --name-only origin/main...HEAD` 仅包含 `admin/api/server.py` 与 `tests/admin/test_library.py`，未修改 README、项目档案或生产核心。
-4. 线路图：`[否]` —— 本次仅交付 M6.1 API，未修改 GOAL/roadmap，未顺带推进 M6.2、M6.3、M6.4。
-
-批注落实：无人工批注；已读取卡内「## 人工批注」与「## 批注落实」，无额外落实项。
+4. 线路图：`[否]` —— 本卡仅交付 M6.1 API，未修改 GOAL/roadmap，未顺带推进 M6.2、M6.3、M6.4。
