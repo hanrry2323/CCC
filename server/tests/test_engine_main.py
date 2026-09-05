@@ -1005,56 +1005,114 @@ class TestFileBoardStore:
         assert store.list_work() == []
 
 
+def _write_parallel_worker(tmp_path: Path) -> Path:
+    """写入测试专用可控 worker：started 事件后等待同目录 release 文件。"""
+    worker = tmp_path / "parallel_worker.py"
+    worker.write_text(
+        "import pathlib, sys, time\n"
+        "card = pathlib.Path(sys.argv[1])\n"
+        "started = card.with_suffix('.started')\n"
+        "release = card.with_name('release-' + card.stem)\n"
+        "started.write_text('started', encoding='utf-8')\n"
+        "deadline = time.monotonic() + 30\n"
+        "while not release.exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.001)\n"
+        "if not release.exists():\n"
+        "    raise SystemExit('release event not received')\n",
+        encoding="utf-8",
+    )
+    return worker
+
+
+def _wait_for_started(
+    store: InMemoryBoardStore, started_dir: Path, expected: set[str], *, timeout_s: float
+) -> None:
+    """等待 expected 各 work 的 started 标记；超时说明缺失事件。"""
+    remaining = set(expected)
+    deadline = time.monotonic() + timeout_s
+    while remaining:
+        for work_id in list(remaining):
+            if (started_dir / f"{work_id}.started").is_file():
+                remaining.discard(work_id)
+        if not remaining:
+            return
+        if time.monotonic() >= deadline:
+            missing = ", ".join(sorted(remaining))
+            running = sorted(w.id for w in store.list_work(state=State.RUNNING))
+            raise AssertionError(f"等待 started 标记超时: 缺失 {missing}; RUNNING={running}")
+        time.sleep(0.02)
+
+
+def _wait_for_done_and_idle(
+    store: InMemoryBoardStore, work_ids: set[str], *, timeout_s: float
+) -> None:
+    """等待指定 work 全部进入 DONE 且派发池无存活线程（事件等待，防收单竞态）。"""
+    from server.engine.pool import get_dispatch_pool
+
+    expected = set(work_ids)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        done_ids = {w.id for w in store.list_work(state=State.DONE)}
+        if expected <= done_ids and not get_dispatch_pool().alive_ids():
+            return
+        time.sleep(0.02)
+    running = sorted(w.id for w in store.list_work(state=State.RUNNING))
+    raise AssertionError(f"等待收单超时: 未完成 {sorted(expected)}; RUNNING={running}")
+
+
 class TestParallelAndRelayGuard:
     """T59：并发派发与中继稳定性兜底测试。"""
 
     def test_parallel_dispatch_concurrency(self, tmp_path: Path) -> None:
-        """两张卡并发派发，各自独立执行、收单正确、互不阻塞，总时间小于串行。"""
-        import time
-
-        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="1")
+        """两张卡并发派发，各自独立执行；started 事件证明同时进入执行。"""
+        started_dir = tmp_path / "started"
+        started_dir.mkdir()
+        worker = _write_parallel_worker(started_dir)
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="python3",
+            args_template=f"{worker} {{card_path}}",
+        )
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
-        # Launch two works
         store.seed(
-            Work(id="p1", role="开发执行体", card_path=str(tmp_path / "p1.md")),
-            Work(id="p2", role="开发执行体", card_path=str(tmp_path / "p2.md")),
+            Work(id="p1", role="开发执行体", card_path=str(started_dir / "p1.md")),
+            Work(id="p2", role="开发执行体", card_path=str(started_dir / "p2.md")),
         )
         cfg = {
             "DATA_DIR": str(tmp_path),
             "EXECUTOR_LOG_DIR": str(tmp_path / "logs"),
             "EXECUTOR_TIMEOUT_SECONDS": "5",
             "EXECUTOR_MAX_CONCURRENT": "2",
-            "EXECUTOR_PROBE_URL": "",  # Disable probe
+            "EXECUTOR_PROBE_URL": "",
         }
 
-        start_time = time.time()
-        summary = run_once(reg, store, cfg)  # wait=True 默认 drain
-        end_time = time.time()
+        run_once(reg, store, cfg, wait=False)
+        # 两个 started 事件都出现后才 release；串行实现无法到达此屏障。
+        _wait_for_started(store, started_dir, {"p1", "p2"}, timeout_s=5.0)
+        (started_dir / "release-p1").touch()
+        (started_dir / "release-p2").touch()
+        run_once(reg, store, cfg, wait=True)
 
-        # Parallel: both sleeps run concurrently, so total time is close to 1 second, definitely < 1.8 seconds.
-        # Serial: would be 1 + 1 = 2 seconds, definitely > 2.0 seconds.
-        duration = end_time - start_time
-        assert duration < 1.8, f"Total execution time too long: {duration}s"
-        assert summary["scanned"] == 2
-        assert summary["dispatched"] == 2
-        assert summary["collected"] == 2
-
-        # Both works are DONE
+        assert not store.list_work(state=State.RUNNING)
         done = store.list_work(state=State.DONE)
-        assert len(done) == 2
         assert {w.id for w in done} == {"p1", "p2"}
 
     def test_cross_round_slot_fill_no_batch_join(self, tmp_path: Path) -> None:
-        """MAX=1：wait=False 不阻塞下一轮；槽满时后到卡不派；收单后下一轮补位。"""
-        import time
-
-        reg_path = _write_demo_registry(tmp_path, command="sleep", args_template="1")
+        """MAX=1：wait=False 不 join；首卡 release 后下一轮补派第二卡。"""
+        started_dir = tmp_path / "started"
+        started_dir.mkdir()
+        worker = _write_parallel_worker(started_dir)
+        reg_path = _write_demo_registry(
+            tmp_path,
+            command="python3",
+            args_template=f"{worker} {{card_path}}",
+        )
         reg = load_registry(reg_path)
         store = InMemoryBoardStore()
         store.seed(
-            Work(id="c1", role="开发执行体", card_path=str(tmp_path / "c1.md")),
-            Work(id="c2", role="开发执行体", card_path=str(tmp_path / "c2.md")),
+            Work(id="c1", role="开发执行体", card_path=str(started_dir / "c1.md")),
+            Work(id="c2", role="开发执行体", card_path=str(started_dir / "c2.md")),
         )
         cfg = {
             "DATA_DIR": str(tmp_path),
@@ -1064,29 +1122,25 @@ class TestParallelAndRelayGuard:
             "EXECUTOR_PROBE_URL": "",
         }
 
-        t0 = time.time()
         r1 = run_once(reg, store, cfg, wait=False)
-        assert time.time() - t0 < 0.8, "wait=False 不得等 sleep 收单"
         assert r1["dispatched"] == 1
         assert r1["in_flight"] == 1
-        assert len(store.list_work(state=State.TODO)) == 1
+        _wait_for_started(store, started_dir, {"c1"}, timeout_s=5.0)
 
         r2 = run_once(reg, store, cfg, wait=False)
-        assert r2["dispatched"] == 0, "槽满时不得再派"
+        assert r2["dispatched"] == 0
         assert len(store.list_work(state=State.TODO)) == 1
+        assert not (started_dir / "c2.started").exists()
 
-        deadline = time.time() + 3.0
-        r3 = None
-        while time.time() < deadline:
-            r3 = run_once(reg, store, cfg, wait=False)
-            if r3["dispatched"] == 1:
-                break
-            time.sleep(0.15)
-        assert r3 is not None and r3["dispatched"] == 1, "前卡结束后应补派第二张"
-
-        # drain 收干净
+        (started_dir / "release-c1").touch()
+        # 先等待 c1 完成收单，再由下一轮观察到空槽并补派，避免轮询线程与状态转移竞态。
+        _wait_for_done_and_idle(store, {"c1"}, timeout_s=5.0)
+        r3 = run_once(reg, store, cfg, wait=False)
+        assert r3["dispatched"] == 1
+        _wait_for_started(store, started_dir, {"c2"}, timeout_s=5.0)
+        (started_dir / "release-c2").touch()
         run_once(reg, store, cfg, wait=True)
-        assert len(store.list_work(state=State.DONE)) == 2
+
         assert {w.id for w in store.list_work(state=State.DONE)} == {"c1", "c2"}
 
     def test_run_once_summary_audit_fields(self, tmp_path: Path) -> None:
