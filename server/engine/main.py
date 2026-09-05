@@ -300,25 +300,6 @@ def _acquire_engine_single_instance(data_dir: str) -> None:
 _GIT_DEFAULT_TIMEOUT = 30  # 默认值（git 命令通常 <30s）
 
 
-def _git_run(
-    args: list[str],
-    timeout: int = _GIT_DEFAULT_TIMEOUT,
-    *,
-    cwd: Path | str | None = None,
-    check: bool = True,
-    capture: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    """统一 git 调用：封装 timeout，避免磁盘锁/网络延迟永久阻塞。"""
-    return subprocess.run(
-        args,
-        cwd=str(cwd) if cwd else None,
-        capture_output=capture,
-        text=True,
-        timeout=timeout,
-        check=check,
-    )
-
-
 _probe_failures_count = 0
 
 # T67 验收区预检缓存：{文件路径: (mtime, 已验收判定)}，避免持续模式每轮全量读盘
@@ -461,21 +442,6 @@ def is_retryable_failure(work_id: str, problems: list[str], log_dir: Path, phase
 def _is_persistence_failure(reasons: list[str]) -> bool:
     """机审已通过但证据落盘/推送失败 → 引擎侧故障（audit 日志无业务否定）。"""
     return any(("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r) for r in reasons)
-
-
-def _write_pipeline_warning(event: str, work_id: str, detail: str) -> None:
-    """写 pipeline 告警状态（不抛异常，Engine 运行时自动采集）。"""
-    try:
-        from server.engine.pipeline_status import write_pipeline_status
-
-        write_pipeline_status(
-            event=event,
-            work_id=work_id,
-            detail=detail,
-            level="warning",
-        )
-    except Exception:
-        pass
 
 
 def _mark_branch_card_state(
@@ -1946,25 +1912,6 @@ def _worktree_has_nonempty_diff(worktree_path: str) -> bool:
     return bool(res.stdout.strip())
 
 
-def _card_is_written_back(card_path: str) -> bool:
-    """卡头「状态」段是否已为「已回写」（状态观测用；不再单独充当产物证据）。"""
-    if not card_path:
-        return False
-    try:
-        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped.startswith(">"):
-            continue
-        for seg in stripped[1:].split("·"):
-            seg = seg.strip()
-            if seg.startswith("状态："):
-                return seg[len("状态：") :].strip() == "已回写"
-    return False
-
-
 def _card_machine_audit_passed(card_path: str) -> bool:
     """卡正文 ``## 机审区`` 后是否含通过标记。"""
     if not card_path:
@@ -2277,27 +2224,6 @@ def _audit_severity(text: str) -> str:
     if m:
         return m.group(1)
     return "中"
-
-
-def _is_mechanical_rejection_text(text: str) -> bool:
-    """是否包含机械问题特征（测试/编译/lint 失败、范围越界等）。"""
-    if not text or not text.strip():
-        return False
-    body = _audit_output_body(text)
-
-    keywords = [
-        "测试失败",
-        "测试未跑",
-        "编译失败",
-        "lint失败",
-        "lint 失败",
-        "范围越界",
-        "超出范围",
-        "不在范围",
-        "范围外",
-    ]
-    body_lower = body.lower()
-    return any(kw in body_lower for kw in keywords)
 
 
 def match_path(file_path: str, pattern: str) -> bool:

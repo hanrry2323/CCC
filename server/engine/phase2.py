@@ -461,18 +461,6 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
         return 127, "", f"验收席 wrapper 调用异常: {exc}（当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
 
 
-def _write_audit_verdict(card_file: Path, cfg: dict, verdict: str, reasons: str) -> bool:
-    """经 CardStateStore 门面把机审结论写入主仓卡（CAS/锁，禁旁路直写）。"""
-    try:
-        store = _phase2_store(card_file)
-        push = (store.repo_root / ".git").exists()
-        store.write_audit_verdict(card_file, verdict=verdict, reasons=reasons, push=push)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("机审区经统一门面落主卡失败: %s (%s)", card_file, exc)
-        return False
-
-
 def _clear_audit_strikes(card_id: str, cfg: dict) -> None:
     """真实机审成功后清零该卡基础设施 strikes 与冷却标记。"""
     from server.engine.runtime_state import write_card_state

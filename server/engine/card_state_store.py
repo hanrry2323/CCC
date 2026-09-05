@@ -22,7 +22,6 @@ import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import StrEnum
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -111,10 +110,6 @@ class CardPushError(CardStateError):
 
 class CardValidationError(CardStateError):
     code = "INVALID_TRANSITION"
-
-
-class TransitionResult(StrEnum):
-    OK = "ok"
 
 
 @dataclass(frozen=True)
