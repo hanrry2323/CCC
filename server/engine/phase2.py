@@ -44,8 +44,8 @@ _REJECTED = "打回"
 
 _BRANCH_PREFIX = "codex/"
 
-# 卡头「状态：X」字段改写（与 engine main.py 同口径）
-_STATE_RE = re.compile(r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)")
+# 卡头「状态：X」字段改写——单源自 card_state_store._STATE_RE（v2.0.0 合并三份重复定义）
+from server.engine.card_state_store import _STATE_RE  # noqa: E402
 
 # Claude Code 结论机器可读标记（规避历史「机审正则坑」）
 _PASS_MARKER = "PHASE2_VERDICT: PASS"

@@ -32,9 +32,8 @@ from server.engine.task import State, Work
 
 logger = logging.getLogger("ccc.engine.store")
 
-# 卡头「状态：X」段匹配（用于回写时定位替换）
-# lookahead 保留 `·` 前的空格，不消费
-_STATE_PAIR_RE = re.compile(r"(状态\s*[:：]\s*)([^\n·]+?)(?=\s*·|\s*$)")
+# 卡头「状态：X」段匹配——单源自 card_state_store._STATE_RE（v2.0.0 合并三份重复定义）
+from server.engine.card_state_store import _STATE_RE as _STATE_PAIR_RE  # noqa: E402
 
 # 待分派（重试2/3：原因）或 待分派（重试2：原因）→ 持久化 retry_count
 _RETRY_IN_STATE_RE = re.compile(r"待分派（重试(\d+)")

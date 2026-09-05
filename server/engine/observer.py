@@ -1155,23 +1155,16 @@ def write_report(findings: list[dict[str, Any]], repo_root: Path) -> Path:
     except Exception as e:
         logger.error("failed to save report to DATA_DIR/observer: %s", e)
 
-    # 只有当内容发生变化时，才写入 docs/notes/
+    # v2.0.0（文档连续性纪律）：机器巡检报告禁入 docs/notes/，改为覆盖式 single-latest
+    # （docs/notes/latest-ccc-patrol.md，历史在 DATA_DIR/observer/ 按日期保留）
     notes_dir = repo_root / "docs" / "notes"
     try:
         notes_dir.mkdir(parents=True, exist_ok=True)
-        report_path = notes_dir / report_name
-        should_write = True
-        if report_path.exists():
-            existing_content = report_path.read_text(encoding="utf-8")
-            if existing_content == content:
-                should_write = False
-        if should_write:
-            report_path.write_text(content, encoding="utf-8")
-            logger.info("patrol report (changed) saved to docs/notes: %s", report_path)
-        else:
-            logger.info("patrol report unchanged, skipping docs/notes update")
+        report_path = notes_dir / "latest-ccc-patrol.md"
+        report_path.write_text(content, encoding="utf-8")
+        logger.info("patrol single-latest saved to docs/notes: %s", report_path)
     except Exception as e:
-        logger.error("failed to save report to docs/notes: %s", e)
+        logger.error("failed to save single-latest patrol to docs/notes: %s", e)
         report_path = observer_dir / report_name  # fallback
 
     return report_path

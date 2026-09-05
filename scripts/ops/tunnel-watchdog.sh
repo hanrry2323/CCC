@@ -13,6 +13,22 @@ log_line() {
   printf '%s action=%s result=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" "$2" >> "$LOG_FILE"
 }
 
+
+# ── 日志轮转（copytruncate 式，>50M 截断，保留最近 3 份）──
+rotate_log() {
+  local f="$1" cap=$((50 * 1024 * 1024))
+  [ -f "$f" ] || return 0
+  local size
+  size=$(stat -f %z "$f" 2>/dev/null || echo 0)
+  [ "$size" -gt "$cap" ] || return 0
+  local ts; ts=$(date +%Y%m%d%H%M%S)
+  cp "$f" "${f}.${ts}" && : > "$f"
+  ls -t "${f}".* 2>/dev/null | grep -v '\.log$' | tail -n +4 | xargs rm -f 2>/dev/null
+  echo "$(date '+%Y-%m-%dT%H:%M:%S%z') action=log-rotate result=done file=$f size=$size" >> "$LOG_FILE"
+}
+rotate_log "${HOME}/.ccc/logs/engine.stderr.log"
+rotate_log "${HOME}/.ccc/logs/web-server.stderr.log"
+
 probe_tunnel() {
   [[ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$CCC_TUNNEL_HEALTH_URL")" == "200" ]]
 }
