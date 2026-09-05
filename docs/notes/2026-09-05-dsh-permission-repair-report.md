@@ -20,3 +20,11 @@
 ## 回滚
 
 撤销本次新增 prompt 约束和对应静态测试即可；不需重启 Engine，也不手动终止 xy060。下次 Engine 重派时 wrapper 自动使用新提示。
+
+## 重派默认地址修复提交收口（2026-09-05）
+
+- `scripts/redispatch-card.sh` 当前默认看板地址为 `http://192.168.3.116:7788`，并支持 `CCC_BOARD_URL` 覆盖；该修复已在当前 HEAD。
+- `bash scripts/tests/test-redispatch-default.sh`：通过。
+- `.venv-hub/bin/ruff check server/`：通过（All checks passed）。
+- `.venv-hub/bin/pytest -q server/tests/test_skeleton.py server/tests/test_result_report_api.py`：通过（45 passed）。
+- `git diff --check`：通过。
