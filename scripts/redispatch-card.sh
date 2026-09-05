@@ -16,6 +16,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BOARD_URL="${CCC_BOARD_URL:-http://192.168.3.116:7788}"
 
+# 写端点启用鉴权时由调用方注入短期 token；绝不在脚本或日志中落盘。
+AUTH_HEADERS=()
+if [[ -n "${CCC_BOARD_TOKEN:-}" ]]; then
+  AUTH_HEADERS=(-H "Authorization: Bearer ${CCC_BOARD_TOKEN}")
+fi
+
 IDS=()
 DISPATCH_DIR=""
 while [[ $# -gt 0 ]]; do
@@ -36,7 +42,8 @@ cd "$PROJECT_ROOT"
 rc=0
 for cid in "${IDS[@]}"; do
   if out="$(curl -sf --max-time 10 -X POST "${BOARD_URL}/tasks/${cid}/transition" \
-      -H 'Content-Type: application/json' -d '{"status":"待分派"}' 2>&1)"; then
+      -H 'Content-Type: application/json' "${AUTH_HEADERS[@]}" \
+      -d '{"status":"待分派"}' 2>&1)"; then
     echo "[OK] ${cid}: ${out}"
   else
     echo "[ERROR] ${cid}: ${out}" >&2
