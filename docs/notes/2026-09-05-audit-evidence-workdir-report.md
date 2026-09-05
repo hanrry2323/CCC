@@ -26,4 +26,4 @@
 
 ## 4. 收口
 
-修复提交并推送后，重启 Engine；若 xy060 已处于打回，使用带 `CCC_BOARD_TOKEN` 的正规 redispatch 让 Engine 按既有业务 worktree 重跑，不绕过 `test-evidence`，不修改业务实现。
+修复提交并推送后，已通过 launchctl 重启 Engine；实测 `com.ccc.engine` 状态为 `running`，日志出现 heartbeat。尝试用本机鉴权文件获取 Bearer token 并正规 redispatch `xy060`，`POST /session` 返回 401（凭证与当前服务配置不匹配），因此未伪造成功、未手工改状态；xy060 重派待有效 `CCC_BOARD_TOKEN` 后由正规脚本执行。未绕过 `test-evidence`，未修改业务实现。
