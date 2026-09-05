@@ -430,7 +430,6 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
         proc = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
             timeout=timeout,
             env=child_env,
             cwd=str(_repo_root()),
@@ -440,7 +439,13 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
             logger.warning("机审后主仓分支漂移: %s -> %s，自动恢复 %s，机审判失败", prev_branch, after_branch, prev_branch)
             git(["checkout", prev_branch])
             return 127, "", f"机审后主仓分支漂移（{prev_branch} -> {after_branch}），已恢复 {prev_branch}，机审失败"
-        return proc.returncode, proc.stdout or "", proc.stderr or ""
+        stdout = proc.stdout or b""
+        stderr = proc.stderr or b""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return proc.returncode, stdout, stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"验收席 wrapper 超时（{timeout}s，当前模型通道={ANTHROPIC_BASE_URL} · {ANTHROPIC_MODEL}）"
     except OSError as exc:

@@ -465,6 +465,32 @@ def test_dsh_auditor_accepts_empty_worktree_contract(monkeypatch, tmp_path: Path
     assert rc == 0
 
 
+def test_dsh_auditor_decodes_invalid_utf8_output(monkeypatch, tmp_path: Path) -> None:
+    """验收席输出含非法 UTF-8 时替换解码，并继续解析 verdict。"""
+    card_file = tmp_path / "tst995.md"
+    card_file.write_text("# 任务卡 tst995\n", encoding="utf-8")
+    monkeypatch.setattr(phase2, "_current_branch", lambda: "main")
+    monkeypatch.setattr(phase2, "cli_env", lambda: {})
+    monkeypatch.setattr(
+        phase2.subprocess,
+        "run",
+        lambda *args, **kwargs: _ok_rc(
+            0,
+            stdout=b"noise-\xef\xff\nPHASE2_VERDICT: PASS\n",
+            stderr=b"warning-\xef\xfe",
+        ),
+    )
+
+    rc, out, err = phase2._run_dsh_auditor(
+        {"id": "tst995", "project": "tst"}, card_file, "", {"DSH_AUDITOR_BIN": _fake_auditor(tmp_path)}, 900
+    )
+
+    assert rc == 0
+    assert "�" in out
+    assert "�" in err
+    assert phase2._claude_verdict_from_output(out) == "PASS"
+
+
 def test_dsh_auditor_reads_command_from_registry(monkeypatch, tmp_path: Path) -> None:
     """批E 定向：注册表换命令 → phase2 用新命令（插座单源）。
 
