@@ -10,16 +10,30 @@
 - 补充测试约束：缺少 pytest 时优先使用业务仓已有入口/解释器；不要用带 `danger-full-access` escalation 参数的 uvx/临时安装；确实无法测试时记录原始失败并继续写 `.ccc-result.md`，不要无限重试。
 - 在 `server/tests/test_skeleton.py` 增加静态契约测试，读取 wrapper 源文本检查上述 prompt 语义并执行 `bash -n`；不启动真实 DSH。
 
+## DSH 默认权限预设（2026-09-05）
+
+- 修改位置：`~/.dsh/settings.yaml` 根级增加：
+
+  ```yaml
+  permissionPresets:
+    defaultPreset: danger-full-access
+  ```
+
+- 保留项：原有设置键和值未删除或改写；未写入凭据、token 或 key。
+- 配置验证：`dsh --dump-config --profile headless` 已显示权限预设插件及 `danger-full-access` 组合（sandbox=`danger-full-access`、approval=`never`）。
+- 备份：修改前已在 DSH 配置目录保留带时间戳的 `settings.yaml.bak-*` 备份。
+
 ## 验证
 
 - `bash -n scripts/dsh-executor.sh`：通过。
 - `.venv-hub/bin/pytest -q server/tests/test_skeleton.py server/tests/test_result_report_api.py`：通过（45 passed）。
 - `.venv-hub/bin/ruff check server/`：通过（All checks passed）。
 - `git diff --check`：通过。
+- `bash scripts/tests/test-redispatch-default.sh`：通过。
 
 ## 回滚
 
-撤销本次新增 prompt 约束和对应静态测试即可；不需重启 Engine，也不手动终止 xy060。下次 Engine 重派时 wrapper 自动使用新提示。
+撤销本次新增 prompt 约束和对应静态测试即可；不需重启 Engine，也不手动终止 xy060。DSH 配置回滚时，从 `~/.dsh/settings.yaml` 删除新增的 `permissionPresets.defaultPreset`（或恢复修改前的 `settings.yaml.bak-*`）；不得改动其他设置。下次 Engine 重派时 wrapper 自动使用新提示。
 
 ## 重派默认地址修复提交收口（2026-09-05）
 
@@ -28,3 +42,7 @@
 - `.venv-hub/bin/ruff check server/`：通过（All checks passed）。
 - `.venv-hub/bin/pytest -q server/tests/test_skeleton.py server/tests/test_result_report_api.py`：通过（45 passed）。
 - `git diff --check`：通过。
+
+## 后续观察
+
+不重启 Engine、不杀 DSH。仅通过自然生命周期获取新 xy060 会话；新会话应出现 `Current DSH file policy: danger-full-access` 与 `Approval prompts are disabled... do not set sandbox_permissions`。若再次出现权限升级请求，应停止并报告。
