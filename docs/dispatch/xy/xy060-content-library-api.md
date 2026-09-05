@@ -1,6 +1,6 @@
 # 任务卡 xy060 · M6.1 内容库 API（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：3
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：4
 
 ## 基准文件（先看）
 
@@ -102,9 +102,36 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 批注落实
 
-」均为"无批注"），已核对无需落实。
+」。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+卡标题：**任务卡 xy060 · M6.1 内容库 API（DSH 执行）**。
+
+- 目标：在 xianyu 现有 admin 只读适配层中实现或补齐 M6.1「内容库 API」：扫描既有视频产出目录与图文产物目录，按稳定契约输出只读 JSON 元数据列表，供后续展示台消费；每次请求实时发现新产出，不引入发布或工作流副作用。
+- 非目标：不实现或修改 M6.2 工作流 API、M6.3 视频/图文预览页面、M6.4 工作流可视化页面；不修改视频/图文生产核心、pipeline 状态机、worker、调度、发布、数据库 schema 或外部工作流 API；不触发发布、不启动生产任务、不增加后台常驻扫描、不接入鉴权以外的新运行时依赖；不改变既有 admin 页面。
+- 红线落实：仅核对并保留业务改动在 admin 只读适配层及本卡对应测试；未触碰 `src/xianyu/`、视频管线核心、worker/调度/发布、数据库；未发布、未写数据库、未写真实产出目录、未调用工作流 API；未修改 CCC 主仓卡；本结果文件未纳入业务提交。
+- 人工批注：无；已核对卡内「## 人工批注」与「## 批注落实」。
+
+## 1. 探针输出
+
+工作目录：`/Users/fan/program/apps/.ccc-wt/xy/xy060`。
+
+| 核实项 | 命令/证据 | 原始结果摘要 |
+|---|---|---|
+| 业务入口 | `grep -n 'library\|scan_library' admin/api/server.py` | `scan_library` 位于 `admin/api/server.py:1559`；`GET /api/v1/library` 位于 `admin/api/server.py:1595`。 |
+| 认证边界 | `grep -n 'verify_credentials\|library' admin/api/server.py` | 路由使用 `Depends(verify_credentials)`；既有 Basic Auth 边界沿用。 |
+| 真实产出目录 | `grep -n 'LIBRARY_OUTPUT_DIR\|LIBRARY_ARTICLE_OUTPUT_DIR' admin/api/server.py` | 视频目录为 `ROOT / "video-pipeline" / "output"`；图文目录为 `ROOT / "workspace" / "outputs" / "image_text"`。 worktree 当前目录不存在时返回空列表。 |
+| 既有测试 | `ls tests/admin/`；读取 `tests/admin/test_library.py` | `tests/admin/test_library.py` 存在，共 416 行；覆盖视频、图文、空态、坏 JSON、字段降级、实时发现、日期排序、认证和只读边界。 |
+| 业务文档 | 读取 `README.md`、`AGENTS.md`、`CLAUDE.md` | 核实 Python/FastAPI、admin API 与测试/lint 入口及仓库红线。 |
+| 范围对账 | `git diff origin/main...HEAD --name-only` | 仅：`admin/api/server.py`、`tests/admin/test_library.py`。 |
+| 工作树 | `git status --short` | 仅有预置环境软链接 `.venv` 未跟踪；未出现业务文件改动。 |
+
+## 2. 自测输出
+
+#
 
 ## 0. 卡标题复述
 
@@ -136,7 +163,7 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 维护区
 
-1. 方案同步：`[是]` — 仅交付 `xy-plan-009` 的 6.1「内容库 API」；`docs/projects/xy/plans/009-frontend-showcase.md` 现状为「状态：待验收 · 进度 5/5」；本卡验收边界 = 只核对 `/api/v1/library` 字段完整性、当日产出可见性、新任务自动收录，与方案一致；未宣称 6.2–6.4 完成（6.2 `/api/v1/workflows` 已存在于 server.py，属 xy053 卡既有范围，本卡未触碰）。
-2. 教训沉淀：`[有]` — 坏文件/坏 JSON/不可读条目的容错模式：`_read_json_safe`（JSONDecodeError/OSError/UnicodeDecodeError → 空 dict）+ 每个文件访问包 try/except OSError 并逐条目降级或跳过，确保单条坏条目不使整次请求 500（`tests/admin/test_library.py` 的 bad_json/unreadable_entry/unreadable_root 用例为可复用证据）。
-3. 档案/README：`[否]` — 未改变项目结构、技术栈或路径；`git diff origin/main...HEAD` 仅 2 个文件（`admin/api/server.py` +138/−33、`tests/admin/test_library.py` +136），全部在 admin 只读适配层与对应测试内。
-4. 线路图：`[否]` — M6.1 交付不改变 xianyu 下一步；本卡未顺带推进 M6.2–6.4，也未改 GOAL/roadmap。
+1. 方案同步：`[是]` —— 仅核对并交付 `xy-plan-009` 的 6.1「内容库 API」；未宣称 M6.2、M6.3、M6.4 完成。证据：卡内方案基准及 `admin/api/server.py:1410-1614`。
+2. 教训沉淀：`[有]` —— 目录扫描必须逐层容错：坏 JSON 通过 `_read_json_safe` 降级，单条 `stat`/目录访问失败时跳过或返回已有结果，避免单条坏条目使 API 500。证据：`admin/api/server.py:1421-1428`、`1485-1499`、`1519-1539`；对应测试 `tests/admin/test_library.py:301-395`。
+3. 档案/README：`[否]` —— 本次未改变项目结构、技术栈或路径；`git diff origin/main...HEAD --name-only` 仅包含 admin 适配层和对应测试两文件，未修改 README/档案。
+4. 线路图：`[否]` —— M6.1 不改变 xianyu 下一步；未修改 GOAL/roadmap，未顺带推进 M6.2–M6.4。
