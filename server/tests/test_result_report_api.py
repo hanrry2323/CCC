@@ -110,6 +110,7 @@ def _reset_result_store():
     with STORE._lock:
         STORE._seen.clear()
         STORE._rate.clear()
+        STORE.reset_config_cache()
     yield
 
 

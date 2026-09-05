@@ -58,22 +58,37 @@ class ResultReportStore:
         self._lock = threading.RLock()
         self._seen: set[tuple[str, str, str]] = set()
         self._rate: dict[str, deque[float]] = defaultdict(deque)
+        self._token: str | None = None
+        self._events_path: Path | None = None
 
-    @staticmethod
-    def token() -> str:
+    def reset_config_cache(self) -> None:
+        """Reset config values for tests or an explicit service reconfiguration."""
+        with self._lock:
+            self._token = None
+            self._events_path = None
+
+    def _startup_token(self) -> str:
+        """Read the report token once per server process (env takes precedence)."""
+        if self._token is not None:
+            return self._token
         value = os.environ.get("CCC_RESULT_REPORT_TOKEN", "")
-        if value:
-            return value
-        try:
-            from server.config.loader import load_config
+        if not value:
+            try:
+                from server.config.loader import load_config
 
-            cfg = load_config(str(Path(__file__).resolve().parents[2] / "server" / "config" / "config.env"))
-            return str(cfg.get("CCC_RESULT_REPORT_TOKEN", ""))
-        except Exception:
-            return ""
+                cfg = load_config(
+                    str(Path(__file__).resolve().parents[2] / "server" / "config" / "config.env")
+                )
+                value = str(cfg.get("CCC_RESULT_REPORT_TOKEN", ""))
+            except Exception:
+                value = ""
+        self._token = value
+        return value
 
-    @staticmethod
-    def events_path() -> Path:
+    def _startup_events_path(self) -> Path:
+        """Read the event path once per server process (env takes precedence)."""
+        if self._events_path is not None:
+            return self._events_path
         raw = os.environ.get("CCC_RESULT_REPORT_EVENTS_PATH", "")
         if not raw:
             try:
@@ -85,10 +100,27 @@ class ResultReportStore:
                 raw = str(cfg.get("CCC_RESULT_REPORT_EVENTS_PATH", ""))
             except Exception:
                 raw = ""
-        return Path(raw).expanduser() if raw else Path.home() / ".ccc" / "data" / "board-events.jsonl"
+        self._events_path = Path(raw).expanduser() if raw else Path.home() / ".ccc" / "data" / "board-events.jsonl"
+        return self._events_path
+
+    @staticmethod
+    def token() -> str:
+        """Deprecated compatibility accessor; the singleton uses startup-cached values."""
+        return STORE._startup_token() if "STORE" in globals() else ""
+
+    @staticmethod
+    def events_path() -> Path:
+        """Deprecated compatibility accessor; the singleton uses startup-cached values."""
+        return STORE._startup_events_path() if "STORE" in globals() else Path.home() / ".ccc" / "data" / "board-events.jsonl"
+
+    def _token_value(self) -> str:
+        return self._startup_token()
+
+    def _events_path_value(self) -> Path:
+        return self._startup_events_path()
 
     def _check_auth(self, supplied: str) -> None:
-        expected = self.token()
+        expected = self._token_value()
         if not expected:
             raise ResultReportError(503, "result report endpoint is not configured")
         if not supplied or not hmac.compare_digest(supplied, expected):
@@ -180,7 +212,7 @@ class ResultReportStore:
                 "event_id": event_id,
                 "payload": payload,
             }
-            path = self.events_path()
+            path = self._events_path_value()
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with path.open("a", encoding="utf-8") as handle:
@@ -193,7 +225,7 @@ class ResultReportStore:
 
     def read(self, work_id: str | None, limit: int) -> dict[str, Any]:
         events: list[dict[str, Any]] = []
-        path = self.events_path()
+        path = self._events_path_value()
         try:
             with path.open(encoding="utf-8") as handle:
                 for line in handle:
