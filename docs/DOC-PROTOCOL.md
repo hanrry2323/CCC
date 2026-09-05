@@ -232,3 +232,11 @@ INDEX §0 → DOC-PROTOCOL（本页 §2 命名）→ registry / 档案 → scrip
 ```
 
 日常短读：§0 → 本页 → `architecture.md` → `STARTUP-BRIEF.md`。
+
+## 文档连续性纪律（v2.0 · 2026-09-06 起）
+
+1. **非必要不新建**：新建文档前先查 INDEX.md 与本文件落点表；能追加进现有权威文档的一律追加（教训→lessons.md 单文件；过程记录→本文件或 RUNLOG）。
+2. **每事一文仅限三类**：设计稿（可复用方案）、事故档案、调查报告（有长期引用价值）。其余执行报告一律不落 docs/notes/。
+3. **7 天清运制（既有规则，恢复强制执行）**：docs/notes/ 报告 7 天内并入权威文档或迁 docs/archive/notes-backlog-<日期>/；到期未处理由巡检提醒。
+4. **机器报告禁入 docs/notes/**：observer/巡检类自动报告改为覆盖式 single-latest 文件或 gitignored 数据目录；历史按月归档一次。
+5. **索引责任**：新建现役文档必须同步登记 INDEX.md；INDEX 是唯一检索入口，死链与漏登在巡检中视为缺陷。
