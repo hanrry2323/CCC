@@ -340,6 +340,105 @@ body.hub-mode #app {
   overflow: hidden;
 }
 
+/* ── 执行中实时合成视图（C 阶段二 · 旁路事件补充展示） ── */
+.board-executing-live {
+  flex-shrink: 0;
+  margin: 0 10px 10px 10px;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-sm);
+  background: var(--ccc-bg-surface);
+  font-size: 12px;
+  overflow: hidden;
+}
+.board-executing-live-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+  background: var(--ccc-bg-layer);
+}
+.board-executing-live-head strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.board-executing-live-head span {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+.board-executing-live.is-degraded {
+  opacity: 0.62;
+}
+.board-executing-live-list {
+  max-height: 150px;
+  overflow: auto;
+}
+.board-executing-live-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+.board-executing-live-row:last-child {
+  border-bottom: none;
+}
+.exec-live-id {
+  font-family: var(--ccc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ccc-text-accent);
+  flex-shrink: 0;
+}
+.exec-live-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ccc-text-base);
+}
+.exec-live-exec {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+}
+.exec-live-src {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--ccc-text-faint);
+}
+.exec-live-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.exec-live-badge-started {
+  background: #e8f0e4;
+  color: #3d6b45;
+}
+.exec-live-badge-completed {
+  background: #e4ebe8;
+  color: #4a6a5a;
+}
+.exec-live-badge-failed {
+  background: #f3ddd8;
+  color: #a33a2c;
+}
+.exec-live-badge-suspended {
+  background: #efe4d8;
+  color: #8a5a32;
+}
+.board-executing-live-empty {
+  padding: 8px 10px;
+  text-align: center;
+  color: var(--ccc-text-faint);
+  font-size: 11px;
+}
+
 .board-layout {
   flex: 1;
   display: flex;

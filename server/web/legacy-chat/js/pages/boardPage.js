@@ -24,7 +24,10 @@ const COLORS = STATE_TONES;
 
 let _root = null;
 let _timer = null;
+let _executingTimer = null;
 let _disposed = false;   // 2026-08-17 M3：卸载置位，异步回来不再写 DOM
+let _executingLive = null;
+let _executingDegraded = false;
 let _allCards = [];
 let _ws = 'all';
 let _wsNames = [];
@@ -103,6 +106,13 @@ function html() {
     <input type="search" id="board-search" placeholder="搜索卡…" style="padding:5px 10px;border:1px solid var(--ccc-border-subtle);border-radius:999px;background:#fff;font-size:12px;width:150px;outline:none;">
     <button type="button" class="hub-btn" id="board-density" title="切换卡片密度">${_dense ? '舒适' : '紧凑'}</button>
     <span class="st k-topbar-stats" id="board-st">·</span>
+  </div>
+
+  <div id="board-executing-live" class="board-executing-live" aria-live="polite">
+    <div class="board-executing-live-head">
+      <strong>执行中实时</strong><span id="board-executing-live-status">读取中…</span>
+    </div>
+    <div id="board-executing-live-list" class="board-executing-live-list"></div>
   </div>
 
   <div id="board-backlog-alert-banner" style="display:none; flex-shrink: 0; margin: 0 10px 10px 10px; padding: 10px; background: var(--ccc-bg-layer); border: 1px solid #ffccc7; border-radius: var(--ccc-radius-sm); color: #ff4d4f; font-size: 12px; font-weight: 500; align-items: center; justify-content: space-between; animation: board-live-pulse 1.6s ease-in-out infinite;">
@@ -544,6 +554,100 @@ function mergeDirtyFromRunning(cards, runningTasks) {
   return cards;
 }
 
+/* ── 执行中实时合成视图（C 阶段二 · 旁路事件补充展示） ── */
+
+const EXECUTING_POLL_MS = 15000;
+const EVENT_LABELS = {
+  executor_started: 'started',
+  executor_completed: 'completed',
+  executor_failed: 'failed',
+  executor_suspended: 'suspended',
+};
+
+function fmtEventTime(ts) {
+  if (!ts) return '';
+  const sec = Math.floor(Number(ts));
+  if (!Number.isFinite(sec)) return '';
+  const delta = Math.max(0, Math.floor(Date.now() / 1000) - sec);
+  if (delta < 60) return `${delta}s`;
+  if (delta < 3600) return `${Math.floor(delta / 60)}m`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h`;
+  return `${Math.floor(delta / 86400)}d`;
+}
+
+function renderExecutingLive(data) {
+  if (!_root) return;
+  const list = _root.querySelector('#board-executing-live-list');
+  const status = _root.querySelector('#board-executing-live-status');
+  if (!list || !status) return;
+  _executingLive = data;
+  const items = (data && data.items) || [];
+  const panel = _root.querySelector('#board-executing-live');
+  panel?.classList.toggle('is-degraded', _executingDegraded);
+  if (_executingDegraded) {
+    // 保留最近一次成功数据，只将区块置灰并提示降级。
+    status.textContent = '实时事件不可用（降级）';
+    if (!_executingLive) list.innerHTML = '<div class="board-executing-live-empty">实时事件不可用（降级）</div>';
+    return;
+  }
+  status.textContent = items.length
+    ? `${items.length} 张 · 对账 终态抑制 ${data.reconciliation?.suppressed_terminal_events ?? 0} / 孤儿 ${data.reconciliation?.orphan_work_ids ?? 0}`
+    : '暂无执行中';
+  if (!items.length) {
+    list.innerHTML = '<div class="board-executing-live-empty">暂无执行中卡</div>';
+    return;
+  }
+  list.innerHTML = items.map((row) => {
+    const ev = row.event;
+    const label = ev ? (EVENT_LABELS[ev.event] || ev.event) : '';
+    const rel = ev ? fmtEventTime(ev.ts) : '';
+    const badge = ev
+      ? `<span class="exec-live-badge exec-live-badge-${label}">${esc(label)}${rel ? ' ' + rel : ''}</span>`
+      : '';
+    const src = row.source === 'card+event'
+      ? '<span class="exec-live-src">来源: 卡+事件</span>'
+      : '<span class="exec-live-src">来源: 卡</span>';
+    return `<div class="board-executing-live-row" data-id="${esc(row.id)}">
+      <span class="exec-live-id">${esc(row.id)}</span>
+      <span class="exec-live-title">${esc(row.title || '')}</span>
+      <span class="exec-live-exec">${esc(row.executor || '')}</span>
+      ${badge}
+      ${src}
+    </div>`;
+  }).join('');
+}
+
+async function loadExecutingLive() {
+  if (_disposed || !_root) return;
+  try {
+    const data = await apiGet('/api/v1/board/executing', { pageScoped: true, signal: undefined });
+    _executingDegraded = false;
+    renderExecutingLive(data);
+  } catch (err) {
+    // 401 / 网络失败：静默保留上次数据，区块置灰提示；不阻塞页面其他部分
+    if (_disposed || (err && err.name === 'AbortError')) return;
+    _executingDegraded = true;
+    renderExecutingLive(_executingLive);
+    const status = _root.querySelector('#board-executing-live-status');
+    if (status) status.textContent = '实时事件不可用（降级）';
+  }
+}
+
+function startExecutingPoll() {
+  if (_executingTimer) clearInterval(_executingTimer);
+  loadExecutingLive().catch(() => {});
+  _executingTimer = setInterval(() => {
+    if (!_disposed && document.visibilityState === 'visible') loadExecutingLive().catch(() => {});
+  }, EXECUTING_POLL_MS);
+}
+
+function stopExecutingPoll() {
+  if (_executingTimer) {
+    clearInterval(_executingTimer);
+    _executingTimer = null;
+  }
+}
+
 async function loadBoard() {
   if (_disposed || !_root) return;
   const seq = ++_loadSeq; // 页内竞态守卫：慢的旧响应不得覆盖新工作区的数据
@@ -781,6 +885,7 @@ export function mountBoard(el, ctx = {}) {
     if (!_timer) _timer = setInterval(() => {
       if (!_disposed && document.visibilityState === 'visible') loadBoard().catch(() => {});
     }, 10000);
+    startExecutingPoll();
     _connectStream();
     return;
   }
@@ -796,11 +901,13 @@ export function mountBoard(el, ctx = {}) {
   _timer = setInterval(() => {
     if (!_disposed && document.visibilityState === 'visible') loadBoard().catch(() => {});
   }, 10000);
+  startExecutingPoll();
   _connectStream();
 }
 
 export function unmountBoard() {
   _disposed = true;
+  stopExecutingPoll();
   if (_timer) {
     clearInterval(_timer);
     _timer = null;
