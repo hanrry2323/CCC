@@ -55,7 +55,7 @@
 ├── CLAUDE.md                                   # 平台开发硬规则 + 开发命令
 ├── STARTUP-BRIEF.md                            # 启动摘要（按终态重写）
 ├── CHANGELOG.md
-├── VERSION                                     # ★ 版本 SSOT (v0.71.0)
+├── VERSION                                     # ★ 版本 SSOT (v2.0.0)
 ├── LICENSE
 ├── pyproject.toml                              # ruff + pytest 配置（覆盖 server/）
 ├── .pre-commit-config.yaml                     # 本地 hook

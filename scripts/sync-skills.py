@@ -40,7 +40,7 @@ NODES = {
 
 HOME_DIR = Path.home()
 SKILL_DIRS = {
-    "opencode": ("opencode-skills", str(HOME_DIR / ".opencode" / "skills")),
+    # "opencode": … 已退役（2026-09-02）——opencode-skills 资产保留于 server/config/，不再下发
     "claude": ("claude-skills", str(HOME_DIR / ".claude" / "skills")),
 }
 
