@@ -1,6 +1,6 @@
 # 任务卡 xy060 · M6.1 内容库 API（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-05
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：1
 
 ## 基准文件（先看）
 
@@ -102,4 +102,41 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 批注落实
 
-无批注；无需落实。执行体仍须在 `.ccc-result.md` 记录本节已核对。
+」均为"无批注"），已核对无需落实。
+
+## 回写区
+
+## 0. 卡标题复述
+
+卡标题：**xy060 · M6.1 内容库 API（DSH 执行）**
+
+- 目标：在 xianyu 现有 admin 只读适配层中实现/补齐 M6.1「内容库 API」：扫描既有视频产出目录与图文产物目录，按稳定契约输出只读 JSON 元数据列表，供后续展示台消费；每次请求实时发现新产出，不引入发布或工作流副作用。
+- 非目标：不实现/修改 M6.2 工作流 API、M6.3 视频/图文预览页面、M6.4 工作流可视化页面；不修改视频/图文生产核心、pipeline 状态机、worker、调度、发布、数据库 schema 或外部工作流 API；不触发发布、不启动生产任务、不增加后台常驻扫描、不接入鉴权以外的新运行时依赖；不改变既有 admin 页面。
+- 红线（落实结果）：只在引擎 worktree 内改动业务代码（仅 admin/api/server.py 与 tests/admin/test_library.py）；未触碰 src/xianyu/、视频管线核心、worker/调度/发布、数据库；未发布/未写 DB/未写产出目录/未删除真实产物/未调用工作流 API；未改 CCC 主仓卡；`.ccc-result.md` 未纳入业务仓提交。
+- 批注：本卡无人工批注（卡内「## 人工批注」「## 批注落实」均为"无批注"），已核对无需落实。
+
+## 1. 探针输出
+
+独立只读核实（命令与原始输出摘要；全部在引擎 worktree `/Users/fan/program/apps/.ccc-wt/xy/xy060` 内执行）：
+
+| 核实项 | 证据 | 结果 |
+|---|---|---|
+| 卡分支与远端 | `git branch --show-current` = `codex/xy060-content-library-api`；`git status` 仅 `.venv` 未跟踪 | 任务分支就绪 |
+| admin API 入口 | `admin/api/server.py`（FastAPI，`app = FastAPI(title="xianyu admin api")`，HTTP Basic Auth 经 `verify_credentials`） | 确认既有只读适配层 |
+| 既有路由 | `/api/health`、`/api/stats/summary`、`/api/topics`、`/api/contents` 等沿用 `Depends(verify_credentials)` | 认证边界沿用 |
+| 内容库现状 | `server.py:1595` 已有 `@app.get("/api/v1/library")`，`server.py:1559` `scan_library()` 实时扫描 | 已有 M6.1 实现，需对账 |
+| 视频产出目录 | worktree 内 `video-pipeline/output` 不存在（空态）；真实仓 `/Users/fan/program/apps/xianyu/video-pipeline/output` 亦不存在（`ls` 无输出） | 以代码路径 `ROOT/"video-pipeline"/"output"` 为准，空态路径 |
+| 图文产出目录 | worktree 内 `workspace/outputs` 不存在；真实仓 `workspace/outputs/image_text` 不存在 | 以代码路径 `ROOT/"workspace"/"outputs"/"image_text"` 为准 |
+| 现有测试 | `tests/admin/test_library.py`（416 行，20 个用例）已覆盖视频/图文/空态/坏JSON/降级/排序/新产出/认证/只读 | 测试已齐全 |
+| 方案基准 | `docs/projects/xy/plans/009-frontend-showcase.md`：6.1 验收 = 字段完整、自动收录、只读 JSON；`docs/projects/xy/README.md` 业务档案 | 契约一致 |
+
+## 2. 自测输出
+
+#
+
+## 维护区
+
+1. 方案同步：`[是]` — 仅交付 `xy-plan-009` 的 6.1「内容库 API」；`docs/projects/xy/plans/009-frontend-showcase.md` 现状为「状态：待验收 · 进度 5/5」；本卡验收边界 = 只核对 `/api/v1/library` 字段完整性、当日产出可见性、新任务自动收录，与方案一致；未宣称 6.2–6.4 完成（6.2 `/api/v1/workflows` 已存在于 server.py，属 xy053 卡既有范围，本卡未触碰）。
+2. 教训沉淀：`[有]` — 坏文件/坏 JSON/不可读条目的容错模式：`_read_json_safe`（JSONDecodeError/OSError/UnicodeDecodeError → 空 dict）+ 每个文件访问包 try/except OSError 并逐条目降级或跳过，确保单条坏条目不使整次请求 500（`tests/admin/test_library.py` 的 bad_json/unreadable_entry/unreadable_root 用例为可复用证据）。
+3. 档案/README：`[否]` — 未改变项目结构、技术栈或路径；`git diff origin/main...HEAD` 仅 2 个文件（`admin/api/server.py` +138/−33、`tests/admin/test_library.py` +136），全部在 admin 只读适配层与对应测试内。
+4. 线路图：`[否]` — M6.1 交付不改变 xianyu 下一步；本卡未顺带推进 M6.2–6.4，也未改 GOAL/roadmap。
