@@ -85,6 +85,8 @@ PROMPT="任务卡：${CARD_PATH}（work ${WORK_ID}，角色：${ROLE}）。
 按你的开发执行体心智执行本卡全流程（读卡→白名单实现→自测→worktree commit+push→写 .ccc-result.md→停手）。
 授权声明：本次运行授权在 ${WORKDIR_LABEL} $(pwd) 内读写卡白名单文件并执行 git add/commit/push（限卡白名单范围）。
 工作目录：$(pwd)
+权限约束：当前会话已由 wrapper 预先授予 danger-full-access。工具调用不得再传 sandbox_permissions，不得请求权限升级，也不得把 danger-full-access 作为重复升级参数；直接在当前已授予权限下执行命令。若工具 schema 要求权限字段，省略该字段或使用当前已授予上下文，不要发起 escalation。
+测试约束：测试环境缺少 pytest 时，优先使用业务仓已有入口或解释器；不要调用带 danger-full-access escalation 参数的 uvx/临时环境安装命令。确实无法测试时，记录原始失败并继续写 .ccc-result.md，不要无限重试。
 
 【严格约束 · A1 结果契约】
 - 禁止修改主仓卡文件 ${CARD_PATH}（那是只读指针；卡回写由引擎代做）。

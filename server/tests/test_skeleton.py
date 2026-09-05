@@ -280,3 +280,36 @@ def test_cc_auditor_script_bash_syntax() -> None:
 
     res = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
     assert res.returncode == 0, f"bash -n 失败: {res.stderr}"
+
+
+# ── 批F（2026-09-05）：DSH 权限协商修复 ──
+
+def test_dsh_executor_prompt_blocks_redundant_sandbox_escalation() -> None:
+    """DSH 执行 wrapper 的 prompt 必须禁止重复 sandbox 权限升级。
+
+    静态契约：只读 wrapper 源文本，断言 prompt 授权段含「不得再传 sandbox_permissions /
+    不得请求权限升级 / 不要发起 escalation / 不要无限重试」语义，并过 bash -n。
+    不启动真实 DSH（测试不拉起子进程跑 wrapper 本体）。
+    """
+    import subprocess
+
+    script = PROJECT_ROOT / "scripts" / "dsh-executor.sh"
+    assert script.is_file(), f"dsh-executor.sh 缺失: {script}"
+
+    res = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert res.returncode == 0, f"bash -n 失败: {res.stderr}"
+
+    text = script.read_text(encoding="utf-8")
+    assert "已由 wrapper 预先授予 danger-full-access" in text
+    assert "不得再传 sandbox_permissions" in text
+    assert "不得请求权限升级" in text
+    assert "不要发起 escalation" in text
+    assert "不要无限重试" in text
+
+    # 静态契约只检查 prompt 源文本，不启动真实 DSH。
+    prompt_start = text.index('PROMPT="')
+    prompt_end = text.index('"\n\n# ccc073', prompt_start)
+    prompt = text[prompt_start:prompt_end]
+    assert "sandbox_permissions" in prompt
+    assert "权限升级" in prompt
+    assert "danger-full-access" in prompt
