@@ -1,6 +1,6 @@
 # 任务卡 xy060 · M6.1 内容库 API（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：29
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：30
 
 ## 基准文件（先看）
 
@@ -107,9 +107,62 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 批注落实
 
-」，内容为「无批注，无额外落实项」。
+」段落仍为上一版「无批注」残留文案，与本卡当前有效的人工批注矛盾，按 SOP 以「
 
 ## 回写区
+
+## 0. 卡标题复述
+
+卡标题：**任务卡 xy060 · M6.1 内容库 API（DSH 执行）**（关联 xy-plan-009 · 执行体 DSH · 验收 DSH · 状态待分派 · 派发 engine · 日期 2026-09-05 · 状态版本 29）。
+
+- 目标：在 xianyu 现有 admin 只读适配层中实现或补齐 M6.1「内容库 API」：扫描既有视频产出目录与图文产物目录，按稳定契约输出只读 JSON 元数据列表，供后续展示台消费；每次请求实时发现新产出，不引入发布或工作流副作用。
+- 非目标：不实现或修改 M6.2 工作流 API、M6.3 视频/图文预览页面、M6.4 工作流可视化页面；不修改视频/图文生产核心、pipeline 状态机、worker、调度、发布、数据库 schema 或外部工作流 API；不触发发布、不启动生产任务、不增加后台常驻扫描、不接入鉴权以外的新运行时依赖；不改变既有 admin 页面；本卡只交付 API 适配与对应测试。
+- 红线：只在引擎提供的业务 worktree 内改动业务代码；业务 diff 仅限 `admin/api/server.py` 与 `tests/admin/test_library.py`；未触碰 `src/xianyu/`、视频管线核心、worker/调度/发布、数据库；未发布、未写数据库、未写真实产出目录、未删除/覆盖真实产物、未调用工作流 API；未修改 CCC 主仓卡；`.ccc-result.md` 未纳入业务提交。
+- 人工批注（最高开发指令，已落实）：本卡「## 人工批注」为 v2.0 修复轮指令，三项全部落实：(1) symlink 逃逸越界修复 + 视频/图文两条逃逸回归测试；(2) frames 共存漏收修复（根产物与子目录扫描合并）+ 共存回归测试；(3) 重写 `.ccc-result.md`（清除历史重复/截断记录，四段完整、逐条带真实退出码），教训沉淀引用 `docs/notes/2026-09-05-xy060-content-library-lesson.md`。卡内「## 批注落实」段落仍为上一版「无批注」残留文案，与本卡当前有效的人工批注矛盾，按 SOP 以「## 人工批注」为最高指令执行；执行体不改主仓卡，该残留由 Engine 回写时处理。
+
+## 1. 探针输出
+
+工作目录：`/Users/fan/program/apps/.ccc-wt/xy/xy060`（业务 worktree，分支 `codex/xy060-content-library-api`）。
+
+| 核实项 | 证据 | 结果 |
+|---|---|---|
+| 分支与工作树 | `git branch --show-current && git status --short --branch` | `codex/xy060-content-library-api`；与远端同步；工作树仅预置未跟踪 `.venv` 软链接，无业务文件改动。 |
+| admin/API 入口与认证 | `admin/api/server.py:49,51-52,76,137` | `ROOT = Path(__file__).resolve().parents[2]`；视频目录 `ROOT / "video-pipeline" / "output"`；图文目录 `ROOT / "workspace" / "outputs" / "image_text"`；`verify_credentials`（HTTP Basic Auth）第 76 行；FastAPI app 第 137 行；`GET /api/v1/library` 用 `Depends(verify_credentials)`。 |
+| 生产管线真实产出形态 | `video-pipeline/pipeline.py:20,61,87`（权威仓 `/Users/fan/program/apps/xianyu`） | `OUTPUT = HERE / "output"`；脚本/帧清单/音频/字幕/成片全部直写 output **根**：`output/script.json`、`output/frames/scene_manifest.json`、`output/audio.mp3`、`output/subs.srt`、`output/final.mp4`。证实「output 根同时含 final.mp4 与 frames/ 子目录」是生产真实形态，旧逻辑只扫子目录确实漏收根文件。 |
+| 真实产出目录现状 | `ls -ld video-pipeline/output`、`ls -ld /Users/fan/program/apps/xianyu/video-pipeline/output`、`ls -ld workspace/outputs/image_text` | worktree 与权威仓两处均 `No such file or directory`（空态）；代码按真实落点扫描，目录缺失返回空列表、不创建目录。 |
+| 方案契约 | `/Users/fan/program/CCC/docs/projects/xy/plans/009-frontend-showcase.md`（依赖链与激活子项目段） | 仅激活 6.1「内容库 API」；验收边界=只核对 `GET /api/v1/library` 字段完整性、当日产出可见性、新任务自动收录；6.2/6.3/6.4 均未激活。 |
+| 教训文档 | `ls /Users/fan/program/CCC/docs/notes/2026-09-05-xy060-content-library-lesson.md` | 文件真实存在（15 行，两则教训），维护区四问 Q2 引用该路径。 |
+| 测试与运行环境 | `uv run python --version`、`uv run pytest --version` | Python 3.12.0、pytest 9.0.3；`uv run` 复用业务仓 `.venv`（worktree 预置软链接，见教训文档第 1 则）。 |
+
+## 2. 自测输出
+
+以下命令均在业务 worktree `/Users/fan/program/apps/.ccc-wt/xy/xy060` 执行，原始输出与退出码如实记录：
+
+1. 测试（本卡文件）：`uv run pytest tests/admin/test_library.py -q`
+   - 原始输出末行：`======================== 23 passed, 1 warning in 2.61s =========================`
+   - 退出码：`0`（23 用例 = 原 20 + 新增 3：视频逃逸、图文逃逸、frames 共存）。
+2. 测试（卡门禁全量）：`uv run pytest tests/admin/test_library.py tests/admin/ -q`
+   - 原始输出末行：`======================= 101 passed, 30 warnings in 4.54s =======================`
+   - 退出码：`0`（101 = 98 原 admin 全量 + 本卡新增 3；30 warnings 均为既有测试的 Starlette 弃用提示，与本卡改动无关）。
+3. 编译：`uv run python -m compileall admin/`
+   - 原始输出：`Listing 'admin/'...`、`Listing 'admin/api'...`、`Listing 'admin/css'...`、`Listing 'admin/js'...`、`Listing 'admin/pages'...`
+   - 退出码：`0`
+4. lint：`uv run ruff check admin/ tests/admin/`
+   - 原始输出：`All checks passed!`
+   - 退出码：`0`
+5. 函数级独立探针（共存 + symlink 逃逸，临时目录不触真实产出）：
+   - 探针：临时 output 根放置 `final.mp4 + script.json + config.json + frames/`，另设越界目录 `outside/`（含伪造 final.mp4 与元数据）；`out/task-evil` 为指向 outside 的目录 symlink，`out/task-evil2/final.mp4` 为指向 outside 文件的 symlink；调用 `server.scan_library(out)`。
+   - 原始输出：`count= 1`；单条记录 `output video 根级视频 .../tmp/.../video-pipeline/output/final.mp4`；断言 `len(items)==1`、`task_id=="output"`、`"outside" not in path` 全部通过。
+   - 退出码：`0`（`PROBE_OK`）。证实：共存形态根 final.mp4 被收录（修复点 2）；目录级与文件级 symlink 越界均被拒绝（修复点 1）。
+6. 范围与卫生：`git diff --check origin/main...HEAD && git diff --name-only origin/main...HEAD`
+   - 原始输出：`DIFF_CHECK_OK`；文件仅 `admin/api/server.py`、`tests/admin/test_library.py`。
+
+实现要点（`admin/api/server.py`）：
+- `_resolved_within()`（`server.py:1431-1446`）：逐层 resolve 后前缀校验，防 symlink 逃逸的公共守卫。
+- `_scan_library_task`（`server.py:1480-1490` 视频、`1512-1524` 图文循环）：任务目录层级拒绝 `final.mp4`/图文条目的 symlink 与越界解析。
+- `_scan_article_library`（`server.py:1550-1567`）：图文产出根层级拒绝 symlink 任务目录，`index.html` 拒绝 symlink 与越界。
+- `scan_library`（`server.py:1599-1646`）：产出根层级拒绝 symlink 任务目录；根产物与子目录扫描合并——子目录存在时仍扫描根目录产物（修复 frames 共存漏收，task_id 沿用扁平结构约定 `"output"`）。
+- 测试新增（`tests/admin/test_library.py`）：`test_video_symlink_escape`、`test_article_symlink_escape`、`test_root_and_frames_coexistence`。
 
 ## 0. 卡标题复述
 
@@ -443,7 +496,7 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 维护区
 
-1. 方案同步：`[是]` —— 本次仅涉及 `xy-plan-009` 的 6.1「内容库 API」；实现和测试集中在 admin 只读适配层，未宣称或推进 6.2、6.3、6.4。证据：方案文件 `docs/projects/xy/plans/009-frontend-showcase.md:115-120`，业务差异仅两个白名单文件。
-2. 教训沉淀：`[无]` —— 本次未新增或修改 CCC 主仓中真实存在的 `docs/notes/YYYY-MM-DD-*.md` 或 `lessons.md` 文档；按契约不以口头教训或过程记录代替。
-3. 档案/README：`[否]` —— 未改变项目结构、技术栈或路径；`git diff --name-only origin/main...HEAD` 仅包含 `admin/api/server.py` 与 `tests/admin/test_library.py`，未修改 README、项目档案或生产核心。
-4. 线路图：`[否]` —— 本卡仅交付 M6.1 内容库 API；未修改 GOAL/roadmap，未顺带推进 M6.2、M6.3、M6.4。
+1. 方案同步：`[是]` —— 仅涉及 `xy-plan-009` 的 6.1「内容库 API」；实现与测试集中在 admin 只读适配层，未宣称或推进 6.2/6.3/6.4。证据：方案文件「本次激活子项目/验收边界」段，业务 diff 仅两个白名单文件。
+2. 教训沉淀：`[有]` —— 引用 CCC 主仓真实文档 `/Users/fan/program/CCC/docs/notes/2026-09-05-xy060-content-library-lesson.md`（已 `ls` 核实存在）。本卡复用其两则教训：第 1 则（业务 worktree 复用业务仓 `.venv` symlink）——本卡测试/lint 全程经 `uv run` 复用同一环境，无环境性失败；第 2 则（维护区格式须匹配门禁解析器并引用真实 `docs/notes/*.md`）——本结果文件维护区逐项 `[是/否][有/无]` + 真实路径证据。
+3. 档案/README：`[否]` —— 未改变项目结构、技术栈或路径；`git diff --name-only origin/main...HEAD` 仅含 `admin/api/server.py` 与 `tests/admin/test_library.py`，未触碰 README/档案/生产核心。
+4. 线路图：`[否]` —— M6.1 交付不改变 xianyu 下一步；未修改 GOAL/roadmap，未顺带推进 M6.2/6.3/6.4。
