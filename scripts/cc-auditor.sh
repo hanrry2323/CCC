@@ -53,7 +53,7 @@ RESULT_FILE="$LOG_DIR/${WORK_ID}-ccc-result.md"
 TMP_OUTPUT="$(mktemp)"
 trap 'rm -f "$TMP_OUTPUT"' EXIT
 
-echo "[cc-auditor] 审查对象=主仓卡（只读）: $AUDIT_CARD（work $WORK_ID，角色 $ROLE）" >&2
+echo "[cc-auditor] 审查对象=主仓卡（只读）: ${AUDIT_CARD}（work ${WORK_ID}，角色 ${ROLE}）" >&2
 echo "[cc-auditor] verdict 工件: $VERDICT_FILE" >&2
 
 # ── 机械门禁一：维护区四问（docgate.verify_maintenance）──
@@ -162,5 +162,5 @@ fi
 if [ "$rc" -eq 2 ] && [ ! -s "$VERDICT_FILE" ]; then
   printf '机审：不通过（auditor exit 2，未产出结论）\n' > "$VERDICT_FILE"
 fi
-echo "[cc-auditor] claude CLI 退出码=$rc（verdict 工件 ${VERDICT_FILE}）" >&2
+echo "[cc-auditor] claude CLI 退出码=${rc}（verdict 工件 ${VERDICT_FILE}）" >&2
 exit "$rc"

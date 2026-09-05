@@ -20,3 +20,12 @@
 - 本报告
 
 未修改 xianyu 业务代码、任务卡或机审区。
+
+## 追加：cc-auditor UTF-8 shell 变量边界修复
+
+- `scripts/cc-auditor.sh` 中紧邻中文/全角标点的变量引用已改为显式 `${AUDIT_CARD}`、`${WORK_ID}`、`${ROLE}`、`${rc}`，避免 Bash UTF-8 locale + `set -u` 将全角标点及后续文字并入变量名。
+- `bash -n scripts/cc-auditor.sh`：通过。
+- UTF-8 locale + `set -u` 等价 echo：通过，输出 `审查对象：卡片.md（work xy060，角色 验收席）`。
+- `$CCC_BRAIN_CLAUDE_BIN` 与 `$HOME` 仅出现在反斜杠转义的错误提示文本中，不属于实际展开引用，未改动。
+
+未修改任务卡、xianyu 业务代码、状态机或 DSH。
