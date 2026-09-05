@@ -11,8 +11,10 @@
 #   - 审计输入 = 主仓卡全文 + $EXECUTOR_LOG_DIR/<work_id>-ccc-result.md 结果工件；
 #   - 输出 = verdict 写 $EXECUTOR_LOG_DIR/<work_id>-audit-verdict.md，
 #     含整行「机审：通过」或「机审：不通过（原因）」+ 证据四段；
-#   - exit 0 = verdict 已产出；exit 2 = 机械前置不通过（同时写「机审：不通过（…）」工件）；
-#     其他 = 基础设施失败。
+#   - exit 0 = verdict 当前判定=通过（含 claude rc 非 0 但已写「通过」的容忍）；
+#   - exit 2 = 当前判定=不通过（机械前置不通过 / arbitration = REJECT），同时写「机审：不通过（…）」工件；
+#   - exit 1 = verdict 工件存在但无法解析（无裁决行）；
+#   - 其他 = 基础设施失败（无 verdict 工件时按 claude CLI rc 反映）。
 # 环境：ANTHROPIC_BASE_URL/ANTHROPIC_MODEL/ANTHROPIC_API_KEY 指向本机 3456 中转（Code）；
 # EXECUTOR_LOG_DIR 继承（phase2 注入），未设则回落 config.env。
 
@@ -161,12 +163,26 @@ if [ ! -s "$VERDICT_FILE" ]; then
   fi
 fi
 
-if [ "$rc" -eq 0 ] && [ -s "$VERDICT_FILE" ]; then
-  echo "[cc-auditor] verdict 已产出: $VERDICT_FILE" >&2
-  exit 0
+# CLI 的退出码只描述 CLI 本身；只要 verdict 工件已有可解析的当前裁决，
+# 就把业务结论交给 phase2。尤其是 Claude 已写 REJECT 但 wrapper 返回 1
+# 的情况，不能再被误报成基础设施失败。
+if [ -f "$VERDICT_FILE" ]; then
+  if grep -Eq '^机审：通过([[:space:]]*（[^）]*）)?[[:space:]]*$' "$VERDICT_FILE"; then
+    echo "[cc-auditor] verdict 已产出（通过，claude rc=${rc}）: $VERDICT_FILE" >&2
+    exit 0
+  fi
+  if grep -Eq '^机审：不通过([[:space:]]*（[^）]*）)?[[:space:]]*$' "$VERDICT_FILE"; then
+    echo "[cc-auditor] verdict 已产出（不通过，claude rc=${rc}）: $VERDICT_FILE" >&2
+    exit 2
+  fi
+  # 非空但没有裁决行 = 工件损坏/无法解析，不能猜测业务结论。
+  if [ -s "$VERDICT_FILE" ]; then
+    echo "[cc-auditor] verdict 工件无法解析（claude rc=${rc}）: $VERDICT_FILE" >&2
+    exit 1
+  fi
 fi
-if [ "$rc" -eq 2 ] && [ ! -s "$VERDICT_FILE" ]; then
-  printf '机审：不通过（auditor exit 2，未产出结论）\n' > "$VERDICT_FILE"
-fi
-echo "[cc-auditor] claude CLI 退出码=${rc}（verdict 工件 ${VERDICT_FILE}）" >&2
+
+# 没有 verdict 工件时不猜测业务结论：保留 CLI 输出诊断，并沿用
+# Claude CLI 的退出码（非零会由 phase2 作为基础设施失败处理）。
+echo "[cc-auditor] claude CLI 退出码=${rc}（无可解析 verdict 工件 ${VERDICT_FILE}）" >&2
 exit "$rc"
