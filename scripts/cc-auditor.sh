@@ -144,13 +144,26 @@ ${RESULT_FILE}
 工作目录：$(pwd)"
 
 set +e
-"$CLAUDE_BIN" -p "$PROMPT" \
-  --output-format text \
-  --max-turns "${CC_AUDITOR_MAX_TURNS:-30}" \
-  --permission-mode bypassPermissions \
-  --allowedTools "Read Write" \
-  > "$TMP_OUTPUT" 2>&1
-rc=$?
+attempt=0
+CC_AUDITOR_ATTEMPTS="${CC_AUDITOR_ATTEMPTS:-3}"
+while [ "$attempt" -lt "$CC_AUDITOR_ATTEMPTS" ]; do
+  attempt=$((attempt+1))
+  "$CLAUDE_BIN" -p "$PROMPT" \
+    --output-format text \
+    --max-turns "${CC_AUDITOR_MAX_TURNS:-30}" \
+    --permission-mode bypassPermissions \
+    --allowedTools "Read Write" \
+    > "$TMP_OUTPUT" 2>&1
+  rc=$?
+  if [ -s "$VERDICT_FILE" ] && grep -Eq '^[[:space:]]*机审：(通过|不通过)' "$VERDICT_FILE"; then
+    echo "[cc-auditor] attempt ${attempt}: verdict 工件已产出（claude rc=${rc}）" >&2
+    break
+  fi
+  if [ "$attempt" -lt "$CC_AUDITOR_ATTEMPTS" ]; then
+    echo "[cc-auditor] attempt ${attempt}/${CC_AUDITOR_ATTEMPTS}: rc=${rc} 无可解析 verdict，30s 后重试" >&2
+    sleep 30
+  fi
+done
 set -e
 cat "$TMP_OUTPUT"
 
