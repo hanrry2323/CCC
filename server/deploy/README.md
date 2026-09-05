@@ -28,3 +28,4 @@
 
 - T2 后：`run.example.sh` 的 `server.engine.main` 即真实入口。
 - T4 后：落地真实部署（运行面，需管理席许可，单独执行）。
+- `com.ccc.tunnel-watchdog.plist` + `../scripts/ops/tunnel-watchdog.sh`：每 300 秒探测本机隧道，M1 可达时按需 kickstart 恢复并追加日志。
