@@ -53,7 +53,7 @@
 - `python3 -m py_compile server/board/executing.py server/web/server.py` → **通过**；
 - 前端未配置 headless 截图能力，本报告不虚报截图路径。
 
-全量结果：当前环境 `pytest` 命令不可用；使用 `python3 -m pytest -q server/tests/test_result_report_api.py` 时，已有测试 `test_unconfigured_token_returns_503` 失败（实际 401，原因是工作树中预先存在的 `server/config/config.env` token 改动使配置仍有 token；本阶段未修改该文件），其余 15 项通过。该失败未被隐瞒，需在恢复配置基线后重跑。
+全量结果：`python3 -m pytest -q server/tests/` 共 1 失败 / 其余全绿。失败项 = 既有测试 `test_unconfigured_token_returns_503`（实际 401，期望 503）。根因 = 工作树中预先存在的 `server/config/config.env` token 改动（本会话进场前即 `M`，把 `CCC_RESULT_REPORT_TOKEN` 从空值填成生产值）：该测试依赖「token 为空=端点关闭→503」，本地配置不再为空故得到 401。**该改动非本阶段所改、未纳入提交**（token 属秘密，不进 git）。其余全部通过，含本阶段新增 `server/tests/test_executing_view.py` 4 项。
 
 ## 4. 手测记录
 
