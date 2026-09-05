@@ -157,47 +157,11 @@ if [[ "$DSH_RC" -eq 0 ]]; then
   fi
 fi
 
-# C 阶段一：可选旁路上报。网络/服务端失败只记录到 log_dir，不改变 DSH rc。
-_REPORT_TOKEN="${CCC_RESULT_REPORT_TOKEN:-}"
-_REPORT_URL="${CCC_RESULT_REPORT_URL:-}"
-if [[ -z "$_REPORT_TOKEN" || -z "$_REPORT_URL" ]]; then
-  _REPORT_CFG="${CCC_CONFIG_ENV:-$_CCC_ROOT/server/config/config.env}"
-  if [[ -f "$_REPORT_CFG" ]]; then
-    _REPORT_TOKEN="${_REPORT_TOKEN:-$(grep -E '^CCC_RESULT_REPORT_TOKEN=' "$_REPORT_CFG" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs 2>/dev/null || true)}"
-    _REPORT_URL="${_REPORT_URL:-$(grep -E '^CCC_RESULT_REPORT_URL=' "$_REPORT_CFG" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs 2>/dev/null || true)}"
-  fi
-fi
-_REPORT_URL="${_REPORT_URL:-http://192.168.3.116:7788/api/v1/board/result}"
-_REPORT_DISABLED_FLAG="${_TE_EXEC_LOG_DIR}/.result-report-disabled"
+# C 阶段一：可选旁路上报。独立于文件链，失败不改变 DSH rc。
+# shellcheck source=scripts/lib/result-report.sh
+source "$_SELF/lib/result-report.sh"
 _REPORT_DURATION=$(( $(date +%s) - _REPORT_STARTED_AT ))
-_REPORT_EVENT="executor_failed"
-[[ "$DSH_RC" -eq 0 ]] && _REPORT_EVENT="executor_completed"
-if [[ -n "$_REPORT_TOKEN" && ! -f "$_REPORT_DISABLED_FLAG" ]]; then
-  _REPORT_BODY="$(python3 - "$WORK_ID" "$_REPORT_EVENT" "$DSH_RC" "$_REPORT_DURATION" <<'PY'
-import json, sys
-work_id, event, rc, duration = sys.argv[1:]
-print(json.dumps({
-    "work_id": work_id,
-    "event": event,
-    "payload": {
-        "executor_rc": int(rc),
-        "duration_s": int(duration),
-        "result_path": f"{work_id}-ccc-result.md",
-    },
-}, separators=(",", ":")))
-PY
-)"
-  _REPORT_HTTP="$(curl -sS -m 5 -o /dev/null -w '%{http_code}' -X POST "$_REPORT_URL" \
-    -H "Authorization: Bearer $_REPORT_TOKEN" -H 'Content-Type: application/json' \
-    --data-binary "$_REPORT_BODY" 2>/dev/null || printf '000')"
-  case "$_REPORT_HTTP" in
-    403|404|503)
-      : > "$_REPORT_DISABLED_FLAG" 2>/dev/null || true
-      ;;
-    2??) ;;
-    *) printf '[dsh-executor] result report unavailable http=%s\n' "$_REPORT_HTTP" >> "${_TE_EXEC_LOG_DIR}/${WORK_ID}.result-report.log" 2>/dev/null || true ;;
-  esac
-fi
+ccc_result_report "$WORK_ID" "$DSH_RC" "$_REPORT_DURATION" "$_TE_EXEC_LOG_DIR" || true
 
 echo "[dsh-executor] work=${WORK_ID} 执行结束 rc=${DSH_RC}"
 exit "$DSH_RC"
