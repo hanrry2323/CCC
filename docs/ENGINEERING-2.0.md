@@ -57,6 +57,17 @@
 - **无合法 JSON = REJECT（fail-closed，prose 永远推不出 PASS）**；解析失败给一次有界修复轮（重发 JSON）；
 - findings 直接进打回原因与 ledger，DSH 修复轮有结构化输入。
 
+### 正反辩论修订（2026-09-06，反方 9 项攻击采纳 6 项）
+
+1. **【同批约束】fail-closed 不得裸奔**：P1.1 与「audit 侧 REJECT/修复轮预算」同批上线（预算模式抄 `_conflict_strikes` 现成实现）；解析失败归 protocol 类走有界重试，不产生业务打回——否则格式偶发失败=无界 DSH 修复轮（新死循环引擎）。
+2. **【severity 阈值门】**（fusion review-severity-gate 校准值）：仅 P0/P1 findings 阻断（打回）；P2 findings 落 ledger 留档不打回。
+3. **【golden corpus】**：以 09-05 实战畸形 verdict 样本（前导空白/围栏包裹/截断/prose 混排/编码污染）建测试语料，解析器全绿才算过。
+4. **【旧口径删除判据】**：JSON 主路径验收后删除 `_claude_verdict_from_output`/stdout 兜底等死口径，grep 判零——禁止第 5 套解析口径增殖。
+5. **【影子双跑】**：新解析器先影子模式双跑 ≥3 张卡比对，再切主。
+6. **【待人工=结构化字段】**：预算耗尽终态落 sidecar 结构化字段（runtime_state 现成），禁止「打回（待人工…）」括号复用（base_state 剥括号后与业务打回同桶，会被误重派/误冻结）。
+7. **【安全收敛】**：验收席 verdict 写入路径白名单；`.ccc-result.md` 标注 untrusted 输入；每卡 audit 预算上限（防 3456 通道争抢）。
+8. **【xy060 收口路径修正】**：两个已知 findings（symlink 逃逸、frames 共存漏收）为确定性可断言——直接进业务仓测试/门禁机械闭环，不等 JSON verdict 上线；P1 与 xy060 收口解耦并行。
+
 ## 四、现役文档白名单（v2.0 开发只认这些）
 
 | 类 | 文档 |
