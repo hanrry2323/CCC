@@ -220,8 +220,14 @@ def _valid(**overrides):
 
 
 def test_unconfigured_token_returns_503(monkeypatch, api_iso):
-    monkeypatch.setenv("CCC_RESULT_REPORT_TOKEN", "")
+    monkeypatch.setattr(STORE, "_startup_token", lambda: "")
     status, data = _post(api_iso, "/api/v1/board/result", _valid(), token="anything")
+    assert status == 503
+
+
+def test_unconfigured_events_endpoint_returns_503_before_auth(monkeypatch, api_iso):
+    monkeypatch.setattr(STORE, "_startup_token", lambda: "")
+    status, data = _get(api_iso, "/api/v1/board/result/events")
     assert status == 503
 
 

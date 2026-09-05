@@ -4086,6 +4086,9 @@ class _APIHandler(BaseHTTPRequestHandler):
 
     def _handle_result_report_post(self) -> None:
         """旁路写入执行结果事件；不参与卡状态或 Engine 收单。"""
+        if not RESULT_STORE.token():
+            self._send_json({"error": "result report endpoint is not configured"}, 503)
+            return
         length_raw = self.headers.get("Content-Length", "0")
         try:
             length = int(length_raw)
@@ -4211,6 +4214,14 @@ class _APIHandler(BaseHTTPRequestHandler):
                 return
             self._handle_cards_search()
             return
+        if path == "/api/v1/board/result/events":
+            if not RESULT_STORE.token():
+                self._send_json({"error": "result report endpoint is not configured"}, 503)
+                return
+            if not self._gate_read():
+                return
+            self._handle_result_report_get()
+            return
         if not self._check_auth():
             return
         # 读闸整体收口（P1 尾巴 2026-08-29）：_check_auth 在免登录模式下放行全部
@@ -4250,9 +4261,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/conversation":
             self._handle_conversation_get()
-            return
-        if path == "/api/v1/board/result/events":
-            self._handle_result_report_get()
             return
         # P0 下线（2026-08-29）：/dsh/workspaces 与 /dsh/sessions/<id> 路由已删除。
         # 证据：web 前端对话栈 2026-08-24 拆除后零调用；桌面端会话走本地 Swift
