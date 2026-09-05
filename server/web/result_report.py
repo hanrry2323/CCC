@@ -246,3 +246,6 @@ class ResultReportStore:
 
 
 STORE = ResultReportStore()
+# Resolve configuration once when the web process imports its route modules.
+STORE._startup_token()
+STORE._startup_events_path()
