@@ -144,6 +144,13 @@ ${RESULT_FILE}
 工作目录：$(pwd)"
 
 set +e
+# claude CLI 的 ANTHROPIC_BASE_URL 语义=裸根（自拼 /v1/messages）；
+# 引擎 plist/cli_env 注入的是 DSH/probe 语义（完整端点含 /v1/messages）——归一为裸根。
+if [ -n "${ANTHROPIC_BASE_URL:-}" ]; then
+  ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL%/v1/messages}"
+  export ANTHROPIC_BASE_URL
+fi
+
 attempt=0
 CC_AUDITOR_ATTEMPTS="${CC_AUDITOR_ATTEMPTS:-3}"
 while [ "$attempt" -lt "$CC_AUDITOR_ATTEMPTS" ]; do
