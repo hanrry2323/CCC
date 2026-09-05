@@ -46,7 +46,12 @@ run_case() {
 run_case pass 0 '机审：通过' 1
 # Claude rc=1 但已写不通过 verdict：按业务结论返回 2。
 run_case reject 2 '机审：不通过（mock reject）' 1
+# verdict 带行首空白时仍按对应业务结论返回。
+run_case indented-pass 0 '  机审：通过' 1
+run_case indented-reject 2 $'\t机审：不通过（mock indented reject）' 1
 # 无 verdict 且 Claude rc=1：保留 stderr/stdout 诊断并返回 1。
 run_case no-verdict 1 '' 1
+# 非空 verdict 无结论行时仍返回 1。
+run_case malformed 1 '审计说明：未产出裁决' 1
 
 printf 'cc-auditor verdict 退出语义测试全过\n'

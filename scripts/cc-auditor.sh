@@ -156,10 +156,10 @@ cat "$TMP_OUTPUT"
 
 # verdict 以工件为准；stdout 仅兜底（CLI 漏写时从 stdout 提取结论行）。
 if [ ! -s "$VERDICT_FILE" ]; then
-  if grep -Eq '^机审：通过([[:space:]]|$)' "$TMP_OUTPUT"; then
+  if grep -Eq '^[[:space:]]*机审：通过([[:space:]]|$)' "$TMP_OUTPUT"; then
     printf '机审：通过\n' > "$VERDICT_FILE"
-  elif grep -Eq '^机审：不通过' "$TMP_OUTPUT"; then
-    grep -E '^机审：不通过' "$TMP_OUTPUT" | tail -1 > "$VERDICT_FILE"
+  elif grep -Eq '^[[:space:]]*机审：不通过' "$TMP_OUTPUT"; then
+    grep -E '^[[:space:]]*机审：不通过' "$TMP_OUTPUT" | tail -1 > "$VERDICT_FILE"
   fi
 fi
 
@@ -167,11 +167,11 @@ fi
 # 就把业务结论交给 phase2。尤其是 Claude 已写 REJECT 但 wrapper 返回 1
 # 的情况，不能再被误报成基础设施失败。
 if [ -f "$VERDICT_FILE" ]; then
-  if grep -Eq '^机审：通过([[:space:]]*（[^）]*）)?[[:space:]]*$' "$VERDICT_FILE"; then
+  if grep -Eq '^[[:space:]]*机审：通过([[:space:]]*（[^）]*）)?[[:space:]]*$' "$VERDICT_FILE"; then
     echo "[cc-auditor] verdict 已产出（通过，claude rc=${rc}）: $VERDICT_FILE" >&2
     exit 0
   fi
-  if grep -Eq '^机审：不通过([[:space:]]*（[^）]*）)?[[:space:]]*$' "$VERDICT_FILE"; then
+  if grep -Eq '^[[:space:]]*机审：不通过([[:space:]]*（[^）]*）)?[[:space:]]*$' "$VERDICT_FILE"; then
     echo "[cc-auditor] verdict 已产出（不通过，claude rc=${rc}）: $VERDICT_FILE" >&2
     exit 2
   fi
