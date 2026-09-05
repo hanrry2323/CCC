@@ -201,7 +201,11 @@ def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
 
     results = {}
     for num in (1, 2, 3, 4):
-        item_m = re.search(rf"^\s*{num}\.\s+\*\*([^*]+)\*\*：[^\[]*\[([^]]*)\]", seg, re.M)
+        item_m = re.search(
+            rf"^\s*{num}\.\s+(?:\*\*)?([^*\n：]+?)(?:\*\*)?：[^\[]*\[([^]]*)\](.*)$",
+            seg,
+            re.M,
+        )
         if not item_m:
             continue
         name = item_m.group(1).strip()
@@ -210,7 +214,13 @@ def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
         start_idx = item_m.end()
         sub_seg = seg[start_idx:]
         note_m = re.search(r"^\s+-\s+说明：\s*(.*)$", sub_seg, re.M)
-        note = note_m.group(1).strip() if note_m else ""
+        if note_m:
+            note = note_m.group(1).strip()
+        else:
+            inline_note_m = re.search(r"(?:—|–|:|：)\s*(.*)$", item_m.group(3))
+            note = inline_note_m.group(1).strip() if inline_note_m else ""
+            note = note.strip("`'\" ")
+            note = re.sub(r"^[\s`'\"—–-]+", "", note).strip()
 
         results[num] = {"name": name, "choice": choice, "note": note}
     return results

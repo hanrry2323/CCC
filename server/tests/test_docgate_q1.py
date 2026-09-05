@@ -94,3 +94,68 @@ def test_q1_no_choice_with_plan_explained(tmp_path: Path):
     with patch("server.board.docgate.get_modified_files", return_value=[]):
         ok, problems = verify_maintenance(card_file, tmp_path)
     assert ok is True, problems
+
+
+def test_parse_maintenance_section_supports_standalone_notes():
+    from server.board.docgate import parse_maintenance_section
+
+    parsed = parse_maintenance_section(
+        "## 维护区\n"
+        "1. **方案同步**：[是]\n"
+        "   - 说明：方案已推进并关联本卡\n"
+        "2. **教训沉淀**：[无]\n"
+        "   - 说明：无新教训\n"
+        "3. **档案/README**：[否]\n"
+        "   - 说明：无结构变化\n"
+        "4. **线路图**：[否]\n"
+        "   - 说明：无线路变化\n"
+    )
+
+    assert [parsed[num]["note"] for num in range(1, 5)] == [
+        "方案已推进并关联本卡",
+        "无新教训",
+        "无结构变化",
+        "无线路变化",
+    ]
+
+
+def test_parse_maintenance_section_supports_inline_notes():
+    from server.board.docgate import parse_maintenance_section
+
+    parsed = parse_maintenance_section(
+        "## 维护区\n"
+        "1. 方案同步：[是] — `方案已推进并关联本卡`\n"
+        "2. 教训沉淀：[无] — 无新教训\n"
+        "3. 档案/README：[否]：无结构变化\n"
+        "4. 线路图：[否] — 无线路变化\n"
+    )
+
+    assert [parsed[num]["note"] for num in range(1, 5)] == [
+        "方案已推进并关联本卡",
+        "无新教训",
+        "无结构变化",
+        "无线路变化",
+    ]
+
+
+def test_parse_maintenance_section_rejects_blank_or_missing_notes():
+    from server.board.docgate import parse_maintenance_section
+
+    parsed = parse_maintenance_section(
+        "## 维护区\n"
+        "1. 方案同步：[是] —\n"
+        "2. 教训沉淀：[无]\n"
+        "3. 档案/README：[否]：\n"
+        "4. 线路图：[否] —\n"
+    )
+
+    assert [parsed[num]["note"] for num in range(1, 5)] == ["", "", "", ""]
+
+
+def test_parse_maintenance_section_missing_item_stays_missing():
+    from server.board.docgate import parse_maintenance_section
+
+    parsed = parse_maintenance_section("## 维护区\n1. 方案同步：[是] — ok\n")
+
+    assert set(parsed) == {1}
+    assert parsed[1]["note"] == "ok"
