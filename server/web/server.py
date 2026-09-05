@@ -120,6 +120,7 @@ from server.engine.cluster import (
 from server.web.brain import call_brain, stream_brain_events
 from server.web import session_store
 from server.web import wall  # DSH 监控墙引擎（ccc-plan-045 P1，源 dsh-wall v0.3.4）
+from server.web.result_report import ResultReportError, STORE as RESULT_STORE
 from server.config.ops_nodes import load_known_services, load_portals  # 运维节点表单源（批D 项3）
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
@@ -4082,8 +4083,61 @@ class _APIHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
 
+    def _handle_result_report_post(self) -> None:
+        """旁路写入执行结果事件；不参与卡状态或 Engine 收单。"""
+        length_raw = self.headers.get("Content-Length", "0")
+        try:
+            length = int(length_raw)
+        except ValueError:
+            self._send_json({"error": "invalid Content-Length"}, 400)
+            return
+        from server.web.result_report import MAX_BODY_BYTES
+
+        if length < 0 or length > MAX_BODY_BYTES:
+            self._send_json({"error": "request body too large"}, 413)
+            return
+        raw = self.rfile.read(length)
+        try:
+            body = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._send_json({"error": "invalid request body"}, 400)
+            return
+        auth = self.headers.get("Authorization", "")
+        supplied = auth[len("Bearer ") :].strip() if auth.startswith("Bearer ") else ""
+        try:
+            result = RESULT_STORE.append(
+                body,
+                supplied,
+                lambda work_id: any(str(item.id) == work_id for item in _load_board_items(include_archived=True)),
+            )
+        except ResultReportError as exc:
+            self._send_json({"error": exc.message}, exc.status)
+            return
+        self._send_json(result)
+
+    def _handle_result_report_get(self) -> None:
+        """只读执行结果事件；使用现有 board 读闸。"""
+        from urllib.parse import parse_qs
+
+        query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+        work_id = (query.get("work_id", [""])[0] or "").strip() or None
+        try:
+            limit = int(query.get("limit", ["50"])[0])
+        except ValueError:
+            self._send_json({"error": "limit must be an integer"}, 400)
+            return
+        if limit < 1 or limit > 200:
+            self._send_json({"error": "limit must be between 1 and 200"}, 400)
+            return
+        try:
+            self._send_json(RESULT_STORE.read(work_id, limit))
+        except ResultReportError as exc:
+            self._send_json({"error": exc.message}, exc.status)
+
     def do_GET(self):
         # T23：静态白名单路径免鉴权（页面本身是登录入口）
+        # 结果事件 GET 在下方统一经过现有 session/read gate。
+
         raw_path = self.path.split("?")[0]
         path = raw_path.rstrip("/") or "/"
         if self._send_static(path):
@@ -4187,6 +4241,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/conversation":
             self._handle_conversation_get()
+            return
+        if path == "/api/v1/board/result/events":
+            self._handle_result_report_get()
             return
         # P0 下线（2026-08-29）：/dsh/workspaces 与 /dsh/sessions/<id> 路由已删除。
         # 证据：web 前端对话栈 2026-08-24 拆除后零调用；桌面端会话走本地 Swift
@@ -4351,6 +4408,12 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_404()
 
     def do_POST(self):
+        # Result reporting has its own bearer token and remains independent of
+        # the web session token; it is an observation-only side channel.
+        raw_post = self.path.rstrip("/").split("?")[0]
+        if raw_post == "/api/v1/board/result":
+            self._handle_result_report_post()
+            return
         # R2-P0 修复（2026-08-24 直修）：墙回写端点移入鉴权门——原 ccc-plan-045「LAN 信任」
         # 前置豁免构成匿名 prompt 注入链（sessionId 可经 /wall/api/active 匿名枚举），
         # 与 CCC_WEB_WRITE_AUTH 门禁语义正面冲突。前端 wallPage.js 已同步携带 Bearer。

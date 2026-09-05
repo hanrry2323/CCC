@@ -86,6 +86,10 @@ OPTIONAL_KEYS: dict[str, str] = {
     "CCC_BRAIN_KB": "0",
     "CCC_KB_INDEX_DIR": "",
     "CCC_BRAIN_KB_TOP_K": "3",
+    # Optional execution result observation channel; empty token disables POST.
+    "CCC_RESULT_REPORT_TOKEN": "",
+    "CCC_RESULT_REPORT_EVENTS_PATH": "",
+    "CCC_RESULT_REPORT_URL": "http://192.168.3.116:7788/api/v1/board/result",
 }
 
 LINE_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*?)\s*$")
