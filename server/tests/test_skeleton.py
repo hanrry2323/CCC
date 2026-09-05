@@ -273,9 +273,15 @@ def test_cc_auditor_script_bash_syntax() -> None:
     """cc-auditor.sh（后段验收席 claude wrapper）必须通过 bash -n 语法检查。
 
     批E 第五步：wrapper 是核心产线行为变更，语法门禁入测试（轻量）。
+    批G（2026-09-05）：机械测试证据工作目录随 TEST_WORKDIR，
+    不再依赖 $(pwd)（主仓 cwd 假失败修复）。
     """
     script = PROJECT_ROOT / "scripts" / "cc-auditor.sh"
     assert script.is_file(), f"cc-auditor.sh 缺失: {script}"
+    text = script.read_text(encoding="utf-8")
+    assert "TEST_WORKDIR" in text and "test_workdir" in text, "必须声明测试证据工作目录（TEST_WORKDIR）"
+    assert 'TEST_WORKDIR="${BIZ_WORKTREE:-${WORKTREE:-$REPO_ROOT}}"' in text, "业务 worktree 选择顺序必须为 BIZ_WORKTREE → WORKTREE → 主仓"
+    assert 'test-evidence.sh" "$AUDIT_CARD" "$TEST_WORKDIR"' in text, "test-evidence 必须指向 TEST_WORKDIR"
     import subprocess
 
     res = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)

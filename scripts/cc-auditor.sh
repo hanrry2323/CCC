@@ -42,10 +42,11 @@ export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:3456}"
 export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-Code}"
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-dummy-placeholder}"
 
-# 主仓只读 cwd；审计目标是主仓卡，不依赖业务 worktree。
+# 主仓只读 cwd；审计目标是主仓卡，机械测试证据在业务 worktree 执行。
 REPO_ROOT="$(cd "$_SELF/.." && pwd -P)"
 cd "$REPO_ROOT"
 AUDIT_CARD="$CARD_PATH"
+TEST_WORKDIR="${BIZ_WORKTREE:-${WORKTREE:-$REPO_ROOT}}"
 LOG_DIR="${EXECUTOR_LOG_DIR:-${LOG_DIR:-$HOME/.ccc/logs/exec}}"
 mkdir -p "$LOG_DIR"
 VERDICT_FILE="$LOG_DIR/${WORK_ID}-audit-verdict.md"
@@ -54,6 +55,7 @@ TMP_OUTPUT="$(mktemp)"
 trap 'rm -f "$TMP_OUTPUT"' EXIT
 
 echo "[cc-auditor] 审查对象=主仓卡（只读）: ${AUDIT_CARD}（work ${WORK_ID}，角色 ${ROLE}）" >&2
+echo "[cc-auditor] test_workdir: ${TEST_WORKDIR}" >&2
 echo "[cc-auditor] verdict 工件: $VERDICT_FILE" >&2
 
 # ── 机械门禁一：维护区四问（docgate.verify_maintenance）──
@@ -97,8 +99,8 @@ if [[ -z "$_TE_EXEC_LOG_DIR" ]]; then
   _TE_EXEC_LOG_DIR="$HOME/.ccc/logs/exec"
 fi
 _TE_EVIDENCE_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}.test-evidence.log"
-if [[ -f "$AUDIT_CARD" && -d "$(pwd)" ]]; then
-  if bash "$_CCC_ROOT/scripts/test-evidence.sh" "$AUDIT_CARD" "$(pwd)" "$_TE_EVIDENCE_LOG"; then
+if [[ -f "$AUDIT_CARD" && -d "$TEST_WORKDIR" ]]; then
+  if bash "$_CCC_ROOT/scripts/test-evidence.sh" "$AUDIT_CARD" "$TEST_WORKDIR" "$_TE_EVIDENCE_LOG"; then
     : # 测试通过或无声明 → 放行进入机审
   else
     _TE_RC=$?

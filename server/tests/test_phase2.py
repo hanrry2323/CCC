@@ -531,8 +531,10 @@ def test_dsh_auditor_reads_command_from_registry(monkeypatch, tmp_path: Path) ->
         "run",
         lambda args, **kwargs: calls.append(list(args)) or _ok_rc(0),
     )
+    business_worktree = tmp_path / "business-worktree"
+    business_worktree.mkdir()
     rc, out, err = phase2._run_dsh_auditor(
-        {"id": "tst997", "project": "tst"},
+        {"id": "tst997", "project": "tst", "worktree": str(business_worktree)},
         card_file,
         "",
         {"EXECUTOR_REGISTRY_PATH": str(reg_file)},
@@ -540,8 +542,8 @@ def test_dsh_auditor_reads_command_from_registry(monkeypatch, tmp_path: Path) ->
     )
     assert rc == 0
     assert calls and calls[0][0] == fake, f"应使用注册表命令 {fake}，实际 {calls[0] if calls else 'no call'}"
-    # 参数模板保持：card_path work_id 空 worktree 哨兵 role
-    assert calls[0][1:] == [str(card_file), "tst997", "__CCC_EMPTY__", "验收席"]
+    # 参数模板保持：card_path work_id card worktree role
+    assert calls[0][1:] == [str(card_file), "tst997", str(business_worktree), "验收席"]
 
 
 def test_dsh_auditor_registry_read_failure_falls_back(monkeypatch, tmp_path: Path) -> None:
