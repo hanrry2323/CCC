@@ -106,6 +106,34 @@ def _worktree_branch_seed(repo: Path, branch: str) -> str:
     return "origin/main"
 
 
+def _mount_business_worktree_venv(worktree: Path, repo: Path) -> None:
+    """将业务仓根现成的 ``.venv`` 以符号链接挂入 worktree（不复制环境）。"""
+    source = repo / ".venv"
+    target = worktree / ".venv"
+    if os.path.lexists(target):
+        return
+    if not source.is_dir():
+        logger.warning("WARN worktree venv unavailable: business_repo=%s", repo)
+        return
+    try:
+        target.symlink_to(source, target_is_directory=True)
+        logger.info("业务仓 worktree 已挂载 .venv 符号链接: %s -> %s", target, source)
+    except OSError as exc:
+        logger.warning("worktree .venv 符号链接创建失败（不阻断 worktree）: %s (%s)", target, exc)
+
+
+def _remove_business_worktree_venv(worktree: Path) -> None:
+    """删除业务 worktree 内的 .venv 符号链接，绝不删除实体环境或链接目标。"""
+    target = worktree / ".venv"
+    if not target.is_symlink():
+        return
+    try:
+        target.unlink()
+        logger.info("业务仓 worktree .venv 符号链接已清理: %s", target)
+    except OSError as exc:
+        logger.warning("业务仓 worktree .venv 符号链接清理失败: %s (%s)", target, exc)
+
+
 def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str | None, str | None]:
     """确保业务仓每卡 worktree 存在；返回 (worktree_path | None, error | None)。
 
@@ -168,12 +196,17 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             except Exception:
                 pass
         if success:
+            _mount_business_worktree_venv(target, repo)
             return str(target), None
         # 未成功收单：重置
         subprocess.run(["git", "checkout", "--", "."], cwd=target, capture_output=True, check=False, timeout=30)
-        subprocess.run(["git", "clean", "-fd"], cwd=target, capture_output=True, check=False, timeout=60)
+        subprocess.run(["git", "clean", "-fd", "-e", ".venv"], cwd=target, capture_output=True, check=False, timeout=60)
         status = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=target, capture_output=True, text=True, check=False
+            ["git", "status", "--porcelain", "--", ".", ":(exclude).venv"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         is_clean = status.returncode == 0 and not status.stdout.strip()
         if is_clean:
@@ -186,7 +219,11 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             if merge_base.returncode != 0:
                 is_clean = False
         if is_clean:
+            _mount_business_worktree_venv(target, repo)
             return str(target), None
+
+        # 强重建前先移除本次 worktree 自己创建的 .venv 链接；目标业务仓环境不受影响。
+        _remove_business_worktree_venv(target)
         # 脏或分叉：强重建
         subprocess.run(
             ["git", "-C", str(repo), "worktree", "remove", "--force", str(target)],
@@ -201,6 +238,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             rc2, err2 = _try_add(new_branch=False)
             if rc2 != 0:
                 return None, f"业务仓 worktree 重建失败: {err or err2}"
+        _mount_business_worktree_venv(target, repo)
         return str(target), None
     else:
         rc, err = _try_add(new_branch=True)
@@ -208,6 +246,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             rc2, err2 = _try_add(new_branch=False)
             if rc2 != 0:
                 return None, f"业务仓 worktree 创建失败: {err or err2}"
+        _mount_business_worktree_venv(target, repo)
         return str(target), None
 
 
@@ -1753,6 +1792,8 @@ def _cleanup_business_worktrees(store: BoardStore, log_dir: Path) -> int:
                             use_force = True
 
                 if should_reap:
+                    # 先移除 worktree 内 .venv 符号链接（git worktree remove 拒删符号链接目标指向外部）
+                    _remove_business_worktree_venv(wt_dir)
                     cmd = ["git", "-C", str(repo), "worktree", "remove", str(wt_dir)]
                     if use_force:
                         cmd.append("--force")

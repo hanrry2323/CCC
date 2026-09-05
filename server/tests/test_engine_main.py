@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -2741,6 +2742,92 @@ class TestBusinessWorktreeIsolation:
             check=False,
         ).stdout.strip()
         assert branch == "codex/mx100-test"
+
+    def test_business_worktree_mounts_existing_venv_as_symlink(self, tmp_path: Path) -> None:
+        repo = self._make_biz_repo(tmp_path)
+        source = repo / ".venv"
+        source.mkdir()
+        (source / "bin").mkdir()
+        (source / "bin" / "pytest").write_text("#!/bin/sh\n", encoding="utf-8")
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        work = Work(id="mx103", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx103-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        wt, err = _ensure_business_worktree(work, proj, log_dir)
+
+        assert err is None and wt is not None
+        mounted = Path(wt) / ".venv"
+        assert mounted.is_symlink()
+        assert mounted.resolve() == source.resolve()
+        assert (source / "bin" / "pytest").is_file()
+
+    def test_business_worktree_without_venv_logs_warning(self, tmp_path: Path, caplog) -> None:
+        repo = self._make_biz_repo(tmp_path)
+        proj = self._make_project(repo, tmp_path / ".ccc-wt" / "mx")
+        work = Work(id="mx104", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx104-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        with caplog.at_level("WARNING", logger="ccc.engine"):
+            wt, err = _ensure_business_worktree(work, proj, log_dir)
+
+        assert err is None and wt is not None
+        assert not (Path(wt) / ".venv").exists()
+        assert "WARN worktree venv unavailable" in caplog.text
+
+    def test_business_worktree_existing_venv_is_untouched(self, tmp_path: Path, caplog) -> None:
+        repo = self._make_biz_repo(tmp_path)
+        (repo / ".venv").mkdir()
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        work = Work(id="mx105", role="开发执行体", project="mx", card_path="docs/dispatch/mx/mx105-test.md")
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        wt, err = _ensure_business_worktree(work, proj, log_dir)
+        assert err is None and wt is not None
+        mounted = Path(wt) / ".venv"
+        mounted.unlink()
+        mounted.mkdir()
+        marker = mounted / "keep.txt"
+        marker.write_text("existing", encoding="utf-8")
+
+        with caplog.at_level("INFO", logger="ccc.engine"):
+            wt2, err2 = _ensure_business_worktree(work, proj, log_dir)
+
+        assert err2 is None and wt2 == wt
+        assert mounted.is_dir() and not mounted.is_symlink()
+        assert marker.read_text(encoding="utf-8") == "existing"
+
+    def test_cleanup_business_worktree_removes_venv_symlink(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        repo = self._make_biz_repo(tmp_path)
+        (repo / ".venv").mkdir()
+        wt_root = tmp_path / ".ccc-wt" / "mx"
+        proj = self._make_project(repo, wt_root)
+        monkeypatch.setattr("server.board.registry.load_projects", lambda: (proj,))
+        work = Work(
+            id="mx106",
+            role="开发执行体",
+            project="mx",
+            state=State.CLOSED,
+            card_path="docs/dispatch/mx/mx106-test.md",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        wt, err = _ensure_business_worktree(work, proj, log_dir)
+        assert err is None and wt is not None
+        mounted = Path(wt) / ".venv"
+        assert mounted.is_symlink()
+
+        store = InMemoryBoardStore()
+        store.seed(work)
+        from server.engine.main import _cleanup_business_worktrees
+
+        assert _cleanup_business_worktrees(store, log_dir) == 1
+        assert not os.path.lexists(mounted)
+        assert (repo / ".venv").is_dir()
 
     def test_business_worktree_failed_no_origin(self, tmp_path: Path) -> None:
         repo = self._make_biz_repo(tmp_path, with_origin_main=False)
