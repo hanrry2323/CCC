@@ -186,3 +186,4 @@ docs/dispatch/.card-lock
 *.tmp
 *.tmp-*
 *.orig
+.ccc-state/
