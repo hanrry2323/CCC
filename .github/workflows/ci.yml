@@ -1,6 +1,6 @@
 # CCC CI — GitHub Actions
 # 2026-08-03 重构收口：旧 scripts/ 已退役归档，CI 切到新 server/ 栈。
-# Jobs: pytest (server/), ruff (server/), shellcheck (server/deploy), swift-test (desktop)
+# Jobs: pytest (server/), ruff (server/), shellcheck (server/deploy)。swift-test 已移除（desktop 休眠，v2.0.0）
 # Triggers: push, PR
 
 name: ci
@@ -62,10 +62,3 @@ jobs:
           files=(server/deploy/*.sh)
           if [ ${#files[@]} -gt 0 ]; then shellcheck "${files[@]}"; else echo "no shell files"; fi
 
-  swift-test:
-    name: swift-test (desktop)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run desktop Swift tests
-        run: cd desktop && swift test
