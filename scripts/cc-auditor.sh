@@ -47,6 +47,10 @@ REPO_ROOT="$(cd "$_SELF/.." && pwd -P)"
 cd "$REPO_ROOT"
 AUDIT_CARD="$CARD_PATH"
 TEST_WORKDIR="${BIZ_WORKTREE:-${WORKTREE:-$REPO_ROOT}}"
+if [[ ! -d "$TEST_WORKDIR" ]]; then
+  echo "[cc-auditor] WARN: test_workdir 不存在，回落主仓: ${TEST_WORKDIR} -> ${REPO_ROOT}" >&2
+  TEST_WORKDIR="$REPO_ROOT"
+fi
 LOG_DIR="${EXECUTOR_LOG_DIR:-${LOG_DIR:-$HOME/.ccc/logs/exec}}"
 mkdir -p "$LOG_DIR"
 VERDICT_FILE="$LOG_DIR/${WORK_ID}-audit-verdict.md"

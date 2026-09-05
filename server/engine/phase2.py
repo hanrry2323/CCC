@@ -421,8 +421,14 @@ def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeou
     work_id = str(card.get("id") or card_file.stem.split("-", 1)[0])
     # 主仓分支保护（A4 加固）：机审前记录主仓分支，机审后校验未漂移。
     prev_branch = _current_branch()
+    # 第 3 位保持 card worktree 原值；第 5 位单独传业务 worktree，供证据检查使用。
     audit_worktree = str(card.get("worktree") or "__CCC_EMPTY__")
-    cmd = [str(auditor), str(card_file), work_id, audit_worktree, "验收席"]
+    audit_biz_worktree = str(
+        card.get("worktree")
+        or _worktree_for(str(card.get("project") or ""), work_id)
+        or "__CCC_EMPTY__"
+    )
+    cmd = [str(auditor), str(card_file), work_id, audit_worktree, "验收席", audit_biz_worktree]
     child_env = cli_env()
     audit_log_dir = _audit_log_dir(cfg)
     child_env.setdefault("EXECUTOR_LOG_DIR", str(audit_log_dir))

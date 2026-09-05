@@ -282,6 +282,8 @@ def test_cc_auditor_script_bash_syntax() -> None:
     assert "TEST_WORKDIR" in text and "test_workdir" in text, "必须声明测试证据工作目录（TEST_WORKDIR）"
     assert 'TEST_WORKDIR="${BIZ_WORKTREE:-${WORKTREE:-$REPO_ROOT}}"' in text, "业务 worktree 选择顺序必须为 BIZ_WORKTREE → WORKTREE → 主仓"
     assert 'test-evidence.sh" "$AUDIT_CARD" "$TEST_WORKDIR"' in text, "test-evidence 必须指向 TEST_WORKDIR"
+    assert 'if [[ ! -d "$TEST_WORKDIR" ]]' in text, "TEST_WORKDIR 不存在时必须检查并回落"
+    assert "回落主仓" in text and "WARN" in text, "TEST_WORKDIR 回落必须记录 WARN"
     import subprocess
 
     res = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)

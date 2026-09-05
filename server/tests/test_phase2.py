@@ -542,8 +542,35 @@ def test_dsh_auditor_reads_command_from_registry(monkeypatch, tmp_path: Path) ->
     )
     assert rc == 0
     assert calls and calls[0][0] == fake, f"应使用注册表命令 {fake}，实际 {calls[0] if calls else 'no call'}"
-    # 参数模板保持：card_path work_id card worktree role
-    assert calls[0][1:] == [str(card_file), "tst997", str(business_worktree), "验收席"]
+    # 参数模板保持：card_path work_id card worktree role biz_worktree
+    assert calls[0][1:] == [str(card_file), "tst997", str(business_worktree), "验收席", str(business_worktree)]
+
+
+def test_dsh_auditor_passes_derived_biz_worktree_when_card_omits_it(monkeypatch, tmp_path: Path) -> None:
+    """卡未带 worktree 时，第 5 位仍传入按项目隔离根推导的业务 worktree。"""
+    card_file = tmp_path / "tst994.md"
+    card_file.write_text("# 任务卡 tst994\n", encoding="utf-8")
+    fake = _fake_auditor(tmp_path)
+    business_worktree = tmp_path / "business-worktree"
+    business_worktree.mkdir()
+    monkeypatch.setattr(phase2, "_worktree_for", lambda project, work_id: str(business_worktree))
+    monkeypatch.setattr(phase2, "_current_branch", lambda: "main")
+    monkeypatch.setattr(phase2, "cli_env", lambda: {})
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        phase2.subprocess,
+        "run",
+        lambda args, **kwargs: calls.append(list(args)) or _ok_rc(0),
+    )
+    rc, out, err = phase2._run_dsh_auditor(
+        {"id": "tst994", "project": "xy"},
+        card_file,
+        "",
+        {"DSH_AUDITOR_BIN": fake},
+        900,
+    )
+    assert rc == 0
+    assert calls[0][1:] == [str(card_file), "tst994", "__CCC_EMPTY__", "验收席", str(business_worktree)]
 
 
 def test_dsh_auditor_registry_read_failure_falls_back(monkeypatch, tmp_path: Path) -> None:
