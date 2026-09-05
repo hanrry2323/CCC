@@ -28,3 +28,19 @@
 ## 证据边界
 
 schema 脚本验证的是当前实际加载的 tool-bash 模块注册结果；headless 冒烟验证真实 CLI 正常执行。未重启 CCC engine/web，亦未将 xy060 手工 kill 或重派。
+
+## fs/pwsh 补充修复（2026-09-05）
+
+已修复当前 DSH 实际加载的 `@deepseek-ai/dsh-tool-fs` 与 `@deepseek-ai/dsh-tool-pwsh`：当对应 executor 的 `sandboxMode` 为 `danger-full-access` 时，升级模式列表为空，因此注册 schema 不含 `sandbox_permissions` / `justification`，也不附带升级指导；无 sandbox executor 与受限模式的 resolver/升级语义保持不变。
+
+- 修改文件：
+  - `/Users/fan/.npm-global/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-tool-fs/lib/index.js`
+  - `/Users/fan/.npm-global/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-tool-pwsh/lib/index.js`
+- 备份文件：两文件各自同目录的 `index.js.bak-20260905-fspwsh-fix`。
+- 变更：fs 的 `FsSandboxController` 与 pwsh 的 `apply()` 均加入 `defaultMode === "danger-full-access"` 排除条件；schema 仍由非空 escalation mode 条件注册。
+- 语法验证：分别执行 `node --check`，结果均为退出码 0（`FS_CHECK_OK`、`PWSH_CHECK_OK`）。
+- 独立静态验证：确认 fs/pwsh 的 full-access 排除表达式存在、备份与现文件不同；确认三工具（bash/fs/pwsh）均不存在未排除 full-access 的旧赋值表达式。
+- 模块加载验证：fs/pwsh 均可直接加载，导出 `Config`、`apply`、`inject`、`name`。
+- 回滚：将对应 `index.js.bak-20260905-fspwsh-fix` 覆盖回 `lib/index.js`；未修改 xianyu 业务仓、任务卡、CCC engine/web，未重启服务。
+
+本次修改发生在 CCC 仓外的 DSH 全局安装副本；CCC 仅追加本报告，node_modules 本身不纳入 git。
