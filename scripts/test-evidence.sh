@@ -22,10 +22,34 @@ CARD_PATH="${1:?缺 card_path}"
 WORKDIR="${2:?缺 workdir}"
 EVIDENCE_LOG="${3:?缺 evidence_log}"
 
-# 解析卡「## 门禁」节的 测试 命令（与 engine parse_gate_section 同源口径；剥反引号）
+# 解析卡「## 门禁」节的 测试 命令（与 engine parse_gate_section 同源口径）。
 TEST_CMD="$(python3 - "$CARD_PATH" <<'PY'
-import re, sys
+import sys
 from pathlib import Path
+
+
+def extract_command(payload: str) -> str:
+    """Extract one Markdown inline-code command without touching shell syntax."""
+    cmd = payload.strip()
+    marker = chr(96)
+    if not cmd.startswith(marker):
+        return cmd
+
+    # Only remove a leading Markdown code span pair.  A command without that
+    # wrapper is returned unchanged, so legal shell backticks remain intact.
+    delimiter_len = 1
+    while delimiter_len < len(cmd) and cmd[delimiter_len] == marker:
+        delimiter_len += 1
+    delimiter = marker * delimiter_len
+    closing = cmd.find(delimiter, delimiter_len)
+    while closing != -1:
+        suffix = cmd[closing + delimiter_len :].lstrip()
+        if not suffix or suffix.startswith(("（", "(")):
+            return cmd[delimiter_len:closing].strip()
+        closing = cmd.find(delimiter, closing + delimiter_len)
+    return cmd
+
+
 p = Path(sys.argv[1])
 if not p.is_file():
     sys.exit("")
@@ -40,14 +64,12 @@ for line in lines:
         if s.startswith("## ") or s.startswith("---"):
             break
         if s.startswith("测试") and (":" in s or "：" in s):
-            # 2026-08-24 修复：全角"："为声明分隔符时必须优先按全角切；
-            # 否则 pytest 节点 ID 的 "::" 半角冒号会把命令腰斩（tst004 exit 127 假阳性）。
+            # 全角冒号优先，避免 pytest 节点 ID 的 "::" 被腰斩。
             if "：" in s:
-                cmd = s.split("：", 1)[1].strip()
+                payload = s.split("：", 1)[1]
             else:
-                cmd = s.split(":", 1)[1].strip()
-            cmd = cmd.strip(chr(96)).strip()  # chr(96) = 反引号，避免 bash $( ) 内反引号解析
-            print(cmd)
+                payload = s.split(":", 1)[1]
+            print(extract_command(payload))
             break
 PY
 )"
