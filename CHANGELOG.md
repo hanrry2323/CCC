@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
+## [v2.0.0] · 2026-09-06 · 工程化 2.0 起点
+
+> **版本定位**：CCC 从「能跑通」转向「工程化可长期无人值守运行」的版本起点。
+> 五个开源对标案例（fusion / gastown / forge-orchestrator / swarm-protocol / nxtg-forge）机制分析已完成，
+> 全盘资产盘点（三路：前半段 31 项 / 后半段 20 项 / 支撑面 12 块）已完成。
+
+### Added
+- `docs/ENGINEERING-2.0.md`：工程化 2.0 宪章（四阶段路线 + 架构不变量 + 验收标准）
+- 隧道看门狗 `com.ccc.tunnel-watchdog`（launchd 300s 探活自动重拉 m1-tunnel）
+- 后段验收席正式切换为 Claude Code CLI（`scripts/cc-auditor.sh`，注册表单源）
+- 看板结果上报通道 `POST /api/v1/board/result` + 事件存储 + 看板「执行中」实时视图
+- 业务 worktree `.venv` 符号链接挂载（复用业务仓测试环境）
+
+### Fixed（v0.71 末实战修复沉淀）
+- DSH 执行体权限协商死循环（tool-bash/fs/pwsh 三插件 full-access 下隐藏升级字段）
+- 验收席证据工作目录错位（后段 test-evidence 落业务 worktree）
+- phase2 验收席输出非 UTF-8 解码崩溃（bytes+errors=replace）
+- 维护区四问行内说明格式解析兼容；verdict 行首空白容忍
+- redispatch 看板地址与 Bearer token 鉴权支持
+
+### Changed（架构不变量，v2.0 延续）
+- 任务卡 = 唯一事实源；三层架构（线路图→计划→看板）；薄驱动 Engine；插座理念（工具皆插件）
+- 人审节点保留；CardStateStore 唯一写入门面；测试 1419+ 用例基线
+
+### Deprecated
+- v0.x 时代文本契约逐步由 P1 结构化 verdict 取代（路线见 ENGINEERING-2.0）
+
 ## [Unreleased] · 2026-08-24 安全加固直修
 
 ### Added

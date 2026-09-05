@@ -1,5 +1,9 @@
 # CCC 文档索引
 
+> ## 🚀 工程化 2.0（v2.0.0 · 2026-09-06 起）
+> **当前阶段最高执行依据：[ENGINEERING-2.0.md](ENGINEERING-2.0.md)**（宪章：四阶段路线 P1 契约结构化 → P2 失败分类+预算 → P3 环境声明式 → P4 粘合自动化；架构不变量；验收席 JSON verdict 契约；现役文档白名单）。
+> v0.x 时代文档为史实参考；与本宪章冲突时以宪章为准。xy060 挂起待 P1 验收席上线重审。
+
 > **先读本页再进别的文件。** `docs/` 约 100+ 篇，多数是历史/烟测/专项；**不要按文件名新旧猜权威。**  
 > 冲突裁决顺序：`VERSION` → `CHANGELOG` → **重构决策定稿 + 契约 v1（§0 #0）** → **ENGINEERING-CANON** → 专题 SSOT → 其余（VISION/STRATEGY-MAP 等已标 RETRACTED，仅作史实）。  
 > **怎么写文档 / 怎么注册项目 / 卡怎么命名**：[`DOC-PROTOCOL.md`](DOC-PROTOCOL.md)（§2 命名定死）· [`projects/registry.yaml`](projects/registry.yaml)。
