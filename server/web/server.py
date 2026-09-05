@@ -122,6 +122,7 @@ from server.web import session_store
 from server.web import wall  # DSH 监控墙引擎（ccc-plan-045 P1，源 dsh-wall v0.3.4）
 from server.web.result_report import ResultReportError, STORE as RESULT_STORE
 from server.config.ops_nodes import load_known_services, load_portals  # 运维节点表单源（批D 项3）
+from server.board.executing import build_executing_view
 
 # ── 默认参数（仅测试用，生产禁止使用） ──
 _DEFAULT_PORT = int(os.environ.get("WEB_PORT", "0"))  # 0=随机端口，仅测试用
@@ -4115,6 +4116,14 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         self._send_json(result)
 
+    def _handle_executing_get(self, items: list[BoardItem]) -> None:
+        """读取执行中卡的旁路事件合成视图；事件不参与卡状态迁移。"""
+        try:
+            events = RESULT_STORE.read(None, 20000).get("events", [])
+            self._send_json(build_executing_view(items, events))
+        except ResultReportError as exc:
+            self._send_json({"error": exc.message}, exc.status)
+
     def _handle_result_report_get(self) -> None:
         """只读执行结果事件；使用现有 board 读闸。"""
         from urllib.parse import parse_qs
@@ -4305,7 +4314,9 @@ class _APIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"data load failed: {exc}"}, 500)
             return
 
-        if path == "/board/realtime":
+        if path == "/api/v1/board/executing":
+            self._handle_executing_get(items)
+        elif path == "/board/realtime":
             self._send_json(view_realtime(items))
         elif path == "/board/recent":
             self._send_json(view_recent(items, now=date.today(), days=7))
