@@ -1,6 +1,6 @@
 # 任务卡 xy060 · M6.1 内容库 API（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：18
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-05 · 状态版本：19
 
 ## 基准文件（先看）
 
@@ -105,6 +105,48 @@ lint：`uv run ruff check admin/ tests/admin/`
 」，内容为无批注，无额外落实项。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+卡标题：**任务卡 xy060 · M6.1 内容库 API（DSH 执行）**。
+
+- 目标：在 xianyu 现有 admin 只读适配层中实现或补齐 M6.1「内容库 API」：扫描既有视频产出目录与图文产物目录，按稳定契约输出只读 JSON 元数据列表，供后续展示台消费；每次请求实时发现新产出，不引入发布或工作流副作用。
+- 非目标：不实现或修改 M6.2 工作流 API、M6.3 视频/图文预览页面、M6.4 工作流可视化页面；不修改视频/图文生产核心、pipeline 状态机、worker、调度、发布、数据库 schema 或外部工作流 API；不触发发布、不启动生产任务、不增加后台常驻扫描、不接入鉴权以外的新运行时依赖；不改变既有 admin 页面。
+- 红线落实：业务改动仅限 `admin/api/server.py` 与 `tests/admin/test_library.py`；未触碰 `src/xianyu/`、视频管线核心、worker/调度/发布、数据库；未发布、未写数据库、未写真实产出目录、未调用工作流 API；未修改 CCC 主仓卡；`.ccc-result.md` 未纳入业务提交。
+- 人工批注：已读取「## 人工批注」与「## 批注落实」，内容为无批注，无额外落实项。
+
+## 1. 探针输出
+
+工作目录：`/Users/fan/program/apps/.ccc-wt/xy/xy060`。
+
+| 核实项 | 命令/证据 | 原始输出与结果 |
+|---|---|---|
+| 分支与工作树 | `git branch --show-current && git status --short --branch` | `codex/xy060-content-library-api`；与 `origin/codex/xy060-content-library-api` 同步；工作树仅预置未跟踪 `.venv`，无业务文件改动。 |
+| 基准已有实现 | `git show origin/main:admin/api/server.py \| grep -n "api/v1/library\\|scan_library"` | origin/main 已有 `_scan_library_task`、`scan_library`、`/api/v1/library`，因此本卡按要求对账并修复确有缺口，未重复新增同名路由。 |
+| API 路由与认证 | `admin/api/server.py:1595-1614` | `GET /api/v1/library` 使用 `Depends(verify_credentials)`，返回顶层 `count/items`；扫描函数在 `server.py:1410-1592`。 |
+| 真实产出目录 | `ls -ld video-pipeline/output workspace/outputs/image_text 2>&1; ls -ld /Users/fan/program/apps/xianyu/video-pipeline/output /Users/fan/program/apps/xianyu/workspace/outputs/image_text 2>&1` | worktree 与权威业务仓两处路径均输出 `No such file or directory`；代码真实落点为 `ROOT / "video-pipeline" / "output"` 与 `ROOT / "workspace" / "outputs" / "image_text"`，缺失时返回空列表且不创建目录。 |
+| 方案契约 | 读取 `/Users/fan/program/CCC/docs/projects/xy/plans/009-frontend-showcase.md:115-120` | 仅激活 6.1 内容库 API；要求只读扫描视频/图文产出、字段完整、当日产出可见和新任务自动收录；6.2-6.4 未激活。 |
+| 测试基准 | `grep -c "def test_" tests/admin/test_library.py` | 输出 `20`；覆盖视频、图文、空态、坏 JSON、缺字段/无脚本降级、不可读条目、实时发现、日期倒序、认证和只读边界。 |
+| 范围对账 | `git diff --name-only origin/main...HEAD && git diff --check origin/main...HEAD` | 仅 `admin/api/server.py`、`tests/admin/test_library.py`；差异检查退出码 `0`。 |
+
+## 2. 自测输出
+
+以下命令均在业务 worktree 执行，记录原始输出与退出码：
+
+1. 测试：`uv run pytest tests/admin/test_library.py tests/admin/ -q`
+   - 原始输出关键段：`collected 98 items`；`======================= 98 passed, 30 warnings in 4.60s ========================`
+   - 退出码：`0`
+2. 编译：`uv run python -m compileall admin/`
+   - 原始输出：`Listing 'admin/'...`、`Listing 'admin/api'...`、`Listing 'admin/css'...`、`Listing 'admin/js'...`、`Listing 'admin/pages'...`
+   - 退出码：`0`
+3. lint：`uv run ruff check admin/ tests/admin/`
+   - 原始输出：`All checks passed!`
+   - 退出码：`0`
+4. 最终范围：`git status --short --branch && git diff --stat origin/main...HEAD && git diff --name-only origin/main...HEAD && git diff --check origin/main...HEAD`
+   - 原始输出：`admin/api/server.py | 138 +++++++++++++++++++++++++++++++++-----------`；`tests/admin/test_library.py | 136 +++++++++++++++++++++++++++++++++++++++++++`；仅上述两个业务文件；工作树仅预置未跟踪 `.venv`。
+   - 退出码：`0`
+
+实现证据：`admin/api/server.py:1410-1614` 提供实时只读目录扫描、视频/图文字段归一化、坏元数据/不可读条目容错、日期倒序和认证路由；测试证据：`tests/admin/test_library.py:103-416`。
 
 ## 0. 卡标题复述
 
@@ -316,7 +358,9 @@ lint：`uv run ruff check admin/ tests/admin/`
 
 ## 维护区
 
-1. 方案同步：`[是]` —— 仅涉及 `xy-plan-009` 的 6.1「内容库 API」；未宣称 6.2、6.3、6.4 完成。证据：任务卡第 8、93 行约束与业务实现 `admin/api/server.py:1409-1614`。
-2. 教训沉淀：`[无]` —— 本次未新增或修改 CCC 主仓真实存在的 `docs/notes/YYYY-MM-DD-*.md` 或 `lessons.md` 文档；按卡要求不以口头过程记录替代教训沉淀。
+1. 方案同步：`[是]` —— 仅涉及 `xy-plan-009` 的 6.1「内容库 API」；对账 origin/main 已有 M6.1 实现后仅修复图文真实产出目录、坏元数据与根目录不可读等证据明确的缺口；未宣称 6.2、6.3、6.4 完成。证据：方案文档 `009-frontend-showcase.md:115-120`，业务实现 `admin/api/server.py:1410-1614`。
+2. 教训沉淀：`[无]` —— 本次未新增或修改 CCC 主仓中真实存在的 `docs/notes/YYYY-MM-DD-*.md` 或 `lessons.md` 文档；按卡要求不以口头过程记录替代教训沉淀。
 3. 档案/README：`[否]` —— 未改变项目结构、技术栈或路径；`git diff --name-only origin/main...HEAD` 仅包含 `admin/api/server.py` 与 `tests/admin/test_library.py`，未修改 README、项目档案或生产核心。
-4. 线路图：`[否]` —— M6.1 交付未改变 xianyu 下一步；未修改 GOAL/roadmap，未顺带推进 M6.2–M6.4。
+4. 线路图：`[否]` —— 本次仅交付 M6.1 API，未修改 GOAL/roadmap，未顺带推进 M6.2、M6.3、M6.4。
+
+批注落实：无人工批注；已读取卡内「## 人工批注」与「## 批注落实」，无额外落实项。
