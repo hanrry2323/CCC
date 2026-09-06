@@ -1,0 +1,107 @@
+"""Derive a structured executor-result sidecar from the markdown contract."""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from pathlib import Path
+from typing import Any
+
+
+def _section(text: str, start: str, end: str | None = None) -> str:
+    marker = f"## {start}"
+    if marker not in text:
+        raise ValueError(f"missing {marker}")
+    body = text.split(marker, 1)[1]
+    if end is not None:
+        body = body.split(f"## {end}", 1)[0]
+    return body.strip()
+
+
+def _first_line(text: str) -> str:
+    return next((line.strip() for line in text.splitlines() if line.strip()), "")
+
+
+def _maintenance_value(text: str, number: int, name: str) -> tuple[str, str]:
+    match = re.search(
+        rf"(?im)^\s*{number}\.\s+(?:\*\*)?{re.escape(name)}(?:\*\*)?：\s*\[([^]]+)\](.*)$",
+        text,
+    )
+    if not match:
+        raise ValueError(f"missing maintenance item {number}")
+    choice = match.group(1).strip()
+    note = match.group(2).strip()
+    return choice, note
+
+
+def _exit_code(name: str, text: str) -> int | None:
+    patterns = (
+        rf"(?im)^[^\n]*\b{name}\b[^\n]*(?:exit|rc|退出码)\s*[:=]\s*(-?\d+)",
+        rf"(?im)^[^\n]*\b{name}\b[^\n]*\b(-?\d+)\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _evidence(text: str) -> dict[str, Any]:
+    commits = re.findall(r"(?im)\bcommit\s*=\s*([0-9a-f]{7,40})\b", text)
+    match = re.search(r"(?im)^diff[_ ]stat\s*[:=]\s*(.+)$", text)
+    diff_stat = match.group(1).strip() if match else ""
+    if not diff_stat:
+        try:
+            diff_stat = subprocess.run(
+                ["git", "diff", "--stat", "HEAD^", "HEAD"],
+                text=True,
+                capture_output=True,
+                check=False,
+            ).stdout.strip()
+        except OSError:
+            diff_stat = ""
+    return {"commits": commits, "diff_stat": diff_stat}
+
+
+def parse_result(text: str, work_id: str) -> dict[str, Any]:
+    """Parse all required markdown sections; raise when the contract is incomplete."""
+    title = _section(text, "0. 卡标题复述", "1. 探针输出")
+    probe = _section(text, "1. 探针输出", "2. 自测输出")
+    selftest = _section(text, "2. 自测输出", "3. 维护区四问")
+    maintenance_text = _section(text, "3. 维护区四问", "4. 变更证据")
+    plan_sync, plan_note = _maintenance_value(maintenance_text, 1, "方案同步")
+    lesson, lesson_note = _maintenance_value(maintenance_text, 2, "教训沉淀")
+    readme, readme_note = _maintenance_value(maintenance_text, 3, "档案/README")
+    roadmap, roadmap_note = _maintenance_value(maintenance_text, 4, "线路图")
+    evidence = _evidence(_section(text, "4. 变更证据"))
+    return {
+        "work_id": work_id,
+        "card_title": _first_line(title),
+        "probe_output": probe,
+        "selftest_output": selftest,
+        "exit_codes": {
+            "test": _exit_code("test", selftest),
+            "compile": _exit_code("compile", selftest),
+            "lint": _exit_code("lint", selftest),
+        },
+        "maintenance": {
+            "plan_sync": plan_sync,
+            "lesson": lesson,
+            "readme": readme,
+            "roadmap": roadmap,
+        },
+        "maintenance_notes": {
+            "plan_sync": plan_note,
+            "lesson": lesson_note,
+            "readme": readme_note,
+            "roadmap": roadmap_note,
+        },
+        "evidence": evidence,
+    }
+
+
+def convert_file(source: str | Path, destination: str | Path, work_id: str) -> None:
+    text = Path(source).read_text(encoding="utf-8", errors="replace")
+    payload = parse_result(text, work_id)
+    Path(destination).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

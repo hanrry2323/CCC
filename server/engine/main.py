@@ -2617,39 +2617,114 @@ def _replace_card_section(text: str, heading: str, body: str) -> str:
     return text[:content_start] + "\n\n" + body.strip() + "\n" + text[end:]
 
 
+def _executor_result_json_path(log_dir: Path, work_id: str) -> Path:
+    """P1.3：结构化执行结果 sidecar 路径（优先于 markdown 兼容链）。"""
+    return log_dir / f"{work_id}-ccc-result.json"
+
+
+def _executor_result_required_headings() -> tuple[str, ...]:
+    return ("## 0. 卡标题复述", "## 1. 探针输出", "## 2. 自测输出", "## 3. 维护区四问")
+
+
 def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str, Any]) -> tuple[bool, str]:
-    """读取 A1 结果契约，由 Engine 代写主仓卡并原子提交推送。"""
-    if not result_path.is_file():
+    """读取 A1 结果契约，由 Engine 代写主仓卡并原子提交推送。
+
+    P1.3：优先读 JSON sidecar（``<id>-ccc-result.json``），失败回退既有
+    markdown 四段 split 逻辑。JSON 路径不做字符串 split——四段内容与维护区
+    直接来自字段映射；markdown 路径保持原行为不变（兼容窗口不删）。
+    """
+    json_path = result_path.with_name(result_path.name.replace("-ccc-result.md", "-ccc-result.json"))
+    if not result_path.is_file() and not json_path.is_file():
         return False, f"执行体未产出结果文件: {result_path}"
-    try:
-        result = result_path.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError as exc:
-        return False, f"读取执行结果失败: {exc}"
-    required = ("## 0. 卡标题复述", "## 1. 探针输出", "## 2. 自测输出", "## 3. 维护区四问")
-    missing = [heading for heading in required if heading not in result]
-    if missing:
-        return False, f"执行结果契约不完整，缺少: {', '.join(missing)}"
     card_path = Path(work.card_path)
+    json_path = result_path.with_name(result_path.name.replace("-ccc-result.md", "-ccc-result.json"))
     try:
         card_text = card_path.read_text(encoding="utf-8")
-        title_section = result.split("## 0. 卡标题复述", 1)[1].split("## 1.", 1)[0].strip()
-        # A2 修复：按 A1 实际模板识别段内卡号，不要求标题必须是特定单行格式。
-        if not title_section or not re.search(rf"\b{re.escape(work.id)}\b", title_section, re.IGNORECASE):
-            return False, "执行结果标题复述为空或未包含卡号"
-        writeback = "## 0. 卡标题复述\n\n" + title_section
-        for heading in ("## 1. 探针输出", "## 2. 自测输出"):
-            section = result.split(heading, 1)[1]
-            section = section.split("## ", 1)[0].strip()
-            writeback += f"\n\n{heading}\n\n{section}"
-        maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
+        title_section = ""
+        probe_section = ""
+        selftest_section = ""
+        maintenance = ""
+        annotation_body = ""
+        json_mode = False
+
+        def expr(value: str | None) -> str:
+            """维护区 [是/否] 勾选：值以「是」开头→是，否则否。"""
+            return "是" if value and value.strip().startswith("是") else "否"
+
+        def evidence_choice(value: str | None) -> str:
+            """维护区 [有/无] 勾选：值以「有」开头→有，否则无。"""
+            return "有" if value and value.strip().startswith("有") else "无"
+
+        if json_path.is_file():
+            try:
+                payload = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
+                if (
+                    isinstance(payload, dict)
+                    and isinstance(payload.get("card_title"), str)
+                    and isinstance(payload.get("probe_output"), str)
+                    and isinstance(payload.get("selftest_output"), str)
+                    and isinstance(payload.get("maintenance"), dict)
+                ):
+                    title_section = payload.get("card_title", "").strip()
+                    probe_section = payload.get("probe_output", "").strip()
+                    selftest_section = payload.get("selftest_output", "").strip()
+                    maint = payload.get("maintenance", {})
+                    # 卡面格式与 new-card.sh 模板/docgate 解析器兼容：`N. **name**：[choice] 说明`
+                    if isinstance(maint.get("plan_sync"), str) and isinstance(maint.get("lesson"), str) and isinstance(maint.get("readme"), str) and isinstance(maint.get("roadmap"), str):
+                        maintenance = (
+                            "1. **方案同步**：["
+                            + expr(maint.get("plan_sync"))
+                            + "] "
+                            + maint.get("plan_sync", "").strip()
+                            + "\n"
+                            + "2. **教训沉淀**：["
+                            + evidence_choice(maint.get("lesson"))
+                            + "] "
+                            + maint.get("lesson", "").strip()
+                            + "\n"
+                            + "3. **档案/README**：["
+                            + expr(maint.get("readme"))
+                            + "] "
+                            + maint.get("readme", "").strip()
+                            + "\n"
+                            + "4. **线路图**：["
+                            + expr(maint.get("roadmap"))
+                            + "] "
+                            + maint.get("roadmap", "").strip()
+                        )
+                    if not title_section or not re.search(rf"\b{re.escape(work.id)}\b", title_section, re.IGNORECASE):
+                        return False, "执行结果标题复述为空或未包含卡号"
+                    writeback = "## 0. 卡标题复述\n\n" + title_section
+                    writeback += "\n\n## 1. 探针输出\n\n" + probe_section
+                    writeback += "\n\n## 2. 自测输出\n\n" + selftest_section
+                    json_mode = True
+            except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                logger.warning("JSON sidecar 解析失败，回退 markdown: work=%s path=%s", work.id, json_path)
+            except (ValueError, AttributeError) as exc:
+                logger.warning("JSON sidecar 结构非法，回退 markdown: work=%s err=%s", work.id, exc)
+        if not json_mode:
+            result = result_path.read_text(encoding="utf-8", errors="replace").strip()
+            required = _executor_result_required_headings()
+            missing = [heading for heading in required if heading not in result]
+            if missing:
+                return False, f"执行结果契约不完整，缺少: {', '.join(missing)}"
+            title_section = result.split("## 0. 卡标题复述", 1)[1].split("## 1.", 1)[0].strip()
+            # A2 修复：按 A1 实际模板识别段内卡号，不要求标题必须是特定单行格式。
+            if not title_section or not re.search(rf"\b{re.escape(work.id)}\b", title_section, re.IGNORECASE):
+                return False, "执行结果标题复述为空或未包含卡号"
+            writeback = "## 0. 卡标题复述\n\n" + title_section
+            for heading in ("## 1. 探针输出", "## 2. 自测输出"):
+                section = result.split(heading, 1)[1]
+                section = section.split("## ", 1)[0].strip()
+                writeback += f"\n\n{heading}\n\n{section}"
+            maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
+            for heading in ("## 批注落实", "## 4. 批注落实", "## 5. 批注落实"):
+                if heading in result:
+                    annotation_body = result.split(heading, 1)[1].split("## ", 1)[0].strip()
+                    break
         from server.board.annotation import classify_annotation
 
         real_annotation = classify_annotation(card_text) == "REAL"
-        annotation_body = ""
-        for heading in ("## 批注落实", "## 4. 批注落实", "## 5. 批注落实"):
-            if heading in result:
-                annotation_body = result.split(heading, 1)[1].split("## ", 1)[0].strip()
-                break
         if real_annotation and not annotation_body:
             return False, "批注未落实：执行结果缺少「批注落实」段"
 
@@ -4143,8 +4218,10 @@ def _run_auto_worker(
         if ok:
             # A2（2026-09-03）：执行体只交结果文件，引擎代写主仓卡
             result_path = _executor_result_path(log_dir, work.id)
-            if result_path.is_file() and (log_dir / f"{work.id}.log").is_file():
-                applied, apply_err = _apply_executor_result_to_card(work, result_path, cfg)
+            result_json_path = _executor_result_json_path(log_dir, work.id)
+            if (result_path.is_file() or result_json_path.is_file()) and (log_dir / f"{work.id}.log").is_file():
+                # P1.3：收单函数内部优先 JSON；JSON 缺失/非法时仍回退 markdown。
+                applied, apply_err = _apply_executor_result_to_card(work, result_path, cfg) if result_path.is_file() else _apply_executor_result_to_card(work, result_json_path.with_name(result_json_path.name.replace(".json", ".md")), cfg)
                 if not applied:
                     logger.warning("引擎代写卡失败（回写留空，走机审打回）: work=%s err=%s", work.id, apply_err)
                     problems = [apply_err, *problems]

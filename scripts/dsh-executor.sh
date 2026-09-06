@@ -144,11 +144,33 @@ fi
 # worktree 会被引擎回收清理，结果必须落到 log_dir/<work_id>-ccc-result.md 供引擎收单读取。
 # .ccc-result.md 不 commit 进业务仓（防污染 mx/hp 真业务仓），传输只走本 log_dir 通道。
 _RESULT_SRC="$(pwd)/.ccc-result.md"
+_RESULT_JSON_SRC="$(pwd)/.ccc-result.json"
 _RESULT_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.md"
+_RESULT_JSON_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.json"
 if [[ "$DSH_RC" -eq 0 ]]; then
   if [[ -f "$_RESULT_SRC" ]]; then
+    # P1.3：从既有四段 markdown 派生结构化 sidecar。解析失败只告警，不能阻断
+    # markdown 兼容链；sidecar 不进入业务仓，仅随结果通道传输。
+    if python3 - "$_CCC_ROOT" "$_RESULT_SRC" "$_RESULT_JSON_SRC" "$WORK_ID" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from server.engine.result_sidecar import convert_file
+convert_file(sys.argv[2], sys.argv[3], sys.argv[4])
+PY
+    then
+      echo "[dsh-executor] JSON sidecar 已生成 → ${_RESULT_JSON_SRC}" >&2
+    else
+      echo "[dsh-executor] WARN: JSON sidecar 生成失败，保留 markdown 结果链" >&2
+      rm -f "$_RESULT_JSON_SRC"
+    fi
     if cp "$_RESULT_SRC" "$_RESULT_DST" 2>/dev/null; then
       echo "[dsh-executor] 结果文件已传输 → ${_RESULT_DST}" >&2
+      if [[ -f "$_RESULT_JSON_SRC" ]] && cp "$_RESULT_JSON_SRC" "$_RESULT_JSON_DST" 2>/dev/null; then
+        echo "[dsh-executor] JSON sidecar 已传输 → ${_RESULT_JSON_DST}" >&2
+      elif [[ -f "$_RESULT_JSON_SRC" ]]; then
+        echo "[dsh-executor] WARN: JSON sidecar 拷贝失败，回退 markdown" >&2
+        rm -f "$_RESULT_JSON_DST"
+      fi
     else
       echo "[dsh-executor] ERROR: 结果文件拷贝失败 ${_RESULT_SRC} → ${_RESULT_DST}" >&2
       exit 64
