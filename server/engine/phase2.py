@@ -33,6 +33,7 @@ from pathlib import Path
 
 from server.engine.card_state_store import CardStateStore
 from server.engine.dsh_gateway import ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, cli_env, preflight_gateway
+from server.board.audit_verdict import read_verdict
 
 logger = logging.getLogger("ccc.engine.phase2")
 
@@ -46,10 +47,6 @@ _BRANCH_PREFIX = "codex/"
 
 # 卡头「状态：X」字段改写——单源自 card_state_store._STATE_RE（v2.0.0 合并三份重复定义）
 from server.engine.card_state_store import _STATE_RE  # noqa: E402
-
-# Claude Code 结论机器可读标记（规避历史「机审正则坑」）
-_PASS_MARKER = "PHASE2_VERDICT: PASS"
-_REJECT_MARKER = "PHASE2_VERDICT: REJECT"
 
 _DEFAULT_MAX_ATTEMPTS = 3
 _DEFAULT_BACKOFF_BASE = 5.0          # 5s / 10s / 20s ...
@@ -271,45 +268,18 @@ def build_audit_prompt(card: dict, card_file: Path, branch: str) -> str:
         "2. 分支相对 main 的 diff 与卡「范围」一致；无越界、无密钥泄漏、无危险命令。\n"
         "3. 卡「门禁」要求可满足（实现/测试/编译类）。\n"
         "4. 维护区/回写区已如实填写。\n\n"
-        "输出格式（严格，机器解析）：\n"
-        "第一行必须是：{pass_marker}  或  {reject_marker}\n"
-        "随后给 2-5 行理由（中文，标注 severity：严重/中/轻）。\n"
-        "不要输出其他格式。"
-    ).format(
-        id=card["id"],
-        repo=_repo_root(),
-        card=card_file,
-        branch=branch,
-        pass_marker=_PASS_MARKER,
-        reject_marker=_REJECT_MARKER,
-    )
-
-
-def _claude_verdict_from_output(out: str) -> str | None:
-    for line in out.splitlines():
-        line = line.strip()
-        if line.startswith(_PASS_MARKER):
-            return "PASS"
-        if line.startswith(_REJECT_MARKER):
-            return "REJECT"
-    for line in out.splitlines():
-        line = line.strip()
-        if re.search(r"^结论[:：]\s*(通过|PASS)\b", line, re.I):
-            return "PASS"
-        if re.search(r"^结论[:：]\s*(不通过|REJECT)\b", line, re.I):
-            return "REJECT"
-    return None
+        "输出要求（严格）：\n"
+        "用 Write 工具写 JSON verdict 到 $EXECUTOR_LOG_DIR/{id}-audit-verdict.json：\n"
+        '{{"verdict":"PASS|REJECT","reason":"一句话结论",'
+        '"findings":[{{"id":"F1","severity":"P0|P1|P2",'
+        '"file":"相对路径","line":0,"note":"可复现说明"}}]}}\n'
+        "审查正文（证据四段）另写 $EXECUTOR_LOG_DIR/{id}-audit-verdict.md，供人阅读，非判定依据。"
+    ).format(id=card["id"], repo=_repo_root(), card=card_file, branch=branch)
 
 
 def _extract_reasons(out: str, verdict: str) -> str:
     lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
-    body = []
-    for ln in lines:
-        if ln.startswith((_PASS_MARKER, _REJECT_MARKER)):
-            continue
-        body.append(ln)
-    text = " | ".join(body)
-    return text[:500] or ("通过" if verdict == "PASS" else "不通过")
+    return " | ".join(lines)[:500] or ("通过" if verdict == "PASS" else "不通过")
 
 
 def _dsh_auditor_path(cfg: dict) -> Path:
@@ -347,7 +317,8 @@ def _audit_log_dir(cfg: dict) -> Path:
 
 
 def _audit_verdict_path(cfg: dict, work_id: str) -> Path:
-    return _audit_log_dir(cfg) / f"{work_id}-audit-verdict.md"
+    """验收席 verdict 工件路径（新契约 JSON；md 为兼容旧 wrapper 回退）。"""
+    return _audit_log_dir(cfg) / f"{work_id}-audit-verdict.json"
 
 
 def _audit_result_artifact(card: dict, cfg: dict) -> Path:
@@ -392,20 +363,18 @@ def _audit_prerequisites(card: dict, card_file: Path, cfg: dict) -> tuple[bool, 
     return True, ""
 
 
-def _read_audit_verdict(verdict_file: Path, output: str = "") -> tuple[str | None, str]:
-    """从 log_dir 机审工件读取整行结论；stdout 仅作诊断，不作为结论来源。"""
-    if not verdict_file.is_file():
-        return None, ""
-    text = verdict_file.read_text(encoding="utf-8", errors="replace")
-    for line in text.splitlines():
-        line = line.strip()
-        match = re.match(r"^机审：通过(?:\s*（([^）]*)）)?\s*$", line)
-        if match:
-            return "PASS", match.group(1) or ""
-        match = re.match(r"^机审：不通过(?:（([^\n）]*)）)?\s*$", line)
-        if match:
-            return "REJECT", match.group(1) or ""
-    return None, ""
+def _read_audit_verdict(verdict_file: Path, output: str = "") -> tuple[str | None, str, list[dict]]:
+    """从 log_dir 机审工件读取结论（单源：server.board.audit_verdict）。
+
+    优先 `<work_id>-audit-verdict.json`（新契约）；JSON 缺失/非法 → fallback
+    旧 markdown 工件（整行正则）；两者皆无 → (None, "protocol：无 verdict 工件")。
+    返回 (verdict, reason, findings)；verdict ∈ {"PASS","REJECT"} 或 None。
+    """
+    try:
+        return read_verdict(verdict_file.parent, verdict_file.stem.replace("-audit-verdict", ""))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("verdict 读取异常（fail-closed）: %s (%s)", verdict_file, exc)
+        return None, "protocol：JSON verdict 缺失或非法", []
 
 
 def _run_dsh_auditor(card: dict, card_file: Path, branch: str, cfg: dict, timeout: int) -> tuple[int, str, str]:
@@ -471,6 +440,27 @@ def _clear_audit_strikes(card_id: str, cfg: dict) -> None:
         infra_count=0,
         infra_cooldown_until="1970-01-01T00:00:00Z",
     )
+
+
+def _record_reject_budget(card_id: str, cfg: dict) -> tuple[int, bool]:
+    """递增业务 REJECT 预算；达到阈值后只允许人工重派。"""
+    from server.engine.runtime_state import read_card_state, write_card_state
+
+    log_dir = _audit_log_dir(cfg)
+    current = read_card_state(log_dir).get(str(card_id), {})
+    count = int(current.get("reject_count") or 0) + 1
+    try:
+        budget = max(1, int(cfg.get("PHASE2_REJECT_MAX_STRIKES") or 3))
+    except (TypeError, ValueError):
+        budget = 3
+    exhausted = count >= budget
+    write_card_state(
+        log_dir,
+        str(card_id),
+        reject_count=count,
+        reject_budget_exhausted=exhausted,
+    )
+    return count, exhausted
 
 
 def _record_audit_failure(
@@ -541,9 +531,9 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     if audit_driver.startswith("mock:"):
         v = audit_driver.split(":", 1)[1]
         if v == "pass":
-            return {"verdict": "PASS", "reasons": "mock-pass（测试隔离）", "transcript": _PASS_MARKER, "attempts": 1}
+            return {"verdict": "PASS", "reasons": "mock-pass（测试隔离）", "transcript": "mock JSON PASS", "findings": [], "attempts": 1}
         if v == "reject":
-            return {"verdict": "REJECT", "reasons": "mock-reject（测试隔离）：结论不通过", "transcript": _REJECT_MARKER, "attempts": 1}
+            return {"verdict": "REJECT", "reasons": "mock-reject（测试隔离）：结论不通过", "transcript": "mock JSON REJECT", "findings": [{"id": "F1", "severity": "P1", "file": "test", "line": 0, "note": "mock reject"}], "attempts": 1}
         if v == "error":
             return {"verdict": "ERROR", "reasons": "mock-error（测试隔离）", "transcript": "", "attempts": 3}
 
@@ -620,43 +610,64 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     verdict_file = _audit_verdict_path(cfg, work_id)
     transcript = ""
     reasons = ""
+    findings: list[dict] = []
     for attempt in range(1, max_attempts + 1):
         try:
             verdict_file.unlink(missing_ok=True)
+            (_audit_log_dir(cfg) / f"{work_id}-audit-verdict.md").unlink(missing_ok=True)
         except OSError:
             pass
         rc, out, err = _run_dsh_auditor(card, card_file, branch, cfg, timeout)
         transcript = out
-        # verdict 以 log_dir 审计工件为准；exit 2 的 verdict 文件内容视为 REJECT。
-        verdict, card_reason = _read_audit_verdict(verdict_file, out)
-        if rc == 2 and verdict is not None:
-            verdict = "REJECT"
-        if rc == 0 and verdict in ("PASS", "REJECT"):
+        verdict, card_reason, findings = _read_audit_verdict(verdict_file, out)
+        protocol_failure = card_reason.startswith("protocol：")
+        reasons = card_reason
+        if verdict == "REJECT" and not protocol_failure and findings:
+            blocking = [f for f in findings if f.get("severity") in {"P0", "P1"}]
+            p2 = [f for f in findings if f.get("severity") == "P2"]
+            if p2:
+                logger.info("verdict P2 findings 留档（不阻断）: %s", p2)
+            if not blocking:
+                # P2-only findings are retained in the audit result but do not reject.
+                verdict = "PASS"
+                reasons = card_reason or "仅 P2 发现，留档不阻断"
+            else:
+                reasons = card_reason or "；".join(str(f.get("note") or f.get("id")) for f in blocking)
+        if not protocol_failure and verdict == "PASS" and rc in (0, 2):
             _clear_audit_strikes(work_id, cfg)
             return {
-                "verdict": verdict,
-                "reasons": card_reason or _extract_reasons(out, verdict),
+                "verdict": "PASS",
+                "reasons": reasons or _extract_reasons(out, "PASS"),
+                "findings": findings,
                 "transcript": out + ("\n" + err if err else ""),
                 "attempts": attempt,
             }
-        if rc != 0 and verdict == "REJECT":
-            reasons = card_reason or f"验收席 wrapper 退出码 {rc}，机审不通过"
-            if rc == 2:
-                _clear_audit_strikes(work_id, cfg)
-                return {
-                    "verdict": "REJECT",
-                    "reasons": reasons,
-                    "transcript": out + ("\n" + err if err else ""),
-                    "attempts": attempt,
-                }
-            reasons = f"验收席 wrapper 基础设施失败（rc={rc}），但工件含不通过：{reasons}"
-        else:
+        if not protocol_failure and verdict == "REJECT" and rc == 2:
+            _clear_audit_strikes(work_id, cfg)
+            return {
+                "verdict": "REJECT",
+                "reasons": reasons or "验收席机审不通过",
+                "findings": findings,
+                "transcript": out + ("\n" + err if err else ""),
+                "attempts": attempt,
+            }
+        if protocol_failure:
+            reasons = f"{card_reason}（wrapper rc={rc}）: {err or out}"
+        elif not reasons:
             reasons = f"验收席 wrapper 基础设施失败（rc={rc}）: {err or out}"
+        else:
+            reasons = f"验收席 wrapper 基础设施失败（rc={rc}）：{reasons}"
         logger.warning("后段机审失败重试 %d/%d: %s", attempt, max_attempts, reasons)
         if attempt < max_attempts:
             time.sleep(backoff_base * (2 ** (attempt - 1)))
-        continue
-    return {"verdict": "ERROR", "reasons": reasons, "transcript": transcript, "attempts": max_attempts, "infra": True}
+    return {
+        "verdict": "ERROR",
+        "reasons": reasons,
+        "findings": findings,
+        "transcript": transcript,
+        "attempts": max_attempts,
+        "infra": True,
+    }
 
 
 # ───────────────────────── 门禁 / 状态 / 合入 / 部署 ─────────────────────────
@@ -993,13 +1004,22 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 if card_file is None:
                     record_action("phase2_alert", card["id"], source="phase2", detail="无法落打回卡文件")
                     return {"id": card["id"], "result": "error", "reason": "card file missing on reject"}
-                if not set_card_state(card_file, f"{_REJECTED}（CC 审核不通过）", "REJECT", audit["reasons"]):
+                reject_count, exhausted = _record_reject_budget(str(card["id"]), cfg)
+                if exhausted:
+                    reject_reason = "REJECT 预算耗尽，待人工"
+                    state_text = f"{_REJECTED}（{reject_reason}）"
+                else:
+                    reject_reason = audit["reasons"]
+                    state_text = f"{_REJECTED}（CC 审核不通过）"
+                if not set_card_state(card_file, state_text, "REJECT", reject_reason):
                     record_action(
                         "phase2_alert", card["id"], source="phase2",
                         detail="机审打回落盘失败（保留原文，不覆盖）",
                     )
                     return {"id": card["id"], "result": "error", "reason": "机审打回落盘失败"}
-                record_action("phase2_reject", card["id"], source="phase2", detail=f"CC 审核不通过自动打回: {audit['reasons']}")
+                record_action("phase2_reject", card["id"], source="phase2", detail=f"CC 审核不通过自动打回: {reject_reason}")
+                if exhausted:
+                    record_action("reject_budget_exhausted", card["id"], source="phase2", detail=reject_reason)
                 cleaned, cleanup_problems = _clear_rejected_branch_envelope(card)
                 if not cleaned:
                     record_action(
@@ -1012,7 +1032,9 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 return {
                     "id": card["id"],
                     "result": "rejected",
-                    "reason": audit["reasons"],
+                    "reason": reject_reason,
+                    "reject_count": reject_count,
+                    "reject_budget_exhausted": exhausted,
                     "branch_cleanup": "ok" if cleaned else "failed",
                 }
             # PASS → 有代码分支才合入；wrapper 型卡直接进入主仓门禁。

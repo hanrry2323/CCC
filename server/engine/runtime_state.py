@@ -87,6 +87,8 @@ def write_card_state(
     infra_count: int | None = None,
     conflict_strikes: int | None = None,
     light_fix_count: int | None = None,
+    reject_count: int | None = None,
+    reject_budget_exhausted: bool | None = None,
 ) -> None:
     """追加一条运行时状态（调用方给定字段；缺省保持历史不变）。"""
     rec: dict[str, Any] = {"id": card_id, "ts": _utcnow_iso()}
@@ -106,6 +108,10 @@ def write_card_state(
         rec["conflict_strikes"] = int(conflict_strikes)
     if light_fix_count is not None:
         rec["light_fix_count"] = int(light_fix_count)
+    if reject_count is not None:
+        rec["reject_count"] = int(reject_count)
+    if reject_budget_exhausted is not None:
+        rec["reject_budget_exhausted"] = bool(reject_budget_exhausted)
     try:
         path = Path(log_dir) / STATE_REL
         path.parent.mkdir(parents=True, exist_ok=True)

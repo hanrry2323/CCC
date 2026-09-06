@@ -32,20 +32,40 @@ def _mk_card(tmp_path: Path, state: str = "已回写") -> tuple[Path, dict]:
     return card_file, card
 
 
-def test_verdict_parsing_pass() -> None:
-    out = "前面噪声\nPHASE2_VERDICT: PASS\n理由：符合范围，无风险。\n"
-    assert phase2._claude_verdict_from_output(out) == "PASS"
+def test_verdict_parsing_uses_json_contract(tmp_path: Path) -> None:
+    verdict = tmp_path / "tst997-audit-verdict.json"
+    verdict.write_text(
+        '{"verdict":"PASS","reason":"范围一致","findings":[]}', encoding="utf-8"
+    )
+    assert phase2._read_audit_verdict(verdict) == ("PASS", "范围一致", [])
 
 
-def test_verdict_parsing_reject() -> None:
-    out = "PHASE2_VERDICT: REJECT\n理由：范围越界。\n"
-    assert phase2._claude_verdict_from_output(out) == "REJECT"
+def test_verdict_parsing_reject_has_structured_findings(tmp_path: Path) -> None:
+    verdict = tmp_path / "tst997-audit-verdict.json"
+    verdict.write_text(
+        '{"verdict":"REJECT","reason":"存在问题",'
+        '"findings":[{"id":"F1","severity":"P1","file":"x.py",'
+        '"line":4,"note":"可复现"}]}',
+        encoding="utf-8",
+    )
+    parsed = phase2._read_audit_verdict(verdict)
+    assert parsed[0] == "REJECT"
+    assert parsed[2][0]["severity"] == "P1"
 
 
-def test_verdict_parsing_chinese() -> None:
-    assert phase2._claude_verdict_from_output("结论：通过\nok") == "PASS"
-    assert phase2._claude_verdict_from_output("结论：不通过\n") == "REJECT"
-    assert phase2._claude_verdict_from_output("无关内容") is None
+def test_verdict_parsing_invalid_is_fail_closed(tmp_path: Path) -> None:
+    verdict = tmp_path / "tst997-audit-verdict.json"
+    verdict.write_text('{"verdict":"PASS"', encoding="utf-8")
+    parsed = phase2._read_audit_verdict(verdict)
+    assert parsed[0] == "REJECT"
+    assert parsed[1].startswith("protocol：")
+
+
+def test_verdict_parsing_legacy_markdown_fallback(tmp_path: Path) -> None:
+    verdict = tmp_path / "tst997-audit-verdict.json"
+    verdict.write_text("{bad", encoding="utf-8")
+    (tmp_path / "tst997-audit-verdict.md").write_text("机审：通过\n", encoding="utf-8")
+    assert phase2._read_audit_verdict(verdict)[0] == "PASS"
 
 
 def _written_audit_env(tmp_path: Path, card_id: str = "tst997") -> tuple[Path, dict]:
@@ -476,7 +496,7 @@ def test_dsh_auditor_decodes_invalid_utf8_output(monkeypatch, tmp_path: Path) ->
         "run",
         lambda *args, **kwargs: _ok_rc(
             0,
-            stdout=b"noise-\xef\xff\nPHASE2_VERDICT: PASS\n",
+            stdout=b"noise-\xef\xff\nJSON verdict written\n",
             stderr=b"warning-\xef\xfe",
         ),
     )
@@ -488,7 +508,6 @@ def test_dsh_auditor_decodes_invalid_utf8_output(monkeypatch, tmp_path: Path) ->
     assert rc == 0
     assert "�" in out
     assert "�" in err
-    assert phase2._claude_verdict_from_output(out) == "PASS"
 
 
 def test_dsh_auditor_reads_command_from_registry(monkeypatch, tmp_path: Path) -> None:

@@ -56,6 +56,7 @@ from server.engine.pool import get_dispatch_pool
 from server.engine.card_state_store import CardCASConflict, CardStateError, CardStateStore
 from server.engine.store import BoardStore, FileBoardStore
 from server.engine.task import State, Work
+from server.board.audit_verdict import read_verdict
 
 # 业务仓 worktree 失败计数（2026-08-12 · 隔离升级）：进程内累计，run_once 汇总后清零
 _WORKTREE_FAILURES = 0
@@ -2185,26 +2186,6 @@ def _audit_rejection_reason(text: str) -> str | None:
     return None
 
 
-def _audit_verdict_from_artifact(log_dir: Path, work_id: str) -> tuple[str, str] | None:
-    """从 log_dir 验收席 verdict 工件读取整行结论（批E cc-auditor 契约 v2）。
-
-    返回 (verdict, reason)：verdict ∈ {"PASS", "REJECT"}；工件缺失或无法解析 → None。
-    """
-    verdict_file = log_dir / f"{work_id}-audit-verdict.md"
-    if not verdict_file.is_file():
-        return None
-    text = verdict_file.read_text(encoding="utf-8", errors="replace")
-    for line in text.splitlines():
-        line = line.strip()
-        m = re.match(r"^机审：通过(?:\s*（([^）]*)）)?\s*$", line)
-        if m:
-            return "PASS", m.group(1) or ""
-        m = re.match(r"^机审：不通过(?:（([^\n）]*)）)?\s*$", line)
-        if m:
-            return "REJECT", m.group(1) or ""
-    return None
-
-
 def _audit_severity(text: str) -> str:
     """解析审计输出里的 severity 标记（机审 v4 三级：轻/中/重）。
 
@@ -3961,17 +3942,24 @@ def _run_machine_audit_after_writeback(
 
     # 批E（2026-09-04）：结论以验收席 verdict 工件为准（cc-auditor 契约 v2），
     # 不再依赖 worktree 心智旧链的「机审区落分支卡」路径；stdout/.audit.log 仅兜底。
-    artifact_verdict = _audit_verdict_from_artifact(log_dir, work.id)
+    verdict, verdict_reason, findings = read_verdict(log_dir, work.id)
 
-    # 业务结论优先（F1 根修，2026-08-10）：明确「机审：不通过」→ 业务打回，
-    # 与 exit code 无关。机审 agent 打回时可能 exit 0（claude -p 声称非零退出不可靠），
-    # 仅凭 exit code 会把「不通过」误判为通过/落盘失败 → 进 infra 冷却死循环（clw009 事故）。
+    # JSON verdict 是唯一新契约；缺失/非法 fail-closed。P0/P1 阻断，P2 仅留档。
+    blocking_findings = [f for f in findings if f.get("severity") in {"P0", "P1"}]
     rejection = None
-    if artifact_verdict is not None and artifact_verdict[0] == "REJECT":
-        rejection = artifact_verdict[1] or "机审：不通过"
+    if verdict == "REJECT" and (blocking_findings or not findings):
+        rejection = verdict_reason or "机审：不通过"
+    elif verdict is None:
+        rejection = verdict_reason or "protocol：无 verdict 工件"
+    elif verdict == "REJECT" and findings:
+        logger.info("机审 REJECT 仅含 P2，留档不打回: work=%s", work.id)
     elif _audit_output_indicates_rejection(audit_text):
         rejection = _audit_rejection_reason(audit_text) or "机审：不通过"
-    if rejection:
+
+    # protocol REJECT 是基础设施冷却，不计业务打回预算；它仍然不能放行。
+    # 注意：无 verdict 工件时仍允许旧链 worktree 卡机审区兜底（历史 wrapper）。
+    protocol_rejection = bool(rejection and str(rejection).startswith("protocol："))
+    if rejection and not (protocol_rejection and worktree_hint):
         _ledger_record(
             work,
             severity,
@@ -3979,13 +3967,17 @@ def _run_machine_audit_after_writeback(
             [rejection],
             fix_action="",
             source=("manual" if manual else "engine"),
-            kind="audit",
+            kind="infra" if protocol_rejection else "audit",
         )
-        logger.warning("机审明确不通过（业务，按 verdict 工件判定）: work=%s reason=%s", work.id, rejection)
+        logger.warning("机审明确不通过（按 verdict 工件判定）: work=%s reason=%s", work.id, rejection)
         return False, [rejection], True
+    if protocol_rejection:
+        # 无 worktree 兜底时若 verdict 缺失，fail-closed 为 REJECT；有 worktree 则
+        # 放行旧链判定（历史 wrapper 写机审区），但 verdict 缺失仍不算「通过」。
+        rejection = None
 
-    passed = artifact_verdict is not None and artifact_verdict[0] == "PASS"
-    if not ok and not passed and not _audit_output_indicates_pass(audit_text):
+    passed = verdict == "PASS"
+    if not ok and not passed:
         # P1-C 修复：机审执行失败 = 基建故障（kind=infra），不参与命中判定
         _ledger_record(
             work,

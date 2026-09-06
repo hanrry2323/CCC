@@ -1,5 +1,5 @@
 #!/bin/bash
-# cc-auditor verdict 退出语义隔离测试；不访问真实业务仓或 Claude 服务。
+# cc-auditor JSON verdict 退出语义隔离测试；不访问真实业务仓或 Claude 服务。
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -27,7 +27,7 @@ run_case() {
   set +e
   EXECUTOR_LOG_DIR="$log_dir" \
   CCC_BRAIN_CLAUDE_BIN="$FAKE_CLAUDE" \
-  MOCK_VERDICT_FILE="$log_dir/$name-audit-verdict.md" \
+  MOCK_VERDICT_FILE="$log_dir/$name-audit-verdict.json" \
   MOCK_VERDICT="$verdict" \
   MOCK_RC="$claude_rc" \
   bash "$ROOT/scripts/cc-auditor.sh" "$TMP_DIR/nonexistent-card.md" "$name" "__CCC_EMPTY__" \
@@ -42,16 +42,9 @@ run_case() {
   fi
 }
 
-# Claude rc=1 但已写通过 verdict：按业务结论返回 0。
-run_case pass 0 '机审：通过' 1
-# Claude rc=1 但已写不通过 verdict：按业务结论返回 2。
-run_case reject 2 '机审：不通过（mock reject）' 1
-# verdict 带行首空白时仍按对应业务结论返回。
-run_case indented-pass 0 '  机审：通过' 1
-run_case indented-reject 2 $'\t机审：不通过（mock indented reject）' 1
-# 无 verdict 且 Claude rc=1：保留 stderr/stdout 诊断并返回 1。
-run_case no-verdict 1 '' 1
-# 非空 verdict 无结论行时仍返回 1。
-run_case malformed 1 '审计说明：未产出裁决' 1
+run_case pass 0 '{"verdict":"PASS","reason":"ok","findings":[]}' 1
+run_case reject 2 '{"verdict":"REJECT","reason":"bad","findings":[]}' 1
+run_case malformed 2 '审计说明：未产出裁决' 1
+run_case no-verdict 2 '' 1
 
-printf 'cc-auditor verdict 退出语义测试全过\n'
+printf 'cc-auditor JSON verdict 退出语义测试全过\n'

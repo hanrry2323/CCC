@@ -3280,6 +3280,8 @@ class _APIHandler(BaseHTTPRequestHandler):
             state="待分派",
             retry_count=0,
             redispatch=ts,
+            reject_count=0,
+            reject_budget_exhausted=False,
         )
         # 机审命中率台账（v4 · 复审 P1-C）：打回→待分派 = 返工 → 通过行标未命中
         try:

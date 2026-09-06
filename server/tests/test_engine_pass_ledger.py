@@ -117,7 +117,7 @@ def test_pass_worktree_path_records_ledger(ledger_file, monkeypatch, tmp_path: P
 
 
 def test_pass_prod_card_path_records_ledger(ledger_file, monkeypatch, tmp_path: Path) -> None:
-    """生产卡兜底通过路径（已移除主仓 fallback，该测试现在预期返回 False 并阻断）。"""
+    """生产卡无 verdict 工件：fail-closed REJECT（不再有任何通过兜底）。"""
     card = tmp_path / "mx099-task.md"
     card.write_text("# 卡\n", encoding="utf-8")
     called = []
@@ -131,7 +131,7 @@ def test_pass_prod_card_path_records_ledger(ledger_file, monkeypatch, tmp_path: 
     work = _work(card_path=str(card))
     ok, problems, audited = _run_machine_audit_after_writeback(work, _registry_with_acceptor(tmp_path), {}, tmp_path / "logs", 300)
     assert ok is False
-    assert "禁止 fallback 生产卡" in problems[0]
+    assert "protocol：" in problems[0] or "禁止 fallback 生产卡" in problems[0]
 
 
 def test_branch_audit_requires_ledger_not_card_text(monkeypatch, tmp_path: Path) -> None:
