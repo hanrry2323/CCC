@@ -2617,6 +2617,11 @@ def _replace_card_section(text: str, heading: str, body: str) -> str:
     return text[:content_start] + "\n\n" + body.strip() + "\n" + text[end:]
 
 
+def _blocking_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """severity 阈值门：仅 P0/P1 阻断打回；P2 仅留档（与 phase2 侧口径一致）。"""
+    return [f for f in findings if f.get("severity") in {"P0", "P1"}]
+
+
 def _executor_result_json_path(log_dir: Path, work_id: str) -> Path:
     """P1.3：结构化执行结果 sidecar 路径（优先于 markdown 兼容链）。"""
     return log_dir / f"{work_id}-ccc-result.json"
@@ -4020,7 +4025,7 @@ def _run_machine_audit_after_writeback(
     verdict, verdict_reason, findings = read_verdict(log_dir, work.id)
 
     # JSON verdict 是唯一新契约；缺失/非法 fail-closed。P0/P1 阻断，P2 仅留档。
-    blocking_findings = [f for f in findings if f.get("severity") in {"P0", "P1"}]
+    blocking_findings = _blocking_findings(findings)
     rejection = None
     if verdict == "REJECT" and (blocking_findings or not findings):
         rejection = verdict_reason or "机审：不通过"

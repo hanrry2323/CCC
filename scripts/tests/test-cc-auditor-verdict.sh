@@ -46,5 +46,7 @@ run_case pass 0 '{"verdict":"PASS","reason":"ok","findings":[]}' 1
 run_case reject 2 '{"verdict":"REJECT","reason":"bad","findings":[]}' 1
 run_case malformed 2 '审计说明：未产出裁决' 1
 run_case no-verdict 2 '' 1
+run_case findings-not-list 2 '{"verdict":"REJECT","reason":"bad","findings":"oops"}' 1
+run_case bad-verdict-value 2 '{"verdict":"APPROVE","reason":"bad","findings":[]}' 1
 
 printf 'cc-auditor JSON verdict 退出语义测试全过\n'

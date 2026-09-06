@@ -10,6 +10,7 @@ from server.board.audit_verdict import (
     parse_json_verdict,
     read_verdict,
 )
+from server.engine.main import _blocking_findings
 
 
 CORPUS = Path(__file__).parent / "fixtures" / "verdict-corpus"
@@ -90,6 +91,22 @@ def test_p2_findings_do_not_block(tmp_path: Path) -> None:
     parsed = phase2._read_audit_verdict(verdict)
     assert parsed[0] == "REJECT"
     assert all(f["severity"] == "P2" for f in parsed[2])
+
+
+def test_p2_findings_not_blocking_main_consumer() -> None:
+    """main.py 消费端 severity 门：仅 P0/P1 阻断；P2-only 留档不打回。"""
+    p2 = [
+        {"id": "F1", "severity": "P2", "file": "a.py", "line": 1, "note": "整理"},
+        {"id": "F2", "severity": "P2", "file": "b.py", "line": 2, "note": "留档"},
+    ]
+    assert _blocking_findings(p2) == []
+    p0p1 = p2 + [
+        {"id": "F3", "severity": "P1", "file": "c.py", "line": 3, "note": "阻断"},
+    ]
+    blocking = _blocking_findings(p0p1)
+    assert [b["id"] for b in blocking] == ["F3"]
+    # PASS 无 findings → 空阻断
+    assert _blocking_findings([]) == []
 
 
 def test_protocol_failure_does_not_count_as_business_budget(tmp_path: Path) -> None:
