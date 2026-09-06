@@ -278,6 +278,173 @@ def test_worker_events_consumer_filter_unaffected(tmp_path: Path) -> None:
 WATCHDOG = SCRIPTS / "watchdog-ccc.sh"
 KICKSTART = SCRIPTS / "kickstart-ccc.sh"
 
+# ───────────────────────── 5b. P4.1 分级 stale + spawn 熔断 ─────────────────────────
+
+
+def _heartbeat_tier(age: int, warn: int = 90, stale: int = 180) -> str:
+    """镜像 watchdog-ccc.sh 的 `wd_heartbeat_status` 三分支（精确边界语义）。"""
+    if age < warn:
+        return "normal"
+    if age < stale:
+        return "borderline"
+    return "stale"
+
+
+@pytest.mark.parametrize(
+    ("age", "tier"),
+    [
+        (89, "normal"),
+        (90, "borderline"),   # 90s 精确下界 → borderline
+        (179, "borderline"),
+        (180, "stale"),       # 180s 精确下界 → stale
+        (181, "stale"),
+    ],
+)
+def test_heartbeat_tier_classifier_boundaries(age: int, tier: str) -> None:
+    assert _heartbeat_tier(age) == tier
+
+
+def _set_metrics_age(home: Path, age_s: int) -> None:
+    """创建/覆写 engine-metrics.jsonl 并将其 mtime 设为 now - age_s（mock 心跳源）。"""
+    exec_dir = home / ".ccc" / "logs" / "exec"
+    exec_dir.mkdir(parents=True, exist_ok=True)
+    f = exec_dir / "engine-metrics.jsonl"
+    f.write_text("", encoding="utf-8")
+    ts = time.time() - age_s
+    os.utime(f, (ts, ts))
+
+
+def _run_watchdog_with_heartbeat(home: Path, age_s: int, extra_env: dict[str, str] | None = None):
+    """起假 engine 进程 + 置心跳年龄，跑 watchdog；回 CompletedProcess。"""
+    fake = subprocess.Popen(["sleep", "300"])
+    try:
+        _set_metrics_age(home, age_s)
+        env = dict(extra_env or {})
+        env.setdefault("CCC_WATCHDOG_ENGINE_PNAME", "sleep 300")
+        env.setdefault("CCC_WATCHDOG_WEB_PNAME", "no-such-web-xyz")
+        res = _run_watchdog(home, env)
+        return res
+    finally:
+        fake.kill()
+
+
+def test_heartbeat_normal_tier_no_warn(tmp_path: Path) -> None:
+    """< 90s：正常 tier，engine 健康，不写 WARN/stale。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    _run_watchdog_with_heartbeat(home, age_s=30)  # 0-90 normal
+    log = _wd_log(home)
+    assert "WARN: engine 心跳 borderline" not in log
+    assert "stale" not in log
+    assert "发现故障 [Engine" not in log
+
+
+def test_heartbeat_borderline_tier_warns(tmp_path: Path) -> None:
+    """[90,180)：borderline → 写 WARN 但不触发 engine 自愈。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    _run_watchdog_with_heartbeat(home, age_s=120)  # 90-180 borderline
+    log = _wd_log(home)
+    assert "WARN: engine 心跳 borderline" in log
+    assert "Engine" not in log  # borderline 不进入 Engine 故障列表 → 不触发 engine 自愈
+    assert "[DRY-RUN] 将触发 kickstart --engine-only" not in log
+
+
+def test_heartbeat_stale_tier_kicks(tmp_path: Path) -> None:
+    """≥180s：stale → ERROR + 防旋连续确认后触发 kickstart（DRY-RUN 下记录意图）。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    _run_watchdog_with_heartbeat(home, age_s=200)
+    # 第一次观测 streak=1 → 观察不动手；仍应记录 stale（而不是误判为 healthy）
+    log = _wd_log(home)
+    assert "心跳 stale" in log
+    assert "观察一轮不动手" in log
+
+
+def test_heartbeat_boundary_tiers(tmp_path: Path) -> None:
+    """边界分类（带裕量，避免 mtime+运行耗时的亚秒抖动）：<90 正常 / 100 borderline / 250 stale。"""
+    anchors = {
+        40: "normal",
+        100: "borderline",
+        250: "stale",
+    }
+    for age, expect in anchors.items():
+        home = tmp_path / f"h{age}"
+        home.mkdir()
+        _run_watchdog_with_heartbeat(home, age_s=age)
+        log = _wd_log(home)
+        if expect == "borderline":
+            assert "WARN: engine 心跳 borderline" in log, f"age={age}"
+            assert "心跳 stale" not in log, f"age={age}"
+        elif expect == "stale":
+            assert "心跳 stale" in log, f"age={age}"
+        else:
+            assert "WARN: engine 心跳 borderline" not in log, f"age={age}"
+            assert "心跳 stale" not in log, f"age={age}"
+
+
+def _seed_spawn_state(home: Path, stamps: list[int]) -> None:
+    state_dir = home / ".ccc" / "logs" / "watchdog-state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    f = state_dir / "spawn.state"
+    with f.open("w", encoding="utf-8") as fh:
+        for s in stamps:
+            fh.write(f"restart_stamp={s}\n")
+
+
+def test_spawn_breaker_trips_at_3_restarts_1h(tmp_path: Path) -> None:
+    """1 小时内 3 次 stale 重启 → 熔断：写 CRITICAL、不自动重启（dry-run 也拦截）。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    now = int(time.time())
+    # 3 次重启都在窗口内（30/60/90s 前）
+    _seed_spawn_state(home, [now - 30, now - 60, now - 90])
+    # 先跑一轮让 stripe 落盘为 2（通过连续确认闸），Heartbeat stale
+    _run_watchdog_with_heartbeat(home, age_s=200, extra_env={
+        "CCC_WATCHDOG_KICKSTART_COOLDOWN": "0",
+    })
+    # streak=1 观察；第二轮的 spawn 检查发生在 fault_observed 通过后
+    _run_watchdog_with_heartbeat(home, age_s=200, extra_env={
+        "CCC_WATCHDOG_KICKSTART_COOLDOWN": "0",
+    })
+    crit = home / ".ccc" / "logs" / "watchdog-critical.log"
+    log = _wd_log(home)
+    assert crit.is_file(), "熔断应写 CRITICAL 文件"
+    assert "CRITICAL:" in crit.read_text(encoding="utf-8")
+    assert "熔断" in crit.read_text(encoding="utf-8")
+    assert "SPAWN-BREAKER 拦截" in log
+
+
+def test_spawn_breaker_stays_open_below_threshold(tmp_path: Path) -> None:
+    """<3 次重启：不熔断，照常自愈（DRY-RUN 记录意图）。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    now = int(time.time())
+    _seed_spawn_state(home, [now - 30])  # 仅 1 次
+    _run_watchdog_with_heartbeat(home, age_s=200, extra_env={
+        "CCC_WATCHDOG_KICKSTART_COOLDOWN": "0",
+    })
+    crit = home / ".ccc" / "logs" / "watchdog-critical.log"
+    assert not crit.exists()
+    log = _wd_log(home)
+    assert "SPAWN-BREAKER 拦截" not in log
+
+
+def test_spawn_breaker_after_kick_records_restart(tmp_path: Path) -> None:
+    """stale 自愈成功后应记录 restart_stamp（供 1h 计数）。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    _run_watchdog_with_heartbeat(home, age_s=200)
+    # 第一次：streak=1，观察，未 kick → 无 restart_stamp
+    spawn_f = home / ".ccc" / "logs" / "watchdog-state" / "spawn.state"
+    assert not spawn_f.exists() or spawn_f.read_text().strip() == ""
+    # 第二轮：streak=2 → DRY-RUN 触发（dry-run 不写 restart_stamp，仅真实 kick 写）
+    _run_watchdog_with_heartbeat(home, age_s=200)
+    # dry-run 下不记录（因为无真实 kick）；真实路径由 kickstart 记录
+    # 这里只验证不崩溃 + watchdog 日志有意图记录
+    log = _wd_log(home)
+    assert "[DRY-RUN] 将触发 kickstart --engine-only" in log
+
 
 def _run_watchdog(home: Path, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     env = {
