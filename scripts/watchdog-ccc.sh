@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ── scripts/watchdog-ccc.sh ──
-# CCC 看门狗守护脚本（P5 灭：服务防死锁与 <60s 快速自愈）
+# CCC 看门狗守护脚本（P5 灭：服务防死锁与 <60s 快速自愈；P4.1 分级 stale 增强）
 #
 # 用法：
 #   ./scripts/watchdog-ccc.sh
@@ -8,10 +8,17 @@
 # 机制：
 #   1. 检查 com.ccc.engine (server.engine.main) 进程是否存在
 #   2. 检查 com.ccc.web-server 进程是否存在
-#   3. 检查日志 ~/.ccc/logs/engine.stderr.log 的最近心跳修改时间 (mtime < 120s)
+#   3. 检查 engine 心跳新鲜度（心跳源 = slot engine-metrics.jsonl 或 stderr.log，
+#      取 mtime 最新者），按 P4.1 三级分级：
+#        normal    （mtime < 90s）     不动作
+#        borderline（90s ≤ mtime < 180s）写 WARN 到 watchdog.log
+#        stale     （mtime ≥ 180s）    kickstart 重启 + 写 ERROR + /health 验证
 #   4. 如果任何一项异常，只重启对应服务（不连带重启其他服务）
+#   5. spawn 熔断：1 小时内 watchdog 因 stale 触发重启 ≥3 次 → 不再自动重启，
+#      写 CRITICAL 到 ~/.ccc/logs/watchdog-critical.log（防重启风暴，须人工介入）
 #
 # 2026-08-21 修复：分离服务健康检查，避免 engine 故障时连带重启 web-server
+# 2026-09-07 P4.1：三级 stale 分级 + spawn 熔断（重启风暴闸）
 
 set -euo pipefail
 
@@ -27,9 +34,24 @@ WATCHDOG_LOG="${LOG_DIR}/watchdog.log"
 ENGINE_PNAME="${CCC_WATCHDOG_ENGINE_PNAME:-server.engine.main}"
 WEB_PNAME="${CCC_WATCHDOG_WEB_PNAME:-server.web.server}"
 
-# 心跳宽限（秒）：engine 心跳默认 60s，但 run_once 偶发阻塞（子进程/SSH）可达 10-40min，
-# 固定 120s 会误杀。默认 300s，可经 CCC_WATCHDOG_HEARTBEAT_GRACE 覆盖。
-HEARTBEAT_GRACE="${CCC_WATCHDOG_HEARTBEAT_GRACE:-300}"
+# 心跳新鲜度分级阈值（秒）· 2026-09-07 P4.1（与现有 watchdog 合并增强，不新建脚本）：
+#   HEARTBEAT_WARN_SEC  = 90s  ：borderline 下界（< 90s 视为正常，不动作）
+#   HEARTBEAT_STALE_SEC = 180s ：stale 下界（≥ 180s 视为 stale，触发 kickstart 自愈 +
+#                                ERROR 落 watchdog.log + /health 验证）
+# 兼容保留 HEARTBEAT_GRACE（老口径）作为 borderline 上界默认：当
+# CCC_WATCHDOG_HEARTBEAT_GRACE 被显式设置（且未设新阈值）时，取 min(GRACE, 180s)
+# 作为 stale 阈值，避免把老配置期望的宽限语义直接炸成 stale。
+HEARTBEAT_WARN_SEC="${CCC_WATCHDOG_HEARTBEAT_WARN_SEC:-90}"
+HEARTBEAT_STALE_SEC="${CCC_WATCHDOG_HEARTBEAT_STALE_SEC:-180}"
+if [[ -n "${CCC_WATCHDOG_HEARTBEAT_GRACE:-}" && -z "${CCC_WATCHDOG_HEARTBEAT_STALE_SEC:-}" ]]; then
+  if (( CCC_WATCHDOG_HEARTBEAT_GRACE < HEARTBEAT_STALE_SEC )); then
+    HEARTBEAT_STALE_SEC="${CCC_WATCHDOG_HEARTBEAT_GRACE}"
+  fi
+fi
+
+# spawn 熔断（2026-09-07 P4.1）：1 小时内 stale 触发的 engine 重启 ≥ 3 次 →
+# 不再自动重启，写 CRITICAL 到 watchdog-critical.log（须人工介入才恢复，不自动解除）。
+SPAWN_BREAK_MIN_INTERVAL_SEC="${CCC_WATCHDOG_SPAWN_BREAK_MIN_INTERVAL_SEC:-180}"
 
 # ── ccc083 防旋自愈（2026-08-25）：连续观测确认 + kickstart 冷却 + 风暴升级告警 ──
 # 背景（取证结论）：2026-08-24 14:49–15:46 机审/开发会话把本脚本当「门禁实跑」反复执行，
@@ -111,6 +133,87 @@ wd_healthy_observed() {
   wd_save_state "$svc"
 }
 
+# ── P4.1 spawn 熔断（2026-09-07）：1 小时内 restart_stamp 记 ≥3 次 stale 重启 → 熔断 ──
+# 状态文件：${LOG_DIR}/watchdog-state/spawn.state（restart_stamp=epoch 逐行追加）。
+# 熔断只写 CRITICAL 到 watchdog-critical.log，绝不自动解除（红线：须人工介入）。
+SPAWN_BREAK_MAX_RESTARTS="${CCC_WATCHDOG_SPAWN_MAX_RESTARTS:-3}"
+
+wd_spawn_state() {
+  local f
+  f="${WATCHDOG_STATE_DIR}/spawn.state"
+  [[ -f "$f" ]] || return 0
+  cat "$f"
+}
+
+wd_spawn_record_restart() {
+  local now="$1"
+  printf 'restart_stamp=%s\n' "$now" >> "${WATCHDOG_STATE_DIR}/spawn.state" 2>/dev/null || true
+}
+
+# 读取重启记录 pwd_age=1 小时内 n 次；同时清出窗口外的陈旧行（纯记账窗口滑动）。
+# 返回：设 WD_SPAWN_RECENT，打印计数。窗口内 ≥ SPAWN_BREAK_MAX_RESTARTS → echo "TRIPPED"。
+wd_spawn_count_recent() {
+  local now="$1" cutoff age f ts n=0 tripped=""
+  cutoff=$(( now - SPAWN_BREAK_MIN_INTERVAL_SEC ))
+  f="${WATCHDOG_STATE_DIR}/spawn.state"
+  if [[ ! -f "$f" ]]; then
+    WD_SPAWN_RECENT=0
+    printf '0'
+    return 0
+  fi
+  tmp="$(mktemp 2>/dev/null || true)"
+  if [[ -n "${tmp}" ]]; then
+    while IFS='=' read -r k v; do
+      [[ "$k" == "restart_stamp" ]] || continue
+      v="${v//[^0-9]/}"
+      [[ -n "${v}" ]] || continue
+      age=$(( now - v ))
+      if (( age < SPAWN_BREAK_MIN_INTERVAL_SEC )); then
+        n=$(( n + 1 ))
+        printf 'restart_stamp=%s\n' "$v" >> "$tmp"
+      fi
+    done < "$f"
+    if ! cmp -s "$tmp" "$f" 2>/dev/null; then mv "$tmp" "$f" 2>/dev/null || true; fi
+    rm -f "$tmp"
+  fi
+  WD_SPAWN_RECENT="$n"
+  if (( n >= SPAWN_BREAK_MAX_RESTARTS )); then
+    tripped="TRIPPED"
+    printf '%s' "$tripped"
+    return 0
+  fi
+  printf '%s' "$n"
+  return 0
+}
+
+wd_spawn_tripped() {
+  local now="$1" n
+  n="$(wd_spawn_count_recent "$now")"
+  if [[ "$n" == "TRIPPED" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# CRITICAL 落盘：仅当（index 计数 ≥ 窗口重启数）时写共享水位标记，避免同站重复刷屏。
+# 全局标记文件 watchdog-critical.log 由 log_watchdog 追加；本处用 last-kick 水位去重。
+wd_spawn_critical() {
+  local svc="$1" label="$2" now="$3" n rec recent_word klog
+  n="$(wd_spawn_count_recent "$now")"
+  recent_word=""
+  if [[ "$n" == "TRIPPED" ]]; then
+    recent_word="≥ ${SPAWN_BREAK_MAX_RESTARTS}"
+  else
+    recent_word="${n}"
+  fi
+  rec="CRITICAL: ${label} 1 小时内 stale 重启达 ${recent_word} 次（阈值 ${SPAWN_BREAK_MAX_RESTARTS}），已熔断停止自动重启——须人工介入排查后清除 ${WATCHDOG_STATE_DIR}/spawn.state 恢复"
+  klog="${LOG_DIR}/watchdog-critical.log"
+  mkdir -p "${LOG_DIR}" 2>/dev/null || true
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$rec" >> "$klog" 2>/dev/null || true
+  log_watchdog "SPAWN-BREAKER-CRITICAL: ${label} 熔断（${recent_word} ≥ ${SPAWN_BREAK_MAX_RESTARTS}/h）→ ${klog}"
+  echo "[CRITICAL] watchdog spawn breaker: ${label} stale 重启次数达阈，停止自动重启（人工接入）" >&2
+}
+
 
 log_watchdog() {
   local msg="$1"
@@ -129,35 +232,86 @@ is_web_alive() {
   pgrep -f "${WEB_PNAME}" >/dev/null 2>&1
 }
 
-# 3. 检查 engine 心跳新鲜度：优先 slot 心跳 engine-metrics.jsonl（run_once 每轮写），
-#    缺失/不可读回退 stderr.log。宽限 HEARTBEAT_GRACE（默认 300s，2026-08-22 硬化）。
-is_engine_heartbeat_healthy() {
-  local source=""
-  local last_mod=""
-
+# 3. 检查 engine 心跳新鲜度（P4.1 多源 + 分级 + spawn 熔断）
+# 心跳源 = slot engine-metrics.jsonl 或 stderr.log，取 mtime 最新者（真实心跳优先）。
+# 三级：
+#   normal    mtime <  HEARTBEAT_WARN_SEC(90)                → 不动作
+#   borderline 90 ≤ mtime < HEARTBEAT_STALE_SEC(180)         → WARN 写 watchdog.log
+#   stale     mtime ≥ 180s                                   → kickstart + /health 验证
+engine_heartbeat_source() {
+  local slot_m wd_p
+  WD_HEARTBEAT_SOURCE=""
+  WD_HEARTBEAT_LAST_MOD=0
   if [[ -f "${SLOT_METRICS}" ]]; then
-    source="${SLOT_METRICS}"
-  elif [[ -f "${HEARTBEAT_LOG}" ]]; then
-    source="${HEARTBEAT_LOG}"
+    slot_m="$(wd_path_mtime "${SLOT_METRICS}")"
   else
-    return 1
+    slot_m=0
   fi
+  if [[ -f "${HEARTBEAT_LOG}" ]]; then
+    wd_p="$(wd_path_mtime "${HEARTBEAT_LOG}")"
+  else
+    wd_p=0
+  fi
+  if (( slot_m > wd_p )); then
+    WD_HEARTBEAT_SOURCE="${SLOT_METRICS}"
+    WD_HEARTBEAT_LAST_MOD="${slot_m}"
+  elif (( wd_p > 0 )); then
+    WD_HEARTBEAT_SOURCE="${HEARTBEAT_LOG}"
+    WD_HEARTBEAT_LAST_MOD="${wd_p}"
+  fi
+  [[ -n "${WD_HEARTBEAT_SOURCE}" ]]
+}
 
+wd_path_mtime() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    last_mod=$(stat -f "%m" "${source}")
+    stat -f "%m" "$1" 2>/dev/null || echo 0
   else
-    last_mod=$(stat -c "%Y" "${source}")
+    stat -c "%Y" "$1" 2>/dev/null || echo 0
   fi
+}
 
-  local now
-  now=$(date +%s)
-  local diff=$((now - last_mod))
-
-  if [[ $diff -lt ${HEARTBEAT_GRACE} ]]; then
-    return 0
+wd_heartbeat_status() {
+  local now diff
+  engine_heartbeat_source || return 1
+  now="$(date +%s)"
+  diff=$(( now - WD_HEARTBEAT_LAST_MOD ))
+  WD_HEARTBEAT_AGE="${diff}"
+  if (( diff < HEARTBEAT_WARN_SEC )); then
+    WD_HEARTBEAT_TIER="normal"
+  elif (( diff < HEARTBEAT_STALE_SEC )); then
+    WD_HEARTBEAT_TIER="borderline"
   else
+    WD_HEARTBEAT_TIER="stale"
+  fi
+  return 0
+}
+
+# P4.1：stale 触发 kickstart 前的熔断检查。熔断 = 窗口内重启 ≥ 阈值 → 不自动重启
+# 只写 CRITICAL，绝不自动解除（红线）。返回 0=允许重启；1=熔断拦截。
+wd_spawn_breaker_allow() {
+  local label="$1" now="$2" tripped
+  tripped="$(wd_spawn_count_recent "$now")"
+  if [[ "$tripped" == "TRIPPED" ]]; then
+    wd_spawn_critical "engine" "$label" "$now"
     return 1
   fi
+  return 0
+}
+
+# 4. 检查 web-server HTTP 健康
+# 2026-08-29 改绑对齐：web 只听内网地址（192.168.3.116）后 127.0.0.1 不再监听，
+# 单地址探活会误判健康服务为故障 → 防旋自愈空转。改双地址探测（任一 200 即健康），
+# 地址表可用 CCC_WATCHDOG_WEB_HEALTH_URLS 覆盖（空格分隔）。
+is_web_http_healthy() {
+  local url http_code
+  local urls="${CCC_WATCHDOG_WEB_HEALTH_URLS:-http://127.0.0.1:7788/health http://192.168.3.116:7788/health}"
+  for url in ${urls}; do
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "${url}" 2>/dev/null || echo "000")
+    if [[ "$http_code" == "200" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # 4. 检查 web-server HTTP 健康
@@ -401,11 +555,20 @@ janitor_sweep() {
 ENGINE_ISSUES=()
 WEB_ISSUES=()
 
-# Engine 检查
+# Engine 检查（P4.1 三级分级）
+ENGINE_TIER=""
 if ! is_engine_alive; then
   ENGINE_ISSUES+=("进程不存在")
-elif ! is_engine_heartbeat_healthy; then
-  ENGINE_ISSUES+=("日志心跳超时")
+elif ! wd_heartbeat_status; then
+  ENGINE_ISSUES+=("日志心跳不可读（源缺失）")
+else
+  ENGINE_TIER="${WD_HEARTBEAT_TIER}"
+  WD_HEARTBEAT_AGE="${WD_HEARTBEAT_AGE:-0}"
+  if [[ "${WD_HEARTBEAT_TIER}" == "borderline" ]]; then
+    log_watchdog "WARN: engine 心跳 borderline（source=${WD_HEARTBEAT_SOURCE##*/} age=${WD_HEARTBEAT_AGE}s）"
+  elif [[ "${WD_HEARTBEAT_TIER}" == "stale" ]]; then
+    ENGINE_ISSUES+=("心跳 stale ${WD_HEARTBEAT_AGE}s")
+  fi
 fi
 
 # Web Server 检查
@@ -440,9 +603,35 @@ if [[ ${#ENGINE_ISSUES[@]} -gt 0 ]]; then
   echo "[WARN] 发现故障: ${REASON}" >&2
   if ! wd_fault_observed "engine" "Engine"; then
     log_watchdog "防旋闸拦截：本轮不对 Engine 执行自愈（只观测）"
+  elif [[ "${ENGINE_TIER}" == "stale" ]] && ! wd_spawn_breaker_allow "Engine" "$(date +%s)"; then
+    # P4.1 spawn 熔断（仅 stale 触发的重启受熔断约束；进程缺失/探针失败等仍走原逻辑）
+    log_watchdog "SPAWN-BREAKER 拦截：Engine stale 重启风暴熔断，本轮不自动重启"
+    echo "[CRITICAL] watchdog: Engine 熔断，停止自动重启（须人工介入）" >&2
+    # 熔断不置 FAILED（保持 exit 0）：launchd KeepAlive.SuccessfulExit=false 遇
+    # 非零退出会立即重启 watchdog 本体 → 自持风暴。熔断已完成取证并写入 CRITICAL，
+    # 此后按 StartInterval 周期复检，等人工介入。
   elif [[ "$DRY_RUN" == "1" ]]; then
     log_watchdog "[DRY-RUN] 将触发 kickstart --engine-only（未执行）"
     echo "[DRY-RUN] watchdog: 将自愈 Engine（未执行）"
+  elif [[ "${ENGINE_TIER}" == "stale" ]]; then
+    log_watchdog "ERROR: engine 心跳 stale ${WD_HEARTBEAT_AGE}s，触发 kickstart 自愈"
+    if "${SCRIPT_DIR}/kickstart-ccc.sh" --engine-only >/dev/null 2>&1; then
+      log_watchdog "自愈成功：engine 重启完毕"
+      echo "Engine 已拉起"
+      wd_spawn_record_restart "$(date +%s)"
+      # P4.1：stale 自愈后尝试 /health 验证
+      if is_web_http_healthy; then
+        log_watchdog "自愈验证：/health 200"
+        echo "Engine 已拉起且 /health 通过"
+      else
+        log_watchdog "WARN: 自愈后 /health 未通过"
+        echo "Engine 已拉起但 /health 未通过（需关注）"
+      fi
+    else
+      log_watchdog "ERROR：engine 自愈失败"
+      echo "Engine 重启失败"
+      FAILED=$((FAILED + 1))
+    fi
   else
     if "${SCRIPT_DIR}/kickstart-ccc.sh" --engine-only >/dev/null 2>&1; then
       log_watchdog "自愈成功：engine 重启完毕"
