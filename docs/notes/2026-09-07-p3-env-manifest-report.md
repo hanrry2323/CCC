@@ -64,5 +64,5 @@ P3 全部改动落地并验证：**全量 pytest 1459 passed（基线 1447，净
 ## 交付头部
 
 ```
-P3-ENV-MANIFEST-DONE <head-sha> <新engine pid>
+P3-ENV-MANIFEST-DONE 89f8cacf6 46644
 ```
