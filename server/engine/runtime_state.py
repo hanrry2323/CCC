@@ -89,6 +89,10 @@ def write_card_state(
     light_fix_count: int | None = None,
     reject_count: int | None = None,
     reject_budget_exhausted: bool | None = None,
+    business_reject_count: int | None = None,
+    protocol_retry_count: int | None = None,
+    awaiting_human: bool | None = None,
+    exhausted_class: str | None = None,
 ) -> None:
     """追加一条运行时状态（调用方给定字段；缺省保持历史不变）。"""
     rec: dict[str, Any] = {"id": card_id, "ts": _utcnow_iso()}
@@ -112,6 +116,14 @@ def write_card_state(
         rec["reject_count"] = int(reject_count)
     if reject_budget_exhausted is not None:
         rec["reject_budget_exhausted"] = bool(reject_budget_exhausted)
+    if business_reject_count is not None:
+        rec["business_reject_count"] = int(business_reject_count)
+    if protocol_retry_count is not None:
+        rec["protocol_retry_count"] = int(protocol_retry_count)
+    if awaiting_human is not None:
+        rec["awaiting_human"] = bool(awaiting_human)
+    if exhausted_class is not None:
+        rec["exhausted_class"] = str(exhausted_class)
     try:
         path = Path(log_dir) / STATE_REL
         path.parent.mkdir(parents=True, exist_ok=True)

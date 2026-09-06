@@ -271,7 +271,14 @@ def _now_iso() -> str:
 ACTION_TYPES = ("confirm_plan", "convert", "approve_merge", "accept", "machine_audit_pass")
 
 
-def record_action(action: str, object_id: str, source: str = "", detail: str = "") -> None:
+def record_action(
+    action: str,
+    object_id: str,
+    source: str = "",
+    detail: str = "",
+    failure_class: str = "",
+    exhausted_class: str = "",
+) -> None:
     """记录批准/流转动作（追加写、只增不改——批准真值账本）。
 
     Args:
@@ -280,17 +287,22 @@ def record_action(action: str, object_id: str, source: str = "", detail: str = "
         object_id: 方案 plan_id 或卡 ID
         source: 调用方（engine / approve-merge / ccc-api / tool）
         detail: 附加信息（如被审 commit、卡 IDs）
+        failure_class: v2.0 P2 失败分类（infra/business/protocol）；空=非分类动作
+        exhausted_class: 预算耗尽的类标签（business/protocol）；空=未耗尽
     """
-    _append(
-        {
-            "ts": _now_iso(),
-            "action": action,
-            "object_id": object_id,
-            "source": source,
-            "detail": detail,
-            "kind": "approval",
-        }
-    )
+    rec: dict[str, Any] = {
+        "ts": _now_iso(),
+        "action": action,
+        "object_id": object_id,
+        "source": source,
+        "detail": detail,
+        "kind": "approval",
+    }
+    if failure_class:
+        rec["failure_class"] = failure_class
+    if exhausted_class:
+        rec["exhausted_class"] = exhausted_class
+    _append(rec)
 
 
 def has_action(action: str, object_id: str, source: str = "") -> bool:
