@@ -83,5 +83,5 @@ P4 全部改动落地并验证：**全量 pytest 1482 passed + 2 skipped，ruff 
 ## 交付头部
 
 ```
-P4-GLUE-AUTOMATION-DONE 400692578 46644
+P4-GLUE-AUTOMATION-DONE e39a5d298 46644
 ```
