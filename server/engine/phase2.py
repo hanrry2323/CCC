@@ -34,6 +34,14 @@ from pathlib import Path
 from server.engine.card_state_store import CardStateStore
 from server.engine.dsh_gateway import ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, cli_env, preflight_gateway
 from server.board.audit_verdict import read_verdict
+from server.engine.failure_class import (
+    FailureClass,
+    classify_failure,
+    increment_budget,
+    mark_awaiting_human,
+    run_infra_selfcheck,
+    terminal_reject_state,
+)
 
 logger = logging.getLogger("ccc.engine.phase2")
 
@@ -442,25 +450,11 @@ def _clear_audit_strikes(card_id: str, cfg: dict) -> None:
     )
 
 
-def _record_reject_budget(card_id: str, cfg: dict) -> tuple[int, bool]:
-    """递增业务 REJECT 预算；达到阈值后只允许人工重派。"""
-    from server.engine.runtime_state import read_card_state, write_card_state
-
-    log_dir = _audit_log_dir(cfg)
-    current = read_card_state(log_dir).get(str(card_id), {})
-    count = int(current.get("reject_count") or 0) + 1
-    try:
-        budget = max(1, int(cfg.get("PHASE2_REJECT_MAX_STRIKES") or 3))
-    except (TypeError, ValueError):
-        budget = 3
-    exhausted = count >= budget
-    write_card_state(
-        log_dir,
-        str(card_id),
-        reject_count=count,
-        reject_budget_exhausted=exhausted,
-    )
-    return count, exhausted
+def _record_reject_budget(card_id: str, cfg: dict, cls: FailureClass = FailureClass.BUSINESS) -> tuple[int, bool]:
+    """递增业务 REJECT 预算（P2 统一经 failure_class.increment_budget）；
+    达到阈值后只允许人工重派（awaiting_human 结构化终态）。
+    """
+    return increment_budget(_audit_log_dir(cfg), str(card_id), cls, cfg)
 
 
 def _record_audit_failure(
@@ -482,6 +476,28 @@ def _record_audit_failure(
     # 冷却期内直接跳过：strikes 与冷却均不动，等待冷却自然到期再重试。
     if _audit_cooldown_active(card_id, cfg):
         return "cooldown"
+
+    # P2：统一失败分类路由。protocol 修复轮耗尽仍走 budget 预算；
+    # infra 走既有冷却（指数退避封顶 1800s，不消耗预算）+ 环境自检；
+    # business 由调用方（process_one）计 reject 预算。
+    cls = classify_failure(reasons=[reason])
+    if cls is FailureClass.PROTOCOL:
+        protocol_count, exhausted = _record_reject_budget(card_id, cfg, cls=FailureClass.PROTOCOL)
+        if exhausted:
+            detail = f"机审 verdict 协议失败连续 {protocol_count} 次，REJECT 预算耗尽待人工：{reason}"
+            if set_card_state(card_file, terminal_reject_state(FailureClass.PROTOCOL), "REJECT", detail):
+                clear_card_state(log_dir, card_id)
+            record_action(
+                "protocol_budget_exhausted",
+                card_id,
+                source="phase2",
+                detail=detail,
+                failure_class=FailureClass.PROTOCOL.value,
+                exhausted_class=FailureClass.PROTOCOL.value,
+            )
+            return "protocol_exhausted"
+        return "protocol_retry"
+
     strikes = int(current.get("infra_count") or 0) + (1 if count_strike else 0)
     try:
         max_strikes = max(
@@ -498,6 +514,20 @@ def _record_audit_failure(
             clear_card_state(log_dir, card_id)
         record_action("phase2_audit_circuit_open", card_id, source="phase2", detail=detail)
         return "circuit_open"
+
+    # infra：触发环境自检（只读）并将结果追加 ledger，升级告警归因。
+    try:
+        selfcheck = run_infra_selfcheck(cfg, card_id=card_id, worktree=str(card.get("worktree") or ""))
+        if not selfcheck.get("all_ok"):
+            record_action(
+                "infra_selfcheck_fail",
+                card_id,
+                source="phase2",
+                detail=f"infra 自检 any_fail（归因基础设施侧）: {selfcheck}",
+                failure_class=FailureClass.INFRA.value,
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("infra 自检执行异常（不阻断冷却）")
 
     # 与派发侧共用同一冷却/sidecar 语义；audit 阶段不改变卡的业务状态。
     from server.engine.main import _hold_infra_failure
@@ -621,6 +651,13 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         transcript = out
         verdict, card_reason, findings = _read_audit_verdict(verdict_file, out)
         protocol_failure = card_reason.startswith("protocol：")
+        if protocol_failure:
+            # P2：verdict 协议非法（格式/schema）→ fail-closed，等待 process_one 修复轮路由。
+            reasons = f"{card_reason}（wrapper rc={rc}）: {err or out}"
+            logger.warning("后段机审 verdict 协议失败(第%d次): %s", attempt, reasons)
+            if attempt < max_attempts:
+                time.sleep(backoff_base * (2 ** (attempt - 1)))
+            continue
         reasons = card_reason
         if verdict == "REJECT" and not protocol_failure and findings:
             blocking = [f for f in findings if f.get("severity") in {"P0", "P1"}]
@@ -651,9 +688,7 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
                 "transcript": out + ("\n" + err if err else ""),
                 "attempts": attempt,
             }
-        if protocol_failure:
-            reasons = f"{card_reason}（wrapper rc={rc}）: {err or out}"
-        elif not reasons:
+        if not reasons:
             reasons = f"验收席 wrapper 基础设施失败（rc={rc}）: {err or out}"
         else:
             reasons = f"验收席 wrapper 基础设施失败（rc={rc}）：{reasons}"
@@ -667,6 +702,8 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         "transcript": transcript,
         "attempts": max_attempts,
         "infra": True,
+        # P2：protocol 类失败（verdict 格式非法）显式标记，process_one 走修复轮路由。
+        "protocol": True,
     }
 
 
@@ -978,7 +1015,39 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
         if not has_merge_branch or not _branch_in_main(branch):
             audit = audit_card(card, card_file, branch, cfg, audit_driver)
             if audit["verdict"] == "ERROR":
-                if audit.get("infra"):
+                # P2：统一失败分类路由（替代 transient_probe 散乱判断）。
+                cls = classify_failure(
+                    retryable=bool(audit.get("infra")),
+                    protocol_failure=audit.get("protocol"),
+                    reasons=[audit["reasons"]],
+                )
+                if cls is FailureClass.PROTOCOL:
+                    # protocol 优先于旧 infra 标记：verdict 格式非法走一次修复轮。
+                    time.sleep(30)
+                    retry = audit_card(card, card_file, branch, cfg, audit_driver)
+                    if retry.get("verdict") in ("PASS", "REJECT"):
+                        logger.info("phase2 verdict 协议修复轮后恢复: %s", card["id"])
+                        audit = retry
+                    else:
+                        failure_mode = _record_audit_failure(
+                            card, card_file, cfg, audit["reasons"], count_strike=False
+                        )
+                        if failure_mode in ("protocol_exhausted", "circuit_open"):
+                            return {
+                                "id": card["id"],
+                                "result": "rejected",
+                                "reason": audit["reasons"],
+                                "attempts": audit["attempts"],
+                                "awaiting_human": failure_mode == "protocol_exhausted",
+                                "exhausted_class": FailureClass.PROTOCOL.value if failure_mode == "protocol_exhausted" else "",
+                            }
+                        record_action(
+                            "phase2_audit_fail", card["id"], source="phase2",
+                            detail=f"机审 verdict 协议失败（修复轮仍失败）: {audit['reasons']}",
+                            failure_class=FailureClass.PROTOCOL.value,
+                        )
+                        return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
+                elif cls is FailureClass.INFRA:
                     if audit.get("cooldown"):
                         logger.warning("phase2 机审仍在基础设施冷却期，跳过计数: %s", card["id"])
                         return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
@@ -991,11 +1060,20 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                     )
                     if failure_mode == "circuit_open":
                         return {"id": card["id"], "result": "rejected", "reason": audit["reasons"], "attempts": audit["attempts"]}
-                    record_action("phase2_audit_fail", card["id"], source="phase2", detail=f"机审基础设施失败（冷却）: {audit['reasons']}")
+                    record_action(
+                        "phase2_audit_fail", card["id"], source="phase2",
+                        detail=f"机审基础设施失败（冷却）: {audit['reasons']}",
+                        failure_class=FailureClass.INFRA.value,
+                    )
                 else:
-                    record_action("phase2_audit_fail", card["id"], source="phase2", detail=f"CC 审核调用失败: {audit['reasons']}")
-                logger.error("phase2 CC 审核失败，卡保留「已回写」: %s", card["id"])
-                return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
+                    record_action(
+                        "phase2_audit_fail", card["id"], source="phase2",
+                        detail=f"CC 审核调用失败: {audit['reasons']}",
+                        failure_class=FailureClass.BUSINESS.value,
+                    )
+                if audit["verdict"] == "ERROR":
+                    logger.error("phase2 CC 审核失败，卡保留「已回写」: %s", card["id"])
+                    return {"id": card["id"], "result": "audit_failed", "reason": audit["reasons"], "attempts": audit["attempts"]}
             if audit["verdict"] == "REJECT":
                 git(["checkout", "main"])
                 if resolve_card_file(card) is None:
@@ -1007,7 +1085,10 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                 reject_count, exhausted = _record_reject_budget(str(card["id"]), cfg)
                 if exhausted:
                     reject_reason = "REJECT 预算耗尽，待人工"
-                    state_text = f"{_REJECTED}（{reject_reason}）"
+                    state_text = terminal_reject_state(FailureClass.BUSINESS)
+                    mark_awaiting_human(
+                        _audit_log_dir(cfg), str(card["id"]), FailureClass.BUSINESS, exhausted=True, count=reject_count
+                    )
                 else:
                     reject_reason = audit["reasons"]
                     state_text = f"{_REJECTED}（CC 审核不通过）"
@@ -1017,9 +1098,18 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                         detail="机审打回落盘失败（保留原文，不覆盖）",
                     )
                     return {"id": card["id"], "result": "error", "reason": "机审打回落盘失败"}
-                record_action("phase2_reject", card["id"], source="phase2", detail=f"CC 审核不通过自动打回: {reject_reason}")
+                record_action(
+                    "phase2_reject", card["id"], source="phase2",
+                    detail=f"CC 审核不通过自动打回: {reject_reason}",
+                    failure_class=FailureClass.BUSINESS.value,
+                )
                 if exhausted:
-                    record_action("reject_budget_exhausted", card["id"], source="phase2", detail=reject_reason)
+                    record_action(
+                        "reject_budget_exhausted", card["id"], source="phase2",
+                        detail=reject_reason,
+                        failure_class=FailureClass.BUSINESS.value,
+                        exhausted_class=FailureClass.BUSINESS.value,
+                    )
                 cleaned, cleanup_problems = _clear_rejected_branch_envelope(card)
                 if not cleaned:
                     record_action(
@@ -1035,6 +1125,8 @@ def process_one(card: dict, cfg: dict, audit_driver: str = "real") -> dict:
                     "reason": reject_reason,
                     "reject_count": reject_count,
                     "reject_budget_exhausted": exhausted,
+                    "awaiting_human": exhausted,
+                    "exhausted_class": FailureClass.BUSINESS.value if exhausted else "",
                     "branch_cleanup": "ok" if cleaned else "failed",
                 }
             # PASS → 有代码分支才合入；wrapper 型卡直接进入主仓门禁。

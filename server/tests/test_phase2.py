@@ -193,7 +193,7 @@ def test_process_one_reject_does_not_block(monkeypatch, tmp_path: Path) -> None:
     ledger_rows: list[dict] = []
     recorded: list[dict] = []
 
-    def fake_record_action(action, object_id, source="", detail=""):  # noqa: A002
+    def fake_record_action(action, object_id, source="", detail="", **kwargs):  # noqa: A002
         recorded.append({"action": action, "object_id": object_id, "detail": detail})
 
     def fake_git(cmd, cwd=None):  # noqa: A002
@@ -216,7 +216,7 @@ def test_process_one_pass_closed(monkeypatch, tmp_path: Path) -> None:
     card_file, card = _mk_card(tmp_path)
     recorded: list[dict] = []
 
-    def fake_record_action(action, object_id, source="", detail=""):  # noqa: A002
+    def fake_record_action(action, object_id, source="", detail="", **kwargs):  # noqa: A002
         recorded.append({"action": action, "object_id": object_id, "detail": detail})
 
     def fake_git(cmd, cwd=None):  # noqa: A002
@@ -253,7 +253,7 @@ def test_process_one_audit_fail_keeps_card(monkeypatch, tmp_path: Path) -> None:
     card_file, card = _mk_card(tmp_path)
     recorded: list[dict] = []
 
-    def fake_record_action(action, object_id, source="", detail=""):  # noqa: A002
+    def fake_record_action(action, object_id, source="", detail="", **kwargs):  # noqa: A002
         recorded.append({"action": action, "object_id": object_id, "detail": detail})
 
     monkeypatch.setattr(phase2, "git", lambda cmd, cwd=None: _ok_rc(1))
@@ -373,7 +373,7 @@ def test_process_one_pass_closed_cleans_branch(monkeypatch, tmp_path: Path) -> N
     recorded: list[dict] = []
     push_deletes: list[list[str]] = []
 
-    def fake_record_action(action, object_id, source="", detail=""):  # noqa: A002
+    def fake_record_action(action, object_id, source="", detail="", **kwargs):  # noqa: A002
         recorded.append({"action": action, "object_id": object_id, "detail": detail})
 
     def fake_git(cmd, cwd=None):  # noqa: A002
