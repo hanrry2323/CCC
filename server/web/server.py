@@ -685,6 +685,7 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
 
             rt = read_card_state(log_dir).get(item.id) or {}
             reason = str(rt.get("reason", ""))
+            _rt_for_detail = rt
         except Exception:
             pass
     return {
@@ -699,6 +700,9 @@ def _find_task_detail(items: list[BoardItem], task_id: str) -> dict[str, Any] | 
         "acceptance": _parse_task_acceptance(item.id),
         # P1 修复：详情补打回原因/人审批准（此前前端 taskCardDetail 读 t.reason 恒空）
         "reason": reason or item.reason or "",
+        # P2（v2.0）：预算耗尽待人工结构化终态（awaiting_human + exhausted_class，看板可见）
+        "awaiting_human": bool(_rt_for_detail.get("awaiting_human")) if "_rt_for_detail" in locals() else False,
+        "exhausted_class": (_rt_for_detail.get("exhausted_class") or "") if "_rt_for_detail" in locals() else "",
         # P2（2026-08-22）：补执行/机审失败原因（worker-events.jsonl 最后一条 problem），
         # 看板不再只显打回次数，能看到「为什么失败」
         "last_problem": _last_worker_problem(log_dir, item.id) if log_dir else "",
@@ -1551,6 +1555,12 @@ def _compose_board_items(items):
     now_ts = time.time()
     for item in items:
         rt = runtime.get(item.id) or {}
+        # P2（v2.0）：预算耗尽待人工 → 卡头 reason 标注结构化（看板可见）
+        if rt.get("awaiting_human") or rt.get("reject_budget_exhausted"):
+            exhausted_cls = rt.get("exhausted_class") or "business"
+            rt_reason = f"REJECT 预算耗尽，待人工（{exhausted_cls}）"
+        else:
+            rt_reason = rt.get("reason", "")
         # 运行时状态仅覆盖磁盘为「待分派」「执行中」或「已回写」的卡；一旦卡在磁盘上是已关闭/打回，则不予覆盖
         if base_state(item.state) in ("已关闭", "打回"):
             new_state = item.state
@@ -1602,7 +1612,7 @@ def _compose_board_items(items):
                 machine_audit_passed=audited,
                 closed_at=closed_at,
                 audit_status=audit_status,
-                reason=rt.get("reason", ""),
+                reason=rt_reason,
             )
         )
     _log_project_counts("board-compose", out)
@@ -3269,6 +3279,19 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
 
         # sidecar 辅助记录：清旧 infra 冷却/熔断计数，重派时间戳 + 重试归零。
+        # P2（v2.0）：人工重派时清零所有预算计数（business_reject_count /
+        # protocol_retry_count / awaiting_human / exhausted_class / reject_count）。
+        # 重派前检测预算耗尽状态，给出人工确认提示（看板可见）。
+        awaiting_hint = ""
+        try:
+            from server.engine.runtime_state import read_card_state
+
+            rt = read_card_state(log_dir).get(task_id) or {}
+            if rt.get("awaiting_human") or rt.get("reject_budget_exhausted"):
+                exhausted_cls = rt.get("exhausted_class") or "business"
+                awaiting_hint = f"（此卡{exhausted_cls}预算耗尽，确认后重派将清零计数）"
+        except Exception:
+            pass
         try:
             clear_card_state(log_dir, task_id)
         except Exception:
@@ -3282,7 +3305,13 @@ class _APIHandler(BaseHTTPRequestHandler):
             redispatch=ts,
             reject_count=0,
             reject_budget_exhausted=False,
+            business_reject_count=0,
+            protocol_retry_count=0,
+            awaiting_human=False,
+            exhausted_class=None,
         )
+        if awaiting_hint:
+            logger.info("人审重派预算耗尽卡（计数将清零）: %s %s", task_id, awaiting_hint)
         # 机审命中率台账（v4 · 复审 P1-C）：打回→待分派 = 返工 → 通过行标未命中
         try:
             from server.board.audit_ledger import mark_card_pass_miss

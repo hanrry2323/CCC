@@ -41,6 +41,16 @@ cd "$PROJECT_ROOT"
 
 rc=0
 for cid in "${IDS[@]}"; do
+  # P2：预算耗尽卡由 API 返回 awaiting_human/exhausted_class；在重派前显式提示，
+  # 确认动作由调用方承担，API 仍负责清零全部预算计数（不绕过鉴权/CAS）。
+  detail=""
+  if detail="$(curl -sf --max-time 10 "${BOARD_URL}/tasks/${cid}" -H 'Accept: application/json' "${AUTH_HEADERS[@]}" 2>/dev/null)"; then
+    if [[ "$detail" == *'"awaiting_human":true'* || "$detail" == *'"reject_budget_exhausted":true'* ]]; then
+      exhausted_class="$(printf '%s' "$detail" | sed -n 's/.*"exhausted_class":"\([^"]*\)".*/\1/p')"
+      exhausted_class="${exhausted_class:-business}"
+      echo "[WARN] ${cid}: 此卡预算耗尽（${exhausted_class}），确认后重派将清零计数" >&2
+    fi
+  fi
   if out="$(curl -sf --max-time 10 -X POST "${BOARD_URL}/tasks/${cid}/transition" \
       -H 'Content-Type: application/json' "${AUTH_HEADERS[@]}" \
       -d '{"status":"待分派"}' 2>&1)"; then
