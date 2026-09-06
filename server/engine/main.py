@@ -543,6 +543,23 @@ def _hold_infra_failure(
     until = (
         (datetime.now(timezone.utc) + timedelta(seconds=cooldown)).isoformat(timespec="seconds").replace("+00:00", "Z")
     )
+    # P2：infra 类失败触发环境自检（只读），结果追加 ledger 供归因。
+    try:
+        from server.engine.failure_class import run_infra_selfcheck  # noqa: PLC0415
+
+        selfcheck = run_infra_selfcheck(cfg, card_id=work.id)
+        if not selfcheck.get("all_ok"):
+            from server.board.audit_ledger import record_action  # noqa: PLC0415
+
+            record_action(
+                "infra_selfcheck_fail",
+                work.id,
+                source="engine",
+                detail=f"infra 自检 any_fail（归因基础设施侧）: {selfcheck}",
+                failure_class="infra",
+            )
+    except Exception:
+        logger.exception("infra 自检执行异常（不阻断冷却）")
     if phase == "run" and work.state is State.RUNNING:
         try:
             work.transition(State.TODO, problems=reasons)
@@ -1038,6 +1055,46 @@ def _fail_retry_or_reject(
     """
     max_r = max_retries_from_cfg(cfg)
     reasons = list(problems) if problems else ["失败（未附原因）"]
+    from server.engine.failure_class import FailureClass, classify_failure, increment_budget  # noqa: PLC0415
+
+    failure_cls = classify_failure(reasons=reasons)
+    # P2：business 类打回计 reject 预算。预算只在实际「打回」出口递增——
+    # 回待分派重试不计数（重试尚未构成 reject）；manual/W 号不打预算直接打回。
+    business_count = None
+    business_exhausted = False
+
+    def _write_reject_budget_markers(exhausted: bool) -> None:
+        """打回出口重建预算 sidecar（clear 后 budget 字段会被整条 null 失效吞掉）。"""
+        if not log_dir or not business_count:
+            return
+        from server.engine.runtime_state import write_card_state  # noqa: PLC0415
+
+        kw: dict[str, Any] = {
+            "reject_count": business_count,
+            "business_reject_count": business_count,
+            "reject_budget_exhausted": exhausted,
+        }
+        if exhausted:
+            kw.update(
+                awaiting_human=True,
+                exhausted_class=FailureClass.BUSINESS.value,
+            )
+        write_card_state(log_dir, work.id, **kw)
+        if exhausted:
+            try:
+                from server.board.audit_ledger import record_action  # noqa: PLC0415
+
+                record_action(
+                    "reject_budget_exhausted",
+                    work.id,
+                    source="engine",
+                    detail=reasons[0],
+                    failure_class=FailureClass.BUSINESS.value,
+                    exhausted_class=FailureClass.BUSINESS.value,
+                )
+            except Exception:
+                logger.exception("business 预算耗尽 ledger 写入失败（不阻断）: work=%s", work.id)
+
     # 不可自愈类型（manual/W 号）：不打业务重试预算，直接打回 + 立即 clear sidecar
     if _is_manual_or_remote_executor(work):
         work.transition(State.REJECTED, problems=reasons)
@@ -1070,18 +1127,25 @@ def _fail_retry_or_reject(
             reasons[:2],
         )
         return True
+    # 重试用尽 → 实际打回：business 类计 reject 预算（上限 3 只紧不松）。
+    if log_dir and failure_cls is FailureClass.BUSINESS:
+        business_count, business_exhausted = increment_budget(log_dir, work.id, failure_cls, cfg)
+        if business_exhausted:
+            reasons = ["REJECT 预算耗尽，待人工", *reasons]
     work.transition(State.REJECTED, problems=reasons)
     store.save_work(work)
     if log_dir:
         from server.engine.runtime_state import clear_card_state
 
         clear_card_state(log_dir, work.id)
+        _write_reject_budget_markers(business_exhausted)
     logger.warning(
-        "重试用尽打回: work=%s retry=%d/%d problems=%s",
+        "重试用尽打回: work=%s retry=%d/%d problems=%s%s",
         work.id,
         work.retry_count,
         max_r,
         reasons[:2],
+        "（budget 耗尽待人工）" if business_exhausted else "",
     )
     return False
 
@@ -4040,6 +4104,40 @@ def _run_machine_audit_after_writeback(
     # 注意：无 verdict 工件时仍允许旧链 worktree 卡机审区兜底（历史 wrapper）。
     protocol_rejection = bool(rejection and str(rejection).startswith("protocol："))
     if rejection and not (protocol_rejection and worktree_hint):
+        # P2：protocol 类（verdict 协议非法）计 protocol 预算；预算耗尽 → 侧链打回待人工。
+        # legacy 机审侧链（--audit/manual）：不直接改 store（无 store 引），
+        # 预算耗尽语义落在 sidecar 结构化终态（awaiting_human/exhausted_class）+ ledger。
+        if protocol_rejection:
+            from server.engine.failure_class import FailureClass, increment_budget  # noqa: PLC0415
+
+            protocol_count, protocol_exhausted = increment_budget(
+                log_dir, work.id, FailureClass.PROTOCOL, cfg
+            )
+            consumed = True
+            if protocol_exhausted:
+                reasons = [f"PROTOCOL 预算耗尽（{protocol_count} 次），待人工", rejection]
+                try:
+                    from server.board.audit_ledger import record_action  # noqa: PLC0415
+
+                    record_action(
+                        "protocol_budget_exhausted",
+                        work.id,
+                        source="engine",
+                        detail=reasons[0],
+                        failure_class=FailureClass.PROTOCOL.value,
+                        exhausted_class=FailureClass.PROTOCOL.value,
+                    )
+                except Exception:
+                    logger.exception("protocol 预算耗尽 ledger 写入失败（不阻断）: work=%s", work.id)
+                try:
+                    from server.engine.runtime_state import clear_card_state  # noqa: PLC0415
+
+                    clear_card_state(log_dir, work.id)
+                except Exception:
+                    pass
+                logger.warning("机审 protocol 预算耗尽打回待人工: work=%s", work.id)
+                return False, [reasons[0]], True
+            logger.warning("机审 verdict 协议失败（计 protocol 预算）: work=%s count=%d reason=%s", work.id, protocol_count, rejection)
         _ledger_record(
             work,
             severity,
@@ -4049,7 +4147,11 @@ def _run_machine_audit_after_writeback(
             source=("manual" if manual else "engine"),
             kind="infra" if protocol_rejection else "audit",
         )
-        logger.warning("机审明确不通过（按 verdict 工件判定）: work=%s reason=%s", work.id, rejection)
+        if not protocol_rejection:
+            logger.warning("机审明确不通过（按 verdict 工件判定）: work=%s reason=%s", work.id, rejection)
+            return False, [rejection], True
+        # protocol 修复轮语义：一次修复轮（30s 后重跑验收席）由 phase2 主链承接；
+        # 此 legacy 机审侧返回错误让调用方保留「已回写」，预算未耗尽前不直接打回。
         return False, [rejection], True
     if protocol_rejection:
         # 无 worktree 兜底时若 verdict 缺失，fail-closed 为 REJECT；有 worktree 则
@@ -4260,10 +4362,13 @@ def _run_auto_worker(
                 clear_card_state(log_dir, work.id)
                 outcome["failed"] = 1
                 return outcome
-            # 补一句可读原因（超时/网络特征优先）
+            # 补一句可读原因（超时/网络特征优先）；P2：统一失败分类源。
             retryable, hint = is_retryable_failure(work.id, problems, log_dir, phase="run")
             if hint and hint not in reasons[0]:
                 reasons = [hint, *reasons]
+            from server.engine.failure_class import FailureClass, classify_failure  # noqa: PLC0415
+
+            failure_cls = classify_failure(retryable=retryable, reasons=reasons)
 
             # 空回写判定：直接打回，不再无限 retry
             is_empty = False
@@ -4288,7 +4393,8 @@ def _run_auto_worker(
 
                 clear_card_state(log_dir, work.id)
                 outcome["failed"] = 1
-            elif retryable:
+            elif failure_cls is FailureClass.INFRA:
+                # P2：infra 类失败走既有冷却（指数退避封顶 1800s，不消耗预算）。
                 # 读 sidecar 的 infra_count
                 from server.engine.runtime_state import read_card_state
 
@@ -4319,6 +4425,7 @@ def _run_auto_worker(
                     _hold_infra_failure(store, work, log_dir, reasons, cfg, phase="run", infra_count=next_strikes)
                     outcome["infra"] = 1
             else:
+                # P2：business 类（测试/门禁/代码缺陷）→ 既有打回 + 计 reject 预算。
                 retried = _fail_retry_or_reject(work, store, reasons, cfg, log_dir)
                 # 催单计数：仅最终打回时记 timed_out（回待分派不算）
                 if (not retried) and any("超时" in p for p in reasons):
