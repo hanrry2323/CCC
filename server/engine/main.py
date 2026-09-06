@@ -140,6 +140,9 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
 
     生命周期对齐 CCC worktree：成功收单复用 / 未收单重置 / 脏或分叉强重建。
     失败返回错误（调用方记 infra 冷却，禁止回退业务仓主目录）。
+    P3（env-manifest）：worktree 挂载 .venv 符号链接后，按项目 env-manifest.json
+    校验 python/pytest/ruff 相对路径（symlink 展开后）真实存在；缺失 = 派发前
+    拒绝（FAIL_FAST，不拉起执行体，试行体不现场修复）。manifest 文件不存在 → 默认回退。
     """
     repo = Path(project.path_mac2017).expanduser()
     if not repo.is_dir():
@@ -147,6 +150,34 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
     target = _business_worktree_path(project, work.id)
     card_id_slug = Path(work.card_path).stem.lower() if work.card_path else work.id.lower()
     branch = f"codex/{card_id_slug}"
+
+    # P3：env-manifest 路径与预载（CCC 仓根固定 = docs/projects/<prefix>/env-manifest.json）
+    from server.engine.env_manifest import load_manifest, manifest_path, validate_manifest  # noqa: PLC0415
+
+    ccc_root = Path(__file__).resolve().parents[2]
+    manifest = load_manifest(manifest_path(ccc_root, project.prefix or "")) if (project.prefix or "") else None
+
+    def _validated(target: Path) -> tuple[str, None] | tuple[None, str]:
+        """挂载 venv 后按 manifest 校验；缺失 → FAIL_FAST 拒绝（派发前拦截）。"""
+        from server.engine.env_manifest import ENV_MANIFEST_MISSING_MARKER  # noqa: PLC0415
+
+        ok, problems = validate_manifest(manifest, target, prefix=project.prefix or "")
+        if not ok:
+            _bump_worktree_failures()
+            try:
+                from server.board.audit_ledger import record_action  # noqa: PLC0415
+
+                record_action(
+                    ENV_MANIFEST_MISSING_MARKER,
+                    work.id,
+                    source="engine",
+                    detail="; ".join(problems),
+                    failure_class="infra",
+                )
+            except Exception:
+                logger.exception("env-manifest 缺失 ledger 告警写入失败（不阻断拒绝）: work=%s", work.id)
+            return None, f"{ENV_MANIFEST_MISSING_MARKER}：{problems[0] if problems else 'env-manifest 校验失败'}"
+        return str(target), None
 
     try:
         subprocess.run(
@@ -198,7 +229,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
                 pass
         if success:
             _mount_business_worktree_venv(target, repo)
-            return str(target), None
+            return _validated(target)
         # 未成功收单：重置
         subprocess.run(["git", "checkout", "--", "."], cwd=target, capture_output=True, check=False, timeout=30)
         subprocess.run(["git", "clean", "-fd", "-e", ".venv"], cwd=target, capture_output=True, check=False, timeout=60)
@@ -221,7 +252,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
                 is_clean = False
         if is_clean:
             _mount_business_worktree_venv(target, repo)
-            return str(target), None
+            return _validated(target)
 
         # 强重建前先移除本次 worktree 自己创建的 .venv 链接；目标业务仓环境不受影响。
         _remove_business_worktree_venv(target)
@@ -240,7 +271,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             if rc2 != 0:
                 return None, f"业务仓 worktree 重建失败: {err or err2}"
         _mount_business_worktree_venv(target, repo)
-        return str(target), None
+        return _validated(target)
     else:
         rc, err = _try_add(new_branch=True)
         if rc != 0:
@@ -248,7 +279,7 @@ def _ensure_business_worktree(work: Work, project, log_dir: Path) -> tuple[str |
             if rc2 != 0:
                 return None, f"业务仓 worktree 创建失败: {err or err2}"
         _mount_business_worktree_venv(target, repo)
-        return str(target), None
+        return _validated(target)
 
 
 logger = logging.getLogger("ccc.engine")
