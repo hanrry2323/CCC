@@ -15,6 +15,9 @@
 #
 # 退出码：0 = 卡无测试声明（无可验）或测试通过；非 0 = 测试命令真实失败。
 # 调用方（auditor wrapper）在测试失败时以此硬打回，不让 DSH 跑机审。
+#
+# P3（2026-09-07）：测试命令声明化。优先读项目 env-manifest.json 的 test_entry
+# 字段，以 argv 数组执行（不 eval）；manifest 缺失/未声明 → 回退现有卡文本解析路径。
 
 set -uo pipefail
 
@@ -73,6 +76,69 @@ for line in lines:
             break
 PY
 )"
+
+# P3：env-manifest test_entry 声明化。card_path 形如 …/docs/dispatch/<prefix>/…
+# → CCC 仓 docs/projects/<prefix>/env-manifest.json。test_entry 以 argv 数组
+# 执行（不 eval）。manifest 缺失/未声明 → 回退卡文本解析（下面 TEST_CMD 路径）。
+_PREFIX="$(python3 - "$CARD_PATH" <<'PY'
+import re
+import sys
+
+p = sys.argv[1]
+m = re.search(r"(?:^|/)docs/dispatch/([^/]+)/", p)
+print(m.group(1) if m else "")
+PY
+)"
+_CCC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# CCC_PROJECTS_DIR 覆盖（测试隔离用）：默认真实仓 docs/projects
+_PROJECTS_DIR="${CCC_PROJECTS_DIR:-${_CCC_ROOT}/docs/projects}"
+_ENTRY_ARGV_FILE="$(mktemp)"
+_ENTRY_SOURCE=""
+if [[ -n "$_PREFIX" ]]; then
+  _MANIFEST="${_PROJECTS_DIR}/${_PREFIX}/env-manifest.json"
+  if [[ -f "$_MANIFEST" ]]; then
+    _ENTRY_SOURCE="env_manifest"
+    python3 - "$_MANIFEST" "$_ENTRY_ARGV_FILE" <<'PY'
+import json
+import shlex
+import sys
+from pathlib import Path
+
+m = Path(sys.argv[1])
+out = Path(sys.argv[2])
+try:
+    data = json.loads(m.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+entry = data.get("test_entry") or ""
+if not str(entry).strip():
+    sys.exit(0)
+argv = shlex.split(str(entry))
+out.write_bytes("".join(a + "\0" for a in argv).encode("utf-8"))
+PY
+  fi
+fi
+
+if [[ -s "$_ENTRY_ARGV_FILE" ]]; then
+  _ARGV=()
+  while IFS= read -r -d '' _a; do _ARGV+=("$_a"); done < "$_ENTRY_ARGV_FILE"
+  rm -f "$_ENTRY_ARGV_FILE"
+  mkdir -p "$(dirname "$EVIDENCE_LOG")"
+  {
+    echo "=== test-evidence ts=$(date -u +%Y-%m-%dT%H:%M:%SZ) card=$(basename "${CARD_PATH}") source=${_ENTRY_SOURCE} entry=$(printf '%q ' "${_ARGV[@]}") workdir=${WORKDIR} ==="
+  } > "$EVIDENCE_LOG"
+  (
+    cd "$WORKDIR" 2>/dev/null || exit 127
+    "${_ARGV[@]}"
+  ) >> "$EVIDENCE_LOG" 2>&1
+  RC=$?
+  {
+    echo "=== exit_code=${RC} ==="
+  } >> "$EVIDENCE_LOG"
+  exit "$RC"
+fi
+rm -f "$_ENTRY_ARGV_FILE"
+
 if [[ -z "$TEST_CMD" ]]; then
   echo "no_test_declared" > "$EVIDENCE_LOG"
   exit 0
