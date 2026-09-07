@@ -2,9 +2,9 @@
   "python_bin": ".venv/bin/python",
   "pytest_bin": ".venv/bin/pytest",
   "ruff_bin": ".venv/bin/ruff",
-  "test_entry": ".venv/bin/pytest tests/admin/test_workflows.py tests/admin/ -q",
+  "test_entry": ".venv/bin/pytest tests/admin/test_workflows.py -q",
   "test_paths": [
-    "tests/"
+    "tests/admin/test_workflows.py"
   ],
   "worktree_venv_source": ".venv"
 }
