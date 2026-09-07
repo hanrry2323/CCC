@@ -2826,7 +2826,7 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
                 section = section.split("## ", 1)[0].strip()
                 writeback += f"\n\n{heading}\n\n{section}"
             maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
-            for heading in ("## 批注落实", "## 4. 批注落实", "## 5. 批注落实"):
+            for heading in ("## 人工批注落实", "## 批注落实", "## 4. 批注落实", "## 5. 批注落实"):
                 if heading in result:
                     annotation_body = result.split(heading, 1)[1].split("## ", 1)[0].strip()
                     break
