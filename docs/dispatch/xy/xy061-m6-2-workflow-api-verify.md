@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：26
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：27
 
 ## 基准文件（先看）
 
@@ -36,7 +36,7 @@ docs/dispatch/xy/xy061-m6-2-workflow-api-verify.md
 
 1. 在引擎提供的业务 worktree 中先通读本卡、业务仓根 `README.md`/`AGENTS.md`/`CLAUDE.md`，再只读核实 `admin/api/server.py` 中 `GET /api/v1/workflows` 路由与 `_build_workflow_progress`、`tests/admin/test_workflows.py` 现状；核实结果写入 `.ccc-result.md`，不得凭空造路径。
 2. 逐项对账 xy-plan-009 §6.2 契约与既有实现：响应字段（`task_id/pipeline/stages/current_stage/updated_at`）、stage 状态枚举、只读边界、空态容错；每项给出代码/行为证据（行号 + 观察）。
-3. 运行 `.venv/bin/pytest tests/admin/test_workflows.py tests/admin/ -q` 并原样记录原始输出与退出码；若该入口不可用，先核实仓库实际入口后使用等价命令并说明。
+3. 运行 `.venv/bin/pytest tests/admin/test_workflows.py -q` 并原样记录原始输出与退出码；可另行观察 admin 全量，但其非 M6.2 失败不阻塞本卡。
 4. 空态容错核验：对无运行任务/空 pipeline 的输入，记录接口行为（走测试 fixtures 或只读探针，禁止写真实生产产出/数据库）。
 5. 核对业务 worktree 无任何改动（`git status` 干净、`git diff --stat` 为空）；不直接改主仓卡、不把结果文件提交到业务仓。
 6. 在业务 worktree 根写 `.ccc-result.md`，包含卡标题复述、独立核实探针、对账结论、测试输出、变更证据（应为空）、缺口清单、维护区四问；写完即停，交由 wrapper/Engine 回写主仓卡。
@@ -44,7 +44,7 @@ docs/dispatch/xy/xy061-m6-2-workflow-api-verify.md
 ## 验收标准
 
 1. 只读对账：`GET /api/v1/workflows` 既有实现与 xy-plan-009 §6.2 契约逐项对照，`.ccc-result.md` 记录每项契约点的代码证据（行号）或可复现行为，无「凭印象/未核实」断言。
-2. 测试真实通过：`.venv/bin/pytest tests/admin/test_workflows.py -q`（与 env-manifest 唯一入口一致）退出码 `0`，原始输出完整记录；任一门禁命令失败且无真实证据 = 不通过。
+2. 测试真实通过：`.venv/bin/pytest tests/admin/test_workflows.py -q`（与 env-manifest 唯一入口一致）退出码 `0`，原始输出完整记录；admin 其他测试仅作非阻塞观察，失败须如实记录并单列范围。
 3. 空态容错：对无运行任务/空 pipeline 输入，接口返回 2xx 稳定结构（不 500），证据在 `.ccc-result.md`。
 4. 零改动：业务 worktree `git status` 无业务文件改动、`git diff --stat` 为空；仅产出 `.ccc-result.md`（未纳入业务提交）。
 5. diff 白名单对账：若审验发现真实缺口，缺口清单单列于 `.ccc-result.md`，**本卡不修**；执行体不越权改动任何业务代码。
@@ -53,7 +53,8 @@ docs/dispatch/xy/xy061-m6-2-workflow-api-verify.md
 ## 门禁
 
 > 门禁命令以业务仓现行配置为准；执行体必须记录原始输出与退出码。
-测试：`.venv/bin/pytest tests/admin/test_workflows.py -q`
+测试：`.venv/bin/pytest tests/admin/test_workflows.py -q`（M6.2 阻塞门）
+观察：`.venv/bin/pytest tests/admin/ -q`（非阻塞，失败需记录）
 编译：`.venv/bin/python -m compileall admin/`（只读编译检查，不改文件）
 lint：`.venv/bin/ruff check admin/ tests/admin/`
 范围：false
