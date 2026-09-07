@@ -217,10 +217,13 @@ def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
         if note_m:
             note = note_m.group(1).strip()
         else:
-            inline_note_m = re.search(r"(?:—|–|:|：)\s*(.*)$", item_m.group(3))
-            note = inline_note_m.group(1).strip() if inline_note_m else ""
+            # 说明本身可能包含路径行号（例如 `docs/notes/foo.md:11-21`），
+            # 不能再用“取最后一个冒号”的规则，否则会把说明截成 `11-21`。
+            note = item_m.group(3).strip()
             note = note.strip("`'\" ")
-            note = re.sub(r"^[\s`'\"—–-]+", "", note).strip()
+            note = re.sub(r"^[\s`'\"—–：:-]+", "", note).strip()
+            # 兼容 `[有] **。复用…`：选项后可能带加粗或强调后缀。
+            note = re.sub(r"^(\*\*|[*])[。.]?\s*", "", note).strip()
 
         results[num] = {"name": name, "choice": choice, "note": note}
     return results
