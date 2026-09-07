@@ -2769,28 +2769,36 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
                     probe_section = payload.get("probe_output", "").strip()
                     selftest_section = payload.get("selftest_output", "").strip()
                     maint = payload.get("maintenance", {})
-                    # 卡面格式与 new-card.sh 模板/docgate 解析器兼容：`N. **name**：[choice] 说明`
-                    if isinstance(maint.get("plan_sync"), str) and isinstance(maint.get("lesson"), str) and isinstance(maint.get("readme"), str) and isinstance(maint.get("roadmap"), str):
+                    maint_notes = payload.get("maintenance_notes", {})
+                    # 勾选值与实情说明分离：JSON sidecar 的 maintenance_notes 优先作为说明。
+                    if isinstance(maint, dict) and isinstance(maint_notes, dict) and all(isinstance(maint.get(k), str) and isinstance(maint_notes.get(k), str) for k in ("plan_sync", "lesson", "readme", "roadmap")):
                         maintenance = (
                             "1. **方案同步**：["
                             + expr(maint.get("plan_sync"))
                             + "] "
-                            + maint.get("plan_sync", "").strip()
+                            + maint_notes.get("plan_sync", "").strip()
                             + "\n"
                             + "2. **教训沉淀**：["
                             + evidence_choice(maint.get("lesson"))
                             + "] "
-                            + maint.get("lesson", "").strip()
+                            + maint_notes.get("lesson", "").strip()
                             + "\n"
                             + "3. **档案/README**：["
                             + expr(maint.get("readme"))
                             + "] "
-                            + maint.get("readme", "").strip()
+                            + maint_notes.get("readme", "").strip()
                             + "\n"
                             + "4. **线路图**：["
                             + expr(maint.get("roadmap"))
                             + "] "
-                            + maint.get("roadmap", "").strip()
+                            + maint_notes.get("roadmap", "").strip()
+                        )
+                    elif isinstance(maint, dict) and all(isinstance(maint.get(k), str) for k in ("plan_sync", "lesson", "readme", "roadmap")):
+                        maintenance = (
+                            "1. **方案同步**：[" + expr(maint.get("plan_sync")) + "] " + maint.get("plan_sync", "").strip()
+                            + "\n2. **教训沉淀**：[" + evidence_choice(maint.get("lesson")) + "] " + maint.get("lesson", "").strip()
+                            + "\n3. **档案/README**：[" + expr(maint.get("readme")) + "] " + maint.get("readme", "").strip()
+                            + "\n4. **线路图**：[" + expr(maint.get("roadmap")) + "] " + maint.get("roadmap", "").strip()
                         )
                     if not title_section or not re.search(rf"\b{re.escape(work.id)}\b", title_section, re.IGNORECASE):
                         return False, "执行结果标题复述为空或未包含卡号"
