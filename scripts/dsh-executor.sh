@@ -148,6 +148,17 @@ _RESULT_SRC="$(pwd)/.ccc-result.md"
 _RESULT_JSON_SRC="$(pwd)/.ccc-result.json"
 _RESULT_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.md"
 _RESULT_JSON_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.json"
+
+# A1 fail-closed：卡含真实人工批注时，结果必须给出 ## 批注落实，否则拒绝传输（rc=64）。
+if [[ -f "$CARD_PATH" && -f "$_RESULT_SRC" ]]; then
+  if grep -q '^## 人工批注$' "$CARD_PATH"; then
+    _ANN="$(awk '/^## 人工批注$/{f=1;next} /^## /{f=0} f' "$CARD_PATH")"
+    if ! grep -qE '^无批注[。.]?$' <<<"$_ANN" && ! grep -q '^## 批注落实$' "$_RESULT_SRC"; then
+      echo "[dsh-executor] ERROR: 卡含真实人工批注但结果缺少 ## 批注落实，拒绝传输（rc=64）" >&2
+      exit 64
+    fi
+  fi
+fi
 if [[ "$DSH_RC" -eq 0 ]]; then
   if [[ -f "$_RESULT_SRC" ]]; then
     # P1.3：从既有四段 markdown 派生结构化 sidecar。解析失败只告警，不能阻断
