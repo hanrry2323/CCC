@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：36
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：37
 
 ## 基准文件（先看）
 
@@ -1510,4 +1510,4 @@ All checks passed!
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：独立核对发现工作流扫描仍漏收 status=running 的无产物任务，且 route/topic 与 writer/rewriter 仍共享产物探针，未满足批注要求的真实阶段进度契约。
+- 理由：测试真实失败：见 /Users/fan/.ccc/logs/exec/xy061.test-evidence.log
