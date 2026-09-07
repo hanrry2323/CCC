@@ -68,4 +68,9 @@
 
 ## 部署验证
 
-报告提交后重启 engine，并独立核验新 PID 与 `/health` HTTP 200；结果见最终输出。
+报告提交后重启 engine，并独立核验新 PID 与 `/health` HTTP 200。
+
+- 重启前 engine PID：`41967`（重启前 `/api/health` 未作为 CCC 健康端点使用）。
+- 重启后 engine PID：`55620`。
+- `http://192.168.3.116:7788/health`：HTTP **200**。
+- 说明：`/health` 属 web-server 健康端点；engine 由 launchd `com.ccc.engine` 管理，PID 已由进程表独立核验。
