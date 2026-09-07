@@ -48,6 +48,12 @@ trap 'rm -f "$TMP_OUTPUT"' EXIT
 
 write_protocol_reject() {
   local reason="$1"
+  # JSON verdict 是主契约：机械门禁（维护区/测试）失败也要产出合法 JSON REJECT，
+  # 否则 phase2 读不到 JSON → 误判 protocol 失败并累计到「待人工」。
+  # reason 经 python json.dumps 转义（防引号/反斜杠破坏 JSON）。
+  printf '%s' "$reason" | python3 -c 'import json,sys; print(json.dumps({"verdict":"REJECT","reason":sys.stdin.read(),"findings":[]}, ensure_ascii=False))' > "$VERDICT_JSON"
+  # Markdown 保留 protocol 标签供人读；JSON reason 不带 protocol 前缀，
+  # 让 phase2 将维护区/测试门禁失败归为业务 REJECT，而非协议失败。
   printf '机审：不通过（protocol：%s）\n' "$reason" > "$VERDICT_FILE"
 }
 
