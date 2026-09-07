@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：35
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：36
 
 ## 基准文件（先看）
 
@@ -104,6 +104,125 @@ lint：`.venv/bin/ruff check admin/ tests/admin/`
 本结果文件写入完成后停手，等待 wrapper/Engine 回写主仓卡。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+完整标题：**任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）**。
+
+## 1. 探针输出
+
+### 1.1 代码与测试核实
+
+- `admin/api/server.py:1719-1726`：新增 `_has_route()` 检查 `route.json`、`_has_rewritten()` 检查 `rewritten.json`，不再复用 `config.json`/`script.json`。
+- `admin/api/server.py:1770-1786`：video 与 image_text 两条 pipeline 的 route/rewriter 均使用独立 detector。
+- `admin/api/server.py:1851-1857`、`1895-1909`：按每个 stage 的 `completion[i]` 输出完成状态，避免因共享产物误报完成。
+- `admin/api/server.py:1969-1973`：`_run_history` 中 `started`/`running` 且无对应产物目录的任务纳入 items。
+- `tests/admin/test_workflows.py:388-406`：`started`、`running` 两种状态在空输出目录下的 scan 回归测试。
+- `tests/admin/test_workflows.py:411-431`：仅 `config.json` 时 route 不得完成、仅 `script.json` 时 rewriter 不得完成的回归测试。
+- `tests/admin/test_workflows.py:264-286`：HTTP 层无产物在途任务回归测试。
+- CCC 主仓方案依据：`/Users/fan/program/CCC/docs/projects/xy/plans/009-frontend-showcase.md` §6.2。
+
+### 1.2 running 无产物 HTTP 独立探针
+
+探针使用 `.venv/bin/python`、临时目录和临时数据库，创建空输出目录并注入 `run_state.status=running`，未写业务产出。
+
+原始 stdout：
+
+```text
+http_status= 200
+task_status= 运行中
+stages= [{'name': 'topic', 'status': '进行中'}, {'name': 'route', 'status': '排队'}, {'name': 'writer', 'status': '排队'}, {'name': 'rewriter', 'status': '排队'}, {'name': 'image', 'status': '排队'}, {'name': 'tts', 'status': '排队'}, {'name': 'video', 'status': '排队'}]
+current_stage= topic
+count= 1
+EXIT_CODE=0
+```
+
+探针 stderr 含 FastAPI 依赖弃用警告及未配置管理员凭据提示；凭据值未写入结果文件，按密钥脱敏规则处理。结论：running 且无产物任务未被静默丢弃，接口返回 200 并给出进行中/排队阶段。
+
+### 1.3 状态与推送核实
+
+```text
+git status --short
+?? .venv
+
+git diff --stat
+[空输出]
+
+git rev-parse HEAD
+842356fb1dcc57b9ac15003c30414178339bb907
+
+git rev-parse origin/codex/xy061-m6-2-workflow-api-verify
+842356fb1dcc57b9ac15003c30414178339bb907
+```
+
+`.venv` 为业务仓预置环境软链接，未纳入业务提交；业务 diff 为空。
+
+## 2. 自测输出
+
+### 2.1 M6.2 阻塞门：工作流专测
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py -q`
+
+原始输出尾段：
+
+```text
+-----------------------------------------------------------------
+TOTAL                                          3766   3640     3%
+======================== 22 passed, 1 warning in 2.62s =========================
+EXIT_CODE=0
+```
+
+结论：工作流专测 22 项全部通过；新增回归已纳入专测。
+
+### 2.2 admin 全量观察（非阻塞）
+
+命令：`.venv/bin/pytest tests/admin/ -q`
+
+原始输出关键段：
+
+```text
+tests/admin/test_preview.py FFF.FF....FFF                                [ 65%]
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_video_item_has_all_preview_fields
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_article_item_has_all_preview_fields
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_video_path_ends_with_mp4
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_items_separable_by_type
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_empty_response_structure
+FAILED tests/admin/test_preview.py::TestPreviewHelper::test_separate_videos_and_articles
+FAILED tests/admin/test_preview.py::TestPreviewHelper::test_empty_items_list_safe
+FAILED tests/admin/test_preview.py::TestPreviewHelper::test_duration_format_contract
+================== 8 failed, 96 passed, 30 warnings in 6.27s ===================
+EXIT_CODE=1
+```
+
+8 项失败全部位于非本卡白名单的 `tests/admin/test_preview.py`（6.3/xy054 预览范围）；`tests/admin/test_workflows.py` 22 项通过。本卡不修复、不扩展该范围，未将全量观察伪报为通过。
+
+### 2.3 编译检查
+
+命令：`.venv/bin/python -m compileall admin/`
+
+原始输出：
+
+```text
+Listing 'admin/'...
+Listing 'admin/api'...
+Listing 'admin/css'...
+Listing 'admin/js'...
+Listing 'admin/pages'...
+```
+
+退出码：`0`。
+
+### 2.4 lint
+
+命令：`.venv/bin/ruff check admin/ tests/admin/`
+
+原始输出：
+
+```text
+All checks passed!
+```
+
+退出码：`0`。
 
 ## 0. 卡标题复述
 
