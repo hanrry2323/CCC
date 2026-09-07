@@ -127,8 +127,11 @@ export function renderTaskCard(t, opts = {}) {
   const rejectHtml = reject > 0
     ? `<span class="board-card-badge badge-reject" title="打回次数">↩ ${reject}</span>`
     : '';
+  const reaperWarning = t.reason && String(t.reason).includes('reaper:')
+    ? `<span class="board-card-badge badge-reaper" title="reaper 三方对账差异：${escapeHtml(t.reason)}">⚠ 对账</span>`
+    : '';
   const reasonHtml = t.reason
-    ? `<span class="board-card-badge badge-reject" title="打回原因：${escapeHtml(t.reason)}">${escapeHtml(String(t.reason).slice(0, 22))}${String(t.reason).length > 22 ? '…' : ''}</span>`
+    ? `<span class="board-card-badge ${reaperWarning ? 'badge-reject' : 'badge-reject'}" title="状态/打回原因：${escapeHtml(t.reason)}">${escapeHtml(String(t.reason).slice(0, 22))}${String(t.reason).length > 22 ? '…' : ''}</span>`
     : '';
 
   const statsHtml = renderWorktreeBadges(t);
@@ -174,6 +177,7 @@ export function renderTaskCard(t, opts = {}) {
         ${executor}
         ${approval}
         ${rejectHtml}
+        ${reaperWarning}
         ${reasonHtml}
         ${updatedHtml ? `<span class="board-card-meta-time">${updatedHtml}</span>` : ''}
       </div>

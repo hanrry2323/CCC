@@ -1522,6 +1522,21 @@ def _enriched_cards(include_archived: bool = False) -> list[dict]:
         return cards_list
 
 
+def _read_reaper_warnings(log_dir) -> dict[str, str]:
+    """读取 reaper 当前黄标快照（只读、解析失败降级为空）。"""
+    if not log_dir:
+        return {}
+    from server.ops.ledger_writer import load_active_snapshot
+
+    out: dict[str, str] = {}
+    for row in load_active_snapshot(Path(log_dir) / "reaper-active.jsonl"):
+        card_id = str(row.get("card_id") or "").strip()
+        code = str(row.get("code") or "").strip()
+        if card_id and code:
+            out[card_id] = code
+    return out
+
+
 def _compose_board_items(items):
     """运行时状态覆盖 + 分支机审证据（TTL 缓存）；主树卡文件只读。"""
     from dataclasses import replace
@@ -1531,6 +1546,7 @@ def _compose_board_items(items):
 
     log_dir = _executor_log_dir()
     runtime = read_card_state(log_dir) if log_dir else {}
+    reaper_warnings = _read_reaper_warnings(log_dir)
     path_by_id: dict[str, str] = {}
     try:
         from server.board.loader import load_index_file
@@ -1615,6 +1631,11 @@ def _compose_board_items(items):
                 reason=rt_reason,
             )
         )
+        # reaper 当前快照是只读黄标面：不改变状态机，只让卡响应带出
+        # warning 字段供 Board UI 高亮展示。
+        if item.id in reaper_warnings:
+            out[-1] = replace(out[-1], reason=(rt_reason + " · reaper: " + reaper_warnings[item.id]).strip(" ·"))
+
     _log_project_counts("board-compose", out)
     return out
 

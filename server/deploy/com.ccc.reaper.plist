@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    CCC reaper — 卡/看板/分支每日三方对账
+    部署前替换：$PROJECT_ROOT / $PYTHON_BIN / $LOG_DIR / $USERNAME。
+    与 ccc-prod-health 同批：每日 06:05。
+  -->
+  <key>Label</key>
+  <string>com.ccc.reaper</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$PROJECT_ROOT/scripts/ops/reaper-card-audit.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>$PROJECT_ROOT</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CCC_REAPER_PYTHON</key>
+    <string>$PYTHON_BIN</string>
+    <key>CCC_REAPER_LOG_DIR</key>
+    <string>$LOG_DIR</string>
+    <key>CCC_BOARD_URL</key>
+    <string>http://192.168.3.116:7788</string>
+    <key>CCC_WEB_AUTH_FILE</key>
+    <string>$HOME/.ccc/web-auth.txt</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>5</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>$LOG_DIR/reaper.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>$LOG_DIR/reaper.launchd.log</string>
+
+  <key>UserName</key>
+  <string>$USERNAME</string>
+</dict>
+</plist>
