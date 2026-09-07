@@ -122,6 +122,8 @@ if [ -n "${ANTHROPIC_BASE_URL:-}" ]; then
   ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL%/v1/messages}"
   export ANTHROPIC_BASE_URL
 fi
+# 每轮审计必须从空 verdict 工件开始，避免复用上一轮遗留结论。
+rm -f "$VERDICT_JSON" "$VERDICT_FILE" || true
 attempt=0
 CC_AUDITOR_ATTEMPTS="${CC_AUDITOR_ATTEMPTS:-3}"
 while [ "$attempt" -lt "$CC_AUDITOR_ATTEMPTS" ]; do
