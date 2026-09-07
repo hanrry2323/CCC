@@ -641,6 +641,8 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
     transcript = ""
     reasons = ""
     findings: list[dict] = []
+    last_protocol_failure = False
+    last_rc = -1
     for attempt in range(1, max_attempts + 1):
         try:
             verdict_file.unlink(missing_ok=True)
@@ -648,9 +650,11 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         except OSError:
             pass
         rc, out, err = _run_dsh_auditor(card, card_file, branch, cfg, timeout)
+        last_rc = rc
         transcript = out
         verdict, card_reason, findings = _read_audit_verdict(verdict_file, out)
         protocol_failure = card_reason.startswith("protocol：")
+        last_protocol_failure = protocol_failure
         if protocol_failure:
             # P2：verdict 协议非法（格式/schema）→ fail-closed，等待 process_one 修复轮路由。
             reasons = f"{card_reason}（wrapper rc={rc}）: {err or out}"
@@ -702,8 +706,10 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
         "transcript": transcript,
         "attempts": max_attempts,
         "infra": True,
-        # P2：protocol 类失败（verdict 格式非法）显式标记，process_one 走修复轮路由。
-        "protocol": True,
+        # P2：仅当循环内最后一轮确有 protocol_failure（verdict JSON 格式非法，非 CLI/网络类
+        # 基建失败）才标记 protocol；rc=127/126（CLI 缺失/启动失败）、rc=124（超时）等纯基建
+        # 故障归 infra 冷却+自检，避免网关挂/CLI 缺失被当 protocol 烧预算。
+        "protocol": last_protocol_failure and last_rc not in (124, 126, 127),
     }
 
 

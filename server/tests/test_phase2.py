@@ -725,3 +725,66 @@ def test_audit_success_clears_strikes(monkeypatch, tmp_path: Path) -> None:
     result = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg)
     assert result["verdict"] == "PASS"
     assert writes[-1] == {"infra_count": 0, "infra_cooldown_until": "1970-01-01T00:00:00Z"}
+
+
+def test_audit_exhaust_rc127_is_infra_not_protocol(monkeypatch, tmp_path: Path) -> None:
+    """Fix3 定向：mock claude CLI 缺失（rc=127）→ 最终 ERROR 归 infra，不烧 protocol 预算。"""
+    card_file, cfg = _written_audit_env(tmp_path)
+
+    def fake_run(card, card_path, branch, cfg, timeout):
+        return 127, "", "claude: command not found"
+
+    monkeypatch.setattr(phase2, "preflight_gateway", lambda **kwargs: (True, "ok"))
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
+    monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
+    result = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg)
+    assert result["verdict"] == "ERROR"
+    assert result["attempts"] == 3
+    assert result.get("infra") is True
+    assert result.get("protocol") is False, "rc=127（CLI 缺失）必须归 infra，不得标记 protocol"
+
+
+def test_audit_exhaust_invalid_verdict_is_protocol(monkeypatch, tmp_path: Path) -> None:
+    """Fix3 定向：mock claude rc=0 但 verdict 格式非法 → 最终 ERROR 归 protocol（修复轮路由）。"""
+    card_file, cfg = _written_audit_env(tmp_path)
+
+    def fake_run(card, card_path, branch, cfg, timeout):
+        (tmp_path / "logs" / "tst997-audit-verdict.json").write_text(
+            '{"verdict":"PASS"', encoding="utf-8"
+        )
+        return 0, "", ""
+
+    monkeypatch.setattr(phase2, "preflight_gateway", lambda **kwargs: (True, "ok"))
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
+    monkeypatch.setattr(phase2.time, "sleep", lambda s: None)
+    result = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg)
+    assert result["verdict"] == "ERROR"
+    assert result["attempts"] == 3
+    assert result.get("protocol") is True, "rc=0 + verdict 格式非法 → protocol（修复轮）"
+    assert result.get("infra") is True
+
+
+def test_audit_reject_rc0_returns_reject(monkeypatch, tmp_path: Path) -> None:
+    """Fix4 定向：rc=0 + 合法 REJECT verdict（非 protocol）→ 恢复「打回」语义（不再重试）。"""
+    card_file, cfg = _written_audit_env(tmp_path)
+
+    def fake_run(card, card_path, branch, cfg, timeout):
+        (tmp_path / "logs" / "tst997-audit-verdict.json").write_text(
+            '{"verdict":"REJECT","reason":"范围越界",'
+            '"findings":[{"id":"F1","severity":"P1","file":"x.py","line":4,"note":"越界"}]}',
+            encoding="utf-8",
+        )
+        return 0, "审计完成", ""
+
+    monkeypatch.setattr(phase2, "preflight_gateway", lambda **kwargs: (True, "ok"))
+    monkeypatch.setattr(phase2, "_run_dsh_auditor", fake_run)
+    calls = {"n": 0}
+
+    def fake_sleep(seconds):
+        calls["n"] += 1
+
+    monkeypatch.setattr(phase2.time, "sleep", fake_sleep)
+    result = phase2.audit_card({"id": "tst997"}, card_file, "codex/x", cfg)
+    assert result["verdict"] == "REJECT"
+    assert result["attempts"] == 1
+    assert calls["n"] == 0, "rc=0 + 合法 REJECT 不应重试/不应 sleep"
