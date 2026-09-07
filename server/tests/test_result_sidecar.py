@@ -99,9 +99,10 @@ def test_apply_executor_result_json_sidecar_priority(tmp_path, monkeypatch):
     assert "## 回写区" in text
     assert "tst999 · smoke: sidecar" in text
     assert "## 维护区" in text
-    # 契约直译：maintenance 值即勾选（是/否），卡面 docgate 兼容 `[是] 是`；完整说明保留在 markdown 链
-    assert "1. **方案同步**：[是] 是" in text
-    assert "2. **教训沉淀**：[有] 有" in text
+    # P1.3 修订：JSON sidecar 的 maintenance_notes（完整说明）映射进卡面；勾选值仍来自 maintenance
+    assert "1. **方案同步**：[是] " in text
+    assert "方案已推进" in text
+    assert "2. **教训沉淀**：[有] " in text
 
 
 def test_apply_executor_result_missing_json_falls_back_to_markdown(tmp_path, monkeypatch):
