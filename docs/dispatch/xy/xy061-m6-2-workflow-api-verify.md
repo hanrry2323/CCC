@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：22
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：23
 
 ## 基准文件（先看）
 
@@ -44,7 +44,7 @@ docs/dispatch/xy/xy061-m6-2-workflow-api-verify.md
 ## 验收标准
 
 1. 只读对账：`GET /api/v1/workflows` 既有实现与 xy-plan-009 §6.2 契约逐项对照，`.ccc-result.md` 记录每项契约点的代码证据（行号）或可复现行为，无「凭印象/未核实」断言。
-2. 测试真实通过：`.venv/bin/pytest tests/admin/test_workflows.py tests/admin/ -q`（或已核实的等价入口）退出码 `0`，原始输出完整记录；任一门禁命令失败且无真实证据 = 不通过。
+2. 测试真实通过：`.venv/bin/pytest tests/admin/test_workflows.py -q`（与 env-manifest 唯一入口一致）退出码 `0`，原始输出完整记录；任一门禁命令失败且无真实证据 = 不通过。
 3. 空态容错：对无运行任务/空 pipeline 输入，接口返回 2xx 稳定结构（不 500），证据在 `.ccc-result.md`。
 4. 零改动：业务 worktree `git status` 无业务文件改动、`git diff --stat` 为空；仅产出 `.ccc-result.md`（未纳入业务提交）。
 5. diff 白名单对账：若审验发现真实缺口，缺口清单单列于 `.ccc-result.md`，**本卡不修**；执行体不越权改动任何业务代码。
