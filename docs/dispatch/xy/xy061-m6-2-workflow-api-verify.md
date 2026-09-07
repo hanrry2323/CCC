@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：28
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：29
 
 ## 基准文件（先看）
 
@@ -93,6 +93,115 @@ lint：`.venv/bin/ruff check admin/ tests/admin/`
 - 执行体说明：无批注（如有真实批注，回写时改为「已按批注执行」并说明落实内容）。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+**完整标题：任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）。**
+
+## 1. 探针输出
+
+### 1.1 路由、实现与状态源核实（证据：read/grep 实际行号）
+
+| 契约点 | 代码证据（worktree `admin/api/server.py` / `src/xianyu/core/pipeline.py` / `tests/admin/test_workflows.py`） | 结论 |
+|---|---|---|
+| 只读 JSON 路由 | `server.py:1968-1988`：`@app.get("/api/v1/workflows")`，依赖 `verify_credentials`，仅调用 `scan_workflows()` 并返回 `{"count","items"}` | 满足 |
+| 响应字段 | `server.py:1921-1928`：返回 `task_id / pipeline / stages / current_stage / updated_at`，另含任务级 `status`（只读超集，不违背契约） | 满足 |
+| stage 定义只读来源 | `server.py:1692-1708` `_get_pipeline_stages()`：每次请求从 `src.xianyu.core.pipeline.PIPELINES` 只读导入、不缓存；`pipeline.py:37-45` video 7 阶段（topic→route→writer→rewriter→image→tts→video）、`pipeline.py:47-54` image_text 5 阶段、`pipeline.py:56-59` PIPELINES 映射 | 满足 |
+| stage 状态枚举 | `server.py:1679-1683` 定义 排队/进行中/完成/失败；`server.py:1886-1899` 组装各 stage 状态（i<frontier→完成、i==frontier→进行中/失败、其余→排队/失败） | 满足；四态均有真实判定路径 |
+| 运行中实时进度 | `server.py:1849-1852`（`_run_history` status in started/running 判定运行中）、`1865-1869`（frontier = 首个未完成 stage）、`1934-1937`（每次请求实时读取产物目录与 `_run_history`，无缓存）；in-flight 无产物 run 由 `1959-1962` 纳入 | 满足 |
+| 历史任务终态 | `server.py:1841-1847`（终态产物存在 → 全部 stage 完成）、`1873-1881`（all_done→已完成；部分产物无运行记录→失败）、`1887-1899`（终态下后续 stage 标失败） | 满足 |
+| 空态容错 | `server.py:1944-1965`（空/不存在目录 → 空 items，不 500）、`1854-1863`（无产物无运行记录 → 未开始/stages 空/current_stage=None）；测试 `test_workflows.py:278-294`（空目录与不存在目录 HTTP 200）、`371-376`（无产物无运行态） | 满足 |
+| 只读边界 | `server.py:1931-1965` 仅读取目录、产物文件与内存 `_run_history`（定义于 `server.py:756`），未触碰生产核心/worker/调度/发布/数据库 | 满足 |
+
+### 1.2 测试现状核实
+
+- `tests/admin/test_workflows.py`（396 行）覆盖：运行中实时进度（102-135）、历史终态（137-158）、无记录空进度（160-175）、失败任务（177-206）、image_text 终态（208-226）、无产物在途任务（228-250）、按 updated_at 倒序（252-266）、认证 401（272-276）、空目录/不存在目录 HTTP 200（278-294）、扁平结构（296-311）、`scan_workflows`/`_build_workflow_progress` 辅助函数（328-396）。
+
+### 1.3 空态独立探针原始输出
+
+命令：`XIANYU_ADMIN_USER=probe XIANYU_ADMIN_PASS=probe-pass .venv/bin/python - <<'PY' ...`（只使用 `/tmp` 临时目录与内存对象，不写业务产出/数据库）
+
+原始 stdout：
+
+```text
+existing_empty_http_status=200 body={'count': 0, 'items': []}
+never_created_http_status=200 body={'count': 0, 'items': []}
+build_progress_status=未开始 stages=[] current_stage=None
+```
+
+退出码：`0`。含义：已存在空目录与不存在目录经 HTTP 均返回 200 + `{count:0, items:[]}`；无产物、无运行态的任务进度返回 `未开始`、空 `stages`、`current_stage=None`；全程未触发 500。
+
+### 1.4 逐项契约对账结论
+
+**6.2 工作流 API 实现缺口：无。** 唯一超出契约为任务级 `status` 字段，属只读响应超集（测试 `test_workflows.py:125/155/172/198` 均按 `status` 断言并通过），非缺口。
+
+### 1.5 发现的非本卡范围测试环境问题
+
+卡指定全量 admin 门禁退出码 1，失败 8 项**全部位于非本卡白名单的 `tests/admin/test_preview.py`**（6.3/xy054 范围）。交叉核实根因：
+
+- `admin/api/server.py:52`：`LIBRARY_ARTICLE_OUTPUT_DIR = ROOT / "workspace" / "outputs" / "image_text"`；`server.py:1543` 图文扫描默认使用该目录（`.gitignore:7` 已忽略 `workspace/outputs/`）。
+- worktree 内存在真实图文产物 `workspace/outputs/image_text/20260907-134122/`、`134121/`、`114809/`、`114808/`（含 `index.html`、`meta.json`）。
+- `tests/admin/test_preview.py:30-42` fixture 只 patch `LIBRARY_OUTPUT_DIR`，未 patch `LIBRARY_ARTICLE_OUTPUT_DIR`，故其空态/数据契约测试读入上述真实产物 → 8 项失败（证据如 `assert 'article' == 'video'`、`'workspace/outputs/image_text/20260907-134122/index.html'` 被当作视频项）。
+
+该问题不属于本卡白名单，本卡只读、不修复、不扩展至 6.3，仅列入缺口清单供后段审核裁决。
+
+## 2. 自测输出
+
+本卡业务零改动，以下均对既有实现的真实跑测（原始输出完整留存于执行日志）。
+
+### 2.1 本卡工作流专测（卡门禁命令）
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py -q`
+
+```text
+collected 19 items
+tests/admin/test_workflows.py ...................                        [100%]
+======================== 19 passed, 1 warning in 3.12s =========================
+```
+
+退出码：`0` ✅
+
+### 2.2 卡指定全量 admin 门禁
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py tests/admin/ -q`
+
+```text
+collected 101 items
+tests/admin/test_g3_6_platform_stats.py .......                          [  6%]
+tests/admin/test_library.py .......................                      [ 29%]
+tests/admin/test_no_random.py .........................                  [ 54%]
+tests/admin/test_preview.py FFF.FF....FFF                                [ 67%]
+tests/admin/test_schedules.py ............                               [ 79%]
+tests/admin/test_workflow_page.py ..                                     [ 81%]
+tests/admin/test_workflows.py ...................                        [100%]
+... 8 failed, 93 passed, 30 warnings in 6.93s ==========================
+```
+
+退出码：`1` ❌（失败 8 项全部在非本卡 `tests/admin/test_preview.py`，根因见 §1.5；`tests/admin/test_workflows.py` 19 项全部通过）。不伪报为全量通过。
+
+### 2.3 编译检查
+
+命令：`.venv/bin/python -m compileall admin/`
+
+```text
+Listing 'admin/'...
+Listing 'admin/api'...
+Listing 'admin/css'...
+Listing 'admin/js'...
+Listing 'admin/pages'...
+```
+
+退出码：`0` ✅
+
+### 2.4 lint
+
+命令：`.venv/bin/ruff check admin/ tests/admin/`
+
+```text
+All checks passed!
+```
+
+退出码：`0` ✅
 
 ## 0. 卡标题复述
 
