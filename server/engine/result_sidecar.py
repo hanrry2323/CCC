@@ -64,6 +64,19 @@ def _evidence(text: str) -> dict[str, Any]:
     return {"commits": commits, "diff_stat": diff_stat}
 
 
+def _annotation_fulfillment(text: str) -> str:
+    """提取 `## 人工批注落实` 或 `## 批注落实` 段正文；无则空串。"""
+    for heading in ("## 人工批注落实", "## 批注落实"):
+        if heading in text:
+            body = text.split(heading, 1)[1]
+            for nxt in ("## 1. 探针输出", "## 2. 自测输出", "## 3. 维护区四问", "## 4. 变更证据"):
+                if nxt in body:
+                    body = body.split(nxt, 1)[0]
+                    break
+            return body.strip()
+    return ""
+
+
 def parse_result(text: str, work_id: str) -> dict[str, Any]:
     """Parse all required markdown sections; raise when the contract is incomplete."""
     title = _section(text, "0. 卡标题复述", "1. 探针输出")
@@ -97,6 +110,7 @@ def parse_result(text: str, work_id: str) -> dict[str, Any]:
             "readme": readme_note,
             "roadmap": roadmap_note,
         },
+        "annotation_fulfillment": _annotation_fulfillment(text),
         "evidence": evidence,
     }
 

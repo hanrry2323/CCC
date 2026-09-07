@@ -131,3 +131,17 @@ def test_apply_executor_result_missing_json_falls_back_to_markdown(tmp_path, mon
     assert "状态：已回写" in text
     assert "## 维护区" in text
     assert "方案同步：[是] 方案已推进" in text
+
+def test_annotation_fulfillment_in_sidecar(tmp_path):
+    """P1.3+：JSON sidecar 必须携带批注落实段，供引擎批注 fail-closed 校验。"""
+    from server.engine.result_sidecar import parse_result
+    md = (
+        "## 0. 卡标题复述\n\nxy061\n\n"
+        "## 人工批注落实\n\n1. running 无产物：已落实（server.py:1969）\n\n"
+        "## 1. 探针输出\n\nprobe\n\n"
+        "## 2. 自测输出\n\ntest ok\n\n"
+        "## 3. 维护区四问\n\n1. **方案同步**：[是] ok\n2. **教训沉淀**：[无] ok\n3. **档案/README**：[否] ok\n4. **线路图**：[否] ok\n\n"
+        "## 4. 变更证据\n\ncommit=abc1234\n"
+    )
+    payload = parse_result(md, "xy061")
+    assert "已落实" in payload["annotation_fulfillment"]

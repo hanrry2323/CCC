@@ -2805,6 +2805,8 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
                     writeback = "## 0. 卡标题复述\n\n" + title_section
                     writeback += "\n\n## 1. 探针输出\n\n" + probe_section
                     writeback += "\n\n## 2. 自测输出\n\n" + selftest_section
+                    # P1.3+：JSON sidecar 携带批注落实段，供批注 fail-closed 校验。
+                    annotation_body = str(payload.get("annotation_fulfillment") or "").strip()
                     json_mode = True
             except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
                 logger.warning("JSON sidecar 解析失败，回退 markdown: work=%s path=%s", work.id, json_path)
