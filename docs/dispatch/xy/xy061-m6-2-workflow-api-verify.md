@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-07
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：1
 
 ## 基准文件（先看）
 
@@ -90,3 +90,133 @@ lint：`.venv/bin/ruff check admin/ tests/admin/`
 ## 批注落实
 
 - 执行体说明：无批注（如有真实批注，回写时改为「已按批注执行」并说明落实内容）。
+
+## 回写区
+
+## 0. 卡标题复述
+
+完整标题：**任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）**。
+
+## 1. 探针输出
+
+### 1.1 路由与实现位置
+
+核实文件：`admin/api/server.py`。
+
+- `server.py:1676-1683`：M6-2 工作流 API 注释及 stage 状态常量，状态为 `排队/进行中/完成/失败`。
+- `server.py:1692-1708`：`_get_pipeline_stages()` 从 `src/xianyu/core/pipeline.py` 的 `PIPELINES` 只读导入 stage 定义，每次调用实时读取、不缓存。
+- `server.py:1813-1928`：`_build_workflow_progress()` 组装 `task_id/pipeline/status/stages/current_stage/updated_at`。
+- `server.py:1931-1965`：`scan_workflows()` 扫描产物目录及 `_run_history` 在途任务，按 `updated_at` 倒序返回。
+- `server.py:1968-1988`：`GET /api/v1/workflows` 路由，依赖 `verify_credentials`，只返回 `count/items` JSON。
+- `server.py:756`：`_run_history` 为运行态来源；`server.py:1805-1810` 按 `task_id` 读取运行记录。
+
+### 1.2 pipeline 状态源
+
+核实文件：`src/xianyu/core/pipeline.py`。
+
+- `pipeline.py:37-45`：video pipeline 阶段为 `topic → route → writer → rewriter → image → tts → video`。
+- `pipeline.py:47-54`：image_text pipeline 阶段为 `topic → route → writer → rewriter → image`。
+- `pipeline.py:56-59`：`PIPELINES` 明确映射 `video` 与 `image_text`。
+
+### 1.3 测试现状
+
+核实文件：`tests/admin/test_workflows.py`，共 396 行。
+
+覆盖：
+
+- `test_running_task_reflects_current_stage`（102-135）：部分产物 + started 运行态，frontier stage 为进行中，后续阶段排队。
+- `test_completed_task_returns_terminal`（137-158）：含 `final.mp4` 的历史任务各 stage 完成并返回终态。
+- `test_no_record_task_returns_empty_progress`（160-175）：空目录无运行记录返回空 stages、`current_stage=None`、未开始。
+- `test_failed_run_task`（177-206）：失败运行态返回 frontier 及后续 stage 失败。
+- `test_image_text_pipeline_task`（208-226）：图文 pipeline 五阶段与终态。
+- `test_in_flight_run_without_output`（228-250）：无产物在途任务首阶段进行中、后续排队。
+- `test_empty_output_dir`（278-285）及 `test_nonexistent_output_dir`（287-294）：空目录和不存在目录均返回 200、空列表。
+- `TestScanWorkflows`（328-366）与 `TestBuildWorkflowProgress`（368-396）：辅助函数及空态/终态/部分产物行为。
+
+### 1.4 空态独立探针原始输出
+
+命令入口：`XIANYU_ADMIN_USER=probe XIANYU_ADMIN_PASS=probe-pass .venv/bin/python`。
+
+原始输出：
+
+```text
+path=/tmp/xy061-empty-output-never-created-2 result=[] type=list
+path=/tmp/xy061-empty-output-existing-2 result=[] type=list
+```
+
+退出码：`0`。
+
+含义：不存在输出目录与已存在空输出目录均稳定返回空 list，不触发 500；测试 fixtures 另覆盖 HTTP 200 行为。
+
+首次错误探针也如实记录：使用系统 `python` 执行时输出 `bash: python: command not found`，退出码 `127`；随后按卡指定业务入口 `.venv/bin/python` 重跑成功，未将环境错误误判为业务失败。
+
+### 1.5 逐项契约对账
+
+| 契约点 | 证据 | 结论 |
+|---|---|---|
+| 只读 JSON 路由 | `server.py:1968-1988`，路由仅调用 `scan_workflows()` 并返回 JSON | 满足 |
+| 响应字段 | `server.py:1921-1928` 返回 `task_id/pipeline/stages/current_stage/updated_at`；另含任务级 `status` | 契约字段全部存在；`status` 为只读超集，非缺口 |
+| stage 定义 | `pipeline.py:37-59`，`server.py:1692-1708` | video 7 阶段、image_text 5 阶段，实时只读来源 |
+| stage 状态枚举 | `server.py:1679-1683`、`1887-1899` | 排队/进行中/完成/失败均有真实判定路径 |
+| 运行中实时进度 | `server.py:1849-1852`、`1865-1899`、`1934-1937` | 每次请求读取产物与 `_run_history`，frontier 进行中、后续排队 |
+| 历史任务终态 | `server.py:1841-1847`、`1872-1881` | terminal artifact → 全部完成；部分产物无运行记录 → 失败终态 |
+| 空态容错 | `server.py:1944-1965`；测试 160-175、278-294；独立探针见上 | 空/不存在目录返回稳定空列表，HTTP 测试为 200 |
+| 只读边界 | `server.py:1931-1965` 仅读取目录、产物与内存运行态 | 未触碰生产核心、worker、调度、发布、数据库 |
+
+缺口清单：**无**。额外任务级 `status` 是响应超集，不违背 §6.2 只读 JSON 契约。
+
+## 2. 自测输出
+
+### 2.1 工作流与 admin 全量测试
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py tests/admin/ -q`
+
+原始输出摘要（完整 pytest 输出已由执行日志留存）：
+
+```text
+============================= test session starts ==============================
+platform darwin -- Python 3.12.0, pytest-9.0.3, pluggy-1.6.0
+collected 101 items
+...
+============================== 101 passed, 30 warnings in 4.72s ===============================
+```
+
+退出码：`0`。
+
+说明：`tests/admin/test_workflows.py` 与 `tests/admin/` 全量测试均真实执行；警告为依赖弃用提示，不影响退出码。
+
+### 2.2 编译检查
+
+命令：`.venv/bin/python -m compileall admin/`
+
+原始输出：
+
+```text
+Listing 'admin/'...
+Listing 'admin/api'...
+Compiling 'admin/api/sau_proxy.py'...
+Listing 'admin/css'...
+Listing 'admin/js'...
+Listing 'admin/pages'...
+```
+
+退出码：`0`。
+
+### 2.3 lint
+
+命令：`.venv/bin/ruff check admin/ tests/admin/`
+
+原始输出：
+
+```text
+All checks passed!
+```
+
+退出码：`0`。
+
+## 维护区
+
+1. **方案同步**：[是] 是
+2. **教训沉淀**：[无] 无
+3. **档案/README**：[否] 否
+4. **线路图**：[否] 否
