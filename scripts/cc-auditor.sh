@@ -48,12 +48,18 @@ trap 'rm -f "$TMP_OUTPUT"' EXIT
 
 write_protocol_reject() {
   local reason="$1"
+  local json_prefix="${2:-0}"
   # JSON verdict 是主契约：机械门禁（维护区/测试）失败也要产出合法 JSON REJECT，
   # 否则 phase2 读不到 JSON → 误判 protocol 失败并累计到「待人工」。
   # reason 经 python json.dumps 转义（防引号/反斜杠破坏 JSON）。
-  printf '%s' "$reason" | python3 -c 'import json,sys; print(json.dumps({"verdict":"REJECT","reason":sys.stdin.read(),"findings":[]}, ensure_ascii=False))' > "$VERDICT_JSON"
-  # Markdown 保留 protocol 标签供人读；JSON reason 不带 protocol 前缀，
-  # 让 phase2 将维护区/测试门禁失败归为业务 REJECT，而非协议失败。
+  if [ "$json_prefix" = "1" ]; then
+    printf 'protocol：%s' "$reason" | python3 -c 'import json,sys; print(json.dumps({"verdict":"REJECT","reason":sys.stdin.read(),"findings":[]}, ensure_ascii=False))' > "$VERDICT_JSON"
+  else
+    printf '%s' "$reason" | python3 -c 'import json,sys; print(json.dumps({"verdict":"REJECT","reason":sys.stdin.read(),"findings":[]}, ensure_ascii=False))' > "$VERDICT_JSON"
+  fi
+  # Markdown 保留 protocol 标签供人读；JSON reason 是否带 protocol 前缀取决于调用方：
+  # 机械门禁失败（业务 REJECT）不带，LLM 未产出合法 verdict（协议失败）带——phase2
+  # 按 reason 前缀判定：带 protocol：走修复轮路由，不烧业务预算（宪章修订1）。
   printf '机审：不通过（protocol：%s）\n' "$reason" > "$VERDICT_FILE"
 }
 
@@ -148,8 +154,9 @@ set -e
 cat "$TMP_OUTPUT"
 
 # 用 Python 校验 schema；无合法 JSON 一律显式 REJECT，绝不把 stdout 当结论。
+# LLM 未产出合法 verdict → 协议失败（protocol：前缀），走修复轮路由，不烧业务预算。
 if [ ! -s "$VERDICT_JSON" ]; then
-  write_protocol_reject "JSON verdict 缺失或非法"
+  write_protocol_reject "JSON verdict 缺失或非法（claude 未产出合法 verdict）" 1
   exit 2
 fi
 VALIDATION="$(python3 - "$VERDICT_JSON" <<'PY'
@@ -181,6 +188,6 @@ elif [[ "$VALIDATION" == "REJECT" ]]; then
   echo "[cc-auditor] JSON verdict REJECT: $VERDICT_JSON" >&2
   exit 2
 fi
-write_protocol_reject "JSON verdict 缺失或非法"
+write_protocol_reject "JSON verdict 缺失或非法（claude 未产出合法 verdict）" 1
 echo "[cc-auditor] JSON verdict 非法：${VALIDATION}" >&2
 exit 2
