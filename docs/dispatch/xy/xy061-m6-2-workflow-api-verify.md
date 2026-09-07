@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：30
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：31
 
 ## 基准文件（先看）
 
@@ -85,8 +85,11 @@ lint：`.venv/bin/ruff check admin/ tests/admin/`
 - 若上述任一项缺少真实证据，前置机审打回，不以过程日志或口头完成声明替代。
 
 ## 人工批注
-
-无批注。
+【v2.0 M6.2 修复轮（Claude CLI 后段 P1 findings，自动推进）】
+后段验收发现并已复现两项 P1，必须在本业务 worktree 修复并补回归测试：
+1. running 状态无产物任务漏收：scan_workflows 必须把 run_state.status=running 且尚无产物的任务纳入 items，状态显示 running/当前阶段未知或进行中，不得静默漏掉。补空输出目录 fixture。
+2. 阶段误报完成：route/topic 不得共用 _has_config，writer/rewriter 不得共用 _has_script；各阶段必须有独立状态或独立产物证据，不能因为一个 config/script 存在就同时标多个节点完成。补仅有 config/script 时各阶段状态回归 fixture。
+只改 admin/api/server.py 与 tests/admin/test_workflows.py；复用业务 .venv 跑专测，结果 JSON/markdown 四段完整，Q2 如声明有教训引用真实 docs/notes 路径。
 
 ## 批注落实
 
