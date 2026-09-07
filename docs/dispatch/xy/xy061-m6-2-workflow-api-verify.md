@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：1
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（PROTOCOL 预算耗尽，待人工） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：2
 
 ## 基准文件（先看）
 
@@ -220,3 +220,9 @@ All checks passed!
 2. **教训沉淀**：[无] 无
 3. **档案/README**：[否] 否
 4. **线路图**：[否] 否
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：机审 verdict 协议失败连续 3 次，REJECT 预算耗尽待人工：protocol：无 verdict 工件（wrapper rc=2）: 
