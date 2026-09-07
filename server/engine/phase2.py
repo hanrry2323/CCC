@@ -683,7 +683,9 @@ def audit_card(card: dict, card_file: Path, branch: str, cfg: dict, audit_driver
                 "transcript": out + ("\n" + err if err else ""),
                 "attempts": attempt,
             }
-        if not protocol_failure and verdict == "REJECT" and rc == 2:
+        if not protocol_failure and verdict == "REJECT" and rc in (0, 2):
+            # 有合法 REJECT verdict（非 protocol）即打回，不论 wrapper rc：
+            # rc=0 是旧 md wrapper 兼容场景（rc=2 新 JSON wrapper），都恢复「打回」语义。
             _clear_audit_strikes(work_id, cfg)
             return {
                 "verdict": "REJECT",
