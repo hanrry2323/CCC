@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：14
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：15
 
 ## 基准文件（先看）
 
@@ -787,7 +787,7 @@ All checks passed!
 ## 维护区
 
 1. **方案同步**：[是] **。`/Users/fan/program/CCC/docs/projects/xy/plans/009-frontend-showcase.md:6` 当前关联卡明确包含 `xy061`；本次仅核验该方案 §6.2，不宣称 6.3–6.4 完成。§6.2 契约位于该方案 `:54-60`，本结果 §1 已逐项对账。
-2. **教训沉淀**：[有] **。复用真实文档 `/Users/fan/program/CCC/docs/notes/xy053-workflow-api-lesson.md:11-21`：先确认状态源，再以 `PIPELINES` stage 定义、`_run_history` 与产物文件推导进度，并保持每次请求实时读取。本卡的 `server.py:1692-1708`、`1813-1928`、`1931-1965` 对账验证了该教训；同时用“先确认状态源”的要点定位了 preview fixture 未隔离图文产物的非本卡测试环境问题。
+2. **教训沉淀**：[有] **。复用真实文档 `docs/notes/xy053-workflow-api-lesson.md:11-21`：先确认状态源，再以 `PIPELINES` stage 定义、`_run_history` 与产物文件推导进度，并保持每次请求实时读取。本卡的 `server.py:1692-1708`、`1813-1928`、`1931-1965` 对账验证了该教训；同时用“先确认状态源”的要点定位了 preview fixture 未隔离图文产物的非本卡测试环境问题。
 3. **档案/README**：[否] **。本卡为只读验收，未修改业务代码、档案或 README。业务文件核查结果：`git diff --stat` 为空；唯一状态项为预置环境软链接 `?? .venv`，无业务文件改动。
 4. **线路图**：[否] **。本次只读核验未改变 xianyu 下一步，不推进 6.3–6.4；非本卡 `test_preview.py` 的环境问题仅列入缺口清单，留待后续审核裁决是否另立修复卡。
 
