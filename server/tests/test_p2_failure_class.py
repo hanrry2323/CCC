@@ -147,6 +147,40 @@ def test_normalize_base_root():
     assert normalize_base_root("http://x:3456/") == "http://x:3456"
 
 
+def test_infra_selfcheck_verdict_dir_error_does_not_raise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Fix5 定向：mock _audit_log_dir 抛异常 → 自检返回 writable=False，不抛 UnboundLocalError。
+
+    不全局 patch Path.is_file（会破坏 patch phase2 触发的模块导入），
+    而是创建真实 pytest 文件满足 worktree_pytest 探针。
+    """
+    monkeypatch.setattr(
+        "server.engine.failure_class._probe_http_status", lambda url, timeout=5.0: 200
+    )
+    monkeypatch.setattr("server.engine.failure_class.os.access", lambda path, mode: True)
+    fake_worktree = tmp_path / "wt"
+    (fake_worktree / ".venv" / "bin").mkdir(parents=True)
+    (fake_worktree / ".venv" / "bin" / "pytest").write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "server.board.audit_ledger.record_action",
+        lambda action, object_id, source="", detail="", failure_class="", exhausted_class="": None,
+    )
+
+    def raising_log_dir(cfg):
+        raise RuntimeError("verdict 目录不可访问")
+
+    monkeypatch.setattr(
+        "server.engine.phase2._audit_log_dir",
+        raising_log_dir,
+    )
+    cfg = {"EXECUTOR_LOG_DIR": str(tmp_path / "logs")}
+    results = run_infra_selfcheck(cfg, card_id="tst006", worktree=str(fake_worktree))
+    assert "verdict_dir_writable" in results
+    assert results["verdict_dir_writable"] == {"path": "", "writable": False}
+    assert results["all_ok"] is False
+
+
 # ── 5. phase2 修复轮 / 路由集成（mock auditor） ──
 
 

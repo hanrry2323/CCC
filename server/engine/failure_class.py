@@ -227,13 +227,16 @@ def run_infra_selfcheck(cfg: dict, *, card_id: str = "", worktree: str = "") -> 
     results["anthropic_base_url"] = {"normalized_root": root or (base_url or "")}
 
     # 4. verdict 工件目录写入权限
-    from server.engine.phase2 import _audit_log_dir  # noqa: PLC0415 — 延迟导入防环
-
+    log_dir = ""
+    writable = False
     try:
+        from server.engine.phase2 import _audit_log_dir  # noqa: PLC0415 — 延迟导入防环
+
         log_dir = _audit_log_dir(cfg)
         log_dir.mkdir(parents=True, exist_ok=True)
         writable = os.access(str(log_dir), os.W_OK)
     except Exception:  # noqa: BLE001
+        # log_dir 提前初始化，异常路径照常返回 writable=False，不抛 UnboundLocalError。
         writable = False
     results["verdict_dir_writable"] = {"path": str(log_dir), "writable": writable}
 
