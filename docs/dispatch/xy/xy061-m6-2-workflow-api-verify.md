@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：6
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：7
 
 ## 基准文件（先看）
 
@@ -92,6 +92,150 @@ lint：`.venv/bin/ruff check admin/ tests/admin/`
 - 执行体说明：无批注（如有真实批注，回写时改为「已按批注执行」并说明落实内容）。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+完整标题：**任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）**。
+
+## 1. 探针输出
+
+### 1.1 路由、实现与状态源对账
+
+核实命令：读取 `admin/api/server.py`、`src/xianyu/core/pipeline.py`、`tests/admin/test_workflows.py`；`grep` 核对符号位置。
+
+证据：
+
+- `admin/api/server.py:1968-1988`：`GET /api/v1/workflows`，依赖 `verify_credentials`，调用 `scan_workflows()`，返回 `count/items` JSON。
+- `admin/api/server.py:1813-1928`：`_build_workflow_progress()` 组装 `task_id/pipeline/status/stages/current_stage/updated_at`。
+- `admin/api/server.py:1692-1708`：从 `src/xianyu/core/pipeline.py` 的 `PIPELINES` 只读获取 stage 定义，每次调用实时读取、不缓存。
+- `admin/api/server.py:1931-1965`：`scan_workflows()` 读取产物目录与 `_run_history`，运行态任务纳入返回并按 `updated_at` 倒序。
+- `admin/api/server.py:756`：`_run_history` 为运行态来源；`admin/api/server.py:1805-1810` 按 `task_id` 查找运行记录。
+- `src/xianyu/core/pipeline.py:37-45`：video pipeline 为 `topic → route → writer → rewriter → image → tts → video`。
+- `src/xianyu/core/pipeline.py:47-59`：image_text pipeline 为 `topic → route → writer → rewriter → image`，`PIPELINES` 映射为 `video`/`image_text`。
+- `tests/admin/test_workflows.py:102-250`：运行中、历史终态、失败任务、image_text、无产物在途任务。
+- `tests/admin/test_workflows.py:278-294`：空目录与不存在目录返回 HTTP 200、空列表。
+- `tests/admin/test_workflows.py:328-396`：`scan_workflows()` 与 `_build_workflow_progress()` 辅助函数及空态覆盖。
+
+逐项契约对账：
+
+| 契约点 | 证据 | 结论 |
+|---|---|---|
+| 只读 JSON 路由 | `server.py:1968-1988`，路由仅扫描并返回 JSON | 满足 |
+| 响应字段 | `server.py:1921-1928` 返回 `task_id/pipeline/stages/current_stage/updated_at`，另含任务级 `status` | 满足；`status` 是只读超集 |
+| stage 定义 | `pipeline.py:37-59`、`server.py:1692-1708` | 满足；video 7 阶段、image_text 5 阶段 |
+| stage 状态枚举 | `server.py:1679-1683`、`1887-1899` | 满足；排队/进行中/完成/失败均有判定路径 |
+| 运行中实时进度 | `server.py:1849-1852`、`1865-1899`、`1934-1937` | 满足；请求时读取产物与 `_run_history`，frontier 为进行中、后续排队 |
+| 历史任务终态 | `server.py:1841-1847`、`1872-1881` | 满足；终态产物全完成，部分历史产物按失败终态处理 |
+| 空态容错 | `server.py:1944-1965`；工作流测试 `278-294` | 满足；空/不存在目录不 500 |
+| 只读边界 | `server.py:1931-1965` 仅读取目录、产物和内存运行态 | 满足；未触碰生产核心、worker、调度、发布、数据库 |
+
+### 1.2 空态探针原始输出
+
+命令：`.venv/bin/python - <<'PY' ... server.scan_workflows(Path(...)) ... PY`
+
+原始标准输出：
+
+```text
+path=/var/folders/cf/ss5zthqn46qgl93rk731gqdw0000gn/T/xy061-empty-output-existing-2upduya5 result=[] type=list
+path=/var/folders/cf/ss5zthqn46qgl93rk731gqdw0000gn/T/xy061-empty-output-root-nhnsy0vg/never-created result=[] type=list
+build_progress(status=未开始, stages=[], current_stage=None)
+EXIT_CODE=0
+```
+
+含义：已存在空目录与不存在目录均返回空 list；无产物、无运行态的任务返回 `未开始`、空 stages、`current_stage=None`，未触发 500。
+
+注：首次探针因脚本把字符串传给要求 `Path` 的函数而失败，退出码 1；未修改业务文件，修正为 `Path` 后以以上原始输出重跑成功。
+
+### 1.3 发现的非本卡范围测试环境问题
+
+全量 admin 门禁中 `tests/admin/test_preview.py` 读取了真实 `workspace/outputs/image_text/` 产物：
+
+- `admin/api/server.py:52` 定义 `LIBRARY_ARTICLE_OUTPUT_DIR = ROOT / "workspace" / "outputs" / "image_text"`。
+- worktree 内存在 `workspace/outputs/image_text/20260907-114808/` 与 `20260907-114809/`，其中含 `index.html`、`meta.json`，目录时间为 2026-09-07 11:48。
+- `tests/admin/test_preview.py:35-39` 只 patch `LIBRARY_OUTPUT_DIR`，未 patch `LIBRARY_ARTICLE_OUTPUT_DIR`；因此其 fixture 会读到上述真实图文产物。
+- 全量命令失败项均在 `tests/admin/test_preview.py`，属于 6.3 预览页面/xy054 范围，不属于本卡白名单；`tests/admin/test_workflows.py` 19 项全部通过。
+
+缺口清单：
+
+1. **6.2 工作流 API 实现缺口：无。** 代码对账与工作流专测均满足 §6.2。
+2. **非本卡测试环境问题：有。** `test_preview.py` 对 `LIBRARY_ARTICLE_OUTPUT_DIR` 非 hermetic，当前 worktree 的真实图文产出导致全量 admin 门禁退出码非 0；本卡只读、不修复、不扩展至 6.3。
+
+## 2. 自测输出
+
+### 2.1 卡指定全量 admin 门禁
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py tests/admin/ -q`
+
+原始输出关键段：
+
+```text
+platform darwin -- Python 3.12.0, pytest-9.0.3, pluggy-1.6.0
+collected 101 items
+...
+tests/admin/test_preview.py FFF.FF....FFF                                [ 67%]
+...
+tests/admin/test_workflows.py ...................                        [100%]
+...
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_video_item_has_all_preview_fields
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_article_item_has_all_preview_fields
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_video_path_ends_with_mp4
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_items_separable_by_type
+FAILED tests/admin/test_preview.py::TestPreviewDataContract::test_empty_response_structure
+FAILED tests/admin/test_preview.py::TestPreviewHelper::test_separate_videos_and_articles
+FAILED tests/admin/test_preview.py::TestPreviewHelper::test_empty_items_list_safe
+FAILED tests/admin/test_preview.py::TestPreviewHelper::test_duration_format_contract
+================== 8 failed, 93 passed, 30 warnings in 5.00s ===================
+EXIT_CODE=1
+```
+
+失败证据示例：
+
+```text
+E   AssertionError: assert 'article' == 'video'
+E   AssertionError: assert '正常标题' == '展示图文'
+E   ... path ... 'workspace/outputs/image_text/20260907-114809/index.html'
+E   AssertionError: assert 3 == 1
+E   AssertionError: assert 2 == 0
+```
+
+结论：卡指定全量命令当前退出码 1；失败集中在非本卡 `test_preview.py`，原因已由 `server.py:52`、测试 fixture 与 worktree 真实产物交叉核实。不得将其伪报为全量通过。
+
+### 2.2 本卡工作流专测
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py -q`
+
+原始输出尾段：
+
+```text
+======================== 19 passed, 1 warning in 1.98s =========================
+EXIT_CODE=0
+```
+
+### 2.3 编译检查
+
+命令：`.venv/bin/python -m compileall admin/`
+
+原始输出：
+
+```text
+Listing 'admin/'...
+Listing 'admin/api'...
+Listing 'admin/css'...
+Listing 'admin/js'...
+Listing 'admin/pages'...
+EXIT_CODE=0
+```
+
+### 2.4 lint
+
+命令：`.venv/bin/ruff check admin/ tests/admin/`
+
+原始输出：
+
+```text
+All checks passed!
+EXIT_CODE=0
+```
 
 ## 0. 卡标题复述
 
