@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：10
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：11
 
 ## 基准文件（先看）
 
@@ -657,4 +657,4 @@ All checks passed!
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：机审 verdict 协议失败连续 3 次，REJECT 预算耗尽待人工：protocol：无 verdict 工件（wrapper rc=2）: 
+- 理由：维护区未完成：Q1 方案同步校验失败。方案关联卡「xy052、xy053、xy054、xy055、xy060」中不包含本卡 ID「xy061」；存在空「说明」（必须写一句实情）
