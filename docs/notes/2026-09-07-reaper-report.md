@@ -3,6 +3,7 @@
 > 日期：2026-09-08（按指令文件日期落账） · 范围：CCC 平台仓
 > 依据：`docs/ENGINEERING-2.0.md` §P4.2、`/Users/fan/ccc-brain/docs/v2.0-execution-protocol.md`
 > 实现：本仓 `server/ops/`、`scripts/ops/reaper-card-audit.sh`、`server/deploy/com.ccc.reaper.plist`
+> 交付 commit：`e00a93d12`（feat(ops): reaper 每日三方对账）已 push `origin/main`；launchd 未加载（待部署）
 
 ## 1. 交付物
 
@@ -94,6 +95,8 @@ python3 -m compileall -q server/ops
 ## 6. 未执行项 / 待部署
 
 - 未加载 `com.ccc.reaper`，因此本报告不宣称 launchd 已运行；只报告模板 lint 与安装渲染测试通过。
+- launchd 状态实核（2026-09-08）：`launchctl list` 无 `com.ccc.reaper`，`~/Library/LaunchAgents/com.ccc.reaper.plist`
+  未安装——与「仅交付配置，不擅自加载运行面」边界一致。
 - 全量 pytest 全绿（本报告 §5 记录）；全量 ruff 仅存量 `docs/archive/ccc-legacy-2026-08-02/...` 遗留 803 项 F541 类问题，
   与本改动路径无关；改动路径 ruff 全净。
 - 生产首次运行前建议用临时 `CCC_REAPER_LOG_DIR` 做一次只读演练，核对三方数量与 registry 业务仓可达性，再加载 plist。
