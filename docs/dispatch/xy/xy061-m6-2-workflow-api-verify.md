@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：38
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：39
 
 ## 基准文件（先看）
 
@@ -93,17 +93,126 @@ lint：`.venv/bin/ruff check admin/ tests/admin/`
 
 ## 批注落实
 
-人工批注为：
+1. **“running 状态无产物任务漏收：scan_workflows 必须把 run_state.status=running 且尚无产物的任务纳入 items，状态显示 running/当前阶段未知或进行中，不得静默漏掉。补空输出目录 fixture。”**
+   - **已落实**：`admin/api/server.py:1969-1973` 将 `_run_history` 中 `started`/`running` 且无对应产物目录的任务纳入结果；`tests/admin/test_workflows.py:388-406` 参数化覆盖两种状态和空输出目录；HTTP 独立探针返回 `200`、`count=1`、任务状态“运行中”、`topic=进行中`。commit 证据：`842356fb1dcc57b9ac15003c30414178339bb907`。
 
-1. “running 状态无产物任务漏收：scan_workflows 必须把 run_state.status=running 且尚无产物的任务纳入 items，状态显示 running/当前阶段未知或进行中，不得静默漏掉。补空输出目录 fixture。”
-   - **已落实**：`server.py:1969-1973` 将 `started`/`running` 且无对应产物任务纳入结果；`test_workflows.py:388-406` 参数化覆盖两种状态和空输出目录；独立 HTTP 探针返回 200、count=1、task_status=运行中、topic=进行中。证据见 §1.2。
-
-2. “阶段误报完成：route/topic 不得共用 _has_config，writer/rewriter 不得共用 _has_script；各阶段必须有独立状态或独立产物证据，不能因为一个 config/script 存在就同时标多个节点完成。补仅有 config/script 时各阶段状态回归 fixture。”
-   - **已落实**：`server.py:1719-1726` 新增 route/rewriter 独立产物探针，`1770-1786` 接入两条 pipeline，`1895-1909` 按单 stage completion 输出；`test_workflows.py:411-431` 覆盖仅 config/script 的阶段状态回归。证据见 §1.1 与专测 22 passed。
-
-本结果文件写入完成后停手，等待 wrapper/Engine 回写主仓卡。
+2. **“阶段误报完成：route/topic 不得共用 _has_config，writer/rewriter 不得共用 _has_script；各阶段必须有独立状态或独立产物证据，不能因为一个 config/script 存在就同时标多个节点完成。补仅有 config/script 时各阶段状态回归 fixture。”**
+   - **已落实**：`admin/api/server.py:1719-1726` 使用独立的 `route.json`/`rewritten.json` 探针，`1770-1786` 接入两条 pipeline，`1895-1909` 按单 stage completion 输出；`tests/admin/test_workflows.py:411-431` 覆盖仅有 config/script 时 route/rewriter 不得误报完成。专测 22 项全部通过，退出码 0。
 
 ## 回写区
+
+## 0. 卡标题复述
+
+完整标题：**任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）**。
+
+## 1. 探针输出
+
+### 1.1 方案契约与代码逐项对账
+
+依据：`/Users/fan/program/CCC/docs/projects/xy/plans/009-frontend-showcase.md:54-64`，§6.2 要求只读 JSON 工作流接口，接入 pipeline stage 定义与运行态，返回任务级阶段进度，运行中实时反映进度、历史任务返回终态。
+
+| 契约点 | 代码/行为证据 | 结论 |
+|---|---|---|
+| 只读 JSON 路由 | `admin/api/server.py:1979-1999`：`GET /api/v1/workflows` 仅调用 `scan_workflows()` 并返回 `count/items`；无写入动作 | 满足 |
+| 响应字段 | `admin/api/server.py:1931-1938` 返回 `task_id/pipeline/status/stages/current_stage/updated_at`；`status` 是只读超集 | 满足 |
+| stage 定义来源 | `admin/api/server.py:1702-1708` 从 `src.xianyu.core.pipeline.PIPELINES` 只读获取；`1799-1812` 按 pipeline 选择 stage detector | 满足 |
+| stage 状态枚举 | `admin/api/server.py:1679-1683` 定义排队/进行中/完成/失败；`1895-1909` 按各 stage 自身 completion 与运行态组装 | 满足 |
+| running 无产物纳入 | `admin/api/server.py:1969-1973` 对 `started/running` 且无产物任务调用 `_build_workflow_progress(..., None, run)` | 满足 |
+| 阶段独立产物证据 | `admin/api/server.py:1719-1726` route/rewriter 使用 `route.json`/`rewritten.json`；`1770-1786` 两条 pipeline 均不复用共享 config/script 误报 | 满足 |
+| 运行中实时进度 | `admin/api/server.py:1859-1862` 读取运行态；`1875-1909` 计算首个未完成 stage 为进行中、后续排队；`1934-1937` 输出当前结果 | 满足 |
+| 历史任务终态 | `admin/api/server.py:1851-1857` 检测终态/各 stage 产物；`1883-1891` 判定已完成或失败；`1895-1909` 输出终态 stage | 满足 |
+| 空态容错 | `admin/api/server.py:1954-1967` 空/不存在目录返回空列表；`1864-1873` 无产物无运行态返回未开始空 stages | 满足 |
+| 只读边界 | 本次业务修改仅限白名单 `admin/api/server.py`、`tests/admin/test_workflows.py`；未修改生产核心、worker、调度、发布、数据库 | 满足 |
+
+### 1.2 空态与 running 无产物独立探针
+
+探针使用 `.venv/bin/python`、`/tmp` 临时目录、临时 TestClient 和内存 `_run_history`，未写业务产出或数据库。
+
+原始 stdout：
+
+```text
+empty_dir_http_status=200 body={'count': 0, 'items': []}
+never_created_http_status=200 body={'count': 0, 'items': []}
+running_no_artifact_http_status=200
+count=1
+task_status=运行中
+stages=[{'name': 'topic', 'status': '进行中'}, {'name': 'route', 'status': '排队'}, {'name': 'writer', 'status': '排队'}, {'name': 'rewriter', 'status': '排队'}, {'name': 'image', 'status': '排队'}, {'name': 'tts', 'status': '排队'}, {'name': 'video', 'status': '排队'}]
+current_stage=topic
+no_artifact_no_run_status=未开始 stages=[] current_stage=None
+EXIT_CODE=0
+```
+
+stderr 仅为 FastAPI/Starlette `httpx` 弃用警告，无凭据值输出。探针结论：空目录、不存在目录均稳定返回 200；running 无产物任务未被漏收；无产物无运行态返回未开始空进度。
+
+### 1.3 测试现状核实
+
+- `tests/admin/test_workflows.py:264-286`：HTTP 层在途无产物任务，断言 200、运行中、topic 进行中、后续排队。
+- `tests/admin/test_workflows.py:388-406`：参数化 `started/running` 且空输出目录的 `scan_workflows` 回归。
+- `tests/admin/test_workflows.py:411-431`：仅 config 时 route 不完成、仅 script 时 rewriter 不完成。
+- `tests/admin/test_workflows.py:314-330`：空目录与不存在目录 HTTP 2xx 空列表。
+
+实现缺口清单：**无**。当前全量 admin 测试亦未发现本卡相关缺口。
+
+## 2. 自测输出
+
+### 2.1 M6.2 阻塞门
+
+命令：`.venv/bin/pytest tests/admin/test_workflows.py -q`
+
+原始输出关键段：
+
+```text
+collected 22 items
+tests/admin/test_workflows.py ......................                     [100%]
+======================== 22 passed, 1 warning in 2.09s =========================
+EXIT_CODE=0
+```
+
+### 2.2 admin 全量观察
+
+命令：`.venv/bin/pytest tests/admin/ -q`
+
+原始输出关键段：
+
+```text
+collected 104 items
+tests/admin/test_g3_6_platform_stats.py .......                          [  6%]
+tests/admin/test_library.py .......................                      [ 28%]
+tests/admin/test_no_random.py .........................                  [ 52%]
+tests/admin/test_preview.py .............                                [ 65%]
+tests/admin/test_schedules.py ............                               [ 76%]
+tests/admin/test_workflow_page.py ..                                     [ 78%]
+tests/admin/test_workflows.py ......................                     [100%]
+======================= 104 passed, 30 warnings in 4.90s =======================
+EXIT_CODE=0
+```
+
+### 2.3 编译检查
+
+命令：`.venv/bin/python -m compileall admin/`
+
+原始输出：
+
+```text
+Listing 'admin/'...
+Listing 'admin/api'...
+Compiling 'admin/api/sau_proxy.py'...
+Listing 'admin/css'...
+Listing 'admin/js'...
+Listing 'admin/pages'...
+EXIT_CODE=0
+```
+
+### 2.4 lint
+
+命令：`.venv/bin/ruff check admin/ tests/admin/`
+
+原始输出：
+
+```text
+All checks passed!
+EXIT_CODE=0
+```
 
 ## 0. 卡标题复述
 
@@ -1501,10 +1610,10 @@ All checks passed!
 
 ## 维护区
 
-1. **方案同步**：[是] **。本轮仅落实 `docs/projects/xy/plans/009-frontend-showcase.md` §6.2 工作流 API 验收/修复；未宣称 6.3–6.4 完成。证据：方案 §6.2 与本结果中的代码、专测及 HTTP 探针对账记录。
-2. **教训沉淀**：[有] **。复用 CCC 主仓真实文档 `/Users/fan/program/CCC/docs/notes/xy053-workflow-api-lesson.md`（21 行）：先确认状态源，再从 `PIPELINES` 只读获取阶段定义，使用产物/运行态实时推导状态且不缓存。本轮将该原则落实为独立 stage detector 与 running 无产物覆盖。
-3. **档案/README**：[否] **。本卡为工作流 API 修复/核验，未改业务档案或 README。证据：`git diff --stat` 为空（业务改动已包含在既有提交 842356f），`git status --short` 仅有预置 `.venv` 未跟踪软链接。
-4. **线路图**：[否] **。本轮只处理 M6.2 两项 P1，不推进 6.3–6.4；全量观察中的 `test_preview.py` 失败单列为非本卡范围问题，未改变下一步线路图。
+1. **方案同步**：[是] ** 仅核验并落实 `xy-plan-009` §6.2 工作流 API；本结果不宣称 6.3/6.4 完成。方案依据：`/Users/fan/program/CCC/docs/projects/xy/plans/009-frontend-showcase.md:54-64`。
+2. **教训沉淀**：[有] ** 复用真实文档 `/Users/fan/program/CCC/docs/notes/xy053-workflow-api-lesson.md`：其要求从真实 pipeline stage 定义、`_run_history` 和产物文件推导状态；本次独立探针和阶段独立产物 detector 均按此原则核验。
+3. **档案/README**：[否] ** 本次未修改档案或 README；业务代码变更仅限卡白名单，`git diff --stat` 为空（变更已在既有业务 commit 中），无额外档案同步动作。
+4. **线路图**：[是] ** 本次仅确认 6.2 实现与回归验证完成，下一步仍按方案依赖推进后续页面/可视化事项；不将 6.3/6.4 宣称为本卡完成。
 
 ## 机审区
 
