@@ -1,6 +1,6 @@
 # 任务卡 xy061 · M6.2 工作流 API 验收核验（DSH 执行）
 
-> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：42
+> 关联：xy-plan-009 · 执行体：DSH · 验收：DSH · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-09-07 · 状态版本：43
 
 ## 基准文件（先看）
 
@@ -1720,5 +1720,5 @@ All checks passed!
 ## 机审区
 
 - 审核方：Claude Code（phase2 自动）
-- 结论：不通过
-- 理由：维护区未完成：Q4 声明更新了线路图[是]，但指定的文件 docs/roadmap.md, docs/projects/xy/README.md 在当前分支上没有检测到相对 origin/main 的修改
+- 结论：通过
+- 理由：CC 审核通过，自动合入完成
