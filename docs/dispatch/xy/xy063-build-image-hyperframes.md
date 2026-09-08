@@ -1,7 +1,7 @@
 # 任务卡 xy063 · 闲鱼图文配图与视频渲染通道补齐（开发线 Build）
 
 > 关联：xy-plan-009「前端展示台」、xy-plan-008「视频高表现力二期」
-> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy063 · 状态版本：2
+> 执行体：DSH · 验收：Claude Code · 状态：作废（当前轮已产出真实配图与视频探针，HyperFrames 真入口未达成，后续从业务 commit 重开） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy063 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
