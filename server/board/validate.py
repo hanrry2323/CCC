@@ -175,7 +175,7 @@ def _validate_new_naming(
             CardIssue(card_id, str(path), f"子目录卡文件名不符合新命名规则 <前缀><三位序号>-<slug>.md: {name}")
         )
         return issues
-    prefix, num, slug = m.group("prefix"), m.group("num"), m.group("slug")
+    prefix, num = m.group("prefix"), m.group("num")
     if prefix in FORBIDDEN_CARD_PREFIXES:
         issues.append(
             CardIssue(

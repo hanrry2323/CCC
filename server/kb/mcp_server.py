@@ -204,7 +204,6 @@ def _handle_notification(notification: dict[str, Any]) -> None:
 
 def run_server() -> None:
     """运行 MCP stdio server。"""
-    buf = ""
     while True:
         try:
             line = sys.stdin.readline()

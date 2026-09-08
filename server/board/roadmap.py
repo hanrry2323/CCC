@@ -88,7 +88,6 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
 
     # 分段
     drafts_section = ""
-    milestones_section = ""
     in_drafts = False
     in_milestones = False
     in_subprojects = False  # 子项目段收集状态（2026-08-16）

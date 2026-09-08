@@ -591,7 +591,7 @@ def _stream_claude(prompt: str, timeout: int | None = None):
             text=True,
             preexec_fn=os.setsid,
         )
-    except (OSError, FileNotFoundError) as exc:
+    except (OSError, FileNotFoundError):
         # Fallback：本地无 claude CLI 时原直连中继获取大脑流；
         # 中转站已于 2026-08-24 退役拆除——未显式配置 CCC_BRAIN_BASE_URL 时
         # _stream_relay_direct 会立即 RuntimeError，不再探测已退役端口。
