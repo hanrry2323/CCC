@@ -1,7 +1,7 @@
 # 任务卡 xy063 · 闲鱼图文配图与视频渲染通道补齐（开发线 Build）
 
 > 关联：xy-plan-009「前端展示台」、xy-plan-008「视频高表现力二期」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy063 · 状态版本：1
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy063 · 状态版本：2
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -113,3 +113,9 @@ lint：`/Users/fan/program/apps/xianyu/.venv/bin/ruff check`（本次修改文�
 2. 是否有新教训？ **[是][有]**：真实探针记录了无 Pexels 凭据时的 Picsum 降级，以及 HyperFrames 进程组清理和 telemetry 短生命周期进程复核；证据见 `workspace/outputs/probe-evidence/`。
 3. README 是否需要更新？ **[否][无]**：本卡未改变用户安装/启动入口，未新增 README 改动范围。
 4. 线路图是否需要更新？ **[否][无]**：本卡为既定 xy063 开发线补齐，不改变产品线路图目标。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：完成钩子：维护区只找到 0/4 问
