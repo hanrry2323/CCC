@@ -1,7 +1,7 @@
 # 任务卡 xy062 · 闲鱼真实图文+视频生产链路首跑与断点修复（CCC 执行）
 
 > 关联：xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：10
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：11
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -249,4 +249,4 @@ lint：`.venv/bin/ruff check` 覆盖本次修改文件。
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：维护区未完成：Q1 方案同步校验失败。方案关联卡「已归档（原引用 xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy027, xy028, xy029, xy030, xy031, xy032 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）」中不包含本卡 ID「xy062」
+- 理由：测试真实失败：见 /Users/fan/.ccc/logs/exec/xy062.test-evidence.log
