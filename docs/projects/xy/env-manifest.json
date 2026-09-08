@@ -1,16 +1,18 @@
 {
-  "python_bin": ".venv/bin/python",
-  "pytest_bin": ".venv/bin/pytest",
-  "ruff_bin": ".venv/bin/ruff",
-  "test_entry": ".venv/bin/pytest tests/content/ video-pipeline/tests/ tests/core/test_llm.py -q",
+  "python_bin": "/Users/fan/program/apps/xianyu/.venv/bin/python",
+  "pytest_bin": "/Users/fan/program/apps/xianyu/.venv/bin/pytest",
+  "ruff_bin": "/Users/fan/program/apps/xianyu/.venv/bin/ruff",
+  "test_entry": "/Users/fan/program/apps/xianyu/.venv/bin/pytest tests/content/test_router.py tests/content/test_topic.py tests/content/test_writer.py tests/content/test_rewriter.py tests/core/test_llm.py tests/test_orchestrator.py -q",
   "test_paths": [
     "tests/content/test_router.py",
     "tests/content/test_topic.py",
     "tests/content/test_writer.py",
     "tests/content/test_rewriter.py",
     "tests/core/test_llm.py",
-    "tests/test_orchestrator.py",
-    "video-pipeline/tests/"
+    "tests/test_orchestrator.py"
   ],
-  "worktree_venv_source": ".venv"
+  "additional_test_entries": [
+    "/Users/fan/program/apps/xianyu/.venv/bin/pytest video-pipeline/tests/ -q"
+  ],
+  "worktree_venv_source": "/Users/fan/program/apps/xianyu/.venv"
 }
