@@ -1,7 +1,7 @@
 # 任务卡 xy062 · 闲鱼真实图文+视频生产链路首跑与断点修复（CCC 执行）
 
 > 关联：xy-plan-001「视频里程碑」、xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：1
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：2
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -119,3 +119,9 @@ lint：`.venv/bin/ruff check` 覆盖本次修改文件。
 2. **教训沉淀**：[有] 本次确认直接 CLI/API 入口不能依赖外部 main 先注册 Worker 或先建库；相关修复已进入业务 commit。
 3. **档案/README**：[否] 本卡只改生产链路代码与测试，未改变运行入口文档。
 4. **线路图**：[是] 话题到图文/视频主链已实跑；文章正文 AI 填充、真实配图和模板规模化应另立后续卡。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：Q1 方案同步校验失败。方案关联卡「已归档（原引用 xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy027, xy028, xy029, xy030, xy031, xy032 随 8-24 治理归档，见 docs/archive 与 RETIRED 记录）」中不包含本卡 ID「xy062」；Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件；Q4 声明更新了线路图[是]，但指定的文件 docs/roadmap.md, docs/projects/xy/README.md 在当前分支上没有检测到相对 origin/main 的修改
