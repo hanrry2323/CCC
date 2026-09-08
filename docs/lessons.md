@@ -2376,3 +2376,15 @@ M1 无对外文件共享需求，该服务保持停用。
 **修复（2026-08-25 ccc082）**：新增用户级全局机审注册表 `_audit_inflight_registry_dir()`（env `CCC_AUDIT_REGISTRY_DIR` 优先，默认 `~/.ccc/data/audit-inflight`）：机审标记写入时原子镜像进注册表，判定路径本地未命中或判死后追加查注册表（单一判活源复用 PID+宽限语义），收尾双清，死条目顺手回收。单 DATA_DIR 行为逐字不变（本地命中即短路），向后兼容。
 
 **如何应用**：设计任何跨进程互斥面（锁/在途登记/租约）时，至少一个共享面必须锚定「同机同用户必然互见」的固定点（用户 home 下固定路径或系统级位置），其余锚点才允许随配置走；评审时先问一句「这个锁的两个持有方若配了不同 DATA_DIR/工作目录还互相看得见吗」。测试探针：`server/tests/test_engine_audit_cross_datadir.py`。
+
+## Lesson 164：HyperFrames 真入口修复中的显式帧率与内存模式约束（xy064 · 业务仓 Lesson 164 同源）
+
+**项目**：xy/video-pipeline | **Phase**：M5（xy064） | **时间**：2026-09-09
+
+**经验教训**：
+1. **HyperFrames 帧率必须显式传递**：CLI 未显式接收 pipeline 的 `fps` 时，帧序列可能与合成阶段的帧率约定不一致；主路径应传入 `--fps=<input.fps>`，并由 ffprobe 核验最终帧率。
+2. **low-memory-mode 与多 worker 互斥**：`--low-memory-mode` 约束为单 worker；启用 bounded 多 worker 时必须显式使用 `--no-low-memory-mode`，不能同时传递两种模式。
+3. **动态预算依赖真实探针**：全量渲染前先用约 10 帧测量热渲染单帧耗时和 npx 冷启动余量，再按安全系数计算超时，避免固定超时误触发 PIL 降级。
+4. **fail-fast 异常不得被兜底 catch 吞掉**：数据完整性类异常（帧数不足）与环境类异常（CLI 不可用/超时）必须分类——前者向上冒泡使流水线失败，后者才允许降级 PIL 且 manifest 显式标注降级；统一 `except Exception` 吞掉会让「降级成片」伪装成「真入口成功」（xy062 三轮打回的本质）。
+
+**修复证据**：业务仓 commit `c424f51`/`2723edf`（codex/xy064-video-hyperframes-real），25 项 video-pipeline 测试；双仓教训溯源：业务仓 `docs/lessons.md` Lesson 163（外脑）+164（执行体）。
