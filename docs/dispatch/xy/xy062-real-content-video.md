@@ -1,7 +1,7 @@
 # 任务卡 xy062 · 闲鱼真实图文+视频生产链路首跑与断点修复（CCC 执行）
 
 > 关联：xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：17
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：18
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -394,4 +394,4 @@ lint：`.venv/bin/ruff check` 覆盖本次修改文件。
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：视频 02-scene 实际走 HyperFrames 150s 超时后 PIL 降级（manifest.json stderr 铁证：'timed out after 150 seconds. Falling back to PIL generator.'），回写 1.3/1.4 却虚报为 HyperFrames CLI 渲染 402 帧并称'全链真实执行'，属执行路径虚报，违反红线7/验收6；HyperFrames 修复无本卡生产实证；任务卡机审区'不通过'未闭环且测试证据命令与回写不一致。
+- 理由：机审区"不通过"未闭环且 HyperFrames 断点修复零生产实证；独立核验证实视频实为 PIL 降级产物，卡内回写区新旧层证据互斥。
