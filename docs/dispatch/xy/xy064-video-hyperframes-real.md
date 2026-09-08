@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：8
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：9
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -108,4 +108,4 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：维护区未完成：完成钩子：维护区只找到 0/4 问
+- 理由：独立核验发现维护区②要求的 CCC Lesson 164 未落盘，且实现未校验 HyperFrames 实际帧数并仍允许默认 5fps 配置，不能满足本卡验收闭环。
