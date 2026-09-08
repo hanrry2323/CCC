@@ -2,9 +2,15 @@
   "python_bin": ".venv/bin/python",
   "pytest_bin": ".venv/bin/pytest",
   "ruff_bin": ".venv/bin/ruff",
-  "test_entry": ".venv/bin/pytest tests/admin/test_workflows.py -q",
+  "test_entry": ".venv/bin/pytest tests/content/ video-pipeline/tests/ tests/core/test_llm.py -q",
   "test_paths": [
-    "tests/admin/test_workflows.py"
+    "tests/content/test_router.py",
+    "tests/content/test_topic.py",
+    "tests/content/test_writer.py",
+    "tests/content/test_rewriter.py",
+    "tests/core/test_llm.py",
+    "tests/test_orchestrator.py",
+    "video-pipeline/tests/"
   ],
   "worktree_venv_source": ".venv"
 }
