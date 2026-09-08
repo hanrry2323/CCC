@@ -72,6 +72,7 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 4. 【F1 编号纠正·外脑】教训已由外脑落库：业务仓 `docs/lessons.md` **Lesson 163**（commit `9865364`，main 已含；外脑批注时误写 164，实为 163）。维护区②改写为「[有] 教训沉淀：…证据：`docs/lessons.md` Lesson 163（commit `9865364`）」，不再声明未落实。
 5. 【F2 修复·机审】`generator_hf.py` 成功路径在 HyperFrames 产出帧数少于 total_frames 时静默跳过缺失帧、manifest 仍记期望帧数——改为 fail-fast：帧数不足时抛错（报期望/实际数），并补回归测试（部分帧场景断言非零退出/异常）。
 6. 【F3 修复·机审】`video-pipeline/config.json` 默认 fps=5 与验收 ≥24fps 不符：主渲染路径默认提至 30。若 PIL 降级路径在 30fps 下代价过高，允许降级路径单独保守 fps 并在 manifest 显式标注「degraded_low_fps」，HyperFrames 主路径不得低于 24fps。
+7. 【F4 修复·第6轮机审】`stages/scene/generator.py:775` 的 `except Exception` 把 generator_hf 的帧数不足 fail-fast（RuntimeError）吞掉后静默切 PIL 且无标记——修法：①generator_hf.py 定义 `class HyperFramesDataError(RuntimeError)`，帧数不足两处 raise 改用它；②generator.py catch 分层：`except HyperFramesDataError: raise`（数据完整性异常冒泡使流水线失败）+ `except Exception` 才降级 PIL；③补回归测试（部分帧场景断言 HyperFramesDataError 冒泡、不被吞）。另：F1 已由外脑闭环——CCC 仓 docs/lessons.md 已落 Lesson 164（commit 见 main），本轮维护区②无需再改。
 
 ## 回写区
 
