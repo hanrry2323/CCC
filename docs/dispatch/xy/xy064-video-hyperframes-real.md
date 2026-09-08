@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：14
+> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：15
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -57,12 +57,19 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 ## 批注落实
 
-1. `【回写格式】维护区四问必须使用标准键名逐项作答：「①方案同步 ②教训沉淀 ③档案/README ④线路图」四个完整键名。`已落实：本结果文件维护区使用四个完整标准键名。
-2. `【教训沉淀·外脑】上一机审要求 lessons 教训引用。`已落实：维护区②引用业务仓 `docs/lessons.md` Lesson 164 及本次提交 `a90002cfc68ea252070758c3d9a44f2c61c78eb2`。
-3. `【档案字段·外脑】维护区③应写「[否]」。`已落实：维护区③为 `[否] ③档案/README`，并说明未修改 README/项目档案。
-4. `【F1 编号纠正·外脑】教训为业务仓 Lesson 163，commit `9865364`。`已落实：前置维护区证据保留引用业务仓 Lesson 163（commit `9865364`）；本轮按人工批注新增 Lesson 164 记录本轮教训。
-5. `【F2 修复·机审】HyperFrames 实际帧数不足必须 fail-fast，并补回归测试。`已落实：实现对探针及全量实际帧数校验；回归测试覆盖部分帧场景，门禁结果 `25 passed`。
-6. `【F3 修复·机审】默认 fps 提升至 30，HyperFrames 主路径不得低于 24fps。`已落实：`video-pipeline/config.json` 为 `fps=30`；端到端 ffprobe 为 `r_frame_rate=30/1`、`avg_frame_rate=30/1`。
+逐条引用卡内「## 人工批注」并说明落实状态（证据见 1/2/3/4 节）：
+
+1. `【回写格式】维护区四问必须使用标准键名…「①方案同步 ②教训沉淀 ③档案/README ④线路图」` → **已落实**：本文件 `## 3. 维护区四问` 使用四个完整标准键名 + 每问方括号勾选与一句实情说明，匹配 docgate/result_sidecar `_maintenance_value` 的宽松变体（`- [x] ①键名：说明`）。
+2. `【教训沉淀·外脑】维护区②须引用 lessons 文件` → **已落实**：②为 `[有]` 并显式引用业务仓 `docs/lessons.md` Lesson 164（本分支提交 a90002c）、Lesson 163（main，9865364，外脑）及 CCC 仓 `docs/lessons.md` Lesson 164（main，L2380，外脑闭环）。
+3. `【档案字段·外脑】维护区③应写「[否]」` → **已落实**：③为 `[否] ③档案/README`，说明「本卡为实现线修复，未修改 README/项目档案」（仿 xy062 样板）。
+4. `【F1 编号纠正·外脑】教训为业务仓 Lesson 163（commit 9865364）` → **已落实**：已核实业务仓 main 含 Lesson 163（`git log 9865364` → `docs(lessons): Lesson 163——HyperFrames 渲染三坑与动态超时公式（xy064）`）与 Lesson 164（经 merge c30f611 合入）；CCC 仓 main 含 Lesson 164。本轮维护区②如实引用，不再声明未落实。
+5. `【F2 修复·机审】帧数不足必须 fail-fast 并补回归测试` → **已落实**（前轮 commit 2723edf/c424f51）：探针及全量实际帧数校验，部分帧场景抛错；本轮把相关断言精确为 `HyperFramesDataError`（仍是 RuntimeError 子类，断言不破坏）。门禁 `27 passed`。
+6. `【F3 修复·机审】默认 fps 提升至 30，HyperFrames 主路径不得低于 24fps` → **已落实**（前轮 commit 2723edf）：`video-pipeline/config.json` 为 `fps=30`；前轮端到端 ffprobe `r_frame_rate=30/1`、`avg_frame_rate=30/1`。
+7. `【F4 修复·第6轮机审】帧数不足异常不得被 scene.run 的 except Exception 吞掉` → **已落实**（本轮 commit c9a2aa0）：①`generator_hf.py` 定义 `class HyperFramesDataError(RuntimeError)`，三处帧数 raise（探针不足/全量不足/帧数不匹配）改用它；②`generator.py` 分层 catch——`except HyperFramesDataError: raise`（数据完整性异常冒泡使流水线失败）+ `except Exception` 才降级 PIL；③新增 2 项回归测试（数据异常冒泡且不调 PIL、普通异常仍降级），行为探针实证见第 1/2 节。另 F1 已由外脑闭环（CCC 仓 docs/lessons.md Lesson 164 在 main），本轮维护区②无需再改。
+
+## 0. 卡标题复述
+
+任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 ## 人工批注
 
@@ -82,32 +89,26 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 ## 1. 探针输出
 
-- 基线/分支：`git log` 显示当前从 `324a3ed` 既有实现链继续；分支为 `codex/xy064-video-hyperframes-real`。
-- HyperFrames CLI 探针：`node --version && npx hyperframes --version` 输出 `v22.16.0`、`0.8.31`，退出码 0。
-- 10 帧真实探针命令使用 `generator_hf.generate(SceneInput(... fps=10))`，原始输出：`[generator_hf] Probe: cold=27.076s warm=23.571s cold_start=3.505s per_frame=2.357s frames=10`；随后实际渲染 `10` 帧，`PROBE_RESULT frame_count=10 elapsed=87.554s`，退出码 0。
-- 超时公式：`max(120, ceil(per_frame × total_frames × 1.5 + cold_start + 60))`；实现位置：`video-pipeline/stages/scene/generator_hf.py`。本次 2 场景端到端 `per_frame=2.451s`、`cold_start=2.927s`、`total_frames=69`，计算得到 `timeout=317s`。
-- workers 原始输出：`--workers=4 --no-low-memory-mode`；决策为 `max(1, min(4, os.cpu_count() or 1))`，多 worker 与 `low-memory-mode` 互斥，单 worker 才传 `--low-memory-mode`。
-- 进程组清理实现：`start_new_session=True`；超时路径先 `killpg(SIGTERM)`，宽限期后 `killpg(SIGKILL)`。
-- 端到端 HyperFrames 原始输出：`[generator_hf] Successfully captured 69 frames (expected=69). Mapping to standard pipeline schema...`，`E2E_RESULT frame_count=69 elapsed=94.950s`，退出码 0。
-- 渲染后取证：`ps axo pid,command | grep -E '[n]px hyperframes|[h]yperframes@|[n]ode.*producer'` 无匹配输出，退出码 0。
+- 分支/基线：`git log` 显示分支为 `codex/xy064-video-hyperframes-real`，头部分支含前轮提交 a90002c/c424f51/2723edf/ad7d5ba（324a3ed 链继续），本轮新增 c9a2aa0。
+- F4 行为探针（本轮实测，解释器直接驱动 `scene.run`，无渲染）：
+  - 数据完整性异常路径：`generator_hf.generate` 抛 `HyperFramesDataError("expected=4, actual=1")` → `scene.run` 原样冒泡，PIL 未被调用。原始输出：`PROBE_RUN_PARTIAL=BUBBLED ok: expected=4, actual=1`，退出码 0。
+  - 环境类异常路径：`generator_hf.generate` 抛 `RuntimeError("render exit=1: timeout")` → `scene.run` 打印降级说明并调用 PIL。原始输出：`[02-scene] Error running generator_hf: render exit=1: timeout. Falling back to default generator.` + `PROBE_RUN_ORDINARY=FALLBACK ok pil_calls=['pil']`，退出码 0。
+- 前轮继承证据（卡回写区已录，供验收对照）：10 帧探针 `cold=27.076s warm=23.571s cold_start=3.505s per_frame=2.357s`；超时公式 `max(120, ceil(per_frame × total_frames × 1.5 + cold_start + 60))`；workers `--workers=4 --no-low-memory-mode`（`max(1, min(4, cpu_count))`，单 worker 才 `--low-memory-mode`）；进程组清理 `start_new_session=True` + killpg(SIGTERM→SIGKILL)；端到端 `Successfully captured 69 frames (expected=69)`。
 
 ## 2. 自测输出
 
-- 门禁命令：`/Users/fan/program/apps/xianyu/.venv/bin/pytest video-pipeline/tests/ -q`
-- 原始结果：收集 `25` 项，`25 passed in 1.65s`，退出码 0。
-- 语法命令：`python3 -m py_compile video-pipeline/stages/scene/generator_hf.py video-pipeline/tests/test_generator_hf.py`，退出码 0。
-- 格式命令：`git diff --check` 无输出，退出码 0。
-- 端到端帧合成：`FRAME_LIST_COUNT=69`，`ffmpeg` 退出码 0。
-- ffprobe 原始输出：`codec_name=h264`、`width=1080`、`height=1920`、`r_frame_rate=30/1`、`avg_frame_rate=30/1`、`duration=2.366667`、`nb_frames=71`。
-- manifest 取证：`grep -in fallback /tmp/xy064-e2e-current/scene_manifest.json` 输出 `no fallback`，退出码 0。
-- 结果说明：真实 HyperFrames 探针与端到端帧序列成功；当前 worktree 仅保留预先存在、未跟踪的 `.venv`，未纳入提交。
+- test：`/Users/fan/program/apps/xianyu/.venv/bin/pytest video-pipeline/tests/ -q` → `27 passed in 1.57s`，exit=0（本轮新增 2 项：`test_scene_run_bubbles_hyperframes_data_error`、`test_scene_run_falls_back_to_pil_on_ordinary_hf_error`；原 25 项全绿，F2/F4 部分帧断言精确为 `HyperFramesDataError`）。
+- compile：`/Users/fan/program/apps/xianyu/.venv/bin/python -m py_compile video-pipeline/stages/scene/generator_hf.py video-pipeline/stages/scene/generator.py video-pipeline/tests/test_generator_hf.py` → `PY_COMPILE_OK`，exit=0。
+- lint：`git diff --check` 无输出，exit=0。
+- 孤儿进程取证：`ps axo pid,command | grep -E '[n]px hyperframes|[h]yperframes@|[n]ode.*producer'` 无匹配输出（grep 退出码 1 = 无匹配），渲染后无 npx/hyperframes/node 孤儿进程。
+- 工作树状态：`git status --short` 仅显示未跟踪 `.venv`（预先存在、未纳入提交）；业务改动均已提交。
 
 ## 维护区
 
-1. **方案同步**：[是] [是] 已将探针先行、动态超时公式、bounded workers、`--fps` 显式传入、low-memory-mode 互斥、进程组清理及实际帧数 fail-fast 落实到 `video-pipeline/stages/scene/generator_hf.py`；证据：业务提交 `c424f51cc3c7c4240052180739d09ad0931a31e9`。
-2. **教训沉淀**：[有] [有] 已追加业务仓 `docs/lessons.md` Lesson 164，记录 HyperFrames 显式 fps、low-memory-mode 与多 worker 互斥、动态预算依赖真实探针；证据：本次提交 `a90002cfc68ea252070758c3d9a44f2c61c78eb2`。
-3. **档案/README**：[否] [否] 本卡未修改 `video-pipeline/README.md` 或项目档案。
-4. **线路图**：[否] [否] 本卡只修复 HyperFrames 真入口及回归覆盖，不改变项目路线图。
+1. **方案同步**：[是] 探针先行、动态超时公式（`max(120, ceil(per_frame×total_frames×1.5+cold_start+60))`）、bounded workers（`max(1, min(4, cpu_count))`，与 `--low-memory-mode` 互斥）、`--fps` 显式传入、进程组 killpg 清理、帧数 fail-fast 均已落实于 `video-pipeline/stages/scene/generator_hf.py`；本轮 F4 新增 `HyperFramesDataError` 分层 catch（数据完整性异常冒泡、环境类异常才降级 PIL）。证据：业务提交 c424f51/2723edf/ad7d5ba/a90002c/c9a2aa0（codex/xy064-video-hyperframes-real）。
+2. **教训沉淀**：[有] ②为 `[有]` 并显式引用业务仓 `docs/lessons.md` Lesson 164（本分支提交 a90002c）、Lesson 163（main，9865364，外脑）及 CCC 仓 `docs/lessons.md` Lesson 164（main，L2380，外脑闭环）。
+3. **档案/README**：[否] ③为 `[否] ③档案/README`，说明「本卡为实现线修复，未修改 README/项目档案」（仿 xy062 样板）。
+4. **线路图**：[否] 本卡只修复 HyperFrames 真入口及回归覆盖，不改变项目路线图。
 
 ## 机审区
 
