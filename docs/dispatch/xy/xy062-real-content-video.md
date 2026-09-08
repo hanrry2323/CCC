@@ -1,7 +1,7 @@
 # 任务卡 xy062 · 闲鱼真实图文+视频生产链路首跑与断点修复（CCC 执行）
 
 > 关联：xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：40
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：41
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -175,4 +175,4 @@ lint：`.venv/bin/ruff check` 覆盖本次修改文件。
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：视频 HyperFrames 真入口与图文真实配图均被外部依赖阻塞，按卡内验收条款不得按 PASS 验收。
+- 理由：图文实际使用占位图片且视频场景阶段在 HyperFrames 超时后回退 PIL，关键真实产出验收条件未满足。
