@@ -91,6 +91,7 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
     in_drafts = False
     in_milestones = False
     in_subprojects = False  # 子项目段收集状态（2026-08-16）
+    in_unknown_section = False  # 草案池/里程碑之间的未知二级节（2026-09-09 xy 双线路执行规则被拆条实证）
     tail_lines: list[str] = []  # 未识别尾部内容（blockquote 封板脚注等），序列化保留（2026-08-16 机审缺陷4）
     current_ms: dict[str, Any] | None = None
 
@@ -99,11 +100,25 @@ def parse_roadmap(text: str, project: str = "") -> dict[str, Any]:
             in_drafts = True
             in_milestones = False
             in_subprojects = False
+            in_unknown_section = False
             continue
         if line.strip().startswith("## 里程碑"):
             in_drafts = False
             in_milestones = True
             in_subprojects = False
+            in_unknown_section = False
+            continue
+        if in_drafts and line.strip().startswith("## "):
+            # 未知二级节（如「## 双线路执行规则」）：不能留在草案段——否则其「- 」条目
+            # 会被吸收为草案、节标题丢弃（2026-09-09 xy roadmap 残写事故）。整节原文进 tail 保留。
+            in_drafts = False
+            in_unknown_section = True
+            tail_lines.append("")
+            tail_lines.append(line)
+            continue
+        if in_unknown_section:
+            # 未知节内所有行原样保留，直到下一个已识别节顶部的判断接管
+            tail_lines.append(line)
             continue
         if in_drafts and line.strip():
             stripped = line.strip()
