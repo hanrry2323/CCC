@@ -1,7 +1,7 @@
 # 任务卡 xy063 · 闲鱼图文配图与视频渲染通道补齐（开发线 Build）
 
 > 关联：xy-plan-009「前端展示台」、xy-plan-008「视频高表现力二期」
-> 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy063
+> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy063 · 状态版本：1
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -55,7 +55,10 @@ lint：`/Users/fan/program/apps/xianyu/.venv/bin/ruff check`（本次修改文�
 
 ## 批注落实
 
-本卡无新增人工批注；执行体须按正文范围补齐真实配图与 HyperFrames/降级证据，严禁将 mock 或 PIL 降级写成真 HyperFrames 成功。
+卡内原文：**“本卡无新增人工批注；执行体须按正文范围补齐真实配图与 HyperFrames/降级证据，严禁将 mock 或 PIL 降级写成真 HyperFrames 成功。”**
+
+- 已落实：无 Pexels 凭据时日志明确记录 `使用 picsum 降级来源`，真实产出 JPEG，不再生成 `image_placeholder.txt`；证据见 `workspace/outputs/probe-evidence/probeA_image.log`。
+- 已落实：本次 HyperFrames 真入口实际成功，未将 PIL 降级冒充成功；证据见 `workspace/outputs/probe-evidence/probeB_video.log` 中 `npx hyperframes@0.6.97`、`Successfully captured 54 frames`、`PROBE_B_PASS`。
 
 ## 回写要求
 
@@ -71,3 +74,42 @@ lint：`/Users/fan/program/apps/xianyu/.venv/bin/ruff check`（本次修改文�
 ## 人工批注
 
 无新增人工批注。本卡为开发线能力卡，承接 xy062 机审的真实质量缺口，必须用真实配图与真实渲染证据验收，不得以 mock 或降级冒充成功。
+
+## 回写区
+
+## 0. 卡标题复述
+
+卡标题：**任务卡 xy063 · 闲鱼图文配图与视频渲染通道补齐（开发线 Build）**。
+
+- 目标：接入真实图文配图来源；修复 HyperFrames 真入口、超时清理与帧序列产出；固化 env-manifest 与业务/视频测试契约。
+- 范围：`src/xianyu/content/image.py`、`video-pipeline/stages/scene/generator_hf.py`、相关测试、`env-manifest.json`，以及真实图文/视频复跑取证。
+- 红线：只改 xianyu 业务仓；不发布、不触碰 Cookie/外部账号、不启动 M7；不伪造图片或来源；HyperFrames 超时使用进程组清理；测试、commit、结果如实记录；不改其他项目。
+
+## 人工批注落实
+
+卡内原文：**“本卡无新增人工批注；执行体须按正文范围补齐真实配图与 HyperFrames/降级证据，严禁将 mock 或 PIL 降级写成真 HyperFrames 成功。”**
+
+- 已落实：无 Pexels 凭据时日志明确记录 `使用 picsum 降级来源`，真实产出 JPEG，不再生成 `image_placeholder.txt`；证据见 `workspace/outputs/probe-evidence/probeA_image.log`。
+- 已落实：本次 HyperFrames 真入口实际成功，未将 PIL 降级冒充成功；证据见 `workspace/outputs/probe-evidence/probeB_video.log` 中 `npx hyperframes@0.6.97`、`Successfully captured 54 frames`、`PROBE_B_PASS`。
+
+## 1. 探针输出
+
+#
+
+## 2. 自测输出
+
+| 门禁 | 命令 | 原始摘要 | 退出码 |
+|---|---|---|---:|
+| 业务测试组 | `/Users/fan/program/apps/xianyu/.venv/bin/pytest tests/content/ tests/core/test_llm.py tests/test_orchestrator.py -q` | collected 69 items；`69 passed in 1.94s` | 0 |
+| 视频测试组 | `/Users/fan/program/apps/xianyu/.venv/bin/pytest video-pipeline/tests/ -q` | collected 21 items；`21 passed in 1.62s` | 0 |
+| 编译 | `/Users/fan/program/apps/xianyu/.venv/bin/python -m compileall src video-pipeline` | 完成列出 src 与 video-pipeline，未见错误 | 0 |
+| lint | `/Users/fan/program/apps/xianyu/.venv/bin/ruff check src/xianyu/content/image.py video-pipeline/stages/scene/generator_hf.py tests/content/test_image.py video-pipeline/tests/test_generator_hf.py` | `All checks passed!` | 0 |
+| 图文探针 | `/Users/fan/program/apps/xianyu/.venv/bin/python /tmp/probe_xy063_image.py 2>&1` | `PROBE_A_PASS` | 0 |
+| 视频/ffprobe 探针 | `/Users/fan/program/apps/xianyu/.venv/bin/python /tmp/probe_xy063_video.py 2>&1` | `PROBE_B_PASS`、`FFPROBE_EXIT: 0` | 0 |
+
+## 维护区
+
+1. 方案是否沉淀？ **[是][有]**：实现与测试契约已沉淀在 `src/xianyu/content/image.py`、`video-pipeline/stages/scene/generator_hf.py`、对应回归测试及 `env-manifest.json`。
+2. 是否有新教训？ **[是][有]**：真实探针记录了无 Pexels 凭据时的 Picsum 降级，以及 HyperFrames 进程组清理和 telemetry 短生命周期进程复核；证据见 `workspace/outputs/probe-evidence/`。
+3. README 是否需要更新？ **[否][无]**：本卡未改变用户安装/启动入口，未新增 README 改动范围。
+4. 线路图是否需要更新？ **[否][无]**：本卡为既定 xy063 开发线补齐，不改变产品线路图目标。
