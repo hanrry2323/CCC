@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：11
+> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：12
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -58,11 +58,11 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 ## 批注落实
 
 1. `【回写格式】维护区四问必须使用标准键名逐项作答：「①方案同步 ②教训沉淀 ③档案/README ④线路图」四个完整键名。`已落实：本结果文件维护区使用四个完整标准键名。
-2. `【教训沉淀·外脑】上一机审要求 lessons 教训引用。`已落实：维护区②显式引用业务仓 `docs/lessons.md` Lesson 163 及 commit `9865364`；未越界修改 CCC 外部仓。
+2. `【教训沉淀·外脑】上一机审要求 lessons 教训引用。`已落实：维护区②引用业务仓 `docs/lessons.md` Lesson 164 及本次提交 `a90002cfc68ea252070758c3d9a44f2c61c78eb2`。
 3. `【档案字段·外脑】维护区③应写「[否]」。`已落实：维护区③为 `[否] ③档案/README`，并说明未修改 README/项目档案。
-4. `【F1 编号纠正·外脑】教训为业务仓 Lesson 163，commit `9865364`。`已落实：维护区②按 Lesson 163 及 commit `9865364` 引用。
-5. `【F2 修复·机审】HyperFrames 实际帧数不足必须 fail-fast，并补回归测试。`已落实：探针现在要求恰好 10 帧，全量渲染要求实际帧数等于期望帧数；新增 `test_probe_fails_fast_when_hyperframes_returns_partial_sequence`，全量回归 `25 passed`。
-6. `【F3 修复·机审】默认 fps 提升至 30，HyperFrames 主路径不得低于 24fps。`已落实：`video-pipeline/config.json` 当前 `fps` 为 `30`；端到端 ffprobe 为 `r_frame_rate=30/1`、`avg_frame_rate=30/1`。
+4. `【F1 编号纠正·外脑】教训为业务仓 Lesson 163，commit `9865364`。`已落实：前置维护区证据保留引用业务仓 Lesson 163（commit `9865364`）；本轮按人工批注新增 Lesson 164 记录本轮教训。
+5. `【F2 修复·机审】HyperFrames 实际帧数不足必须 fail-fast，并补回归测试。`已落实：实现对探针及全量实际帧数校验；回归测试覆盖部分帧场景，门禁结果 `25 passed`。
+6. `【F3 修复·机审】默认 fps 提升至 30，HyperFrames 主路径不得低于 24fps。`已落实：`video-pipeline/config.json` 为 `fps=30`；端到端 ffprobe 为 `r_frame_rate=30/1`、`avg_frame_rate=30/1`。
 
 ## 人工批注
 
@@ -81,39 +81,32 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 ## 1. 探针输出
 
-- 基线分支证据：`git log` 显示从 `324a3ed` 既有实现链继续开发；当前业务分支为 `codex/xy064-video-hyperframes-real`。
-- 10 帧 HyperFrames 探针原始输出：`[generator_hf] Probe: cold=34.391s warm=27.957s cold_start=6.434s per_frame=2.796s frames=10`，退出码 0。
-- 超时公式：`ceil(per_frame × total_frames × 1.5 + cold_start + 60)`，最小值 120 秒；本次全量探针 `per_frame=2.796s`、`cold_start=6.434s`、`total_frames=108`，计算得到 `timeout=520s`。实现位置：`video-pipeline/stages/scene/generator_hf.py`。
-- workers 原始输出：`--workers=4 --no-low-memory-mode`；决策函数为 `max(1, min(4, os.cpu_count() or 1))`，多 worker 与 low-memory-mode 互斥，单 worker 才传 `--low-memory-mode`。
-- 全量 HyperFrames 原始输出：`[generator_hf] Successfully captured 108 frames (expected=108). Mapping to standard pipeline schema...`，退出码 0。
-- manifest 取证：`grep -in fallback /tmp/xy064-e2e-current/scene_manifest.json` 输出 `no fallback`，退出码 0；帧文件计数为 `108`。
-- 端到端合成原始输出：`[04-compose] Reconstructed 108 frames from manifest.`、`ComposeOutput(video_path='/tmp/xy064-e2e-current/final.mp4', duration_sec=3.6, size_mb=2.0)`，退出码 0。
+- 基线/分支：`git log` 显示当前从 `324a3ed` 既有实现链继续；分支为 `codex/xy064-video-hyperframes-real`。
+- HyperFrames CLI 探针：`node --version && npx hyperframes --version` 输出 `v22.16.0`、`0.8.31`，退出码 0。
+- 10 帧真实探针命令使用 `generator_hf.generate(SceneInput(... fps=10))`，原始输出：`[generator_hf] Probe: cold=27.076s warm=23.571s cold_start=3.505s per_frame=2.357s frames=10`；随后实际渲染 `10` 帧，`PROBE_RESULT frame_count=10 elapsed=87.554s`，退出码 0。
+- 超时公式：`max(120, ceil(per_frame × total_frames × 1.5 + cold_start + 60))`；实现位置：`video-pipeline/stages/scene/generator_hf.py`。本次 2 场景端到端 `per_frame=2.451s`、`cold_start=2.927s`、`total_frames=69`，计算得到 `timeout=317s`。
+- workers 原始输出：`--workers=4 --no-low-memory-mode`；决策为 `max(1, min(4, os.cpu_count() or 1))`，多 worker 与 `low-memory-mode` 互斥，单 worker 才传 `--low-memory-mode`。
 - 进程组清理实现：`start_new_session=True`；超时路径先 `killpg(SIGTERM)`，宽限期后 `killpg(SIGKILL)`。
-- 渲染后进程取证：`ps axo pid,command | grep -E '[n]px hyperframes|[h]yperframes@|[n]ode.*producer'` 无匹配输出，退出码 0。
+- 端到端 HyperFrames 原始输出：`[generator_hf] Successfully captured 69 frames (expected=69). Mapping to standard pipeline schema...`，`E2E_RESULT frame_count=69 elapsed=94.950s`，退出码 0。
+- 渲染后取证：`ps axo pid,command | grep -E '[n]px hyperframes|[h]yperframes@|[n]ode.*producer'` 无匹配输出，退出码 0。
 
 ## 2. 自测输出
 
 - 门禁命令：`/Users/fan/program/apps/xianyu/.venv/bin/pytest video-pipeline/tests/ -q`
-- 本轮原始输出：`25 passed in 2.80s`，退出码 0。
-- 语法检查：`python3 -m py_compile video-pipeline/stages/scene/generator_hf.py video-pipeline/tests/test_generator_hf.py`，退出码 0。
-- 格式检查：`git diff --check` 无输出，退出码 0。
-- ffprobe 原始输出：
-  - `codec_name=h264`
-  - `width=1080`
-  - `height=1920`
-  - `r_frame_rate=30/1`
-  - `avg_frame_rate=30/1`
-  - `nb_frames=108`
-  - `duration=3.600000`
-  - `size=2132343`
-- 当前工作树证据：业务改动已提交；仅有预先存在且未被 Git 跟踪的 `.venv`，未纳入提交。
+- 原始结果：收集 `25` 项，`25 passed in 1.65s`，退出码 0。
+- 语法命令：`python3 -m py_compile video-pipeline/stages/scene/generator_hf.py video-pipeline/tests/test_generator_hf.py`，退出码 0。
+- 格式命令：`git diff --check` 无输出，退出码 0。
+- 端到端帧合成：`FRAME_LIST_COUNT=69`，`ffmpeg` 退出码 0。
+- ffprobe 原始输出：`codec_name=h264`、`width=1080`、`height=1920`、`r_frame_rate=30/1`、`avg_frame_rate=30/1`、`duration=2.366667`、`nb_frames=71`。
+- manifest 取证：`grep -in fallback /tmp/xy064-e2e-current/scene_manifest.json` 输出 `no fallback`，退出码 0。
+- 结果说明：真实 HyperFrames 探针与端到端帧序列成功；当前 worktree 仅保留预先存在、未跟踪的 `.venv`，未纳入提交。
 
 ## 维护区
 
-1. **方案同步**：[是] [是] 已将探针先行、动态超时公式、bounded workers、low-memory-mode 互斥、进程组清理及 HyperFrames 实际帧数 fail-fast 落实到 `video-pipeline/stages/scene/generator_hf.py`；证据：commit `c424f51cc3c7c4240052180739d09ad0931a31e9`。
-2. **教训沉淀**：[有] [有] 教训已沉淀；证据：`docs/lessons.md` Lesson 163（commit `9865364`，主仓已有）。本卡未修改 CCC 外部仓的 lessons 文件，遵守只改 xianyu 业务仓范围。
-3. **档案/README**：[否] [否] 本卡为实现线修复，未修改 `video-pipeline/README.md` 或项目档案。
-4. **线路图**：[否] [否] 本卡只修复 HyperFrames 真入口及其回归覆盖，不改变项目路线图；无线路图变更。
+1. **方案同步**：[是] [是] 已将探针先行、动态超时公式、bounded workers、`--fps` 显式传入、low-memory-mode 互斥、进程组清理及实际帧数 fail-fast 落实到 `video-pipeline/stages/scene/generator_hf.py`；证据：业务提交 `c424f51cc3c7c4240052180739d09ad0931a31e9`。
+2. **教训沉淀**：[有] [有] 已追加业务仓 `docs/lessons.md` Lesson 164，记录 HyperFrames 显式 fps、low-memory-mode 与多 worker 互斥、动态预算依赖真实探针；证据：本次提交 `a90002cfc68ea252070758c3d9a44f2c61c78eb2`。
+3. **档案/README**：[否] [否] 本卡未修改 `video-pipeline/README.md` 或项目档案。
+4. **线路图**：[否] [否] 本卡只修复 HyperFrames 真入口及回归覆盖，不改变项目路线图。
 
 ## 机审区
 
