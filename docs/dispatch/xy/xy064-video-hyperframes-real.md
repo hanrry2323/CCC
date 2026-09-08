@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：2
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -92,3 +92,9 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 - [有] 教训：HyperFrames CLI 的 `--fps` 必须显式传入；`--low-memory-mode` 与多 worker 存在约束；已在实现与测试中固定这两个事实。
 - [是] README：本卡为实现线修复，现有 `video-pipeline/README.md` 的运行入口无需改变；未新增用户可见配置入口。
 - [否] 线路图：本卡只修复 HyperFrames 真入口，不改变项目路线图；无线路图变更。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：完成钩子：维护区只找到 0/4 问
