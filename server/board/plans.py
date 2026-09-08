@@ -719,7 +719,7 @@ def _void_cascade_cards(repo_root: Path, card_ids: list[str], reason: str) -> li
         return []
     from server.board.loader import load_index_file
     from server.board.models import base_state
-    from server.engine.store import _replace_state_in_metadata
+    from server.engine.store import replace_state_in_metadata
 
     index = load_index_file(repo_root / "docs" / "dispatch")
     cascaded: list[str] = []
@@ -755,7 +755,7 @@ def _void_cascade_cards(repo_root: Path, card_ids: list[str], reason: str) -> li
                 # 无 Git 测试/沙箱环境：保留原子落盘（与 set_card_state 一致降级），
                 # 不创建提交语义；生产仓始终命中 .git 分支。
                 text = card_path.read_text(encoding="utf-8")
-                new_text = _replace_state_in_metadata(text, f"作废（{reason[:40]}）")
+                new_text = replace_state_in_metadata(text, f"作废（{reason[:40]}）")
                 tmp = card_path.with_suffix(card_path.suffix + ".tmp")
                 tmp.write_text(new_text, encoding="utf-8")
                 os.replace(tmp, card_path)

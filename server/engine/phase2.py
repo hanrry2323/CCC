@@ -33,6 +33,8 @@ from pathlib import Path
 
 from server.engine.card_state_store import CardStateStore
 from server.engine.dsh_gateway import ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, cli_env, preflight_gateway
+# 解环（2026-09-05）：目录口径抽至叶子模块 logpaths；别名保留兼容内部引用与测试 patch。
+from server.engine.logpaths import audit_log_dir as _audit_log_dir
 from server.board.audit_verdict import read_verdict
 from server.engine.failure_class import (
     FailureClass,
@@ -294,12 +296,6 @@ def _dsh_auditor_path(cfg: dict) -> Path:
     return _repo_root() / "scripts" / "dsh-auditor.sh"
 
 
-def _audit_log_dir(cfg: dict) -> Path:
-    """机审前置工件目录；与 Engine 执行体日志目录保持同源。"""
-    raw = cfg.get("EXECUTOR_LOG_DIR") or cfg.get("LOG_DIR") or os.environ.get("EXECUTOR_LOG_DIR")
-    return Path(str(raw)).expanduser() if raw else Path.home() / ".ccc" / "logs" / "exec"
-
-
 def _audit_verdict_path(cfg: dict, work_id: str) -> Path:
     """验收席 verdict 工件路径（新契约 JSON；md 为兼容旧 wrapper 回退）。"""
     return _audit_log_dir(cfg) / f"{work_id}-audit-verdict.json"
@@ -506,7 +502,7 @@ def _record_audit_failure(
         logger.exception("infra 自检执行异常（不阻断冷却）")
 
     # 与派发侧共用同一冷却/sidecar 语义；audit 阶段不改变卡的业务状态。
-    from server.engine.main import _hold_infra_failure
+    from server.engine.failure_class import _hold_infra_failure
 
     work = Work(id=card_id, role="验收席", state=State.DONE, card_path=str(card_file))
 

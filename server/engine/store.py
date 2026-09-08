@@ -374,3 +374,7 @@ def _replace_state_in_metadata(text: str, new_state: str) -> str:
     if not replaced:
         raise ValueError("未在卡头元数据行中找到「状态」段")
     return "".join(lines)
+
+
+# 公共 API 别名（2026-09-05 深扫解环：board 层经此引用，不再 import 下划线私有）
+replace_state_in_metadata = _replace_state_in_metadata

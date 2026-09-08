@@ -171,7 +171,7 @@ def test_infra_selfcheck_verdict_dir_error_does_not_raise(
         raise RuntimeError("verdict 目录不可访问")
 
     monkeypatch.setattr(
-        "server.engine.phase2._audit_log_dir",
+        "server.engine.logpaths.audit_log_dir",
         raising_log_dir,
     )
     cfg = {"EXECUTOR_LOG_DIR": str(tmp_path / "logs")}

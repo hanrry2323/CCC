@@ -21,7 +21,13 @@ import urllib.error
 import urllib.request
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from server.engine.task import State
+
+if TYPE_CHECKING:
+    from server.engine.store import BoardStore
+    from server.engine.task import Work
 
 logger = logging.getLogger("ccc.engine.failure_class")
 
@@ -230,9 +236,9 @@ def run_infra_selfcheck(cfg: dict, *, card_id: str = "", worktree: str = "") -> 
     log_dir = ""
     writable = False
     try:
-        from server.engine.phase2 import _audit_log_dir  # noqa: PLC0415 — 延迟导入防环
+        from server.engine.logpaths import audit_log_dir  # noqa: PLC0415
 
-        log_dir = _audit_log_dir(cfg)
+        log_dir = audit_log_dir(cfg)
         log_dir.mkdir(parents=True, exist_ok=True)
         writable = os.access(str(log_dir), os.W_OK)
     except Exception:  # noqa: BLE001
@@ -254,3 +260,97 @@ def run_infra_selfcheck(cfg: dict, *, card_id: str = "", worktree: str = "") -> 
     except Exception:  # noqa: BLE001
         logger.exception("infra 自检 ledger 追加失败（不阻断）")
     return results
+
+
+def _infra_cooldown_seconds(cfg: dict[str, Any]) -> int:
+    try:
+        return max(0, int(cfg.get("EXECUTOR_INFRA_COOLDOWN_SECONDS") or 60))
+    except (TypeError, ValueError):
+        return 60
+
+
+def _hold_infra_failure(
+    store: BoardStore,
+    work: Work,
+    log_dir: Path,
+    reasons: list[str],
+    cfg: dict[str, Any],
+    *,
+    phase: str,
+    infra_count: int | None = None,
+    cooldown_seconds: int | None = None,
+) -> None:
+    """基础设施/引擎侧故障：不进业务重试预算、不打回；记冷却时间，冷却后自动续跑。
+
+    - phase=audit：卡保持「已回写」，机审队列冷却后自动续审。
+    - phase=run：卡回「待分派」，派发队列冷却后自动重派。
+
+    （2026-09-05 解环：自 main.py 归位本模块——infra 挂起属失败分类路由域，
+    phase2 不再为它依赖 engine.main。）
+    """
+    from datetime import datetime, timedelta, timezone
+
+    strikes = infra_count if infra_count is not None else 0
+    power = max(0, strikes - 1)
+    base = (
+        max(0, int(cooldown_seconds))
+        if cooldown_seconds is not None
+        else _infra_cooldown_seconds(cfg)
+    )
+    cooldown = base * (2**power)
+
+    try:
+        max_cooldown = int(cfg.get("EXECUTOR_INFRA_COOLDOWN_MAX_SECONDS") or 1800)
+    except (TypeError, ValueError):
+        max_cooldown = 1800
+
+    cooldown = min(cooldown, max_cooldown)
+
+    until = (
+        (datetime.now(timezone.utc) + timedelta(seconds=cooldown)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
+    # P2：infra 类失败触发环境自检（只读），结果追加 ledger 供归因。
+    try:
+        selfcheck = run_infra_selfcheck(cfg, card_id=work.id)
+        if not selfcheck.get("all_ok"):
+            from server.board.audit_ledger import record_action  # noqa: PLC0415
+
+            record_action(
+                "infra_selfcheck_fail",
+                work.id,
+                source="engine",
+                detail=f"infra 自检 any_fail（归因基础设施侧）: {selfcheck}",
+                failure_class="infra",
+            )
+    except Exception:
+        logger.exception("infra 自检执行异常（不阻断冷却）")
+    if phase == "run" and work.state is State.RUNNING:
+        try:
+            work.transition(State.TODO, problems=reasons)
+        except Exception:
+            pass
+    try:
+        store.save_work(work)
+    except Exception:
+        pass
+    from server.engine.runtime_state import write_card_state
+
+    if infra_count is None:
+        infra_count = 0
+
+    write_card_state(
+        log_dir,
+        work.id,
+        state=work.state.value,
+        retry_count=work.retry_count,
+        reason=reasons[0] if reasons else "基础设施故障",
+        infra_cooldown_until=until,
+        infra_count=infra_count,
+    )
+    logger.warning(
+        "基础设施失败（冷却 %ds 后自动续%s，不计重试预算）: work=%s reason=%s",
+        cooldown,
+        "审" if phase == "audit" else "派",
+        work.id,
+        reasons[0] if reasons else "",
+    )

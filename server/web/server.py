@@ -3328,7 +3328,7 @@ class _APIHandler(BaseHTTPRequestHandler):
 
         from server.config.loader import load_config
         from server.engine.dispatch import load_registry
-        from server.engine.main import _card_machine_audit_passed, _run_machine_audit_after_writeback
+        from server.engine.main import card_machine_audit_passed, run_machine_audit_after_writeback
         from server.engine.store import FileBoardStore
 
         try:
@@ -3368,21 +3368,21 @@ class _APIHandler(BaseHTTPRequestHandler):
             return
         # P2-C 修复：在途防重——同卡审计已在跑则拒绝
         try:
-            from server.engine.main import _audit_marker_alive
+            from server.engine.main import audit_marker_alive
 
-            if _audit_marker_alive(log_dir, work.id):
+            if audit_marker_alive(log_dir, work.id):
                 self._send_json({"ok": True, "id": task_id, "busy": True, "reason": "该卡机审已在途，请稍后"})
                 return
         except Exception:
             pass
-        if not force and _card_machine_audit_passed(work.card_path):
+        if not force and card_machine_audit_passed(work.card_path):
             self._send_json(
                 {"ok": True, "id": task_id, "skipped": True, "reason": "已有机审通过证据（force 可强制重审）"}
             )
             return
         timeout = int(cfg.get("EXECUTOR_AUDIT_TIMEOUT_SECONDS") or cfg.get("EXECUTOR_TIMEOUT_SECONDS") or 1800)
         try:
-            ok, problems, audited = _run_machine_audit_after_writeback(
+            ok, problems, audited = run_machine_audit_after_writeback(
                 work,
                 registry,
                 cfg,
