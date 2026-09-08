@@ -1,7 +1,7 @@
 # 任务卡 xy062 · 闲鱼真实图文+视频生产链路首跑与断点修复（CCC 执行）
 
 > 关联：xy-plan-001「视频里程碑」、xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062
+> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy062 · 状态版本：1
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -68,7 +68,7 @@ lint：`.venv/bin/ruff check` 覆盖本次修改文件。
 
 ## 批注落实
 
-本卡无新增人工批注；执行体须在结果文件中明确说明本卡目标、范围与红线已按正文执行，并对任何外部依赖阻塞给出原始证据，不得以测试通过替代真实成片证据。
+本卡人工批注为“允许对真实首跑暴露的业务断点进行最小修复，但不得扩大到发布闭环或其他项目”。已落实：所有修改仅在 xianyu 业务 worktree，范围为生产 orchestrator、内容路由、场景生成器及其测试；未执行平台发布、Cookie 操作或其他项目改动。首跑产物、测试输出和 ffprobe 证据均已保留。
 
 ## 回写要求
 
@@ -85,3 +85,37 @@ lint：`.venv/bin/ruff check` 覆盖本次修改文件。
 ## 人工批注
 
 无新增人工批注；本卡优先级高于历史“只读验收”卡，允许对真实首跑暴露的业务断点进行最小修复，但不得扩大到发布闭环或其他项目。
+
+## 回写区
+
+## 0. 卡标题复述
+
+任务卡 xy062 只推进闲鱼项目：从主题「普通人如何用 AI 把一天的重复工作压缩成一小时」真实产出图文与竖屏视频，修复首跑暴露的工程断点；不发布、不触碰 Cookie/外部账号、不启动 M7、不改 CCC 或其他项目。
+
+## 1. 探针输出
+
+- 图文真实首跑：exit 0；产物 `workspace/outputs/image_text/20260908-100405/index.html`、`meta.json`。
+- 视频真实首跑：exit 0；产物 `video-pipeline/output/final.mp4`，同时有 `script.json`、`subs.srt`、`audio.mp3`、`manifest.json`、152 帧 PNG。
+- 视频 ffprobe：H.264 视频流 1080x1920，AAC 音频流，时长 30.4 秒，视频码率约 4.97 Mbps，文件 19,348,268 bytes。
+- 图文元数据：标题与主题一致；当前正文为模板占位内容（含「待填」），未虚报为可发布长文。
+
+首跑发现并修复：
+1. `run_pipeline` 未显式发现 Worker，直接 CLI/API 调用可能缺注册；已加入 `WorkerRegistry.discover()`。
+2. 首次落库未初始化 SQLite；已在写入文章前调用幂等 `init_db()`。
+3. 内容路由绝对导入与包内运行方式不一致；改为相对导入并同步测试。
+4. HyperFrames 动态 HTML 中 `|| {}` 未转义；修为 `|| {{}}`，并清理场景生成器静态问题。
+
+## 2. 自测输出
+
+- `.venv/bin/pytest tests/content/test_router.py -q`：7 passed，exit 0。
+- `.venv/bin/pytest video-pipeline/tests/ -q`：17 passed，exit 0。
+- `.venv/bin/python -m compileall -q src video-pipeline admin`：exit 0。
+- `.venv/bin/ruff check` 本次修改文件：exit 0。
+- 视频 final.mp4：ffprobe exit 0，视频与音频流均可读。
+
+## 维护区
+
+1. **方案同步**：[是] 本卡承接 xy-plan-001、xy-plan-008、xy-plan-009；仅完成本地生产首跑，不推进 M7 发布。
+2. **教训沉淀**：[有] 本次确认直接 CLI/API 入口不能依赖外部 main 先注册 Worker 或先建库；相关修复已进入业务 commit。
+3. **档案/README**：[否] 本卡只改生产链路代码与测试，未改变运行入口文档。
+4. **线路图**：[是] 话题到图文/视频主链已实跑；文章正文 AI 填充、真实配图和模板规模化应另立后续卡。
