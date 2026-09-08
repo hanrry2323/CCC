@@ -192,6 +192,9 @@ def get_modified_files(repo_root: Path, card_file: Path | None = None) -> list[s
         return []
 
 
+_MAINT_NAMES = {1: "方案同步", 2: "教训沉淀", 3: "档案/README", 4: "线路图"}
+
+
 def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
     m = re.search(r"^## 维护区\s*$", text, re.M)
     if not m:
@@ -207,6 +210,22 @@ def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
             re.M,
         )
         if not item_m:
+            # 宽松变体（2026-09-09 xy064 三轮实证）：执行体会写
+            # `- [是] ①方案同步：…`（列表前缀/①序号/[选择] 在键名前）。
+            # 行含完整键名且具列表行特征即接受，[选择] 取行内首个方括号。
+            name = _MAINT_NAMES[num]
+            for ln in seg.splitlines():
+                s = ln.strip()
+                if name not in s or "：" not in s:
+                    continue
+                if not re.match(r"^(?:[-*•]|\d{1,2}[.、]|[①②③④])", s):
+                    continue
+                cm = re.search(r"\[([^\]]+)\]", s)
+                if not cm:
+                    continue
+                note = s.split("：", 1)[1].strip()
+                results[num] = {"name": name, "choice": cm.group(1).strip(), "note": note}
+                break
             continue
         name = item_m.group(1).strip()
         choice = item_m.group(2).strip()

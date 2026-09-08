@@ -23,16 +23,31 @@ def _first_line(text: str) -> str:
     return next((line.strip() for line in text.splitlines() if line.strip()), "")
 
 
+_MAINT_NAMES = {1: "方案同步", 2: "教训沉淀", 3: "档案/README", 4: "线路图"}
+
+
 def _maintenance_value(text: str, number: int, name: str) -> tuple[str, str]:
     match = re.search(
         rf"(?im)^\s*{number}\.\s+(?:\*\*)?{re.escape(name)}(?:\*\*)?：\s*\[([^]]+)\](.*)$",
         text,
     )
-    if not match:
-        raise ValueError(f"missing maintenance item {number}")
-    choice = match.group(1).strip()
-    note = match.group(2).strip()
-    return choice, note
+    if match:
+        choice = match.group(1).strip()
+        note = match.group(2).strip()
+        return choice, note
+    # 宽松变体（2026-09-09 xy064 三轮实证）：执行体会写
+    # `- [是] ①方案同步：…`（列表前缀/①序号/[选择] 在键名前）。
+    for line in text.splitlines():
+        s = line.strip()
+        if name not in s or "：" not in s:
+            continue
+        if not re.match(r"^(?:[-*•]|\d{1,2}[.、]|[①②③④])", s):
+            continue
+        cm = re.search(r"\[([^\]]+)\]", s)
+        if not cm:
+            continue
+        return cm.group(1).strip(), s.split("：", 1)[1].strip()
+    raise ValueError(f"missing maintenance item {number}")
 
 
 def _exit_code(name: str, text: str) -> int | None:
