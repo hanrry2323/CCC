@@ -476,60 +476,6 @@ def _is_persistence_failure(reasons: list[str]) -> bool:
     return any(("机审区落盘" in r) or ("分支证据未推送" in r) or ("机审区落盘到分支卡失败" in r) for r in reasons)
 
 
-def _mark_branch_card_state(
-    work: Work,
-    registry: ExecutorRegistry,
-    cfg: dict[str, Any],
-    log_dir: Path,
-    state_text: str,
-) -> None:
-    """机审打回：把远端分支卡状态落指定状态并推送。
-
-    2026-08-12 终态权威补齐：分支信封与磁盘卡同属终态权威；机审打回若不改分支卡，
-    下轮 FileBoardStore 又会把「已回写」残留读成 DONE → 无限机审（mx031/032 假机审根因）。
-    - 重试路径（回待分派）：落「待分派（机审打回·重试中）」，信封读不到 → 按磁盘 TODO 重试执行
-    - 重试耗尽：落「打回（机审：不通过）」，信封读打回 → 不再机审
-    失败不阻断打回（打回本身已由磁盘/日志权威化）。
-    """
-    try:
-        wt_hint = _worktree_hint_for(work, registry)
-        if not wt_hint or not os.path.isdir(wt_hint) or not work.card_path:
-            return
-        if "docs/dispatch" not in work.card_path:
-            return
-
-        # 获取相对路径，避免 Path(wt_hint) / absolute_path 导致路径漂移至生产卡
-        parts = Path(work.card_path).parts
-        if "docs" in parts:
-            idx = parts.index("docs")
-            rel_card_path = Path(*parts[idx:])
-        else:
-            rel_card_path = Path(work.card_path).name
-
-        store = CardStateStore(wt_hint, dispatch_dir=cfg.get("DISPATCH_DIR") or "docs/dispatch")
-        snap = store.read_snapshot(rel_card_path)
-
-        def _mutator(text: str) -> str:
-            if state_text.startswith("打回"):
-                from server.board.card_header import bump_reject_count
-                return bump_reject_count(text)
-            return text
-
-        store.transition(
-            rel_card_path,
-            target=state_text,
-            expected_state=snap.state,
-            expected_version=snap.version,
-            expected_commit=None,
-            actor="engine",
-            reason=f"机审打回落分支信封: {state_text}",
-            mutator=_mutator,
-        )
-        logger.warning("机审打回已落分支卡状态: work=%s state=%s", work.id, state_text)
-    except Exception as exc:
-        logger.warning("机审打回落分支卡失败（不阻断打回）: work=%s (%s)", work.id, exc)
-
-
 def _infra_cooldown_seconds(cfg: dict[str, Any]) -> int:
     try:
         return max(0, int(cfg.get("EXECUTOR_INFRA_COOLDOWN_SECONDS") or 60))
@@ -2516,7 +2462,6 @@ def _append_machine_audit_pass(card_path: str, *, source: str, evidence: str) ->
     except OSError as exc:
         logger.warning("读取分支卡失败，无法落盘机审区: %s (%s)", card_path, exc)
         return False
-    original_text = text
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     snippet = re.sub(r"\s+", " ", (evidence or "").strip())[:400]
     section = f"\n\n## 机审区\n\n> 结论：通过\n> 来源：engine 自动落盘（{source}）· {stamp}\n> 证据：{snippet or '见 audit.log'}\n"
@@ -4106,6 +4051,14 @@ def _run_machine_audit_after_writeback(
         audited_tip = _worktree_branch_tip(worktree_hint, branch)
     # 机审 v4 重度：severity=重 → fresh 独立 agent 零上下文（build_command 新会话 + prompt 强化）
     fresh = severity == "重"
+    # 深扫加固（2026-09-05）：派发前预清旧 verdict 工件（纵深防御第二层）。wrapper 内部
+    # 已前置 rm，但 wrapper 未启动即失败（spawn 失败/秒退）时旧 PASS 会被下方
+    # read_verdict 当本轮结论，故引擎侧同样先清。
+    for _stale in ("audit-verdict.json", "audit-verdict.md"):
+        try:
+            (log_dir / f"{work.id}-{_stale}").unlink(missing_ok=True)
+        except OSError:
+            logger.warning("机审 verdict 预清失败（忽略）: work=%s file=%s", work.id, _stale)
     _claim_running_marker(log_dir, f"{work.id}-audit", data_dir=cfg.get("DATA_DIR"))
     try:
         ok, problems = _dispatch_and_collect(
@@ -4154,7 +4107,6 @@ def _run_machine_audit_after_writeback(
             protocol_count, protocol_exhausted = increment_budget(
                 log_dir, work.id, FailureClass.PROTOCOL, cfg
             )
-            consumed = True
             if protocol_exhausted:
                 reasons = [f"PROTOCOL 预算耗尽（{protocol_count} 次），待人工", rejection]
                 try:
@@ -4965,7 +4917,6 @@ def run_once(
     dep_skips = counters.get("dep_skips", 0)
     cycle_skips = counters.get("cycle_skips", 0)
     none_skips = counters.get("none_skips", 0)
-    remote_pending = counters.get("remote_pending", 0)
     queued = counters.get("queued", 0)
     summary: dict[str, int] = {
         "mode": "once",

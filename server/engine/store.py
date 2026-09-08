@@ -353,41 +353,6 @@ class FileBoardStore:
         except Exception:
             logger.exception("save_work: 索引失效重扫失败（不影响回写成功）")
 
-    def _parse_card_to_work(self, path: Path) -> Work | None:
-        """解析单张任务卡 → Work 对象。"""
-        from server.board.loader import parse_card  # noqa: PLC0415 — 避免循环导入
-
-        item = parse_card(path)
-        # 状态映射
-        st = _state_from_str(item.state)
-        if st is None:
-            # 未知状态 → 跳过，禁止落入待分派被误派发
-            logger.warning("跳过未知状态卡: path=%s state=%r", path, item.state)
-            return None
-        # 执行体 → 角色反查（卡头「执行体：X」）
-        executor_name = _strip_parenthetical(item.executor)
-        role = self._registry.role_for_binding(executor_name) or ""
-        # T39：保留卡头执行体绑定名（未知/缺省 → 空串，回退角色决策）
-        executor_binding = "" if executor_name == UNKNOWN else executor_name
-        return Work(
-            id=item.id,
-            role=role,
-            title=item.title,
-            state=st,
-            card_path=str(path.resolve()),
-            executor=executor_binding,
-            # T53：派发方式随卡头透传（manual 卡保持待分派，Engine 不自动拉）
-            dispatch=item.dispatch or "engine",
-            type=item.type,
-            project=item.project,
-            parent=item.parent or "",
-            depends_on=list(item.depends_on),
-            thread_id=item.thread_id,
-            acceptance=(item.acceptance or "") if item.acceptance != "未知" else "",
-            retry_count=_retry_count_from_state_str(item.state or ""),
-        )
-
-
 def _replace_state_in_metadata(text: str, new_state: str) -> str:
     """在 `>` 元数据行中替换「状态：X」段的值。
 

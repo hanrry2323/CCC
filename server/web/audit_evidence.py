@@ -91,6 +91,3 @@ def branch_card_state(repo_root: Path, card_rel: str, branch: str) -> str:
     return state
 
 
-def clear_audit_evidence_cache() -> None:
-    _branch_cache.clear()
-    _state_cache.clear()

@@ -126,11 +126,6 @@ class CardSnapshot:
     blob: str
     branch: str
 
-    @property
-    def text_sha256(self) -> str:
-        return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
-
-
 @dataclass(frozen=True)
 class TransitionReceipt:
     """一次成功状态写入的可复核回执。"""
@@ -495,48 +490,6 @@ class CardStateStore:
                 rel_path=current.rel_path,
             )
 
-    def write_audit_verdict(
-        self,
-        card: str | Path,
-        *,
-        verdict: str,
-        reasons: str,
-        actor: str = "phase2",
-        push: bool = True,
-    ) -> TransitionReceipt:
-        """经 CAS/卡锁写入机审区，不改变卡状态。"""
-        if verdict not in {"PASS", "REJECT"}:
-            raise CardValidationError(f"非法机审结论: {verdict}")
-        snapshot = self.read_snapshot(card)
-        verdict_cn = "通过" if verdict == "PASS" else "不通过"
-        section = (
-            "## 机审区\n\n"
-            "- 审核方：DSH auditor（phase2）\n"
-            f"- 结论：{verdict_cn}\n"
-            f"- 理由：{reasons[:500]}\n"
-        )
-
-        def _mutator(text: str) -> str:
-            if "## 机审区" in text:
-                return re.sub(
-                    r"## 机审区\s*\n.*?(?=\n## |\Z)",
-                    section.rstrip("\n") + "\n",
-                    text,
-                    flags=re.S,
-                    count=1,
-                )
-            return text.rstrip("\n") + "\n\n" + section
-
-        return self.update_card(
-            snapshot.path,
-            mutator=_mutator,
-            actor=actor,
-            reason=f"机审结论：{verdict_cn}",
-            expected_version=snapshot.version,
-            expected_commit=snapshot.commit or None,
-            push=push,
-        )
-
     def _commit_push(self, rel_path: str, message: str, *, branch: str, push: bool = True) -> str:
         with self._git_lock():
             add = _run_git(self.repo_root, ["add", "--", rel_path])
@@ -545,30 +498,6 @@ class CardStateStore:
             commit = _run_git(self.repo_root, ["commit", "-m", message])
             if commit.returncode != 0:
                 raise CardCommitError((_text_output(commit.stderr) or _text_output(commit.stdout) or "git commit 失败").strip())
-            new_commit = _run_git(self.repo_root, ["rev-parse", "HEAD"])
-            if new_commit.returncode != 0:
-                raise CardCommitError("无法读取新提交")
-            if push:
-                pushed = _run_git(self.repo_root, ["push", self.remote, branch], timeout=60)
-                if pushed.returncode != 0:
-                    raise CardPushError((_text_output(pushed.stderr) or _text_output(pushed.stdout) or "git push 失败").strip())
-            return _text_output(new_commit.stdout).strip()
-
-    def commit_if_changed(self, rel_path: str, message: str, *, branch: str, push: bool = True) -> str:
-        """像 _commit_push 但在 nothing-to-commit 空提交时静默放行（已由他方落盘）。"""
-        with self._git_lock():
-            add = _run_git(self.repo_root, ["add", "--", rel_path])
-            if add.returncode != 0:
-                raise CardCommitError((_text_output(add.stderr) or _text_output(add.stdout) or "git add 失败").strip())
-            commit = _run_git(self.repo_root, ["commit", "-m", message])
-            if commit.returncode != 0:
-                details = (_text_output(commit.stderr) or _text_output(commit.stdout) or "")
-                if "nothing to commit" in details or "no changes added to commit" in details:
-                    # 证据已由他方提交，本地仅复核远端即可
-                    head = _run_git(self.repo_root, ["rev-parse", "HEAD"])
-                    if head.returncode == 0:
-                        return _text_output(head.stdout).strip()
-                raise CardCommitError(details[:200])
             new_commit = _run_git(self.repo_root, ["rev-parse", "HEAD"])
             if new_commit.returncode != 0:
                 raise CardCommitError("无法读取新提交")
@@ -669,17 +598,6 @@ class CardStateStore:
                 new_commit=new_commit,
                 rel_path=current.rel_path,
             )
-
-    @contextlib.contextmanager
-    def lock_dispatch_for_sync(self, blocking: bool = False) -> Iterator[None]:
-        """git_sync 破坏性对齐前获取的全局锁。
-
-        与 store 的私有 ``_git_lock`` 共用同一把 ``ccc-card-git.lock``。
-        拿到锁且 ``docs/dispatch`` tracked 干净才允许 ``checkout -f/reset``；
-        否则必须跳过对齐（返回锁错误或干净判定由调用方结合使用）。
-        """
-        with protected_git_lock(self.repo_root, blocking=blocking) as _lock:
-            yield _lock
 
     def commit_card_changes(
         self,

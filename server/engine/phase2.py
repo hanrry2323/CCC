@@ -258,31 +258,7 @@ def _refresh_index(cfg: dict) -> None:
         logger.exception("phase2 索引刷新失败（不阻断）")
 
 
-def branch_for(card_file: Path) -> str:
-    return f"{_BRANCH_PREFIX}{card_file.stem.lower()}"
-
-
 # ───────────────────────── CC 审核（重试退避）─────────────────────────
-
-
-def build_audit_prompt(card: dict, card_file: Path, branch: str) -> str:
-    return (
-        "你是 CCC 平台终审席（Claude Code）。请审核任务卡 {id} 的合入申请。\n\n"
-        "仓库：{repo}\n"
-        "任务卡：{card}\n"
-        "分支：{branch}（相对 origin/main 的改动）\n\n"
-        "审核要点：\n"
-        "1. 卡头元数据合法（状态应为「已回写」，编号/项目正确）。\n"
-        "2. 分支相对 main 的 diff 与卡「范围」一致；无越界、无密钥泄漏、无危险命令。\n"
-        "3. 卡「门禁」要求可满足（实现/测试/编译类）。\n"
-        "4. 维护区/回写区已如实填写。\n\n"
-        "输出要求（严格）：\n"
-        "用 Write 工具写 JSON verdict 到 $EXECUTOR_LOG_DIR/{id}-audit-verdict.json：\n"
-        '{{"verdict":"PASS|REJECT","reason":"一句话结论",'
-        '"findings":[{{"id":"F1","severity":"P0|P1|P2",'
-        '"file":"相对路径","line":0,"note":"可复现说明"}}]}}\n'
-        "审查正文（证据四段）另写 $EXECUTOR_LOG_DIR/{id}-audit-verdict.md，供人阅读，非判定依据。"
-    ).format(id=card["id"], repo=_repo_root(), card=card_file, branch=branch)
 
 
 def _extract_reasons(out: str, verdict: str) -> str:

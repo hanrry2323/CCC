@@ -118,7 +118,3 @@ def read_verdict(log_dir: str | Path, work_id: str) -> tuple[str | None, str, li
     return None, PROTOCOL_MISSING_REASON, []
 
 
-def read_verdict_file(path: str | Path) -> tuple[str | None, str, list[dict[str, Any]]]:
-    """Compatibility helper for callers holding the artifact path."""
-    verdict_path = Path(path)
-    return read_verdict(verdict_path.parent, verdict_path.name.removesuffix("-audit-verdict.json").removesuffix("-audit-verdict.md"))

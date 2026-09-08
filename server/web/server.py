@@ -626,7 +626,6 @@ def _load_arch_index() -> dict[str, Any]:
 def _infer_project_kind(item: dict[str, Any]) -> str:
     """由元数据推断项目种类：base（底座）/ business（业务）/ legacy（旧/退役）。"""
     role = str(item.get("role") or "").lower()
-    nature = str(item.get("nature") or "").lower()
     name = str(item.get("name") or "").lower()
     last_act = str(item.get("last_activity") or "").lower()
     if (
@@ -2642,36 +2641,6 @@ class _APIHandler(BaseHTTPRequestHandler):
             logger.error(
                 "roadmap 落 git 失败（保留脏现场）: %s (%s)", message, (exc.stderr or exc.stdout or "").strip()[:300]
             )
-
-    def _card_git_commit(self, card_path: Path, message: str) -> bool:
-        """（已自 CardStateStore 迁移后保留的兼容 stub）卡状态提交一律走 CardStateStore。
-
-        本方法只应被不再使用的历史调用路径引用；新作废写卡直接经
-        ``CardStateStore.transition``（内含受保护 commit+push）。保留为兼容 facade，
-        未再被调用时置弃用。
-        """
-        try:
-            from server.engine.card_state_store import CardStateStore
-
-            store = CardStateStore(
-                _PROJECT_ROOT,
-                dispatch_dir="docs/dispatch",
-                data_dir=_executor_log_dir().parent if _executor_log_dir() else None,
-            )
-            snap = store.read_snapshot(card_path)
-            store.transition(
-                card_path,
-                target=f"作废（{message or ''}）"[:200],
-                expected_state=snap.state,
-                expected_version=snap.version,
-                expected_commit=None,
-                actor="web-legacy",
-                reason=message,
-            )
-            return True
-        except Exception as exc:  # noqa: BLE001
-            logger.error("card 落 git 失败（保留脏现场）: %s (%s)", message, exc)
-            return False
 
     def _delete_card_remote_branch(self, card_path: Path) -> None:
         """作废卡自动删远端 codex/<stem> 分支（人审统一化 2026-08-14）。

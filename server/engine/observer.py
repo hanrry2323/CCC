@@ -811,6 +811,8 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         )
     dt_obj = datetime.datetime.fromtimestamp(current_state["timestamp"])
     date_str = dt_obj.strftime("%Y-%m-%d")
+    # 深扫加固（2026-09-05）：巡逻报告改单文件覆盖式（latest-ccc-patrol.md），
+    # 不再按日期在 docs/notes 累积机器报告（DOC-PROTOCOL 连续性纪律）。
     report_name = f"{date_str}-ccc-patrol"
     report_md = generate_patrol_report(scored_findings, report_name)
 
@@ -823,17 +825,12 @@ def run_observer(cfg: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
     except Exception as e:
         logger.error("failed to save report to DATA_DIR/observer: %s", e)
 
-    # 只有当内容发生变化时，才写入 docs/notes/
+    # docs/notes 只保单份最新巡逻（latest-ccc-patrol.md，覆盖写）；日期件已成历史归档。
     notes_dir = PROJECT_ROOT / "docs" / "notes"
     try:
         notes_dir.mkdir(parents=True, exist_ok=True)
-        report_path = notes_dir / f"{report_name}.md"
-        should_write = True
-        if report_path.exists():
-            existing_content = report_path.read_text(encoding="utf-8")
-            if existing_content == report_md:
-                should_write = False
-        if should_write:
+        report_path = notes_dir / "latest-ccc-patrol.md"
+        if not report_path.exists() or report_path.read_text(encoding="utf-8") != report_md:
             report_path.write_text(report_md, encoding="utf-8")
             logger.info("patrol report (changed) saved to docs/notes: %s", report_path)
         else:

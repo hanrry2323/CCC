@@ -28,10 +28,6 @@ from server.engine.card_state_store import CardLockError, protected_git_lock
 logger = logging.getLogger("ccc.git_sync")
 
 
-class SyncLockedError(RuntimeError):
-    """卡状态写入/Git 提交正在进行，本轮不得覆盖主仓卡。"""
-
-
 def _protected_force_align(repo: Path, ref: str, dispatch_subdir: str) -> dict[str, int]:
     """拿到全局 Git 写锁才允许强制对齐；拿不到则跳过本轮，保护提交中的卡。
 

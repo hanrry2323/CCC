@@ -142,10 +142,6 @@ def get_dispatch_pool() -> DispatchPool:
     return _POOL
 
 
-def get_audit_pool() -> DispatchPool:
-    return _AUDIT_POOL
-
-
 def reset_dispatch_pool() -> None:
     """测试夹具：清空全局执行池与机审池。"""
     _POOL.reset()

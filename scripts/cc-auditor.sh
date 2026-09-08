@@ -43,6 +43,9 @@ mkdir -p "$LOG_DIR"
 VERDICT_JSON="$LOG_DIR/${WORK_ID}-audit-verdict.json"
 VERDICT_FILE="$LOG_DIR/${WORK_ID}-audit-verdict.md"
 RESULT_FILE="$LOG_DIR/${WORK_ID}-ccc-result.md"
+# 深扫加固（2026-09-05）：预清必须在一切 exit 路径之前——机械门禁失败（exit 2/3）也要
+# 从空工件开始，否则前置缺失提前退出时上一轮 verdict 存活，引擎 read_verdict 读到旧 PASS。
+rm -f "$VERDICT_JSON" "$VERDICT_FILE" || true
 TMP_OUTPUT="$(mktemp)"
 trap 'rm -f "$TMP_OUTPUT"' EXIT
 
@@ -128,8 +131,7 @@ if [ -n "${ANTHROPIC_BASE_URL:-}" ]; then
   ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL%/v1/messages}"
   export ANTHROPIC_BASE_URL
 fi
-# 每轮审计必须从空 verdict 工件开始，避免复用上一轮遗留结论。
-rm -f "$VERDICT_JSON" "$VERDICT_FILE" || true
+# verdict 预清已在工件变量定义处完成（覆盖全部 exit 路径）。
 attempt=0
 CC_AUDITOR_ATTEMPTS="${CC_AUDITOR_ATTEMPTS:-3}"
 while [ "$attempt" -lt "$CC_AUDITOR_ATTEMPTS" ]; do

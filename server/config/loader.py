@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -147,14 +146,3 @@ def load_config(env_path: str | Path) -> dict[str, Any]:
     return result
 
 
-def load_config_from_env() -> dict[str, Any]:
-    """从系统环境变量加载配置（不读文件），用于测试 / 覆盖。"""
-    result: dict[str, Any] = {}
-    for k in REQUIRED_KEYS:
-        val = os.environ.get(k)
-        if not val:
-            raise ConfigError(f"missing required env var: {k}")
-        result[k] = val
-    for k, default in OPTIONAL_KEYS.items():
-        result[k] = os.environ.get(k, default)
-    return result
