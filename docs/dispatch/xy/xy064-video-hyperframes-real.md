@@ -66,6 +66,7 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 7. 【F4 修复·第6轮机审】→ 已落实（`c9a2aa0` 分层 catch）；本轮全量回归 `31 passed`（含 `test_scene_run_bubbles_hyperframes_data_error` / `test_scene_run_falls_back_to_pil_on_ordinary_hf_error`）。
 8. 【F5 修复·第7轮机审】→ 已落实（`4336009`）；`test_generate_bubbles_probe_data_error_instead_of_fallback` 定向 `1 passed`（见第 2 节）。
 9. 【F6 修复·第8轮机审】→ 已落实（本轮 commit `14ab750`）：①探针数据异常 re-raise 前 `shutil.rmtree(hf_project_dir, ignore_errors=True)`（`generator_hf.py` 探针 except 分支）+ 新增回归 `test_generate_removes_project_before_bubbling_probe_data_error`；②进程组清理收敛：`_run_hyperframes` 统一 finally，`_terminate_process_group` 覆盖非零退出/OSError/超时全失败分支（不再因 leader 已退出而早退），新增回归 `test_run_hyperframes_nonzero_exit_kills_orphan_children`（断言组内无残留子进程）与 `test_run_hyperframes_oserror_kills_process_group`（断言 OSError 后进程组终止）；③全部定向测试通过，见第 2 节。
+10. 【F7 修复·第9轮机审】成功路径收尾两点：①`_run_hyperframes` 成功（returncode=0）路径同样统一执行进程组清理——communicate 返回后调用 `_terminate_process_group`（SIGTERM 优雅终止可能残留的后台子进程，无存活则无副作用），保证「渲染结束无 npx/hyperframes/node 孤儿」对成功/失败路径均成立；补回归测试（leader 退出码 0+后台子进程存活场景，断言渲染结束后无孤儿）。②结果文件补全量端到端原始取证：用最终代码重跑一次端到端渲染，`.ccc-result.md` 附原始 ffprobe 输出（codec/分辨率/帧率/时长）与 manifest 原文，不得只引用探针数据。
 
 ## 0. 卡标题复述
 
