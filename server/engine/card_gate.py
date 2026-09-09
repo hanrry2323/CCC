@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from datetime import datetime, timezone
@@ -27,6 +28,8 @@ from server.board.audit_ledger import record_action
 from server.board.registry import forbidden_prefixes, load_projects
 from server.engine.gates import GateResult
 from server.engine.task import State, Work
+
+logger = logging.getLogger("ccc.engine.card_gate")
 
 HEADER_FIELDS = ("关联", "执行体", "验收", "状态", "派发", "项目", "日期")
 REQUIRED_SECTIONS = ("目标", "实现要求", "红线", "范围", "步骤", "验收标准")
@@ -166,6 +169,16 @@ def enforce_card_gate(
     project_prefixes: set[str] | None = None,
 ) -> GateResult:
     """派发门禁本体：DSH 卡非法 → 作废 + ledger 告警；非 DSH 卡直接放行。"""
+    # 终态防护（2026-09-09 xy064 审计实证）：作废/已关闭/打回卡一旦进入终态，
+    # 任何来源（runtime sidecar 残留、分支信封、孤儿回收、收单竞态）都不得再把它
+    # 拉回待分派重派——否则形成「执行→回写→机审→竞态回待分派→再执行」死循环。
+    # runtime sidecar 状态在收单后按契约清除，但回收/竞态路径可能把旧 TODO 态写回；
+    # 门禁是最后一道闸：磁盘卡头状态（终态真值）为终态即拦截。
+    from server.engine.task import State as _State
+
+    if work.state in (_State.VOIDED, _State.CLOSED, _State.REJECTED):
+        logger.warning("终态卡禁止重派: work=%s state=%s（绕过回收/竞态残留）", work.id, work.state)
+        return GateResult(passed=False, reason="terminal_card_not_redispatchable")
     card_path = Path(work.card_path) if work.card_path else None
     text = ""
     if card_path is not None:
