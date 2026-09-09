@@ -35,33 +35,30 @@ def _maintenance_value(text: str, number: int, name: str) -> tuple[str, str]:
         choice = match.group(1).strip()
         note = match.group(2).strip()
         return choice, note
-    # 宽松变体（2026-09-09 xy064 三轮实证）：执行体会写
-    # `- [是] ①方案同步：…`（列表前缀/①序号/[选择] 在键名前）。
-    # 表格行变体（2026-09-10 xy067 实证）：`| ①方案同步 | [是] | 说明 |` 同样接受。
+    # 顺序兜底（2026-09-10 xy065 实证）：执行体可能抄四问的问题原文（行内无标准键名）。
+    # 维护区四问语义按序——段内按出现顺序收集含 [选择] 的条目行，第 N 条即第 N 问。
+    seq: list[tuple[str, str]] = []
     for line in text.splitlines():
         s = line.strip()
-        if name not in s:
+        if not s or not re.search(r"\[([^\]]+)\]", s):
             continue
-        if s.startswith("|"):
-            cells = [c.strip() for c in s.strip("|").split("|")]
-            cm = None
-            for c in cells:
-                m2 = re.search(r"\[([^\]]+)\]", c)
-                if m2:
-                    cm = m2
-                    break
-            if not cm:
-                continue
-            note = cells[-1] if len(cells) >= 3 else ""
-            return cm.group(1).strip(), note
-        if "：" not in s:
-            continue
-        if not re.match(r"^(?:[-*•]|\d{1,2}[.、]|[①②③④])", s):
+        if s.startswith("|") and set(s) <= {"|", "-", ":", " "}:
+            continue  # 表格分隔行
+        if not (s.startswith(("|", "-", "*", "•")) or re.match(r"^\d{1,2}[.、]", s) or re.match(r"^[①②③④]", s)):
             continue
         cm = re.search(r"\[([^\]]+)\]", s)
         if not cm:
             continue
-        return cm.group(1).strip(), s.split("：", 1)[1].strip()
+        if s.startswith("|"):
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            note = cells[-1] if len(cells) >= 3 else ""
+        elif "：" in s:
+            note = s.split("：", 1)[1].strip()
+        else:
+            note = ""
+        seq.append((cm.group(1).strip(), note))
+    if len(seq) >= number:
+        return seq[number - 1]
     raise ValueError(f"missing maintenance item {number}")
 
 
