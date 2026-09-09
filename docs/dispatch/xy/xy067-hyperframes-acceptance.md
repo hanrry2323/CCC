@@ -1,6 +1,6 @@
 # 任务卡 xy067 · HyperFrames 真入口验收闭环（开发线 Build · 业务代码已在 main）
 
-> 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-09 · 版本：xy067 · 状态版本：2
+> 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」 · 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-09 · 版本：xy067 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -153,3 +153,9 @@ duration_ts=1247232  duration=81.200000  bit_rate=4988237  nb_frames=2436
 | ②教训沉淀 | [是] | 教训已随 xy064 落 `docs/lessons.md` Lesson 163（固定超时必挂/--fps 显式/low-memory 与多 worker 互斥/进程组清理）与 Lesson 164（显式帧率/动态预算依赖真实探针），main 已含，本卡直接引用，未重复新增。 |
 | ③档案/README | [否] | 无档案/README 变更需求；video-pipeline README 已覆盖 pipeline 用法，本卡无新 API/命令。 |
 | ④线路图 | [否] | 无线路图变更；本卡为验收闭环，不引入新路线项。 |
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：完成钩子：维护区只找到 0/4 问
