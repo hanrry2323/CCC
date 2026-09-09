@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：16
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：17
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -123,4 +123,4 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：维护区要求的 CCC Lesson 164 未落盘，且 scene.run() 会吞掉 HyperFrames 帧数不足异常并改走未标记的 PIL 成功路径，故未形成可验收的 fail-fast 闭环。
+- 理由：探针部分帧异常仍被 generate 的 RuntimeError 兜底捕获并转为 PIL，探针 fail-fast 与数据完整性闭环未完成。
