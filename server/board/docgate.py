@@ -213,10 +213,26 @@ def parse_maintenance_section(text: str) -> dict[int, dict[str, str]]:
             # 宽松变体（2026-09-09 xy064 三轮实证）：执行体会写
             # `- [是] ①方案同步：…`（列表前缀/①序号/[选择] 在键名前）。
             # 行含完整键名且具列表行特征即接受，[选择] 取行内首个方括号。
+            # 表格行变体（2026-09-10 xy067 实证）：`| ①方案同步 | [是] | 说明 |` 同样接受。
             name = _MAINT_NAMES[num]
             for ln in seg.splitlines():
                 s = ln.strip()
-                if name not in s or "：" not in s:
+                if name not in s:
+                    continue
+                if s.startswith("|"):
+                    cells = [c.strip() for c in s.strip("|").split("|")]
+                    cm = None
+                    for c in cells:
+                        m2 = re.search(r"\[([^\]]+)\]", c)
+                        if m2:
+                            cm = m2
+                            break
+                    if not cm:
+                        continue
+                    note = cells[-1] if len(cells) >= 3 else ""
+                    results[num] = {"name": name, "choice": cm.group(1).strip(), "note": note}
+                    break
+                if "：" not in s:
                     continue
                 if not re.match(r"^(?:[-*•]|\d{1,2}[.、]|[①②③④])", s):
                     continue

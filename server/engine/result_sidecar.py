@@ -37,9 +37,24 @@ def _maintenance_value(text: str, number: int, name: str) -> tuple[str, str]:
         return choice, note
     # 宽松变体（2026-09-09 xy064 三轮实证）：执行体会写
     # `- [是] ①方案同步：…`（列表前缀/①序号/[选择] 在键名前）。
+    # 表格行变体（2026-09-10 xy067 实证）：`| ①方案同步 | [是] | 说明 |` 同样接受。
     for line in text.splitlines():
         s = line.strip()
-        if name not in s or "：" not in s:
+        if name not in s:
+            continue
+        if s.startswith("|"):
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            cm = None
+            for c in cells:
+                m2 = re.search(r"\[([^\]]+)\]", c)
+                if m2:
+                    cm = m2
+                    break
+            if not cm:
+                continue
+            note = cells[-1] if len(cells) >= 3 else ""
+            return cm.group(1).strip(), note
+        if "：" not in s:
             continue
         if not re.match(r"^(?:[-*•]|\d{1,2}[.、]|[①②③④])", s):
             continue
