@@ -1,6 +1,6 @@
 # 任务卡 xy067 · HyperFrames 真入口验收闭环（开发线 Build · 业务代码已在 main）
 
-> 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-09 · 版本：xy067 · 状态版本：5
+> 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」 · 执行体：DSH · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-09-09 · 版本：xy067 · 状态版本：6
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -152,5 +152,5 @@ duration_ts=1247232  duration=81.200000  bit_rate=4988237  nb_frames=2436
 ## 机审区
 
 - 审核方：Claude Code（phase2 自动）
-- 结论：不通过
-- 理由：维护区未完成：完成钩子：维护区只找到 0/4 问
+- 结论：通过
+- 理由：CC 审核通过，自动合入完成
