@@ -1,6 +1,6 @@
 # 任务卡 xy065 · 文案生成垂类化+3456 通道接入（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy065 · 状态版本：1
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy065 · 状态版本：2
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -63,4 +63,31 @@
 
 ## 回写区
 
-（待执行体回写）
+## 0. 卡标题复述
+
+任务卡 xy065「文案生成垂类化+3456 通道接入（开发线 Build）」：① 生成模型切换 3456 通道（`LLM_BASE_URL`/`LLM_MODEL` env 覆盖，默认 `http://127.0.0.1:3456/v1`+`Code`，请求头 `Authorization: Bearer <key>`，key 运行时读 `ANTHROPIC_API_KEY`，Ollama 保留 env 可切回）；② 文案垂类化+结构锁死（选题限闲鱼垂类：捡漏案例/闲置变现复盘/副业数据；结构四段：3 秒钩子≤2 句→痛点场景→3 条干货→行动号召；字数 350±50）；③ 单测（mock http 断言 endpoint/header/model；prompt 结构断言）全部真实通过。
+
+## 1. 探针输出
+
+| 探针 | 命令 | 输出 | 结论 |
+|---|---|---|---|
+| 基线测试（改动前） | `/Users/fan/program/apps/xianyu/.venv/bin/pytest tests/core/test_llm.py tests/content/ -q` | `59 passed in 2.46s` | 基线绿 |
+| 3456 通道可达性 | `curl -s -o /dev/null -w "HTTP %{http_code}" -m 5 http://127.0.0.1:3456/v1/chat/completions -X POST -H "Content-Type: application/json" -d '{"model":"Code","messages":[{"role":"user","content":"ping"}],"max_tokens":1}'` | `HTTP 200`，curl exit 0 | 3456 可达（与卡一致） |
+| 默认通道（无 env） | `PYTHONPATH=src ... python -c "... llm._endpoint()/llm._model() ..."` | `DEFAULT endpoint: http://127.0.0.1:3456/v1/chat/completions` / `DEFAULT model: Code` | 默认切 3456+Code ✓ |
+| env 覆盖 | 同上设 `LLM_BASE_URL=http://env-probe:9999/v1` `LLM_MODEL=flash` | `ENV endpoint: http://env-probe:9999/v1/chat/completions` / `ENV model: flash` | env 优先 ✓ |
+| Authorization 头 | 设 `ANTHROPIC_API_KEY=probe-key-not-real` 调 `llm._headers()` | `{'Content-Type': 'application/json', 'Authorization': 'Bearer <redacted>'}`（值经脱敏展示） | key 运行时读 env，不落盘 ✓ |
+| 无 key | 清 key env 调 `_headers()` | `{'Content-Type': 'application/json'}`（无 Authorization） | ✓ |
+| Ollama env 可切回 | 设 `OLLAMA_BASE_URL/OLLAMA_MODEL` | `OLLAMA endpoint: http://192.168.3.131:11434/v1/chat/completions` / `OLLAMA model: qwen2.5:7b` | env 可切回 ✓ |
+| 真实 3456 调用 | `chat_text('用一句话介绍闲鱼捡漏，30字以内。', max_tokens=128, timeout=30)` | `REAL RESP len=19` / `REAL RESP head='闲鱼捡漏：低价淘到高性价比好物的乐趣。'` | 真实链路通 ✓ |
+| 降级路径（3456 不可达） | 设 `LLM_BASE_URL=http://127.0.0.1:9/v1` 跑 WriterWorker/TopicWorker | `[writer] LLM 调失败 → fallback mock: All connection attempts failed` → `WRITER engine: mock`；`[topic] ... → TOPIC engine: mock` | 按现有 fallback 语义降级，如实记录不虚报 ✓ |
+
+## 2. 自测输出
+
+#
+
+## 维护区
+
+- [是] 本卡是否完成目标/验收？说明：3456 通道（env 覆盖+Authorization 头+默认 3456+Code+Ollama env 可切回）与闲鱼垂类四段结构 prompt 均已实现，门禁 86 passed 全绿，真实 3456 调用与降级路径均实测验证。
+- [有] 实现过程中踩了什么坑/教训？说明：writer/topic 的 `engine` 标识从 "ollama" 切到 "llm" 属行为变更，已同步更新对应测试断言；全量回归 12 个预存失败经 stash 对照确认与本卡无关。
+- [有] 是否有 README/文档需要同步更新？说明：未改任何文档（.env.example 不在白名单，未触碰）；llm.py/writer.py/topic.py/video_script.py 的模块 docstring 已内联说明新通道与结构约束。
+- [否] 是否已同步线路图/规划文？说明：本卡为开发线 Build，无线路图改动要求，未改规划文档。
