@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：31
+> 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：32
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -150,4 +150,4 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：独立核验发现成功路径未统一清理进程组、探针帧数完整性异常仍会被降级吞掉，且端到端工件与当前配置的全量场景规模不一致。
+- 理由：探针阶段的 HyperFramesDataError 仍被 generate() 的 `except (...RuntimeError)` 兜底吞掉后静默降级 PIL（与批注 F5/F7-F9 及回写声明不符，且对应完整路径回归测试不存在），进程组清理也未如回写所称统一收敛到 finally。
