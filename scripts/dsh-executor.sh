@@ -150,10 +150,12 @@ _RESULT_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.md"
 _RESULT_JSON_DST="${_TE_EXEC_LOG_DIR}/${WORK_ID}-ccc-result.json"
 
 # A1 fail-closed：卡含真实人工批注时，结果必须给出 ## 批注落实，否则拒绝传输（rc=64）。
+# 「无批注」白名单与 server/board/annotation.py:_NONE_ANNOTATION_MARKERS 对齐
+# （2026-09-10 xy067 三轮 rc=64 实证：卡批注=「无」被旧 grep 误判为真实批注）。
 if [[ -f "$CARD_PATH" && -f "$_RESULT_SRC" ]]; then
   if grep -q '^## 人工批注$' "$CARD_PATH"; then
     _ANN="$(awk '/^## 人工批注$/{f=1;next} /^## /{f=0} f' "$CARD_PATH")"
-    if ! grep -qE '^无批注[。.]?$' <<<"$_ANN" && ! grep -qE '^## (人工)?批注落实$' "$_RESULT_SRC"; then
+    if ! grep -qE '^(无|无批注|暂无批注|（无批注。）|无批注。)[。.]?$' <<<"$_ANN" && ! grep -qE '^## (人工)?批注落实$' "$_RESULT_SRC"; then
       echo "[dsh-executor] ERROR: 卡含真实人工批注但结果缺少 ## 批注落实，拒绝传输（rc=64）" >&2
       exit 64
     fi
