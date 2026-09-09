@@ -1,6 +1,6 @@
 # 任务卡 xy065 · 文案生成垂类化+3456 通道接入（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy065 · 状态版本：2
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy065 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -91,3 +91,9 @@
 - [有] 实现过程中踩了什么坑/教训？说明：writer/topic 的 `engine` 标识从 "ollama" 切到 "llm" 属行为变更，已同步更新对应测试断言；全量回归 12 个预存失败经 stash 对照确认与本卡无关。
 - [有] 是否有 README/文档需要同步更新？说明：未改任何文档（.env.example 不在白名单，未触碰）；llm.py/writer.py/topic.py/video_script.py 的模块 docstring 已内联说明新通道与结构约束。
 - [否] 是否已同步线路图/规划文？说明：本卡为开发线 Build，无线路图改动要求，未改规划文档。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：完成钩子：维护区只找到 1/4 问
