@@ -67,6 +67,7 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 8. 【F5 修复·第7轮机审】已落实：探针帧数异常冒泡不降级，新增完整路径回归纳入门禁，35 passed。
 9. 【F6 修复·第8轮机审】已落实：失败路径临时工程零残留与非零/OSError/超时进程组清理回归纳入门禁，35 passed。
 10. 【F7-F9 合并·外脑·第9-11轮机审要点】a) 成功路径统一清理：`_run_hyperframes` finally 调用 `_terminate_process_group`，无条件 killpg(SIGTERM)→宽限→SIGKILL；b) 全文件每个兜底 except 前置独立 `except HyperFramesDataError:`，探针 1/10 帧时 generate 冒泡且不调用 fallback；c) 当前配置 fps=30、4 场景 80 秒全量重跑，2427 帧、1080×1920、30/1、80.9 秒，manifest 无 fallback、ps 无孤儿；d) 01-script 不消费 config.json 的 scenes、HyperFrames 未接入声明动画属架构改造，不在本卡白名单。
+13. 【外脑更正·致歉】第 9-12 轮机审全部基于旧 main（外脑只 merge 到第 7 轮，r9-r12 六笔修复 4336009..5ec2feb 未合入，审查视野错位）——执行体交付一直如实，F5-F8 实际早已修复（35 测试绿，外脑已核实并全量 merge 进 main）。本轮无需改代码：跑全量测试组+用当前配置重跑端到端取证（ffprobe/manifest 原文入结果文件）+如实回写即可。
 11. 【F7 修复·第9轮机审】已落实：成功路径统一进程组清理，并完成当前配置全量取证。
 12. 【F8 修复·第10轮机审】已落实：root 内全屏背景、全黑帧探针 fail-fast，当前配置全量产出 2427 帧。
 
