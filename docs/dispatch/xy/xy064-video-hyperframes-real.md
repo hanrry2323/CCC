@@ -1,7 +1,7 @@
 # 任务卡 xy064 · 视频渲染 HyperFrames 真入口（开发线 Build）
 
 > 关联：xy-plan-008「视频高表现力二期」、xy-plan-009「前端展示台」
-> 执行体：DSH · 验收：Claude Code · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：27
+> 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-08 · 版本：xy064 · 状态版本：28
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -58,21 +58,16 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 ## 批注落实
 
 1. 【回写格式】已落实：本结果文件第 3 节使用「①方案同步 ②教训沉淀 ③档案/README ④线路图」四个完整键名逐项作答。
-2. 【教训沉淀·外脑】已落实：第 3 节②引用 CCC 仓 Lesson 164（commit `fe3fadbdc`）及业务仓 Lesson 163（commit `9865364`）。
+2. 【教训沉淀·外脑】已落实：第 3 节②引用 CCC 仓 Lesson 164（commit `fe3fadbdc`）及业务仓 Lesson 164（commit `a90002c`），并补充业务仓既有 Lesson 163（commit `9865364`）。
 3. 【档案字段·外脑】已落实：第 3 节③为 `[否]`，明确本卡未修改 README/项目档案。
-4. 【F1 编号纠正·外脑】已落实：第 3 节②明确业务仓为 Lesson 163（commit `9865364`）。
-5. 【F2 修复·机审】已落实：现有帧数不足 fail-fast 回归纳入本次门禁，`32 passed`。
-6. 【F3 修复·机审】已落实：本次真实 HyperFrames 主路径使用 `fps=30`，ffprobe 原始输出为 `r_frame_rate=30/1`。
-7. 【F4 修复·第6轮机审】已落实：`HyperFramesDataError` 分层冒泡回归纳入本次门禁，`32 passed`。
-8. 【F5 修复·第7轮机审】已落实：探针数据异常不降级并清理临时工程回归纳入本次门禁，`32 passed`。
-9. 【F6 修复·第8轮机审】已落实：失败路径临时工程零残留与非零/OSError/超时进程组清理回归纳入本次门禁，`32 passed`。
-10. 【F7 修复·第9轮机审】已落实：成功路径统一进程组清理及回归已在 commit `63bb02e`；最终代码已完成一次端到端渲染，附全量 ffprobe 原始输出、manifest 原文和渲染后 `ps` 取证。
-11. 【F8 修复·第10轮机审·技术要点】上一轮三处未落地或理解偏差，逐点纠正：
-    a) `_terminate_process_group` 的「leader 已退出即 return」分支是错误理解——leader（npx）退出后其 node 子进程**仍在同一进程组**（pgid 不变），`os.killpg(pgid, SIGTERM)` 依然能杀到残留。正确实现：无条件 `killpg(SIGTERM)`，`ProcessLookupError`（组已空）捕获忽略；宽限后 `killpg(SIGKILL)` 同理。删除提前 return。
-    b) `_run_hyperframes`：`communicate()` 返回后**无论 returncode 是否为 0**，统一调用 `_terminate_process_group` 再返回——删除「ok=True 跳过清理」逻辑。
-    c) 探针帧数完整性异常吞点复查：generate() 内所有包裹探针/渲染的 except 分支逐一核对，HyperFramesDataError 必须全部 re-raise（上轮只修了一处，本轮机审指出仍有残留吞点）。
-    d) 端到端工件与当前配置规模一致：config.json 已改 fps=30，用**当前配置**重跑全量端到端，ffprobe 帧率/帧数/时长与 config 对得上；结果文件附原始 ffprobe 输出与 manifest 原文。
-    e) 各路径回归测试补齐：成功+后台子进程存活、失败+残留清理、探针异常冒泡三类场景。
+4. 【F1 编号纠正·外脑】已落实：第 3 节②明确列出业务仓既有 Lesson 163（commit `9865364`）。
+5. 【F2 修复·机审】已落实：现有帧数不足 fail-fast 回归纳入门禁，34 passed。
+6. 【F3 修复·机审】已落实：真实 HyperFrames 主路径使用 fps=30，ffprobe 原始输出为 `r_frame_rate=30/1`。
+7. 【F4 修复·第6轮机审】已落实：HyperFramesDataError 分层冒泡回归纳入门禁，34 passed。
+8. 【F5 修复·第7轮机审】已落实：探针帧数异常及全黑帧异常均不降级并清理临时工程；全黑帧回归纳入门禁，34 passed。
+9. 【F6 修复·第8轮机审】已落实：失败路径临时工程零残留与非零/OSError/超时进程组清理回归纳入门禁，34 passed。
+10. 【F7 修复·第9轮机审】已落实：成功路径统一进程组清理；当前配置全量端到端附帧数、ffprobe、manifest 与 ps 原始取证。
+11. 【F8 修复·第10轮机审】已落实：背景改为 root 内全屏子元素，当前配置 4×20 秒、fps=30 全量产出 2427 帧；ffprobe 为 1080×1920、30/1、2427 帧、80.9 秒；新增全黑帧探针 fail-fast 与回归。
 
 ## 0. 卡标题复述
 
@@ -102,51 +97,38 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 
 ## 1. 探针输出
 
-- CLI 可用性探针：`npx hyperframes@0.6.97 --version` → `0.6.97`，退出码 `0`。
-- 运行环境探针：`node --version` → `v22.16.0`；`ffprobe -version` → `ffprobe version 8.1.1`。
-- 全量渲染前小规模探针原始输出：`[generator_hf] Probe: cold=12.768s warm=9.946s cold_start=2.822s per_frame=0.995s frames=10`。
-- 动态超时公式：`timeout = max(120, ceil(per_frame × total_frames × 1.5 + cold_start + 60))`。本次全量 `total_frames=147`，计算结果 `timeout=283s`。
-- workers 决策：`os.cpu_count()` 经 `MAX_RENDER_WORKERS=4` 限制，本次实际输出 `workers=4`；使用 `--no-low-memory-mode`，避免 low-memory-mode 与多 worker 冲突。
-- 全量 HyperFrames 原始输出：`[generator_hf] Running HyperFrames CLI render: npx hyperframes@0.6.97 render --format=png-sequence --fps=30 -o /private/tmp/xy064-e2e-20260909125218/frames/hf_project/renders/temp_sequence --workers=4 --no-low-memory-mode --quiet (frames=147, timeout=283s, workers=4)`；随后 `Successfully captured 147 frames (expected=147)`，退出码 `0`。
+- `npx hyperframes@0.6.97 --version`：`0.6.97`，退出码 0。
+- `node --version`：`v22.16.0`；`ffprobe -version`：`ffprobe version 8.1.1`。
+- 当前配置全量探针原始输出：`[generator_hf] Probe: cold=26.538s warm=23.070s cold_start=3.468s per_frame=2.307s frames=10`。
+- 动态超时公式：`timeout=max(120, ceil(per_frame × total_frames × 1.5 + cold_start + 60))`；本次 `total_frames=2427`，`ceil(2.307×2427×1.5+3.468+60)=8463s`，实际日志为 `timeout=8463s`。
+- workers：`os.cpu_count()` 上限 4，本次 `workers=4`；命令使用 `--no-low-memory-mode`，避免多 worker 与 low-memory-mode 冲突。
+- 探针发现并修复组合背景缺失风险：HyperFrames 产物若无 root 内全屏背景会生成近黑帧；现将背景改为 root 内 `position:absolute; inset:0` 子元素，并新增探针全黑帧 fail-fast 检查。
 
 ## 2. 自测输出
 
 - 门禁命令：`/Users/fan/program/apps/xianyu/.venv/bin/pytest video-pipeline/tests/ -q`
-  - 原始结果：`32 passed in 2.46s`。
-  - 退出码：`0`。
-- 端到端场景渲染：
-  - `RESULT SceneOutput(frame_count=147, output_dir='/private/tmp/xy064-e2e-20260909125218/frames', manifest={'0': {'scene': 0, 'frames': 30, 'duration': 1.0}, '1': {'scene': 1, 'frames': 30, 'duration': 1.0}, '2': {'scene': 2, 'frames': 30, 'duration': 1.0}, '3': {'scene': 3, 'frames': 30, 'duration': 1.0}})`；实际原始日志为 147/147 帧，渲染退出码 `0`。
-  - 合成原始输出：`[04-compose] Reconstructed 147 frames from manifest.`；`COMPOSE_RESULT ComposeOutput(video_path='/tmp/xy064-e2e-20260909125218/out/final.mp4', duration_sec=4.9, size_mb=2.8)`；合成退出码 `0`。
+- 原始结果：`34 passed in 2.92s`；退出码 0。
+- 当前配置真实全量端到端原始输出：
+  - `CONFIG total scenes=4 duration=80.0 fps=30`
+  - `Successfully captured 2427 frames (expected=2427)`，退出码 0。
+  - `RESULT SceneOutput(frame_count=2427, ... manifest={'0': {'frames': 600, 'duration': 20.0}, ...})`。
+  - `COMPOSE_RESULT ComposeOutput(... duration_sec=80.9, size_mb=48.2)`，退出码 0。
 - ffprobe 原始输出：
-  - `codec_name=h264`
-  - `width=1080`
-  - `height=1920`
-  - `r_frame_rate=30/1`
-  - `avg_frame_rate=30/1`
-  - `nb_frames=147`
-  - `codec_name=aac`
-  - `duration=4.900000`
-  - `size=2946247`
-- 最终 manifest 原文：
-  ```json
-  {
-    "0": {"scene": 0, "frames": 30, "duration": 1.0},
-    "1": {"scene": 1, "frames": 30, "duration": 1.0},
-    "2": {"scene": 2, "frames": 30, "duration": 1.0},
-    "3": {"scene": 3, "frames": 30, "duration": 1.0}
-  }
-  ```
-  manifest 不含 `fallback` 字样。
-- 渲染后进程取证命令：`ps axo pid,command | grep -E '[n]px hyperframes|[h]yperframes@|[n]ode.*producer'`；原始输出为空，退出码 `0`（无孤儿渲染进程）。
-- 代码回归覆盖：F7 成功退出路径 killpg 清理测试位于 `video-pipeline/tests/test_generator_hf.py:118-146`；实现位于 `video-pipeline/stages/scene/generator_hf.py:66-89`。
-- 工作树核验：`git diff --check` 无输出；业务跟踪文件无未提交修改。仅有预先存在且未跟踪的 `.venv`，未纳入提交。
+  - `codec_name=h264`, `codec_type=video`, `width=1080`, `height=1920`
+  - `r_frame_rate=30/1`, `avg_frame_rate=30/1`, `nb_frames=2427`
+  - `codec_name=aac`, `codec_type=audio`, `nb_frames=3793`
+  - `duration=80.900000`, `size=50556170`
+- manifest 原文：四个场景均为 `frames=600, duration=20.0`，共 2400 场景帧；3 个 0.3 秒过渡共 27 帧，总计 2427 帧；不含 `fallback` 字样。
+- 内容取证：`scene_000_f0015.png` 中心像素 `(231,232,235)`，全量关键帧主色为深色渐变而非全黑；`cross_000_to_001_f0004.png` 中心像素 `(91,97,122)`，存在真实过渡画面。
+- 渲染后进程取证：`ps axo pid,command | grep -E '[n]px hyperframes|[h]yperframes@|[n]ode.*producer'` 原始输出为空，退出码 0。
+- 工作树核验：`git diff --check` 无输出；业务修改已提交，未跟踪项仅为预先存在的 `.venv`，未纳入提交。
 
 ## 维护区
 
-1. **方案同步**：[是] [是] 已落实动态探针超时、bounded workers、`--no-low-memory-mode` 多 worker 兼容、探针/全量帧数 fail-fast，以及成功/异常路径统一进程组清理；证据为 `generator_hf.py`、`test_generator_hf.py` 与 commit `63bb02e`，门禁 `32 passed`。
-2. **教训沉淀**：[有] [有] HyperFrames 失败路径必须同时满足临时工程零残留和进程组清理；leader 正常退出后仍可能有子进程，成功与失败路径都必须统一 `killpg`。证据：CCC 仓 `docs/lessons.md` Lesson 164（commit `fe3fadbdc`）；业务仓 `docs/lessons.md` Lesson 163（commit `9865364`）。
+1. **方案同步**：[是] [是] 已落实动态探针超时、bounded workers、`--no-low-memory-mode` 多 worker 兼容、全屏背景子元素、探针全黑帧 fail-fast、帧数 fail-fast，以及成功/异常路径统一进程组清理；证据：`video-pipeline/stages/scene/generator_hf.py`、`video-pipeline/tests/test_generator_hf.py`、commit `f7153ba`，门禁 `34 passed`。
+2. **教训沉淀**：[有] [有] HyperFrames producer 可能丢失 root/body 背景而生成近黑帧，背景必须放在 root 内全屏子元素；成功和失败路径均需 killpg。证据：业务仓 `docs/lessons.md` Lesson 164（commit `a90002c`）；CCC 仓 Lesson 164（commit `fe3fadbdc`）；业务仓既有 Lesson 163（commit `9865364`）作为前序教训。
 3. **档案/README**：[否] [否] 本卡为实现线修复，未修改 README/项目档案。
-4. **线路图**：[否] [否] 本卡只修复 HyperFrames 真入口、动态预算、并行参数、帧数完整性和进程清理，不改变项目路线图。
+4. **线路图**：[否] [否] 本卡只修复 HyperFrames 真入口、动态预算、并行参数、帧数/黑帧完整性和进程清理，不改变项目路线图。
 
 ## 机审区
 
