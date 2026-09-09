@@ -66,6 +66,11 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 7. 【F4 修复·第6轮机审】已落实：HyperFramesDataError 分层冒泡回归纳入门禁，34 passed。
 8. 【F5 修复·第7轮机审】已落实：探针帧数异常及全黑帧异常均不降级并清理临时工程；全黑帧回归纳入门禁，34 passed。
 9. 【F6 修复·第8轮机审】已落实：失败路径临时工程零残留与非零/OSError/超时进程组清理回归纳入门禁，34 passed。
+10. 【F7-F9 合并·外脑·第9-11轮机审要点（此前 10/11 条被回写覆盖，此处合并重发）】
+    a) 成功路径统一清理：`_run_hyperframes` 在 communicate() 返回后无论 returncode 都调 `_terminate_process_group`；该函数删除「leader 已退出即 return」分支——leader 退出后子进程仍在同一进程组，无条件 killpg(SIGTERM)（ProcessLookupError 忽略）→ 宽限 → SIGKILL。
+    b) 【第11轮根因】HyperFramesDataError 继承 RuntimeError，generate() 兜底 `except (..., RuntimeError, ...)` 仍会捕获它——全文件每个兜底 except 前置独立分支 `except HyperFramesDataError: raise`（数据完整性永远冒泡）；补「探针只产出 1/10 帧 → generate 向上抛」回归测试。
+    c) 端到端取证用当前配置（fps=30）重跑，ffprobe/manifest 原文进结果文件。
+    d) 【范围澄清·给验收席】「01-script 不消费 config.json 的 scenes」「HyperFrames 未接入声明动画」属脚本/动画管线架构改造，不在本卡白名单（见目标节 1-6 与验收标准），由 xy-plan-008 后续卡承接，请聚焦本卡验收标准评审。
 10. 【F7 修复·第9轮机审】已落实：成功路径统一进程组清理；当前配置全量端到端附帧数、ffprobe、manifest 与 ps 原始取证。
 11. 【F8 修复·第10轮机审】已落实：背景改为 root 内全屏子元素，当前配置 4×20 秒、fps=30 全量产出 2427 帧；ffprobe 为 1080×1920、30/1、2427 帧、80.9 秒；新增全黑帧探针 fail-fast 与回归。
 
