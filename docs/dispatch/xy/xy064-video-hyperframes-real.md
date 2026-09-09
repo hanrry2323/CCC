@@ -67,6 +67,12 @@ xy062 实证视频由 PIL 降级链产出（manifest stderr 铁证：`HyperFrame
 8. 【F5 修复·第7轮机审】已落实：探针数据异常不降级并清理临时工程回归纳入本次门禁，`32 passed`。
 9. 【F6 修复·第8轮机审】已落实：失败路径临时工程零残留与非零/OSError/超时进程组清理回归纳入本次门禁，`32 passed`。
 10. 【F7 修复·第9轮机审】已落实：成功路径统一进程组清理及回归已在 commit `63bb02e`；最终代码已完成一次端到端渲染，附全量 ffprobe 原始输出、manifest 原文和渲染后 `ps` 取证。
+11. 【F8 修复·第10轮机审·技术要点】上一轮三处未落地或理解偏差，逐点纠正：
+    a) `_terminate_process_group` 的「leader 已退出即 return」分支是错误理解——leader（npx）退出后其 node 子进程**仍在同一进程组**（pgid 不变），`os.killpg(pgid, SIGTERM)` 依然能杀到残留。正确实现：无条件 `killpg(SIGTERM)`，`ProcessLookupError`（组已空）捕获忽略；宽限后 `killpg(SIGKILL)` 同理。删除提前 return。
+    b) `_run_hyperframes`：`communicate()` 返回后**无论 returncode 是否为 0**，统一调用 `_terminate_process_group` 再返回——删除「ok=True 跳过清理」逻辑。
+    c) 探针帧数完整性异常吞点复查：generate() 内所有包裹探针/渲染的 except 分支逐一核对，HyperFramesDataError 必须全部 re-raise（上轮只修了一处，本轮机审指出仍有残留吞点）。
+    d) 端到端工件与当前配置规模一致：config.json 已改 fps=30，用**当前配置**重跑全量端到端，ffprobe 帧率/帧数/时长与 config 对得上；结果文件附原始 ffprobe 输出与 manifest 原文。
+    e) 各路径回归测试补齐：成功+后台子进程存活、失败+残留清理、探针异常冒泡三类场景。
 
 ## 0. 卡标题复述
 
