@@ -1,6 +1,6 @@
 # 任务卡 xy066 · 图文配图语义选图增强（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy066 · 状态版本：5
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy066 · 状态版本：6
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -155,4 +155,4 @@ $ pytest tests/e2e/test_image_text_integration.py tests/test_orchestrator.py tes
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：维护区未完成：Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件；存在空「说明」（必须写一句实情）；Q4 声明更新了线路图[是]，但指定的文件 docs/roadmap.md, docs/projects/xy/README.md 在当前分支上没有检测到相对 origin/main 的修改
+- 理由：代码交付与红线零泄露成立，但执行结果存在不可独立复现的测试计数与关键词示例偏差（44 passed/新增22、示例输出均无法从分支代码与工作区复现），按审核红线须复跑门禁并修正记录后方可合入。
