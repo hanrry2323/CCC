@@ -1,6 +1,6 @@
 # 任务卡 xy068 · 生产视频链路接入 HyperFrames 30fps 真动效（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy068 · 状态版本：2
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy068 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -140,3 +140,9 @@ r_frame_rate=30/1  avg_frame_rate=30/1  duration=19.200000  nb_frames=576
 2. **教训沉淀**：[有] 教训：① process() 返回值契约变更（Path→RenderOutcome）与新增 HF 主路径会连带影响直接调用它的其他测试文件（test_bgm.py），改契约前应先 grep 全部调用方；② mix_audio 的 amix=duration=first 不按场景时间轴补齐，HF 帧序列合成若用 -shortest 会静默截帧（e2e ffprobe 发现 nb_frames 382<576），需 apad=whole_dur 显式补齐；③ 工作树测试环境两处陷阱：openclaw-plugin 无 node_modules（gitignore 目录）、共享 venv editable install 指向陈旧 xy060——全量回归前需先归因既有环境失败，避免误判新增。
 3. **档案/README**：[否] 无档案/README 变更需求；video.py 模块 docstring 已同步 HF 主路径说明，不涉及对外文档。
 4. **线路图**：[否] 无线路图变更；本卡为 xy-plan-008 既定项落地，不引入新路线项。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件
