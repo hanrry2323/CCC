@@ -1,6 +1,6 @@
 # 任务卡 xy069 · 文案字数自校正（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy069 · 状态版本：2
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy069 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -116,3 +116,9 @@ exit=0
 2. **教训沉淀**：[无] `[否]` —— 本卡白名单限制 xianyu 业务仓两文件 + `.ccc-result.md`，未向 CCC 仓 `docs/notes/` 写入新 lesson 文档；可复用教训（字数判定与校验判定共用同一 `count_words` 口径、测试用 `count_words(skeleton)` 精确控字数避免手算漂移）以代码注释与单测形式落在业务仓内（writer.py:85-98 注释、test_writer.py `_pad_copy` helper）。
 3. **档案/README**：[否] `[否]` —— 未改变项目结构、技术栈、路径或对外接口；未触碰 README/档案/生产核心。
 4. **线路图**：[否] `[否]` —— 字数自校正不影响 xianyu 下一步规划；未修改 GOAL/roadmap，未推进规划外事项。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：通过
+- 理由：CC 审核通过，自动合入完成
