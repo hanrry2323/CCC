@@ -1,6 +1,6 @@
 # 任务卡 xy068 · 生产视频链路接入 HyperFrames 30fps 真动效（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy068 · 状态版本：5
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy068 · 状态版本：6
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -110,5 +110,5 @@
 ## 机审区
 
 - 审核方：Claude Code（phase2 自动）
-- 结论：不通过
-- 理由：维护区未完成：Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件
+- 结论：通过
+- 理由：CC 审核通过，自动合入完成
