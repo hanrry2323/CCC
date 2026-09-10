@@ -1,6 +1,6 @@
 # 任务卡 xy066 · 图文配图语义选图增强（开发线 Build）
 
-> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy066 · 状态版本：2
+> 关联：xy-plan-008「视频高表现力二期」 · 执行体：DSH · 验收：Claude Code · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-10 · 版本：xy066 · 状态版本：3
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -163,3 +163,9 @@ img tags: 4
 2. **教训沉淀**：[有] 钩子/痛点等动词密集型段落产出动词性关键词（如「只挂/就卖掉」），语义精度有限，属卡要求的「确定性纯函数」定位；② `LocalWriter` 把全部图片渲染为统一图区而非逐段内联（其 per-paragraph 内联排版不在本卡白名单，交付段落→图映射数据 `paragraph_images` 供下游使用）；③ 语义模式对 video 管道同样生效（writer 输出 `paragraphs` 会被 image worker 消费为多图 → 视频按图数分场景），本卡范围为图文，该副作用已如实记录，如需隔离可在 pipeline 层传管道标识（超出本卡白名单）。
 3. **档案/README**：[否] 
 4. **线路图**：[是] 本卡为图文配图语义化，video 管道的段落多图副作用与高表现力方向一致但属后续卡范围，未在本卡扩展。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件；存在空「说明」（必须写一句实情）；Q4 声明更新了线路图[是]，但指定的文件 docs/roadmap.md, docs/projects/xy/README.md 在当前分支上没有检测到相对 origin/main 的修改
