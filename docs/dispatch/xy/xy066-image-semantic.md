@@ -140,6 +140,7 @@ $ pytest tests/e2e/test_image_text_integration.py tests/test_orchestrator.py tes
 1. 【Q2 教训引用】落实：维护区②说明末尾补「证据：docs/lessons.md Lesson 166」；教训实质为执行体第一轮自报、外脑代落库成文（origin/main e6bf28c，+10 行）。
 2. 【Q3 空说明】落实：维护区③说明补为实情（本卡无档案/README 变更，[否]）。
 3. 【Q4 语义修正】落实：维护区④改[否]+实情（本卡为开发线实现，未改 docs/roadmap.md 与 docs/projects/xy/README.md，无线路图变更）；代码（分支 e2df97b 已交付）无需重做。
+4. 【F1 误判指正·外脑】上轮机审 F1 称「'天就卖掉'应剪为'天就卖'」系误判：`_TAIL_NOISE`（的了着过看要到出起上下后边里来去是在有吧吗呢啊）不含「掉」，「天就卖掉」修剪后仍为「天就卖掉」，执行体示例与代码完全一致（外脑已独立复算：'只挂'→'只挂'，'就卖掉'→'就卖掉'，'天就卖掉'→'天就卖掉'）。本卡结果记录无失实，F1 不成立。修复轮无需改动，按现状复核。
 
 ### 凭据红线自检
 - `grep PEXELS|pexels_key|api_key` 于 3 个改动文件：仅 `image.py:58 _pexels_key()`（env/`.env`/共享凭据运行时读取，日志只记状态）与测试 mock `"secret-not-printed"`；无任何真实凭据值写入文件/测试/日志/提交。
