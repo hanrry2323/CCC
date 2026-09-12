@@ -83,6 +83,55 @@ def test_archive_old_cards_rules(temp_dispatch_env: Path) -> None:
     assert (dispatch_dir / "qb" / "qb101-old-active.md").exists()
 
 
+def test_archive_accepted_void_card(temp_dispatch_env: Path) -> None:
+    """作废终态卡可归档（L1-A2 实证缺口：作废卡此前滞留看板视野）。"""
+    dispatch_dir = temp_dispatch_env
+    today = date(2026, 8, 5)
+
+    c1 = (
+        "# 任务卡 xy301 · 作废终态卡\n"
+        "> 关联：xy · 执行体：Claude · 验收：Codex · 状态：作废（生产首跑已跑通，使命完成）"
+        " · 项目：xy · 日期：2026-01-10\n"
+        "## 回写区\n"
+        "**日期**：2026-01-15\n"
+    )
+    _write_card(dispatch_dir / "xy", "xy301-void-old.md", c1)
+
+    archived_ids = archive_old_cards(dispatch_dir, today=today)
+
+    assert archived_ids == ["xy301"]
+    archive_dir = get_archive_dir(dispatch_dir)
+    assert not (dispatch_dir / "xy" / "xy301-void-old.md").exists()
+    assert (archive_dir / "xy" / "xy301-void-old.md").exists()
+
+
+def test_archive_skips_non_terminal_card(temp_dispatch_env: Path) -> None:
+    """非终态卡仍不归档：已关闭/作废之外的状态不受归档条件放宽影响。"""
+    dispatch_dir = temp_dispatch_env
+    today = date(2026, 8, 5)
+
+    c1 = (
+        "# 任务卡 xy302 · 执行中过期卡\n"
+        "> 关联：xy · 执行体：Claude · 验收：Codex · 状态：执行中 · 项目：xy · 日期：2026-01-10\n"
+        "## 回写区\n"
+        "**日期**：2026-01-15\n"
+    )
+    c2 = (
+        "# 任务卡 xy303 · 已回写过期卡\n"
+        "> 关联：xy · 执行体：Claude · 验收：Codex · 状态：已回写 · 项目：xy · 日期：2026-01-10\n"
+        "## 回写区\n"
+        "**日期**：2026-01-15\n"
+    )
+    _write_card(dispatch_dir / "xy", "xy302-old-running.md", c1)
+    _write_card(dispatch_dir / "xy", "xy303-old-written.md", c2)
+
+    archived_ids = archive_old_cards(dispatch_dir, today=today)
+
+    assert archived_ids == []
+    assert (dispatch_dir / "xy" / "xy302-old-running.md").exists()
+    assert (dispatch_dir / "xy" / "xy303-old-written.md").exists()
+
+
 def test_index_archived_and_query_filtering(temp_dispatch_env: Path) -> None:
     """测试索引标记 archived=true 及看板不含、回顾含归档卡的能力。"""
     dispatch_dir = temp_dispatch_env

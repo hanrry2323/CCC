@@ -180,8 +180,9 @@ def archive_old_cards(dispatch_dir: Path | str, today: date | None = None) -> li
         if item.archived:
             continue
 
-        # 必须是已关闭状态
-        if base_state(item.state) != "已关闭":
+        # 必须是终态：已关闭 ∪ 作废（2026-09-12 L1-A2 实证缺口修正，
+        # 作废终态卡此前滞留看板视野）
+        if base_state(item.state) not in ("已关闭", "作废"):
             continue
 
         # 优先使用写回日期，否则使用分派日期
