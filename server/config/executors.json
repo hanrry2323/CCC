@@ -85,6 +85,18 @@
       "备注": "跨机开发执行体（PI@252）：目标机映射垫片→共享 scripts/pi-remote-executor.sh（win 形态 cmd+重定向实证）。195 同款链路（tst912 SIDECAR=OK）。",
       "worker_id": "PI@252",
       "注入提示": false
+    },
+    {
+      "角色": "验收席-DSH",
+      "分类": "可后台 CLI",
+      "当前绑定": "DSH（备用验收通道 · B案B1）",
+      "命令": "/Users/fan/program/CCC/scripts/dsh-auditor.sh",
+      "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
+      "工作目录": "",
+      "worktree_base": "",
+      "备注": "备用验收通道（裁定单 2026-09-12-cc-v3-ruling B1）：phase2 自动主链仍走「验收席」cc-auditor.sh 不改（R1 🔴）；本槽=CC 故障/预算耗尽时可手动切用的第二通道（audit_verdict 原生 md 工件回退链支持，零代码）。主备对口径见 docs/receipts/2026-09-12-cc-v3-b1-receipt.md。",
+      "worker_id": "DSH-A",
+      "注入提示": false
     }
   ]
 }
