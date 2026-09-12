@@ -1,6 +1,6 @@
 # 任务卡 xy070 · 状态口径回填（008/roadmap 计划状态修正）
 
-> 关联：xy-plan-008（G4 治理债）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy070 · 状态版本：8
+> 关联：xy-plan-008（G4 治理债）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy070 · 状态版本：9
 > 业务仓：无（文档收口，改 CCC 仓内 xy 计划文档）
 
 ## 目标
@@ -93,4 +93,4 @@ $ git -C /Users/fan/program/apps/.ccc-wt/xy/xy070 status --short          # 验�
 
 - 审核方：Claude Code（phase2 自动）
 - 结论：不通过
-- 理由：维护区未完成：Q1 方案同步校验失败。方案 xy-plan-008 状态为「部分执行（M5 主体完成，5.1-5.3 功能卡待出）」（须为部分执行/已完成）；方案关联卡「xy059、xy064、xy067、xy065、xy066、xy068、xy069；其余功能卡待出（xy059=html-preview CLI 已回写）」中不包含本卡 ID「xy070」；Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件
+- 理由：维护区未完成：Q1 方案同步校验失败。方案关联卡「xy059、xy064、xy067、xy065、xy066、xy068、xy069；其余功能卡待出（xy059=html-preview CLI 已回写）」中不包含本卡 ID「xy070」
