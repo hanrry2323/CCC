@@ -15,7 +15,7 @@
 3. 完成后停手，不额外补改。
 
 ## 范围
-- docs/dispatch/tst/tst906-l1e-xy-g5-probe.md（本卡文件）
+- docs/dispatch/tst
 
 ## 步骤
 1. 确认本卡被 card_gate 五项校验放行（执行体=DSH 在集合内、状态=待分派）。
