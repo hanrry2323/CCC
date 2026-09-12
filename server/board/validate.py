@@ -501,8 +501,8 @@ def validate_cards(dispatch_dir: str | Path) -> list[CardIssue]:
                     CardIssue(
                         card_id=item.id,
                         path=str(path),
-                        reason=f"索引缺失：卡片 {item.id} 在磁盘上存在，但未在索引中找到",
-                        severity="error",
+                        reason=f"索引缺失：卡片 {item.id} 在磁盘上存在，但未在索引中找到（A线修复 2026-09-13：索引=派生缓存非真值，新卡首提不阻断，合main后 loader 自动补录）",
+                        severity="warning",
                     )
                 )
                 continue
