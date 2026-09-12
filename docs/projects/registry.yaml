@@ -4,7 +4,7 @@
 # 禁止手维第二份真值。
 
 schema: ccc-project-registry-v1
-updated_at: "2026-08-26"
+updated_at: "2026-09-13"
 
 projects:
   - prefix: cla
@@ -182,7 +182,7 @@ projects:
       mac2017: null
     taskable: false
     forbidden: false
-    status: archived
+    status: retired
     dossier: docs/projects/_catalog/ai-loop-router.md
     role: 模型出口路由基建（6100/6102）
     notes: 2026-08-26 老板定调停用——路由服务已退役（config.env 2026-08-24 注记：大脑直连 Claude CLI，不再走 6100 中转）；2017 无本仓副本、无进程/端口/launchd 残留（当日取证）。条目转档案，Agent 目标清单不再可见。
@@ -197,7 +197,7 @@ projects:
       mac2017: null
     taskable: false
     forbidden: false
-    status: active
+    status: foreign
     dossier: docs/projects/_catalog/qx-map.md
     role: 外脑/知识地图；CCC 运行时不依赖（D2）
     notes2: 2026-08-26 备注：仓体在 M1 机（mac2017=null），2017 本轮清理不可达
@@ -213,7 +213,7 @@ projects:
       mac2017: /Users/fan/program/apps/qx-observer
     taskable: false
     forbidden: false
-    status: archived
+    status: foreign
     dossier: null
     role: 独立项目（未挂 Engine）
 
@@ -227,7 +227,7 @@ projects:
       mac2017: /Users/fan/program/apps/clawmed-ccc
     taskable: false
     forbidden: false
-    status: archived
+    status: retired
     dossier: null
     role: 独立项目（未挂 Engine）
 
@@ -241,6 +241,6 @@ projects:
       mac2017: null
     taskable: false
     forbidden: false
-    status: archived
+    status: retired
     dossier: null
     role: 旧中转副本（已离线）
