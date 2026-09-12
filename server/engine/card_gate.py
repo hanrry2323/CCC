@@ -206,7 +206,7 @@ def enforce_card_gate(
                 return GateResult(passed=False, reason="card_gate_forbidden")
     # T-CCC-PLUGIN-01 序1：触发条件由单值等值改集合判断——新增跨机执行体（PI@*）同样走
     # card_gate 五项校验，否则新卡头会静默跳过出卡门禁（提案 v2 必带项）。
-    _VALIDATED_EXECUTORS = frozenset({"DSH", "PI@195"})
+    _VALIDATED_EXECUTORS = frozenset({"DSH", "PI@195", "PI@252"})
     if fields is None or fields.get("执行体") not in _VALIDATED_EXECUTORS:
         return GateResult(passed=True)  # 非受管执行体产卡不走新校验门
     if work.state is not State.TODO:

@@ -73,6 +73,18 @@
       "备注": "跨机开发执行体（PI@195）：2017 engine 经 scripts/pi-remote-executor.sh 薄包装 SSH 到 195 跑 pi CLI（提案 v2 §一 A 线；Windows sh=cmd.exe，prompt 走 < 文件重定向，退出码由 ssh 透传）。卡面真值仍在 2017 本地仓（CAS+git 写锁），代码面在 195 worktree。",
       "worker_id": "PI@195",
       "注入提示": false
+    },
+    {
+      "角色": "开发执行体-252",
+      "分类": "可后台 CLI",
+      "当前绑定": "PI@252",
+      "命令": "/Users/fan/program/CCC/scripts/pi-remote-executor-252.sh",
+      "参数模板": "{card_path} {work_id} {worktree} {role} {biz_worktree}",
+      "工作目录": "",
+      "worktree_base": "",
+      "备注": "跨机开发执行体（PI@252）：目标机映射垫片→共享 scripts/pi-remote-executor.sh（win 形态 cmd+重定向实证）。195 同款链路（tst912 SIDECAR=OK）。",
+      "worker_id": "PI@252",
+      "注入提示": false
     }
   ]
 }
