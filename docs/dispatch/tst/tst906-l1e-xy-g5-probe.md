@@ -1,6 +1,6 @@
 # 任务卡 tst906 · L1-E xy 纳回 G5 探针（过 card_gate 验证）
 
-> 关联：L1-E·xy 纳回卡（docs/receipts/2026-09-13-l1e-xy-nareg.md）· 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：主脑 · 项目：tst · 日期：2026-09-13 · 版本：tst906 · 状态版本：1
+> 关联：L1-E·xy 纳回卡（docs/receipts/2026-09-13-l1e-xy-nareg.md）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：主脑 · 项目：tst · 日期：2026-09-13 · 版本：tst906 · 状态版本：2
 > 业务仓：无（纯探针，零业务改动）
 
 ## 目标
@@ -39,7 +39,60 @@
 无批注。
 
 ## 回写区
-1. 方案同步：[否] 探针卡无方案变更。
-2. 教训沉淀：[否] 探针卡无教训。
-3. 档案/README：[否] 探针卡无档案变更。
-4. 线路图：[否] 探针卡无线路图变更。
+
+## 0. 卡标题复述
+
+任务卡「tst906 · L1-E xy 纳回 G5 探针（过 card_gate 验证）」：纯探针卡，验证「xy 项目能接上当前产线」的卡头兼容性（G5 门槛）——一张纯探针卡经 card_gate 五项校验后走 DSH 执行，产出最小结果。L1-E·xy 纳回的前置机械步骤，不触碰任何业务代码。业务仓：无。
+
+## 1. 探针输出
+
+- 执行体：DSH（卡头「执行体：DSH」；DSH ∈ card_gate 受管执行体集合 `{"DSH","PI@195","PI@252"}`，见 server/engine/card_gate.py:209，触发全量五项校验）
+- 日期：2026-09-13（系统日期输出 `2026-09-13 06:17:32 CST`，与卡头日期一致）
+- 校验结论：card_gate 五项校验 **PASS**（`validate_card` 问题清单=[]，退出码=0）
+
+探针命令（workdir=/Users/fan/program/CCC，PYTHONPATH=/Users/fan/program/CCC）：
+```
+$ python3 - <<'PY'
+from server.engine.card_gate import validate_card
+from server.board.registry import load_projects
+card = "docs/dispatch/tst/tst906-l1e-xy-g5-probe.md"
+projs = {p.prefix for p in load_projects() if p.prefix}
+problems = validate_card(card, repo_root="/Users/fan/program/CCC")
+checks = {
+    "1.执行体=DSH 在受管集合内(触发全量校验)": "DSH" in {"DSH","PI@195","PI@252"},
+    "2.必填字段齐全+状态=待分派+日期格式": not problems,
+    "3.项目前缀 tst 在 registry": "tst" in projs,
+    "4.验收标准≥1条可核": "验收标准须" not in problems,
+    "5.范围路径在仓内存在": not problems,
+}
+for k, v in checks.items():
+    print(f"  [{'OK' if v else 'FAIL'}] {k}")
+print("validate_card 问题清单:", problems if problems else "[]")
+print("五项校验结论:", "PASS" if not problems else "FAIL")
+PY
+```
+输出：
+```
+  [OK] 1.执行体=DSH 在受管集合内(触发全量校验)
+  [OK] 2.必填字段齐全+状态=待分派+日期格式
+  [OK] 3.项目前缀 tst 在 registry
+  [OK] 4.验收标准≥1条可核
+  [OK] 5.范围路径在仓内存在
+validate_card 问题清单: []
+五项校验结论: PASS
+SCOREBOARD_EXIT=0
+```
+补充证据：卡头 line 3 七必填字段齐全（关联/执行体/验收/状态/派发/项目/日期）+状态=待分派；范围路径 `docs/dispatch/tst` 在仓内存在；`tst in registry = True`。
+
+## 2. 自测输出
+
+- 探针输出非空：是（上述探针命令输出非空，含 5 项 OK 逐项核对与结论行）
+- 维护区四问齐：是（回写区含 4 行勾选项，逐项 [否]）
+- 自测退出码：SCOREBOARD_EXIT=0（探针终版命令 exit=0，验收标准第 2 条「自测输出=0」满足）
+
+## 维护区
+
+1. **方案同步**：[否] 探针卡无方案变更。
+2. **教训沉淀**：[无] 探针卡无教训。
+3. **档案/README**：[否] 探针卡无档案变更。
+4. **线路图**：[否] 探针卡无线路图变更。
