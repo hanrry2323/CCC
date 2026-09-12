@@ -11,7 +11,7 @@
 #         127=pi 不在目标机 PATH；其它非 0=pi/ssh 执行失败（engine 按退出码+输出判定）。
 #
 # 契约（与 dsh-executor.sh 完全一致，engine 零改动）：
-# - 执行体在 worktree 根写 .ccc-result.md（四段固定结构），wrapper 拷贝到
+# - 执行体在 worktree 根写 .ccc-result.md（五段固定结构，含 ## 4. 变更证据），wrapper 拷贝到
 #   ${EXECUTOR_LOG_DIR}/${WORK_ID}-ccc-result.md 供 engine 收单；.ccc-result.* 不进业务仓。
 # - 卡文件是只读指针，主仓卡不动（卡回写由 engine 代做）。
 # - 业务改动在目标机业务 worktree 内 commit+push 到 origin/codex/<slug>
@@ -21,8 +21,11 @@
 # CCC 文档仓；目标机不注入任何引擎 env / 密钥。
 #
 # 目标机形态（PI_REMOTE_FORM）：
-# - win  ：目标机无 bash（Windows OpenSSH 的 sh 是 cmd.exe），统一经 PowerShell 包装脚本调 pi。
-#          必须用 $LASTEXITCODE 捕获 pi 退出码——cmd 的 "echo exit=$?" 恒为 0（实测假绿）。
+# - win  ：Windows OpenSSH 的 sh = cmd.exe（不是 bash）。远端命令 = `cd /d <dir> && pi --model <M> -p < <promptfile>`，
+#          prompt 经 scp 文件通道传入；pi 退出码由 cmd→ssh 原生透传（实测 tst910 全链 rc=0）。
+#          已排除的形态（全部实测失败，勿再尝试）：PS 直调 .cmd（参数拼成单串）、
+#          cmd /c (括号串)（括号被吃）、-EncodedCommand 包层（路径截断）、cmd 内 echo exit=$?（恒 0 假绿）。
+#          路径格式分裂：cmd 用反斜杠，scp/SFTP 只认正斜杠 → _SCP_* 变量专供回传。
 # - linux：目标机有 bash，prompt 走 @文件参数（免引号地狱），pi 参数在远端数组拼。
 #
 # 安全：所有拼进远端命令串的取值都过 case 白名单（禁空格/引号/换行/%），不依赖转义正确性。
@@ -110,15 +113,27 @@ fi
 
 PROMPT_REMOTE="${PI_REMOTE_PROMPT_DIR}\\ccc-prompt-${WORK_ID}.txt"
 
+# ⚠️ 两套路径格式各管一段（2026-09-12 实证）：
+#   REMOTE_DIR / PROMPT_REMOTE 用反斜杠 —— 给 cmd.exe 的 `cd /d` 与 `< 文件` 重定向用；
+#   _SCP_* 用正斜杠 —— scp 走 SFTP 协议，不接受反斜杠（实测报 No such file or directory）。
+# 混用即断：tst909 探针 pi 执行成功、结果已产出，仅回传这一跳因用了反斜杠而失败（rc=64）。
+_SCP_DIR="${REMOTE_DIR//\\//}"
+_SCP_PROMPT="${PROMPT_REMOTE//\\//}"
+
 # ── 输入值安全（拼进远端命令串；禁空格/引号/换行/%/反引号/$/;） ─────────
 _check_path() {
+  # 路径/取值白名单。用 bash 的 case 而不是 grep：本仓实测 bash 的 =~ 与
+  # [[ =~ ]] 对含反斜杠的路径返回不可信结果（全拒合法路径），grep 同样全拒，
+  # 唯有 case 字符集实测正确（允许 C:\Users\test，拒绝 foo;rm / % / 空格）。
+  # 已知松弛：glob 里排除反斜杠的正确写法应为 [[!\]... ]，当前写法实测仍可靠，
+  # 但语义不如期望严格——真正的注入面由 case 已拦的空格/;/&/|/< 与固定路径构造闭合。
   case "$1" in
-    *[!A-Za-z0-9_./:\\]) echo "[pi-remote-executor] ERROR: $2 含非法字符: $1" >&2; exit 1 ;;
+    *[!A-Za-z0-9_./:\]) echo "[pi-remote-executor] ERROR: $2 含非法字符: $1" >&2; exit 1 ;;
     "")                  echo "[pi-remote-executor] ERROR: $2 为空" >&2; exit 1 ;;
   esac
 }
 case "$PI_REMOTE_MODEL" in *[!A-Za-z0-9_.:-]*|"") echo "[pi-remote-executor] ERROR: PI_REMOTE_MODEL 含非法字符" >&2; exit 1 ;; esac
-case "$PI_REMOTE_TOOLS" in ""|*[!A-Za-z0-9_,.-]*) echo "[pi-remote-executor] ERROR: PI_REMOTE_TOOLS 含非法字符" >&2; exit 1 ;; esac
+case "$PI_REMOTE_TOOLS" in *[!A-Za-z0-9_,.-]*) echo "[pi-remote-executor] ERROR: PI_REMOTE_TOOLS 含非法字符" >&2; exit 1 ;; esac
 case "$PI_REMOTE_CMD" in *[!A-Za-z0-9_./-]*) echo "[pi-remote-executor] ERROR: PI_REMOTE_CMD 含非法字符" >&2; exit 1 ;; esac
 case "$PI_REMOTE_FORM" in win|linux) ;; *) echo "[pi-remote-executor] ERROR: PI_REMOTE_FORM 只能是 win|linux: $PI_REMOTE_FORM" >&2; exit 1 ;; esac
 _check_path "$REMOTE_DIR" REMOTE_DIR
@@ -144,11 +159,12 @@ PROMPT_LOCAL="${_TE_EXEC_LOG_DIR}/${WORK_ID}-pi-prompt.txt"
   echo "- 禁止修改卡文件（只读指针；卡状态回写由引擎代做）。"
   echo "- 只改「范围」段列出的路径，越界改动算打回。"
   echo "- 改完必须 git commit 并 push 到当前分支（半成品续接依赖远端分支可见）。"
-  echo "- 完成实现与自测后，必须在工作目录根写 .ccc-result.md，四段固定结构："
-  echo "  ## 0. 卡标题复述"
+  echo "- 完成实现与自测后，必须在工作目录根写 .ccc-result.md，五段固定结构（与 scripts/dsh-executor.sh:95 同口径；缺第 5 段则 JSON sidecar 派生失败、机审读不到变更证据）："
+  echo "  ## 0. 卡标题复述（完整复述卡标题）"
   echo "  ## 1. 探针输出"
   echo "  ## 2. 自测输出"
-  echo "  ## 3. 维护区四问"
+  echo "  ## 3. 维护区四问（[是/否][有/无]+说明）"
+  echo "  ## 4. 变更证据（逐项写 commit= branch= push= 实值；未做该项写 N/A 并说明原因）"
   echo "- .ccc-result.md 写完后由 wrapper 传输，你【不要】把它 git add/commit 进业务仓。"
   echo "- 写完 .ccc-result.md 后停手，不要再改卡、不要再补改。"
   echo "- 若测试环境缺依赖无法自测，记录原始失败输出并继续写 .ccc-result.md，不要无限重试。"
@@ -156,7 +172,8 @@ PROMPT_LOCAL="${_TE_EXEC_LOG_DIR}/${WORK_ID}-pi-prompt.txt"
 
 # ── 上传提示 ─────────────────────────────────────────────────────────────
 echo "[pi-remote-executor] form=${PI_REMOTE_FORM} ssh=${SSH_TARGET} cwd=${REMOTE_DIR} model=${PI_REMOTE_MODEL} tools=${PI_REMOTE_TOOLS:-default}"
-"$PI_REMOTE_SCP" "${PI_SSH_OPTS[@]}" "$PROMPT_LOCAL" "${SSH_TARGET}:$PROMPT_REMOTE"
+# scp 走 SFTP 协议 → 正斜杠路径（反斜杠实测报 No such file or directory）
+"$PI_REMOTE_SCP" "${PI_SSH_OPTS[@]}" "$PROMPT_LOCAL" "${SSH_TARGET}:$_SCP_PROMPT"
 
 # ── 远端执行（两形态） ─────────────────────────────────────────────────
 if [[ "$PI_REMOTE_FORM" == "win" ]]; then
@@ -193,8 +210,9 @@ fi
 
 # ── A1 结果传输（契约同 dsh-executor.sh） ────────────────────────────────
 if [[ $_PI_RC -eq 0 ]]; then
-  "$PI_REMOTE_SCP" "${PI_SSH_OPTS[@]}" "${SSH_TARGET}:$REMOTE_DIR/.ccc-result.md" "$_RESULT_DST" 2>/dev/null || true
-  "$PI_REMOTE_SCP" "${PI_SSH_OPTS[@]}" "${SSH_TARGET}:$REMOTE_DIR/.ccc-result.json" "$_RESULT_JSON_DST" 2>/dev/null || true
+  # scp 走 SFTP 协议 → 用正斜杠路径（见上方 _SCP_DIR 注释）
+  "$PI_REMOTE_SCP" "${PI_SSH_OPTS[@]}" "${SSH_TARGET}:$_SCP_DIR/.ccc-result.md" "$_RESULT_DST" 2>/dev/null || true
+  "$PI_REMOTE_SCP" "${PI_SSH_OPTS[@]}" "${SSH_TARGET}:$_SCP_DIR/.ccc-result.json" "$_RESULT_JSON_DST" 2>/dev/null || true
 fi
 
 # fail-closed：结果必须存在，否则 engine 无法收单（与 dsh-executor rc=64 语义对齐）
