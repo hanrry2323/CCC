@@ -1,6 +1,6 @@
 # 任务卡 tst906 · L1-E xy 纳回 G5 探针（过 card_gate 验证）
 
-> 关联：L1-E·xy 纳回卡（docs/receipts/2026-09-13-l1e-xy-nareg.md）· 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：主脑 · 项目：tst · 日期：2026-09-13
+> 关联：L1-E·xy 纳回卡（docs/receipts/2026-09-13-l1e-xy-nareg.md）· 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：主脑 · 项目：tst · 日期：2026-09-13 · 版本：tst906 · 状态版本：1
 > 业务仓：无（纯探针，零业务改动）
 
 ## 目标
