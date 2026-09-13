@@ -57,7 +57,7 @@ FAILED server/tests/test_phase2.py::test_web_host_fallback_loopback
 | 文件 | 变更 | 说明 |
 |---|---|---|
 | `server/engine/phase2.py` | +6 / -1（共 7 行） | 仅 `list_written_cards` 合并段一处；机审/门禁/状态机/收单代写零触碰 |
-| `tests/test_phase2_branch_fusion.py` | 新增（113 行） | 判别测试三用例 |
+| `tests/test_phase2_branch_fusion.py` | 新增（101 行） | 判别测试三用例 |
 | `docs/notes/xy072-fix-receipt.md` | 新增 | 本回执（红/绿输出 + diff 摘要） |
 
 合并段最终形态：
