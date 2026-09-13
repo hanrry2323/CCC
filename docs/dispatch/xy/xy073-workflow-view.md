@@ -1,6 +1,6 @@
 # 任务卡 xy073 · 工作流可视化页最小版（xy009 6.4）
 
-> 关联：xy-plan-009（前端展示台 · M6 6.4 工作流可视化）+ xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy073 · 状态版本：5
+> 关联：xy-plan-009（前端展示台 · M6 6.4 工作流可视化）+ xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：已关闭 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy073 · 状态版本：6
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓，DSH 在业务 worktree 改）
 
 ## 目标
@@ -182,5 +182,5 @@ $ git show --numstat --format='' 2eb1dc9 | awk ... → insertions=64 deletions=0
 ## 机审区
 
 - 审核方：Claude Code（phase2 自动）
-- 结论：不通过
-- 理由：维护区未完成：Q1 方案同步校验失败。方案关联卡「xy052、xy053、xy054、xy055、xy060、xy061、xy062、xy064」中不包含本卡 ID「xy073」
+- 结论：通过
+- 理由：CC 审核通过，自动合入完成
