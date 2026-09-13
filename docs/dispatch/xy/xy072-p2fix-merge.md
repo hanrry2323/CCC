@@ -1,6 +1,6 @@
 # 任务卡 xy072 · phase2 合入缺口修复（P2-fix-01 F1）
 
-> 关联：P2-fix-01（docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：1
+> 关联：P2-fix-01（docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：2
 > 业务仓：无（改 CCC 仓 server/engine/phase2.py）
 
 ## 目标
@@ -47,7 +47,93 @@
 无批注。
 
 ## 回写区
-1. 方案同步：[是] P2-fix-01 F1 落地，本卡号 xy072。
-2. 教训沉淀：[否]（若有引用具体路径）。
-3. 档案/README：[否] 内部修复，无接口变更。
-4. 线路图：[否] 不涉线路图。
+
+## 0. 卡标题复述
+
+任务卡 xy072 · phase2 合入缺口修复（P2-fix-01 F1）——修复 phase2 `list_written_cards`
+
+## 1. 探针输出
+
+执行位置核验（本卡目标仓 = CCC 仓，业务仓无改动）：
+
+```
+$ find /Users/fan/program/apps/.ccc-wt/xy/xy072 -name 'phase2*.py' -not -path './.venv/*'
+（空——xianyu biz_worktree 无 server/engine/phase2.py，卡白名单文件不在其中）
+$ git -C /Users/fan/program/CCC-wt/xy072 branch --show-current
+codex/xy072
+$ git -C /Users/fan/program/CCC-wt/xy072 log --oneline -1
+f0cf3fd5f feat(xy072): phase2 合入缺口修复卡（P2-fix-01 F1，判别测试先行+合并段补写branch）
+$ .venv-hub/bin/python -m pytest --version | head -1
+pytest 9.1.1
+$ .venv-hub/bin/python -m ruff --version
+ruff 0.16.3
+```
+
+结论：wrapper 授权路径（xianyu biz_worktree）内不存在卡白名单文件，卡全部路径
+（server/engine/phase2.py、tests/、docs/notes/、分支 codex/xy072）均在 **CCC 仓**；
+实际实现在 CCC 任务 worktree `/Users/fan/program/CCC-wt/xy072`（branch `codex/xy072`，
+与卡步骤 5「commit 到 codex/xy072 分支」一致）。xianyu worktree 未做任何代码改动。
+
+## 2. 自测输出
+
+### 判别测试红（改码前 · 1 红 2 绿）
+
+```
+$ .venv-hub/bin/python -m pytest tests/test_phase2_branch_fusion.py -v
+collected 3 items
+tests/test_phase2_branch_fusion.py F..                                   [100%]
+________________ test_workspace_empty_branch_takes_envelope_branch _____________
+    assert cards["xy072"]["branch"] == "codex/xy072-p2fix-merge"
+E   AssertionError: assert '' == 'codex/xy072-p2fix-merge'
+========================= 1 failed, 2 passed in 0.09s =========================
+EXIT=1
+```
+
+### 判别测试绿（改码后 · 3 全过）
+
+```
+$ .venv-hub/bin/python -m pytest tests/test_phase2_branch_fusion.py -v
+tests/test_phase2_branch_fusion.py ...                                   [100%]
+============================== 3 passed in 0.06s ===============================
+EXIT=0
+```
+
+### 回归（test_phase2*.py + 新测试）
+
+```
+$ .venv-hub/bin/python -m pytest server/tests/test_phase2.py \
+        server/tests/test_phase2_engine_cas_interop.py \
+        tests/test_phase2_branch_fusion.py -v --tb=no
+========================= 1 failed, 45 passed in 4.62s =========================
+FAILED server/tests/test_phase2.py::test_web_host_fallback_loopback
+```
+
+基线（改码前同一命令，3 个新测试未加入）：42 passed / 1 failed——唯一失败
+`test_web_host_fallback_loopback`（环境依赖：本机枚举 IP `192.168.3.116` ≠ 断言
+`127.0.0.1`，改码前后同一失败，与本次改动无关）。改码后 45 passed / 1 failed：
+新增 3 判别测试全绿，零新增失败。退出码 1 = 该环境依赖预存失败。
+
+### lint（pre-commit 与手工双跑）
+
+```
+$ .venv-hub/bin/python -m ruff check server/engine/phase2.py tests/test_phase2_branch_fusion.py
+All checks passed!
+$ git commit 钩子输出
+ruff check (server/ lint)................................................Passed
+validate task cards (docs/dispatch)..................(no files to check)Skipped
+```
+
+### diff 门禁（≤10 行）
+
+```
+$ git diff main...HEAD --stat -- server/engine/phase2.py
+server/engine/phase2.py | 7 ++++++-
+（合并段一处：6 增 1 减 = 7 行；机审/门禁/状态机/executors.json 零触碰）
+```
+
+## 维护区
+
+1. **方案同步**：[是] ** — P2-fix-01 F1 落地：`list_written_cards` 合并段补「工作区 branch
+2. **教训沉淀**：[无] ** — `docs/notes/xy072-fix-receipt.md`（红/绿输出 + diff 摘要 + 自证
+3. **档案/README**：[否] ** — 内部修复，无接口变更，无需更新档案/README。
+4. **线路图**：[否] ** — 不涉线路图。
