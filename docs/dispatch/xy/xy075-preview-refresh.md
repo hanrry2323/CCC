@@ -22,7 +22,7 @@ xy009 6.3「预览页面」补两处缺口（plan 卡要求=页面实时展示�
 ## 范围
 - /Users/fan/program/apps/xianyu/admin/pages/preview.html
 - /Users/fan/program/apps/xianyu/admin/index.html
-- /Users/fan/program/apps/xianyu/tests/admin（新增测试）
+- /Users/fan/program/apps/xianyu/tests/admin
 
 ## 步骤
 1. 读 preview.html 结构+index.html 导航区。
