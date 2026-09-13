@@ -1,6 +1,6 @@
 # 任务卡 xy073 · 工作流可视化页最小版（xy009 6.4）
 
-> 关联：xy-plan-009（前端展示台 · M6 6.4 工作流可视化）+ xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy073 · 状态版本：1
+> 关联：xy-plan-009（前端展示台 · M6 6.4 工作流可视化）+ xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy073 · 状态版本：2
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓，DSH 在业务 worktree 改）
 
 ## 目标
@@ -47,7 +47,97 @@
 无批注。
 
 ## 回写区
-1. 方案同步：[是] xy-plan-009 6.4 实现，本卡号 xy073。
-2. 教训沉淀：[否]（若有机审要求时改 [是] + 具体文件路径）。
-3. 档案/README：[否] 内部页面，不涉接口契约对外。
-4. 线路图：[否] 不涉 roadmap。
+
+## 0. 卡标题复述
+
+任务卡标题：**任务卡 xy073 · 工作流可视化页最小版（xy009 6.4）**
+
+## 1. 探针输出
+
+**探针 A：确认后端 `GET /api/v1/workflows` 是否已存在（决定是否需后端改动）**
+
+关键发现：接口**已存在于 origin/main**，本卡直接消费，后端零改动。
+
+```
+$ git log origin/main --oneline -S "api/v1/workflows" -- admin/api/server.py | head -5
+794b64a feat(xy053): add GET /api/v1/workflows workflow progress read-only API
+842356f fix(xy061): M6.2 工作流 API 修复 running 无产物漏收 + 阶段独立产物探针
+
+$ git show origin/main:admin/api/server.py | grep -n "api/v1/workflows"
+1979:@app.get("/api/v1/workflows")
+1980:def workflows_list(_: None = Depends(verify_credentials)) -> dict[str, Any]:
+```
+
+另有完整看板页 `admin/pages/workflows.html` 已存在，index.html 仅做精简状态区并链接之。
+
+**探针 B：后端真实响应（TestClient + 临时 DB/产出目录，运行中任务）**
+
+```
+HTTP 200
+count: 2
+  task-probe-001       status=运行中   current_stage=image stages=7
+  task-probe-done      status=已完成   current_stage=video stages=7
+```
+
+响应含 `task_id / pipeline / status / stages[] / current_stage / updated_at`，运行中任务正确返回当前阶段。
+
+**探针 C：前端渲染逻辑对真实响应的输出（与 index.html 同款过滤+模板，node 执行）**
+
+```
+filtered count: 1
+rendered rows:
+<tr>
+    <td><span class="mono" style="color:var(--info)">task-probe-001</span></td>
+    <td><span class="badge badge-info">video</span></td>
+    <td class="mono">image</td>
+    <td><span class="badge badge-ok"><span class="pulse" style="width:6px;height:6px"></span>运行中</span></td>
+    <td class="mono" style="color:var(--text-muted)">2026-09-13 10:00:00</td>
+  </tr>
+```
+
+过滤条件 `status ∈ 运行中/失败` 生效（已完成任务被过滤），task_id + current_stage + 状态 badge + 更新时间全部正确渲染。
+
+## 2. 自测输出
+
+**自测 1：目标测试文件（新前端测试 + 后端 workflows 测试）** — exit code 0
+
+```
+$ .venv/bin/pytest tests/admin/test_workflow_page.py tests/admin/test_workflows.py -q -p no:cacheprovider
+======================== 26 passed, 1 warning in 2.15s =========================
+```
+
+26 个通过 = 后端 workflows 接口 22（含运行中任务返回 stage 数组、失败态、image_text、鉴权、排序等）+ 前端页面 4（原 2 映射测试 + 新 2 存在性/渲染逻辑测试），满足验收「测试通过数 ≥2」。
+
+**自测 2：tests/admin 全量回归** — exit code 0
+
+```
+$ .venv/bin/pytest tests/admin -q -p no:cacheprovider
+======================= 106 passed, 30 warnings in 4.82s =======================
+```
+
+无回归（grep 确认仅 test_library.py 提到 index.html 文件名，非结构断言）。
+
+**自测 3：index.html 内联 JS 语法校验（node --check，3 个 script 块）**
+
+```
+block 0: rc=0
+block 1: rc=0
+block 2: rc=0
+```
+
+**自测 4：diff 规模门禁（<300 行）**
+
+```
+$ git diff --stat
+ admin/index.html                  | 39 +++++++++++++++++++++++++++++++++++++++
+ tests/admin/test_workflow_page.py | 25 +++++++++++++++++++++++++
+ 2 files changed, 64 insertions(+)
+$ git diff | wc -l   → 92
+```
+
+## 维护区
+
+1. **方案同步**：[是] xy-plan-009 6.4「工作流可视化页最小版」已实现，本卡号 xy073；后端 `/api/v1/workflows` 在 xy053/xy061 已落地（origin/main），本卡直接消费，前端 index.html 新增「工作流状态」区。
+2. **教训沉淀**：[无] 本卡无新教训需沉淀（复用既有接口零后端改动；若机审 Q2 要求，可记：同类卡动手前应先 grep 现网 main 是否已有目标端点，避免重复造轮子——本卡已实证该端点存在）。
+3. **档案/README**：[否] 内部仪表盘页面改动，不涉对外接口契约与文档。
+4. **线路图**：[否] 不涉 roadmap，纯展示层增量。
