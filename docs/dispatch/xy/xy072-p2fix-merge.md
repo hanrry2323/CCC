@@ -1,6 +1,6 @@
 # 任务卡 xy072 · phase2 合入缺口修复（P2-fix-01 F1）
 
-> 关联：P2-fix-01（docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：2
+> 关联：P2-fix-01（docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：3
 > 业务仓：无（改 CCC 仓 server/engine/phase2.py）
 
 ## 目标
@@ -137,3 +137,9 @@ server/engine/phase2.py | 7 ++++++-
 2. **教训沉淀**：[无] ** — `docs/notes/xy072-fix-receipt.md`（红/绿输出 + diff 摘要 + 自证
 3. **档案/README**：[否] ** — 内部修复，无接口变更，无需更新档案/README。
 4. **线路图**：[否] ** — 不涉线路图。
+
+## 机审区
+
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：Q1 声明了方案同步[是]，但卡头「关联」字段未包含有效的方案编号（如 prefix-plan-NNN）
