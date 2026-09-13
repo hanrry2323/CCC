@@ -831,6 +831,12 @@ def _sync_subproject_statuses(project: str, ms: Any) -> bool:
                         target = "未启动"
                     else:
                         target = "计划中"
+        if target and target != "已完成" and sp.status.startswith("已完成（") and "合入" in sp.status:
+            # 2026-09-13 裁定 T1（卡 xy075）：人工合入注记 > 方案级推算。
+            # 现值「已完成（xy060 合入）」是卡级人工回填的终态，方案部分执行时 target=计划中
+            # 会把注记降回「计划中」并写盘 → 主树周期脏 → phase2 fail-closed 晾卡（xy073 实锤）。
+            # target=已完成（升级/幂等）不跳过，计划中→已完成 通路不受影响。
+            continue
         if target and sp.status != target:
             sp.status = target
             changed = True
