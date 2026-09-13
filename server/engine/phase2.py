@@ -145,7 +145,12 @@ def list_written_cards(dispatch_dir: str | Path) -> list[dict]:
             "worktree": _worktree_for(item.project, item.id) or "",
         }
     for bc in _list_branch_written_cards():
-        cards.setdefault(bc["id"], bc)
+        cur = cards.get(bc["id"])
+        if cur is not None and not cur.get("branch") and bc.get("branch"):
+            # 工作区版 branch 空 + 信封版 branch 有值 → 用信封版（分支信封=事实源）
+            cards[bc["id"]] = bc
+        else:
+            cards.setdefault(bc["id"], bc)
     return list(cards.values())
 
 
