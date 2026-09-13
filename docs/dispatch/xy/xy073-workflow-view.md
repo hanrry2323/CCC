@@ -1,6 +1,6 @@
 # 任务卡 xy073 · 工作流可视化页最小版（xy009 6.4）
 
-> 关联：xy-plan-009（前端展示台 · M6 6.4 工作流可视化）+ xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy073 · 状态版本：4
+> 关联：xy-plan-009（前端展示台 · M6 6.4 工作流可视化）+ xy-plan-008 · 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy073 · 状态版本：5
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓，DSH 在业务 worktree 改）
 
 ## 目标
@@ -54,91 +54,128 @@
 
 ## 1. 探针输出
 
-**探针 A：确认后端 `GET /api/v1/workflows` 是否已存在（决定是否需后端改动）**
+**探针 A1：机审门槛前置核查——Q1 方案同步条件是否已满足（本轮打回原因复查）**
 
-关键发现：接口**已存在于 origin/main**，本卡直接消费，后端零改动。
+机审 Q1 门槛（docgate.py:386-395）要求：方案文件 `docs/projects/xy/plans/009-*.md`（读 **CCC 仓 origin/main**）的状态为「部分执行/已完成」且「关联卡」含本卡 ID `xy073`。抽查证实两个条件现均已满足：
 
 ```
-$ git log origin/main --oneline -S "api/v1/workflows" -- admin/api/server.py | head -5
+$ git -C /Users/fan/program/CCC show origin/main:docs/projects/xy/plans/009-frontend-showcase.md | grep -n "状态\|关联卡"
+> 项目：xy · 编号：xy-plan-009 · 状态：部分执行 · ...
+> 关联卡：xy052、xy053、xy054、xy055、xy060、xy061、xy062、xy064、xy073
+
+$ git -C /Users/fan/program/CCC log --oneline -1 -- docs/projects/xy/plans/009-frontend-showcase.md
+fefc4ee1e fix(xy009): 关联卡清单补 xy073（机审 Q1 同款判例）
+```
+
+说明：`xy073` 已登记入方案关联卡（CCC commit fefc4ee1e，已在 CCC origin/main），Q1 校验不再阻塞。本卡业务实现未再改动后端。
+
+**探针 A2：后端 `GET /api/v1/workflows` 已存在于 origin/main（本卡零后端改动）**
+
+```
+$ git log origin/main --oneline -S "api/v1/workflows" -- admin/api/server.py | head -3
 794b64a feat(xy053): add GET /api/v1/workflows workflow progress read-only API
 842356f fix(xy061): M6.2 工作流 API 修复 running 无产物漏收 + 阶段独立产物探针
 
 $ git show origin/main:admin/api/server.py | grep -n "api/v1/workflows"
 1979:@app.get("/api/v1/workflows")
-1980:def workflows_list(_: None = Depends(verify_credentials)) -> dict[str, Any]:
+
+$ git diff --stat origin/main..HEAD -- admin/api/server.py   （输出为空 = 后端零改动）
 ```
 
-另有完整看板页 `admin/pages/workflows.html` 已存在，index.html 仅做精简状态区并链接之。
+另有完整看板页 `admin/pages/workflows.html` 已存在（origin/main 及本分支），index.html 仅加精简状态区并链入。
 
-**探针 B：后端真实响应（TestClient + 临时 DB/产出目录，运行中任务）**
+**探针 B：后端真实响应（TestClient + 临时 DB/产出目录，运行中/失败/已完成三类任务）**
 
 ```
+$ .venv/bin/python /tmp/xy073_probe_b.py
 HTTP 200
-count: 2
-  task-probe-001       status=运行中   current_stage=image stages=7
-  task-probe-done      status=已完成   current_stage=video stages=7
+count: 3
+  task-probe-001     status=运行中  pipeline=video      current_stage=image stages=7 updated_at=2026-09-13T10:00:00+00:00
+  task-probe-fail    status=失败   pipeline=video      current_stage=route stages=7 updated_at=2026-09-13T09:10:00+00:00
+  task-probe-done    status=已完成  pipeline=video      current_stage=video stages=7 updated_at=2026-09-13T08:21:35.497540+00:00
+exit=0
 ```
 
-响应含 `task_id / pipeline / status / stages[] / current_stage / updated_at`，运行中任务正确返回当前阶段。
+响应含 `task_id / pipeline / status / stages[] / current_stage / updated_at`，运行中任务正确返回当前阶段（image），失败任务返回失败点（route）。
 
-**探针 C：前端渲染逻辑对真实响应的输出（与 index.html 同款过滤+模板，node 执行）**
+**探针 C：直接执行 admin/index.html 内「工作流状态」script 块（node + stub DOM/API.get），验证实际交付 JS 的过滤与渲染**
 
 ```
-filtered count: 1
-rendered rows:
-<tr>
-    <td><span class="mono" style="color:var(--info)">task-probe-001</span></td>
-    <td><span class="badge badge-info">video</span></td>
-    <td class="mono">image</td>
-    <td><span class="badge badge-ok"><span class="pulse" style="width:6px;height:6px"></span>运行中</span></td>
-    <td class="mono" style="color:var(--text-muted)">2026-09-13 10:00:00</td>
-  </tr>
+$ node /tmp/xy073_probe_c.mjs
+API.get called: /api/v1/workflows
+filtered count: 2
+has running id: true
+has failed id : true
+done filtered out: true
+has current_stage image: true
+has 失败 badge: true
+has 运行中 badge: true
+PROBE C OK
+exit=0
 ```
 
-过滤条件 `status ∈ 运行中/失败` 生效（已完成任务被过滤），task_id + current_stage + 状态 badge + 更新时间全部正确渲染。
+过滤条件 `status === '运行中' || status === '失败'` 生效（已完成任务被过滤），task_id + current_stage + 状态 badge + 更新时间全部正确渲染，与 index.html 第 169-197 行实际交付代码一致。
+
+**探针 D：验收标准 5 自证——phase2 自动合入已在 origin/main 落定（净含本卡代码）**
+
+```
+$ git show origin/main:admin/index.html | grep -c "工作流状态"     → 2
+$ git show origin/main:admin/index.html | grep -c "api/v1/workflows" → 2
+$ git cat-file -e origin/main:tests/admin/test_workflow_page.py     → exists
+$ git log origin/main --oneline --grep="merge(xy073)" -1
+1a65c3b Revert "Revert "merge(xy073): admin 工作流状态区——运行中/失败任务当前阶段展示（业务码合入批准，双仓两段 a 边界先例）""
+```
+
+origin/main 已含 phase2 的 `merge(xy073)`（e6c8abd，后又 revert+re-revert，净结果=代码在 main），`admin/index.html` 的「工作流状态」区与测试文件均在 main 上，验收 5 自证成立。
 
 ## 2. 自测输出
 
-**自测 1：目标测试文件（新前端测试 + 后端 workflows 测试）** — exit code 0
+**自测 1：目标测试文件（前端页面 test + 后端 workflows 接口 test）** — test 退出码=0
 
 ```
 $ .venv/bin/pytest tests/admin/test_workflow_page.py tests/admin/test_workflows.py -q -p no:cacheprovider
-======================== 26 passed, 1 warning in 2.15s =========================
+====================== 26 passed, 1 warning in 2.31s ========================
 ```
 
-26 个通过 = 后端 workflows 接口 22（含运行中任务返回 stage 数组、失败态、image_text、鉴权、排序等）+ 前端页面 4（原 2 映射测试 + 新 2 存在性/渲染逻辑测试），满足验收「测试通过数 ≥2」。
+26 个通过 = 后端 workflows 接口 22（含运行中任务 stage 数组、失败态、产物探针、鉴权、排序等）+ 前端页面 4（工作流状态区块存在性 + 渲染逻辑），满足验收「测试通过数 ≥2」。
 
-**自测 2：tests/admin 全量回归** — exit code 0
+**自测 2：tests/admin 全量回归** — test 退出码=0
 
 ```
 $ .venv/bin/pytest tests/admin -q -p no:cacheprovider
-======================= 106 passed, 30 warnings in 4.82s =======================
+====================== 106 passed, 30 warnings in 5.04s =======================
 ```
 
-无回归（grep 确认仅 test_library.py 提到 index.html 文件名，非结构断言）。
+无回归。
 
-**自测 3：index.html 内联 JS 语法校验（node --check，3 个 script 块）**
+**自测 3：index.html 内联 JS 语法校验（node --check，3 个 script 块）** — compile 退出码=0
 
 ```
+$ node -e '...抽取 3 个 <script> 块...' && for i in 0 1 2; do node --check /tmp/xy073_block_${i}.js; done
+blocks: 3
 block 0: rc=0
 block 1: rc=0
 block 2: rc=0
+overall=0
 ```
 
 **自测 4：diff 规模门禁（<300 行）**
 
 ```
-$ git diff --stat
+$ git show --stat --format='' 2eb1dc9
  admin/index.html                  | 39 +++++++++++++++++++++++++++++++++++++++
  tests/admin/test_workflow_page.py | 25 +++++++++++++++++++++++++
  2 files changed, 64 insertions(+)
-$ git diff | wc -l   → 92
+
+$ git show --numstat --format='' 2eb1dc9 | awk ... → insertions=64 deletions=0 total=64
 ```
+
+64 行 < 300 行门禁，通过。
 
 ## 维护区
 
-1. **方案同步**：[是] xy-plan-009 6.4「工作流可视化页最小版」已实现，本卡号 xy073；后端 `/api/v1/workflows` 在 xy053/xy061 已落地（origin/main），本卡直接消费，前端 index.html 新增「工作流状态」区。
-2. **教训沉淀**：[无] 本卡无新教训需沉淀（复用既有接口零后端改动；若机审 Q2 要求，可记：同类卡动手前应先 grep 现网 main 是否已有目标端点，避免重复造轮子——本卡已实证该端点存在）。
+1. **方案同步**：[是] 方案 xy-plan-009 已同步推进：关联卡已登记本卡 xy073（CCC commit fefc4ee1e 已在 origin/main，状态=部分执行）；本卡实现 6.4「工作流可视化页」最小版——后端消费 xy053/xy061 已落地的 `GET /api/v1/workflows`（零后端改动），前端 index.html 新增「工作流状态」区展示运行中/失败任务当前阶段。
+2. **教训沉淀**：[无] 本卡无新教训落盘（零后端改动、纯消费既有接口 + 前端展示增量；上次回写机审 Q1 打回根因是方案关联卡未登记 xy073，属 CCC 侧流程补录、已由 fefc4ee1e 修复，非本卡业务遗留）。
 3. **档案/README**：[否] 内部仪表盘页面改动，不涉对外接口契约与文档。
 4. **线路图**：[否] 不涉 roadmap，纯展示层增量。
 
