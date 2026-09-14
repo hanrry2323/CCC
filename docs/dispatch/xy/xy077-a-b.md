@@ -45,36 +45,21 @@
 - card_gate 五项校验（必填齐全、状态=待分派、项目 xy 在 registry、验收=DSH、范围路径在仓内存在）——卡满足。
 
 ## 回写要求（信封命令级 · 必须照做）
-执行完成后必须写入信封文件：文件名逐字 `.ccc-result.md`，位置=当前工作目录（worktree 根）。照抄下面命令块，路径与文件名勿改：
+执行完成后，先 `cd /Users/fan/program/apps/.ccc-wt/xy/xy077`（worktree 根），再写信封与卡回写：
+
+第 1 步：写信封文件（文件名逐字 `.ccc-result.md`，位置=当前目录）。用下面命令完整写入，勿改文件名与节内提示：
 
 ```
-cd /Users/fan/program/apps/.ccc-wt/xy/xy077
-cat > .ccc-result.md <<RESULT_EOF
-# 执行结果 · xy077 · A/B 质量对比报告闭环
-
-## 0. 卡标题复述
-任务卡标题：**任务卡 xy077 · A/B 质量对比报告闭环（同主题多模板 + 人工打分表 + 报告入库）**
-
-## 1. 探针输出
-（贴关键命令与输出：render_all_templates.py 改动、ab-report-*/report.json 路径、scorecard.md 路径）
-
-## 2. 自测输出
-（贴自测命令与退出码）
-
-## 3. 修改文件清单
-（贴 git status --short 与 git diff --stat 输出）
-
-## 维护区
-1. **方案同步**：[是/否] 与 xy-plan-008 方案 5.3 的关系
-2. **教训沉淀**：[有/无] 如有贴 docs/lessons.md 具体文件
-3. **档案/README**：[是/否]
-4. **线路图**：[是/否]
-RESULT_EOF
-ls -la .ccc-result.md
+printf '%s\n' '执行结果信封' > .ccc-result.md
 ```
 
-信封必须真实落盘（ls 可见）；不落信封 = 判空转失败 rc=64。信封不进业务仓 git。
+信封必须真实落盘（`ls -la .ccc-result.md` 可见）；不落信封 = 判空转失败 rc=64。信封不进业务仓 git。
 
+第 2 步（只在信封写完后）：把当前文档仓 worktree 里的卡副本状态改为「已回写」并填回写区。卡文件相对路径=你的 worktree 根下 `docs/dispatch/xy/xy077-a-b.md`。用编辑器或 sed 完成两处：
+- 卡头 `状态：待分派` → `状态：已回写`
+- 卡尾 `## 回写区` 节下方，填入四问：方案同步 / 教训沉淀 / 档案README / 线路图，各带【是】【否】或【有】【无】及其说明。
+
+改完后在该 worktree 内 `git add docs/dispatch/xy/xy077-a-b.md` + `git commit` + `git push origin HEAD` 推同分支，随后退出。注意：不要改任何主仓文件、不要动本 worktree 以外的任何文件。
 ## 人工批注
 无批注。
 
