@@ -21,8 +21,8 @@
 
 ## 范围
 - /Users/fan/program/apps/xianyu/video-pipeline/render_all_templates.py
-- /Users/fan/program/apps/xianyu/video-pipeline/templates/ab_scorecard.md
-- /Users/fan/program/apps/xianyu/video-pipeline/output/ab-report-*（产物）
+- /Users/fan/program/apps/xianyu/video-pipeline/templates/
+- /Users/fan/program/apps/xianyu/video-pipeline/
 
 ## 步骤
 1. 读 `render_all_templates.py` 现有结构 + `check_video_quality.py --json` 输出格式。
