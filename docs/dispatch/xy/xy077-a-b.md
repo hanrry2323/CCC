@@ -1,6 +1,6 @@
 # 任务卡 xy077 · A/B 质量对比报告闭环（同主题多模板 + 人工打分表 + 报告入库）
 
-> 关联：xy-plan-008（5.3 A/B 质量评估）· 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-14 · 版本：xy077 · 状态版本：0
+> 关联：xy-plan-008（5.3 A/B 质量评估）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-14 · 版本：xy077 · 状态版本：1
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -57,13 +57,7 @@ printf '%s\n' '执行结果信封' > .ccc-result.md
 
 第 2 步（只在信封写完后）：把当前文档仓 worktree 里的卡副本状态改为「已回写」并填回写区。卡文件相对路径=你的 worktree 根下 `docs/dispatch/xy/xy077-a-b.md`。用编辑器或 sed 完成两处：
 - 卡头 `状态：待分派` → `状态：已回写`
-- 卡尾 `## 回写区` 节下方，填入四问：方案同步 / 教训沉淀 / 档案README / 线路图，各带【是】【否】或【有】【无】及其说明。
-
-改完后在该 worktree 内 `git add docs/dispatch/xy/xy077-a-b.md` + `git commit` + `git push origin HEAD` 推同分支，随后退出。注意：不要改任何主仓文件、不要动本 worktree 以外的任何文件。
-## 人工批注
-无批注。
-
-## 回写区
+- 卡尾 `## 回写区
 
 ## 0. 卡标题复述
 
@@ -71,18 +65,43 @@ printf '%s\n' '执行结果信封' > .ccc-result.md
 
 ## 1. 探针输出
 
-（执行体填写：基线现状 URL/不存在项证据）
+基线：`render_all_templates.py` 原为 6 模板逐一出片 + stdout 汇总（无 `--topic`），结果不落盘、量化仅打印。本次扩展为同主题 A/B 对比 + 报告落盘。
+
+关键证据：
+
+- `video-pipeline/render_all_templates.py` 已含 `--topic` / `--templates` / `--out-dir` 参数（`--help` 退出码 0），`--topic` 模式 `as_json=True` 接通 `check_video_quality.py --json`，A/B 报告落盘 `output/ab-report-<ts>/`。
+- 报告文件（1 组同主题对比实际产出，权威回执）：
+  - `video-pipeline/output/ab-report-20260914-103950/report.json`（topic=AI视频生成技术原理，2 模板 tech+vibrant，每模板 11 项量化指标全 pass，`"template"` 与 `码率`/`Mbps`（bitrate）字段 grep 命中）
+  - `video-pipeline/output/ab-report-20260914-103950/report.md`（Markdown 汇总表：模板 | 渲染 | 分辨率…视频差异化 | 整体）
+  - `video-pipeline/output/ab-report-20260914-103950/scorecard.md`（人工打分表填写样例，四维度）
+- `video-pipeline/templates/ab_scorecard.md` 存在（可复用模板，含结构/画面/文案适配/整体四维度 1-5 分 + 备注列）。
+- CCC 仓 `docs/projects/xy/plans/008-high-expression-v2.md` 头部「关联卡」行已含 xy077（先 grep 实际行后 replace，commit `4b3a8bc`）。
+- 说明：`output/ab-report-20260914-092749/` 为开发中间迭代产物（schema 缺少 `verified` 字段），最终 schema 以 103950 为准；两个输出目录均被 `.gitignore:81`（`video-pipeline/output/`）忽略，不入 git。
 
 ## 2. 自测输出
 
-（执行体填写：关键命令输出）
+```
+$ .venv/bin/python -m pytest video-pipeline/tests/ -q
+============================== 35 passed in 2.24s ==============================
+PYTEST_EXIT=0
+
+$ .venv/bin/python video-pipeline/render_all_templates.py --help
+usage: render_all_templates.py [-h] [--topic TOPIC] [--templates TEMPLATES]
+                               [--out-dir OUT_DIR]
+HELP_EXIT=0（--topic/--templates/--out-dir 均在；无参运行兼容既有 legacy 行为，run_legacy 保留）
+
+$ .venv/bin/python -c "json.load(report.json)"（103950）
+topic=AI视频生成技术原理 | n_templates=2；tech/vibrant rendered=True verified=True checks=11 pass=True
+```
+
+- 自测结论：pytest 35 passed 无新失败；CLI 参数完整；report.json schema 校验通过（每模板 11 项指标、pass=True）。
 
 ## 维护区
 
-1. **方案同步**：[ ]
-2. **教训沉淀**：[ ]
-3. **档案/README**：[ ]
-4. **线路图**：[ ]
+1. **方案同步**：[是] xy077 已追加进 xy-plan-008 头部「关联卡」行（`docs/projects/xy/plans/008-high-expression-v2.md`，commit `4b3a8bc`），落实 5.3「A/B 质量评估」验收点「A/B 报告结构化可复现（量化 + 打分），≥1 组对比完成」。
+2. **教训沉淀**：[无] 未新增 docs/lessons.md 条目（CCC 仓与业务仓均无 lessons.md；本次为既有脚本扩展 + 报告落盘，无新踩坑）。
+3. **档案/README**：[否] 卡红线限定改动范围（render_all_templates.py / ab_scorecard.md / ab-report-* / 008 关联卡行），未动 README 与档案。
+4. **线路图**：[否] 卡未要求且超出白名单，未改动 roadmap。
 
 ## 机审区
 
