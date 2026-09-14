@@ -44,8 +44,36 @@
 ## 门禁
 - card_gate 五项校验（必填齐全、状态=待分派、项目 xy 在 registry、验收=DSH、范围路径在仓内存在）——卡满足。
 
-## 回写要求
-- 回写区四问逐项填；教训沉淀引用业务仓 docs/lessons.md 具体文件。
+## 回写要求（信封命令级 · 必须照做）
+执行完成后必须写入信封文件：文件名逐字 `.ccc-result.md`，位置=当前工作目录（worktree 根）。照抄下面命令块，路径与文件名勿改：
+
+```
+cd /Users/fan/program/apps/.ccc-wt/xy/xy077
+cat > .ccc-result.md <<RESULT_EOF
+# 执行结果 · xy077 · A/B 质量对比报告闭环
+
+## 0. 卡标题复述
+任务卡标题：**任务卡 xy077 · A/B 质量对比报告闭环（同主题多模板 + 人工打分表 + 报告入库）**
+
+## 1. 探针输出
+（贴关键命令与输出：render_all_templates.py 改动、ab-report-*/report.json 路径、scorecard.md 路径）
+
+## 2. 自测输出
+（贴自测命令与退出码）
+
+## 3. 修改文件清单
+（贴 git status --short 与 git diff --stat 输出）
+
+## 维护区
+1. **方案同步**：[是/否] 与 xy-plan-008 方案 5.3 的关系
+2. **教训沉淀**：[有/无] 如有贴 docs/lessons.md 具体文件
+3. **档案/README**：[是/否]
+4. **线路图**：[是/否]
+RESULT_EOF
+ls -la .ccc-result.md
+```
+
+信封必须真实落盘（ls 可见）；不落信封 = 判空转失败 rc=64。信封不进业务仓 git。
 
 ## 人工批注
 无批注。
