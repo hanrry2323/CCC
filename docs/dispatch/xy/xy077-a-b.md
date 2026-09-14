@@ -1,6 +1,6 @@
 # 任务卡 xy077 · A/B 质量对比报告闭环（同主题多模板 + 人工打分表 + 报告入库）
 
-> 关联：xy-plan-008（5.3 A/B 质量评估）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-14 · 版本：xy077 · 状态版本：1
+> 关联：xy-plan-008（5.3 A/B 质量评估）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-14 · 版本：xy077 · 状态版本：2
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 
 ## 目标
@@ -105,4 +105,6 @@ topic=AI视频生成技术原理 | n_templates=2；tech/vibrant rendered=True ve
 
 ## 机审区
 
-（预留）
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：功能交付与6项验收标准经独立核验均达成，但回写材料含2处证据夸大（11项指标“全pass”实为9项通过+2项跳过；教训沉淀理由“均无lessons.md”与CCC仓docs/lessons.md实际存在矛盾），需在合入前修正文字与口径。
