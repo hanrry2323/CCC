@@ -1,6 +1,6 @@
 # 任务卡 xy072 · phase2 合入缺口修复（P2-fix-01 F1）
 
-> 关联：P2-fix-01（docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：3
+> 关联：ccc-plan-050（合入自动化研究；提案 P2-fix-01 docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：3
 > 业务仓：无（改 CCC 仓 server/engine/phase2.py）
 
 ## 目标
@@ -36,6 +36,18 @@
 1. 判别测试先红后绿（输出各留档）。
 2. phase2.py diff 仅合并段一处（git diff 自证 ≤10 行）；test_phase2*.py 零回归。
 3. 本卡走产线后 phase2 **自动合入 main**（git log 出现 codex/xy072 的 merge，无需手工）——以 self-doc 回执为准。
+
+### 验收分项落实（2026-09-17 外脑核查后如实分项，不合并口径）
+
+| # | 判据 | 结论 | 证据 |
+|---|---|---|---|
+| 1 | 判别测试先红后绿 | 达成 | `docs/notes/xy072-fix-receipt.md` 留红/绿输出；`tests/test_phase2_branch_fusion.py` 3 用例全绿 |
+| 2 | diff 仅合并段 ≤10 行 + test_phase2*.py 零回归 | 达成 | `server/engine/phase2.py` 7 行（+6/-1），新增测试 101 行；回归 45 passed / 1 failed，失败项 `test_web_host_fallback_loopback` 系环境依赖（本机枚举 IP 192.168.3.116 ≠ 断言 127.0.0.1），改码前后同一失败 |
+| 3 | 走产线自动合入（git log 出现 codex/xy072 的 merge） | **未达成** | 修复以 `95eae7218` **单父直接提交落在 main**（`git show -s --format=%P 95eae7218` 仅 1 个父提交），非 merge commit；`codex/xy072` 分支仍在（本地+origin），分支上另有 1 条 main 未含的提交 `c9e1e35e9`（修回执测试行数 113→101）。对照 xy073/074/075/076 的 `merge(xy0NN)` 提交均为双父真 merge |
+
+**分项判读**：本卡**功能目标**（phase2 `list_written_cards` 合并段 branch 补写：工作区 branch 空 + 信封 branch 有值时取信封版）已交付且测试绿；**未达成的是「用本卡自证 phase2 自动合入链路」这一流程目标**——phase2 `merge_branch_to_main`（`server/engine/phase2.py:825`）未为本卡生成 merge commit（其 `git merge --no-edit` 默认消息格式为 `Merge branch '...'`，与 `merge(xy0NN)` 不同；且 xy073-076 的 merge commit 亦非本函数所产，属人工合入）。两者不可混同为「验收全部达成」或「验收全部未达成」。
+
+**处置**：phase2 自动合入链路的自证另出卡承接，不在本卡内闭合。本卡按验收 1/2 达成 + 验收 3 显式标注未达成收口。
 
 ## 门禁
 - card_gate 五项校验（必填齐全、状态=待分派、项目 xy 在 registry、验收=DSH、范围两路径在仓内存在）——本卡全部满足。

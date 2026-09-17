@@ -74,7 +74,7 @@
 
 - `video-pipeline/render_all_templates.py` 已含 `--topic` / `--templates` / `--out-dir` 参数（`--help` 退出码 0），`--topic` 模式 `as_json=True` 接通 `check_video_quality.py --json`，A/B 报告落盘 `output/ab-report-<ts>/`。
 - 报告文件（1 组同主题对比实际产出，权威回执）：
-  - `video-pipeline/output/ab-report-20260914-103950/report.json`（topic=AI视频生成技术原理，2 模板 tech+vibrant，每模板 11 项量化指标全 pass，`"template"` 与 `码率`/`Mbps`（bitrate）字段 grep 命中）
+  - `video-pipeline/output/ab-report-20260914-103950/report.json`（topic=AI视频生成技术原理，2 模板 tech+vibrant，每模板 11 项量化指标：9 项通过、0 项失败、2 项跳过（pass=True 指 0 失败，非 11 项全过；跳过项=画面-话题相关度因 sentence-transformers 未装、视频差异化因单视频 N/A），`"template"` 与 `码率`/`Mbps`（bitrate）字段 grep 命中）
   - `video-pipeline/output/ab-report-20260914-103950/report.md`（Markdown 汇总表：模板 | 渲染 | 分辨率…视频差异化 | 整体）
   - `video-pipeline/output/ab-report-20260914-103950/scorecard.md`（人工打分表填写样例，四维度）
 - `video-pipeline/templates/ab_scorecard.md` 存在（可复用模板，含结构/画面/文案适配/整体四维度 1-5 分 + 备注列）。
@@ -94,14 +94,18 @@ usage: render_all_templates.py [-h] [--topic TOPIC] [--templates TEMPLATES]
 HELP_EXIT=0（--topic/--templates/--out-dir 均在；无参运行兼容既有 legacy 行为，run_legacy 保留）
 
 $ .venv/bin/python -c "json.load(report.json)"（103950）
-topic=AI视频生成技术原理 | n_templates=2；tech/vibrant rendered=True verified=True checks=11 pass=True
+topic=AI视频生成技术原理 | n_templates=2；tech/vibrant rendered=True verified=True checks=11 pass=9 fail=0 skip=2（pass=True 指 0 失败）
 ```
 
-- 自测结论：pytest 35 passed 无新失败；CLI 参数完整；report.json schema 校验通过（每模板 11 项指标、pass=True）。
+- 自测结论：pytest 35 passed 无新失败；CLI 参数完整；report.json schema 校验通过（每模板 11 项指标：9 通过 / 0 失败 / 2 跳过；pass=True 指 0 失败，非 11 项全过）。口径来源：信封 `~/.ccc/logs/exec/xy077-ccc-result.md` §2 第 4 行（total=11 pass=9 fail=0 skip=2）与第 53 行结论。
 
 ## 批注落实
 
-（执行体回写时逐条填写：对 ## 人工批注 中每条的落实说明与证据；未落实须说明原因。）
+本卡**无「## 人工批注」段**（实测 `grep '^## '` 节头清单中不存在该节），故本段无逐条批注落实项。以下为本轮外脑核查后补录的落实说明（2026-09-17）：
+
+- **口径重刷**：回写区 4 处指标/教训口径失实已按当前信封重刷（`total=11 pass=9 fail=0 skip=2`），原先两处「全量通过」与「两仓均无 lessons 文件」的表述已更正为三分量计数与实测存在性。
+- **不改业务代码**：机审结论原文「代码与产物经独立核验满足 6 项验收标准…不需重开发」，本轮仅重刷卡记录，`video-pipeline/render_all_templates.py` 与报告产物零改动。
+- **证据可复现**：报告 `output/ab-report-20260914-103950/` 三文件（report.json / report.md / scorecard.md）在位；pytest 35 passed；`--help` 退出码 0（`--topic`/`--templates`/`--out-dir` 齐备）。
 
 
 
@@ -114,6 +118,6 @@ topic=AI视频生成技术原理 | n_templates=2；tech/vibrant rendered=True ve
 ## 维护区
 
 1. **方案同步**：[是] xy077 已追加进 xy-plan-008 头部「关联卡」行（`docs/projects/xy/plans/008-high-expression-v2.md`，commit `4b3a8bc`），落实 5.3「A/B 质量评估」验收点「A/B 报告结构化可复现（量化 + 打分），≥1 组对比完成」。
-2. **教训沉淀**：[无] 未新增 docs/lessons.md 条目（CCC 仓与业务仓均无 lessons.md；本次为既有脚本扩展 + 报告落盘，无新踩坑）。
+2. **教训沉淀**：[是] CCC 仓 `docs/lessons.md` 存在（2390 行，实测 `wc -l`）；业务仓 `~/program/apps/xianyu/docs/lessons.md` 亦存在（实测 `ls`）。本次新增踩坑=**量化「pass=True」语义歧义**：`pass=True` 表示「0 项失败」，非「11 项全过」——信封曾误写「11 项指标全 pass」，机审两轮均拦下该夸大表述，现按 9 通过/0 失败/2 跳过如实分项。判例：**凡写指标口径必带 pass/fail/skip 三分量，禁止用布尔值概括计数**。
 3. **档案/README**：[否] 卡红线限定改动范围（render_all_templates.py / ab_scorecard.md / ab-report-* / 008 关联卡行），未动 README 与档案。
 4. **线路图**：[否] 卡未要求且超出白名单，未改动 roadmap。
