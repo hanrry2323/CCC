@@ -43,8 +43,8 @@
 - 关联方案：xy-plan-008
 - 描述：补齐 HTML→Video 缺失段（Playwright 帧渲染器）+ 模板库规模化 + A/B 质量评估闭环。（2026-08-20 立项，M6 全部卡验收后启动）
 - 子项目：
-  - 5.1 帧渲染器 · 状态：已完成（xianyu 311689b 合入，`src/xianyu/video/frame_capture.py` 61 行 Playwright 帧捕获） · 方案：xy-plan-008
-  - 5.2 模板库规模化 + html-preview · 状态：已完成（同批 311689b，`src/xianyu/video/html_composer.py` 203 行 HTML→视频合成；`tests/video/` 2 文件 3 passed） · 方案：xy-plan-008
+  - 5.1 帧渲染器 · 状态：已完成（311689b 合入，`src/xianyu/video/frame_capture.py` 61 行 Playwright 帧捕获） · 方案：xy-plan-008
+  - 5.2 模板库规模化 + html-preview · 状态：已完成（311689b 合入，`src/xianyu/video/html_composer.py` 203 行 HTML→视频合成；`tests/video/` 2 文件 3 passed） · 方案：xy-plan-008
   - 5.3 A/B 质量评估 · 状态：计划中 · 方案：xy-plan-008
 
 ### M6 · 前端展示台
