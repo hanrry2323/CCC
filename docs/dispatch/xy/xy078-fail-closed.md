@@ -84,7 +84,7 @@
 ## 维护区
 
 1. **方案同步**：xy-plan-011 状态/关联卡是否已同步？[是]
-   - 说明：xy-plan-011 §十二 阶段 0 首卡 xy078 已登记（「**xy078 · 产线失败 fail-closed（P0，首卡）**」）。方案状态已推进「部分执行」（commit 82d7599f9）。
+   - 说明：xy-plan-011 §十二 阶段 0 首卡 xy078 已完成（「**xy078 · 产线失败 fail-closed（P0，首卡）**」）。方案状态已推进「部分执行」（commit 82d7599f9）。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]
    - 说明：已创建 `docs/notes/2026-09-18-xy078-lessons.md`，记录 2 条底座级教训：
      (a) shell 白名单与引擎权威分类器不一致导致 48 轮死复跑（根修 aabc2aba9）；
@@ -103,8 +103,27 @@
 
 ## 回写区
 
-## 机审区
+### 执行结果
 
-- 审核方：Claude Code（phase2 自动）
-- 结论：不通过
-- 理由：REJECT 预算耗尽，待人工
+代码已完整交付：`src/xianyu/content/video.py`（+57/-5）+ `tests/content/test_video_fail_closed.py`（219 行，6 用例）+ `tests/test_cinematic_video.py`（28 行对齐旧断言）。
+
+### 探针输出
+
+_is_valid_artifact invalid: 152（占位文件被正确识别为无效）
+pytest tests/content/ -q: 100/100 passed
+
+### 变更证据
+
+- commit: 0825288（业务仓 origin/codex/xy078-fail-closed）
+- 3 个 commit：aee2d24（feat）+ 86882a5（test 对齐）+ 0825288（style）
+
+### 维护区四问
+
+1. 方案同步：是——xy-plan-011 §十二 关联卡已登记
+2. 教训沉淀：有——docs/notes/2026-09-18-xy078-lessons.md
+3. 档案/README：否——未改项目结构
+4. 线路图：是——docs/projects/xy/README.md 已更新
+
+### 人工批注落实
+
+无真实批注（卡批注节为模板占位句，引擎权威分类器判定 NONE）。
