@@ -135,23 +135,64 @@ def check_tcp_reachable(host: str, port: int, timeout: float = 3.0) -> NodeStatu
         )
 
 
+def _find_pids_by_keyword(process_keyword: str) -> list[int]:
+    """按命令行关键词扫描进程 pid（不用 pgrep，排除自身调用链）。
+
+    不用 `pgrep -f` 的原因：macOS pgrep 排除调用进程及其祖先进程树。
+    引擎内嵌巡检线程跑在 engine 进程内（engine pid==pgid，argv 含服务关键词），
+    被检目标往往就是调用者本身 → pgrep 恒返回空 → 误报 running=False。
+    改扫 `ps -eo pid=,pgid=,command=` 全量取匹配。
+    """
+    import os
+
+    my_pid = os.getpid()
+
+    try:
+        out = subprocess.run(
+            ["ps", "-eo", "pid=,pgid=,command="],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+
+    all_pids: list[int] = []
+    other_pids: list[int] = []
+    for line in out.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) != 3:
+            continue
+        pid_s, cmd = parts[0], parts[2]
+        if process_keyword not in cmd:
+            continue
+        try:
+            pid = int(pid_s)
+        except ValueError:
+            continue
+        all_pids.append(pid)
+        if pid != my_pid:
+            other_pids.append(pid)
+
+    # 优先取「非调用者」的匹配：避免把自己的巡检进程当成目标服务。
+    # 无外部匹配时回落自身 —— 调用者 argv 含该服务关键词且进程活着，
+    # 即该模块确在运行。
+    # 注意：不能按 pgid 排除。engine 的 pgid == pid，排除自身进程组
+    # 会把唯一的目标行（引擎自己）排掉，自检仍误报 running=False。
+    return other_pids or all_pids
+
+
 def check_service_status(name: str, process_keyword: str) -> ServiceStatus:
-    """通过 pgrep 检查服务进程状态。
+    """按配置关键词检查服务进程状态。
 
     Args:
         name: 服务显示名（来自配置 CLUSTER_SERVICES 的 name 部分）。
-        process_keyword: pgrep -f 匹配关键词（来自配置 keyword 部分）。
+        process_keyword: 命令行匹配关键词（来自配置 keyword 部分）。
     """
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", process_keyword],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().splitlines()
+        pids = _find_pids_by_keyword(process_keyword)
+        if pids:
             return ServiceStatus(
                 name=name, running=True,
-                pid=int(pids[0]),
+                pid=pids[0],
             )
         return ServiceStatus(name=name, running=False)
     except (subprocess.TimeoutExpired, OSError) as exc:
