@@ -80,7 +80,7 @@ class TestSidecarLifecycle:
         assert _is_manual_or_remote_executor(_seed_work(store, "m5", executor="")) is False
 
     def test_retryable_writes_retry_count_clears_state(self, tmp_path: Path) -> None:
-        """可自愈重试：写 retry_count、清流程态（sidecar 不存流程终态）。"""
+        """可自愈重试：写 retry_count、回待分派态（F5：不整条 clear，预算继承）。"""
         store = InMemoryBoardStore()
         w = _seed_work(store, "c4")
         w.transition(State.RUNNING)  # 合法路径：执行中 → 待分派重试
@@ -91,11 +91,13 @@ class TestSidecarLifecycle:
         assert retried is True  # 回待分派重试
         assert w.state is State.TODO
         assert w.retry_count == 2
-        # sidecar：retry_count 记录在，但 state 已清
+        # F5：重试出口不再整条 clear（那样预算会随 state=null 一并失效）。
+        # sidecar 保留 retry_count 供下一轮派发继承；流程态不写终态（这里是测试种子
+        # 的「执行中」，非重试分支写入）。
         rec = read_card_state(tmp_path).get("c4")
-        assert rec is None or rec.get("state") is None
-        if rec:
-            assert rec.get("retry_count") == 2
+        assert rec is not None
+        assert rec.get("retry_count") == 2, rec
+        assert rec.get("state") in ("执行中", "待分派"), "sidecar 不应残留终态（打回/已回写）"
 
 
 class TestConverger:

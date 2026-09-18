@@ -845,11 +845,16 @@ def _fail_retry_or_reject(
         backoff_s = retry_backoff_seconds(cfg, work.retry_count)
         set_retry_backoff(work.id, backoff_s)
         if log_dir:
-            from server.engine.runtime_state import write_card_state, clear_card_state
+            from server.engine.runtime_state import write_card_state
 
-            # 可自愈：写重试预算，清流程态残留（sidecar 不存流程终态）
+            # 可自愈：只写重试预算（机器自动重派继承预算）。
+            # 此处不得 clear_card_state：clear 追加 state=null 会让 read_card_state
+            # 整体 pop 该卡记录（runtime_state.read_card_state），刚写的 retry_count
+            # 一并失效 → 下一轮派发按 0 预算重派、3/3 上限永不触顶（F5 / xy079 无限烧窗）。
+            # 流程态已由上方 store.save_work 写回 sidecar（state=待分派 + retry_count + reason）。
+            # 预算清零只留两处出口：成功收单进机审（_run_auto_worker）、人审正规重派
+            # （web transition API / redispatch-card.sh）。
             write_card_state(log_dir, work.id, retry_count=work.retry_count)
-            clear_card_state(log_dir, work.id)
         logger.info(
             "失败回待分派重试: work=%s retry=%d/%d 退避=%ds problems=%s",
             work.id,
@@ -869,6 +874,9 @@ def _fail_retry_or_reject(
     if log_dir:
         from server.engine.runtime_state import clear_card_state
 
+        # 打回出口保留 clear + 重写标记（_write_reject_budget_markers 不带 state 字段）：
+        # sidecar 整条先失效、再写 budget 标记（state=None）→ 收敛器「终态残留→清除」
+        # 分支不会连带清掉 awaiting_human/reject_budget_exhausted（F1 挂人工闸依赖）。
         clear_card_state(log_dir, work.id)
         _write_reject_budget_markers(business_exhausted)
     logger.warning(
