@@ -106,6 +106,98 @@ if [ -n "$BIZ_WORKTREE" ] && [ -n "$WORKTREE" ]; then
 双仓提示：本卡文件位于文档仓分支副本 ${WORKTREE}/ 下（相对路径 ${CARD_PATH#$_CCC_ROOT/}）。业务改动在当前目录实施；卡文件的状态回写、回写区与维护区四问必须在文档仓 worktree 的卡副本上完成并 commit+push 到同一分支；主仓 ${CARD_PATH} 只读勿动。"
 fi
 
+# ── 续跑提示（2026-09-18 层2 · INFRA 冷却续派时续做而非重做）────────────
+# DSH headless 无 --resume（`dsh --profile headless --help` 仅 task 参数），引擎 INFRA
+# 冷却续派必为全新 session；但 run 相位失败不清理 worktree（_cleanup_closed_worktrees
+# 只在关卡时调，main.py:3909），前次部分提交仍在分支上。xy078 实测：108 次派发 /
+# 52 次失败 / 业务仓分支 4 个未合入 commit / 56 个孤儿 session —— 断点真实存在，零复用。
+#
+# 三信号合取才注入（任一为假即不注入，避免对正常首跑加噪）：
+#   S1 worker-events.jsonl 中该卡有 ≥1 条 phase=run 且 ok=false（权威派发史，_emit 埋点，
+#      比 sidecar 稳：sidecar 会被 clear_card_state 清掉、按字段合并易歧义）
+#   S2 分支相对 origin/main 有 ≥1 个未合入 commit（有断点可续）
+#   S3 sidecar 末次记录无 reject_budget_exhausted / awaiting_human（熔断卡挂起待人工，
+#      引擎不会再派；防误触发）
+# 引擎对本 wrapper 设 inject_hint=False（main.py:2045-2057），故由 wrapper 自读，
+# 引擎不会覆盖本段。set -euo pipefail 下 python3 非 0 须包在 || 里，否则中断整个派发。
+_RESUME_HINT=""
+if [[ -n "${WORK_ID:-}" ]]; then
+  _RESUME_HINT="$(python3 - "$WORK_ID" "${BIZ_WORKTREE:-}" "${WORKTREE:-}" <<'PYR'
+import io, json, os, subprocess, sys
+wid, wt, biz = sys.argv[1:4]
+log_dir = os.environ.get("EXECUTOR_LOG_DIR", "").strip()
+if not log_dir:
+    cfg = os.environ.get("CCC_CONFIG_ENV", "/Users/fan/program/CCC/server/config/config.env")
+    try:
+        for ln in io.open(cfg, encoding="utf-8", errors="replace"):
+            if ln.startswith("EXECUTOR_LOG_DIR="):
+                log_dir = ln.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    except OSError:
+        pass
+log_dir = log_dir or os.path.expanduser("~/.ccc/logs/exec")
+
+def _jsonl(p):
+    out = []
+    try:
+        if os.path.isfile(p):
+            for ln in io.open(p, encoding="utf-8", errors="replace"):
+                ln = ln.strip()
+                if ln:
+                    try:
+                        out.append(json.loads(ln))
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    return out
+
+runs = [r for r in _jsonl(os.path.join(log_dir, "worker-events.jsonl"))
+        if str(r.get("work_id")) == wid and r.get("phase") == "run"]
+failed_runs = [r for r in runs if not r.get("ok", True)]
+
+# 熔断判定：复刻 runtime_state.read_card_state 的 field-level last-wins + state:null 失效语义
+rt = {}
+for r in _jsonl(os.path.join(log_dir, "state", "cards.jsonl")):
+    if str(r.get("id")) != wid:
+        continue
+    if "state" in r and r["state"] is None:
+        rt = {}
+        break
+    rt.update(r)
+blocked = bool(rt.get("reject_budget_exhausted") or rt.get("awaiting_human"))
+
+if not failed_runs or blocked:
+    sys.exit(0)
+
+# 业务仓型任务业务改动在 BIZ_WORKTREE；非业务仓任务在 WORKTREE（含卡副本）。
+d = biz if (biz and os.path.isdir(biz)) else (wt if (wt and os.path.isdir(wt)) else "")
+if not d:
+    sys.exit(0)
+try:
+    res = subprocess.run(["git", "-C", d, "log", "origin/main..HEAD", "--oneline"],
+                         capture_output=True, text=True, timeout=30, check=False)
+except Exception:
+    sys.exit(0)
+new = [l for l in res.stdout.splitlines() if l.strip()] if res.returncode == 0 else []
+if new:
+    print("RESUME:" + str(len(new)))
+PYR
+)" || _RESUME_HINT=""
+fi
+
+if [[ "$_RESUME_HINT" == RESUME:* ]]; then
+  PROMPT+="
+
+【续跑约束 · 基础设施故障后的自动续派】
+本次运行是前次执行因基础设施故障（模型通道/网络/上游波动）被中断后的自动续派，不是首跑。
+同一 worktree 分支上已有前次未完成的部分提交，git log --oneline origin/main..HEAD 可见（${_RESUME_HINT#RESUME:} 个未合入）。
+1. 动手前先看现状：git log --oneline origin/main..HEAD 与 git status --short，确认已完成部分。
+2. 只补未完成部分；已提交的实现不重做、不回滚、不覆盖。
+3. 前次提交有缺陷时，在其上追加修复 commit，不重写历史。
+4. 完成度判定以卡白名单与自测为准，不因「已做过一部分」而降低自测标准。
+5. 判断前次提交整体不可用需推倒重做时，必须在 .ccc-result.md「## 3. 维护区四问」显式写明理由与证据，不静默重做。"
+fi
 # 后台执行 + wait 传播退出码（R1）；engine 侧另有全局超时
 _REPORT_STARTED_AT="$(date +%s)"
 dsh --profile headless --patch "$OVERLAY" "$PROMPT" &
