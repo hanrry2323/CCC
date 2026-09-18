@@ -1,6 +1,6 @@
 # 任务卡 xy078 · 产线失败 fail-closed（占位文件与 0 字节不再报成功）
 
-> 关联：xy-plan-011（内容产线架构 阶段0 P0）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-18 · 版本：xy078 · 状态版本：4
+> 关联：xy-plan-011（内容产线架构 阶段0 P0）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-18 · 版本：xy078 · 状态版本：5
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 > 依赖：无（本卡是 xy-plan-011 全部后续卡的前置）
 
@@ -99,4 +99,8 @@
 
 ## 回写区
 
+## 机审区
 
+- 审核方：Claude Code（phase2 自动）
+- 结论：不通过
+- 理由：维护区未完成：Q1 方案同步校验失败。方案关联卡「无（拍板前不动手；实施按「功能卡」拆解，见 §七）」中不包含本卡 ID「xy078」；Q2 声明了有教训沉淀[有]，但说明中未引用任何 docs/notes/*.md 或 lessons.md 文件；Q4 声明更新了线路图[是]，但指定的文件 docs/roadmap.md, docs/projects/xy/README.md 在当前分支上没有检测到相对 origin/main 的修改
