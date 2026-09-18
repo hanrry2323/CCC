@@ -223,9 +223,14 @@ fi
 
 # 批注 fail-closed（口径与 server/board/annotation.py:_NONE_ANNOTATION_MARKERS 对齐）
 if [[ -f "$CARD_PATH" && -f "$_RESULT_DST" ]] && grep -q '^## 人工批注$' "$CARD_PATH"; then
-  _ANN="$(awk '/^## 人工批注$/{f=1;next} /^## /{f=0} f' "$CARD_PATH")"
-  if ! grep -qE '^(无|无批注|暂无批注|（无批注。）|无批注。)[。.]?$' <<<"$_ANN" \
-     && ! grep -qE '^## (人工)?批注落实$' "$_RESULT_DST"; then
+  _ANN_KIND="$(python3 - "$_CCC_ROOT" "$CARD_PATH" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+from server.board.annotation import classify_annotation
+print(classify_annotation(open(sys.argv[2], encoding='utf-8').read()))
+PYEOF
+)"
+  if [[ "$_ANN_KIND" != "NONE" ]] && ! grep -qE '^## (人工)?批注落实$' "$_RESULT_DST"; then
     echo "[pi-remote-executor] ERROR: 卡含真实人工批注但结果缺少 ## 批注落实，拒绝传输（rc=64）" >&2
     exit 64
   fi
