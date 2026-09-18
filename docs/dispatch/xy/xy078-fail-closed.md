@@ -84,13 +84,17 @@
 ## 维护区
 
 1. **方案同步**：xy-plan-011 状态/关联卡是否已同步？[是]
-   - 说明：xy-plan-011 阶段 0 首卡，方案状态已推进「部分执行」（commit 82d7599f9），关联卡已登记。
+   - 说明：xy-plan-011 §十二 阶段 0 首卡 xy078 已登记（「**xy078 · 产线失败 fail-closed（P0，首卡）**」）。方案状态已推进「部分执行」（commit 82d7599f9）。
 2. **教训沉淀**：本卡是否产出可复用教训？[有]
-   - 说明：A1 传输闸门硬编码白名单与引擎权威分类器不一致，导致 48 轮死复跑（rc=64 假拦截）。根修 commit aabc2aba9（两处执行器统一调 classify_annotation）。教训已入本卡 commit message，属底座级教训，建议同步 ccc-plan-055 缺口清单。
+   - 说明：已创建 `docs/notes/2026-09-18-xy078-lessons.md`，记录 2 条底座级教训：
+     (a) shell 白名单与引擎权威分类器不一致导致 48 轮死复跑（根修 aabc2aba9）；
+     (b) A2 契约与 consume_once 入口条件互斥导致收单死锁。
 3. **档案/README**：本卡是否改变了项目结构/技术栈/路径？[否]
    - 说明：只改 src/xianyu/content/video.py + 新增 tests/content/test_video_fail_closed.py + 对齐 tests/test_cinematic_video.py 旧断言。未改项目结构/技术栈/路径。
 4. **线路图**：项目近况/下一步是否变化？[是]
-   - 说明：阶段 0 收口（fail-closed 生效，假成功不再污染质量分）。下一批为阶段 1：xy079（CLIP 实跑 + pass_full/pass_partial 双口径）、xy080（内容维打分器 + 8 条防乐观测试全绿）。
+   - 说明：已更新 `docs/projects/xy/README.md` 近况节：阶段 0 收口（fail-closed 生效，假成功不再污染质量分）。下一批为阶段 1：xy079（CLIP 实跑 + pass_full/pass_partial 双口径）、xy080（内容维打分器 + 8 条防乐观测试全绿）。
+
+## 人工批注
 
 ## 人工批注
 
