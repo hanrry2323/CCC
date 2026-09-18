@@ -823,6 +823,20 @@ def _fail_retry_or_reject(
             clear_card_state(log_dir, work.id)
         logger.warning("不可自愈执行体（manual/远端）打回并清 sidecar: work=%s problems=%s", work.id, reasons[:2])
         return False
+    # 挂人工闸（F1，2026-09-18）：reject 预算耗尽侧卡（awaiting_human / reject_budget_exhausted）
+    # 只许人审通道（redispatch-card.sh / transition API）解冻，机器路径永不自愈——
+    # 不再转 TODO、不消耗重试预算，保持打回终态（同族病灶第三次：xy064/xy077/xy078）。
+    if log_dir:
+        from server.engine.runtime_state import read_card_state
+
+        rt_card = read_card_state(log_dir).get(work.id) or {}
+        if rt_card.get("awaiting_human") or rt_card.get("reject_budget_exhausted"):
+            logger.error(
+                "挂人工卡收到 worker 异常，保持待人工不重派: work=%s err=%s",
+                work.id,
+                reasons[:2],
+            )
+            return False
     if work.retry_count < max_r:
         work.retry_count += 1
         work.transition(State.TODO, problems=reasons)
