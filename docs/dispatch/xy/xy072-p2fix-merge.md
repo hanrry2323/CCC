@@ -1,6 +1,6 @@
 # 任务卡 xy072 · phase2 合入缺口修复（P2-fix-01 F1）
 
-> 关联：ccc-plan-050（合入自动化研究；提案 P2-fix-01 docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：打回（CC 审核不通过） · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：3
+> 关联：ccc-plan-050（合入自动化研究；提案 P2-fix-01 docs/p2-fix-01-phase2-merge-gap-proposal.md）· 执行体：DSH · 验收：DSH · 状态：作废（代码已经另行合入main(95eae7218)，卡面流程自证未达成，老板09-1） · 派发：engine · 项目：xy · 日期：2026-09-13 · 版本：xy072 · 状态版本：4
 > 业务仓：无（改 CCC 仓 server/engine/phase2.py）
 
 ## 目标
