@@ -17,6 +17,12 @@ logger = logging.getLogger("ccc.engine.runtime_state")
 
 STATE_REL = Path("state/cards.jsonl")
 
+# F12（2026-09-19）：exhausted_class 显式清空 sentinel。write_card_state 以
+# None 为缺省（「未提及=保持历史」），但调用方显式传 None 表示要清空旧标签
+# （人审重派清零预算覆盖 stale exhausted_class）。无法用 None 区分二者 →
+# 用独立 sentinel 标记「未提及」，显式 None 才真正清空。
+_UNSET = object()
+
 
 def _utcnow_iso() -> str:
     return (
@@ -48,9 +54,14 @@ def read_card_state(log_dir: str | Path) -> dict[str, dict[str, Any]]:
                 continue
             if isinstance(rec, dict) and rec.get("id"):
                 cid = str(rec["id"])
-                # 支持 null/None 失效语义：若最后更新为 null 状态，则认为无状态
+                # 支持 null/None 失效语义：若最后更新为 null 状态，则认为无流程态。
+                # F12（2026-09-19）：只清「流程态」state 字段，保留挂人工冻结标记
+                # （awaiting_human / reject_budget_exhausted）。旧实现整条 pop 会把
+                # 冻结标记一并删除 → F9 派发闸/F8 回收闸/F6 挂人工闸全部失效 →
+                # 引擎按无冻结重派（xy079 run15 实证：冻结后 9 秒被清掉重派）。
+                # 收敛器「终态残留→清除」语义不变：state 清空即视为无流程态。
                 if "state" in rec and rec["state"] is None:
-                    out.pop(cid, None)
+                    out.setdefault(cid, {}).pop("state", None)
                 else:
                     # 按字段合并：缺省字段沿用历史，避免部分字段记录顶掉 state
                     out.setdefault(cid, {}).update(rec)
@@ -60,7 +71,14 @@ def read_card_state(log_dir: str | Path) -> dict[str, dict[str, Any]]:
 
 
 def clear_card_state(log_dir: str | Path, card_id: str) -> None:
-    """清除一个卡的 sidecar 流程态（追加一条 state=None/null 失效记录）。"""
+    """清除一个卡的 sidecar 流程态（追加一条 state=None/null 失效记录）。
+
+    F12（2026-09-19）语义：只清流程态 state，不清挂人工冻结标记
+    （awaiting_human / reject_budget_exhausted）。read_card_state 对
+    state=null 只 pop state 字段，冻结标记保留 → F9 派发闸/F8 回收闸/
+    F6 挂人工闸持续生效，机器路径不得自愈/复活；解冻只走人审通道
+    （redispatch-card.sh / transition API，显式写 awaiting_human=False）。
+    """
     rec: dict[str, Any] = {
         "id": card_id,
         "ts": _utcnow_iso(),
@@ -92,9 +110,13 @@ def write_card_state(
     business_reject_count: int | None = None,
     protocol_retry_count: int | None = None,
     awaiting_human: bool | None = None,
-    exhausted_class: str | None = None,
+    exhausted_class: str | None | object = _UNSET,
 ) -> None:
-    """追加一条运行时状态（调用方给定字段；缺省保持历史不变）。"""
+    """追加一条运行时状态（调用方给定字段；缺省保持历史不变）。
+
+    ``exhausted_class`` 特殊：缺省 ``_UNSET``=不写保持历史；显式传 ``None``=
+    清空旧标签（人审重派清零预算时覆盖 stale 标签）。
+    """
     rec: dict[str, Any] = {"id": card_id, "ts": _utcnow_iso()}
     if state is not None:
         rec["state"] = state
@@ -122,8 +144,9 @@ def write_card_state(
         rec["protocol_retry_count"] = int(protocol_retry_count)
     if awaiting_human is not None:
         rec["awaiting_human"] = bool(awaiting_human)
-    if exhausted_class is not None:
-        rec["exhausted_class"] = str(exhausted_class)
+    # exhausted_class 缺省 _UNSET=不写；显式 None=清空（人审重派清零预算覆盖旧标签）。
+    if exhausted_class is not _UNSET:
+        rec["exhausted_class"] = str(exhausted_class) if exhausted_class is not None else None
     try:
         path = Path(log_dir) / STATE_REL
         path.parent.mkdir(parents=True, exist_ok=True)

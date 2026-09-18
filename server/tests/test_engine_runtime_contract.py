@@ -130,7 +130,9 @@ class TestConverger:
         assert read_card_state(tmp_path).get("ghost") is not None
 
         self._run_converge(tmp_path, store)
-        assert read_card_state(tmp_path).get("ghost") is None
+        # F12（2026-09-19）：state=null 只清流程态，卡记录保留；孤儿判定以「无流程态」为准
+        rec = read_card_state(tmp_path).get("ghost")
+        assert rec is None or rec.get("state") is None
 
     def test_terminal_state_residual_cleared(self, tmp_path: Path) -> None:
         """终态残留（磁盘已打回，sidecar 仍待分派）→ 收敛器清除。"""
@@ -142,7 +144,9 @@ class TestConverger:
         write_card_state(tmp_path, "c5", state="待分派", reason="残留")
 
         self._run_converge(tmp_path, store)
-        assert read_card_state(tmp_path).get("c5") is None
+        # F12（2026-09-19）：state=null 只清流程态；终态残留判定以「无流程态」为准
+        rec = read_card_state(tmp_path).get("c5")
+        assert rec is None or rec.get("state") is None
 
     def test_infra_cooldown_preserved(self, tmp_path: Path) -> None:
         """infra 冷却记录（带 infra_cooldown_until）→ 收敛器保留。"""

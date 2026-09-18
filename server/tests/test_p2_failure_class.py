@@ -286,10 +286,14 @@ def test_manual_redispatch_clears_all_budgets(tmp_path: Path):
     )
     rec = read_card_state(tmp_path)["tst004"]
     assert rec["awaiting_human"] is True
-    # 模拟 web transition 重派：清全部预算计数
+    # 模拟 web transition 重派：清全部预算计数。
+    # F12（2026-09-19）：clear 追加 state=null 只清流程态、卡记录保留（挂人工冻结标记
+    # 粘性），因此人审重派必须显式写 awaiting_human=False / exhausted_class=None 覆盖
+    # 旧标记——与 server.web.server transition API 的真实写法一致。
     from server.engine.runtime_state import clear_card_state
 
     clear_card_state(tmp_path, "tst004")
+    assert read_card_state(tmp_path)["tst004"]["awaiting_human"] is True  # 冻结粘性生效
     write_card_state(
         tmp_path,
         "tst004",

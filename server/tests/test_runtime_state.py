@@ -33,7 +33,12 @@ def test_partial_field_record_does_not_clobber_state(tmp_path: Path) -> None:
 
 
 def test_clear_card_state_null_invalidation(tmp_path: Path) -> None:
-    """测试 clear_card_state 追加 null 失效标记后，read_card_state last-wins 会让该卡无状态。"""
+    """测试 clear_card_state 追加 null 失效标记后，read_card_state last-wins 清流程态。
+
+    F12（2026-09-19）：state=null 只清 state 字段、不清卡记录（卡记录保留挂人工
+    冻结标记 awaiting_human/reject_budget_exhausted）。无冻结标记的正常卡清除后
+    无流程态残留（state 被清）。
+    """
     write_card_state(tmp_path, "xy001", state="已回写", retry_count=1)
     rt1 = read_card_state(tmp_path)
     assert rt1["xy001"]["state"] == "已回写"
@@ -41,7 +46,9 @@ def test_clear_card_state_null_invalidation(tmp_path: Path) -> None:
     # 清除状态（追加 null 失效记录）
     clear_card_state(tmp_path, "xy001")
     rt2 = read_card_state(tmp_path)
-    assert "xy001" not in rt2  # 已被失效，视为不存在
+    assert "xy001" not in rt2 or rt2["xy001"].get("state") is None  # 流程态已失效
+    if "xy001" in rt2:
+        assert rt2["xy001"].get("awaiting_human") is None
 
 
 def test_store_runtime_mode_and_override_rules(tmp_path: Path) -> None:
