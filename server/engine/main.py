@@ -757,12 +757,12 @@ def _is_manual_or_remote_executor(work: Work) -> bool:
 
 
 def _card_awaiting_human(log_dir: str | Path | None, work_id: str) -> bool:
-    """挂人工判定（F1/F6 共用闸）：sidecar 两标记任一为真 → 只许人审解冻。
+    """挂人工判定（F1/F6/F8/F9 共用闸）：sidecar 两标记任一为真 → 只许人审解冻。
 
     ``awaiting_human`` / ``reject_budget_exhausted`` 任一为真表示该卡已挂起待人工
     （预算耗尽出口 ``_write_reject_budget_markers`` 写入），机器路径——worker 异常回
     待分派（F1 闸）、回收环自动重派（F6 闸）——均不得自愈/复活；只许人审通道
-    （redispatch-card.sh / transition API）解冻。两闸必须共用本函数，禁复制判定逻辑。
+    （redispatch-card.sh / transition API）解冻。四闸必须共用本函数，禁复制判定逻辑。
     """
     if not log_dir:
         return False
@@ -2696,6 +2696,19 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path, data_dir: str | N
         owner_pids = _parse_running_marker_worker_pids(raw)
         alive = [p for p in owner_pids if _pid_alive(p)]
 
+        # F8（2026-09-19）：回收环第三支路挂人工闸——「Engine 中断未收单」死标记回收与
+        # 紧邻的「执行中超时强制中止」强拆（同支路，闸位共用）。xy079 实证：sidecar
+        # awaiting_human 后本支路完全不读 sidecar → 16:15 转待分派、16:16 起跑第 11 轮。
+        # 命中则不 kill、不 transition、不 unlink marker（保持挂人工冻结态完整），
+        # 只许人审通道（redispatch-card.sh / transition API）解冻。与 F1/F6 闸共用
+        # _card_awaiting_human helper（禁复制判定逻辑）。
+        if _card_awaiting_human(log_dir, w.id):
+            logger.error(
+                "挂人工卡命中引擎中断/超时回收支路，保持现状不回收: work=%s",
+                w.id,
+            )
+            continue
+
         # 2026-08-17 v2：即使 PID 存活，超过强拆时距同样强制中止并回收（1-3：1.5×执行超时）。
         # 否则仅由 cleanup_dead_markers 删标记而子进程不死，会导致卡永久处于假在途、槽死锁状态。
         _eff_max_age = _effective_max_marker_age()
@@ -3498,12 +3511,12 @@ def _run_auto_worker(
 def _build_dispatch_gates() -> GateRegistry:
     """装配派发门禁链（借鉴 Cordis 依赖图思想 · 轻量前置条件版）。
 
-    11 个门禁与 run_once 原 if/elif 顺序一一对应；`requires` 声明前置条件，
+    15 个门禁与 run_once 原 if/elif 顺序一一对应；`requires` 声明前置条件，
     框架按 order 排序 + 环校验。每个 gate 的 check 闭包逐字搬运原逻辑
     （含日志/计数/副作用），保证行为不回归。
 
     门禁链：
-        infra_cooldown → retry_backoff → short_session_breaker → card_gate
+        awaiting_human → infra_cooldown → retry_backoff → short_session_breaker → card_gate
         → worktree_card_copy → accepted_card → parent_closed → depends_closed → dependency_cycle
         → decision → dsh_quota → slot_available → biz_isolation → relay_probe → submit
 
@@ -3511,6 +3524,26 @@ def _build_dispatch_gates() -> GateRegistry:
     绝不拆分——拆开会产生「假 RUNNING + marker 泄漏」，破坏 reclaim 不变量。
     """
     reg = GateRegistry()
+
+    def _awaiting_human_gate(ctx: GateContext) -> GateResult:
+        # F9（2026-09-19 · 本轮根因）：派发路径唯一挂人工闸。三处逃逸洞中 F6 在失败路径、
+        # F8 在重启回收路径，派发路径本身零读 sidecar——卡落 TODO 后每轮心跳直接 submit，
+        # F6/F8 全拦死仍重派（xy079 第 11 轮根因）。order=0 全链最前，早于
+        # dependency_cycle(60)/decision(70)/relay_probe(100)，且不列 requires
+        # （否则 cycle 会先跑）。passed=False 语义=跳过该卡保持 TODO、不落重试预算、
+        # 不 transition。与 F1/F6/F8 闸共用 _card_awaiting_human helper。
+        if _card_awaiting_human(ctx.log_dir, ctx.work.id):
+            ctx.counters["awaiting_human_skips"] = (
+                ctx.counters.get("awaiting_human_skips", 0) + 1
+            )
+            logger.error(
+                "挂人工卡派发闸拦截，保持待分派不重派: work=%s",
+                ctx.work.id,
+            )
+            return GateResult(passed=False, reason="awaiting_human")
+        return GateResult(passed=True)
+
+    reg.register(DispatchGate(name="awaiting_human", order=0, check=_awaiting_human_gate))
 
     def _infra_cooldown(ctx: GateContext) -> GateResult:
         if _infra_cooldown_active(ctx.runtime, ctx.work.id, ctx.now_ts):
@@ -3836,7 +3869,7 @@ def run_once(
 
     runtime_for_dispatch = read_card_state(log_dir) if log_dir else {}
     now_ts = time.time()
-    # 派发门禁链（Cordis 依赖图思想）：11 门禁经 _build_dispatch_gates 装配，
+    # 派发门禁链（Cordis 依赖图思想）：15 门禁经 _build_dispatch_gates 装配，
     # counters 跨卡累计，summary 前解包回本地变量。
     counters: dict[str, int] = {
         "dispatched": 0,
