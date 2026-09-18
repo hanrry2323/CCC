@@ -19,11 +19,27 @@ _SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CCC_ROOT="$(cd "$_SELF/.." && pwd -P)"
 # shellcheck source=scripts/dsh-key.sh
 source "$_SELF/dsh-key.sh" 2>/dev/null || true
+# F7（2026-09-18）：set -u 下的前置引用竞态硬化。旧写法
+#   _KC_RC=0
+#   "$_SELF/dsh-key-check.sh" --quiet || _KC_RC=$?
+# 在 macOS 默认 bash 3.2（/bin/bash）下，当 key-check 非 0 返回（2/3/5/6 等）时会在
+# 后续 `[[ $_KC_RC -ne 0 ]]` / `exit "$_KC_RC"` 误报 `_KC_RC: unbound variable`
+#（F5 窗 run2 实证 `_KC_RC: unbound variable` 崩溃，派发整体中断）。
+# 实测根因：bash 3.2 在 `set -u` 生效时，对「捕获 $?」得到的变量名在 if/exit/echo
+# 中的多次引用会错位（同块内首次引用后可见、二次引用即被判 unbound）。
+# 修复：捕获期间临时 `set +e +u`（关闭 errexit + nounset），恢复 `set -e -u`；
+# 并在 if 体首行把退出码一次性拷贝到 `_KC_EXIT`，后续只引用 `_KC_EXIT`，
+# 既绕开解析 bug，又完整保留三态退出码（2=QUOTA / 3=AUTH / 5=PROBE / 6=NO_KEY），
+# 非 0 一律阻断（保留真实退出码，引擎按码区分 QUOTA/AUTH/PROBE/NO_KEY）。
 _KC_RC=0
-"$_SELF/dsh-key-check.sh" --quiet || _KC_RC=$?
+set +e +u
+"$_SELF/dsh-key-check.sh" --quiet
+_KC_RC=$?
+set -e -u
 if [[ $_KC_RC -ne 0 ]]; then
-  echo "[FATAL] DSH 网关预检未通过（code=$_KC_RC）见 ledger dsh_quota_alert/日志；本次不执行" >&2
-  exit "$_KC_RC"
+  _KC_EXIT=$_KC_RC
+  echo "[FATAL] DSH gateway precheck failed (code=$_KC_EXIT); no execution" >&2
+  exit "$_KC_EXIT"
 fi
 
 CARD_PATH="${1:?缺 card_path}"
@@ -288,7 +304,29 @@ PY
       exit 64
     fi
   else
-    echo "[dsh-executor] WARN: DSH 退出码 0 但 .ccc-result.md 缺失（空转嫌疑）→ 上报 rc=64" >&2
+    # F7（2026-09-18）：退出码 0 但信封缺失 = 明确失败，rc=64 语义保留，但必须
+    # 落一行可 grep 的死因 + 贴 DSH 会话尾 30 行做现场留存。F5 窗诊断实证：
+    # run3/4/6/7「DSH 退出码 0 但 .ccc-result.md 缺失 → 上报 rc=64」空转，此前
+    # 只 echo 一句 WARN 就 exit，无从判定 DSH 到底做了什么/停在哪步——xy079 连烧
+    # 多轮全死于此，只能靠人工翻 DSH 会话还原。
+    # stderr → engine 重定向进 ${WORK_ID}.log（ENVELOPE_MISSING 死因可 grep）；
+    # 会话尾另落独立文件，避免与 engine 持句柄的 .log 双写产生偏移错乱。
+    _SESSION_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}.log"
+    _ENV_MISS_LOG="${_TE_EXEC_LOG_DIR}/${WORK_ID}-envelope-missing.log"
+    mkdir -p "$_TE_EXEC_LOG_DIR" 2>/dev/null || true
+    echo "[dsh-executor] ENVELOPE_MISSING work=${WORK_ID}：DSH 退出码 0 但信封缺失（${_RESULT_SRC} 不存在），上报 rc=64" >&2
+    {
+      echo "[dsh-executor] ENVELOPE_MISSING work=${WORK_ID} dsh_rc=${DSH_RC} cwd=$(pwd) src=${_RESULT_SRC}"
+      echo "[dsh-executor] 信封查找路径不存在；cwd 内容（前 20 行）:"
+      ls -la --time-style=+%H:%M:%S 2>/dev/null | head -20 || ls -l | head -20
+      echo "[dsh-executor] DSH 会话尾 30 行（现场留存，日志=${_SESSION_LOG}）:"
+      if [[ -f "$_SESSION_LOG" ]]; then
+        tail -30 "$_SESSION_LOG"
+      else
+        echo "[dsh-executor] （会话日志不存在：${_SESSION_LOG}）"
+      fi
+    } > "$_ENV_MISS_LOG" 2>/dev/null || true
+    echo "[dsh-executor] 现场已留存 → ${_ENV_MISS_LOG}" >&2
     exit 64
   fi
 fi
