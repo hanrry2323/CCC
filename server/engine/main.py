@@ -756,6 +756,22 @@ def _is_manual_or_remote_executor(work: Work) -> bool:
     return bool(_re.match(r"^w\d+$", ex))
 
 
+def _card_awaiting_human(log_dir: str | Path | None, work_id: str) -> bool:
+    """挂人工判定（F1/F6 共用闸）：sidecar 两标记任一为真 → 只许人审解冻。
+
+    ``awaiting_human`` / ``reject_budget_exhausted`` 任一为真表示该卡已挂起待人工
+    （预算耗尽出口 ``_write_reject_budget_markers`` 写入），机器路径——worker 异常回
+    待分派（F1 闸）、回收环自动重派（F6 闸）——均不得自愈/复活；只许人审通道
+    （redispatch-card.sh / transition API）解冻。两闸必须共用本函数，禁复制判定逻辑。
+    """
+    if not log_dir:
+        return False
+    from server.engine.runtime_state import read_card_state
+
+    rt_card = read_card_state(log_dir).get(work_id) or {}
+    return bool(rt_card.get("awaiting_human") or rt_card.get("reject_budget_exhausted"))
+
+
 def _fail_retry_or_reject(
     work: Work,
     store: BoardStore,
@@ -823,20 +839,31 @@ def _fail_retry_or_reject(
             clear_card_state(log_dir, work.id)
         logger.warning("不可自愈执行体（manual/远端）打回并清 sidecar: work=%s problems=%s", work.id, reasons[:2])
         return False
-    # 挂人工闸（F1，2026-09-18）：reject 预算耗尽侧卡（awaiting_human / reject_budget_exhausted）
-    # 只许人审通道（redispatch-card.sh / transition API）解冻，机器路径永不自愈——
-    # 不再转 TODO、不消耗重试预算，保持打回终态（同族病灶第三次：xy064/xy077/xy078）。
-    if log_dir:
-        from server.engine.runtime_state import read_card_state
-
-        rt_card = read_card_state(log_dir).get(work.id) or {}
-        if rt_card.get("awaiting_human") or rt_card.get("reject_budget_exhausted"):
-            logger.error(
-                "挂人工卡收到 worker 异常，保持待人工不重派: work=%s err=%s",
-                work.id,
-                reasons[:2],
-            )
-            return False
+    # 挂人工闸（F1/F6 共用 helper，2026-09-18）：reject 预算耗尽侧卡（awaiting_human /
+    # reject_budget_exhausted）只许人审通道（redispatch-card.sh / transition API）解冻，
+    # 机器路径永不自愈——不转 TODO、不消耗重试预算，保持打回终态（同族病灶第三次：
+    # xy064/xy077/xy078）。
+    if _card_awaiting_human(log_dir, work.id):
+        # F6（2026-09-18）：拦截时同时把 work 落成显式态——保持 REJECTED/打回语义
+        # （对齐既有「打回」状态机用语，不新增状态），杜绝 RUNNING+丢标记的逃逸窗口。
+        # 此前闸内只 return False 不落态：卡保持 RUNNING，_run_auto_worker finally 清掉
+        # .running 标记后，下一心跳回收环按 RUNNING+无标记+旧 log 复活重派（xy079 实证）。
+        # 已在打回终态则不动（幂等）；RUNNING/DONE → 打回为合法转移，转完即持久化。
+        if work.state is not State.REJECTED:
+            try:
+                work.transition(State.REJECTED, problems=reasons)
+                store.save_work(work)
+            except Exception:
+                logger.exception(
+                    "挂人工卡落显式打回态失败（不阻断，剩余逃逸窗口由 F6 回收环闸兜底）: work=%s",
+                    work.id,
+                )
+        logger.error(
+            "挂人工卡收到 worker 异常，保持待人工不重派: work=%s err=%s",
+            work.id,
+            reasons[:2],
+        )
+        return False
     if work.retry_count < max_r:
         work.retry_count += 1
         work.transition(State.TODO, problems=reasons)
@@ -2628,6 +2655,17 @@ def reclaim_orphaned_running(store: BoardStore, log_dir: Path, data_dir: str | N
         marker = log_dir / f"{w.id}.running"
         if not marker.is_file():
             if w.dispatch == "manual":
+                continue
+            # F6（2026-09-18）：回收环挂人工闸——「标记丢失自动重派」逃逸洞口（同族第三次：
+            # xy064/xy077/xy078）。挂人工卡（awaiting_human / reject_budget_exhausted）即使
+            # .running 丢失也保持现状不回收不重派，只许人审通道（redispatch-card.sh /
+            # transition API）解冻。与 F1 闸共用 _card_awaiting_human helper。
+            # 此前 RUNNING+丢标记的挂人工卡经本路 transition TODO 复活（xy079 实证）。
+            if _card_awaiting_human(log_dir, w.id):
+                logger.error(
+                    "挂人工卡标记丢失，保持现状不回收: work=%s",
+                    w.id,
+                )
                 continue
             # 2026-08-17 v2：执行中卡缺失运行标记。
             # 为了避免新建卡派发及单元测试时的微秒级竞态，只有当对应的日志文件存在且最后修改时间超过 60s 时，才判定为真正丢失标记并回收。
