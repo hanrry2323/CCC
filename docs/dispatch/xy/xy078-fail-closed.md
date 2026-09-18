@@ -1,6 +1,6 @@
 # 任务卡 xy078 · 产线失败 fail-closed（占位文件与 0 字节不再报成功）
 
-> 关联：xy-plan-011（内容产线架构 阶段0 P0）· 执行体：DSH · 验收：DSH · 状态：待分派 · 派发：engine · 项目：xy · 日期：2026-09-18 · 版本：xy078 · 状态版本：11
+> 关联：xy-plan-011（内容产线架构 阶段0 P0）· 执行体：DSH · 验收：DSH · 状态：已回写 · 派发：engine · 项目：xy · 日期：2026-09-18 · 版本：xy078 · 状态版本：12
 > 业务仓：`/Users/fan/program/apps/xianyu`（Mac2017 权威仓）
 > 依赖：无（本卡是 xy-plan-011 全部后续卡的前置）
 
@@ -83,10 +83,10 @@
 
 ## 维护区
 
-1. **方案同步**：[是] xy078 已登记于 `xy-plan-011`：头行「关联卡」列 `xy078（阶段0 首卡，人审重派中，代码已交付待合入）`，且 §十二「阶段 0」小节含 `**xy078 · 产线失败 fail-closed（P0，首卡）**`（实测 `:295`，由方案 v2 落库 commit `331b37beb` 写入）——Q1 前置成立；本轮**未改写 CCC 方案文件**（该仓不在本 run 授权、亦不在卡「范围」白名单），仅申报 §1.7-D/E 两项口径漂移待引擎代写。
-2. **教训沉淀**：[无] 已有 `docs/notes/2026-09-18-xy078-lessons.md`（2468 B，2 条底座级教训：shell 白名单与引擎权威分类器不一致致 48 轮死复跑、A2 契约与 `consume_once` 互斥致收单死锁）；本信封追加**代码级教训一条**：失败态与产物态必须同源校验——占位文件与 `success` 解耦即产生 152 例假成功，且旧测试把 bug 固化为断言（`assert result.success is True`）会让回归隐形，故守门函数与其测试必须同卡落地。
-3. **档案/README**：[否] 未改变项目结构/技术栈/路径：无新增模块或目录、`WorkerResult` 契约字段未增未减（复用既有 `error`），README 无口径需改；模块级文档已随 `9cb0043` 把 fail-closed 契约（三类 `fallback_reason` + `_is_valid_artifact` 守门口径 + 占位文件保留为物证）写入 `video.py` docstring，避免后续读者据旧注释把失败路径改回 `success=True`。
-4. **线路图**：[否] 未修改 `docs/roadmap.md` 或 `docs/projects/xy/README.md`；本卡范围仅为 xianyu 业务仓 `src/xianyu/content/video.py` fail-closed 改造，CCC 仓文档（线路图/项目档案）无口径需同步。阶段 0 代码面收口与 xy079/xy080 后续卡登记已在方案 `xy-plan-011` 内完成（§十二 阶段 0 小节，见 Q1），不在本卡 Q4 范围。
+1. **方案同步**：[是] **[是]** xy078 已登记于 `xy-plan-011`：头行「关联卡」+ §十二「阶段 0」小节（`**xy078 · 产线失败 fail-closed（P0，首卡）**`，实测位点 `:295`，由方案库 commit `331b37beb` 写入）——Q1 前置成立。本轮与上轮一致**未改写 CCC 方案文件**（该仓不在本 run 授权、亦不在卡「范围」白名单）；§1.7-D/E 两项口径漂移（方案「已关闭」措辞、README 近况哈希）继续申报引擎代写，且近况哈希应更新为 `f9dddb7`。
+2. **教训沉淀**：[有] **[有]** 无新增仓内文件（`docs/notes/` 不在卡白名单；底座级 2 条已在 `docs/notes/2026-09-18-xy078-lessons.md`，代码级 1 条「失败态与产物态必须同源校验、旧断言可固化 bug」已在前轮信封记录）。本轮新增**测试侧教训一条**：引入守门函数后，凡 mock 被守门函数消费的返回值的旧用例必须做 mock 形状体检——`test_execute_passes_tts_ctx_to_process` 的裸 `AsyncMock` 返回链使 `.stat().st_size` 抛 AttributeError 并被 `except Exception` 静默收编为 `pipeline_error`，「测试全绿」≠「成功路径仍被走查」；识别手段 = 盯 never-awaited coroutine 警告 + 检查用例实际命中的分支。修复见 `f9dddb7`（喂真 ftyp 产物 + 强化 `success is True` 断言）。
+3. **档案/README**：[否] **[否]** 未改变项目结构/技术栈/路径：无新增模块或目录，`WorkerResult` 契约字段未增未减（复用既有 `error`），本轮仅修一个测试文件的 mock 形状，README 无口径需改；fail-closed 契约（三类 `fallback_reason` + `_is_valid_artifact` 守门口径 + 占位文件保留为物证）已随 `9cb0043` 写入 `video.py` 模块 docstring。
+4. **线路图**：[否] **[否]** 未修改 `docs/roadmap.md` 与 `docs/projects/xy/README.md`：本卡业务改动全部在 xianyu 仓（`git diff --name-only origin/main..HEAD` → 仅 §1.2 三文件），CCC 仓文档不在本 run 授权内。上轮机审打回原因即 Q4 虚报 [是]，本轮如实 [否]。残留口径项（§1.7-B/C：tts 同型 fail-open、admin `_has_video()` 0 字节、sau_bridge 仅 exists）建议由引擎在方案线路图挂后续卡（xy079/xy080/xy081）。
 
 ## 机审区
 
@@ -95,6 +95,131 @@
 - 理由：维护区未完成：Q4 声明更新了线路图[是]，但指定的文件 docs/roadmap.md, docs/projects/xy/README.md 在当前分支上没有检测到相对 origin/main 的修改
 
 ## 回写区
+
+## 0. 卡标题复述
+
+**xy078 · 产线失败 fail-closed（占位文件与 0 字节不再报成功）**
+
+## 1. 探针输出
+
+### 1.1 动手前现状确认（续跑约束 1）
+
+```
+$ git log --oneline origin/main..HEAD      # 本轮开始前
+9cb0043 docs(xy078): video.py 模块 docstring 同步 fail-closed 契约
+0825288 style(xy078): ruff 修复——OSError 别名合并（UP024）与测试文件导入块格式（I001）
+86882a5 test(xy078): 旧测试对齐 fail-closed 契约——mock 路径断言成功态为 False
+aee2d24 feat(xy078): 产线失败 fail-closed——占位文件与 0 字节不再报成功
+$ git status --short
+?? .venv        ← 唯一未跟踪项（symlink → 主仓 venv，非业务文件，不入库）
+```
+
+前次 4 commit 全在位、历史未改写，`.ccc-result.md` 缺失 → 本轮补信封；实现按下列探针逐项复验而非默认信任。
+
+### 1.2 改动文件清单（`git diff --stat bc75287..HEAD`；bc75287 = 卡取证基线，`merge-base --is-ancestor` 已核验为 HEAD 祖先）
+
+```
+ src/xianyu/content/video.py             |  67 +++++++++-
+ tests/content/test_video_fail_closed.py | 219 ++++++++++++++++++++++++++++++++
+ tests/test_cinematic_video.py           |  57 +++++++--
+ 3 files changed, 323 insertions(+), 20 deletions(-)
+```
+
+- `config.env` 零改动：`git diff origin/main..HEAD --name-only | grep -i config.env` → 空（实测）。
+- 白名单文件 `src/xianyu/core/base_adapter.py` 零改动：`WorkerResult.error` 既已存在，按卡「勿新增字段」不动。
+- **范围申报（请机审裁决）**：`tests/test_cinematic_video.py` 不在卡「范围」段，属卡步骤 4「发现崩溃点就一并修」允许范围，前次 `86882a5` 与本追加 `f9dddb7` 共两次触碰，理由见 §1.6。
+
+### 1.3 `_is_valid_artifact` 守门口径（`src/xianyu/content/video.py:1107-1137`，@staticmethod）
+
+判定链：不存在/非文件→False；`st_size==0`→False；头 12 字节以 `b"[MOCK VIDEO]"` 起→False；`b"ftyp" not in head[:8]`→False；其余 True。
+
+对权威仓历史产物**只读**实跑（本轮命令输出原文）：
+
+```
+$ .venv/bin/python -   # 遍历 /Users/fan/program/apps/xianyu/data/videos/*.mp4
+total mp4 in data/videos      : 154
+_is_valid_artifact -> INVALID  : 152      ← 卡预期「152 个假文件」精确命中
+  of which [MOCK VIDEO] text   : 152
+  of which 0-byte              : 0
+  of which other-invalid       : 0
+_is_valid_artifact -> VALID    : 2
+sample INVALID name/size       : [('00c5096b.mp4', 57), ('0289d33a.mp4', 57), ('02b280fc.mp4', 47)]
+```
+
+### 1.4 端到端失败路径实跑（直接 `execute()`，非测试桩；临时目录内，不触权威仓）
+
+```
+LIVE PROBE 输入校验失败路径:
+  success         = False
+  error           = 'No image paths provided'
+  fallback_reason = input_invalid
+  mock            = True
+  video_path kept = True        ← 占位文件路径仍保留供诊断（实现要求 1 后半）
+  ASSERT OK: 失败不再报成功
+```
+
+三类 `fallback_reason` 现行位点：`input_invalid` → `video.py:1161`（`_mock_result` 定义 `:1151`，`:158` 调用）；`pipeline_error` → `video.py:222`（`except Exception` 分支，`execute` 内）；`artifact_invalid` → `video.py:188`（守门 `:179`，位于 `process()` 成功之后、成片落盘之前）。
+
+### 1.5 历史占位文件未删（红线 1）
+
+```
+$ ls /Users/fan/program/apps/xianyu/data/videos/*.mp4 | wc -l   → 154（改动前后一致）
+$ find .../data/videos -maxdepth 1 -name "*.mp4" -size -100c | wc -l → 152（不变）
+```
+
+`_write_mock()`（`video.py:1139`）占位写入逻辑保留未删。
+
+### 1.6 下游消费方核对清单（实现要求 4 / 验收 8；本轮逐位点实测 grep+读码复验）
+
+| # | 消费方位点 | 处理 `success=False` 的方式 | 判定 |
+|---|---|---|---|
+| 1 | `orchestrator/pipeline.py:608` `_run_stage` | `if not result.success: raise WorkerError(f"阶段 {stage.name} 失败: {result.error}")` | ✅ 收口为可重试错误 |
+| 2 | `orchestrator/pipeline.py:282-317` | `WorkerError`/`NotifyError`/`Exception` 三类均捕获 → `PipelineResult(success=False)` 提前 return；`stage_outputs[stage.name]=out` **仅成功路径执行** → 失败时无 `"video"` 键 → `:449` 发布闸门 `pipeline=="video" and "video" in stage_outputs` 不可达 | ✅ 失败产物不向 publish 传播 |
+| 3 | `orchestrator/pipeline.py:64`（publish 侧包装） | `"success": result.success` 如实透传 | ✅ |
+| 4 | `core/base_adapter.py:75-89` `WorkerAdapterWrapper.run` | `WorkerResult(success=wr.success, data=wr.data, error=wr.error)` 原样透传 | ✅ |
+| 5 | `openclaw/worker_base.py:42-54` `BaseWorker.run` | 成功路径原样返回（仅补 `duration`）；异常路径 `WorkerResult(success=False,...)` | ✅ |
+| 6 | `health.py:43` | `if health_result.success: … else:` 有错误分支 | ✅ |
+| 7 | `cli.py:120-137` | 逐 stage `data.get("success")` → OK/FAIL/SKIP 三态；末段失败打印 error 且 `return 1` | ✅ |
+| 8 | `admin/`（含 `api/server.py`） | `grep -rn "WorkerResult\|worker\.execute" admin/ src/xianyu/admin/` → **空输出**（不消费本卡契约） | ✅ 不受影响 |
+| 9 | `bridge/sau_bridge.py:227-229` `upload_video` | 自带 exists 校验并返回 `success=False`；且位点 2 保证 mock 路径不流入发布链 | ✅（内容有效性口径残留见 §1.8-C） |
+
+**本轮新发现并修复的缺陷（前次遗留）**：`tests/test_cinematic_video.py::test_execute_passes_tts_ctx_to_process` 用裸 `AsyncMock` 当 `process` 返回值，本 Python 版（3.12）下 `AsyncMock().return_value` 仍是 AsyncMock（实测：`outcome.path.is_file()` 返回协程对象、truthy 穿透，`.stat().st_size` 抛 `AttributeError: 'coroutine' object has no attribute 'st_size'`），被 `execute()` 的 `except Exception` 静默收进 `pipeline_error` 分支——**测试仍绿但成功路径在该用例下从未被走查**，且伴随 2 条 never-awaited coroutine 警告。已在 `f9dddb7` 修复：mock 喂真实 ftyp 字节产物 + 增加 `assert result.success is True`（**强化断言**，非放宽、非 skip，红线 3 合规）。修复后全量警告 90→88，该文件 45 例复跑全绿。
+
+### 1.7 疑似问题登记（沿用前轮口径，本轮复核仍在）
+
+| 编号 | 观察 | 处置 |
+|---|---|---|
+| A | `tests/openclaw/test_plugin_integration.py` 2 例失败：`ERR_MODULE_NOT_FOUND: Cannot find package 'typebox'`，worktree 无 gitignored `openclaw-plugin/node_modules`，主仓有；本卡 5 个 commit 0 处触 `openclaw-plugin/`（`git diff origin/main..HEAD --name-only` 三文件清单中无 `openclaw-plugin/`，grep 为空） | 环境缺依赖，非 xy078 回归，未修 |
+| B | `content/tts.py` 对 `[MOCK AUDIO]` 占位仍返回 `success=True`（同型 fail-open） | 不在卡白名单，未改，建议后续卡 |
+| C | `admin/api/server.py` `_has_video()` 对 0 字节仍判「有视频」；`sau_bridge` 只判 `exists()` | 属 xy079/xy080 与发布侧范围，未改 |
+
+## 2. 自测输出
+
+解释器：worktree `.venv/bin/python`（→ 主仓 venv；Python 3.12 / pytest 9.x）。未安装任何新依赖、未用 uvx/临时环境。
+
+| 命令 | 结果 | 退出码 |
+|---|---|---|
+| `pytest tests/content/test_video_fail_closed.py -q` | **6 passed**（5 必备用例 + artifact_invalid 守门补强） | 0 |
+| `pytest tests/content/ -q` | **100 passed** | 0 |
+| `pytest tests/content/ tests/video/ tests/core/ -q`（卡步骤 6 定向组合） | **394 passed, 3 skipped** | 0 |
+| `pytest tests/test_cinematic_video.py -q`（含本轮修复后复验） | **45 passed**（警告消除） | 0 |
+| `pytest -q`（全量，本轮修复后） | 2 failed, **834 passed**, 8 skipped | 1 |
+| `ruff check src/xianyu/content/video.py tests/content/test_video_fail_closed.py tests/test_cinematic_video.py` | All checks passed! | 0 |
+
+全量 2 例失败 = §1.7-A 环境归因（typebox），与本卡 3 个改动文件无交集；**卡步骤 6 允许「全量耗时过长则跑定向组合」，定向组合 394+3 全绿**。
+
+新增测试用例 ↔ 验收标准对照（`tests/content/test_video_fail_closed.py`）：
+
+| 用例 | 覆盖验收 |
+|---|---|
+| `test_input_validation_failure_returns_fail` | 验收 2（`success is False` + `fallback_reason == "input_invalid"`） |
+| `test_pipeline_exception_returns_fail` | 验收 3（`success is False` + `error` 非空 + `pipeline_error`） |
+| `test_zero_byte_mp4_is_invalid` | 验收 4（0 字节判无效） |
+| `test_mock_placeholder_mp4_is_invalid` | 验收 4（`[MOCK VIDEO]` 判无效） |
+| `test_valid_artifact_returns_success` | 验收 5（**正向用例**：`success is True` + `mock is False`，喂真 ftyp 字节） |
+| `test_invalid_artifact_returns_fail` | 守门补强：产物 0 字节且管线未抛异常 → `artifact_invalid` + False |
+
+红线自查：无 skip、无放宽断言、未 mock 掉 `_is_valid_artifact`、历史占位文件零删除（§1.5）、`config.env` 零改动、无 force push。
 
 ## 0. 卡标题复述
 
