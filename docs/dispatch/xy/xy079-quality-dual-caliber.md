@@ -81,6 +81,14 @@
 3. **档案/README**：[否] 本卡未新增模块、未改公共接口签名（`summarize_quality` 为脚本内新函数），未改 `--json` 既有键结构（仅顶层加 `summary`），README/ARCHITECT 现有描述不构成失真；`docs/projects/README.md` 属 CCC 仓、越卡范围未动。
 4. **线路图**：[否] 本卡关闭后，011 阶段 1 的「质量检查显形」断链闭合；下一环暴露出的待裁决项 = `video-pipeline/render_all_templates.py` 仍按退出码单口径判 `verified`（把 exit 2 全跳过当通过），建议另卡处理（改其消费 `--json summary.pass_full`，需动 video-pipeline 侧，越本卡白名单，已在 1.7 清单写明请机审裁决）。GOAL.md 未改动，线路图增量由 Engine 回写卡时体现。
 
+## 批注落实
+
+落实外脑 09-18 打回处置批注（判例 xy077/xy078 同格式）：
+1. 「禁止重做代码」→ 执行体动手前 `git log --oneline origin/main..HEAD` 确认 `1a3d94c` 在位，只追加不重写；本轮 Q1 根因已由外脑在方案头修复（见 xy078 处置判例），执行体无需改方案。
+2. 「Q2 引用 notes」→ 信封 Q2 说明引用 `docs/notes/2026-09-18-xy079-lessons.md`（外脑已落盘），教训正文保留。
+3. 「信封最后写+自证落盘」→ 执行体以 `ls -la .ccc-result.md` 输出为收单前置证据（rc=64 判例）。
+执行体每轮在信封维护区同步更新本节实况。
+
 ## 人工批注
 
 （老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
