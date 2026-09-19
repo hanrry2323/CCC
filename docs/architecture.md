@@ -68,9 +68,9 @@
 ├── docs/
 │   ├── INDEX.md                                # ★ 文档索引 SSOT（§0 重构决策 + 契约 v1）
 │   ├── architecture.md                         # 本文件
-│   ├── roadmap.md                              # 路线图（当前方向 + 历史归档）
-│   ├── VISION.md                               # 叙事
-│   ├── STRATEGY-MAP.md                         # 全景演进史
+│   ├── roadmap.md                              # 路线图（当前方向 + 历史归档；运行时在用，勿动）
+│   ├── archive/pre-architectural-redesign-20260919/retracted/VISION.md     # 叙事（已归档 09-19）
+│   ├── archive/pre-architectural-redesign-20260919/retracted/STRATEGY-MAP.md  # 全景演进史（已归档 09-19）
 │   ├── dispatch/                               # ★ 任务卡文档（唯一事实源）
 │   │   └── <prefix><NNN>-*.md                  #   <prefix>NNN 任务卡（docs/dispatch/<prefix>/）
 │   ├── archive/                                # 历史归档（旧 scripts/ 等已迁入）

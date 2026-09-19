@@ -1,0 +1,767 @@
+diff --git a/docs/projects/cd/plans/001-task.md b/docs/projects/cd/plans/001-task.md
+index 27e446af4..8b0eb8253 100644
+--- a/docs/projects/cd/plans/001-task.md
++++ b/docs/projects/cd/plans/001-task.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-14 · 更新：2026-08-14
+ > 关联卡：cd001, cd002, cd003, cd004
+ > 关联方案：无
+-> 进度：4/4 (100%)
++> 进度：0/4 (0%)
+ > 里程碑：影视网站 MVP
+ 
+ ## 目标
+diff --git a/docs/projects/cla/plans/001-sqlite-ledger-and-path-guard.md b/docs/projects/cla/plans/001-sqlite-ledger-and-path-guard.md
+index ba8f50c6f..0f5c99f59 100644
+--- a/docs/projects/cla/plans/001-sqlite-ledger-and-path-guard.md
++++ b/docs/projects/cla/plans/001-sqlite-ledger-and-path-guard.md
+@@ -3,7 +3,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-17
+ > 关联卡：cla001
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M1 · 独立底座与路径清零
+ > 子项目：1.1 路径纠偏与冒烟测试绿灯, 1.2 SQLite 持久化队列重构
+ > 环境准备：Python >= 3.10, SQLite 3
+diff --git a/docs/projects/cla/plans/002-sqlite-ledger-fix.md b/docs/projects/cla/plans/002-sqlite-ledger-fix.md
+index e68a8396c..502d5f6cb 100644
+--- a/docs/projects/cla/plans/002-sqlite-ledger-fix.md
++++ b/docs/projects/cla/plans/002-sqlite-ledger-fix.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18
+ > 关联卡：cla016
+ > 关联方案：cla-plan-001（声明已完成，但 SQLite 重构未合入业务仓 main）
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M1 · 独立底座与路径清零
+ > 环境准备：Python >= 3.10, SQLite 3（M1/2017 均就绪）
+ > 子项目：1.2 SQLite 持久化队列重构
+diff --git a/docs/projects/cla/plans/004-gov-crawler.md b/docs/projects/cla/plans/004-gov-crawler.md
+index b850cd1f4..529466dc8 100644
+--- a/docs/projects/cla/plans/004-gov-crawler.md
++++ b/docs/projects/cla/plans/004-gov-crawler.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18（cla017 已回写待合入）
+ > 关联卡：cla017
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 政府药械招采网价格监测
+ > 环境准备：Python >= 3.10, Playwright 浏览器（2017 已装）, 四川药械网公网可访问
+ > 子项目：2.1 挂网价 Playwright 自适应抓取
+diff --git a/docs/projects/cla/plans/005-etl-ssot.md b/docs/projects/cla/plans/005-etl-ssot.md
+index 46acaa7a8..f5c927882 100644
+--- a/docs/projects/cla/plans/005-etl-ssot.md
++++ b/docs/projects/cla/plans/005-etl-ssot.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18
+ > 关联卡：cla019
+ > 关联方案：cla-plan-004（原始数据源）
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 政府药械招采网价格监测
+ > 环境准备：Python >= 3.10, SQLite 3, Levenshtein 库（pip 可装）
+ > 子项目：2.2 数据清洗与 SSOT 药名归一
+diff --git a/docs/projects/cla/plans/006-price-war-alert.md b/docs/projects/cla/plans/006-price-war-alert.md
+index abf067476..8c4f1edd0 100644
+--- a/docs/projects/cla/plans/006-price-war-alert.md
++++ b/docs/projects/cla/plans/006-price-war-alert.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18（红线修正：删 mock 假数据表述，预警判定改 gov 历史价对比）
+ > 关联卡：cla020
+ > 关联方案：cla-plan-005（gov 数据）、cla-plan-008（电商数据）
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 政府药械招采网价格监测
+ > 环境准备：Python >= 3.10, SQLite 3（gov_prices 表）
+ > 子项目：2.3 招采降价预警与 Jobs 自动化触发
+diff --git a/docs/projects/cla/plans/009-llm-provider-dual-track.md b/docs/projects/cla/plans/009-llm-provider-dual-track.md
+index cfaf09f8f..a251222a6 100644
+--- a/docs/projects/cla/plans/009-llm-provider-dual-track.md
++++ b/docs/projects/cla/plans/009-llm-provider-dual-track.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18（cla018 已回写待合入）
+ > 关联卡：cla018
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M4 · 双轨决策与话术自动生成
+ > 环境准备：Python >= 3.10, Ollama（2017 本机）+ OpenAI 兼容 API（有配额 key）
+ > 子项目：4.1 LLMProvider 本地 Ollama ↔ 在线 API 配置层
+diff --git a/docs/projects/cla/plans/010-opportunity-mining.md b/docs/projects/cla/plans/010-opportunity-mining.md
+index 24880c52b..493759289 100644
+--- a/docs/projects/cla/plans/010-opportunity-mining.md
++++ b/docs/projects/cla/plans/010-opportunity-mining.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18
+ > 关联卡：cla021, cla022
+ > 关联方案：cla-plan-006（价格战机会）、cla-plan-008（库存/补货窗口）、cla-plan-009（LLM 通道）
+-> 进度：2/2 (100%)
++> 进度：0/2 (0%)
+ > 里程碑：M4 · 双轨决策与话术自动生成
+ > 环境准备：Python >= 3.10, SQLite 3（gov_prices 表）
+ > 子项目：4.2 销售机会挖掘逻辑与多格式营销话术自动生成
+diff --git a/docs/projects/cla/plans/011-compliance-three-level-gate.md b/docs/projects/cla/plans/011-compliance-three-level-gate.md
+index 3cf7b70b7..d1b06eb51 100644
+--- a/docs/projects/cla/plans/011-compliance-three-level-gate.md
++++ b/docs/projects/cla/plans/011-compliance-three-level-gate.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18
+ > 关联卡：cla023, cla024
+ > 关联方案：cla-plan-010（话术输入）、cla-plan-009（LLM 通道）
+-> 进度：2/2 (100%)
++> 进度：0/2 (0%)
+ > 里程碑：M5 · 前端控制台、合规审核与企微触达
+ > 环境准备：Python >= 3.10, LLM 通道（同 009）
+ > 子项目：5.1 医药合规 AI 初审与三级安全卡关系统
+diff --git a/docs/projects/cla/plans/012-wecom-webhook-push.md b/docs/projects/cla/plans/012-wecom-webhook-push.md
+index c1315734d..c695df684 100644
+--- a/docs/projects/cla/plans/012-wecom-webhook-push.md
++++ b/docs/projects/cla/plans/012-wecom-webhook-push.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18
+ > 关联卡：cla025
+ > 关联方案：cla-plan-011（合规卡关前置）
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M5 · 前端控制台、合规审核与企微触达
+ > 环境准备：Python >= 3.10, 企微机器人 webhook（测试群已配）
+ > 子项目：5.2 企业微信 Webhook 销售机会秒级推送通道
+diff --git a/docs/projects/cla/plans/013-spa-console.md b/docs/projects/cla/plans/013-spa-console.md
+index 130aec137..4bbeb9fbd 100644
+--- a/docs/projects/cla/plans/013-spa-console.md
++++ b/docs/projects/cla/plans/013-spa-console.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18（红线修正：删 mock 表述，数据面板以真实 gov 数据验证）
+ > 关联卡：cla026, cla027, cla028
+ > 关联方案：cla-plan-011（审核 API）、cla-plan-012（推送）
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：M5 · 前端控制台、合规审核与企微触达
+ > 环境准备：Python >= 3.10, 前端静态托管（FastAPI 内置）
+ > 子项目：5.3 轻量级 SPA 控制台搭建 (Vite + React)
+diff --git a/docs/projects/clw/plans/002-clwarp-v020-rebuild.md b/docs/projects/clw/plans/002-clwarp-v020-rebuild.md
+index f6399773f..4536f7209 100644
+--- a/docs/projects/clw/plans/002-clwarp-v020-rebuild.md
++++ b/docs/projects/clw/plans/002-clwarp-v020-rebuild.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-10 · 更新：2026-08-10
+ > 关联卡：clw008, clw009, clw010, clw011, clw012
+ > 关联方案：clw-plan-001（已完成的 v0.1.0 骨架方案）
+-> 进度：5/5 (100%)
++> 进度：0/5 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/clw/plans/003-clwarp-v030-hardening.md b/docs/projects/clw/plans/003-clwarp-v030-hardening.md
+index 56c8c497c..efe8b37ef 100644
+--- a/docs/projects/clw/plans/003-clwarp-v030-hardening.md
++++ b/docs/projects/clw/plans/003-clwarp-v030-hardening.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-11 · 更新：2026-08-11
+ > 关联卡：clw013, clw014, clw015, clw016, clw017, clw018, clw021
+ > 关联方案：clw-plan-002（v0.2.0 全量重构，已合入发布）
+-> 进度：7/7 (100%)
++> 进度：0/7 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/clw/plans/005-clwarp-v030-session-hardening.md b/docs/projects/clw/plans/005-clwarp-v030-session-hardening.md
+index a4b760c1b..264326af5 100644
+--- a/docs/projects/clw/plans/005-clwarp-v030-session-hardening.md
++++ b/docs/projects/clw/plans/005-clwarp-v030-session-hardening.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-12 · 更新：2026-08-12
+ > 关联卡：clw023, clw024, clw025
+ > 关联方案：clw-plan-003（v0.3.0 缺陷收口，已合入）
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 依据：老板 2026-08-12 实测反馈「会话打不开，连不上」+ 中枢只读侦察结论
+ 
+ ## 目标
+diff --git a/docs/projects/hp/plans/001-knowledge-base-milestone.md b/docs/projects/hp/plans/001-knowledge-base-milestone.md
+index 01b5d14bd..d27f242fb 100644
+--- a/docs/projects/hp/plans/001-knowledge-base-milestone.md
++++ b/docs/projects/hp/plans/001-knowledge-base-milestone.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-09 · 更新：2026-08-10
+ > 关联卡：hp001, hp002, hp003, hp004, hp005, hp006, hp007, hp008, hp010, hp011, hp012, hp013, hp014, hp015, hp016, hp017, hp018, hp019, hp020, hp021, hp022
+ > 关联方案: 无
+-> 进度：21/21 (100%)
++> 进度：0/21 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/hp/plans/002-merge-close-branches.md b/docs/projects/hp/plans/002-merge-close-branches.md
+index 0eac0d6ef..9f5061cfd 100644
+--- a/docs/projects/hp/plans/002-merge-close-branches.md
++++ b/docs/projects/hp/plans/002-merge-close-branches.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-13 · 更新：2026-08-13
+ > 关联卡：hp001, hp002, hp003, hp004, hp005, hp006, hp007, hp008, hp010, hp011, hp012, hp013, hp014, hp015, hp016, hp017, hp019, hp020, hp021, hp022
+ > 关联方案：hp-plan-001（已完成，此方案是它的收口延续）
+-> 进度：20/20 (100%)
++> 进度：0/20 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/hp/plans/008-pipeline-ssot-backfill.md b/docs/projects/hp/plans/008-pipeline-ssot-backfill.md
+index 971bcfe37..6b514da34 100644
+--- a/docs/projects/hp/plans/008-pipeline-ssot-backfill.md
++++ b/docs/projects/hp/plans/008-pipeline-ssot-backfill.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-16
+ > 关联卡：hp023
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.1 pipeline 源码回灌 SSOT
+ > 环境准备：mac2017 hp 业务仓可写；hp 节点 /data/knowledge/pipeline 只读访问
+diff --git a/docs/projects/hp/plans/009-dual-repo-merge.md b/docs/projects/hp/plans/009-dual-repo-merge.md
+index 2c2a5656d..f35394b2c 100644
+--- a/docs/projects/hp/plans/009-dual-repo-merge.md
++++ b/docs/projects/hp/plans/009-dual-repo-merge.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp032
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.2 双仓 git 归一
+ > 环境准备：双仓 SSH 访问 + git 历史合并演练环境
+diff --git a/docs/projects/hp/plans/010-runtime-ssot-align.md b/docs/projects/hp/plans/010-runtime-ssot-align.md
+index 72092aaac..9ffc5e97c 100644
+--- a/docs/projects/hp/plans/010-runtime-ssot-align.md
++++ b/docs/projects/hp/plans/010-runtime-ssot-align.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp033
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.3 运行时↔SSOT 对齐
+ > 环境准备：hp 节点服务访问 + mac2017 SSOT 可写
+diff --git a/docs/projects/hp/plans/011-fulltext-ingest.md b/docs/projects/hp/plans/011-fulltext-ingest.md
+index ba4ccfd2a..eaf14d750 100644
+--- a/docs/projects/hp/plans/011-fulltext-ingest.md
++++ b/docs/projects/hp/plans/011-fulltext-ingest.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp034
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.4 全文摄入改造
+ > 环境准备：PG/pgvector 环境 + 摄入链路可跑
+diff --git a/docs/projects/hp/plans/012-dual-db-primary-backup.md b/docs/projects/hp/plans/012-dual-db-primary-backup.md
+index f633eccb4..5b236d12b 100644
+--- a/docs/projects/hp/plans/012-dual-db-primary-backup.md
++++ b/docs/projects/hp/plans/012-dual-db-primary-backup.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp035
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.5 双库改主备
+ > 环境准备：ccc-kb 本地运行环境 + HP 索引访问
+diff --git a/docs/projects/hp/plans/013-credential-governance.md b/docs/projects/hp/plans/013-credential-governance.md
+index 056bf5691..b22e2f380 100644
+--- a/docs/projects/hp/plans/013-credential-governance.md
++++ b/docs/projects/hp/plans/013-credential-governance.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp036
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.6 凭据治理
+ > 环境准备：hp 节点凭据文件访问（只读核对）
+diff --git a/docs/projects/hp/plans/014-rebuildable-verification.md b/docs/projects/hp/plans/014-rebuildable-verification.md
+index 26a5ea359..3a628254f 100644
+--- a/docs/projects/hp/plans/014-rebuildable-verification.md
++++ b/docs/projects/hp/plans/014-rebuildable-verification.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp037
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M2 · 稳控与可恢复
+ > 子项目：2.7 可重建验证
+ > 环境准备：空机演练环境（或克隆环境）
+diff --git a/docs/projects/hp/plans/015-health-triple-probe.md b/docs/projects/hp/plans/015-health-triple-probe.md
+index f07236490..d4e289ec0 100644
+--- a/docs/projects/hp/plans/015-health-triple-probe.md
++++ b/docs/projects/hp/plans/015-health-triple-probe.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp030, hp038
+ > 关联方案：无
+-> 进度：2/2 (100%)
++> 进度：0/2 (0%)
+ > 里程碑：M3 · 可观测与告警
+ > 子项目：3.1 健康三态探针
+ > 环境准备：五服务运行环境可探
+diff --git a/docs/projects/hp/plans/016-pg-health-frontend.md b/docs/projects/hp/plans/016-pg-health-frontend.md
+index 8d03b19be..45c1a843d 100644
+--- a/docs/projects/hp/plans/016-pg-health-frontend.md
++++ b/docs/projects/hp/plans/016-pg-health-frontend.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp039
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M3 · 可观测与告警
+ > 子项目：3.2 pg-health 前端渲染
+ > 环境准备：前端 dev 环境 + 后端 /ops/pg-health 接口
+diff --git a/docs/projects/hp/plans/017-alert-channel.md b/docs/projects/hp/plans/017-alert-channel.md
+index a3d01d46e..bff4709ee 100644
+--- a/docs/projects/hp/plans/017-alert-channel.md
++++ b/docs/projects/hp/plans/017-alert-channel.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp040
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M3 · 可观测与告警
+ > 子项目：3.3 告警推送通道
+ > 环境准备：通知通道（日志/bark 等）
+diff --git a/docs/projects/hp/plans/018-orphan-cron-cleanup.md b/docs/projects/hp/plans/018-orphan-cron-cleanup.md
+index b9d021cb4..60cd35037 100644
+--- a/docs/projects/hp/plans/018-orphan-cron-cleanup.md
++++ b/docs/projects/hp/plans/018-orphan-cron-cleanup.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp041
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M3 · 可观测与告警
+ > 子项目：3.4 悬空 cron 清理
+ > 环境准备：HP 节点访问（只读排查）
+diff --git a/docs/projects/hp/plans/019-health-report-auto.md b/docs/projects/hp/plans/019-health-report-auto.md
+index 40d2b7a8b..2053b45b4 100644
+--- a/docs/projects/hp/plans/019-health-report-auto.md
++++ b/docs/projects/hp/plans/019-health-report-auto.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp042
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M3 · 可观测与告警
+ > 子项目：3.5 health 报告自动化
+ > 环境准备：scheduler 定时环境
+diff --git a/docs/projects/hp/plans/020-collector-harden.md b/docs/projects/hp/plans/020-collector-harden.md
+index 9fddeb403..08ab6693f 100644
+--- a/docs/projects/hp/plans/020-collector-harden.md
++++ b/docs/projects/hp/plans/020-collector-harden.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp043
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M4 · 数据保鲜与质量
+ > 子项目：4.1 collector 加固
+ > 环境准备：采集源访问 + collector 运行环境
+diff --git a/docs/projects/hp/plans/021-stale-data-reingest.md b/docs/projects/hp/plans/021-stale-data-reingest.md
+index 5592ccfad..ea2be87f2 100644
+--- a/docs/projects/hp/plans/021-stale-data-reingest.md
++++ b/docs/projects/hp/plans/021-stale-data-reingest.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp044
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M4 · 数据保鲜与质量
+ > 子项目：4.2 旧数据重灌
+ > 环境准备：PG + 各数据源访问
+diff --git a/docs/projects/hp/plans/022-short-chunk-governance.md b/docs/projects/hp/plans/022-short-chunk-governance.md
+index c7929a4d4..882f2c3d2 100644
+--- a/docs/projects/hp/plans/022-short-chunk-governance.md
++++ b/docs/projects/hp/plans/022-short-chunk-governance.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp045
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M4 · 数据保鲜与质量
+ > 子项目：4.3 短 chunk 治理
+ > 环境准备：PG 数据访问
+diff --git a/docs/projects/hp/plans/023-relevance-optimize.md b/docs/projects/hp/plans/023-relevance-optimize.md
+index 3763b9c0c..f0289da9d 100644
+--- a/docs/projects/hp/plans/023-relevance-optimize.md
++++ b/docs/projects/hp/plans/023-relevance-optimize.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp046
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M4 · 数据保鲜与质量
+ > 子项目：4.4 相关性优化
+ > 环境准备：检索运行环境 + 评测样本
+diff --git a/docs/projects/hp/plans/024-ingest-monitor.md b/docs/projects/hp/plans/024-ingest-monitor.md
+index 474cf45fe..195cffff5 100644
+--- a/docs/projects/hp/plans/024-ingest-monitor.md
++++ b/docs/projects/hp/plans/024-ingest-monitor.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp047
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M4 · 数据保鲜与质量
+ > 子项目：4.5 定时入库监控
+ > 环境准备：cron/scheduler 定时环境
+diff --git a/docs/projects/hp/plans/025-mx-integration.md b/docs/projects/hp/plans/025-mx-integration.md
+index 35f1be3be..1929213e2 100644
+--- a/docs/projects/hp/plans/025-mx-integration.md
++++ b/docs/projects/hp/plans/025-mx-integration.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp048
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M5 · 生态消费
+ > 子项目：5.1 mx 接入
+ > 环境准备：mx 仓访问 + HP 写入权限
+diff --git a/docs/projects/hp/plans/026-qb-deepen.md b/docs/projects/hp/plans/026-qb-deepen.md
+index 8c0bbaab5..521b58381 100644
+--- a/docs/projects/hp/plans/026-qb-deepen.md
++++ b/docs/projects/hp/plans/026-qb-deepen.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp049
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M5 · 生态消费
+ > 子项目：5.2 qb 深化
+ > 环境准备：qb 仓访问 + HP
+diff --git a/docs/projects/hp/plans/027-xy-integration.md b/docs/projects/hp/plans/027-xy-integration.md
+index 1aa141fed..a4aa27acd 100644
+--- a/docs/projects/hp/plans/027-xy-integration.md
++++ b/docs/projects/hp/plans/027-xy-integration.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp050
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M5 · 生态消费
+ > 子项目：5.3 xy 接入
+ > 环境准备：xy 仓访问 + HP 写入
+diff --git a/docs/projects/hp/plans/028-flow-integration.md b/docs/projects/hp/plans/028-flow-integration.md
+index 9b0f51ed5..ad9a3197c 100644
+--- a/docs/projects/hp/plans/028-flow-integration.md
++++ b/docs/projects/hp/plans/028-flow-integration.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp051
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M5 · 生态消费
+ > 子项目：5.4 流程集成
+ > 环境准备：CCC 流程环境 + HP 检索/写入
+diff --git a/docs/projects/hp/plans/029-quality-feedback.md b/docs/projects/hp/plans/029-quality-feedback.md
+index de17aa802..b48f5f61c 100644
+--- a/docs/projects/hp/plans/029-quality-feedback.md
++++ b/docs/projects/hp/plans/029-quality-feedback.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-16 · 更新：2026-08-17
+ > 关联卡：hp052
+ > 关联方案：无
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M5 · 生态消费
+ > 子项目：5.5 质量回检
+ > 环境准备：HP 检索 + 消费方反馈渠道
+diff --git a/docs/projects/mx/plans/001-rss-polish-milestone.md b/docs/projects/mx/plans/001-rss-polish-milestone.md
+index 0ba87e5de..34d138c06 100644
+--- a/docs/projects/mx/plans/001-rss-polish-milestone.md
++++ b/docs/projects/mx/plans/001-rss-polish-milestone.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-09 · 更新：2026-08-10
+ > 关联卡：mx001, mx002, mx003, mx004, mx005, mx006, mx007, mx008, mx009, mx010, mx011, mx012, mx013, mx014, mx015, mx016, mx017, mx018, mx019, mx020, mx021, mx022, mx023, mx024, mx025, mx026, mx027, mx028, mx029
+ > 关联方案: 无
+-> 进度：29/29 (100%)
++> 进度：0/29 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/mx/plans/002-closure-and-security-hardening.md b/docs/projects/mx/plans/002-closure-and-security-hardening.md
+index 0d53bf705..9fc523368 100644
+--- a/docs/projects/mx/plans/002-closure-and-security-hardening.md
++++ b/docs/projects/mx/plans/002-closure-and-security-hardening.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-12 · 更新：2026-08-12
+ > 关联卡：mx030, mx031, mx032, mx033, mx034, mx035
+ > 关联方案：mx-plan-001（已完结）
+-> 进度：6/6 (100%)
++> 进度：0/6 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/mx/plans/003-base-decoupling-and-arch-upgrade.md b/docs/projects/mx/plans/003-base-decoupling-and-arch-upgrade.md
+index 5a88a59f3..bb56a0f07 100644
+--- a/docs/projects/mx/plans/003-base-decoupling-and-arch-upgrade.md
++++ b/docs/projects/mx/plans/003-base-decoupling-and-arch-upgrade.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-14 · 更新：2026-08-15
+ > 关联卡：mx036, mx037, mx038, mx039, mx040, mx041
+ > 关联方案：mx-plan-002（已完结 · 本方案为其架构收口后的重构延续）
+-> 进度：6/6 (100%)
++> 进度：0/6 (0%)
+ > 里程碑：底座解耦与中长期架构升级
+ 
+ ## 目标
+diff --git a/docs/projects/mx/plans/004-public-migration-and-multitarget-cicd.md b/docs/projects/mx/plans/004-public-migration-and-multitarget-cicd.md
+index c202a7ec4..f7cdd50c6 100644
+--- a/docs/projects/mx/plans/004-public-migration-and-multitarget-cicd.md
++++ b/docs/projects/mx/plans/004-public-migration-and-multitarget-cicd.md
+@@ -6,7 +6,7 @@
+ > 验收（2026-08-24 · DSH 受老板临时授权代行核验）：**不通过，维持待验收**。卡 mx045/046/047 均已合入 main，但两条核心验收准则与远端事实不符——①「历史敏感 commit 已 filter-repo 抹除」不成立：fresh fetch 后 origin/main 可达对象中仍含签名材料 blob 三个（combined.jks 1382B、medio.p7b 2754B/2687B，`git rev-list origin/main --objects | grep p7b|jks` 可复现）；②「公开仓库可访问」未发生（GitHub 匿名 API 404 = private）。Phase 2 敏感清零、LICENSE/README、CI 补齐等项已落地。**老板已拍板（2026-08-24）**：不做历史重写（影响面过大），鸿蒙开发线冻结。最小面处置已完成——磁盘实体签名材料删除（signing 目录 8 文件）、本地陈年分支清理；远端历史残留登记为「已知接受风险」（issues.jsonl wontfix）。**本方案公开化路线随之调整：如未来启动公开化，必须采用新仓无历史导入路径，禁止现有仓直接转 public**
+ > 关联卡：mx045, mx046, mx047
+ > 关联方案：mx-plan-003（底座解耦 · 建议先完成 003 再执行本方案）
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：公开化搬迁与多端 CI/CD
+ 
+ ## 目标
+diff --git a/docs/projects/mx/plans/005-opml-import-fix.md b/docs/projects/mx/plans/005-opml-import-fix.md
+index 379468467..979586bee 100644
+--- a/docs/projects/mx/plans/005-opml-import-fix.md
++++ b/docs/projects/mx/plans/005-opml-import-fix.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-18 · 更新：2026-08-24
+ > 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：乱序属性端到端测试在位（rss.rs:971 extreme disordered 用例，commit fd039e5）；parse_opml 延迟推导实现与方案一致；cargo test --workspace 578 全绿（2026-08-24 实测）
+ > 关联卡：mx052
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.1）
+ 
+ ## 目标
+diff --git a/docs/projects/mx/plans/006-opml-export-auth.md b/docs/projects/mx/plans/006-opml-export-auth.md
+index ead9b377c..1f50ce87a 100644
+--- a/docs/projects/mx/plans/006-opml-export-auth.md
++++ b/docs/projects/mx/plans/006-opml-export-auth.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-18 · 更新：2026-08-24
+ > 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：RssSidebar.tsx 已为 fetch+Blob+createObjectURL 虚拟点击且携带 Bearer（:202/:215）；契约单测 RssSidebar.test.tsx 在位（commit 74a4f15）；前端 vitest 381 全绿（2026-08-24 实测）
+ > 关联卡：mx054
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.2）
+ 
+ ## 目标
+diff --git a/docs/projects/mx/plans/007-rss-stats-aggregation.md b/docs/projects/mx/plans/007-rss-stats-aggregation.md
+index 068b54446..2e5f0dd6f 100644
+--- a/docs/projects/mx/plans/007-rss-stats-aggregation.md
++++ b/docs/projects/mx/plans/007-rss-stats-aggregation.md
+@@ -4,7 +4,7 @@
+ > 批准：老板确认转卡 · 2026-08-19
+ > 创建：2026-08-18 · 更新：2026-08-20
+ > 关联卡：mx055
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.3）
+ 
+ ## 目标
+diff --git a/docs/projects/mx/plans/008-coverage-expansion.md b/docs/projects/mx/plans/008-coverage-expansion.md
+index ce5844e5b..71433a7d2 100644
+--- a/docs/projects/mx/plans/008-coverage-expansion.md
++++ b/docs/projects/mx/plans/008-coverage-expansion.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-18 · 更新：2026-08-24
+ > 验收：验收席：DSH（受老板临时授权代行 · 2026-08-24） · 证据：排除项收窄 + rss/websub/scan_scheduler 单测补齐（commit d4f4c94，含 lessons 沉淀 2835194）；CI 覆盖率门禁 medio-core ≥80% 在位；cargo test --workspace 578 全绿。备注：≥80% 当前值未本地复跑 tarpaulin，以 CI 门禁为准
+ > 关联卡：mx053
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ > 里程碑：M8 · 媒体库与 RSS 阅读体验优化（子项目 8.4）
+ 
+ ## 目标
+diff --git a/docs/projects/qb/plans/001-refactor.md b/docs/projects/qb/plans/001-refactor.md
+index 26618b21f..df4da337d 100644
+--- a/docs/projects/qb/plans/001-refactor.md
++++ b/docs/projects/qb/plans/001-refactor.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-03 · 更新：2026-08-10
+ > 关联卡：qb001, qb002, qb003, qb004, qb005, qb006
+ > 关联方案：无
+-> 进度：6/6 (100%)
++> 进度：0/6 (0%)
+ > 迁移自：qx-map `__archive__/decisions/qb-refactor-方案-2026-08-03.md`
+ > 决策人：老板 · 记录/管理：Codex · 执行：Trae · 验收：Codex
+ > 关联：`command-post/intents.md`（INT-121）
+diff --git a/docs/projects/qb/plans/002-strategy-core-unify.md b/docs/projects/qb/plans/002-strategy-core-unify.md
+index 21ee9cfc9..b7409d1b0 100644
+--- a/docs/projects/qb/plans/002-strategy-core-unify.md
++++ b/docs/projects/qb/plans/002-strategy-core-unify.md
+@@ -7,7 +7,7 @@
+ > 里程碑：M1 · 回测统一与策略可验证化（子项目 1.1）
+ > 子项目：1.1 策略接口统一（StrategyCore 共享核心）
+ > 环境准备：qb 业务仓 mac2017 可写 + 现有回测引擎可跑（src/backtest_engine）
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/qb/plans/003-backtest-triconverge.md b/docs/projects/qb/plans/003-backtest-triconverge.md
+index 9ef0039f9..65ed9e4fb 100644
+--- a/docs/projects/qb/plans/003-backtest-triconverge.md
++++ b/docs/projects/qb/plans/003-backtest-triconverge.md
+@@ -7,7 +7,7 @@
+ > 里程碑：M1 · 回测统一与策略可验证化（子项目 1.3）
+ > 子项目：1.3 回测三套收敛（消除循环弃用链）
+ > 环境准备：qb 业务仓 mac2017 可写
+-> 进度：1/1 (100%)
++> 进度：0/1 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/tst/plans/001-pipeline-smoke.md b/docs/projects/tst/plans/001-pipeline-smoke.md
+index 474ad60bc..381258b6a 100644
+--- a/docs/projects/tst/plans/001-pipeline-smoke.md
++++ b/docs/projects/tst/plans/001-pipeline-smoke.md
+@@ -1,7 +1,7 @@
+ # 管线自检 · 冒烟验证
+ 
+ > 项目：tst · 编号：tst-plan-001 · 状态：已确定 · 作者：管理席 ox-alpha · 工具：DSH · 创建：2026-08-23 · 更新：2026-08-24 · 关联卡：tst002, tst003, tst004
+-> 进度：1/1 (100%)（作废 2）
++> 进度：0/3 (0%)
+ 
+ ## 目标
+ 
+diff --git a/docs/projects/xy/plans/001-video-milestone.md b/docs/projects/xy/plans/001-video-milestone.md
+index 5d78246a0..c2d6ca5b5 100644
+--- a/docs/projects/xy/plans/001-video-milestone.md
++++ b/docs/projects/xy/plans/001-video-milestone.md
+@@ -4,7 +4,7 @@
+ > 创建：2026-08-03 · 更新：2026-08-10
+ > 关联卡：xy001, xy002, xy003, xy004, xy005, xy006, xy007, xy008, xy009, xy010, xy011, xy012, xy013, xy014, xy015, xy016, xy017, xy018, xy019, xy020, xy021, xy022, xy023, xy025, xy026, xy027, xy028, xy029, xy030, xy031, xy032
+ > 关联方案：无
+-> 进度：31/31 (100%)
++> 进度：0/31 (0%)
+ > 迁移自：qx-map `__archive__/decisions/xianyu-视频里程碑-方案-2026-08-03.md`
+ > 决策人：老板 · 记录/管理：Codex · 执行：Trae · 验收：Codex
+ > 关联：`command-post/intents.md`（INT-122）
+diff --git a/docs/projects/xy/plans/002-test-baseline-green.md b/docs/projects/xy/plans/002-test-baseline-green.md
+index bc7c4bcd4..a6262ca67 100644
+--- a/docs/projects/xy/plans/002-test-baseline-green.md
++++ b/docs/projects/xy/plans/002-test-baseline-green.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-17
+ > 关联卡：xy033, xy034, xy035, xy036
+ > 关联方案：无
+-> 进度：4/4 (100%)
++> 进度：0/4 (0%)
+ > 里程碑：M2 · 生产就绪
+ > 子项目：2.1 测试基线绿
+ > 环境准备：mac2017 xianyu 业务仓可写（`/Users/fan/program/apps/xianyu`）；`playwright install chromium` 可执行
+diff --git a/docs/projects/xy/plans/003-breakage-fixes.md b/docs/projects/xy/plans/003-breakage-fixes.md
+index 0430858a1..0760b9d28 100644
+--- a/docs/projects/xy/plans/003-breakage-fixes.md
++++ b/docs/projects/xy/plans/003-breakage-fixes.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-17
+ > 关联卡：xy037, xy038, xy039
+ > 关联方案：无
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：M2 · 生产就绪
+ > 子项目：2.2 断裂点修复
+ > 环境准备：mac2017 xianyu 业务仓可写；openclaw-plugin 目录可编译
+diff --git a/docs/projects/xy/plans/004-runtime-rebuild.md b/docs/projects/xy/plans/004-runtime-rebuild.md
+index 234a2d994..67a37505e 100644
+--- a/docs/projects/xy/plans/004-runtime-rebuild.md
++++ b/docs/projects/xy/plans/004-runtime-rebuild.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-17
+ > 关联卡：xy049, xy050, xy051
+ > 关联方案：无
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：M2 · 生产就绪
+ > 子项目：2.3 运行方式重建
+ > 环境准备：mac2017 xianyu 业务仓可写；可创建 launchd plist（`~/Library/LaunchAgents/`）
+diff --git a/docs/projects/xy/plans/005-visual-template-library.md b/docs/projects/xy/plans/005-visual-template-library.md
+index dea7a6b55..10915c200 100644
+--- a/docs/projects/xy/plans/005-visual-template-library.md
++++ b/docs/projects/xy/plans/005-visual-template-library.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-17
+ > 关联卡：xy040, xy041, xy042
+ > 关联方案：无
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：M3 · 视频高表现力
+ > 子项目：3.1 视觉模板库
+ > 环境准备：mac2017 xianyu 业务仓可写；video-pipeline 可渲染（ffmpeg 在机）
+diff --git a/docs/projects/xy/plans/006-quality-quantification.md b/docs/projects/xy/plans/006-quality-quantification.md
+index a58b3e559..bb4eacbd2 100644
+--- a/docs/projects/xy/plans/006-quality-quantification.md
++++ b/docs/projects/xy/plans/006-quality-quantification.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-17
+ > 关联卡：xy043, xy044, xy045
+ > 关联方案：无
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：M3 · 视频高表现力
+ > 子项目：3.2 质量量化加固
+ > 环境准备：mac2017 xianyu 业务仓可写；video-pipeline 可渲染；ffprobe 在机
+diff --git a/docs/projects/xy/plans/007-render-engine-upgrade.md b/docs/projects/xy/plans/007-render-engine-upgrade.md
+index a547c1577..73b0c2db7 100644
+--- a/docs/projects/xy/plans/007-render-engine-upgrade.md
++++ b/docs/projects/xy/plans/007-render-engine-upgrade.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-17 · 更新：2026-08-18
+ > 关联卡：xy046, xy047, xy048
+ > 关联方案：无
+-> 进度：3/3 (100%)
++> 进度：0/3 (0%)
+ > 里程碑：M3 · 视频高表现力
+ > 子项目：3.3 渲染引擎升级
+ > 环境准备：mac2017 xianyu 业务仓可写；video-pipeline 可渲染（ffmpeg 在机）；可选 node 环境（remotion）
+diff --git a/docs/projects/xy/plans/008-high-expression-v2.md b/docs/projects/xy/plans/008-high-expression-v2.md
+index bc3f063ec..661c980cd 100644
+--- a/docs/projects/xy/plans/008-high-expression-v2.md
++++ b/docs/projects/xy/plans/008-high-expression-v2.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-20 · 更新：2026-08-24
+ > 关联卡：xy059（html-preview CLI · 已回写）；其余功能卡待出, xy059
+ > 关联方案：无（承接 M3 xy-plan-005/006/007 已落地部分）
+-> 进度：2/2 (100%)
++> 进度：0/2 (0%)
+ > 里程碑：M5 · 视频高表现力二期
+ > 子项目：5.1 帧渲染器 / 5.2 模板库规模化 / 5.3 A-B 质量评估
+ > 环境准备：mac2017 xianyu 业务仓可写；Hyperframes 引擎已集成（xy047/xy048）；html_scene 骨架已存在（agent/schema/renderer）；Playwright 需安装验证
+diff --git a/docs/projects/xy/plans/009-frontend-showcase.md b/docs/projects/xy/plans/009-frontend-showcase.md
+index 639d35f19..ae960ba30 100644
+--- a/docs/projects/xy/plans/009-frontend-showcase.md
++++ b/docs/projects/xy/plans/009-frontend-showcase.md
+@@ -5,7 +5,7 @@
+ > 创建：2026-08-20 · 更新：2026-08-21
+ > 关联卡：xy052、xy053、xy054、xy055, xy055
+ > 关联方案：无
+-> 进度：5/5 (100%)
++> 进度：0/5 (0%)
+ > 里程碑：M6 · 前端展示台
+ > 子项目：6.1 内容库 API / 6.2 工作流 API / 6.3 预览页面 / 6.4 工作流可视化
+ > 环境准备：mac2017 xianyu 业务仓可写；video-pipeline 输出目录存在；admin 服务可扩展
