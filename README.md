@@ -7,7 +7,7 @@
 > **Loop Engineer：人定意图，系统自动编排与自主执行。**  
 > 任意设备壳经 HTTP 直连 2017 单端服务；对话口接大脑 Agent；编排面（薄驱动 Engine + 文档流转 + 看板/HTTP）远端开发。
 
-**完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)  
+**完整介绍**：[`docs/archive/pre-architectural-redesign-20260919/retracted/INTRO.md`](docs/archive/pre-architectural-redesign-20260919/retracted/INTRO.md) · **叙事 SSOT**：[`docs/archive/pre-architectural-redesign-20260919/retracted/VISION.md`](docs/archive/pre-architectural-redesign-20260919/retracted/VISION.md) · **架构**：[`docs/architecture.md`](docs/architecture.md)  
 **启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · **版本**：`VERSION`（v2.0.0）· **权威链**：[`docs/INDEX.md`](docs/INDEX.md) §0
 
 > 2026-08-02 架构重构定稿：薄驱动 Engine + 文档流转 + 看板/HTTP + 2017 单端 + 任意设备壳。旧 `scripts/` 已退役归档；旧端口（7777 Hub / 7775 Board / 7788 sidecar / 7778 Cockpit）已退役。详见 [CHANGELOG#v0700](CHANGELOG.md)。
@@ -87,7 +87,7 @@ python3 -m server.board.export
 python3 -m server.web.server --port 7788
 ```
 
-详解：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)
+详解：[`docs/archive/pre-architectural-redesign-20260919/retracted/GETTING-STARTED.md`](docs/archive/pre-architectural-redesign-20260919/retracted/GETTING-STARTED.md)
 
 ---
 
@@ -124,9 +124,9 @@ python3 -m server.web.server --port 7788
 |------|------|
 | [INDEX](docs/INDEX.md) | 先读 §0 权威链 |
 | [architecture](docs/architecture.md) | 架构概览 |
-| [VISION](docs/VISION.md) | 叙事 SSOT |
+| [VISION](docs/archive/pre-architectural-redesign-20260919/retracted/VISION.md) | 叙事 SSOT |
 | [roadmap](docs/roadmap.md) | 当前方向 + 历史归档 |
-| [GETTING-STARTED](docs/GETTING-STARTED.md) | 首次安装 |
+| [GETTING-STARTED](docs/archive/pre-architectural-redesign-20260919/retracted/GETTING-STARTED.md) | 首次安装 |
 | [STARTUP-BRIEF](STARTUP-BRIEF.md) | Agent 启动 |
 | [CHANGELOG](CHANGELOG.md) | 版本历史 |
 

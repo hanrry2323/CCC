@@ -118,10 +118,10 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`GETTING-STARTED.md`](GETTING-STARTED.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
-| [`INTRO.md`](INTRO.md) · [`USAGE.md`](USAGE.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
+| [`GETTING-STARTED.md`](pre-architectural-redesign-20260919/retracted/GETTING-STARTED.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
+| [`INTRO.md`](pre-architectural-redesign-20260919/retracted/INTRO.md) · [`USAGE.md`](pre-architectural-redesign-20260919/retracted/USAGE.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
 | [`ops/GO-LIVE.md`](ops/GO-LIVE.md) · [`ops/GO-LIVE-DESKTOP.md`](ops/GO-LIVE-DESKTOP.md) | 上线卡 |
-| [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) · [`lessons.md`](lessons.md) | 排障（TROUBLESHOOTING 标 RETRACTED 2026-08-11，排障以 lessons + runbooks 为准） |
+| [`TROUBLESHOOTING.md`](pre-architectural-redesign-20260919/retracted/TROUBLESHOOTING.md) · [`lessons.md`](lessons.md) | 排障（TROUBLESHOOTING 标 RETRACTED 2026-08-11，排障以 lessons + runbooks 为准） |
 | [`deploy/server-layout.md`](deploy/server-layout.md) | 2017 目录规范 |
 | [`deploy/fleet-apps-migration-2026-07.md`](deploy/fleet-apps-migration-2026-07.md) | 五仓迁移（运维史实，非日常） |
 
@@ -140,8 +140,8 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
-| [`GLOSSARY.md`](GLOSSARY.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
+| [`STRATEGY-MAP.md`](pre-architectural-redesign-20260919/retracted/STRATEGY-MAP.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
+| [`GLOSSARY.md`](pre-architectural-redesign-20260919/retracted/GLOSSARY.md) | 🔴 史（Hub 时代）· RETRACTED 2026-08-11 |
 | [`architecture.md`](architecture.md) | 架构概览（新栈 `server/`；若与重构决策冲突 → 以重构决策为准） |
 | [`model-tier-strategy.md`](model-tier-strategy.md) | **已收口 stub** → 平台走执行会话/自动化值班组件；旧文在 archive/retired-tooling |
 | [`../references/red-lines.md`](../references/red-lines.md) | 红线 |

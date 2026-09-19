@@ -1,6 +1,6 @@
 # Contributing to CCC
 
-感谢贡献。请先读产品叙事：[`docs/VISION.md`](docs/VISION.md)。
+感谢贡献。请先读产品叙事：[`docs/archive/pre-architectural-redesign-20260919/retracted/VISION.md`](docs/archive/pre-architectural-redesign-20260919/retracted/VISION.md)。
 
 ## 原则
 
@@ -15,7 +15,7 @@
 意图清晰 → plan + phases（或 Hub 定稿）→ 改代码 → pytest → commit
 ```
 
-详细工程流程仍可参考 [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)（历史详尽版）；**对外口径以 VISION + 本文为准**。
+详细工程流程仍可参考 [`docs/archive/pre-architectural-redesign-20260919/retracted/CONTRIBUTING.md`](docs/archive/pre-architectural-redesign-20260919/retracted/CONTRIBUTING.md)（历史详尽版）；**对外口径以 VISION + 本文为准**。
 
 ## 本地命令
 
@@ -29,7 +29,7 @@ ruff check scripts/ tests/           # 若已安装
 ## PR 建议
 
 - 说明 **为什么**（对 Loop / Hub / 路由的影响），不只列文件  
-- 用户可见行为变更：更新 `CHANGELOG.md`；若动定位：同步 `docs/VISION.md` / `README.md`  
+- 用户可见行为变更：更新 `CHANGELOG.md`；若动定位：同步 `docs/archive/pre-architectural-redesign-20260919/retracted/VISION.md`（史实） / `README.md`  
 - 勿提交：密钥、`.env`、`.ccc/board/*.lock`、本机绝对路径隐私  
 
 ## 行为准则

@@ -58,7 +58,7 @@ SSOT：[`docs/product/north-star-slice.md`](docs/product/north-star-slice.md) ·
 
 现行标准链路：老板/外脑拟指令 → 前段 DSH 开发+前置机审 → 已回写 → 后段 CC CLI（phase2）审核/验收/合入/部署 → 已关闭。
 
-上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
+上手：[`docs/archive/pre-architectural-redesign-20260919/retracted/GETTING-STARTED.md`](docs/archive/pre-architectural-redesign-20260919/retracted/GETTING-STARTED.md)  
 架构：[`docs/architecture.md`](docs/architecture.md)  
 部署：[`docs/deploy/topology.md`](docs/deploy/topology.md)
 
