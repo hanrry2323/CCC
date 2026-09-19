@@ -77,7 +77,7 @@
 ## 维护区
 
 1. **方案同步**：[是] 无需新增。xy-plan-011 卡头关联已含 xy079（依赖关系「xy078 阶段 0 前置」也已在 011 内维护）；本卡交付（双口径汇总 + CLIP 实跑）即 011 §一 断链 2 与 §五之二 防乐观第 1 条的落地，未新增/变更方案文档，无平行方案需同步。
-2. **教训沉淀**：[有] 两条，均已写入 `scripts/check_video_quality.py` 函数 docstring 作为常驻注释：(a) **旧代码 `SentenceTransformer(..., local_files_only=True)` 在 ST 2.7.0 下必抛 TypeError**（该版本 `__init__` 无此形参），异常被外层吞掉后落入联网分支，而 2017 实测 huggingface.co 不可达，整条 CLI 可挂 600s+——正确做法是把 HF 缓存快照目录直接当 `model_name_or_path` 传入（零网络，实测 2.2s 加载）。(b) **运行期设 `os.environ["HF_HUB_OFFLINE"]` 是空转**：`huggingface_hub.constants` 在 import 期已固化该值。教训泛化：lazy-import + 宽 except 会把「配置/版本不匹配」伪装成「功能不可用 skip」，去静默必须连加载路径一起查。
+2. **教训沉淀**：[有] 两条，均已写入 `scripts/check_video_quality.py` 函数 docstring 作为常驻注释：(a) **旧代码 `SentenceTransformer(..., local_files_only=True)` 在 ST 2.7.0 下必抛 TypeError**（该版本 `__init__` 无此形参），异常被外层吞掉后落入联网分支，而 2017 实测 huggingface.co 不可达，整条 CLI 可挂 600s+——正确做法是把 HF 缓存快照目录直接当 `model_name_or_path` 传入（零网络，实测 2.2s 加载）。(b) **运行期设 `os.environ["HF_HUB_OFFLINE"]` 是空转**：`huggingface_hub.constants` 在 import 期已固化该值。教训泛化：lazy-import + 宽 except 会把「配置/版本不匹配」伪装成「功能不可用 skip」，去静默必须连加载路径一起查。 教训正文已同步落盘为独立文件：`docs/notes/2026-09-18-xy079-lessons.md`（三条与上列 (a)(b) 及泛化逐条对应，供后续卡引用）。
 3. **档案/README**：[否] 本卡未新增模块、未改公共接口签名（`summarize_quality` 为脚本内新函数），未改 `--json` 既有键结构（仅顶层加 `summary`），README/ARCHITECT 现有描述不构成失真；`docs/projects/README.md` 属 CCC 仓、越卡范围未动。
 4. **线路图**：[否] 本卡关闭后，011 阶段 1 的「质量检查显形」断链闭合；下一环暴露出的待裁决项 = `video-pipeline/render_all_templates.py` 仍按退出码单口径判 `verified`（把 exit 2 全跳过当通过），建议另卡处理（改其消费 `--json summary.pass_full`，需动 video-pipeline 侧，越本卡白名单，已在 1.7 清单写明请机审裁决）。GOAL.md 未改动，线路图增量由 Engine 回写卡时体现。
 
