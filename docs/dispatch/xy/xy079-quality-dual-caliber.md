@@ -91,7 +91,38 @@
 
 ## 人工批注
 
-（老板对打回卡/审核的批注意见写这里；执行体先读批注再执行。无批注时保留本节即可。）
+**外脑 2026-09-19 12:2x 打回处置（run15）——本轮只做下列三件事，禁止重做已交付代码。**
+
+代码侧已由外脑独立验收通过（亲跑 `pytest tests/video/test_quality_dual_caliber.py` = **29 passed**；
+`summary.pass_full=false` + `skip_count=1` + `skip_names=["视频差异化"]` + CLIP 真实 `0.2808 ≥ 0.25`，
+四项验收边界全中）。打回**只**因收尾两件事：
+
+1. **【硬阻塞】分支未推远端，且信封自报不符。** 信封「变更证据」写 `push=✅ 已推送`，
+   但 `git ls-remote --heads origin codex/xy079` 实测为空。须执行
+   `git push -u origin codex/xy079-quality-dual-caliber`，并在信封贴
+   `git ls-remote --heads origin codex/xy079` 的**原始输出**自证。
+   禁止改写 commit 内容、禁止 rebase、禁止重做 `1a3d94c`。
+2. **【格式】维护区四问代写为空。** 你的信封把答案写在 `## 3. 维护区四问` + `### Q1 方案同步`
+   三级标题下；引擎代写按卡内 `## 维护区` 的编号列表解析，零提取 → Q1/Q2/Q4 说明全空被机审拒。
+   信封该段须逐字写成卡内格式，四行、说明非空单段：
+
+   ```
+   ## 维护区
+   1. **方案同步**：[是] 说明…
+   2. **教训沉淀**：[有] 说明…
+   3. **档案/README**：[否] 说明…
+   4. **线路图**：[否] 说明…
+   ```
+
+   答案内容你已有（信封 Q1–Q4 段），只需换格式搬运，不必重写结论。
+3. **【纠误】notes 文件判断有误。** 你判 `docs/notes/2026-09-18-xy079-lessons.md` 不存在，
+   是因为在 xianyu 仓找——**该文件在 CCC 仓**（`/Users/fan/program/CCC/docs/notes/`，
+   已在 origin/main）。跨仓文件不构成本卡白名单越界，本轮**无需**在 xianyu 侧创建它；
+   Q2 说明照旧引用该路径即可（外脑已把该引用补进卡内 Q2 说明）。
+
+边界不变：白名单 `scripts/check_video_quality.py` + `tests/video`；`video.py`/`writer.py`/
+`rewriter.py`/`router.py`/`config.env` 零改动；`data/videos/` 文件计数不变；
+信封仍须 `.ccc-result.md` 最后写 + `ls -la` 自证落盘。
 
 ## 回写区
 
