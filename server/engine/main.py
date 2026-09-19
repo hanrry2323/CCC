@@ -92,7 +92,8 @@ from server.engine.result_contract import (
     _blocking_findings,
     _executor_result_json_path,
     _executor_result_path,
-    _executor_result_required_headings,
+    _extract_maintenance_section,
+    _missing_required_headings,
     _replace_card_section,
 )
 from server.engine.task import State, Work
@@ -1749,7 +1750,24 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
             """维护区 [有/无] 勾选：值以「有」开头→有，否则无。"""
             return "有" if value and value.strip().startswith("有") else "无"
 
-        if json_path.is_file():
+        # D1：JSON sidecar 新鲜度闸。dsh-executor 按 work_id 命名 sidecar（不带轮次号），
+        # 上一轮残留件会遮蔽本轮只写 markdown 的收单——xy079 run16/run17 即因此把
+        # 12:07 的陈旧空说明写进卡。两者同时存在时仅当 json 不比 md 旧才采信 json。
+        json_trusted = json_path.is_file()
+        if json_trusted and result_path.is_file():
+            json_mtime = json_path.stat().st_mtime
+            md_mtime = result_path.stat().st_mtime
+            if json_mtime < md_mtime:
+                json_trusted = False
+                logger.warning(
+                    "JSON sidecar 陈旧于 markdown，回退 markdown: work=%s json=%s (%s) md=%s (%s)",
+                    work.id,
+                    json_mtime,
+                    datetime.fromtimestamp(json_mtime).strftime("%Y-%m-%d %H:%M"),
+                    md_mtime,
+                    datetime.fromtimestamp(md_mtime).strftime("%Y-%m-%d %H:%M"),
+                )
+        if json_trusted:
             try:
                 payload = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
                 if (
@@ -1807,9 +1825,11 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
             except (ValueError, AttributeError) as exc:
                 logger.warning("JSON sidecar 结构非法，回退 markdown: work=%s err=%s", work.id, exc)
         if not json_mode:
+            if not result_path.is_file():
+                return False, "执行结果契约不完整，缺少: markdown 结果文件不存在（仅有 JSON sidecar 但结构非法）"
             result = result_path.read_text(encoding="utf-8", errors="replace").strip()
-            required = _executor_result_required_headings()
-            missing = [heading for heading in required if heading not in result]
+            # D2b：契约检查行首锚定，散文提及不得通过（散文骗过检查 → 契约判完整但提取段是垃圾）。
+            missing = _missing_required_headings(result)
             if missing:
                 return False, f"执行结果契约不完整，缺少: {', '.join(missing)}"
             title_section = result.split("## 0. 卡标题复述", 1)[1].split("## 1.", 1)[0].strip()
@@ -1821,7 +1841,8 @@ def _apply_executor_result_to_card(work: Work, result_path: Path, cfg: dict[str,
                 section = result.split(heading, 1)[1]
                 section = section.split("## ", 1)[0].strip()
                 writeback += f"\n\n{heading}\n\n{section}"
-            maintenance = result.split("## 3. 维护区四问", 1)[1].split("## 4.", 1)[0].strip()
+            # D2：维护区节标题行首锚定，兼容「## 维护区」（无序号）与「## 3. 维护区四问」。
+            maintenance = _extract_maintenance_section(result) or ""
             for heading in ("## 人工批注落实", "## 批注落实", "## 4. 批注落实", "## 5. 批注落实"):
                 if heading in result:
                     annotation_body = result.split(heading, 1)[1].split("## ", 1)[0].strip()

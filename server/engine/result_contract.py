@@ -15,7 +15,41 @@ def _executor_result_json_path(log_dir: Path, work_id: str) -> Path:
     """P1.3：结构化执行结果 sidecar 路径（优先于 markdown 兼容链）。"""
     return log_dir / f"{work_id}-ccc-result.json"
 
+# D2：维护区节标题行首锚定。执行体实际写「## 维护区」（无序号），旧口径只认
+# 「## 3. 维护区四问」→ 子串匹配会命中散文里的同名提及，提取出无关段。
+# 带序号与不带序号两种写法都认；`\s*$` 防散文行尾误匹配（re.M 下 $ 锚到行尾）。
+_MAINT_HEADING_RE = re.compile(r"^## (?:\d+\. )?(?:维护区四问|维护区)\s*$", re.M)
+
+# D2b 契约检查行首锚定：散文提及（如 274 行「替换上一版的 ## 3. 维护区四问」）
+# 不得通过契约检查。维护区一项走 _MAINT_HEADING_RE，其余三项要求独占一行。
+# 错误信息仍用带序号的规范写法（_executor_result_required_headings 供报错构造）。
+def _missing_required_headings(text: str) -> tuple[str, ...]:
+    """D2b：行首锚定判定契约节是否齐全，返回缺失项的规范标题元组。"""
+    missing: list[str] = []
+    for heading in _executor_result_required_headings():
+        if heading.startswith("## 3."):
+            if not _MAINT_HEADING_RE.search(text):
+                missing.append(heading)
+        elif not re.search(r"^" + re.escape(heading) + r"\s*$", text, re.M):
+            missing.append(heading)
+    return tuple(missing)
+
+
+def _extract_maintenance_section(text: str) -> str | None:
+    """D2：行首锚定提取维护区节正文（下一个行首 `## ` 之前），兼容带/不带序号。
+
+    找不到节标题返回 None（调用方走契约检查报缺失）。
+    """
+    m = _MAINT_HEADING_RE.search(text)
+    if not m:
+        return None
+    next_match = re.search(r"^## ", text[m.end():], re.M)
+    end = m.end() + (next_match.start() if next_match else len(text[m.end():]))
+    return text[m.end(): end].strip()
+
+
 def _executor_result_required_headings() -> tuple[str, ...]:
+    """契约必需节标题（D2b：维护区项由 _MAINT_HEADING_RE 认两种写法）。"""
     return ("## 0. 卡标题复述", "## 1. 探针输出", "## 2. 自测输出", "## 3. 维护区四问")
 
 def _blocking_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
